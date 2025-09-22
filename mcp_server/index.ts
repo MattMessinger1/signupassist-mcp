@@ -1,0 +1,81 @@
+/**
+ * MCP Server - Registers all MCP tools with the framework
+ */
+
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { 
+  CallToolRequestSchema,
+  ErrorCode,
+  ListToolsRequestSchema,
+  McpError,
+} from '@modelcontextprotocol/sdk/types.js';
+
+// Import tool providers
+import { skiclubproTools } from '../providers/skiclubpro/index.js';
+import { daysmartTools } from '../providers/daysmart/index.js';
+import { campminder Tools } from '../providers/campminder/index.js';
+
+class SignupAssistMCPServer {
+  private server: Server;
+  private tools: Map<string, any> = new Map();
+
+  constructor() {
+    this.server = new Server(
+      {
+        name: 'signupassist-mcp',
+        version: '1.0.0',
+      },
+      {
+        capabilities: {
+          tools: {},
+        },
+      }
+    );
+
+    this.setupRequestHandlers();
+    this.registerTools();
+  }
+
+  private setupRequestHandlers() {
+    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+      return {
+        tools: Array.from(this.tools.values()),
+      };
+    });
+
+    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      const { name, arguments: args } = request.params;
+      
+      if (!this.tools.has(name)) {
+        throw new McpError(ErrorCode.MethodNotFound, `Tool ${name} not found`);
+      }
+
+      const tool = this.tools.get(name);
+      return await tool.handler(args);
+    });
+  }
+
+  private registerTools() {
+    // Register all provider tools
+    const allTools = [
+      ...skiclubproTools,
+      ...daysmartTools,
+      ...campminder Tools,
+    ];
+
+    allTools.forEach(tool => {
+      this.tools.set(tool.name, tool);
+    });
+  }
+
+  async start() {
+    const transport = new StdioServerTransport();
+    await this.server.connect(transport);
+    console.log('SignupAssist MCP Server started');
+  }
+}
+
+// Start the server
+const server = new SignupAssistMCPServer();
+server.start().catch(console.error);
