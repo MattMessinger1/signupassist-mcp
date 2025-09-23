@@ -98,6 +98,58 @@ export interface FieldSchema {
   branches: FieldBranch[];
 }
 
+export interface CheckAccountStatusArgs {
+  email: string;
+  mandate_id: string;
+  plan_execution_id: string;
+}
+
+export interface CreateAccountArgs {
+  email: string;
+  password: string;
+  child_info: any;
+  mandate_id: string;
+  plan_execution_id: string;
+}
+
+export interface CheckMembershipStatusArgs {
+  session_ref?: string;
+  mandate_id: string;
+  plan_execution_id: string;
+}
+
+export interface PurchaseMembershipArgs {
+  session_ref?: string;
+  mandate_id: string;
+  plan_execution_id: string;
+}
+
+export interface CheckAccountStatusArgs {
+  email: string;
+  mandate_id: string;
+  plan_execution_id: string;
+}
+
+export interface CreateAccountArgs {
+  email: string;
+  password: string;
+  child_info: any;
+  mandate_id: string;
+  plan_execution_id: string;
+}
+
+export interface CheckMembershipStatusArgs {
+  session_ref?: string;
+  mandate_id: string;
+  plan_execution_id: string;
+}
+
+export interface PurchaseMembershipArgs {
+  session_ref?: string;
+  mandate_id: string;
+  plan_execution_id: string;
+}
+
 /**
  * Login to SkiClubPro using stored credentials
  */
@@ -568,6 +620,268 @@ export async function captureEvidence(args: CaptureEvidenceArgs): Promise<{ asse
   );
 }
 
+/**
+ * Check if an account exists for the given email
+ */
+export async function scpCheckAccountStatus(args: CheckAccountStatusArgs): Promise<{ exists: boolean; verified?: boolean }> {
+  return auditToolCall(
+    {
+      plan_execution_id: args.plan_execution_id,
+      mandate_id: args.mandate_id,
+      tool: 'scp.check_account_status'
+    },
+    async () => {
+      // Verify mandate has required scope
+      await verifyMandate(args.mandate_id, 'scp:read:account');
+
+      try {
+        // Launch Browserbase session
+        const session = await launchBrowserbaseSession();
+
+        try {
+          // Check account status by attempting login or probing
+          const accountStatus = await checkAccountExists(session, args.email);
+
+          // Capture screenshot evidence
+          const screenshot = await captureScreenshot(session, 'account-check.png');
+          await captureScreenshotEvidence(
+            args.plan_execution_id,
+            screenshot,
+            'account-status-check'
+          );
+
+          await closeBrowserbaseSession(session);
+
+          return accountStatus;
+
+        } catch (error) {
+          await closeBrowserbaseSession(session);
+          throw error;
+        }
+
+      } catch (error) {
+        throw new Error(`Account status check failed: ${error.message}`);
+      }
+    }
+  );
+}
+
+/**
+ * Create a new account for the user
+ */
+export async function scpCreateAccount(args: CreateAccountArgs): Promise<{ account_id: string }> {
+  return auditToolCall(
+    {
+      plan_execution_id: args.plan_execution_id,
+      mandate_id: args.mandate_id,
+      tool: 'scp.create_account'
+    },
+    async () => {
+      // Verify mandate has required scope
+      await verifyMandate(args.mandate_id, 'scp:create_account');
+
+      try {
+        // Launch Browserbase session
+        const session = await launchBrowserbaseSession();
+
+        try {
+          // Perform account creation automation
+          const accountResult = await createSkiClubProAccount(session, {
+            email: args.email,
+            password: args.password,
+            child_info: args.child_info
+          });
+
+          // Capture confirmation screenshot
+          const screenshot = await captureScreenshot(session, 'account-created.png');
+          await captureScreenshotEvidence(
+            args.plan_execution_id,
+            screenshot,
+            'account-creation-confirmation'
+          );
+
+          await closeBrowserbaseSession(session);
+
+          return accountResult;
+
+        } catch (error) {
+          // Capture error screenshot
+          try {
+            const errorScreenshot = await captureScreenshot(session, 'account-creation-failed.png');
+            await captureScreenshotEvidence(
+              args.plan_execution_id,
+              errorScreenshot,
+              'failed-account-creation'
+            );
+          } catch (screenshotError) {
+            console.error('Could not capture error screenshot:', screenshotError);
+          }
+
+          await closeBrowserbaseSession(session);
+          throw error;
+        }
+
+      } catch (error) {
+        throw new Error(`Account creation failed: ${error.message}`);
+      }
+    }
+  );
+}
+
+/**
+ * Check membership status for logged-in user
+ */
+export async function scpCheckMembershipStatus(args: CheckMembershipStatusArgs): Promise<{ active: boolean; expires_at?: string }> {
+  return auditToolCall(
+    {
+      plan_execution_id: args.plan_execution_id,
+      mandate_id: args.mandate_id,
+      tool: 'scp.check_membership_status'
+    },
+    async () => {
+      // Verify mandate has required scope
+      await verifyMandate(args.mandate_id, 'scp:read:membership');
+
+      try {
+        // Get mandate details
+        const { data: mandate, error: mandateError } = await supabase
+          .from('mandates')
+          .select('user_id')
+          .eq('id', args.mandate_id)
+          .single();
+
+        if (mandateError || !mandate) {
+          throw new Error('Could not retrieve mandate details');
+        }
+
+        // Launch or connect to Browserbase session
+        let session;
+        if (args.session_ref) {
+          session = await connectToBrowserbaseSession(args.session_ref);
+        } else {
+          session = await launchBrowserbaseSession();
+          
+          // Login first if new session
+          const credentials = await lookupCredentials('skiclubpro-default', mandate.user_id);
+          await performSkiClubProLogin(session, credentials);
+        }
+
+        try {
+          // Check membership status
+          const membershipStatus = await checkMembershipStatus(session);
+
+          // Capture screenshot evidence
+          const screenshot = await captureScreenshot(session, 'membership-check.png');
+          await captureScreenshotEvidence(
+            args.plan_execution_id,
+            screenshot,
+            'membership-status-check'
+          );
+
+          // Only close session if we created it
+          if (!args.session_ref) {
+            await closeBrowserbaseSession(session);
+          }
+
+          return membershipStatus;
+
+        } catch (error) {
+          if (!args.session_ref) {
+            await closeBrowserbaseSession(session);
+          }
+          throw error;
+        }
+
+      } catch (error) {
+        throw new Error(`Membership status check failed: ${error.message}`);
+      }
+    }
+  );
+}
+
+/**
+ * Purchase membership for logged-in user (optional future feature)
+ */
+export async function scpPurchaseMembership(args: PurchaseMembershipArgs): Promise<{ membership_id: string }> {
+  return auditToolCall(
+    {
+      plan_execution_id: args.plan_execution_id,
+      mandate_id: args.mandate_id,
+      tool: 'scp.purchase_membership'
+    },
+    async () => {
+      // Verify mandate has required scope
+      await verifyMandate(args.mandate_id, 'scp:pay:membership');
+
+      try {
+        // Get mandate details
+        const { data: mandate, error: mandateError } = await supabase
+          .from('mandates')
+          .select('user_id')
+          .eq('id', args.mandate_id)
+          .single();
+
+        if (mandateError || !mandate) {
+          throw new Error('Could not retrieve mandate details');
+        }
+
+        // Launch or connect to Browserbase session
+        let session;
+        if (args.session_ref) {
+          session = await connectToBrowserbaseSession(args.session_ref);
+        } else {
+          session = await launchBrowserbaseSession();
+          
+          // Login first if new session
+          const credentials = await lookupCredentials('skiclubpro-default', mandate.user_id);
+          await performSkiClubProLogin(session, credentials);
+        }
+
+        try {
+          // Perform membership purchase automation
+          const membershipResult = await purchaseMembership(session);
+
+          // Capture confirmation screenshot
+          const screenshot = await captureScreenshot(session, 'membership-purchased.png');
+          await captureScreenshotEvidence(
+            args.plan_execution_id,
+            screenshot,
+            'membership-purchase-confirmation'
+          );
+
+          // Only close session if we created it
+          if (!args.session_ref) {
+            await closeBrowserbaseSession(session);
+          }
+
+          return membershipResult;
+
+        } catch (error) {
+          // Capture error screenshot
+          try {
+            const errorScreenshot = await captureScreenshot(session, 'membership-purchase-failed.png');
+            await captureScreenshotEvidence(
+              args.plan_execution_id,
+              errorScreenshot,
+              'failed-membership-purchase'
+            );
+          } catch (screenshotError) {
+            console.error('Could not capture error screenshot:', screenshotError);
+          }
+
+          if (!args.session_ref) {
+            await closeBrowserbaseSession(session);
+          }
+          throw error;
+        }
+
+      } catch (error) {
+        throw new Error(`Membership purchase failed: ${error.message}`);
+      }
+    }
+  );
+}
+
 // Export all tools
 export const skiClubProTools = {
   'scp.login': scpLogin,
@@ -575,5 +889,9 @@ export const skiClubProTools = {
   'scp.discover_required_fields': scpDiscoverRequiredFields,
   'scp.register': scpRegister,
   'scp.pay': scpPay,
+  'scp.check_account_status': scpCheckAccountStatus,
+  'scp.create_account': scpCreateAccount,
+  'scp.check_membership_status': scpCheckMembershipStatus,
+  'scp.purchase_membership': scpPurchaseMembership,
   'evidence.capture': captureEvidence
 };

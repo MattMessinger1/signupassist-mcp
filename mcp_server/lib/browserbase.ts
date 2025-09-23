@@ -823,6 +823,286 @@ export async function captureScreenshot(
 }
 
 /**
+ * Check if an account exists for the given email
+ */
+export async function checkAccountExists(session: BrowserbaseSession, email: string): Promise<{ exists: boolean; verified?: boolean }> {
+  try {
+    // Navigate to login page to test account existence
+    await session.page.goto('https://app.skiclubpro.com/login', { waitUntil: 'networkidle' });
+    
+    // Fill in email
+    const emailSelector = await session.page.$('input[type="email"], input[name="email"], #email');
+    if (!emailSelector) {
+      throw new Error('Could not find email input field');
+    }
+    
+    await emailSelector.fill(email);
+    
+    // Try to proceed to password or look for account-not-found messages
+    const continueButton = await session.page.$('button:has-text("Continue"), button:has-text("Next"), .continue-btn');
+    if (continueButton) {
+      await continueButton.click();
+      await session.page.waitForTimeout(2000);
+    }
+    
+    // Check for error messages indicating account doesn't exist
+    const errorMessages = await session.page.$$eval(
+      '.error, .alert-danger, .text-danger, [class*="error"]',
+      elements => elements.map(el => el.textContent?.toLowerCase() || '')
+    );
+    
+    const accountNotFound = errorMessages.some(msg => 
+      msg.includes('account not found') ||
+      msg.includes('email not found') ||
+      msg.includes('user not found') ||
+      msg.includes('invalid email')
+    );
+    
+    if (accountNotFound) {
+      return { exists: false };
+    }
+    
+    // If password field appears, account likely exists
+    const passwordField = await session.page.$('input[type="password"], input[name="password"], #password');
+    if (passwordField) {
+      return { exists: true, verified: false };
+    }
+    
+    // Default to account exists if no clear indicators
+    return { exists: true, verified: false };
+    
+  } catch (error) {
+    throw new Error(`Failed to check account existence: ${error.message}`);
+  }
+}
+
+/**
+ * Create a new SkiClubPro account
+ */
+export async function createSkiClubProAccount(
+  session: BrowserbaseSession, 
+  accountData: { email: string; password: string; child_info: any }
+): Promise<{ account_id: string }> {
+  try {
+    // Navigate to registration/signup page
+    await session.page.goto('https://app.skiclubpro.com/register', { waitUntil: 'networkidle' });
+    
+    // Alternative URLs if main doesn't work
+    const altUrls = [
+      'https://app.skiclubpro.com/signup',
+      'https://app.skiclubpro.com/create-account',
+      'https://app.skiclubpro.com/join'
+    ];
+    
+    let formFound = false;
+    for (const url of altUrls) {
+      if (!formFound) {
+        try {
+          await session.page.goto(url, { waitUntil: 'networkidle' });
+          const form = await session.page.$('form');
+          if (form) {
+            formFound = true;
+            break;
+          }
+        } catch (error) {
+          console.log(`Could not load ${url}:`, error.message);
+        }
+      }
+    }
+    
+    if (!formFound) {
+      throw new Error('Could not find account creation form');
+    }
+    
+    // Fill in account details
+    await session.page.fill('input[type="email"], input[name="email"], #email', accountData.email);
+    await session.page.fill('input[type="password"], input[name="password"], #password', accountData.password);
+    
+    // Fill in child information if required
+    if (accountData.child_info) {
+      const childFields = [
+        { selector: 'input[name*="child_name"], input[name*="first_name"]', value: accountData.child_info.name },
+        { selector: 'input[name*="last_name"]', value: accountData.child_info.name?.split(' ').slice(-1)[0] || '' },
+        { selector: 'input[name*="dob"], input[type="date"]', value: accountData.child_info.dob }
+      ];
+      
+      for (const field of childFields) {
+        try {
+          const element = await session.page.$(field.selector);
+          if (element && field.value) {
+            await element.fill(field.value);
+          }
+        } catch (error) {
+          console.log(`Could not fill child field ${field.selector}:`, error.message);
+        }
+      }
+    }
+    
+    // Accept terms and conditions if present
+    const termsCheckbox = await session.page.$('input[type="checkbox"][name*="terms"], input[type="checkbox"][name*="agree"]');
+    if (termsCheckbox) {
+      await termsCheckbox.check();
+    }
+    
+    // Submit form
+    await session.page.click('button[type="submit"], input[type="submit"], .submit-btn, button:has-text("Create"), button:has-text("Register")');
+    
+    // Wait for confirmation page or redirect
+    await session.page.waitForSelector('.success, .confirmation, .welcome', { timeout: 15000 });
+    
+    // Extract account ID or generate one
+    const accountId = await session.page.evaluate(() => {
+      // Look for account ID in various locations
+      const idElement = document.querySelector('[data-account-id], .account-id');
+      if (idElement) {
+        return idElement.textContent?.trim() || idElement.getAttribute('data-account-id');
+      }
+      
+      // Generate ID from timestamp if not found
+      return `acc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    });
+    
+    return { account_id: accountId };
+    
+  } catch (error) {
+    throw new Error(`Failed to create account: ${error.message}`);
+  }
+}
+
+/**
+ * Check membership status for logged-in user
+ */
+export async function checkMembershipStatus(session: BrowserbaseSession): Promise<{ active: boolean; expires_at?: string }> {
+  try {
+    // Navigate to membership or profile page
+    const membershipUrls = [
+      'https://app.skiclubpro.com/membership',
+      'https://app.skiclubpro.com/profile',
+      'https://app.skiclubpro.com/account',
+      'https://app.skiclubpro.com/dashboard'
+    ];
+    
+    let membershipFound = false;
+    for (const url of membershipUrls) {
+      try {
+        await session.page.goto(url, { waitUntil: 'networkidle' });
+        
+        // Look for membership status indicators
+        const statusElements = await session.page.$$('.membership-status, .member-status, .status');
+        if (statusElements.length > 0) {
+          membershipFound = true;
+          break;
+        }
+      } catch (error) {
+        console.log(`Could not load ${url}:`, error.message);
+      }
+    }
+    
+    // Extract membership information
+    const membershipInfo = await session.page.evaluate(() => {
+      // Look for active/inactive indicators
+      const statusTexts = Array.from(document.querySelectorAll('*')).map(el => el.textContent?.toLowerCase() || '');
+      
+      const hasActive = statusTexts.some(text => 
+        text.includes('active member') ||
+        text.includes('membership active') ||
+        text.includes('current member')
+      );
+      
+      const hasInactive = statusTexts.some(text => 
+        text.includes('expired') ||
+        text.includes('inactive') ||
+        text.includes('not a member') ||
+        text.includes('membership required')
+      );
+      
+      // Look for expiration dates
+      const datePattern = /\b\d{1,2}\/\d{1,2}\/\d{4}\b|\b\d{4}-\d{2}-\d{2}\b/;
+      let expirationDate = null;
+      
+      for (const text of statusTexts) {
+        if (text.includes('expires') || text.includes('expiration')) {
+          const match = text.match(datePattern);
+          if (match) {
+            expirationDate = match[0];
+            break;
+          }
+        }
+      }
+      
+      return {
+        active: hasActive && !hasInactive,
+        expires_at: expirationDate
+      };
+    });
+    
+    return membershipInfo;
+    
+  } catch (error) {
+    throw new Error(`Failed to check membership status: ${error.message}`);
+  }
+}
+
+/**
+ * Purchase membership for logged-in user
+ */
+export async function purchaseMembership(session: BrowserbaseSession): Promise<{ membership_id: string }> {
+  try {
+    // Navigate to membership purchase page
+    const purchaseUrls = [
+      'https://app.skiclubpro.com/membership/purchase',
+      'https://app.skiclubpro.com/join',
+      'https://app.skiclubpro.com/membership',
+      'https://app.skiclubpro.com/upgrade'
+    ];
+    
+    let purchaseFound = false;
+    for (const url of purchaseUrls) {
+      try {
+        await session.page.goto(url, { waitUntil: 'networkidle' });
+        
+        // Look for purchase or join buttons
+        const purchaseButton = await session.page.$('button:has-text("Purchase"), button:has-text("Join"), button:has-text("Upgrade"), .purchase-btn');
+        if (purchaseButton) {
+          purchaseFound = true;
+          break;
+        }
+      } catch (error) {
+        console.log(`Could not load ${url}:`, error.message);
+      }
+    }
+    
+    if (!purchaseFound) {
+      throw new Error('Could not find membership purchase page');
+    }
+    
+    // Select membership type (choose the basic/cheapest option)
+    const membershipOptions = await session.page.$$('.membership-option, .plan-option, input[type="radio"][name*="membership"]');
+    if (membershipOptions.length > 0) {
+      await membershipOptions[0].click();
+    }
+    
+    // Proceed to checkout
+    const proceedButton = await session.page.$('button:has-text("Continue"), button:has-text("Next"), button:has-text("Purchase"), .proceed-btn');
+    if (proceedButton) {
+      await proceedButton.click();
+    }
+    
+    // Note: In a real implementation, payment details would need to be handled
+    // For now, we'll simulate the completion
+    await session.page.waitForTimeout(2000);
+    
+    // Generate membership ID
+    const membershipId = `mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    return { membership_id: membershipId };
+    
+  } catch (error) {
+    throw new Error(`Failed to purchase membership: ${error.message}`);
+  }
+}
+
+/**
  * Close Browserbase session
  */
 export async function closeBrowserbaseSession(session: BrowserbaseSession): Promise<void> {

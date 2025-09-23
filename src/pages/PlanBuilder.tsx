@@ -168,13 +168,22 @@ const PlanBuilder = () => {
       if (data.overall_status === 'blocked') {
         toast({
           title: 'Prerequisites Not Met',
-          description: 'Please resolve the blocking issues before proceeding.',
+          description: 'Please resolve the blocking issues before proceeding. Account/membership setup is not billable.',
           variant: 'destructive',
         });
       } else if (data.overall_status === 'warnings') {
         toast({
           title: 'Prerequisites Check Complete',
           description: 'Some warnings found, but you can proceed.',
+        });
+      }
+      
+      // Show specific messaging for account/membership issues
+      const accountCheck = data.checks?.find((check: any) => check.type === 'skiclubpro_membership');
+      if (accountCheck && accountCheck.status === 'failed') {
+        toast({
+          title: "SkiClubPro Account Required",
+          description: "Account setup flows are not billable - only successful class signups incur the $20 fee.",
         });
       }
     } catch (error) {
@@ -636,6 +645,10 @@ const PlanBuilder = () => {
                     <li className="flex items-center gap-2">
                       <CheckCircle className="h-4 w-4 text-green-600" />
                       Complete payment using stored payment method
+                    </li>
+                    <li className="flex items-center gap-2">
+                      <CheckCircle className="h-4 w-4 text-orange-600" />
+                      Charge $20 SignupAssist fee only upon successful registration
                     </li>
                     <li className="flex items-center gap-2">
                       <CheckCircle className="h-4 w-4 text-green-600" />

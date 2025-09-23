@@ -183,6 +183,90 @@ export async function checkAccountStatus(userId: string): Promise<PrerequisiteCh
 }
 
 /**
+ * Check SkiClubPro account status (separate from credentials)
+ */
+export async function checkSkiClubProAccountStatus(userId: string): Promise<PrerequisiteCheck> {
+  try {
+    // Look up stored credentials to get email
+    const { data: credentials, error } = await supabase
+      .from('stored_credentials')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('provider', 'skiclubpro')
+      .single();
+
+    if (error || !credentials) {
+      return {
+        type: 'account_status',
+        status: 'failed',
+        message: 'No SkiClubPro credentials found. Account setup required (not billable).',
+        blocking: true
+      };
+    }
+
+    // If credentials exist, assume account exists
+    // In production, this would use the scp.check_account_status tool
+    return {
+      type: 'account_status',
+      status: 'passed',
+      message: 'SkiClubPro account credentials are stored and available.',
+      blocking: false
+    };
+
+  } catch (error) {
+    console.error('Error checking SkiClubPro account status:', error);
+    return {
+      type: 'account_status',
+      status: 'failed',
+      message: 'Unable to verify account status',
+      blocking: true
+    };
+  }
+}
+
+/**
+ * Check SkiClubPro membership status  
+ */
+export async function checkSkiClubProMembershipStatus(userId: string): Promise<PrerequisiteCheck> {
+  try {
+    // Check if user has SkiClubPro credentials first
+    const { data: credentials, error } = await supabase
+      .from('stored_credentials')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('provider', 'skiclubpro')
+      .single();
+
+    if (error || !credentials) {
+      return {
+        type: 'membership_status',
+        status: 'failed',
+        message: 'Cannot check membership - SkiClubPro account required first.',
+        blocking: true
+      };
+    }
+
+    // For now, this returns a warning requiring manual verification
+    // In production, this would use the scp.check_membership_status tool
+    return {
+      type: 'membership_status',
+      status: 'warning',
+      message: 'Membership status needs verification. You must be a member of Blackhawk Ski Club.',
+      blocking: false
+    };
+
+  } catch (error) {
+    console.error('Error checking SkiClubPro membership status:', error);
+    return {
+      type: 'membership_status',
+      status: 'failed',
+      message: 'Unable to verify membership status',
+      blocking: true
+    };
+  }
+}
+
+/**
  * Run all prerequisite checks for a plan
  */
 export async function checkAllPrerequisites(
@@ -195,6 +279,8 @@ export async function checkAllPrerequisites(
   // Provider-specific checks
   if (provider === 'skiclubpro') {
     checks.push(await checkSkiClubProMembership(userId));
+    checks.push(await checkSkiClubProAccountStatus(userId));
+    checks.push(await checkSkiClubProMembershipStatus(userId));
   }
 
   // Child information check
