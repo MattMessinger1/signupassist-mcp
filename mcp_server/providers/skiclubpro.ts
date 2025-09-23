@@ -5,7 +5,23 @@
 
 import { verifyMandate } from '../lib/mandates';
 import { auditToolCall, logEvidence } from '../middleware/audit';
+import { lookupCredentials } from '../lib/credentials';
+import { 
+  launchBrowserbaseSession, 
+  connectToBrowserbaseSession,
+  performSkiClubProLogin,
+  scrapeSkiClubProPrograms,
+  captureScreenshot,
+  closeBrowserbaseSession 
+} from '../lib/browserbase';
+import { captureScreenshotEvidence } from '../lib/evidence';
+import { createClient } from '@supabase/supabase-js';
 import { randomUUID } from 'crypto';
+
+// Initialize Supabase client
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Types
 export interface Program {
@@ -64,11 +80,58 @@ export async function scpLogin(args: LoginArgs): Promise<{ session_ref: string }
       // Verify mandate has required scope
       await verifyMandate(args.mandate_id, 'scp:login');
 
-      // TODO: Replace with actual Playwright + Browserbase automation
-      // Stub: simulate successful login
-      const sessionRef = `session_${randomUUID()}`;
+      try {
+        // Get user ID from mandate
+        const { data: mandate, error: mandateError } = await supabase
+          .from('mandates')
+          .select('user_id')
+          .eq('id', args.mandate_id)
+          .single();
 
-      return { session_ref: sessionRef };
+        if (mandateError || !mandate) {
+          throw new Error('Could not retrieve mandate details');
+        }
+
+        // Look up stored credentials
+        const credentials = await lookupCredentials(args.credential_alias, mandate.user_id);
+
+        // Launch Browserbase session
+        const session = await launchBrowserbaseSession();
+
+        try {
+          // Perform login automation
+          await performSkiClubProLogin(session, credentials);
+
+          // Capture screenshot after successful login
+          const screenshot = await captureScreenshot(session, 'login-success.png');
+          await captureScreenshotEvidence(
+            args.plan_execution_id,
+            screenshot,
+            'successful-login'
+          );
+
+          return { session_ref: session.sessionId };
+
+        } catch (loginError) {
+          // Capture screenshot of failed login for debugging
+          try {
+            const errorScreenshot = await captureScreenshot(session, 'login-failed.png');
+            await captureScreenshotEvidence(
+              args.plan_execution_id,
+              errorScreenshot,
+              'failed-login'
+            );
+          } catch (screenshotError) {
+            console.error('Could not capture error screenshot:', screenshotError);
+          }
+
+          await closeBrowserbaseSession(session);
+          throw loginError;
+        }
+
+      } catch (error) {
+        throw new Error(`SkiClubPro login failed: ${error.message}`);
+      }
     }
   );
 }
@@ -85,37 +148,66 @@ export async function scpFindPrograms(args: FindProgramsArgs): Promise<{ program
     },
     async () => {
       // Verify mandate has required scope
-      await verifyMandate(args.mandate_id, 'scp:login');
+      await verifyMandate(args.mandate_id, 'scp:read:listings');
 
-      // Stub: return static list of fake programs
-      const programs: Program[] = [
-        {
-          program_ref: 'blackhawk-2024-winter',
-          title: 'Blackhawk Winter Program 2024',
-          opens_at: '2024-12-01T09:00:00Z'
-        },
-        {
-          program_ref: 'blackhawk-2024-spring',
-          title: 'Blackhawk Spring Program 2024',
-          opens_at: '2024-03-01T09:00:00Z'
-        },
-        {
-          program_ref: 'blackhawk-2024-camps',
-          title: 'Blackhawk Summer Camps 2024',
-          opens_at: '2024-06-01T09:00:00Z'
+      try {
+        // Connect to existing Browserbase session
+        // Note: In practice, session_ref would be passed in args or stored in context
+        // For now, we'll launch a new session and perform login first
+        const session = await launchBrowserbaseSession();
+
+        try {
+          // Get user ID from mandate to lookup credentials
+          const { data: mandate, error: mandateError } = await supabase
+            .from('mandates')
+            .select('user_id')
+            .eq('id', args.mandate_id)
+            .single();
+
+          if (mandateError || !mandate) {
+            throw new Error('Could not retrieve mandate details');
+          }
+
+          // Note: In a full implementation, we'd store session state and reuse it
+          // For now, we'll perform a fresh login for program discovery
+          const credentials = await lookupCredentials('skiclubpro-default', mandate.user_id);
+          await performSkiClubProLogin(session, credentials);
+
+          // Scrape programs from SkiClubPro
+          const programs = await scrapeSkiClubProPrograms(session, args.org_ref, args.query);
+
+          // Capture screenshot after scraping programs
+          const screenshot = await captureScreenshot(session, 'programs-scraped.png');
+          await captureScreenshotEvidence(
+            args.plan_execution_id,
+            screenshot,
+            'programs-listing'
+          );
+
+          await closeBrowserbaseSession(session);
+
+          return { programs };
+
+        } catch (scrapingError) {
+          // Capture screenshot of failed scraping for debugging
+          try {
+            const errorScreenshot = await captureScreenshot(session, 'scraping-failed.png');
+            await captureScreenshotEvidence(
+              args.plan_execution_id,
+              errorScreenshot,
+              'failed-program-scraping'
+            );
+          } catch (screenshotError) {
+            console.error('Could not capture error screenshot:', screenshotError);
+          }
+
+          await closeBrowserbaseSession(session);
+          throw scrapingError;
         }
-      ];
 
-      // Filter by query if provided
-      if (args.query) {
-        const filtered = programs.filter(p => 
-          p.title.toLowerCase().includes(args.query!.toLowerCase()) ||
-          p.program_ref.toLowerCase().includes(args.query!.toLowerCase())
-        );
-        return { programs: filtered };
+      } catch (error) {
+        throw new Error(`SkiClubPro program discovery failed: ${error.message}`);
       }
-
-      return { programs };
     }
   );
 }
@@ -186,18 +278,34 @@ export async function captureEvidence(args: CaptureEvidenceArgs): Promise<{ asse
       // Verify mandate (any scope is sufficient for evidence capture)
       await verifyMandate(args.mandate_id, 'scp:login');
 
-      // TODO: Replace with actual screenshot capture
-      // Stub: simulate evidence capture
-      const assetUrl = `https://evidence.signupassist.com/${randomUUID()}.png`;
-      const sha256 = `sha256_${randomUUID().replace(/-/g, '')}`;
+      try {
+        // Launch session for evidence capture
+        const session = await launchBrowserbaseSession();
 
-      // Log evidence to database
-      await logEvidence(args.plan_execution_id, args.kind, assetUrl, sha256);
+        try {
+          // Navigate to current page or specific URL for evidence
+          // For now, capture a basic screenshot
+          const screenshot = await captureScreenshot(session, `evidence-${args.kind}.png`);
+          
+          // Store evidence
+          const evidence = await captureScreenshotEvidence(
+            args.plan_execution_id,
+            screenshot,
+            args.kind
+          );
 
-      return { 
-        asset_url: assetUrl,
-        sha256 
-      };
+          await closeBrowserbaseSession(session);
+
+          return evidence;
+
+        } catch (captureError) {
+          await closeBrowserbaseSession(session);
+          throw captureError;
+        }
+
+      } catch (error) {
+        throw new Error(`Evidence capture failed: ${error.message}`);
+      }
     }
   );
 }
