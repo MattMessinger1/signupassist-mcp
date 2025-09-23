@@ -86,6 +86,11 @@ const PlanBuilder = () => {
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
+        
+        // Redirect to auth if signed out
+        if (event === 'SIGNED_OUT' || !session) {
+          navigate('/auth');
+        }
       }
     );
 
@@ -93,10 +98,15 @@ const PlanBuilder = () => {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+      
+      // Redirect to auth if no session
+      if (!session) {
+        navigate('/auth');
+      }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [navigate]);
 
   // Load children when user is authenticated
   useEffect(() => {
