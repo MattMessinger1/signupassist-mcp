@@ -25,9 +25,9 @@ import { useToast } from '@/hooks/use-toast';
 const planBuilderSchema = z.object({
   programRef: z.string().min(1, 'Program reference is required'),
   childId: z.string().min(1, 'Child selection is required'),
-  opensAt: z.date({ required_error: 'Date is required' }),
+  opensAt: z.date({ message: 'Date is required' }),
   maxAmountCents: z.number().min(1, 'Maximum amount must be at least $0.01'),
-  answers: z.record(z.string()).optional(),
+  answers: z.record(z.string(), z.string()).optional(),
 });
 
 type PlanBuilderForm = z.infer<typeof planBuilderSchema>;
