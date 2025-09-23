@@ -12,6 +12,8 @@ import {
   performSkiClubProLogin,
   scrapeSkiClubProPrograms,
   discoverProgramRequiredFields,
+  performSkiClubProRegistration,
+  performSkiClubProPayment,
   captureScreenshot,
   closeBrowserbaseSession 
 } from '../lib/browserbase';
@@ -45,7 +47,7 @@ export interface FindProgramsArgs {
 }
 
 export interface RegisterArgs {
-  session_ref: string;
+  session_ref?: string;
   program_ref: string;
   child_id: string;
   answers?: Record<string, any>;
@@ -54,9 +56,14 @@ export interface RegisterArgs {
 }
 
 export interface PayArgs {
-  session_ref: string;
+  session_ref?: string;
   registration_ref: string;
   amount_cents: number;
+  payment_method?: {
+    type: 'stored' | 'vgs_alias';
+    card_alias?: string;
+    vgs_alias?: string;
+  };
   mandate_id: string;
   plan_execution_id: string;
 }
@@ -238,7 +245,7 @@ export async function scpFindPrograms(args: FindProgramsArgs): Promise<{ program
 }
 
 /**
- * Register a child for a program
+ * Register a child for a program with dynamic question handling
  */
 export async function scpRegister(args: RegisterArgs): Promise<{ registration_ref: string }> {
   return auditToolCall(
@@ -249,19 +256,104 @@ export async function scpRegister(args: RegisterArgs): Promise<{ registration_re
     },
     async () => {
       // Verify mandate has required scope
-      await verifyMandate(args.mandate_id, 'scp:register');
+      await verifyMandate(args.mandate_id, 'scp:enroll');
 
-      // TODO: Replace with actual Playwright automation
-      // Stub: simulate successful registration
-      const registrationRef = `reg_${randomUUID()}`;
+      try {
+        // Get mandate details including pre-answered questions
+        const { data: mandate, error: mandateError } = await supabase
+          .from('mandates')
+          .select('user_id, scope, program_ref')
+          .eq('id', args.mandate_id)
+          .single();
 
-      return { registration_ref: registrationRef };
+        if (mandateError || !mandate) {
+          throw new Error('Could not retrieve mandate details');
+        }
+
+        // Get child details
+        const { data: child, error: childError } = await supabase
+          .from('children')
+          .select('*')
+          .eq('id', args.child_id)
+          .eq('user_id', mandate.user_id)
+          .single();
+
+        if (childError || !child) {
+          throw new Error('Could not retrieve child details');
+        }
+
+        // Launch or connect to Browserbase session
+        let session;
+        if (args.session_ref) {
+          session = await connectToBrowserbaseSession(args.session_ref);
+        } else {
+          session = await launchBrowserbaseSession();
+          
+          // Login first if new session
+          const credentials = await lookupCredentials('skiclubpro-default', mandate.user_id);
+          await performSkiClubProLogin(session, credentials);
+        }
+
+        try {
+          // Capture pre-registration screenshot
+          const preScreenshot = await captureScreenshot(session, 'pre-registration.png');
+          await captureScreenshotEvidence(
+            args.plan_execution_id,
+            preScreenshot,
+            'pre-registration'
+          );
+
+          // Perform registration with dynamic question handling
+          const registrationResult = await performSkiClubProRegistration(session, {
+            program_ref: args.program_ref,
+            child: child,
+            answers: args.answers || {},
+            mandate_scope: mandate.scope
+          });
+
+          // Capture post-registration screenshot
+          const postScreenshot = await captureScreenshot(session, 'post-registration.png');
+          await captureScreenshotEvidence(
+            args.plan_execution_id,
+            postScreenshot,
+            'registration-completed'
+          );
+
+          // Only close session if we created it
+          if (!args.session_ref) {
+            await closeBrowserbaseSession(session);
+          }
+
+          return { registration_ref: registrationResult.registration_ref };
+
+        } catch (registrationError) {
+          // Capture error screenshot
+          try {
+            const errorScreenshot = await captureScreenshot(session, 'registration-failed.png');
+            await captureScreenshotEvidence(
+              args.plan_execution_id,
+              errorScreenshot,
+              'failed-registration'
+            );
+          } catch (screenshotError) {
+            console.error('Could not capture error screenshot:', screenshotError);
+          }
+
+          if (!args.session_ref) {
+            await closeBrowserbaseSession(session);
+          }
+          throw registrationError;
+        }
+
+      } catch (error) {
+        throw new Error(`SkiClubPro registration failed: ${error.message}`);
+      }
     }
   );
 }
 
 /**
- * Process payment for registration
+ * Process payment for registration with card handling
  */
 export async function scpPay(args: PayArgs): Promise<{ confirmation_ref: string; final_url: string }> {
   return auditToolCall(
@@ -276,15 +368,83 @@ export async function scpPay(args: PayArgs): Promise<{ confirmation_ref: string;
         amount_cents: args.amount_cents 
       });
 
-      // TODO: Replace with actual payment processing
-      // Stub: simulate successful payment
-      const confirmationRef = `pay_${randomUUID()}`;
-      const finalUrl = `https://skiclubpro.com/confirmation/${confirmationRef}`;
+      try {
+        // Get mandate details
+        const { data: mandate, error: mandateError } = await supabase
+          .from('mandates')
+          .select('user_id')
+          .eq('id', args.mandate_id)
+          .single();
 
-      return { 
-        confirmation_ref: confirmationRef,
-        final_url: finalUrl
-      };
+        if (mandateError || !mandate) {
+          throw new Error('Could not retrieve mandate details');
+        }
+
+        // Launch or connect to Browserbase session
+        let session;
+        if (args.session_ref) {
+          session = await connectToBrowserbaseSession(args.session_ref);
+        } else {
+          session = await launchBrowserbaseSession();
+          
+          // Login first if new session
+          const credentials = await lookupCredentials('skiclubpro-default', mandate.user_id);
+          await performSkiClubProLogin(session, credentials);
+        }
+
+        try {
+          // Capture pre-payment screenshot
+          const preScreenshot = await captureScreenshot(session, 'pre-payment.png');
+          await captureScreenshotEvidence(
+            args.plan_execution_id,
+            preScreenshot,
+            'pre-payment'
+          );
+
+          // Perform payment processing
+          const paymentResult = await performSkiClubProPayment(session, {
+            registration_ref: args.registration_ref,
+            amount_cents: args.amount_cents,
+            payment_method: args.payment_method
+          });
+
+          // Capture confirmation screenshot
+          const confirmationScreenshot = await captureScreenshot(session, 'payment-confirmation.png');
+          await captureScreenshotEvidence(
+            args.plan_execution_id,
+            confirmationScreenshot,
+            'payment-confirmation'
+          );
+
+          // Only close session if we created it
+          if (!args.session_ref) {
+            await closeBrowserbaseSession(session);
+          }
+
+          return paymentResult;
+
+        } catch (paymentError) {
+          // Capture error screenshot
+          try {
+            const errorScreenshot = await captureScreenshot(session, 'payment-failed.png');
+            await captureScreenshotEvidence(
+              args.plan_execution_id,
+              errorScreenshot,
+              'failed-payment'
+            );
+          } catch (screenshotError) {
+            console.error('Could not capture error screenshot:', screenshotError);
+          }
+
+          if (!args.session_ref) {
+            await closeBrowserbaseSession(session);
+          }
+          throw paymentError;
+        }
+
+      } catch (error) {
+        throw new Error(`SkiClubPro payment failed: ${error.message}`);
+      }
     }
   );
 }

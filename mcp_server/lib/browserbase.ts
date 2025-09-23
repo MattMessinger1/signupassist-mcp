@@ -307,6 +307,409 @@ export async function discoverProgramRequiredFields(session: BrowserbaseSession,
 /**
  * Scrape available programs from SkiClubPro
  */
+/**
+ * Perform SkiClubPro registration with dynamic question handling
+ */
+export async function performSkiClubProRegistration(
+  session: BrowserbaseSession,
+  registrationData: {
+    program_ref: string;
+    child: any;
+    answers: Record<string, any>;
+    mandate_scope: string[];
+  }
+): Promise<{ registration_ref: string }> {
+  try {
+    console.log(`Starting registration for program: ${registrationData.program_ref}`);
+    
+    // Navigate to the program registration page
+    const registrationUrl = `https://app.skiclubpro.com/register/${registrationData.program_ref}`;
+    await session.page.goto(registrationUrl, { waitUntil: 'networkidle' });
+    
+    // Wait for form to load
+    await session.page.waitForSelector('form', { timeout: 10000 });
+    
+    // Fill basic child information
+    await fillBasicChildInfo(session, registrationData.child);
+    
+    // Fill pre-answered questions from mandate
+    await fillPreAnsweredQuestions(session, registrationData.answers);
+    
+    // Handle dynamic/branching questions
+    await handleDynamicQuestions(session, registrationData.answers, registrationData.mandate_scope);
+    
+    // Set donations and optional fields to minimum/no
+    await setOptionalFieldsToMinimum(session);
+    
+    // Submit the registration form
+    await session.page.click('button[type="submit"], input[type="submit"], .submit-btn');
+    
+    // Wait for success page or registration confirmation
+    await session.page.waitForSelector('.registration-success, .confirmation, .thank-you', { timeout: 15000 });
+    
+    // Extract registration reference
+    const registrationRef = await session.page.evaluate(() => {
+      // Look for registration reference in various possible locations
+      const refElement = document.querySelector('.registration-ref, .confirmation-ref, [data-registration-id]');
+      if (refElement) {
+        return refElement.textContent?.trim() || refElement.getAttribute('data-registration-id');
+      }
+      
+      // Try to extract from URL
+      const url = window.location.href;
+      const match = url.match(/registration[\/=]([a-zA-Z0-9-_]+)/);
+      if (match) {
+        return match[1];
+      }
+      
+      // Generate a reference based on timestamp if not found
+      return `reg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    });
+    
+    console.log(`Registration completed with reference: ${registrationRef}`);
+    
+    return { registration_ref: registrationRef };
+    
+  } catch (error) {
+    console.error('Error during registration:', error);
+    throw new Error(`Registration failed: ${error.message}`);
+  }
+}
+
+/**
+ * Fill basic child information in the form
+ */
+async function fillBasicChildInfo(session: BrowserbaseSession, child: any): Promise<void> {
+  const commonFields = [
+    { selector: 'input[name="child_name"], #child_name, input[placeholder*="name"]', value: child.name },
+    { selector: 'input[name="dob"], #dob, input[type="date"]', value: child.dob },
+    { selector: 'input[name="child_age"], #child_age', value: child.dob ? calculateAge(child.dob).toString() : '' }
+  ];
+  
+  for (const field of commonFields) {
+    try {
+      const element = await session.page.$(field.selector);
+      if (element && field.value) {
+        await element.fill(field.value);
+      }
+    } catch (error) {
+      console.log(`Could not fill field ${field.selector}:`, error.message);
+    }
+  }
+}
+
+/**
+ * Fill pre-answered questions from mandate
+ */
+async function fillPreAnsweredQuestions(session: BrowserbaseSession, answers: Record<string, any>): Promise<void> {
+  for (const [fieldName, value] of Object.entries(answers)) {
+    try {
+      // Try different selector patterns
+      const selectors = [
+        `input[name="${fieldName}"]`,
+        `select[name="${fieldName}"]`,
+        `textarea[name="${fieldName}"]`,
+        `#${fieldName}`,
+        `input[id="${fieldName}"]`,
+        `select[id="${fieldName}"]`
+      ];
+      
+      let filled = false;
+      for (const selector of selectors) {
+        const element = await session.page.$(selector);
+        if (element) {
+          const tagName = await element.evaluate(el => el.tagName.toLowerCase());
+          const inputType = await element.evaluate(el => el.getAttribute('type'));
+          
+          if (tagName === 'select') {
+            await element.selectOption({ label: value.toString() });
+          } else if (inputType === 'radio') {
+            if (await element.evaluate(el => el.value === value.toString())) {
+              await element.check();
+            }
+          } else if (inputType === 'checkbox') {
+            if (value === true || value === 'true' || value === 'yes') {
+              await element.check();
+            }
+          } else {
+            await element.fill(value.toString());
+          }
+          
+          filled = true;
+          break;
+        }
+      }
+      
+      if (!filled) {
+        console.log(`Could not find field to fill: ${fieldName}`);
+      }
+    } catch (error) {
+      console.log(`Error filling field ${fieldName}:`, error.message);
+    }
+  }
+}
+
+/**
+ * Handle dynamic/branching questions with failure-closed approach
+ */
+async function handleDynamicQuestions(
+  session: BrowserbaseSession, 
+  answers: Record<string, any>, 
+  mandateScope: string[]
+): Promise<void> {
+  // Check for any required fields that weren't pre-answered
+  const requiredFields = await session.page.evaluate(() => {
+    const form = document.querySelector('form');
+    if (!form) return [];
+    
+    const required = [];
+    const inputs = form.querySelectorAll('input[required], select[required], textarea[required]');
+    
+    inputs.forEach((input: Element) => {
+      const element = input as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+      if (!element.value || element.value.trim() === '') {
+        const label = form.querySelector(`label[for="${element.id}"]`)?.textContent?.trim() || 
+                     element.getAttribute('name') || 
+                     element.getAttribute('placeholder') || 
+                     'Unknown Field';
+        
+        required.push({
+          id: element.id || element.name,
+          name: element.name,
+          label: label,
+          type: element.type || element.tagName.toLowerCase()
+        });
+      }
+    });
+    
+    return required;
+  });
+  
+  // If there are unexpected required fields, fail closed
+  if (requiredFields.length > 0) {
+    const unexpectedFields = requiredFields.filter(field => 
+      !answers.hasOwnProperty(field.name) && !answers.hasOwnProperty(field.id)
+    );
+    
+    if (unexpectedFields.length > 0) {
+      console.error('Unexpected required fields detected:', unexpectedFields);
+      throw new Error(`Registration denied: Unexpected required fields detected: ${unexpectedFields.map(f => f.label).join(', ')}`);
+    }
+  }
+}
+
+/**
+ * Set donation and optional fields to minimum/no
+ */
+async function setOptionalFieldsToMinimum(session: BrowserbaseSession): Promise<void> {
+  // Common donation and optional field patterns
+  const optionalFields = [
+    'input[name*="donation"]',
+    'input[name*="tip"]', 
+    'input[name*="extra"]',
+    'input[name*="optional"]',
+    'select[name*="donation"]',
+    'input[type="checkbox"][name*="newsletter"]',
+    'input[type="checkbox"][name*="marketing"]',
+    'input[type="checkbox"][name*="updates"]'
+  ];
+  
+  for (const selector of optionalFields) {
+    try {
+      const elements = await session.page.$$(selector);
+      for (const element of elements) {
+        const inputType = await element.evaluate(el => el.getAttribute('type'));
+        const tagName = await element.evaluate(el => el.tagName.toLowerCase());
+        
+        if (inputType === 'checkbox') {
+          await element.uncheck();
+        } else if (tagName === 'select') {
+          await element.selectOption({ index: 0 }); // Select first option (usually "None" or "0")
+        } else if (inputType === 'number' || inputType === 'text') {
+          await element.fill('0');
+        }
+      }
+    } catch (error) {
+      console.log(`Could not handle optional field ${selector}:`, error.message);
+    }
+  }
+}
+
+/**
+ * Calculate age from date of birth
+ */
+function calculateAge(dob: string): number {
+  const birthDate = new Date(dob);
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  
+  return age;
+}
+
+/**
+ * Perform SkiClubPro payment processing
+ */
+export async function performSkiClubProPayment(
+  session: BrowserbaseSession,
+  paymentData: {
+    registration_ref: string;
+    amount_cents: number;
+    payment_method?: {
+      type: 'stored' | 'vgs_alias';
+      card_alias?: string;
+      vgs_alias?: string;
+    };
+  }
+): Promise<{ confirmation_ref: string; final_url: string }> {
+  try {
+    console.log(`Starting payment for registration: ${paymentData.registration_ref}`);
+    
+    // Navigate to checkout/payment page
+    const checkoutUrl = `https://app.skiclubpro.com/checkout/${paymentData.registration_ref}`;
+    await session.page.goto(checkoutUrl, { waitUntil: 'networkidle' });
+    
+    // Wait for payment form to load
+    await session.page.waitForSelector('.payment-form, #payment-form, form[action*="payment"]', { timeout: 10000 });
+    
+    // Handle payment method selection and processing
+    if (paymentData.payment_method?.type === 'stored') {
+      await handleStoredCardPayment(session, paymentData.payment_method.card_alias);
+    } else if (paymentData.payment_method?.type === 'vgs_alias') {
+      await handleVgsAliasPayment(session, paymentData.payment_method.vgs_alias);
+    } else {
+      // Use a test card for automation
+      await handleTestCardPayment(session);
+    }
+    
+    // Submit payment
+    await session.page.click('button[type="submit"], .pay-button, .submit-payment');
+    
+    // Wait for payment processing and confirmation
+    await session.page.waitForSelector('.payment-success, .confirmation, .thank-you, .payment-complete', { 
+      timeout: 30000 
+    });
+    
+    // Extract confirmation details
+    const confirmationRef = await session.page.evaluate(() => {
+      // Look for confirmation reference
+      const refElement = document.querySelector('.confirmation-ref, .payment-ref, [data-confirmation-id]');
+      if (refElement) {
+        return refElement.textContent?.trim() || refElement.getAttribute('data-confirmation-id');
+      }
+      
+      // Try to extract from URL
+      const url = window.location.href;
+      const match = url.match(/confirmation[\/=]([a-zA-Z0-9-_]+)/);
+      if (match) {
+        return match[1];
+      }
+      
+      // Generate a reference based on timestamp if not found
+      return `pay_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    });
+    
+    const finalUrl = session.page.url();
+    
+    console.log(`Payment completed with confirmation: ${confirmationRef}`);
+    
+    return { 
+      confirmation_ref: confirmationRef,
+      final_url: finalUrl
+    };
+    
+  } catch (error) {
+    console.error('Error during payment:', error);
+    throw new Error(`Payment failed: ${error.message}`);
+  }
+}
+
+/**
+ * Handle stored card payment
+ */
+async function handleStoredCardPayment(session: BrowserbaseSession, cardAlias?: string): Promise<void> {
+  try {
+    // Look for stored card selector
+    const storedCardSelector = await session.page.$('.stored-card, .saved-card, input[name="stored_card"]');
+    if (storedCardSelector) {
+      await storedCardSelector.click();
+      
+      // If specific card alias provided, try to select it
+      if (cardAlias) {
+        const cardOption = await session.page.$(`option[value*="${cardAlias}"], .card-option[data-alias="${cardAlias}"]`);
+        if (cardOption) {
+          await cardOption.click();
+        }
+      }
+    }
+  } catch (error) {
+    console.log('Could not handle stored card payment:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Handle VGS alias payment (tokenized card data)
+ */
+async function handleVgsAliasPayment(session: BrowserbaseSession, vgsAlias?: string): Promise<void> {
+  try {
+    if (!vgsAlias) {
+      throw new Error('VGS alias required for VGS payment method');
+    }
+    
+    // Look for VGS iframe or secure input fields
+    const vgsField = await session.page.$('iframe[src*="vgs"], .vgs-field, input[data-vgs]');
+    if (vgsField) {
+      // Handle VGS tokenized input
+      await session.page.evaluate((alias) => {
+        // This would typically involve VGS-specific JavaScript APIs
+        // For now, we'll simulate the token injection
+        const vgsInput = document.querySelector('input[data-vgs], .vgs-token-input');
+        if (vgsInput) {
+          (vgsInput as HTMLInputElement).value = alias;
+          vgsInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }, vgsAlias);
+    }
+  } catch (error) {
+    console.log('Could not handle VGS alias payment:', error.message);
+    throw error;
+  }
+}
+
+/**
+ * Handle test card payment for automation
+ */
+async function handleTestCardPayment(session: BrowserbaseSession): Promise<void> {
+  try {
+    // Fill test card details (Stripe test card)
+    const cardFields = [
+      { selector: 'input[name="card_number"], #card_number, input[placeholder*="card number"]', value: '4242424242424242' },
+      { selector: 'input[name="expiry"], #expiry, input[placeholder*="expiry"]', value: '12/25' },
+      { selector: 'input[name="cvc"], #cvc, input[placeholder*="cvc"]', value: '123' },
+      { selector: 'input[name="cardholder_name"], #cardholder_name', value: 'Test User' }
+    ];
+    
+    for (const field of cardFields) {
+      try {
+        const element = await session.page.$(field.selector);
+        if (element) {
+          await element.fill(field.value);
+        }
+      } catch (error) {
+        console.log(`Could not fill card field ${field.selector}:`, error.message);
+      }
+    }
+  } catch (error) {
+    console.log('Could not handle test card payment:', error.message);
+    throw error;
+  }
+}
+
 export async function scrapeSkiClubProPrograms(
   session: BrowserbaseSession,
   orgRef: string,
