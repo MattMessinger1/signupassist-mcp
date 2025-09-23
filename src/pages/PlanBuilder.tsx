@@ -67,6 +67,8 @@ const PlanBuilder = () => {
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [isCreatingMandate, setIsCreatingMandate] = useState(false);
   const [showConsent, setShowConsent] = useState(false);
+  const [prerequisiteChecks, setPrerequisiteChecks] = useState<any>(null);
+  const [isCheckingPrerequisites, setIsCheckingPrerequisites] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -144,6 +146,46 @@ const PlanBuilder = () => {
       });
     } finally {
       setIsDiscovering(false);
+    }
+  };
+
+  const checkPrerequisites = async (childId?: string) => {
+    if (!user) return;
+    
+    setIsCheckingPrerequisites(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('check-prerequisites', {
+        body: {
+          user_id: user.id,
+          provider: 'skiclubpro',
+          child_id: childId
+        }
+      });
+
+      if (error) throw error;
+      setPrerequisiteChecks(data);
+      
+      if (data.overall_status === 'blocked') {
+        toast({
+          title: 'Prerequisites Not Met',
+          description: 'Please resolve the blocking issues before proceeding.',
+          variant: 'destructive',
+        });
+      } else if (data.overall_status === 'warnings') {
+        toast({
+          title: 'Prerequisites Check Complete',
+          description: 'Some warnings found, but you can proceed.',
+        });
+      }
+    } catch (error) {
+      console.error('Error checking prerequisites:', error);
+      toast({
+        title: 'Prerequisites Check Failed',
+        description: 'Could not verify account prerequisites.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsCheckingPrerequisites(false);
     }
   };
 
@@ -312,20 +354,33 @@ const PlanBuilder = () => {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Child</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select a child" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          {children.map((child) => (
-                            <SelectItem key={child.id} value={child.id}>
-                              {child.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <div className="flex gap-2">
+                        <Select onValueChange={(value) => {
+                          field.onChange(value);
+                          checkPrerequisites(value);
+                        }} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger className="flex-1">
+                              <SelectValue placeholder="Select a child" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {children.map((child) => (
+                              <SelectItem key={child.id} value={child.id}>
+                                {child.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button 
+                          type="button" 
+                          variant="outline"
+                          onClick={() => checkPrerequisites(field.value)}
+                          disabled={!field.value || isCheckingPrerequisites}
+                        >
+                          {isCheckingPrerequisites ? 'Checking...' : 'Check Prerequisites'}
+                        </Button>
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -395,6 +450,50 @@ const PlanBuilder = () => {
                 />
               </CardContent>
             </Card>
+
+            {/* Prerequisites Check Results */}
+            {prerequisiteChecks && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Shield className="h-5 w-5" />
+                    Prerequisites Check
+                    {prerequisiteChecks.overall_status === 'ready' && <CheckCircle className="h-4 w-4 text-green-600" />}
+                    {prerequisiteChecks.overall_status === 'blocked' && <AlertTriangle className="h-4 w-4 text-red-600" />}
+                    {prerequisiteChecks.overall_status === 'warnings' && <AlertTriangle className="h-4 w-4 text-orange-600" />}
+                  </CardTitle>
+                  <CardDescription>
+                    Account readiness verification for automated registration
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {prerequisiteChecks.checks.map((check: any, index: number) => (
+                    <div key={index} className="flex items-start gap-3 p-3 rounded-lg border">
+                      {check.status === 'passed' && <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />}
+                      {check.status === 'failed' && <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5" />}
+                      {check.status === 'warning' && <AlertTriangle className="h-4 w-4 text-orange-600 mt-0.5" />}
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant={check.status === 'passed' ? 'secondary' : check.status === 'failed' ? 'destructive' : 'outline'}>
+                            {check.type.replace('_', ' ')}
+                          </Badge>
+                          {check.blocking && <Badge variant="destructive" className="text-xs">Blocking</Badge>}
+                        </div>
+                        <p className="text-sm mt-1">{check.message}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {!prerequisiteChecks.can_proceed && (
+                    <Alert className="border-red-200 bg-red-50">
+                      <AlertTriangle className="h-4 w-4 text-red-600" />
+                      <AlertDescription className="text-red-800">
+                        You cannot proceed with plan creation until all blocking issues are resolved.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Discovered Fields */}
             {discoveredSchema && (
@@ -569,7 +668,7 @@ const PlanBuilder = () => {
                   </Button>
                   <Button 
                     onClick={() => createMandate(form.getValues())}
-                    disabled={isCreatingMandate}
+                    disabled={isCreatingMandate || (prerequisiteChecks && !prerequisiteChecks.can_proceed)}
                     className="flex-1"
                   >
                     {isCreatingMandate ? 'Creating...' : 'Authorize & Create'}
