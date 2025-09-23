@@ -17,6 +17,7 @@ export interface MandatePayload {
   max_amount_cents?: number;
   valid_from: string;
   valid_until: string;
+  credential_type: 'jws' | 'vc';
 }
 
 export interface VerifiedMandate extends MandatePayload {
@@ -29,9 +30,19 @@ export interface VerificationContext {
 }
 
 /**
- * Issues a signed mandate token (JWS) from the given payload
+ * Issues a signed mandate token (JWS or VC) from the given payload
  */
-export async function issueMandate(payload: MandatePayload): Promise<string> {
+export async function issueMandate(
+  payload: MandatePayload, 
+  options: { credential_type?: 'jws' | 'vc' } = {}
+): Promise<string> {
+  const credentialType = options.credential_type || 'jws';
+  const mandatePayload = { ...payload, credential_type: credentialType };
+
+  if (credentialType === 'vc') {
+    // VC implementation placeholder
+    return JSON.stringify({ vc: 'not-implemented', ...mandatePayload });
+  }
   const signingKey = process.env.MANDATE_SIGNING_KEY;
   if (!signingKey) {
     throw new Error('MANDATE_SIGNING_KEY environment variable is required');
@@ -50,12 +61,12 @@ export async function issueMandate(payload: MandatePayload): Promise<string> {
     const secret = await importJWK(jwk, 'HS256');
 
     // Create and sign JWT
-    const jwt = await new SignJWT(payload)
+    const jwt = await new SignJWT(mandatePayload)
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
       .setIssuer('signupassist-platform')
       .setAudience('signupassist-mcp')
-      .setExpirationTime(payload.valid_until)
+      .setExpirationTime(mandatePayload.valid_until)
       .sign(secret);
 
     return jwt;
@@ -78,6 +89,16 @@ export async function verifyMandate(
   }
 
   try {
+    // Check if this is a VC credential (not implemented yet)
+    try {
+      const parsed = JSON.parse(jws);
+      if (parsed.vc === 'not-implemented') {
+        throw new Error('VC verification not yet implemented');
+      }
+    } catch (e) {
+      // Not JSON, continue with JWS verification
+    }
+
     // Decode the base64 signing key
     const keyBuffer = Buffer.from(signingKey, 'base64');
     
@@ -96,6 +117,11 @@ export async function verifyMandate(
     });
 
     const mandatePayload = payload as unknown as MandatePayload;
+
+    // Ensure credential_type is set (for backward compatibility)
+    if (!mandatePayload.credential_type) {
+      mandatePayload.credential_type = 'jws';
+    }
 
     // Check validity window
     const now = context.now || new Date();

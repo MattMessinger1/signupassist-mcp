@@ -22,6 +22,7 @@ describe('Mandate Signing & Verification', () => {
       max_amount_cents: 50000, // $500
       valid_from: new Date().toISOString(),
       valid_until: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
+      credential_type: 'jws' as const,
     };
   });
 
@@ -111,6 +112,32 @@ describe('Mandate Signing & Verification', () => {
       
       await expect(verifyMandate(jws, 'scp:pay')).rejects.toThrow(
         'Mandate is not yet valid'
+      );
+    });
+
+    it('should issue JWS mandate when credential_type is jws', async () => {
+      const jws = await issueMandate(validPayload, { credential_type: 'jws' });
+      const verified = await verifyMandate(jws, 'scp:pay');
+      
+      expect(verified.verified).toBe(true);
+      expect(verified.credential_type).toBe('jws');
+    });
+
+    it('should issue VC placeholder when credential_type is vc', async () => {
+      const vcPayload = { ...validPayload, credential_type: 'vc' as const };
+      const vcToken = await issueMandate(vcPayload, { credential_type: 'vc' });
+      
+      const parsed = JSON.parse(vcToken);
+      expect(parsed.vc).toBe('not-implemented');
+      expect(parsed.mandate_id).toBe(validPayload.mandate_id);
+    });
+
+    it('should throw error when verifying VC credential', async () => {
+      const vcPayload = { ...validPayload, credential_type: 'vc' as const };
+      const vcToken = await issueMandate(vcPayload, { credential_type: 'vc' });
+      
+      await expect(verifyMandate(vcToken, 'scp:pay')).rejects.toThrow(
+        'VC verification not yet implemented'
       );
     });
   });

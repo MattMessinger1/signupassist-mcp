@@ -112,6 +112,7 @@ export type Database = {
         Row: {
           child_id: string | null
           created_at: string
+          credential_type: string
           id: string
           jws_compact: string
           max_amount_cents: number | null
@@ -126,6 +127,7 @@ export type Database = {
         Insert: {
           child_id?: string | null
           created_at?: string
+          credential_type?: string
           id?: string
           jws_compact: string
           max_amount_cents?: number | null
@@ -140,6 +142,7 @@ export type Database = {
         Update: {
           child_id?: string | null
           created_at?: string
+          credential_type?: string
           id?: string
           jws_compact?: string
           max_amount_cents?: number | null
