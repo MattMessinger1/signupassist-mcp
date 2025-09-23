@@ -136,6 +136,175 @@ export async function performSkiClubProLogin(
 }
 
 /**
+ * Discover required fields for a program with branching support
+ */
+export async function discoverProgramRequiredFields(session: BrowserbaseSession, programRef: string): Promise<any> {
+  try {
+    console.log(`Starting field discovery for program: ${programRef}`);
+    
+    // Navigate to the program registration page
+    const registrationUrl = `https://app.skiclubpro.com/register/${programRef}`;
+    await session.page.goto(registrationUrl, { waitUntil: 'networkidle' });
+    
+    // Wait for form to load
+    await session.page.waitForSelector('form', { timeout: 10000 });
+    
+    // Discover form fields and branching logic
+    const fieldSchema = await session.page.evaluate(() => {
+      const form = document.querySelector('form');
+      if (!form) {
+        throw new Error('Registration form not found');
+      }
+      
+      // Find all form fields
+      const fields: any[] = [];
+      const inputs = form.querySelectorAll('input, select, textarea');
+      
+      inputs.forEach((input: Element) => {
+        const element = input as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+        const label = form.querySelector(`label[for="${element.id}"]`)?.textContent?.trim() || 
+                     element.getAttribute('placeholder') || 
+                     element.getAttribute('name') || 
+                     'Unknown Field';
+        
+        const field = {
+          id: element.id || element.name || `field_${fields.length}`,
+          label: label,
+          type: element.type || element.tagName.toLowerCase(),
+          required: element.hasAttribute('required') || element.getAttribute('aria-required') === 'true',
+          options: []
+        };
+        
+        // For select elements, capture options
+        if (element.tagName.toLowerCase() === 'select') {
+          const selectElement = element as HTMLSelectElement;
+          field.options = Array.from(selectElement.options).map(option => option.text).filter(text => text.trim());
+        }
+        
+        // For radio buttons, group by name
+        if (element.type === 'radio') {
+          const existingField = fields.find(f => f.id === element.name);
+          if (existingField) {
+            existingField.options.push(element.value || label);
+            return;
+          }
+          field.id = element.name;
+          field.options = [element.value || label];
+        }
+        
+        fields.push(field);
+      });
+      
+      return fields;
+    });
+    
+    // Detect branching fields (fields that might affect other fields)
+    const branchingFields = fieldSchema.filter((field: any) => 
+      field.type === 'select' || field.type === 'radio'
+    );
+    
+    const branches: any[] = [];
+    
+    if (branchingFields.length > 0) {
+      // For each branching field, test different options
+      for (const branchField of branchingFields.slice(0, 2)) { // Limit to first 2 branching fields
+        if (branchField.options && branchField.options.length > 0) {
+          for (const option of branchField.options.slice(0, 3)) { // Test first 3 options
+            try {
+              // Select the option
+              await session.page.evaluate((fieldId: string, optionValue: string, fieldType: string) => {
+                const field = document.getElementById(fieldId) || document.querySelector(`[name="${fieldId}"]`);
+                if (!field) return;
+                
+                if (fieldType === 'select') {
+                  const selectElement = field as HTMLSelectElement;
+                  for (let i = 0; i < selectElement.options.length; i++) {
+                    if (selectElement.options[i].text === optionValue || selectElement.options[i].value === optionValue) {
+                      selectElement.selectedIndex = i;
+                      selectElement.dispatchEvent(new Event('change', { bubbles: true }));
+                      break;
+                    }
+                  }
+                } else if (fieldType === 'radio') {
+                  const radioElements = document.querySelectorAll(`input[name="${fieldId}"]`);
+                  radioElements.forEach((radio: Element) => {
+                    const radioElement = radio as HTMLInputElement;
+                    if (radioElement.value === optionValue) {
+                      radioElement.checked = true;
+                      radioElement.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                  });
+                }
+              }, branchField.id, option, branchField.type);
+              
+              // Wait for potential DOM changes
+              await session.page.waitForTimeout(1000);
+              
+              // Re-scan for fields to see if new ones appeared
+              const updatedFields = await session.page.evaluate(() => {
+                const form = document.querySelector('form');
+                if (!form) return [];
+                
+                const fields: any[] = [];
+                const inputs = form.querySelectorAll('input, select, textarea');
+                
+                inputs.forEach((input: Element) => {
+                  const element = input as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+                  
+                  // Skip hidden fields
+                  if (element.type === 'hidden' || window.getComputedStyle(element).display === 'none') {
+                    return;
+                  }
+                  
+                  const label = form.querySelector(`label[for="${element.id}"]`)?.textContent?.trim() || 
+                               element.getAttribute('placeholder') || 
+                               element.getAttribute('name') || 
+                               'Unknown Field';
+                  
+                  fields.push({
+                    id: element.id || element.name || `field_${fields.length}`,
+                    label: label,
+                    type: element.type || element.tagName.toLowerCase(),
+                    required: element.hasAttribute('required') || element.getAttribute('aria-required') === 'true'
+                  });
+                });
+                
+                return fields;
+              });
+              
+              branches.push({
+                choice: `${branchField.label}: ${option}`,
+                questions: updatedFields
+              });
+              
+            } catch (optionError) {
+              console.error(`Error testing option ${option}:`, optionError);
+            }
+          }
+        }
+      }
+    }
+    
+    // If no branches were discovered, return the default form
+    if (branches.length === 0) {
+      branches.push({
+        choice: 'default',
+        questions: fieldSchema
+      });
+    }
+    
+    return {
+      program_ref: programRef,
+      branches: branches
+    };
+    
+  } catch (error) {
+    console.error('Error discovering program fields:', error);
+    throw new Error(`Failed to discover fields for program ${programRef}: ${error.message}`);
+  }
+}
+
+/**
  * Scrape available programs from SkiClubPro
  */
 export async function scrapeSkiClubProPrograms(

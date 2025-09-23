@@ -11,6 +11,7 @@ import {
   connectToBrowserbaseSession,
   performSkiClubProLogin,
   scrapeSkiClubProPrograms,
+  discoverProgramRequiredFields,
   captureScreenshot,
   closeBrowserbaseSession 
 } from '../lib/browserbase';
@@ -64,6 +65,30 @@ export interface CaptureEvidenceArgs {
   plan_execution_id: string;
   mandate_id: string;
   kind: string;
+}
+
+export interface DiscoverRequiredFieldsArgs {
+  program_ref: string;
+  mandate_id: string;
+  plan_execution_id: string;
+}
+
+export interface FieldQuestion {
+  id: string;
+  label: string;
+  type: 'text' | 'select' | 'radio' | 'checkbox' | 'date' | 'number';
+  required: boolean;
+  options?: string[];
+}
+
+export interface FieldBranch {
+  choice: string;
+  questions: FieldQuestion[];
+}
+
+export interface FieldSchema {
+  program_ref: string;
+  branches: FieldBranch[];
 }
 
 /**
@@ -265,6 +290,79 @@ export async function scpPay(args: PayArgs): Promise<{ confirmation_ref: string;
 }
 
 /**
+ * Discover required fields for a program with branching support
+ */
+export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs): Promise<FieldSchema> {
+  return auditToolCall(
+    {
+      plan_execution_id: args.plan_execution_id,
+      mandate_id: args.mandate_id,
+      tool: 'scp.discover_required_fields'
+    },
+    async () => {
+      // Verify mandate has required scope
+      await verifyMandate(args.mandate_id, 'scp:read:listings');
+
+      try {
+        // Get user ID from mandate
+        const { data: mandate, error: mandateError } = await supabase
+          .from('mandates')
+          .select('user_id')
+          .eq('id', args.mandate_id)
+          .single();
+
+        if (mandateError || !mandate) {
+          throw new Error('Could not retrieve mandate details');
+        }
+
+        // Launch Browserbase session
+        const session = await launchBrowserbaseSession();
+
+        try {
+          // Login first to access program forms
+          const credentials = await lookupCredentials('skiclubpro-default', mandate.user_id);
+          await performSkiClubProLogin(session, credentials);
+
+          // Discover required fields with branching support
+          const fieldSchema = await discoverProgramRequiredFields(session, args.program_ref);
+
+          // Capture screenshot evidence for each branch explored
+          const screenshot = await captureScreenshot(session, 'field-discovery.png');
+          await captureScreenshotEvidence(
+            args.plan_execution_id,
+            screenshot,
+            'discovery'
+          );
+
+          await closeBrowserbaseSession(session);
+
+          return fieldSchema;
+
+        } catch (discoveryError) {
+          // Capture screenshot of failed discovery for debugging
+          try {
+            const errorScreenshot = await captureScreenshot(session, 'discovery-failed.png');
+            await captureScreenshotEvidence(
+              args.plan_execution_id,
+              errorScreenshot,
+              'failed-field-discovery'
+            );
+          } catch (screenshotError) {
+            console.error('Could not capture error screenshot:', screenshotError);
+          }
+
+          await closeBrowserbaseSession(session);
+          throw discoveryError;
+        }
+
+      } catch (error) {
+        throw new Error(`SkiClubPro field discovery failed: ${error.message}`);
+      }
+    }
+  );
+}
+
+/**
  * Capture evidence (screenshot, page source, etc.)
  */
 export async function captureEvidence(args: CaptureEvidenceArgs): Promise<{ asset_url: string; sha256: string }> {
@@ -314,6 +412,7 @@ export async function captureEvidence(args: CaptureEvidenceArgs): Promise<{ asse
 export const skiClubProTools = {
   'scp.login': scpLogin,
   'scp.find_programs': scpFindPrograms,
+  'scp.discover_required_fields': scpDiscoverRequiredFields,
   'scp.register': scpRegister,
   'scp.pay': scpPay,
   'evidence.capture': captureEvidence

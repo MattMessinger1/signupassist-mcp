@@ -1,1 +1,35 @@
 project_id = "jpcrphdevmvzcfgokgym"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[auth]
+enabled = true
+port = 54324
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = ["https://127.0.0.1:3000"]
+jwt_expiry = 3600
+enable_signup = true
+enable_anonymous_sign_ins = false
+enable_third_party_auth = false
+
+[db]
+major_version = 15
+
+[functions]
+verify_jwt = true
+
+[functions.discover-plan-fields]
+verify_jwt = false
+
+[studio]
+enabled = true
+port = 54323
+api_url = "http://127.0.0.1:54321"
+
+[analytics]
+enabled = false
