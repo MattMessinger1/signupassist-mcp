@@ -14,7 +14,296 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      charges: {
+        Row: {
+          amount_cents: number | null
+          charged_at: string
+          id: string
+          plan_execution_id: string
+          status: string
+          stripe_payment_intent: string | null
+        }
+        Insert: {
+          amount_cents?: number | null
+          charged_at?: string
+          id?: string
+          plan_execution_id: string
+          status?: string
+          stripe_payment_intent?: string | null
+        }
+        Update: {
+          amount_cents?: number | null
+          charged_at?: string
+          id?: string
+          plan_execution_id?: string
+          status?: string
+          stripe_payment_intent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "charges_plan_execution_id_fkey"
+            columns: ["plan_execution_id"]
+            isOneToOne: false
+            referencedRelation: "plan_executions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      children: {
+        Row: {
+          created_at: string
+          dob: string | null
+          id: string
+          name: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          dob?: string | null
+          id?: string
+          name: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          dob?: string | null
+          id?: string
+          name?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      evidence_assets: {
+        Row: {
+          id: string
+          plan_execution_id: string
+          sha256: string | null
+          ts: string
+          type: string
+          url: string | null
+        }
+        Insert: {
+          id?: string
+          plan_execution_id: string
+          sha256?: string | null
+          ts?: string
+          type: string
+          url?: string | null
+        }
+        Update: {
+          id?: string
+          plan_execution_id?: string
+          sha256?: string | null
+          ts?: string
+          type?: string
+          url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "evidence_assets_plan_execution_id_fkey"
+            columns: ["plan_execution_id"]
+            isOneToOne: false
+            referencedRelation: "plan_executions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mandates: {
+        Row: {
+          child_id: string | null
+          created_at: string
+          id: string
+          jws_compact: string
+          max_amount_cents: number | null
+          program_ref: string | null
+          provider: string
+          scope: string[]
+          status: string
+          user_id: string
+          valid_from: string
+          valid_until: string
+        }
+        Insert: {
+          child_id?: string | null
+          created_at?: string
+          id?: string
+          jws_compact: string
+          max_amount_cents?: number | null
+          program_ref?: string | null
+          provider: string
+          scope: string[]
+          status?: string
+          user_id: string
+          valid_from?: string
+          valid_until: string
+        }
+        Update: {
+          child_id?: string | null
+          created_at?: string
+          id?: string
+          jws_compact?: string
+          max_amount_cents?: number | null
+          program_ref?: string | null
+          provider?: string
+          scope?: string[]
+          status?: string
+          user_id?: string
+          valid_from?: string
+          valid_until?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mandates_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mcp_tool_calls: {
+        Row: {
+          args_hash: string | null
+          args_json: Json | null
+          decision: string | null
+          id: string
+          mandate_id: string
+          plan_execution_id: string
+          result_hash: string | null
+          result_json: Json | null
+          tool: string
+          ts: string
+        }
+        Insert: {
+          args_hash?: string | null
+          args_json?: Json | null
+          decision?: string | null
+          id?: string
+          mandate_id: string
+          plan_execution_id: string
+          result_hash?: string | null
+          result_json?: Json | null
+          tool: string
+          ts?: string
+        }
+        Update: {
+          args_hash?: string | null
+          args_json?: Json | null
+          decision?: string | null
+          id?: string
+          mandate_id?: string
+          plan_execution_id?: string
+          result_hash?: string | null
+          result_json?: Json | null
+          tool?: string
+          ts?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mcp_tool_calls_mandate_id_fkey"
+            columns: ["mandate_id"]
+            isOneToOne: false
+            referencedRelation: "mandates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "mcp_tool_calls_plan_execution_id_fkey"
+            columns: ["plan_execution_id"]
+            isOneToOne: false
+            referencedRelation: "plan_executions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_executions: {
+        Row: {
+          amount_cents: number | null
+          confirmation_ref: string | null
+          finished_at: string | null
+          id: string
+          plan_id: string
+          result: string | null
+          started_at: string
+        }
+        Insert: {
+          amount_cents?: number | null
+          confirmation_ref?: string | null
+          finished_at?: string | null
+          id?: string
+          plan_id: string
+          result?: string | null
+          started_at?: string
+        }
+        Update: {
+          amount_cents?: number | null
+          confirmation_ref?: string | null
+          finished_at?: string | null
+          id?: string
+          plan_id?: string
+          result?: string | null
+          started_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_executions_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plans: {
+        Row: {
+          child_id: string | null
+          created_at: string
+          id: string
+          mandate_id: string | null
+          opens_at: string
+          program_ref: string
+          provider: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          child_id?: string | null
+          created_at?: string
+          id?: string
+          mandate_id?: string | null
+          opens_at: string
+          program_ref: string
+          provider: string
+          status?: string
+          user_id: string
+        }
+        Update: {
+          child_id?: string | null
+          created_at?: string
+          id?: string
+          mandate_id?: string | null
+          opens_at?: string
+          program_ref?: string
+          provider?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plans_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plans_mandate_id_fkey"
+            columns: ["mandate_id"]
+            isOneToOne: false
+            referencedRelation: "mandates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
