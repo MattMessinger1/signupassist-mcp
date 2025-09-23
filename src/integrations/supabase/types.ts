@@ -307,6 +307,36 @@ export type Database = {
           },
         ]
       }
+      stored_credentials: {
+        Row: {
+          alias: string
+          created_at: string
+          encrypted_data: string
+          id: string
+          provider: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          alias: string
+          created_at?: string
+          encrypted_data: string
+          id?: string
+          provider: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          alias?: string
+          created_at?: string
+          encrypted_data?: string
+          id?: string
+          provider?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
