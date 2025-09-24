@@ -71,7 +71,11 @@ serve(async (req) => {
       encoder.encode(credentials)
     )
 
-    const encryptedData = btoa(decoder.decode(new Uint8Array(encrypted))) + ':' + btoa(String.fromCharCode(...iv))
+    // Properly encode binary data as base64
+    const encryptedArray = new Uint8Array(encrypted)
+    const encryptedBase64 = btoa(String.fromCharCode(...encryptedArray))
+    const ivBase64 = btoa(String.fromCharCode(...iv))
+    const encryptedData = encryptedBase64 + ':' + ivBase64
 
     // Store in database using service role
     const supabaseService = createClient(
