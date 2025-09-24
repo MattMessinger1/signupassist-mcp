@@ -108,7 +108,7 @@ serve(async (req) => {
       const { data, error } = await supabase
         .from('stored_credentials')
         .insert(row)
-        .select('id, alias, provider')
+        .select('id, alias, provider, created_at')
         .single()
 
       if (error) {
@@ -119,8 +119,8 @@ serve(async (req) => {
       }
 
       return new Response(
-        JSON.stringify({ id: data.id, alias: data.alias, provider: data.provider }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify(data),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     } catch (err) {
       return new Response(
