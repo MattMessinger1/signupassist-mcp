@@ -97,7 +97,6 @@ serve(async (req) => {
     const ivBase64 = btoa(String.fromCharCode(...iv))
     const ciphertext = encryptedBase64 + ':' + ivBase64
 
-    // Store in database using service role
     const supabase = createClient(
       Deno.env.get("SB_URL")!,
       Deno.env.get("SB_SERVICE_ROLE_KEY")!

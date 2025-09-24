@@ -1,85 +1,72 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+}
 
-Deno.serve(async (req) => {
-  // Handle CORS preflight requests
+serve(async (req) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    // Create Supabase client
-    const supabase = createClient(
+    const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        }
+        global: {
+          headers: { Authorization: req.headers.get('Authorization')! },
+        },
       }
-    );
+    )
 
-    // Get user from auth header
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      throw new Error('No authorization header');
+    // Get current user
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
     }
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    );
+    // Use service role client for database operations
+    const supabase = createClient(
+      Deno.env.get("SB_URL")!,
+      Deno.env.get("SB_SERVICE_ROLE_KEY")!
+    )
 
-    if (authError || !user) {
-      throw new Error('Unauthorized');
-    }
+    try {
+      const { data, error } = await supabase
+        .from('stored_credentials')
+        .select('id, alias, provider, created_at')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
 
-    const { provider } = await req.json();
-    
-    if (!provider) {
-      throw new Error('Provider is required');
-    }
-
-    console.log(`Fetching credentials for user ${user.id} and provider ${provider}`);
-
-    // Fetch stored credentials for the user and provider
-    const { data: credentials, error } = await supabase
-      .from('stored_credentials')
-      .select('id, alias, provider, created_at')
-      .eq('user_id', user.id)
-      .eq('provider', provider)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching credentials:', error);
-      throw new Error('Failed to fetch credentials');
-    }
-
-    console.log(`Found ${credentials?.length || 0} credentials`);
-
-    return new Response(
-      JSON.stringify({
-        credentials: credentials || []
-      }),
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      if (error) {
+        return new Response(
+          JSON.stringify({ error: error.message }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
       }
-    );
+
+      return new Response(
+        JSON.stringify(data || []),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    } catch (err) {
+      return new Response(
+        JSON.stringify({ error: err instanceof Error ? err.message : 'Database error' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
   } catch (error) {
-    console.error('Error in cred-list function:', error);
+    console.error('Error in cred-list function:', error)
     return new Response(
-      JSON.stringify({ 
-        error: error instanceof Error ? error.message : 'Internal server error'
-      }),
-      {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    )
   }
-});
+})

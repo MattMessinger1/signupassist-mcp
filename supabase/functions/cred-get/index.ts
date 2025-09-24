@@ -12,6 +12,15 @@ serve(async (req) => {
   }
 
   try {
+    // Check for encryption key first
+    const sealKey = Deno.env.get('CRED_SEAL_KEY')
+    if (!sealKey) {
+      return new Response(
+        JSON.stringify({ error: 'Missing CRED_SEAL_KEY' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -48,11 +57,12 @@ serve(async (req) => {
     )
 
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('stored_credentials')
-        .delete()
+        .select('id, alias, provider, encrypted_data')
         .eq('id', id)
         .eq('user_id', user.id)
+        .single()
 
       if (error) {
         return new Response(
@@ -61,10 +71,58 @@ serve(async (req) => {
         )
       }
 
-      return new Response(
-        JSON.stringify({ success: true }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
+      if (!data) {
+        return new Response(
+          JSON.stringify({ error: 'Credential not found' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      // Decrypt the credentials
+      try {
+        const [encryptedBase64, ivBase64] = data.encrypted_data.split(':')
+        
+        // Convert base64 back to binary
+        const encryptedData = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0))
+        const iv = Uint8Array.from(atob(ivBase64), c => c.charCodeAt(0))
+        
+        // Import the key
+        const keyData = Uint8Array.from(atob(sealKey), c => c.charCodeAt(0))
+        const cryptoKey = await crypto.subtle.importKey(
+          'raw',
+          keyData,
+          { name: 'AES-GCM' },
+          false,
+          ['decrypt']
+        )
+
+        // Decrypt
+        const decrypted = await crypto.subtle.decrypt(
+          { name: 'AES-GCM', iv },
+          cryptoKey,
+          encryptedData
+        )
+
+        const decoder = new TextDecoder()
+        const credentials = JSON.parse(decoder.decode(decrypted))
+
+        return new Response(
+          JSON.stringify({
+            id: data.id,
+            alias: data.alias,
+            provider: data.provider,
+            email: credentials.email,
+            password: credentials.password
+          }),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      } catch (decryptError) {
+        console.error('Decryption error:', decryptError)
+        return new Response(
+          JSON.stringify({ error: 'Failed to decrypt credentials' }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
     } catch (err) {
       return new Response(
         JSON.stringify({ error: err instanceof Error ? err.message : 'Database error' }),
@@ -73,7 +131,7 @@ serve(async (req) => {
     }
 
   } catch (error) {
-    console.error('Error in cred-delete function:', error)
+    console.error('Error in cred-get function:', error)
     return new Response(
       JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -16,8 +16,8 @@ Deno.serve(async (req) => {
 
     // Create service role client for database operations
     const serviceSupabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get("SB_URL")!,
+      Deno.env.get("SB_SERVICE_ROLE_KEY")!
     );
 
     // Find plans that should open within the next 5 minutes
