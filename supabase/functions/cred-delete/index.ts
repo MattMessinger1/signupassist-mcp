@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
     console.error('Error in cred-delete function:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message || 'Internal server error'
+        error: error instanceof Error ? error.message : 'Internal server error'
       }),
       {
         status: 400,

@@ -222,7 +222,7 @@ Deno.serve(async (req) => {
     const errorResponse = {
       success: false,
       timestamp: new Date().toISOString(),
-      error: error.message,
+      error: error instanceof Error ? error.message : 'Unknown error',
       message: 'Field discovery job failed'
     };
     
