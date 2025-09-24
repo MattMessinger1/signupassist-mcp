@@ -15,6 +15,7 @@ serve(async (req) => {
     const sbUrl = Deno.env.get('SB_URL')
     const sbServiceKey = Deno.env.get('SB_SERVICE_ROLE_KEY')
     const sealKey = Deno.env.get('CRED_SEAL_KEY')
+    const publishableKey = Deno.env.get('SUPABASE_PUBLISHABLE_KEY')
 
     // Check for missing variables
     if (!sbUrl) {
@@ -38,11 +39,19 @@ serve(async (req) => {
       )
     }
 
+    if (!publishableKey) {
+      return new Response(
+        JSON.stringify({ error: 'Missing SUPABASE_PUBLISHABLE_KEY' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     // Return masked values for security
     const response = {
       SB_URL: sbUrl.length > 60 ? sbUrl.substring(0, 60) + '...' : sbUrl,
       SB_SERVICE_ROLE_KEY: sbServiceKey.substring(0, 8) + '...',
-      CRED_SEAL_KEY_present: true
+      CRED_SEAL_KEY_present: true,
+      SUPABASE_PUBLISHABLE_KEY: publishableKey.substring(0, 8) + '...'
     }
 
     return new Response(
