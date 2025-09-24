@@ -4,6 +4,8 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { User, Session } from '@supabase/supabase-js';
+import { Elements } from '@stripe/react-stripe-js';
+import { loadStripe } from '@stripe/stripe-js';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -21,6 +23,9 @@ import { OpenTimePicker } from '@/components/OpenTimePicker';
 import { CredentialPicker } from '@/components/CredentialPicker';
 import { PrereqsPanel } from '@/components/PrereqsPanel';
 import { ConsentModal } from '@/components/ConsentModal';
+import { PaymentMethodSetup } from '@/components/PaymentMethodSetup';
+
+const stripePromise = loadStripe('pk_test_51QaUhLLyGRQVXFaLxe3Ygv0wfVr8z6FTKFqCJ9Lw6dAI1PTWT1NCGSSHDhtYN8lFyR35gKP5CJH8djqXEp3qfaLp00XFMN5cPE');
 
 // Schema for form validation
 const planBuilderSchema = z.object({
@@ -74,6 +79,8 @@ const PlanBuilder = () => {
   const [isCreatingMandate, setIsCreatingMandate] = useState(false);
   const [showConsent, setShowConsent] = useState(false);
   const [prerequisiteChecks, setPrerequisiteChecks] = useState<PrerequisiteCheck[]>([]);
+  const [hasPaymentMethod, setHasPaymentMethod] = useState(false);
+  const [checkingPayment, setCheckingPayment] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -112,6 +119,36 @@ const PlanBuilder = () => {
 
     return () => subscription.unsubscribe();
   }, [navigate]);
+
+  // Check for payment method
+  useEffect(() => {
+    if (user) {
+      checkPaymentMethod();
+    }
+  }, [user]);
+
+  const checkPaymentMethod = async () => {
+    if (!user) return;
+    
+    setCheckingPayment(true);
+    try {
+      const { data, error } = await supabase
+        .from('user_billing')
+        .select('default_payment_method_id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        throw error;
+      }
+
+      setHasPaymentMethod(!!data?.default_payment_method_id);
+    } catch (error) {
+      console.error('Error checking payment method:', error);
+    } finally {
+      setCheckingPayment(false);
+    }
+  };
 
   const discoverFields = async (programRef: string) => {
     setIsDiscovering(true);
@@ -201,6 +238,17 @@ const PlanBuilder = () => {
       });
       return;
     }
+
+    // Check payment method
+    if (!hasPaymentMethod) {
+      toast({
+        title: 'Payment Method Required',
+        description: 'Please add a payment method for the $20 success fee before creating the plan.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setShowConsent(true);
   };
 
@@ -366,6 +414,12 @@ const PlanBuilder = () => {
               />
             )}
 
+            {/* Payment Method Setup */}
+            <PaymentMethodSetup
+              onPaymentMethodSaved={checkPaymentMethod}
+              hasPaymentMethod={hasPaymentMethod}
+            />
+
             {/* Program-specific Fields */}
             {discoveredSchema && (
               <Card>
@@ -442,7 +496,7 @@ const PlanBuilder = () => {
               </Button>
               <Button 
                 type="submit" 
-                disabled={!discoveredSchema || prerequisiteChecks.length === 0 || !prerequisiteChecks.every(check => check.status === 'pass')}
+                disabled={!discoveredSchema || prerequisiteChecks.length === 0 || !prerequisiteChecks.every(check => check.status === 'pass') || !hasPaymentMethod}
               >
                 Create Plan
               </Button>
@@ -465,4 +519,12 @@ const PlanBuilder = () => {
   );
 };
 
-export default PlanBuilder;
+const PlanBuilderWithStripe = () => {
+  return (
+    <Elements stripe={stripePromise}>
+      <PlanBuilder />
+    </Elements>
+  );
+};
+
+export default PlanBuilderWithStripe;
