@@ -1,0 +1,147 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { SignJWT } from 'https://esm.sh/jose@5.9.6';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+Deno.serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    // Create Supabase client
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        }
+      }
+    );
+
+    // Get user from auth header
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      throw new Error('No authorization header');
+    }
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    );
+
+    if (authError || !user) {
+      throw new Error('Unauthorized');
+    }
+
+    const {
+      child_id,
+      program_ref,
+      max_amount_cents,
+      valid_from,
+      valid_until,
+      provider,
+      scope,
+      credential_id
+    } = await req.json();
+
+    console.log(`Creating mandate for user ${user.id}, program ${program_ref}`);
+
+    // Validate required fields
+    if (!child_id || !program_ref || !max_amount_cents || !valid_from || !valid_until || !provider || !scope || !credential_id) {
+      throw new Error('Missing required fields');
+    }
+
+    // Verify the credential belongs to the user
+    const { data: credential, error: credError } = await supabase
+      .from('stored_credentials')
+      .select('*')
+      .eq('id', credential_id)
+      .eq('user_id', user.id)
+      .eq('provider', provider)
+      .single();
+
+    if (credError || !credential) {
+      throw new Error('Invalid credential');
+    }
+
+    // Create JWT payload for the mandate
+    const payload = {
+      iss: 'signupassist',
+      sub: user.id,
+      aud: provider,
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(new Date(valid_until).getTime() / 1000),
+      child_id,
+      program_ref,
+      max_amount_cents,
+      scope,
+      credential_id
+    };
+
+    // Sign the JWT with the mandate signing key
+    const signingKey = Deno.env.get('MANDATE_SIGNING_KEY');
+    if (!signingKey) {
+      throw new Error('Mandate signing key not configured');
+    }
+
+    const secret = new TextEncoder().encode(signingKey);
+    const jws = await new SignJWT(payload)
+      .setProtectedHeader({ alg: 'HS256' })
+      .sign(secret);
+
+    console.log('Generated JWS mandate:', jws.substring(0, 50) + '...');
+
+    // Store the mandate in the database
+    const { data: mandate, error: insertError } = await supabase
+      .from('mandates')
+      .insert([{
+        user_id: user.id,
+        child_id,
+        program_ref,
+        max_amount_cents,
+        valid_from,
+        valid_until,
+        provider,
+        scope,
+        jws_compact: jws,
+        status: 'active'
+      }])
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error('Error inserting mandate:', insertError);
+      throw new Error('Failed to create mandate');
+    }
+
+    console.log(`Mandate created with ID: ${mandate.id}`);
+
+    return new Response(
+      JSON.stringify({
+        mandate_id: mandate.id,
+        jws_compact: jws
+      }),
+      {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    );
+
+  } catch (error) {
+    console.error('Error in mandate-issue function:', error);
+    return new Response(
+      JSON.stringify({ 
+        error: error.message || 'Internal server error'
+      }),
+      {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      }
+    );
+  }
+});

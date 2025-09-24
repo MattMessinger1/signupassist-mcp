@@ -14,19 +14,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Calendar, CalendarIcon, Shield, DollarSign, AlertTriangle, CheckCircle } from 'lucide-react';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar as CalendarComponent } from '@/components/ui/calendar';
-import { format } from 'date-fns';
-import { cn } from '@/lib/utils';
+import { Shield, DollarSign, AlertTriangle, CheckCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { ChildSelect } from '@/components/ChildSelect';
+import { OpenTimePicker } from '@/components/OpenTimePicker';
+import { CredentialPicker } from '@/components/CredentialPicker';
+import { PrereqsPanel } from '@/components/PrereqsPanel';
+import { ConsentModal } from '@/components/ConsentModal';
 
 // Schema for form validation
 const planBuilderSchema = z.object({
   programRef: z.string().min(1, 'Program reference is required'),
   childId: z.string().min(1, 'Child selection is required'),
   opensAt: z.date({ message: 'Date is required' }),
-  maxAmountCents: z.number().min(1, 'Maximum amount must be at least $0.01'),
+  credentialId: z.string().min(1, 'Login credentials are required'),
   answers: z.record(z.string(), z.string()).optional(),
 });
 
@@ -54,21 +55,25 @@ interface DiscoveredSchema {
 interface Child {
   id: string;
   name: string;
-  dob: string;
+  dob: string | null;
+}
+
+interface PrerequisiteCheck {
+  check: string;
+  status: 'pass' | 'fail' | 'unknown';
+  message?: string;
 }
 
 const PlanBuilder = () => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
-  const [children, setChildren] = useState<Child[]>([]);
   const [discoveredSchema, setDiscoveredSchema] = useState<DiscoveredSchema | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [isCreatingMandate, setIsCreatingMandate] = useState(false);
   const [showConsent, setShowConsent] = useState(false);
-  const [prerequisiteChecks, setPrerequisiteChecks] = useState<any>(null);
-  const [isCheckingPrerequisites, setIsCheckingPrerequisites] = useState(false);
+  const [prerequisiteChecks, setPrerequisiteChecks] = useState<PrerequisiteCheck[]>([]);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -108,50 +113,24 @@ const PlanBuilder = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  // Load children when user is authenticated
-  useEffect(() => {
-    if (user) {
-      loadChildren();
-    }
-  }, [user]);
-
-  const loadChildren = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('children')
-        .select('*')
-        .order('name');
-
-      if (error) throw error;
-      setChildren(data || []);
-    } catch (error) {
-      console.error('Error loading children:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load children. Please try again.',
-        variant: 'destructive',
-      });
-    }
-  };
-
   const discoverFields = async (programRef: string) => {
     setIsDiscovering(true);
     try {
       const { data, error } = await supabase.functions.invoke('discover-plan-fields', {
-        body: {
-          program_ref: programRef,
-          mandate_id: 'temp', // Temporary for discovery
-          plan_execution_id: 'temp'
-        }
+        body: { program_ref: programRef }
       });
 
       if (error) throw error;
       setDiscoveredSchema(data);
+      toast({
+        title: 'Fields Discovered',
+        description: `Found ${data.branches?.length || 0} program options.`,
+      });
     } catch (error) {
       console.error('Error discovering fields:', error);
       toast({
         title: 'Discovery Failed',
-        description: 'Could not discover program fields. Please try again.',
+        description: 'Could not load program-specific fields.',
         variant: 'destructive',
       });
     } finally {
@@ -159,87 +138,24 @@ const PlanBuilder = () => {
     }
   };
 
-  const checkPrerequisites = async (childId?: string) => {
-    if (!user) return;
-    
-    setIsCheckingPrerequisites(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('check-prerequisites', {
-        body: {
-          user_id: user.id,
-          provider: 'skiclubpro',
-          child_id: childId
-        }
-      });
-
-      if (error) throw error;
-      setPrerequisiteChecks(data);
-      
-      if (data.overall_status === 'blocked') {
-        toast({
-          title: 'Prerequisites Not Met',
-          description: 'Please resolve the blocking issues before proceeding. Account/membership setup is not billable.',
-          variant: 'destructive',
-        });
-      } else if (data.overall_status === 'warnings') {
-        toast({
-          title: 'Prerequisites Check Complete',
-          description: 'Some warnings found, but you can proceed.',
-        });
-      }
-      
-      // Show specific messaging for account/membership issues
-      const accountCheck = data.checks?.find((check: any) => check.type === 'skiclubpro_membership');
-      if (accountCheck && accountCheck.status === 'failed') {
-        toast({
-          title: "SkiClubPro Account Required",
-          description: "Account setup flows are not billable - only successful class signups incur the $20 fee.",
-        });
-      }
-    } catch (error) {
-      console.error('Error checking prerequisites:', error);
-      toast({
-        title: 'Prerequisites Check Failed',
-        description: 'Could not verify account prerequisites.',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsCheckingPrerequisites(false);
-    }
-  };
-
-  const createMandate = async (formData: PlanBuilderForm) => {
+  const createMandate = async (maxCostCents: number) => {
     setIsCreatingMandate(true);
     try {
-      // Bundle answers with mandate payload
-      const mandatePayload = {
-        user_id: user!.id,
-        child_id: formData.childId,
-        program_ref: formData.programRef,
-        max_amount_cents: formData.maxAmountCents,
-        valid_from: new Date().toISOString(),
-        valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
-        provider: 'skiclubpro',
-        scope: ['scp:login', 'scp:enroll', 'scp:pay', 'signupassist:fee'],
-        answers: formData.answers,
-      };
-
-      // Create mandate in database
-      const { data, error } = await supabase
-        .from('mandates')
-        .insert([{
-          user_id: user!.id,
+      const formData = form.getValues();
+      
+      // Create mandate using edge function
+      const { data, error } = await supabase.functions.invoke('mandate-issue', {
+        body: {
           child_id: formData.childId,
           program_ref: formData.programRef,
-          max_amount_cents: formData.maxAmountCents,
+          max_amount_cents: maxCostCents,
           valid_from: new Date().toISOString(),
-          valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
           provider: 'skiclubpro',
           scope: ['scp:login', 'scp:enroll', 'scp:pay', 'signupassist:fee'],
-          jws_compact: 'temp', // Will be updated with actual JWS
-        }])
-        .select()
-        .single();
+          credential_id: formData.credentialId
+        }
+      });
 
       if (error) throw error;
 
@@ -252,7 +168,7 @@ const PlanBuilder = () => {
           program_ref: formData.programRef,
           provider: 'skiclubpro',
           opens_at: formData.opensAt.toISOString(),
-          mandate_id: data.id,
+          mandate_id: data.mandate_id,
         }]);
 
       toast({
@@ -275,6 +191,16 @@ const PlanBuilder = () => {
   };
 
   const onSubmit = (data: PlanBuilderForm) => {
+    // Check prerequisites first
+    const allPassed = prerequisiteChecks.every(check => check.status === 'pass');
+    if (!allPassed) {
+      toast({
+        title: 'Prerequisites Required',
+        description: 'Please ensure all prerequisites are met before creating the plan.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setShowConsent(true);
   };
 
@@ -309,9 +235,9 @@ const PlanBuilder = () => {
     );
   }
 
-  const selectedChild = children.find(c => c.id === form.watch('childId'));
   const currentBranch = discoveredSchema?.branches.find(b => b.choice === selectedBranch);
   const fieldsToShow = currentBranch?.questions || discoveredSchema?.common_questions || [];
+  const selectedChild = form.watch('childId');
 
   return (
     <div className="min-h-screen bg-background">
@@ -373,33 +299,12 @@ const PlanBuilder = () => {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Child</FormLabel>
-                      <div className="flex gap-2">
-                        <Select onValueChange={(value) => {
-                          field.onChange(value);
-                          checkPrerequisites(value);
-                        }} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger className="flex-1">
-                              <SelectValue placeholder="Select a child" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {children.map((child) => (
-                              <SelectItem key={child.id} value={child.id}>
-                                {child.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Button 
-                          type="button" 
-                          variant="outline"
-                          onClick={() => checkPrerequisites(field.value)}
-                          disabled={!field.value || isCheckingPrerequisites}
-                        >
-                          {isCheckingPrerequisites ? 'Checking...' : 'Check Prerequisites'}
-                        </Button>
-                      </div>
+                      <FormControl>
+                        <ChildSelect
+                          value={field.value}
+                          onChange={field.onChange}
+                        />
+                      </FormControl>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -409,60 +314,14 @@ const PlanBuilder = () => {
                   control={form.control}
                   name="opensAt"
                   render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Registration Opens</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                "w-[240px] pl-3 text-left font-normal",
-                                !field.value && "text-muted-foreground"
-                              )}
-                            >
-                              {field.value ? (
-                                format(field.value, "PPP")
-                              ) : (
-                                <span>Pick a date</span>
-                              )}
-                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0" align="start">
-                          <CalendarComponent
-                            mode="single"
-                            selected={field.value}
-                            onSelect={field.onChange}
-                            disabled={(date) => date < new Date()}
-                            initialFocus
-                            className="p-3 pointer-events-auto"
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="maxAmountCents"
-                  render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Maximum Program Cost (cents)</FormLabel>
+                      <FormLabel>Registration Opens</FormLabel>
                       <FormControl>
-                        <Input 
-                          type="number" 
-                          placeholder="50000" 
-                          {...field}
-                          onChange={(e) => field.onChange(parseInt(e.target.value) || 0)}
+                        <OpenTimePicker
+                          value={field.value}
+                          onChange={field.onChange}
                         />
                       </FormControl>
-                      <FormDescription>
-                        Maximum amount you authorize for the program fee (in cents)
-                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -470,67 +329,59 @@ const PlanBuilder = () => {
               </CardContent>
             </Card>
 
-            {/* Prerequisites Check Results */}
-            {prerequisiteChecks && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Shield className="h-5 w-5" />
-                    Prerequisites Check
-                    {prerequisiteChecks.overall_status === 'ready' && <CheckCircle className="h-4 w-4 text-green-600" />}
-                    {prerequisiteChecks.overall_status === 'blocked' && <AlertTriangle className="h-4 w-4 text-red-600" />}
-                    {prerequisiteChecks.overall_status === 'warnings' && <AlertTriangle className="h-4 w-4 text-orange-600" />}
-                  </CardTitle>
-                  <CardDescription>
-                    Account readiness verification for automated registration
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {prerequisiteChecks.checks.map((check: any, index: number) => (
-                    <div key={index} className="flex items-start gap-3 p-3 rounded-lg border">
-                      {check.status === 'passed' && <CheckCircle className="h-4 w-4 text-green-600 mt-0.5" />}
-                      {check.status === 'failed' && <AlertTriangle className="h-4 w-4 text-red-600 mt-0.5" />}
-                      {check.status === 'warning' && <AlertTriangle className="h-4 w-4 text-orange-600 mt-0.5" />}
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <Badge variant={check.status === 'passed' ? 'secondary' : check.status === 'failed' ? 'destructive' : 'outline'}>
-                            {check.type.replace('_', ' ')}
-                          </Badge>
-                          {check.blocking && <Badge variant="destructive" className="text-xs">Blocking</Badge>}
-                        </div>
-                        <p className="text-sm mt-1">{check.message}</p>
-                      </div>
-                    </div>
-                  ))}
-                  {!prerequisiteChecks.can_proceed && (
-                    <Alert className="border-red-200 bg-red-50">
-                      <AlertTriangle className="h-4 w-4 text-red-600" />
-                      <AlertDescription className="text-red-800">
-                        You cannot proceed with plan creation until all blocking issues are resolved.
-                      </AlertDescription>
-                    </Alert>
+            {/* Credentials */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Login Credentials</CardTitle>
+                <CardDescription>
+                  Select stored login credentials for SkiClubPro
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <FormField
+                  control={form.control}
+                  name="credentialId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <CredentialPicker
+                          provider="skiclubpro"
+                          value={field.value}
+                          onChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
                   )}
-                </CardContent>
-              </Card>
+                />
+              </CardContent>
+            </Card>
+
+            {/* Prerequisites */}
+            {form.watch('credentialId') && (
+              <PrereqsPanel
+                provider="skiclubpro"
+                credentialId={form.watch('credentialId')}
+                onResultsChange={setPrerequisiteChecks}
+              />
             )}
 
-            {/* Discovered Fields */}
+            {/* Program-specific Fields */}
             {discoveredSchema && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Program Requirements</CardTitle>
+                  <CardTitle>Program Details</CardTitle>
                   <CardDescription>
-                    Answer these questions now to enable automated registration
+                    Complete the required information for {discoveredSchema.program_ref}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Branch Selection */}
-                  {discoveredSchema.branches.length > 0 && (
+                  {discoveredSchema.branches && discoveredSchema.branches.length > 0 && (
                     <div>
-                      <label className="text-sm font-medium">Program Type</label>
-                      <Select onValueChange={setSelectedBranch} value={selectedBranch}>
+                      <FormLabel>Program Type</FormLabel>
+                      <Select value={selectedBranch} onValueChange={setSelectedBranch}>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select program type" />
+                          <SelectValue placeholder="Select program type..." />
                         </SelectTrigger>
                         <SelectContent>
                           {discoveredSchema.branches.map((branch) => (
@@ -543,23 +394,21 @@ const PlanBuilder = () => {
                     </div>
                   )}
 
-                  {/* Dynamic Fields */}
                   {fieldsToShow.map((field) => (
                     <FormField
                       key={field.id}
                       control={form.control}
-                      name={`answers.${field.id}` as any}
+                      name={`answers.${field.id}`}
                       render={({ field: formField }) => (
                         <FormItem>
                           <FormLabel>
-                            {field.label}
-                            {field.required && <span className="text-destructive ml-1">*</span>}
+                            {field.label} {field.required && '*'}
                           </FormLabel>
                           <FormControl>
                             {field.type === 'select' ? (
-                              <Select onValueChange={formField.onChange} defaultValue={formField.value}>
+                              <Select value={formField.value} onValueChange={formField.onChange}>
                                 <SelectTrigger>
-                                  <SelectValue placeholder={`Select ${field.label.toLowerCase()}`} />
+                                  <SelectValue placeholder={`Select ${field.label.toLowerCase()}...`} />
                                 </SelectTrigger>
                                 <SelectContent>
                                   {field.options?.map((option) => (
@@ -570,11 +419,11 @@ const PlanBuilder = () => {
                                 </SelectContent>
                               </Select>
                             ) : field.type === 'textarea' ? (
-                              <Textarea placeholder={`Enter ${field.label.toLowerCase()}`} {...formField} />
+                              <Textarea {...formField} placeholder={`Enter ${field.label.toLowerCase()}`} />
                             ) : field.type === 'number' ? (
-                              <Input type="number" placeholder="0" {...formField} />
+                              <Input {...formField} type="number" placeholder={`Enter ${field.label.toLowerCase()}`} />
                             ) : (
-                              <Input placeholder={`Enter ${field.label.toLowerCase()}`} {...formField} />
+                              <Input {...formField} placeholder={`Enter ${field.label.toLowerCase()}`} />
                             )}
                           </FormControl>
                           <FormMessage />
@@ -586,121 +435,31 @@ const PlanBuilder = () => {
               </Card>
             )}
 
-            {/* Cost Breakdown */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <DollarSign className="h-5 w-5" />
-                  Cost Breakdown
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span>Provider Fee (SkiClubPro)</span>
-                    <Badge variant="outline">
-                      ${form.watch('maxAmountCents') ? (form.watch('maxAmountCents') / 100).toFixed(2) : '0.00'}
-                    </Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Paid directly to SkiClubPro with your stored payment method
-                  </p>
-                </div>
-                
-                <Separator />
-                
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span>SignupAssist Service Fee</span>
-                    <Badge variant="secondary">$20.00</Badge>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Charged only on successful registration via Stripe
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Button type="submit" className="w-full" disabled={!discoveredSchema}>
-              Create Signup Plan
-            </Button>
+            {/* Submit */}
+            <div className="flex justify-end space-x-4">
+              <Button type="button" variant="outline" onClick={() => navigate('/')}>
+                Cancel
+              </Button>
+              <Button 
+                type="submit" 
+                disabled={!discoveredSchema || prerequisiteChecks.length === 0 || !prerequisiteChecks.every(check => check.status === 'pass')}
+              >
+                Create Plan
+              </Button>
+            </div>
           </form>
         </Form>
 
         {/* Consent Modal */}
-        {showConsent && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <Card className="w-full max-w-lg">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Shield className="h-5 w-5" />
-                  Authorize Signup Plan
-                </CardTitle>
-                <CardDescription>
-                  Review and approve the permissions for automated registration
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <h4 className="font-medium mb-2">Granted Permissions:</h4>
-                  <ul className="space-y-1 text-sm">
-                    <li className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                      Login to SkiClubPro on your behalf
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                      Register {selectedChild?.name} for the program
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                      Complete payment using stored payment method
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-orange-600" />
-                      Charge $20 SignupAssist fee only upon successful registration
-                    </li>
-                    <li className="flex items-center gap-2">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
-                      Charge $20 SignupAssist fee on success
-                    </li>
-                  </ul>
-                </div>
-
-                <div>
-                  <h4 className="font-medium mb-2">Cost Summary:</h4>
-                  <div className="bg-muted p-3 rounded-lg space-y-2">
-                    <div className="flex justify-between">
-                      <span>Program Fee:</span>
-                      <span>${(form.getValues('maxAmountCents') / 100).toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Service Fee:</span>
-                      <span>$20.00</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
-                    onClick={() => setShowConsent(false)}
-                    className="flex-1"
-                  >
-                    Cancel
-                  </Button>
-                  <Button 
-                    onClick={() => createMandate(form.getValues())}
-                    disabled={isCreatingMandate || (prerequisiteChecks && !prerequisiteChecks.can_proceed)}
-                    className="flex-1"
-                  >
-                    {isCreatingMandate ? 'Creating...' : 'Authorize & Create'}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-        )}
+        <ConsentModal
+          open={showConsent}
+          onClose={() => setShowConsent(false)}
+          onApprove={createMandate}
+          programRef={form.watch('programRef')}
+          childName="Selected Child"
+          scopes={['scp:login', 'scp:enroll', 'scp:pay', 'signupassist:fee']}
+          loading={isCreatingMandate}
+        />
       </div>
     </div>
   );
