@@ -12,7 +12,7 @@ serve(async (req) => {
   }
 
   try {
-    // Check for encryption key first
+    // Check environment variables
     const sealKey = Deno.env.get('CRED_SEAL_KEY')
     if (!sealKey) {
       return new Response(
