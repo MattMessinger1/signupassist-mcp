@@ -26,6 +26,9 @@ verify_jwt = true
 [functions.discover-plan-fields]
 verify_jwt = false
 
+[functions.debug-env]
+verify_jwt = false
+
 [studio]
 enabled = true
 port = 54323
