@@ -2,8 +2,25 @@ import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar, Shield, DollarSign } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useState } from 'react';
 
 const Index = () => {
+  const [debugResult, setDebugResult] = useState<any>(null);
+
+  const testCredDebug = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('cred-debug');
+      if (error) {
+        setDebugResult({ error: error.message });
+      } else {
+        setDebugResult(data);
+      }
+    } catch (err) {
+      setDebugResult({ error: 'Failed to call cred-debug function' });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto py-16 px-4">
@@ -23,8 +40,26 @@ const Index = () => {
                 Manage Credentials
               </Button>
             </Link>
+            <Button size="lg" variant="secondary" className="text-lg px-8 py-3" onClick={testCredDebug}>
+              Test Debug
+            </Button>
           </div>
         </div>
+
+        {debugResult && (
+          <div className="mb-8 max-w-2xl mx-auto">
+            <Card>
+              <CardHeader>
+                <CardTitle>Debug Result</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <pre className="text-sm bg-muted p-4 rounded overflow-auto">
+                  {JSON.stringify(debugResult, null, 2)}
+                </pre>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
           <Card>
