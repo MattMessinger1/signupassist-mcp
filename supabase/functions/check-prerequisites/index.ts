@@ -8,6 +8,7 @@ const corsHeaders = {
 interface RequestBody {
   credential_id: string;
   child_id?: string;
+  provider?: string;
 }
 
 Deno.serve(async (req) => {
@@ -48,7 +49,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { credential_id, child_id }: RequestBody = await req.json();
+    const { credential_id, child_id, provider }: RequestBody = await req.json();
 
     if (!credential_id) {
       return new Response(

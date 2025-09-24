@@ -7,7 +7,7 @@ const corsHeaders = {
 
 interface RequestBody {
   program_ref: string;
-  mandate_id: string;
+  credential_id: string;
 }
 
 Deno.serve(async (req) => {
@@ -48,11 +48,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { program_ref, mandate_id }: RequestBody = await req.json();
+    const { program_ref, credential_id }: RequestBody = await req.json();
 
-    if (!program_ref || !mandate_id) {
+    if (!program_ref || !credential_id) {
       return new Response(
-        JSON.stringify({ error: 'program_ref and mandate_id are required' }),
+        JSON.stringify({ error: 'program_ref and credential_id are required' }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -60,7 +60,49 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Interactive field discovery for program ${program_ref}, mandate ${mandate_id}`);
+    console.log(`Interactive field discovery for program ${program_ref}, credential ${credential_id}`);
+
+    // Load and decrypt the credential
+    const { data: credentialData, error: credError } = await supabase.functions.invoke('cred-get', {
+      body: { credential_id }
+    });
+
+    if (credError) {
+      console.error('Failed to load credential:', credError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to load credential' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Issue a temporary mandate (24h, max_amount_cents: 0)
+    const { data: mandateData, error: mandateError } = await supabase.functions.invoke('mandate-issue', {
+      body: {
+        user_id: user.id,
+        provider: 'skiclubpro',
+        credential_id,
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
+        max_amount_cents: 0,
+        description: `Interactive field discovery for program ${program_ref}`
+      }
+    });
+
+    if (mandateError) {
+      console.error('Failed to issue mandate:', mandateError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to issue mandate' }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    const mandate_id = mandateData.mandate_id;
+    console.log(`Issued mandate ${mandate_id} for interactive field discovery`);
 
     // Call the MCP provider tool for field discovery
     const { data: mcpResponse, error: mcpError } = await supabase.functions.invoke('skiclubpro-tools', {

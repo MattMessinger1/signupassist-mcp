@@ -173,25 +173,10 @@ const PlanBuilder = () => {
 
     setIsDiscovering(true);
     try {
-      // Create a temporary mandate for field discovery
-      const { data: mandateData, error: mandateError } = await supabase.functions.invoke('mandate-issue', {
-        body: {
-          program_ref: programRef,
-          max_amount_cents: 0, // Temporary mandate for discovery only
-          valid_from: new Date().toISOString(),
-          valid_until: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
-          provider: 'skiclubpro',
-          scope: ['scp:discover'],
-          credential_id: credentialId
-        }
-      });
-
-      if (mandateError) throw mandateError;
-
       const { data, error } = await supabase.functions.invoke('discover-fields-interactive', {
         body: { 
           program_ref: programRef,
-          mandate_id: mandateData.mandate_id 
+          credential_id: credentialId 
         }
       });
 
@@ -489,6 +474,7 @@ const PlanBuilder = () => {
               <PrereqsPanel
                 provider="skiclubpro"
                 credentialId={form.watch('credentialId')}
+                childId={form.watch('childId')}
                 onResultsChange={setPrerequisiteChecks}
               />
             )}

@@ -15,10 +15,11 @@ interface PrerequisiteCheck {
 interface PrereqsPanelProps {
   provider: string;
   credentialId?: string;
+  childId?: string;
   onResultsChange: (results: PrerequisiteCheck[]) => void;
 }
 
-export function PrereqsPanel({ provider, credentialId, onResultsChange }: PrereqsPanelProps) {
+export function PrereqsPanel({ provider, credentialId, childId, onResultsChange }: PrereqsPanelProps) {
   const [results, setResults] = useState<PrerequisiteCheck[]>([]);
   const [checking, setChecking] = useState(false);
   const { toast } = useToast();
@@ -37,7 +38,9 @@ export function PrereqsPanel({ provider, credentialId, onResultsChange }: Prereq
     try {
       const { data, error } = await supabase.functions.invoke('check-prerequisites', {
         body: {
-          credential_id: credentialId
+          credential_id: credentialId,
+          child_id: childId,
+          provider: 'skiclubpro'
         }
       });
 
