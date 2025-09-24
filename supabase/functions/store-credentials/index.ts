@@ -37,9 +37,25 @@ serve(async (req) => {
       )
     }
 
+    // Debug environment variables
+    console.log('Available env vars:', {
+      SB_URL: sbUrl ? 'present' : 'missing',
+      SB_SERVICE_ROLE_KEY: sbServiceKey ? 'present' : 'missing',
+      SUPABASE_PUBLISHABLE_KEY: Deno.env.get('SUPABASE_PUBLISHABLE_KEY') ? 'present' : 'missing',
+      SUPABASE_ANON_KEY: Deno.env.get('SUPABASE_ANON_KEY') ? 'present' : 'missing'
+    })
+
+    const publishableKey = Deno.env.get('SUPABASE_PUBLISHABLE_KEY') ?? ''
+    if (!publishableKey) {
+      return new Response(
+        JSON.stringify({ error: 'Missing SUPABASE_PUBLISHABLE_KEY' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const supabaseClient = createClient(
       sbUrl,
-      Deno.env.get('SUPABASE_PUBLISHABLE_KEY') ?? '',
+      publishableKey,
       {
         global: {
           headers: { Authorization: req.headers.get('Authorization')! },
