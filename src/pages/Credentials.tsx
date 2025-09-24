@@ -72,7 +72,9 @@ export default function Credentials() {
       const { data, error } = await supabase.functions.invoke('cred-list');
 
       if (error) throw error;
-      setCredentials(data || []);
+      // Handle the new response format { credentials: array }
+      const credentialsArray = data?.credentials || data || [];
+      setCredentials(credentialsArray);
     } catch (error) {
       console.error('Error loading credentials:', error);
       toast({
