@@ -6,8 +6,7 @@ const corsHeaders = {
 };
 
 interface RequestBody {
-  user_id: string;
-  provider: string;
+  credential_id: string;
   child_id?: string;
 }
 
@@ -20,14 +19,40 @@ Deno.serve(async (req) => {
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
 
-    const { user_id, provider, child_id }: RequestBody = await req.json();
-
-    if (!user_id || !provider) {
+    // Get user from auth header
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: 'user_id and provider are required' }),
+        JSON.stringify({ error: 'Authorization header required' }),
+        { 
+          status: 401, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    );
+
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Not authenticated' }),
+        { 
+          status: 401, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    const { credential_id, child_id }: RequestBody = await req.json();
+
+    if (!credential_id) {
+      return new Response(
+        JSON.stringify({ error: 'credential_id is required' }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -35,9 +60,91 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Checking prerequisites for user ${user_id}, provider ${provider}`);
+    console.log(`Checking prerequisites for user ${user.id}, credential ${credential_id}`);
 
-    const result = await checkAllPrerequisites(user_id, provider, child_id);
+    // Load and decrypt the credential
+    const { data: credentialData, error: credError } = await supabase.functions.invoke('cred-get', {
+      body: { credential_id }
+    });
+
+    if (credError) {
+      console.error('Failed to load credential:', credError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to load credential' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Run MCP prerequisite checks
+    const checks = [];
+
+    // Check account status
+    const { data: accountStatus, error: accountError } = await supabase.functions.invoke('skiclubpro-tools', {
+      body: {
+        tool: 'scp.check_account_status',
+        args: { credential_data: credentialData }
+      }
+    });
+
+    if (!accountError && accountStatus) {
+      checks.push({
+        check: 'Account Status',
+        status: accountStatus.status === 'active' ? 'pass' : 'fail',
+        message: accountStatus.message || 'Account status check completed'
+      });
+    }
+
+    // Check membership status
+    const { data: membershipStatus, error: membershipError } = await supabase.functions.invoke('skiclubpro-tools', {
+      body: {
+        tool: 'scp.check_membership_status',
+        args: { credential_data: credentialData }
+      }
+    });
+
+    if (!membershipError && membershipStatus) {
+      checks.push({
+        check: 'Membership Status',
+        status: membershipStatus.is_member ? 'pass' : 'fail',
+        message: membershipStatus.message || 'Membership status check completed'
+      });
+    }
+
+    // Check stored payment method
+    const { data: paymentStatus, error: paymentError } = await supabase.functions.invoke('skiclubpro-tools', {
+      body: {
+        tool: 'scp.check_stored_payment_method',
+        args: { credential_data: credentialData }
+      }
+    });
+
+    if (!paymentError && paymentStatus) {
+      checks.push({
+        check: 'Payment Method',
+        status: paymentStatus.has_payment_method ? 'pass' : 'fail',
+        message: paymentStatus.message || 'Payment method check completed'
+      });
+    }
+
+    // If child_id provided, check child information
+    if (child_id) {
+      const childCheck = await checkChildInformation(user.id, child_id);
+      checks.push({
+        check: 'Child Information',
+        status: childCheck.status === 'passed' ? 'pass' : 'fail',
+        message: childCheck.message
+      });
+    }
+
+    const overall_status = checks.every(c => c.status === 'pass') ? 'ready' : 'blocked';
+
+    const result = {
+      checks,
+      overall_status
+    };
 
     console.log('Prerequisites check result:', result);
 

@@ -151,10 +151,48 @@ const PlanBuilder = () => {
   };
 
   const discoverFields = async (programRef: string) => {
+    if (!user || !session) {
+      toast({
+        title: 'Authentication Required',
+        description: 'Please log in to discover fields.',
+        variant: 'destructive',
+      });
+      navigate('/auth');
+      return;
+    }
+
+    const credentialId = form.getValues('credentialId');
+    if (!credentialId) {
+      toast({
+        title: 'Credentials Required',
+        description: 'Please select login credentials first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsDiscovering(true);
     try {
-      const { data, error } = await supabase.functions.invoke('discover-plan-fields', {
-        body: { program_ref: programRef }
+      // Create a temporary mandate for field discovery
+      const { data: mandateData, error: mandateError } = await supabase.functions.invoke('mandate-issue', {
+        body: {
+          program_ref: programRef,
+          max_amount_cents: 0, // Temporary mandate for discovery only
+          valid_from: new Date().toISOString(),
+          valid_until: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
+          provider: 'skiclubpro',
+          scope: ['scp:discover'],
+          credential_id: credentialId
+        }
+      });
+
+      if (mandateError) throw mandateError;
+
+      const { data, error } = await supabase.functions.invoke('discover-fields-interactive', {
+        body: { 
+          program_ref: programRef,
+          mandate_id: mandateData.mandate_id 
+        }
       });
 
       if (error) throw error;
@@ -167,7 +205,7 @@ const PlanBuilder = () => {
       console.error('Error discovering fields:', error);
       toast({
         title: 'Discovery Failed',
-        description: 'Could not load program-specific fields.',
+        description: 'Could not load program-specific fields. Please try again.',
         variant: 'destructive',
       });
     } finally {
@@ -176,6 +214,16 @@ const PlanBuilder = () => {
   };
 
   const createMandate = async (maxCostCents: number) => {
+    if (!user || !session) {
+      toast({
+        title: 'Authentication Required',
+        description: 'Please log in to create a plan.',
+        variant: 'destructive',
+      });
+      navigate('/auth');
+      return;
+    }
+
     setIsCreatingMandate(true);
     try {
       const formData = form.getValues();
@@ -194,7 +242,18 @@ const PlanBuilder = () => {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        if (error.message?.includes('Not authenticated')) {
+          toast({
+            title: 'Session Expired',
+            description: 'Please log in again to continue.',
+            variant: 'destructive',
+          });
+          navigate('/auth');
+          return;
+        }
+        throw error;
+      }
 
       // Create plan using the new create-plan function
       const { data: planData, error: planError } = await supabase.functions.invoke('create-plan', {
@@ -207,11 +266,30 @@ const PlanBuilder = () => {
         }
       });
 
-      if (planError) throw planError;
+      if (planError) {
+        if (planError.message?.includes('Not authenticated')) {
+          toast({
+            title: 'Session Expired',
+            description: 'Please log in again to continue.',
+            variant: 'destructive',
+          });
+          navigate('/auth');
+          return;
+        }
+        throw planError;
+      }
 
       toast({
         title: 'Success',
-        description: 'Plan created successfully! You will be notified when registration opens.',
+        description: `Plan created successfully (ID: ${planData.plan_id})! You will be notified when registration opens.`,
+      });
+
+      // Log successful plan creation for debugging
+      console.log('Plan created successfully:', {
+        plan_id: planData.plan_id,
+        program_ref: formData.programRef,
+        child_id: formData.childId,
+        mandate_id: data.mandate_id
       });
 
       navigate('/');

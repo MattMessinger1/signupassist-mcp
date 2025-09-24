@@ -33,12 +33,26 @@ export function ChildSelect({ value, onChange }: ChildSelectProps) {
 
   const loadChildren = async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setChildren([]);
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('children')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        if (error.message?.includes('Not authenticated')) {
+          setChildren([]);
+          setLoading(false);
+          return;
+        }
+        throw error;
+      }
       setChildren(data || []);
     } catch (error) {
       console.error('Error loading children:', error);
@@ -65,7 +79,14 @@ export function ChildSelect({ value, onChange }: ChildSelectProps) {
     setAdding(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+      if (!user) {
+        toast({
+          title: 'Authentication Required',
+          description: 'Please log in again to add a child.',
+          variant: 'destructive',
+        });
+        return;
+      }
 
       const childData = {
         user_id: user.id,
@@ -79,22 +100,35 @@ export function ChildSelect({ value, onChange }: ChildSelectProps) {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        if (error.message?.includes('Not authenticated')) {
+          toast({
+            title: 'Session Expired',
+            description: 'Please log in again to add a child.',
+            variant: 'destructive',
+          });
+          return;
+        }
+        throw error;
+      }
 
-      setChildren(prev => [data, ...prev]);
+      // Reload children list to ensure consistency
+      await loadChildren();
+      
+      // Set the new child as selected
       onChange(data.id);
       setNewChild({ name: '', dob: '' });
       setShowAddForm(false);
 
       toast({
         title: 'Success',
-        description: `${data.name} has been added.`,
+        description: `${data.name} has been added and selected.`,
       });
     } catch (error) {
       console.error('Error adding child:', error);
       toast({
         title: 'Error',
-        description: 'Failed to add child.',
+        description: 'Failed to add child. Please try again.',
         variant: 'destructive',
       });
     } finally {

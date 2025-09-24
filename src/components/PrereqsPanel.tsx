@@ -37,48 +37,31 @@ export function PrereqsPanel({ provider, credentialId, onResultsChange }: Prereq
     try {
       const { data, error } = await supabase.functions.invoke('check-prerequisites', {
         body: {
-          provider,
           credential_id: credentialId
         }
       });
 
       if (error) throw error;
 
-      const checkResults: PrerequisiteCheck[] = [
-        {
-          check: 'account',
-          status: data.account ? 'pass' : 'fail',
-          message: data.account ? 'Account verified' : 'Account not found or invalid'
-        },
-        {
-          check: 'membership',
-          status: data.membership ? 'pass' : 'fail',
-          message: data.membership ? 'Active membership found' : 'No active membership'
-        },
-        {
-          check: 'stored_payment_method',
-          status: data.stored_payment_method ? 'pass' : 'fail',
-          message: data.stored_payment_method ? 'Payment method on file' : 'No payment method stored'
-        }
-      ];
+      const transformedResults = data.checks.map((check: any) => ({
+        check: check.check,
+        status: check.status,
+        message: check.message,
+      }));
 
-      setResults(checkResults);
-      onResultsChange(checkResults);
+      setResults(transformedResults);
+      onResultsChange(transformedResults);
 
-      const allPassed = checkResults.every(r => r.status === 'pass');
       toast({
-        title: allPassed ? 'Prerequisites Met' : 'Prerequisites Check Complete',
-        description: allPassed 
-          ? 'All requirements are satisfied!'
-          : 'Some requirements need attention before creating the plan.',
-        variant: allPassed ? 'default' : 'destructive',
+        title: 'Prerequisites Checked',
+        description: data.overall_status === 'ready' ? 'All checks passed!' : 'Some issues found.',
+        variant: data.overall_status === 'ready' ? 'default' : 'destructive',
       });
-
     } catch (error) {
       console.error('Error checking prerequisites:', error);
       toast({
-        title: 'Check Failed',
-        description: 'Could not verify prerequisites. Please try again.',
+        title: 'Error',
+        description: 'Failed to check prerequisites.',
         variant: 'destructive',
       });
     } finally {
