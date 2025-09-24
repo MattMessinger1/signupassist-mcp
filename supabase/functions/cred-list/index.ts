@@ -66,7 +66,7 @@ serve(async (req) => {
       }
 
       return new Response(
-        JSON.stringify(data || []),
+        JSON.stringify({ credentials: data || [] }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     } catch (err) {
@@ -78,8 +78,12 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in cred-list function:', error)
+    console.error('Error details:', JSON.stringify(error, null, 2))
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
+      JSON.stringify({ 
+        error: error instanceof Error ? error.message : 'Unknown error',
+        details: error instanceof Error ? error.stack : String(error)
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

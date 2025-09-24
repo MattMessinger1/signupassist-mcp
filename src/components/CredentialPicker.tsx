@@ -50,9 +50,10 @@ export function CredentialPicker({ provider, value, onChange }: CredentialPicker
       }
     } catch (error) {
       console.error('Error loading credentials:', error);
+      console.error('Full error details:', JSON.stringify(error, null, 2));
       toast({
         title: 'Error',
-        description: 'Failed to load stored credentials.',
+        description: `Failed to load stored credentials: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variant: 'destructive',
       });
     } finally {
