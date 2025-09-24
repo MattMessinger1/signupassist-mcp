@@ -882,6 +882,71 @@ export async function scpPurchaseMembership(args: PurchaseMembershipArgs): Promi
   );
 }
 
+/**
+ * Check if user has stored payment method in SkiClubPro
+ */
+export async function scpCheckStoredPaymentMethod(args: { mandate_id: string; plan_execution_id?: string }): Promise<{ on_file: boolean; screenshot_evidence?: string }> {
+  return auditToolCall(
+    {
+      plan_execution_id: args.plan_execution_id || '',
+      mandate_id: args.mandate_id,
+      tool: 'scp.check_stored_payment_method'
+    },
+    async () => {
+      // Verify mandate has billing read scope
+      await verifyMandate(args.mandate_id, 'scp:read:billing');
+
+      try {
+        // Get mandate details
+        const { data: mandate, error: mandateError } = await supabase
+          .from('mandates')
+          .select('user_id')
+          .eq('id', args.mandate_id)
+          .single();
+
+        if (mandateError || !mandate) {
+          throw new Error('Could not retrieve mandate details');
+        }
+
+        // Launch Browserbase session
+        const session = await launchBrowserbaseSession();
+
+        try {
+          // Login to SkiClubPro
+          const credentials = await lookupCredentials('skiclubpro-default', mandate.user_id);
+          await performSkiClubProLogin(session, credentials);
+
+          // Navigate to billing/profile page to check for stored cards
+          // TODO: Implement navigation to billing page and card detection
+          
+          // Capture screenshot of billing page
+          const screenshot = await captureScreenshot(session, 'billing-page.png');
+          const evidenceId = await captureScreenshotEvidence(
+            args.plan_execution_id || '',
+            screenshot,
+            'billing-page-check'
+          );
+
+          await closeBrowserbaseSession(session);
+
+          // TODO: Parse the page to detect stored payment methods
+          return { 
+            on_file: false, // Placeholder - will detect actual cards when implemented
+            screenshot_evidence: evidenceId
+          };
+
+        } catch (error) {
+          await closeBrowserbaseSession(session);
+          throw error;
+        }
+
+      } catch (error) {
+        throw new Error(`Payment method check failed: ${error.message}`);
+      }
+    }
+  );
+}
+
 // Export all tools
 export const skiClubProTools = {
   'scp.login': scpLogin,
@@ -893,5 +958,6 @@ export const skiClubProTools = {
   'scp.create_account': scpCreateAccount,
   'scp.check_membership_status': scpCheckMembershipStatus,
   'scp.purchase_membership': scpPurchaseMembership,
+  'scp.check_stored_payment_method': scpCheckStoredPaymentMethod,
   'evidence.capture': captureEvidence
 };
