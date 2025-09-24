@@ -12,11 +12,18 @@ const Index = () => {
           <p className="text-xl text-muted-foreground mb-8">
             Automated registration for your children's programs
           </p>
-          <Link to="/plan-builder">
-            <Button size="lg" className="text-lg px-8 py-3">
-              Create Signup Plan
-            </Button>
-          </Link>
+          <div className="flex gap-4 justify-center">
+            <Link to="/plan-builder">
+              <Button size="lg" className="text-lg px-8 py-3">
+                Create Signup Plan
+              </Button>
+            </Link>
+            <Link to="/credentials">
+              <Button size="lg" variant="outline" className="text-lg px-8 py-3">
+                Manage Credentials
+              </Button>
+            </Link>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">
