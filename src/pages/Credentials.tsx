@@ -69,12 +69,10 @@ export default function Credentials() {
 
   const loadCredentials = async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('cred-list', {
-        body: { provider: 'skiclubpro' }
-      });
+      const { data, error } = await supabase.functions.invoke('cred-list');
 
       if (error) throw error;
-      setCredentials(data.credentials || []);
+      setCredentials(data || []);
     } catch (error) {
       console.error('Error loading credentials:', error);
       toast({
@@ -88,16 +86,19 @@ export default function Credentials() {
   const onSubmit = async (data: CredentialsForm) => {
     setSubmitting(true);
     try {
-      const { error } = await supabase.functions.invoke('store-credentials', {
+      const { data: result, error } = await supabase.functions.invoke('store-credentials', {
         body: {
           alias: data.alias,
-          provider: 'skiclubpro',
+          provider_slug: 'skiclubpro',
           email: data.email,
           password: data.password,
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        const errorMessage = error.message || 'Failed to store credentials.';
+        throw new Error(errorMessage);
+      }
 
       toast({
         title: 'Success',
@@ -111,7 +112,7 @@ export default function Credentials() {
       console.error('Error storing credentials:', error);
       toast({
         title: 'Error',
-        description: 'Failed to store credentials.',
+        description: error instanceof Error ? error.message : 'Failed to store credentials.',
         variant: 'destructive',
       });
     } finally {
@@ -121,11 +122,14 @@ export default function Credentials() {
 
   const deleteCredential = async (credentialId: string) => {
     try {
-      const { error } = await supabase.functions.invoke('cred-delete', {
-        body: { credentialId }
+      const { data, error } = await supabase.functions.invoke('cred-delete', {
+        body: { id: credentialId }
       });
 
-      if (error) throw error;
+      if (error) {
+        const errorMessage = error.message || 'Failed to delete credential.';
+        throw new Error(errorMessage);
+      }
 
       toast({
         title: 'Success',
@@ -137,7 +141,7 @@ export default function Credentials() {
       console.error('Error deleting credential:', error);
       toast({
         title: 'Error',
-        description: 'Failed to delete credential.',
+        description: error instanceof Error ? error.message : 'Failed to delete credential.',
         variant: 'destructive',
       });
     }

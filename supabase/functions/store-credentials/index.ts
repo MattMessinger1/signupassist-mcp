@@ -13,6 +13,22 @@ serve(async (req) => {
 
   try {
     // Check environment variables
+    const sbUrl = Deno.env.get('SB_URL')
+    if (!sbUrl) {
+      return new Response(
+        JSON.stringify({ error: 'Missing SB_URL' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const sbServiceKey = Deno.env.get('SB_SERVICE_ROLE_KEY')
+    if (!sbServiceKey) {
+      return new Response(
+        JSON.stringify({ error: 'Missing SB_SERVICE_ROLE_KEY' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const sealKey = Deno.env.get('CRED_SEAL_KEY')
     if (!sealKey) {
       return new Response(
@@ -44,27 +60,9 @@ serve(async (req) => {
     
     // Validate payload
     const { alias, provider_slug, email, password } = body
-    if (!alias) {
+    if (!alias || !provider_slug || !email || !password) {
       return new Response(
-        JSON.stringify({ error: 'Missing required field: alias' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-    if (!provider_slug) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required field: provider_slug' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-    if (!email) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required field: email' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-    if (!password) {
-      return new Response(
-        JSON.stringify({ error: 'Missing required field: password' }),
+        JSON.stringify({ error: 'Missing required field(s)' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
@@ -97,10 +95,7 @@ serve(async (req) => {
     const ivBase64 = btoa(String.fromCharCode(...iv))
     const ciphertext = encryptedBase64 + ':' + ivBase64
 
-    const supabase = createClient(
-      Deno.env.get("SB_URL")!,
-      Deno.env.get("SB_SERVICE_ROLE_KEY")!
-    )
+    const supabase = createClient(sbUrl, sbServiceKey)
 
     const row = {
       alias,

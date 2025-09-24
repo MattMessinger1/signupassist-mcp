@@ -12,7 +12,23 @@ serve(async (req) => {
   }
 
   try {
-    // Check for encryption key first
+    // Check environment variables
+    const sbUrl = Deno.env.get('SB_URL')
+    if (!sbUrl) {
+      return new Response(
+        JSON.stringify({ error: 'Missing SB_URL' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const sbServiceKey = Deno.env.get('SB_SERVICE_ROLE_KEY')
+    if (!sbServiceKey) {
+      return new Response(
+        JSON.stringify({ error: 'Missing SB_SERVICE_ROLE_KEY' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const sealKey = Deno.env.get('CRED_SEAL_KEY')
     if (!sealKey) {
       return new Response(
@@ -51,10 +67,7 @@ serve(async (req) => {
     }
 
     // Use service role client for database operations
-    const supabase = createClient(
-      Deno.env.get("SB_URL")!,
-      Deno.env.get("SB_SERVICE_ROLE_KEY")!
-    )
+    const supabase = createClient(sbUrl, sbServiceKey)
 
     try {
       const { data, error } = await supabase

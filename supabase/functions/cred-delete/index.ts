@@ -12,6 +12,23 @@ serve(async (req) => {
   }
 
   try {
+    // Check environment variables
+    const sbUrl = Deno.env.get('SB_URL')
+    if (!sbUrl) {
+      return new Response(
+        JSON.stringify({ error: 'Missing SB_URL' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    const sbServiceKey = Deno.env.get('SB_SERVICE_ROLE_KEY')
+    if (!sbServiceKey) {
+      return new Response(
+        JSON.stringify({ error: 'Missing SB_SERVICE_ROLE_KEY' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -42,10 +59,7 @@ serve(async (req) => {
     }
 
     // Use service role client for database operations
-    const supabase = createClient(
-      Deno.env.get("SB_URL")!,
-      Deno.env.get("SB_SERVICE_ROLE_KEY")!
-    )
+    const supabase = createClient(sbUrl, sbServiceKey)
 
     try {
       const { error } = await supabase
