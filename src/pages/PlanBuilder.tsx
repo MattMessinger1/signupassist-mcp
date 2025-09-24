@@ -196,17 +196,18 @@ const PlanBuilder = () => {
 
       if (error) throw error;
 
-      // Create plan
-      await supabase
-        .from('plans')
-        .insert([{
-          user_id: user!.id,
-          child_id: formData.childId,
+      // Create plan using the new create-plan function
+      const { data: planData, error: planError } = await supabase.functions.invoke('create-plan', {
+        body: {
           program_ref: formData.programRef,
-          provider: 'skiclubpro',
+          child_id: formData.childId,
           opens_at: formData.opensAt.toISOString(),
           mandate_id: data.mandate_id,
-        }]);
+          provider: 'skiclubpro'
+        }
+      });
+
+      if (planError) throw planError;
 
       toast({
         title: 'Success',
