@@ -174,41 +174,22 @@ Deno.serve(async (req) => {
     console.log(`Issued mandate ${mandate_id} for interactive field discovery`);
     console.log("mandate id returned:", mandateData?.id, "error:", mandateError);
 
-    // Call the MCP provider tool for field discovery
+    // Call the MCP provider tool for field discovery directly
     console.log("invoking MCP with mandate_id:", mandate_id);
     
     try {
-      const { data: mcpResponse, error: mcpError } = await supabase.functions.invoke('skiclubpro-tools', {
-        body: {
-          tool: 'scp.discover_required_fields',
-          args: { 
-            program_ref, 
-            mandate_id, 
-            plan_execution_id: 'interactive' 
-          }
-        }
+      const result = await invokeMCPTool("scp.discover_required_fields", {
+        program_ref,
+        mandate_id,
+        plan_execution_id: "interactive"
       });
 
-      if (mcpError) {
-        throw mcpError;
-      }
+      console.log('Field discovery completed:', result);
 
-      console.log('Field discovery completed:', mcpResponse);
-
-      // Return schema JSON with proper structure
-      const response = {
-        program_ref,
-        branches: mcpResponse?.branches || [],
-        common_questions: mcpResponse?.common_questions || []
-      };
-
-      return new Response(
-        JSON.stringify(response),
-        { 
-          status: 200, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+      return new Response(JSON.stringify(result), { 
+        status: 200, 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
 
     } catch (err) {
       console.error("MCP call failed:", err);
@@ -240,3 +221,24 @@ Deno.serve(async (req) => {
     );
   }
 });
+
+// Helper function to invoke MCP tools directly
+async function invokeMCPTool(toolName: string, args: any) {
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+  );
+
+  const { data: mcpResponse, error: mcpError } = await supabase.functions.invoke('skiclubpro-tools', {
+    body: {
+      tool: toolName,
+      args
+    }
+  });
+
+  if (mcpError) {
+    throw mcpError;
+  }
+
+  return mcpResponse;
+}

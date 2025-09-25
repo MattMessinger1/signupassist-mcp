@@ -82,54 +82,66 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Run MCP prerequisite checks
+    // Run MCP prerequisite checks using direct tool calls
     const checks = [];
 
-    // Check account status
-    const { data: accountStatus, error: accountError } = await supabase.functions.invoke('skiclubpro-tools', {
-      body: {
-        tool: 'scp.check_account_status',
-        args: { credential_data: credentialData }
-      }
-    });
-
-    if (!accountError && accountStatus) {
+    try {
+      // Check account status
+      const accountStatus = await invokeMCPTool('scp.check_account_status', { 
+        credential_data: credentialData 
+      });
+      
       checks.push({
         check: 'Account Status',
         status: accountStatus.status === 'active' ? 'pass' : 'fail',
         message: accountStatus.message || 'Account status check completed'
       });
+    } catch (error) {
+      console.error('Account status check failed:', error);
+      checks.push({
+        check: 'Account Status',
+        status: 'fail',
+        message: 'Failed to check account status'
+      });
     }
 
-    // Check membership status
-    const { data: membershipStatus, error: membershipError } = await supabase.functions.invoke('skiclubpro-tools', {
-      body: {
-        tool: 'scp.check_membership_status',
-        args: { credential_data: credentialData }
-      }
-    });
-
-    if (!membershipError && membershipStatus) {
+    try {
+      // Check membership status
+      const membershipStatus = await invokeMCPTool('scp.check_membership_status', { 
+        credential_data: credentialData 
+      });
+      
       checks.push({
         check: 'Membership Status',
         status: membershipStatus.is_member ? 'pass' : 'fail',
         message: membershipStatus.message || 'Membership status check completed'
       });
+    } catch (error) {
+      console.error('Membership status check failed:', error);
+      checks.push({
+        check: 'Membership Status',
+        status: 'fail',
+        message: 'Failed to check membership status'
+      });
     }
 
-    // Check stored payment method
-    const { data: paymentStatus, error: paymentError } = await supabase.functions.invoke('skiclubpro-tools', {
-      body: {
-        tool: 'scp.check_stored_payment_method',
-        args: { credential_data: credentialData }
-      }
-    });
-
-    if (!paymentError && paymentStatus) {
+    try {
+      // Check stored payment method
+      const paymentStatus = await invokeMCPTool('scp.check_stored_payment_method', { 
+        credential_data: credentialData 
+      });
+      
       checks.push({
         check: 'Payment Method',
         status: paymentStatus.has_payment_method ? 'pass' : 'fail',
         message: paymentStatus.message || 'Payment method check completed'
+      });
+    } catch (error) {
+      console.error('Payment method check failed:', error);
+      checks.push({
+        check: 'Payment Method',
+        status: 'fail',
+        message: 'Failed to check payment method'
       });
     }
 
@@ -352,6 +364,27 @@ async function checkAccountStatus(userId: string): Promise<PrerequisiteCheck> {
       blocking: false
     };
   }
+}
+
+// Helper function to invoke MCP tools directly
+async function invokeMCPTool(toolName: string, args: any) {
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+  );
+
+  const { data: mcpResponse, error: mcpError } = await supabase.functions.invoke('skiclubpro-tools', {
+    body: {
+      tool: toolName,
+      args
+    }
+  });
+
+  if (mcpError) {
+    throw mcpError;
+  }
+
+  return mcpResponse;
 }
 
 async function checkAllPrerequisites(
