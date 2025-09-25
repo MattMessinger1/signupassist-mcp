@@ -81,30 +81,36 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Issue a temporary mandate (24h, max_amount_cents: 0)
+    // Build temporary mandate request for field discovery
     const validUntil = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const mandateBody = {
+      provider: 'skiclubpro',
+      scope: ['scp:read:listings'],
+      max_amount_cents: 0,
+      program_ref,
+      valid_from: new Date().toISOString(),
+      valid_until: validUntil.toISOString(),
+      credential_id
+    };
+
+    console.log('Creating temporary mandate for field discovery:', mandateBody);
+
     const { data: mandateData, error: mandateError } = await supabase.functions.invoke('mandate-issue', {
       headers: {
         Authorization: authHeader
       },
-      body: {
-        child_id: null, // Not required for field discovery
-        program_ref,
-        max_amount_cents: 0,
-        valid_from: new Date().toISOString(),
-        valid_until: validUntil.toISOString(),
-        provider: 'skiclubpro',
-        scope: ['scp:read:listings'],
-        credential_id
-      }
+      body: mandateBody
     });
 
-    if (mandateError) {
+    if (mandateError || !mandateData) {
       console.error('Failed to issue mandate:', mandateError);
       return new Response(
-        JSON.stringify({ error: 'Failed to issue mandate' }),
+        JSON.stringify({ 
+          error: 'Failed to issue mandate',
+          details: mandateError?.message || 'Unknown error'
+        }),
         { 
-          status: 500, 
+          status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
@@ -127,13 +133,29 @@ Deno.serve(async (req) => {
 
     if (mcpError) {
       console.error('MCP tool error:', mcpError);
-      throw mcpError;
+      return new Response(
+        JSON.stringify({ 
+          error: 'Field discovery failed',
+          details: mcpError?.message || 'Unknown error'
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
     console.log('Field discovery completed:', mcpResponse);
 
+    // Return schema JSON with proper structure
+    const response = {
+      program_ref,
+      branches: mcpResponse?.branches || [],
+      common_questions: mcpResponse?.common_questions || []
+    };
+
     return new Response(
-      JSON.stringify(mcpResponse),
+      JSON.stringify(response),
       { 
         status: 200, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
