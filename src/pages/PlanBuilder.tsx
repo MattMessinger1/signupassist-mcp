@@ -192,7 +192,15 @@ const PlanBuilder = () => {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        toast({
+          title: "Discover Fields Failed",
+          description: error.message || JSON.stringify(error),
+          variant: "destructive",
+        });
+        return;
+      }
+
       setDiscoveredSchema(data);
       
       const branchCount = data.branches?.length || 0;
@@ -203,7 +211,12 @@ const PlanBuilder = () => {
       });
     } catch (error) {
       console.error('Error discovering fields:', error);
-      showFunctionError(error, 'Discovery');
+      const err = error as any;
+      toast({
+        title: "Discover Fields Failed",
+        description: err.message || err.context || JSON.stringify(err),
+        variant: "destructive",
+      });
     } finally {
       setIsDiscovering(false);
     }

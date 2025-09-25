@@ -49,6 +49,8 @@ Deno.serve(async (req) => {
       );
     }
 
+    console.log("auth user id:", user.id);
+
     const { program_ref, credential_id }: RequestBody = await req.json();
 
     if (!program_ref || !credential_id) {
@@ -99,6 +101,7 @@ Deno.serve(async (req) => {
     };
 
     console.log('Creating temporary mandate for field discovery:', mandatePayload);
+    console.log("mandate payload keys:", Object.keys(mandatePayload));
 
     // Generate JWS token
     const signingKey = Deno.env.get('MANDATE_SIGNING_KEY');
@@ -164,25 +167,51 @@ Deno.serve(async (req) => {
       );
     }
     console.log(`Issued mandate ${mandate_id} for interactive field discovery`);
+    console.log("mandate id returned:", mandateData?.id, "error:", mandateError);
 
     // Call the MCP provider tool for field discovery
-    const { data: mcpResponse, error: mcpError } = await supabase.functions.invoke('skiclubpro-tools', {
-      body: {
-        tool: 'scp.discover_required_fields',
-        args: { 
-          program_ref, 
-          mandate_id, 
-          plan_execution_id: 'interactive' 
+    console.log("invoking MCP with mandate_id:", mandate_id);
+    
+    try {
+      const { data: mcpResponse, error: mcpError } = await supabase.functions.invoke('skiclubpro-tools', {
+        body: {
+          tool: 'scp.discover_required_fields',
+          args: { 
+            program_ref, 
+            mandate_id, 
+            plan_execution_id: 'interactive' 
+          }
         }
-      }
-    });
+      });
 
-    if (mcpError) {
-      console.error('MCP tool error:', mcpError);
+      if (mcpError) {
+        throw mcpError;
+      }
+
+      console.log('Field discovery completed:', mcpResponse);
+
+      // Return schema JSON with proper structure
+      const response = {
+        program_ref,
+        branches: mcpResponse?.branches || [],
+        common_questions: mcpResponse?.common_questions || []
+      };
+
+      return new Response(
+        JSON.stringify(response),
+        { 
+          status: 200, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+
+    } catch (err) {
+      console.error("MCP call failed:", err);
+      const error = err as any;
       return new Response(
         JSON.stringify({ 
-          error: 'Field discovery failed',
-          details: mcpError?.message || 'Unknown error'
+          error: error?.message || "MCP call failed",
+          details: error?.details || 'Unknown error'
         }),
         { 
           status: 500, 
@@ -191,22 +220,6 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('Field discovery completed:', mcpResponse);
-
-    // Return schema JSON with proper structure
-    const response = {
-      program_ref,
-      branches: mcpResponse?.branches || [],
-      common_questions: mcpResponse?.common_questions || []
-    };
-
-    return new Response(
-      JSON.stringify(response),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
 
   } catch (error) {
     console.error('Error in discover-fields-interactive function:', error);

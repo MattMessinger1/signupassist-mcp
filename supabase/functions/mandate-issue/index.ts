@@ -39,6 +39,9 @@ Deno.serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
+    const body = await req.json();
+    console.log("mandate-issue body keys:", Object.keys(body));
+    
     const {
       child_id,
       program_ref,
@@ -47,14 +50,39 @@ Deno.serve(async (req) => {
       valid_until,
       provider,
       scope,
-      credential_id
-    } = await req.json();
+      credential_id,
+      jws_compact
+    } = body;
 
     console.log(`Creating mandate for user ${user.id}, program ${program_ref}`);
 
-    // Validate required fields
-    if (!child_id || !program_ref || !max_amount_cents || !valid_from || !valid_until || !provider || !scope || !credential_id) {
-      throw new Error('Missing required fields');
+    // Validate required fields with specific error messages
+    const requiredFields = { user_id: user.id, provider, scope, valid_until, jws_compact };
+    for (const [field, value] of Object.entries(requiredFields)) {
+      if (!value) {
+        return new Response(
+          JSON.stringify({ error: `Missing required field: ${field}` }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+    }
+
+    // Also validate mandate-specific fields
+    if (!child_id || !program_ref || max_amount_cents === undefined || !valid_from || !credential_id) {
+      const missingField = !child_id ? 'child_id' : 
+                          !program_ref ? 'program_ref' : 
+                          max_amount_cents === undefined ? 'max_amount_cents' :
+                          !valid_from ? 'valid_from' : 'credential_id';
+      return new Response(
+        JSON.stringify({ error: `Missing required field: ${missingField}` }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
     // Verify the credential belongs to the user
@@ -97,7 +125,7 @@ Deno.serve(async (req) => {
 
     console.log('Generated JWS mandate:', jws.substring(0, 50) + '...');
 
-    // Store the mandate in the database
+    // Store the mandate in the database - use provided jws_compact if available, otherwise use generated jws
     const { data: mandate, error: insertError } = await supabase
       .from('mandates')
       .insert([{
@@ -109,7 +137,7 @@ Deno.serve(async (req) => {
         valid_until,
         provider,
         scope,
-        jws_compact: jws,
+        jws_compact: jws_compact || jws,
         status: 'active'
       }])
       .select()
