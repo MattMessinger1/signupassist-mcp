@@ -33,3 +33,26 @@ We measure our product's performance continuously:
 - [ ] Add DaySmart integration as MCP tools.
 - [ ] Build out eval dashboards.
 - [ ] Expand to more providers.
+
+## Local Development
+
+### Debug Supabase Functions
+To confirm which config file the CLI is using:
+```bash
+supabase --debug functions serve discover-fields-interactive
+```
+Look for "Using config file: …" in the output.
+
+To force CLI to use this repo's config:
+```bash
+supabase --workdir "$(pwd)" functions serve discover-fields-interactive
+```
+
+### Test Functions Locally
+To test the function locally with curl:
+```bash
+curl -X POST http://localhost:54321/functions/v1/discover-fields-interactive \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <anon_or_session_token>" \
+  -d '{"program_ref":"Nordic Kids Wednesday","credential_id":"42952a6b-173f-44a2-8785-b1b783ee189d","plan_execution_id":"interactive"}'
+```
