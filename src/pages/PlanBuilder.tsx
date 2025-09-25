@@ -324,7 +324,7 @@ const PlanBuilder = () => {
         body: {
           program_ref: formData.programRef,
           child_id: formData.childId,
-          opens_at: formData.opensAt.toISOString(),
+          opens_at: formData.opensAt ? formData.opensAt.toISOString() : new Date().toISOString(),
           mandate_id: data.mandate_id,
           provider: 'skiclubpro'
         }
@@ -407,46 +407,48 @@ const PlanBuilder = () => {
     );
   }
 
-  if (!user) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-background">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Authentication Required</CardTitle>
-            <CardDescription>
-              Please log in to create signup plans for your children.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={() => navigate('/auth')} className="w-full">
-              Go to Login
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
+  // Early return for missing user or session
+  if (!user || !session) {
+    navigate('/auth');
+    return null;
   }
 
-  const currentBranch = discoveredSchema?.branches.find(b => b.choice === selectedBranch);
+  // Safe derived variables with null checks and defaults
+  const currentBranch = discoveredSchema?.branches?.find(b => b.choice === selectedBranch) ?? null;
+  const fieldsToShow = currentBranch?.questions ?? discoveredSchema?.common_questions ?? [];
+  const selectedChildId = form.watch('childId') ?? '';
+  const opensAt = form.watch('opensAt') ?? null;
+
+  // Debug logging for troubleshooting
+  console.log('PlanBuilder Debug:', {
+    discoveredSchema,
+    prerequisiteChecks,
+    formWatchChildId: form.watch('childId'),
+    formWatchOpensAt: form.watch('opensAt'),
+    formWatchAnswers: form.watch('answers'),
+    selectedChildId,
+    currentBranch,
+    fieldsToShow: fieldsToShow.length
+  });
+
   const allFields = [
     ...(discoveredSchema?.common_questions || []),
     ...(currentBranch?.questions || [])
   ];
   
-  // Group fields by category
+  // Group fields by category with safe access
   const fieldsByCategory = allFields.reduce((acc, field) => {
-    const category = field.category || 'program_selection';
+    const category = field?.category || 'program_selection';
     if (!acc[category]) acc[category] = [];
     acc[category].push(field);
     return acc;
   }, {} as Record<string, EnhancedDiscoveredField[]>);
 
-  const selectedChild = form.watch('childId');
 
   // Apply smart defaults when fields are discovered
   useSmartDefaults({
     fields: allFields,
-    childId: selectedChild,
+    childId: selectedChildId,
     setValue: form.setValue,
     watch: form.watch,
   });
@@ -662,11 +664,11 @@ const PlanBuilder = () => {
                 </div>
 
                 {/* Plan Preview */}
-                {allFields.length > 0 && (
+                {allFields.length > 0 && discoveredSchema && (
                   <PlanPreview
                     programRef={discoveredSchema.program_ref}
-                    childName={selectedChild ? 'Selected Child' : 'No child selected'}
-                    opensAt={form.watch('opensAt')}
+                    childName={selectedChildId ? 'Selected Child' : 'No child selected'}
+                    opensAt={opensAt ? opensAt : null}
                     selectedBranch={selectedBranch}
                     answers={form.watch('answers') || {}}
                     discoveredFields={allFields}
@@ -724,8 +726,8 @@ const PlanBuilder = () => {
           open={showConsent}
           onClose={() => setShowConsent(false)}
           onApprove={createMandate}
-          programRef={form.watch('programRef')}
-          childName="Selected Child"
+          programRef={form.watch('programRef') || ''}
+          childName={selectedChildId ? 'Selected Child' : 'No child selected'}
           scopes={['scp:login', 'scp:enroll', 'scp:pay', 'signupassist:fee']}
           loading={isCreatingMandate}
         />
