@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Shield, DollarSign, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Shield, DollarSign, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { ChildSelect } from '@/components/ChildSelect';
 import { OpenTimePicker } from '@/components/OpenTimePicker';
@@ -77,6 +77,8 @@ const PlanBuilder = () => {
   const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [isCreatingMandate, setIsCreatingMandate] = useState(false);
+  const [isCreatingPlan, setIsCreatingPlan] = useState(false);
+  const [createdPlan, setCreatedPlan] = useState<any>(null);
   const [showConsent, setShowConsent] = useState(false);
   const [prerequisiteChecks, setPrerequisiteChecks] = useState<PrerequisiteCheck[]>([]);
   const [hasPaymentMethod, setHasPaymentMethod] = useState(false);
@@ -207,6 +209,39 @@ const PlanBuilder = () => {
     }
   };
 
+  const startSignupJob = async (planId: string) => {
+    if (!user || !session) {
+      toast({
+        title: 'Authentication Required',
+        description: 'Please log in to start a signup job.',
+        variant: 'destructive',
+      });
+      navigate('/auth');
+      return;
+    }
+
+    setIsCreatingPlan(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('start-signup-job', {
+        body: { plan_id: planId }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Signup Job Started',
+        description: 'Signup job started. You can monitor progress in Execution Logs.',
+      });
+
+      console.log('Signup job started:', data);
+    } catch (error) {
+      console.error('Error starting signup job:', error);
+      showFunctionError(error, 'Start Signup Job');
+    } finally {
+      setIsCreatingPlan(false);
+    }
+  };
+
   const createMandate = async (maxCostCents: number) => {
     if (!user || !session) {
       toast({
@@ -273,9 +308,10 @@ const PlanBuilder = () => {
         throw planError;
       }
 
+      setCreatedPlan(planData);
       toast({
-        title: 'Success',
-        description: `Plan created successfully (ID: ${planData.plan_id})! You will be notified when registration opens.`,
+        title: 'Plan Created',
+        description: 'Your plan has been created. Click "Start Signup Job" to begin execution.',
       });
 
       // Log successful plan creation for debugging
@@ -569,12 +605,40 @@ const PlanBuilder = () => {
               <Button type="button" variant="outline" onClick={() => navigate('/')}>
                 Cancel
               </Button>
-              <Button 
-                type="submit" 
-                disabled={!discoveredSchema || prerequisiteChecks.length === 0 || !prerequisiteChecks.every(check => check.status === 'pass') || !hasPaymentMethod}
-              >
-                Create Plan
-              </Button>
+              <div className="space-y-2">
+                <Button 
+                  type="submit" 
+                  disabled={!discoveredSchema || prerequisiteChecks.length === 0 || !prerequisiteChecks.every(check => check.status === 'pass') || !hasPaymentMethod || isCreatingPlan}
+                >
+                  {isCreatingPlan ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Creating Plan...
+                    </>
+                  ) : (
+                    'Create Plan ($20)'
+                  )}
+                </Button>
+                
+                {createdPlan && (
+                  <Button 
+                    type="button"
+                    onClick={() => startSignupJob(createdPlan.plan_id)}
+                    disabled={isCreatingPlan}
+                    variant="outline"
+                    className="w-full"
+                  >
+                    {isCreatingPlan ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Starting Job...
+                      </>
+                    ) : (
+                      'Start Signup Job'
+                    )}
+                  </Button>
+                )}
+              </div>
             </div>
           </form>
         </Form>

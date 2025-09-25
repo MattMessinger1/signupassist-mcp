@@ -29,6 +29,9 @@ verify_jwt = false
 [functions.debug-env]
 verify_jwt = false
 
+[functions.start-signup-job]
+verify_jwt = true
+
 [studio]
 enabled = true
 port = 54323
