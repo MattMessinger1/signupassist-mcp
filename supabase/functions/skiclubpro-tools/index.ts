@@ -724,62 +724,171 @@ async function discoverRequiredFields(args: any, planExecutionId: string): Promi
 async function checkAccountStatus(args: any, planExecutionId: string) {
   console.log('Checking account status for mandate:', args.mandate_id);
   
-  // Test Browserbase connectivity
+  // Launch browser session to verify account
+  let session: BrowserbaseSession | null = null;
+  
   try {
-    const session = await launchBrowserbaseSession();
-    await closeBrowserbaseSession(session);
-    console.log('Browserbase connectivity verified for account check');
+    session = await launchBrowserbaseSession();
+    
+    // Navigate to SkiClubPro login to check account status
+    await session.page.goto('https://skiclubpro.com/login', { waitUntil: 'networkidle' });
+    
+    // Use provided credentials to test login
+    const credentials = args.credential_data;
+    if (credentials?.email && credentials?.password) {
+      await session.page.fill('#email', credentials.email);
+      await session.page.fill('#password', credentials.password);
+      
+      // Attempt login to verify account exists and is active
+      await session.page.click('button[type="submit"]');
+      await session.page.waitForTimeout(3000);
+      
+      const currentUrl = session.page.url();
+      const isLoggedIn = !currentUrl.includes('login') && !currentUrl.includes('error');
+      
+      const result = {
+        status: isLoggedIn ? 'active' : 'inactive',
+        exists: isLoggedIn,
+        verified: isLoggedIn,
+        account_id: isLoggedIn ? `acc_${Date.now()}` : null,
+        message: isLoggedIn ? 'Account is active and verified' : 'Unable to verify account access',
+        browserbase_ready: true
+      };
+      
+      // Capture evidence
+      const screenshot = await captureScreenshot(session, `account-status-${Date.now()}`);
+      await captureEvidence(planExecutionId, 'account_status', screenshot);
+      
+      return result;
+    }
   } catch (error) {
-    console.warn('Browserbase connectivity test failed:', error);
+    console.error('Account status check failed:', error);
+    throw new Error(`Account verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  } finally {
+    if (session) {
+      await closeBrowserbaseSession(session);
+    }
   }
   
-  const mockResult = { 
-    exists: true, 
-    verified: true,
-    account_id: `acc_${Date.now()}`,
-    message: 'Account is active and verified',
-    browserbase_ready: true
-  };
-  
-  // Log evidence
-  const evidenceData = `Account status check: ${JSON.stringify(mockResult)}`;
-  await captureEvidence(planExecutionId, 'account_status', evidenceData);
-  
-  return mockResult;
+  throw new Error('No valid credentials provided for account verification');
 }
 
 async function checkMembershipStatus(args: any, planExecutionId: string) {
   console.log('Checking membership status for mandate:', args.mandate_id);
   
-  const mockResult = { 
-    active: true, 
-    expires_at: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString(),
-    membership_type: 'family',
-    message: 'Membership is current and active'
-  };
+  let session: BrowserbaseSession | null = null;
   
-  // Log evidence
-  const evidenceData = `Membership status check: ${JSON.stringify(mockResult)}`;
-  await captureEvidence(planExecutionId, 'membership_status', evidenceData);
-  
-  return mockResult;
+  try {
+    session = await launchBrowserbaseSession();
+    const credentials = args.credential_data;
+    
+    // Navigate to member portal and check membership status
+    await session.page.goto('https://skiclubpro.com/member/dashboard', { waitUntil: 'networkidle' });
+    
+    // Login if not already authenticated
+    if (session.page.url().includes('login')) {
+      await session.page.fill('#email', credentials.email);
+      await session.page.fill('#password', credentials.password);
+      await session.page.click('button[type="submit"]');
+      await session.page.waitForNavigation({ waitUntil: 'networkidle' });
+    }
+    
+    // Check for membership information on dashboard
+    const membershipInfo = await session.page.evaluate(() => {
+      const membershipSection = (globalThis as any).document.querySelector('.membership-status, .member-info, .account-status');
+      const isActive = membershipSection?.textContent?.toLowerCase().includes('active') || 
+                      membershipSection?.textContent?.toLowerCase().includes('current');
+      
+      return {
+        active: isActive,
+        found_section: !!membershipSection,
+        content: membershipSection?.textContent?.trim() || ''
+      };
+    });
+    
+    const result = {
+      is_member: membershipInfo.active,
+      active: membershipInfo.active,
+      expires_at: membershipInfo.active ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() : null,
+      membership_type: membershipInfo.active ? 'family' : 'none',
+      message: membershipInfo.active ? 'Membership is current and active' : 'No active membership found'
+    };
+    
+    // Capture evidence
+    const screenshot = await captureScreenshot(session, `membership-status-${Date.now()}`);
+    await captureEvidence(planExecutionId, 'membership_status', screenshot);
+    
+    return result;
+    
+  } catch (error) {
+    console.error('Membership status check failed:', error);
+    throw new Error(`Membership verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  } finally {
+    if (session) {
+      await closeBrowserbaseSession(session);
+    }
+  }
 }
 
 async function checkStoredPaymentMethod(args: any, planExecutionId: string) {
   console.log('Checking stored payment method for mandate:', args.mandate_id);
   
-  const mockResult = { 
-    on_file: true,
-    payment_method_type: 'card',
-    last_four: '4242',
-    message: 'Valid payment method on file'
-  };
+  let session: BrowserbaseSession | null = null;
   
-  // Log evidence
-  const evidenceData = `Payment method check: ${JSON.stringify(mockResult)}`;
-  await captureEvidence(planExecutionId, 'payment_method_status', evidenceData);
-  
-  return mockResult;
+  try {
+    session = await launchBrowserbaseSession();
+    const credentials = args.credential_data;
+    
+    // Navigate to billing/payment section
+    await session.page.goto('https://skiclubpro.com/member/billing', { waitUntil: 'networkidle' });
+    
+    // Login if needed
+    if (session.page.url().includes('login')) {
+      await session.page.fill('#email', credentials.email);
+      await session.page.fill('#password', credentials.password);
+      await session.page.click('button[type="submit"]');
+      await session.page.waitForNavigation({ waitUntil: 'networkidle' });
+    }
+    
+    // Check for stored payment methods
+    const paymentInfo = await session.page.evaluate(() => {
+      const doc = (globalThis as any).document;
+      const paymentSection = doc.querySelector('.payment-methods, .billing-info, .card-info');
+      const hasCard = paymentSection?.textContent?.includes('ending in') || 
+                     paymentSection?.textContent?.includes('**** ') ||
+                     doc.querySelector('.credit-card, .payment-card');
+      
+      const cardNumber = paymentSection?.textContent?.match(/\*+\s*(\d{4})/)?.[1] || '****';
+      
+      return {
+        has_payment_method: !!hasCard,
+        found_section: !!paymentSection,
+        card_info: cardNumber
+      };
+    });
+    
+    const result = {
+      has_payment_method: paymentInfo.has_payment_method,
+      on_file: paymentInfo.has_payment_method,
+      payment_method_type: paymentInfo.has_payment_method ? 'card' : 'none',
+      last_four: paymentInfo.has_payment_method ? paymentInfo.card_info : null,
+      message: paymentInfo.has_payment_method ? 'Valid payment method on file' : 'No payment method found'
+    };
+    
+    // Capture evidence
+    const screenshot = await captureScreenshot(session, `payment-method-${Date.now()}`);
+    await captureEvidence(planExecutionId, 'payment_method_status', screenshot);
+    
+    return result;
+    
+  } catch (error) {
+    console.error('Payment method check failed:', error);
+    throw new Error(`Payment method verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  } finally {
+    if (session) {
+      await closeBrowserbaseSession(session);
+    }
+  }
 }
 
 // Tool router
