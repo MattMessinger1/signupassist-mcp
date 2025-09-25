@@ -78,6 +78,7 @@ export interface DiscoverRequiredFieldsArgs {
   program_ref: string;
   mandate_id: string;
   plan_execution_id: string;
+  credential_id?: string;
 }
 
 export interface FieldQuestion {
@@ -89,13 +90,15 @@ export interface FieldQuestion {
 }
 
 export interface FieldBranch {
-  choice: string;
+  id: string;
+  title: string;
   questions: FieldQuestion[];
 }
 
 export interface FieldSchema {
   program_ref: string;
   branches: FieldBranch[];
+  common_questions: FieldQuestion[];
 }
 
 export interface CheckAccountStatusArgs {
@@ -505,6 +508,8 @@ export async function scpPay(args: PayArgs): Promise<{ confirmation_ref: string;
  * Discover required fields for a program with branching support
  */
 export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs): Promise<FieldSchema> {
+  console.log('🔍 Starting field discovery with args:', JSON.stringify(args, null, 2));
+  
   return auditToolCall(
     {
       plan_execution_id: args.plan_execution_id,
@@ -512,11 +517,14 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
       tool: 'scp.discover_required_fields'
     },
     async () => {
-      // Verify mandate has required scope
-      await verifyMandate(args.mandate_id, 'scp:read:listings');
-
       try {
+        console.log('✅ Verifying mandate scope for scp:read:listings...');
+        // Verify mandate has required scope
+        await verifyMandate(args.mandate_id, 'scp:read:listings');
+        console.log('✅ Mandate verified successfully');
+
         // Get user ID from mandate for credential lookup
+        console.log('📋 Looking up mandate details...');
         const mandateResult = await supabase
           .from('mandates')
           .select('user_id')
@@ -524,15 +532,20 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           .single();
 
         if (mandateResult.error) {
+          console.error('❌ Failed to get mandate:', mandateResult.error);
           throw new Error(`Failed to get mandate: ${mandateResult.error.message}`);
         }
 
         const userId = mandateResult.data.user_id;
+        console.log('✅ Found user ID from mandate:', userId);
 
         // Decrypt credentials using credential_id
+        console.log('🔐 Decrypting credentials for credential_id:', args.credential_id || 'default');
         const credentials = await lookupCredentials(args.credential_id || 'default', userId);
+        console.log('✅ Credentials decrypted successfully for email:', credentials.email);
         
         // Launch Browserbase session
+        console.log('🚀 Launching Browserbase session...');
         const session = await launchBrowserbaseSession();
         console.log(`✅ Browserbase session launched: ${session.sessionId}`);
 
@@ -540,21 +553,26 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           // Navigate to Blackhawk registration
           console.log('🌐 Navigating to Blackhawk registration...');
           await session.page.goto('https://register.blackhawkskiclub.org/', { waitUntil: 'networkidle' });
+          console.log('✅ Navigation completed');
           
           // Login with credentials
-          console.log('🔐 Performing login...');
+          console.log('🔐 Performing login with email:', credentials.email);
           await performSkiClubProLogin(session, {
             email: credentials.email,
             password: credentials.password
           });
+          console.log('✅ Login completed successfully');
 
           // Navigate directly to program registration page  
           console.log(`📋 Navigating to program ${args.program_ref}...`);
           const programUrl = `https://register.blackhawkskiclub.org/programs/${args.program_ref}`;
           await session.page.goto(programUrl, { waitUntil: 'networkidle' });
+          console.log('✅ Program page loaded');
           
           // Wait for registration form to load
+          console.log('⏳ Waiting for registration form to load...');
           await session.page.waitForSelector('form, .registration-form', { timeout: 10000 });
+          console.log('✅ Registration form found');
 
           // Scrape form fields from the registration page
           console.log('🔍 Analyzing registration form fields...');
@@ -623,6 +641,8 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
 
             return formFields;
           });
+
+          console.log(`✅ Found ${fieldSchema.length} form fields:`, fieldSchema.map(f => f.label));
 
           // Detect branching logic by looking for dynamic fields
           console.log('🔀 Analyzing form branching...');
@@ -749,9 +769,11 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
 
         } catch (error) {
           console.error('❌ Field discovery failed:', error);
+          console.error('❌ Error stack:', error.stack);
           
           // Try to capture error screenshot
           try {
+            console.log('📸 Capturing error screenshot...');
             const errorScreenshot = await captureScreenshot(session, 'field-discovery-error.png');
             let planExecId = args.plan_execution_id;
             if (planExecId === "interactive") {
@@ -762,16 +784,35 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
               errorScreenshot,
               'field-discovery-error'
             );
+            console.log('✅ Error screenshot captured');
           } catch (screenshotError) {
-            console.error('Could not capture error screenshot:', screenshotError);
+            console.error('❌ Could not capture error screenshot:', screenshotError);
           }
 
           await closeBrowserbaseSession(session);
-          throw new Error(`Field discovery failed: ${error.message}`);
+          
+          // Return structured error instead of throwing
+          return {
+            error: "discover_required_fields failed",
+            details: error.message,
+            program_ref: args.program_ref,
+            branches: [],
+            common_questions: []
+          } as any;
         }
 
       } catch (error) {
-        throw new Error(`Field discovery setup failed: ${error.message}`);
+        console.error('❌ Field discovery setup failed:', error);
+        console.error('❌ Setup error stack:', error.stack);
+        
+        // Return structured error instead of throwing
+        return {
+          error: "discover_required_fields setup failed", 
+          details: error.message,
+          program_ref: args.program_ref,
+          branches: [],
+          common_questions: []
+        } as any;
       }
     }
   );

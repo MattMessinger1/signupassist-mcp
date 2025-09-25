@@ -184,17 +184,27 @@ Deno.serve(async (req) => {
 
     // Call the MCP provider tool for field discovery directly
     console.log("invoking MCP with mandate_id:", mandate_id, "credential_id:", credential_id);
+    console.log('Invoking MCP tool: scp.discover_required_fields', {
+      args: {
+        program_ref,
+        mandate_id,
+        credential_id,
+        plan_execution_id: "interactive"
+      },
+      mandate_id,
+      plan_execution_id: "interactive"
+    });
     
     try {
       // Use "interactive" as a string instead of generating UUID to avoid FK constraint
       const result = await invokeMCPTool("scp.discover_required_fields", {
         program_ref,
         mandate_id,
-        credential_id, // Pass credential_id to MCP
+        credential_id,
         plan_execution_id: "interactive"
       }, {
         mandate_id,
-        plan_execution_id: undefined, // Skip plan_execution_id for interactive discovery to avoid FK error
+        plan_execution_id: "interactive", // Pass plan_execution_id for proper logging
         skipAudit: true // Skip audit logging for interactive discovery
       });
 
