@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { SignJWT, importJWK } from 'https://esm.sh/jose@5.2.4';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -81,32 +82,79 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Build temporary mandate request for field discovery
+    // Generate mandate with JWS
+    const mandate_id = crypto.randomUUID();
     const validUntil = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-    const mandateBody = {
+    
+    const mandatePayload = {
+      mandate_id,
+      user_id: user.id,
       provider: 'skiclubpro',
-      scope: ['scp:read:listings'],
-      max_amount_cents: 0,
+      scopes: ['scp:read:listings'],
       program_ref,
+      max_amount_cents: 0,
       valid_from: new Date().toISOString(),
       valid_until: validUntil.toISOString(),
-      credential_id
+      credential_type: 'jws' as const,
     };
 
-    console.log('Creating temporary mandate for field discovery:', mandateBody);
+    console.log('Creating temporary mandate for field discovery:', mandatePayload);
 
-    const { data: mandateData, error: mandateError } = await supabase.functions.invoke('mandate-issue', {
-      headers: {
-        Authorization: authHeader
-      },
-      body: mandateBody
-    });
+    // Generate JWS token
+    const signingKey = Deno.env.get('MANDATE_SIGNING_KEY');
+    if (!signingKey) {
+      throw new Error('MANDATE_SIGNING_KEY environment variable is required');
+    }
+
+    // Decode the base64 signing key  
+    const keyBytes = new Uint8Array(atob(signingKey).split('').map(c => c.charCodeAt(0)));
+    
+    // Create JWK from the raw key
+    const jwk = {
+      kty: 'oct',
+      k: btoa(String.fromCharCode(...keyBytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, ''),
+    };
+
+    const secret = await importJWK(jwk, 'HS256');
+
+    // Create and sign JWT
+    const jws = await new SignJWT(mandatePayload)
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setIssuer('signupassist-platform')
+      .setAudience('signupassist-mcp')
+      .setExpirationTime(mandatePayload.valid_until)
+      .sign(secret);
+
+    // Insert mandate directly into database
+    const supabaseService = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    const { data: mandateData, error: mandateError } = await supabaseService
+      .from('mandates')
+      .insert({
+        id: mandate_id,
+        user_id: user.id,
+        provider: 'skiclubpro',
+        scope: ['scp:read:listings'],
+        program_ref,
+        max_amount_cents: 0,
+        valid_from: mandatePayload.valid_from,
+        valid_until: mandatePayload.valid_until,
+        credential_type: 'jws',
+        jws_compact: jws,
+        status: 'active'
+      })
+      .select()
+      .single();
 
     if (mandateError || !mandateData) {
-      console.error('Failed to issue mandate:', mandateError);
+      console.error('Failed to insert mandate:', mandateError);
       return new Response(
         JSON.stringify({ 
-          error: 'Failed to issue mandate',
+          error: 'Failed to create mandate',
           details: mandateError?.message || 'Unknown error'
         }),
         { 
@@ -115,8 +163,6 @@ Deno.serve(async (req) => {
         }
       );
     }
-
-    const mandate_id = mandateData.mandate_id;
     console.log(`Issued mandate ${mandate_id} for interactive field discovery`);
 
     // Call the MCP provider tool for field discovery
