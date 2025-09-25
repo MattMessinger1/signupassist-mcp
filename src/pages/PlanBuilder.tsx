@@ -81,6 +81,17 @@ interface PrerequisiteCheck {
 }
 
 const PlanBuilder = () => {
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  
+  // ALL HOOKS MUST BE CALLED UNCONDITIONALLY
+  const form = useForm<PlanBuilderForm>({
+    resolver: zodResolver(planBuilderSchema),
+    defaultValues: {
+      answers: {},
+    },
+  });
+
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
@@ -94,14 +105,44 @@ const PlanBuilder = () => {
   const [prerequisiteChecks, setPrerequisiteChecks] = useState<PrerequisiteCheck[]>([]);
   const [hasPaymentMethod, setHasPaymentMethod] = useState(false);
   const [checkingPayment, setCheckingPayment] = useState(false);
-  const navigate = useNavigate();
-  const { toast } = useToast();
 
-  const form = useForm<PlanBuilderForm>({
-    resolver: zodResolver(planBuilderSchema),
-    defaultValues: {
-      answers: {},
-    },
+  // Safe derived variables with null checks and defaults
+  const currentBranch = discoveredSchema?.branches?.find(b => b.choice === selectedBranch) ?? null;
+  const fieldsToShow = currentBranch?.questions ?? discoveredSchema?.common_questions ?? [];
+  const selectedChildId = form.watch('childId') ?? '';
+  const opensAt = form.watch('opensAt') ?? null;
+
+  // Debug logging for troubleshooting
+  console.log('PlanBuilder Debug:', {
+    discoveredSchema,
+    prerequisiteChecks,
+    formWatchChildId: form.watch('childId'),
+    formWatchOpensAt: form.watch('opensAt'),
+    formWatchAnswers: form.watch('answers'),
+    selectedChildId,
+    currentBranch,
+    fieldsToShow: fieldsToShow.length
+  });
+
+  const allFields = [
+    ...(discoveredSchema?.common_questions || []),
+    ...(currentBranch?.questions || [])
+  ];
+  
+  // Group fields by category with safe access
+  const fieldsByCategory = allFields.reduce((acc, field) => {
+    const category = field?.category || 'program_selection';
+    if (!acc[category]) acc[category] = [];
+    acc[category].push(field);
+    return acc;
+  }, {} as Record<string, EnhancedDiscoveredField[]>);
+
+  // Apply smart defaults when fields are discovered
+  useSmartDefaults({
+    fields: allFields,
+    childId: selectedChildId,
+    setValue: form.setValue,
+    watch: form.watch,
   });
 
   // Authentication setup
@@ -396,6 +437,7 @@ const PlanBuilder = () => {
     setShowConsent(true);
   };
 
+  // EARLY RETURNS AFTER ALL HOOKS
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -407,51 +449,25 @@ const PlanBuilder = () => {
     );
   }
 
-  // Early return for missing user or session
   if (!user || !session) {
-    navigate('/auth');
-    return null;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Card className="w-full max-w-md">
+          <CardHeader>
+            <CardTitle>Authentication Required</CardTitle>
+            <CardDescription>
+              Please log in to create signup plans for your children.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => navigate('/auth')} className="w-full">
+              Go to Login
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
   }
-
-  // Safe derived variables with null checks and defaults
-  const currentBranch = discoveredSchema?.branches?.find(b => b.choice === selectedBranch) ?? null;
-  const fieldsToShow = currentBranch?.questions ?? discoveredSchema?.common_questions ?? [];
-  const selectedChildId = form.watch('childId') ?? '';
-  const opensAt = form.watch('opensAt') ?? null;
-
-  // Debug logging for troubleshooting
-  console.log('PlanBuilder Debug:', {
-    discoveredSchema,
-    prerequisiteChecks,
-    formWatchChildId: form.watch('childId'),
-    formWatchOpensAt: form.watch('opensAt'),
-    formWatchAnswers: form.watch('answers'),
-    selectedChildId,
-    currentBranch,
-    fieldsToShow: fieldsToShow.length
-  });
-
-  const allFields = [
-    ...(discoveredSchema?.common_questions || []),
-    ...(currentBranch?.questions || [])
-  ];
-  
-  // Group fields by category with safe access
-  const fieldsByCategory = allFields.reduce((acc, field) => {
-    const category = field?.category || 'program_selection';
-    if (!acc[category]) acc[category] = [];
-    acc[category].push(field);
-    return acc;
-  }, {} as Record<string, EnhancedDiscoveredField[]>);
-
-
-  // Apply smart defaults when fields are discovered
-  useSmartDefaults({
-    fields: allFields,
-    childId: selectedChildId,
-    setValue: form.setValue,
-    watch: form.watch,
-  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -502,10 +518,13 @@ const PlanBuilder = () => {
               </CardContent>
             </Card>
 
-            {/* Basic Information */}
+            {/* Program Information */}
             <Card>
               <CardHeader>
                 <CardTitle>Program Information</CardTitle>
+                <CardDescription>
+                  Specify the program and child details
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <FormField
@@ -515,20 +534,29 @@ const PlanBuilder = () => {
                     <FormItem>
                       <FormLabel>Program Reference</FormLabel>
                       <FormControl>
-                        <div className="flex gap-2">
-                          <Input placeholder="e.g., blackhawk_winter" {...field} />
+                        <div className="flex space-x-2">
+                          <Input
+                            placeholder="e.g., blackhawk_winter_2024"
+                            {...field}
+                          />
                           <Button 
                             type="button" 
-                            variant="outline"
-                            onClick={() => field.value && discoverFields(field.value)}
+                            onClick={() => discoverFields(field.value)}
                             disabled={!field.value || isDiscovering}
                           >
-                            {isDiscovering ? 'Discovering...' : 'Discover Fields'}
+                            {isDiscovering ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Discovering...
+                              </>
+                            ) : (
+                              'Discover Fields'
+                            )}
                           </Button>
                         </div>
                       </FormControl>
                       <FormDescription>
-                        Enter the program identifier from SkiClubPro, then click "Discover Fields"
+                        Enter the program reference and click "Discover Fields" to load program-specific questions
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -542,10 +570,7 @@ const PlanBuilder = () => {
                     <FormItem>
                       <FormLabel>Child</FormLabel>
                       <FormControl>
-                        <ChildSelect
-                          value={field.value}
-                          onChange={field.onChange}
-                        />
+                        <ChildSelect value={field.value} onChange={field.onChange} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -557,13 +582,13 @@ const PlanBuilder = () => {
                   name="opensAt"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Registration Opens</FormLabel>
+                      <FormLabel>Opens At</FormLabel>
                       <FormControl>
-                        <OpenTimePicker
-                          value={field.value}
-                          onChange={field.onChange}
-                        />
+                        <OpenTimePicker value={field.value} onChange={field.onChange} />
                       </FormControl>
+                      <FormDescription>
+                        When registration opens (automatically submit at this time)
+                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -571,80 +596,78 @@ const PlanBuilder = () => {
               </CardContent>
             </Card>
 
-
-            {/* Prerequisites */}
-            {form.watch('credentialId') && (
-              <PrereqsPanel
-                provider="skiclubpro"
-                credentialId={form.watch('credentialId')}
-                childId={form.watch('childId')}
-                onResultsChange={setPrerequisiteChecks}
-              />
-            )}
-
-            {/* Payment Method Setup */}
-            <PaymentMethodSetup
-              onPaymentMethodSaved={checkPaymentMethod}
-              hasPaymentMethod={hasPaymentMethod}
+            {/* Prerequisites Panel */}
+            <PrereqsPanel
+              provider="skiclubpro"
+              credentialId={form.watch('credentialId')}
+              childId={form.watch('childId') || ''}
+              onResultsChange={setPrerequisiteChecks}
             />
 
-            {/* Draft Saver */}
-            {discoveredSchema && (
-              <DraftSaver
-                formData={form.getValues()}
-                watch={form.watch}
-                setValue={form.setValue}
-                draftKey={discoveredSchema.program_ref || 'default'}
-              />
-            )}
+            {/* Payment Method */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <DollarSign className="h-5 w-5" />
+                  Payment Method
+                </CardTitle>
+                <CardDescription>
+                  Set up payment for the $20 success fee
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <PaymentMethodSetup 
+                  onPaymentMethodSaved={checkPaymentMethod}
+                  hasPaymentMethod={hasPaymentMethod}
+                />
+              </CardContent>
+            </Card>
 
-            {/* Program-specific Fields */}
+            {/* Discovered Fields */}
             {discoveredSchema && (
               <>
+                {/* Branch Selection */}
                 {discoveredSchema.branches && discoveredSchema.branches.length > 0 && (
                   <Card>
                     <CardHeader>
-                      <CardTitle>Program Selection</CardTitle>
+                      <CardTitle>Program Options</CardTitle>
                       <CardDescription>
-                        Choose your program type for {discoveredSchema.program_ref}
+                        Select your program option to see relevant questions
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
-                      <div>
-                        <FormLabel>Program Type</FormLabel>
-                        <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select program type..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {discoveredSchema.branches.map((branch) => (
-                              <SelectItem key={branch.choice} value={branch.choice}>
-                                {branch.choice}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                      <Select value={selectedBranch} onValueChange={setSelectedBranch}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a program option" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {discoveredSchema.branches.map((branch) => (
+                            <SelectItem key={branch.choice} value={branch.choice}>
+                              {branch.choice}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </CardContent>
                   </Card>
                 )}
 
-                {/* Categorized Field Groups */}
+                {/* Discovered Field Groups */}
                 <div className="space-y-6">
                   {Object.entries(fieldsByCategory).map(([category, fields]) => {
                     const categoryTitles = {
                       child_info: 'Child Information',
                       program_selection: 'Program Selection',
-                      legal_waivers: 'Legal & Waivers',
+                      legal_waivers: 'Legal Waivers & Consents',
                       emergency_contacts: 'Emergency Contacts',
                       payment_preferences: 'Payment Preferences',
                     };
 
                     const categoryDescriptions = {
-                      child_info: 'Basic information about your child',
-                      program_selection: 'Program-specific options and preferences',
-                      legal_waivers: 'Required legal documents and waivers',
-                      emergency_contacts: 'Contact information for emergencies',
+                      child_info: 'Information about your child',
+                      program_selection: 'Program-specific selections and preferences',
+                      legal_waivers: 'Required waivers and legal consents',
+                      emergency_contacts: 'Emergency contact information',
                       payment_preferences: 'Payment and billing preferences',
                     };
 
