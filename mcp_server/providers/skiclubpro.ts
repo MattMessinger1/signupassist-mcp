@@ -516,59 +516,58 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
       await verifyMandate(args.mandate_id, 'scp:read:listings');
 
       try {
-        // Get user ID from mandate
-        const { data: mandate, error: mandateError } = await supabase
-          .from('mandates')
-          .select('user_id')
-          .eq('id', args.mandate_id)
-          .single();
-
-        if (mandateError || !mandate) {
-          throw new Error('Could not retrieve mandate details');
-        }
-
+        console.log('🔧 SMOKE TEST: Starting Browserbase session...');
+        
         // Launch Browserbase session
         const session = await launchBrowserbaseSession();
+        console.log(`✅ Session launched: ${session.sessionId}`);
 
         try {
-          // Login first to access program forms
-          const credentials = await lookupCredentials('skiclubpro-default', mandate.user_id);
-          await performSkiClubProLogin(session, credentials);
+          // SMOKE TEST: Just go to example.com instead of SkiClubPro login
+          console.log('🌐 Going to example.com...');
+          await session.page.goto('https://example.com', { waitUntil: 'networkidle' });
+          console.log('✅ Page loaded successfully');
 
-          // Discover required fields with branching support
-          const fieldSchema = await discoverProgramRequiredFields(session, args.program_ref);
-
-          // Capture screenshot evidence for each branch explored
-          const screenshot = await captureScreenshot(session, 'field-discovery.png');
-          await captureScreenshotEvidence(
+          // Capture screenshot evidence
+          console.log('📸 Taking screenshot...');
+          const screenshot = await captureScreenshot(session, 'smoke-test.png');
+          const evidence = await captureScreenshotEvidence(
             args.plan_execution_id,
             screenshot,
-            'discovery'
+            'smoke-test-example-com'
           );
+          console.log(`✅ Screenshot captured: ${evidence.asset_url}`);
 
           await closeBrowserbaseSession(session);
+          console.log('✅ Session closed');
 
-          return fieldSchema;
+          // Return dummy schema for smoke test
+          return {
+            program_ref: args.program_ref,
+            branches: []
+          };
 
-        } catch (discoveryError) {
-          // Capture screenshot of failed discovery for debugging
+        } catch (error) {
+          console.error('❌ Smoke test failed:', error);
+          
+          // Try to capture error screenshot
           try {
-            const errorScreenshot = await captureScreenshot(session, 'discovery-failed.png');
+            const errorScreenshot = await captureScreenshot(session, 'smoke-test-failed.png');
             await captureScreenshotEvidence(
               args.plan_execution_id,
               errorScreenshot,
-              'failed-field-discovery'
+              'failed-smoke-test'
             );
           } catch (screenshotError) {
             console.error('Could not capture error screenshot:', screenshotError);
           }
 
           await closeBrowserbaseSession(session);
-          throw discoveryError;
+          throw new Error(`Browserbase smoke test failed: ${error.message}`);
         }
 
       } catch (error) {
-        throw new Error(`SkiClubPro field discovery failed: ${error.message}`);
+        throw new Error(`Smoke test setup failed: ${error.message}`);
       }
     }
   );
