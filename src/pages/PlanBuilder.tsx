@@ -378,6 +378,34 @@ const PlanBuilder = () => {
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            {/* Credentials */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Login Credentials</CardTitle>
+                <CardDescription>
+                  Select stored login credentials for SkiClubPro
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <FormField
+                  control={form.control}
+                  name="credentialId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormControl>
+                        <CredentialPicker
+                          provider="skiclubpro"
+                          value={field.value}
+                          onChange={field.onChange}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </CardContent>
+            </Card>
+
             {/* Basic Information */}
             <Card>
               <CardHeader>
@@ -404,7 +432,7 @@ const PlanBuilder = () => {
                         </div>
                       </FormControl>
                       <FormDescription>
-                        Enter the program identifier from SkiClubPro
+                        Enter the program identifier from SkiClubPro, then click "Discover Fields"
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
@@ -447,33 +475,6 @@ const PlanBuilder = () => {
               </CardContent>
             </Card>
 
-            {/* Credentials */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Login Credentials</CardTitle>
-                <CardDescription>
-                  Select stored login credentials for SkiClubPro
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <FormField
-                  control={form.control}
-                  name="credentialId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <CredentialPicker
-                          provider="skiclubpro"
-                          value={field.value}
-                          onChange={field.onChange}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </CardContent>
-            </Card>
 
             {/* Prerequisites */}
             {form.watch('credentialId') && (

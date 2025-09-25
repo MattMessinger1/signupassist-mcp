@@ -62,8 +62,11 @@ Deno.serve(async (req) => {
 
     console.log(`Interactive field discovery for program ${program_ref}, credential ${credential_id}`);
 
-    // Load and decrypt the credential
+    // Load and decrypt the credential - pass through the Authorization header
     const { data: credentialData, error: credError } = await supabase.functions.invoke('cred-get', {
+      headers: {
+        Authorization: authHeader
+      },
       body: { credential_id }
     });
 
@@ -80,6 +83,9 @@ Deno.serve(async (req) => {
 
     // Issue a temporary mandate (24h, max_amount_cents: 0)
     const { data: mandateData, error: mandateError } = await supabase.functions.invoke('mandate-issue', {
+      headers: {
+        Authorization: authHeader
+      },
       body: {
         user_id: user.id,
         provider: 'skiclubpro',
