@@ -14,7 +14,7 @@ import {
 // Import tool providers
 import { skiclubproTools } from '../providers/skiclubpro/index.js';
 import { daysmartTools } from '../providers/daysmart/index.js';
-import { campminder Tools } from '../providers/campminder/index.js';
+import { campminderTools } from '../providers/campminder/index.js';
 
 class SignupAssistMCPServer {
   private server: Server;
@@ -61,7 +61,7 @@ class SignupAssistMCPServer {
     const allTools = [
       ...skiclubproTools,
       ...daysmartTools,
-      ...campminder Tools,
+      ...campminderTools,
     ];
 
     allTools.forEach(tool => {

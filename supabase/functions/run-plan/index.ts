@@ -5,103 +5,19 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// MCP Tool execution simulation
-async function executeMCPTool(toolName: string, args: any, planExecutionId: string, mandateId: string, supabase: any) {
-  console.log(`Executing MCP tool: ${toolName} with args:`, JSON.stringify(args));
+// Forward to MCP executor
+async function executePlanViaMCP(planId: string, supabase: any) {
+  console.log(`Forwarding plan ${planId} to MCP executor`);
+  
+  const mcpResult = await supabase.functions.invoke('mcp-executor', {
+    body: { plan_id: planId }
+  });
 
-  // Create audit record
-  const { data: auditRecord, error: auditError } = await supabase
-    .from('mcp_tool_calls')
-    .insert({
-      plan_execution_id: planExecutionId,
-      mandate_id: mandateId,
-      tool: toolName,
-      args_json: args,
-      args_hash: generateHash(JSON.stringify(args)),
-      decision: 'approved' // Since mandate is pre-approved
-    })
-    .select()
-    .single();
-
-  if (auditError) {
-    throw new Error(`Failed to create audit record: ${auditError.message}`);
+  if (mcpResult.error) {
+    throw new Error(`MCP execution failed: ${mcpResult.error.message}`);
   }
 
-  // Simulate tool execution based on tool name
-  let result;
-  let success = true;
-
-  try {
-    switch (toolName) {
-      case 'scp:login':
-        // Simulate login
-        result = {
-          success: true,
-          session_id: `session_${Date.now()}`,
-          message: 'Login successful'
-        };
-        break;
-
-      case 'scp:register':
-        // Simulate registration
-        result = {
-          success: true,
-          registration_id: `reg_${Date.now()}`,
-          confirmation_number: `CONF${Math.floor(Math.random() * 1000000)}`,
-          message: 'Registration successful'
-        };
-        break;
-
-      case 'scp:pay':
-        // Simulate payment
-        result = {
-          success: true,
-          transaction_id: `txn_${Date.now()}`,
-          amount_cents: args.amount_cents || 15000, // $150 default
-          message: 'Payment successful'
-        };
-        break;
-
-      default:
-        throw new Error(`Unknown tool: ${toolName}`);
-    }
-
-    // Capture evidence (screenshot simulation)
-    const { error: evidenceError } = await supabase
-      .from('evidence_assets')
-      .insert({
-        plan_execution_id: planExecutionId,
-        type: 'screenshot',
-        url: `https://evidence.example.com/${toolName}_${Date.now()}.png`,
-        sha256: generateHash(`${toolName}_evidence_${Date.now()}`)
-      });
-
-    if (evidenceError) {
-      console.warn('Failed to create evidence record:', evidenceError);
-    }
-
-  } catch (error) {
-    success = false;
-    result = {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    };
-  }
-
-  // Update audit record with result
-  await supabase
-    .from('mcp_tool_calls')
-    .update({
-      result_json: result,
-      result_hash: generateHash(JSON.stringify(result))
-    })
-    .eq('id', auditRecord.id);
-
-  if (!success) {
-    throw new Error(`Tool ${toolName} failed: ${result.error}`);
-  }
-
-  return result;
+  return mcpResult.data;
 }
 
 function generateHash(data: string): string {
@@ -175,77 +91,10 @@ Deno.serve(async (req) => {
 
     console.log(`Plan execution created: ${planExecution.id}`);
 
-    let finalResult = 'success';
-    let totalAmount = 0;
-    let confirmationRef = null;
-
     try {
-      // Step 1: Login
-      console.log('Step 1: Executing scp:login');
-      const loginResult = await executeMCPTool(
-        'scp:login',
-        {
-          program_ref: plan.program_ref,
-          credential_type: 'stored'
-        },
-        planExecution.id,
-        plan.mandate_id,
-        serviceSupabase
-      );
-
-      // Step 2: Register
-      console.log('Step 2: Executing scp:register');
-      const registerResult = await executeMCPTool(
-        'scp:register',
-        {
-          program_ref: plan.program_ref,
-          child_id: plan.child_id,
-          session_id: loginResult.session_id
-        },
-        planExecution.id,
-        plan.mandate_id,
-        serviceSupabase
-      );
-
-      confirmationRef = registerResult.confirmation_number;
-
-      // Step 3: Pay
-      console.log('Step 3: Executing scp:pay');
-      const payResult = await executeMCPTool(
-        'scp:pay',
-        {
-          registration_id: registerResult.registration_id,
-          session_id: loginResult.session_id
-        },
-        planExecution.id,
-        plan.mandate_id,
-        serviceSupabase
-      );
-
-      totalAmount = payResult.amount_cents;
-
-      // Step 4: Charge success fee
-      console.log('Step 4: Charging success fee');
-      const chargeResponse = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/stripe-charge-success`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`
-        },
-        body: JSON.stringify({
-          plan_execution_id: planExecution.id,
-          user_id: plan.user_id
-        })
-      });
-
-      const chargeResult = await chargeResponse.json();
-      
-      if (!chargeResponse.ok || !chargeResult.success) {
-        console.error('Success fee charge failed:', chargeResult);
-        // Don't fail the whole process if just the fee charge fails
-      } else {
-        console.log('Success fee charged successfully');
-      }
+      // Execute plan via MCP
+      console.log('Executing plan via MCP executor');
+      const mcpResult = await executePlanViaMCP(plan.id, serviceSupabase);
 
       // Update plan status to completed
       await serviceSupabase
@@ -253,40 +102,43 @@ Deno.serve(async (req) => {
         .update({ status: 'completed' })
         .eq('id', plan.id);
 
-      console.log(`Plan execution completed successfully: ${planExecution.id}`);
+      console.log(`MCP plan execution completed successfully: ${planExecution.id}`);
+
+      return new Response(
+        JSON.stringify(mcpResult),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
 
     } catch (error) {
       console.error('Plan execution failed:', error);
-      finalResult = 'failed';
 
-      // Update plan status to failed
+      // Update plan status to failed  
       await serviceSupabase
         .from('plans')
         .update({ status: 'failed' })
         .eq('id', plan.id);
+
+      // Update plan execution with error
+      await serviceSupabase
+        .from('plan_executions')
+        .update({
+          finished_at: new Date().toISOString(),
+          result: 'failed'
+        })
+        .eq('id', planExecution.id);
+
+      return new Response(
+        JSON.stringify({ 
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error',
+          plan_execution_id: planExecution.id
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        }
+      );
     }
-
-    // Update plan execution with final result
-    await serviceSupabase
-      .from('plan_executions')
-      .update({
-        finished_at: new Date().toISOString(),
-        result: finalResult,
-        amount_cents: totalAmount,
-        confirmation_ref: confirmationRef
-      })
-      .eq('id', planExecution.id);
-
-    return new Response(
-      JSON.stringify({
-        success: finalResult === 'success',
-        plan_execution_id: planExecution.id,
-        result: finalResult,
-        amount_cents: totalAmount,
-        confirmation_ref: confirmationRef
-      }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
 
   } catch (error) {
     console.error('Error in run-plan function:', error);
