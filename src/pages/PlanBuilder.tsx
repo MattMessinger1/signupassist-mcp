@@ -237,11 +237,16 @@ const PlanBuilder = () => {
 
     setIsDiscovering(true);
     try {
+      const payload = { 
+        program_ref: programRef,
+        credential_id: credentialId,
+        plan_execution_id: "interactive"
+      };
+      
+      console.log('Discover fields payload:', payload);
+      
       const { data, error } = await supabase.functions.invoke('discover-fields-interactive', {
-        body: { 
-          program_ref: programRef,
-          credential_id: credentialId 
-        }
+        body: payload
       });
 
       if (error || data?.error) {
