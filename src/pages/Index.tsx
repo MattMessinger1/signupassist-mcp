@@ -35,6 +35,11 @@ const Index = () => {
                 Create Signup Plan
               </Button>
             </Link>
+            <Link to="/dashboard">
+              <Button size="lg" variant="outline" className="text-lg px-8 py-3">
+                View Dashboard
+              </Button>
+            </Link>
             <Link to="/credentials">
               <Button size="lg" variant="outline" className="text-lg px-8 py-3">
                 Manage Credentials

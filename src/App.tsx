@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import PlanBuilder from "./pages/PlanBuilder";
 import Auth from "./pages/auth";
 import Credentials from "./pages/Credentials";
+import RegistrationDashboard from "./pages/RegistrationDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -20,6 +21,7 @@ const App = () => (
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/auth" element={<Auth />} />
+          <Route path="/dashboard" element={<RegistrationDashboard />} />
           <Route path="/plan-builder" element={<PlanBuilder />} />
           <Route path="/credentials" element={<Credentials />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

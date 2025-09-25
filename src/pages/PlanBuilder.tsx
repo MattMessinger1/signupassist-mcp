@@ -29,6 +29,7 @@ import { DraftSaver } from '@/components/DraftSaver';
 import { EnhancedDiscoveredField } from '@/components/FieldRenderer';
 import { useSmartDefaults } from '@/hooks/useSmartDefaults';
 import { PlanPreview } from '@/components/PlanPreview';
+import { useRegistrationFlow } from '@/lib/registrationFlow';
 
 const stripePromise = loadStripe('pk_test_51QaUhLLyGRQVXFaLxe3Ygv0wfVr8z6FTKFqCJ9Lw6dAI1PTWT1NCGSSHDhtYN8lFyR35gKP5CJH8djqXEp3qfaLp00XFMN5cPE');
 
