@@ -1,28 +1,24 @@
-[project]
-ref = "jpcrphdevmvzcfgokgym"
+# Project configuration
+project_id = "jpcrphdevmvzcfgokgym"
 
 [api]
-enabled = true
 port = 54321
-schemas = ["public", "graphql_public"]
-extra_search_path = ["public", "extensions"]
-max_rows = 1000
-
-[auth]
-enabled = true
-site_url = "http://127.0.0.1:3000"
-additional_redirect_urls = ["https://127.0.0.1:3000"]
-jwt_expiry = 3600
-enable_signup = true
-enable_anonymous_sign_ins = false
+schemas = ["public", "storage", "graphql_public"]
+extra_search_path = ["public"]
 
 [db]
 port = 54322
 major_version = 15
-pooler_port = 54329
 
-[functions]
-verify_jwt = true
+[studio]
+port = 54323
+
+[auth]
+site_url = "http://localhost:54321"
+additional_redirect_urls = ["http://localhost:3000"]
+
+[functions.verify_jwt]
+enabled = true
 
 [functions.discover-plan-fields]
 verify_jwt = false
@@ -32,11 +28,6 @@ verify_jwt = false
 
 [functions.start-signup-job]
 verify_jwt = true
-
-[studio]
-enabled = true
-port = 54323
-api_url = "http://127.0.0.1:54321"
 
 [analytics]
 enabled = false
