@@ -82,17 +82,20 @@ Deno.serve(async (req) => {
     }
 
     // Issue a temporary mandate (24h, max_amount_cents: 0)
+    const validUntil = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
     const { data: mandateData, error: mandateError } = await supabase.functions.invoke('mandate-issue', {
       headers: {
         Authorization: authHeader
       },
       body: {
-        user_id: user.id,
-        provider: 'skiclubpro',
-        credential_id,
-        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // 24 hours
+        child_id: null, // Not required for field discovery
+        program_ref,
         max_amount_cents: 0,
-        description: `Interactive field discovery for program ${program_ref}`
+        valid_from: new Date().toISOString(),
+        valid_until: validUntil.toISOString(),
+        provider: 'skiclubpro',
+        scope: ['scp:read:listings'],
+        credential_id
       }
     });
 

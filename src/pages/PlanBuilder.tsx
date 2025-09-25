@@ -192,9 +192,12 @@ const PlanBuilder = () => {
 
       if (error) throw error;
       setDiscoveredSchema(data);
+      
+      const branchCount = data.branches?.length || 0;
+      const commonQuestions = data.common_questions?.length || 0;
       toast({
-        title: 'Fields Discovered',
-        description: `Found ${data.branches?.length || 0} program options.`,
+        title: 'Fields Discovered Successfully',
+        description: `Found ${branchCount} program options${commonQuestions > 0 ? ` and ${commonQuestions} common questions` : ''}.`,
       });
     } catch (error) {
       console.error('Error discovering fields:', error);
