@@ -150,6 +150,16 @@ const PlanBuilder = () => {
     }
   };
 
+  // Helper function for showing function errors
+  const showFunctionError = (error: any, action: string) => {
+    const message = error?.message || `${action} failed. Please try again.`;
+    toast({
+      title: `${action} Failed`,
+      description: message,
+      variant: 'destructive',
+    });
+  };
+
   const discoverFields = async (programRef: string) => {
     if (!user || !session) {
       toast({
@@ -188,11 +198,7 @@ const PlanBuilder = () => {
       });
     } catch (error) {
       console.error('Error discovering fields:', error);
-      toast({
-        title: 'Discovery Failed',
-        description: 'Could not load program-specific fields. Please try again.',
-        variant: 'destructive',
-      });
+      showFunctionError(error, 'Discovery');
     } finally {
       setIsDiscovering(false);
     }

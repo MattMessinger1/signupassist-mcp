@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CheckCircle, XCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -23,11 +24,43 @@ export function PrereqsPanel({ provider, credentialId, childId, onResultsChange 
   const [results, setResults] = useState<PrerequisiteCheck[]>([]);
   const [checking, setChecking] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
+
+  // Helper function for showing function errors
+  const showFunctionError = (error: any, action: string) => {
+    const message = error?.message || `${action} failed. Please try again.`;
+    toast({
+      title: `${action} Failed`,
+      description: message,
+      variant: 'destructive',
+    });
+  };
 
   const checkPrerequisites = async () => {
+    // Check authentication
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast({
+        title: 'Authentication Required',
+        description: 'Please log in to check prerequisites.',
+        variant: 'destructive',
+      });
+      navigate('/auth');
+      return;
+    }
+
+    if (!childId) {
+      toast({
+        title: 'Child Required',
+        description: 'Please select or add a child first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (!credentialId) {
       toast({
-        title: 'Credential Required',
+        title: 'Credentials Required',
         description: 'Please select login credentials before checking prerequisites.',
         variant: 'destructive',
       });
@@ -62,11 +95,7 @@ export function PrereqsPanel({ provider, credentialId, childId, onResultsChange 
       });
     } catch (error) {
       console.error('Error checking prerequisites:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to check prerequisites.',
-        variant: 'destructive',
-      });
+      showFunctionError(error, 'Prerequisites Check');
     } finally {
       setChecking(false);
     }
