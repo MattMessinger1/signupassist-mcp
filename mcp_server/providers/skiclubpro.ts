@@ -516,35 +516,109 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
       await verifyMandate(args.mandate_id, 'scp:read:listings');
 
       try {
-        console.log('🔧 SMOKE TEST: Starting Browserbase session...');
+        // Get user ID from mandate for credential lookup
+        const mandateResult = await supabase
+          .from('mandates')
+          .select('user_id')
+          .eq('id', args.mandate_id)
+          .single();
+
+        if (mandateResult.error) {
+          throw new Error(`Failed to get mandate: ${mandateResult.error.message}`);
+        }
+
+        const userId = mandateResult.data.user_id;
+
+        // Decrypt credentials using credential_id
+        const credentials = await lookupCredentials(args.credential_id || 'default', userId);
         
         // Launch Browserbase session
         const session = await launchBrowserbaseSession();
         console.log(`✅ Session launched: ${session.sessionId}`);
 
         try {
-          // SMOKE TEST: Just go to example.com instead of SkiClubPro login
-          console.log('🌐 Going to example.com...');
-          await session.page.goto('https://example.com', { waitUntil: 'networkidle' });
-          console.log('✅ Page loaded successfully');
+          // Navigate to SkiClubPro registration
+          console.log('🌐 Navigating to SkiClubPro...');
+          await session.page.goto('https://register.blackhawkskiclub.org/', { waitUntil: 'networkidle' });
+          
+          // Login flow
+          console.log('🔐 Performing login...');
+          await performSkiClubProLogin(session, {
+            email: credentials.email,
+            password: credentials.password
+          });
+
+          // Navigate to program page and search for program
+          console.log('📋 Searching for program...');
+          await session.page.goto('https://register.blackhawkskiclub.org/programs', { waitUntil: 'networkidle' });
+          
+          // Search for the specific program
+          const searchSelector = 'input[placeholder*="Search"], input[name*="search"], input[id*="search"]';
+          await session.page.waitForSelector(searchSelector, { timeout: 10000 });
+          await session.page.fill(searchSelector, args.program_ref);
+          await session.page.keyboard.press('Enter');
+          await session.page.waitForTimeout(2000);
+
+          // Click on the program link
+          const programLink = await session.page.locator(`text="${args.program_ref}"`).first();
+          await programLink.click();
+          await session.page.waitForLoadState('networkidle');
+
+          // Scrape required fields from the registration form
+          console.log('🔍 Scraping form fields...');
+          const fields = await session.page.evaluate(() => {
+            const formElements = document.querySelectorAll('input, select, textarea');
+            const parsedFields: any[] = [];
+            
+            formElements.forEach((element: any) => {
+              const id = element.id || element.name || `field_${parsedFields.length}`;
+              const label = element.labels?.[0]?.textContent || 
+                           element.getAttribute('placeholder') || 
+                           element.parentElement?.querySelector('label')?.textContent ||
+                           element.getAttribute('aria-label') || 
+                           id;
+              
+              const type = element.type || element.tagName.toLowerCase();
+              const required = element.required || element.getAttribute('aria-required') === 'true';
+              
+              // Skip hidden fields and buttons
+              if (type !== 'hidden' && type !== 'submit' && type !== 'button') {
+                parsedFields.push({
+                  id,
+                  label: label?.trim() || id,
+                  type,
+                  required
+                });
+              }
+            });
+            
+            return parsedFields;
+          });
 
           // Capture screenshot evidence
           console.log('📸 Taking screenshot...');
-          const screenshot = await captureScreenshot(session, 'smoke-test.png');
+          const screenshot = await captureScreenshot(session, 'field-discovery.png');
           const evidence = await captureScreenshotEvidence(
             args.plan_execution_id,
             screenshot,
-            'smoke-test-example-com'
+            'field-discovery'
           );
           console.log(`✅ Screenshot captured: ${evidence.asset_url}`);
 
           await closeBrowserbaseSession(session);
           console.log('✅ Session closed');
 
-          // Return dummy schema for smoke test
+          // Return discovered schema
           return {
             program_ref: args.program_ref,
-            branches: []
+            branches: [
+              {
+                id: 'main',
+                title: 'Main Registration Path',
+                questions: fields
+              }
+            ],
+            common_questions: fields.filter((f: any) => f.required)
           };
 
         } catch (error) {
