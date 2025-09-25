@@ -36,6 +36,30 @@ We measure our product's performance continuously:
 
 ## Local Development
 
+### Terminal-Only Workflow (Recommended)
+
+**Deploy function to Supabase Cloud:**
+```bash
+supabase functions deploy discover-fields-interactive
+```
+
+**Invoke function directly in cloud for testing:**
+```bash
+supabase functions invoke discover-fields-interactive \
+  --data '{"program_ref":"Nordic Kids Wednesday","credential_id":"42952a6b-173f-44a2-8785-b1b783ee189d","plan_execution_id":"interactive"}'
+```
+
+**Fast iteration with npm scripts:**
+```bash
+npm run deploy:discover-fields    # Deploy updates
+npm run test:discover-fields      # Test function output
+```
+
+**Why this approach:**
+- **No Docker dependency:** CLI runs entirely via Supabase Cloud
+- **Same environment:** Matches deployed runtime, not a local simulation  
+- **Fast iteration:** Change → deploy → invoke → see logs
+
 ### Debug Supabase Functions
 To confirm which config file the CLI is using:
 ```bash
