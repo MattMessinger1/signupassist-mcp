@@ -48,6 +48,8 @@ To force CLI to use this repo's config:
 supabase --workdir "$(pwd)" functions serve discover-fields-interactive
 ```
 
+**Always run Supabase locally with the --workdir flag to ensure CLI uses the repo's supabase/config.toml, not any stray configs on the system.**
+
 ### Test Functions Locally
 To test the function locally with curl:
 ```bash
