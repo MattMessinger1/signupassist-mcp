@@ -1,4 +1,3 @@
-# Project configuration
 project_id = "jpcrphdevmvzcfgokgym"
 
 [api]
@@ -19,15 +18,3 @@ additional_redirect_urls = ["http://localhost:3000"]
 
 [functions.verify_jwt]
 enabled = true
-
-[functions.discover-plan-fields]
-verify_jwt = false
-
-[functions.debug-env]
-verify_jwt = false
-
-[functions.start-signup-job]
-verify_jwt = true
-
-[analytics]
-enabled = false
