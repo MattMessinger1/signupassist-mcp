@@ -40,7 +40,7 @@ export async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
     });
 
     // Connect Playwright to Browserbase
-    const browser = await chromium.connectOverCDT(`wss://connect.browserbase.com?apiKey=${browserbaseApiKey}&sessionId=${session.id}`);
+    const browser = await chromium.connectOverCDP(`wss://connect.browserbase.com?apiKey=${browserbaseApiKey}&sessionId=${session.id}`);
     const context = browser.contexts()[0] || await browser.newContext();
     const page = await context.newPage();
 
@@ -65,7 +65,7 @@ export async function connectToBrowserbaseSession(sessionId: string): Promise<Br
     }
 
     // Connect Playwright to existing Browserbase session
-    const browser = await chromium.connectOverCDT(`wss://connect.browserbase.com?apiKey=${browserbaseApiKey}&sessionId=${sessionId}`);
+    const browser = await chromium.connectOverCDP(`wss://connect.browserbase.com?apiKey=${browserbaseApiKey}&sessionId=${sessionId}`);
     const context = browser.contexts()[0] || await browser.newContext();
     const page = context.pages()[0] || await context.newPage();
 
@@ -91,7 +91,7 @@ export async function performSkiClubProLogin(
 
   try {
     // Navigate to SkiClubPro login page
-    await page.goto('https://app.skiclubpro.com/login', { 
+    await page.goto('https://register.blackhawkskiclub.org/', { 
       waitUntil: 'networkidle' 
     });
 
@@ -143,7 +143,7 @@ export async function discoverProgramRequiredFields(session: BrowserbaseSession,
     console.log(`Starting field discovery for program: ${programRef}`);
     
     // Navigate to the program registration page
-    const registrationUrl = `https://app.skiclubpro.com/register/${programRef}`;
+    const registrationUrl = `https://register.blackhawkskiclub.org/register/${programRef}`;
     await session.page.goto(registrationUrl, { waitUntil: 'networkidle' });
     
     // Wait for form to load
@@ -323,7 +323,7 @@ export async function performSkiClubProRegistration(
     console.log(`Starting registration for program: ${registrationData.program_ref}`);
     
     // Navigate to the program registration page
-    const registrationUrl = `https://app.skiclubpro.com/register/${registrationData.program_ref}`;
+    const registrationUrl = `https://register.blackhawkskiclub.org/register/${registrationData.program_ref}`;
     await session.page.goto(registrationUrl, { waitUntil: 'networkidle' });
     
     // Wait for form to load

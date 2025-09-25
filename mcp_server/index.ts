@@ -12,7 +12,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 // Import tool providers
-import { skiclubproTools } from '../providers/skiclubpro/index.js';
+import { skiClubProTools } from './providers/skiclubpro.js';
 import { daysmartTools } from '../providers/daysmart/index.js';
 import { campminderTools } from '../providers/campminder/index.js';
 
@@ -57,14 +57,27 @@ class SignupAssistMCPServer {
   }
 
   private registerTools() {
-    // Register all provider tools
-    const allTools = [
-      ...skiclubproTools,
+    // Register SkiClubPro tools (object format)
+    Object.entries(skiClubProTools).forEach(([name, handler]) => {
+      this.tools.set(name, {
+        name,
+        description: `SkiClubPro provider tool: ${name}`,
+        inputSchema: {
+          type: 'object',
+          properties: {},
+          additionalProperties: true
+        },
+        handler
+      });
+    });
+
+    // Register other provider tools (array format)
+    const arrayTools = [
       ...daysmartTools,
       ...campminderTools,
     ];
 
-    allTools.forEach(tool => {
+    arrayTools.forEach(tool => {
       this.tools.set(tool.name, tool);
     });
   }

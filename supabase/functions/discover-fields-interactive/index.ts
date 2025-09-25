@@ -183,13 +183,14 @@ Deno.serve(async (req) => {
     console.log("mandate id returned:", mandateData?.id, "error:", mandateError);
 
     // Call the MCP provider tool for field discovery directly
-    console.log("invoking MCP with mandate_id:", mandate_id);
+    console.log("invoking MCP with mandate_id:", mandate_id, "credential_id:", credential_id);
     
     try {
       // Use "interactive" as a string instead of generating UUID to avoid FK constraint
       const result = await invokeMCPTool("scp.discover_required_fields", {
         program_ref,
         mandate_id,
+        credential_id, // Pass credential_id to MCP
         plan_execution_id: "interactive"
       }, {
         mandate_id,

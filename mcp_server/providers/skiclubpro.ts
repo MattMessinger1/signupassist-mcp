@@ -534,114 +534,244 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         
         // Launch Browserbase session
         const session = await launchBrowserbaseSession();
-        console.log(`✅ Session launched: ${session.sessionId}`);
+        console.log(`✅ Browserbase session launched: ${session.sessionId}`);
 
         try {
-          // Navigate to SkiClubPro registration
-          console.log('🌐 Navigating to SkiClubPro...');
+          // Navigate to Blackhawk registration
+          console.log('🌐 Navigating to Blackhawk registration...');
           await session.page.goto('https://register.blackhawkskiclub.org/', { waitUntil: 'networkidle' });
           
-          // Login flow
+          // Login with credentials
           console.log('🔐 Performing login...');
           await performSkiClubProLogin(session, {
             email: credentials.email,
             password: credentials.password
           });
 
-          // Navigate to program page and search for program
-          console.log('📋 Searching for program...');
-          await session.page.goto('https://register.blackhawkskiclub.org/programs', { waitUntil: 'networkidle' });
+          // Navigate directly to program registration page  
+          console.log(`📋 Navigating to program ${args.program_ref}...`);
+          const programUrl = `https://register.blackhawkskiclub.org/programs/${args.program_ref}`;
+          await session.page.goto(programUrl, { waitUntil: 'networkidle' });
           
-          // Search for the specific program
-          const searchSelector = 'input[placeholder*="Search"], input[name*="search"], input[id*="search"]';
-          await session.page.waitForSelector(searchSelector, { timeout: 10000 });
-          await session.page.fill(searchSelector, args.program_ref);
-          await session.page.keyboard.press('Enter');
-          await session.page.waitForTimeout(2000);
+          // Wait for registration form to load
+          await session.page.waitForSelector('form, .registration-form', { timeout: 10000 });
 
-          // Click on the program link
-          const programLink = await session.page.locator(`text="${args.program_ref}"`).first();
-          await programLink.click();
-          await session.page.waitForLoadState('networkidle');
-
-          // Scrape required fields from the registration form
-          console.log('🔍 Scraping form fields...');
-          const fields = await session.page.evaluate(() => {
-            const formElements = document.querySelectorAll('input, select, textarea');
-            const parsedFields: any[] = [];
+          // Scrape form fields from the registration page
+          console.log('🔍 Analyzing registration form fields...');
+          const fieldSchema = await session.page.evaluate(() => {
+            const form = document.querySelector('form') || document.querySelector('.registration-form') || document;
+            const formFields: any[] = [];
             
-            formElements.forEach((element: any) => {
-              const id = element.id || element.name || `field_${parsedFields.length}`;
-              const label = element.labels?.[0]?.textContent || 
-                           element.getAttribute('placeholder') || 
-                           element.parentElement?.querySelector('label')?.textContent ||
-                           element.getAttribute('aria-label') || 
-                           id;
-              
+            // Find all input, select, and textarea elements
+            const elements = form.querySelectorAll('input, select, textarea');
+            
+            elements.forEach((element: any, index: number) => {
               const type = element.type || element.tagName.toLowerCase();
-              const required = element.required || element.getAttribute('aria-required') === 'true';
               
-              // Skip hidden fields and buttons
-              if (type !== 'hidden' && type !== 'submit' && type !== 'button') {
-                parsedFields.push({
-                  id,
-                  label: label?.trim() || id,
-                  type,
-                  required
+              // Skip non-user input fields
+              if (['hidden', 'submit', 'button', 'reset'].includes(type)) {
+                return;
+              }
+
+              // Get field identifier
+              const id = element.id || element.name || `field_${index}`;
+              
+              // Find label text
+              let label = '';
+              if (element.labels && element.labels.length > 0) {
+                label = element.labels[0].textContent?.trim() || '';
+              } else {
+                // Look for label by for attribute
+                const labelEl = form.querySelector(`label[for="${element.id}"]`);
+                if (labelEl) {
+                  label = labelEl.textContent?.trim() || '';
+                } else {
+                  // Look for preceding label or text
+                  const parent = element.parentElement;
+                  const prevLabel = parent?.querySelector('label');
+                  label = prevLabel?.textContent?.trim() || 
+                         element.getAttribute('placeholder') ||
+                         element.getAttribute('aria-label') ||
+                         element.getAttribute('name') ||
+                         'Unknown Field';
+                }
+              }
+
+              // Check if required
+              const required = element.hasAttribute('required') || 
+                             element.getAttribute('aria-required') === 'true' ||
+                             element.classList.contains('required');
+
+              // Get options for select elements
+              const options: string[] = [];
+              if (type === 'select') {
+                Array.from(element.options).forEach((option: any) => {
+                  if (option.value && option.text) {
+                    options.push(option.text);
+                  }
                 });
               }
+
+              formFields.push({
+                id,
+                label: label || id,
+                type,
+                required,
+                options: options.length > 0 ? options : undefined
+              });
             });
-            
-            return parsedFields;
+
+            return formFields;
           });
 
+          // Detect branching logic by looking for dynamic fields
+          console.log('🔀 Analyzing form branching...');
+          const branches: FieldBranch[] = [];
+          
+          // Create main branch with all discovered fields
+          const mainBranch: FieldBranch = {
+            id: 'default',
+            title: 'Default Registration Path',
+            questions: fieldSchema.map(field => ({
+              id: field.id,
+              label: field.label,
+              type: field.type,
+              required: field.required,
+              options: field.options
+            }))
+          };
+          
+          branches.push(mainBranch);
+
+          // Look for select fields that might trigger additional questions
+          const selectFields = fieldSchema.filter(f => f.type === 'select' && f.options && f.options.length > 1);
+          
+          for (const selectField of selectFields.slice(0, 2)) { // Test first 2 select fields
+            if (!selectField.options) continue;
+            
+            for (const option of selectField.options.slice(0, 3)) { // Test first 3 options
+              try {
+                console.log(`Testing option "${option}" for field "${selectField.label}"`);
+                
+                // Select the option
+                await session.page.selectOption(`select[name="${selectField.id}"], select[id="${selectField.id}"]`, option);
+                await session.page.waitForTimeout(1000); // Wait for potential DOM changes
+                
+                // Re-scan for new fields
+                const updatedFields = await session.page.evaluate(() => {
+                  const form = document.querySelector('form') || document.querySelector('.registration-form') || document;
+                  const fields: any[] = [];
+                  const elements = form.querySelectorAll('input:not([type="hidden"]), select, textarea');
+                  
+                  elements.forEach((element: any, index: number) => {
+                    const type = element.type || element.tagName.toLowerCase();
+                    if (['submit', 'button', 'reset'].includes(type)) return;
+                    
+                    const id = element.id || element.name || `field_${index}`;
+                    const isVisible = element.offsetWidth > 0 && element.offsetHeight > 0;
+                    
+                    if (isVisible) {
+                      let label = '';
+                      if (element.labels && element.labels.length > 0) {
+                        label = element.labels[0].textContent?.trim() || '';
+                      } else {
+                        const labelEl = form.querySelector(`label[for="${element.id}"]`);
+                        label = labelEl?.textContent?.trim() || 
+                               element.getAttribute('placeholder') ||
+                               element.getAttribute('name') ||
+                               id;
+                      }
+                      
+                      fields.push({
+                        id,
+                        label: label || id,
+                        type,
+                        required: element.hasAttribute('required') || element.getAttribute('aria-required') === 'true'
+                      });
+                    }
+                  });
+                  
+                  return fields;
+                });
+
+                // Create branch if fields are different
+                if (updatedFields.length !== mainBranch.questions.length) {
+                  branches.push({
+                    id: `${selectField.id}_${option.replace(/\s+/g, '_').toLowerCase()}`,
+                    title: `${selectField.label}: ${option}`,
+                    questions: updatedFields.map(field => ({
+                      id: field.id,
+                      label: field.label,
+                      type: field.type,
+                      required: field.required
+                    }))
+                  });
+                }
+                
+              } catch (error) {
+                console.log(`Error testing option ${option}:`, error.message);
+              }
+            }
+          }
+
           // Capture screenshot evidence
-          console.log('📸 Taking screenshot...');
+          console.log('📸 Capturing screenshot evidence...');
           const screenshot = await captureScreenshot(session, 'field-discovery.png');
+          
+          // Generate a proper plan execution ID if it's "interactive"
+          let planExecId = args.plan_execution_id;
+          if (planExecId === "interactive") {
+            planExecId = crypto.randomUUID();
+          }
+          
           const evidence = await captureScreenshotEvidence(
-            args.plan_execution_id,
+            planExecId,
             screenshot,
             'field-discovery'
           );
           console.log(`✅ Screenshot captured: ${evidence.asset_url}`);
 
           await closeBrowserbaseSession(session);
-          console.log('✅ Session closed');
+          console.log('✅ Browserbase session closed');
+
+          // Extract common questions (required fields)
+          const commonQuestions = mainBranch.questions.filter(q => q.required);
 
           // Return discovered schema
-          return {
+          const result: FieldSchema = {
             program_ref: args.program_ref,
-            branches: [
-              {
-                id: 'main',
-                title: 'Main Registration Path',
-                questions: fields
-              }
-            ],
-            common_questions: fields.filter((f: any) => f.required)
+            branches,
+            common_questions: commonQuestions
           };
 
+          console.log(`✅ Field discovery completed for ${args.program_ref}: ${branches.length} branches, ${commonQuestions.length} common questions`);
+          return result;
+
         } catch (error) {
-          console.error('❌ Smoke test failed:', error);
+          console.error('❌ Field discovery failed:', error);
           
           // Try to capture error screenshot
           try {
-            const errorScreenshot = await captureScreenshot(session, 'smoke-test-failed.png');
+            const errorScreenshot = await captureScreenshot(session, 'field-discovery-error.png');
+            let planExecId = args.plan_execution_id;
+            if (planExecId === "interactive") {
+              planExecId = crypto.randomUUID();
+            }
             await captureScreenshotEvidence(
-              args.plan_execution_id,
+              planExecId,
               errorScreenshot,
-              'failed-smoke-test'
+              'field-discovery-error'
             );
           } catch (screenshotError) {
             console.error('Could not capture error screenshot:', screenshotError);
           }
 
           await closeBrowserbaseSession(session);
-          throw new Error(`Browserbase smoke test failed: ${error.message}`);
+          throw new Error(`Field discovery failed: ${error.message}`);
         }
 
       } catch (error) {
-        throw new Error(`Smoke test setup failed: ${error.message}`);
+        throw new Error(`Field discovery setup failed: ${error.message}`);
       }
     }
   );
