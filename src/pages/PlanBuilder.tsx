@@ -24,6 +24,11 @@ import { CredentialPicker } from '@/components/CredentialPicker';
 import { PrereqsPanel } from '@/components/PrereqsPanel';
 import { ConsentModal } from '@/components/ConsentModal';
 import { PaymentMethodSetup } from '@/components/PaymentMethodSetup';
+import { FieldGroup } from '@/components/FieldGroup';
+import { DraftSaver } from '@/components/DraftSaver';
+import { EnhancedDiscoveredField } from '@/components/FieldRenderer';
+import { useSmartDefaults } from '@/hooks/useSmartDefaults';
+import { PlanPreview } from '@/components/PlanPreview';
 
 const stripePromise = loadStripe('pk_test_51QaUhLLyGRQVXFaLxe3Ygv0wfVr8z6FTKFqCJ9Lw6dAI1PTWT1NCGSSHDhtYN8lFyR35gKP5CJH8djqXEp3qfaLp00XFMN5cPE');
 
@@ -41,20 +46,25 @@ type PlanBuilderForm = z.infer<typeof planBuilderSchema>;
 interface DiscoveredField {
   id: string;
   label: string;
-  type: 'text' | 'select' | 'textarea' | 'number';
+  type: 'text' | 'select' | 'textarea' | 'number' | 'date' | 'checkbox' | 'radio' | 'file' | 'multi-select';
   required: boolean;
   options?: string[];
+  category?: 'child_info' | 'program_selection' | 'legal_waivers' | 'emergency_contacts' | 'payment_preferences';
+  placeholder?: string;
+  description?: string;
+  dependsOn?: string;
+  showWhen?: string;
 }
 
 interface Branch {
   choice: string;
-  questions: DiscoveredField[];
+  questions: EnhancedDiscoveredField[];
 }
 
 interface DiscoveredSchema {
   program_ref: string;
   branches: Branch[];
-  common_questions?: DiscoveredField[];
+  common_questions?: EnhancedDiscoveredField[];
 }
 
 interface Child {
@@ -417,8 +427,28 @@ const PlanBuilder = () => {
   }
 
   const currentBranch = discoveredSchema?.branches.find(b => b.choice === selectedBranch);
-  const fieldsToShow = currentBranch?.questions || discoveredSchema?.common_questions || [];
+  const allFields = [
+    ...(discoveredSchema?.common_questions || []),
+    ...(currentBranch?.questions || [])
+  ];
+  
+  // Group fields by category
+  const fieldsByCategory = allFields.reduce((acc, field) => {
+    const category = field.category || 'program_selection';
+    if (!acc[category]) acc[category] = [];
+    acc[category].push(field);
+    return acc;
+  }, {} as Record<string, EnhancedDiscoveredField[]>);
+
   const selectedChild = form.watch('childId');
+
+  // Apply smart defaults when fields are discovered
+  useSmartDefaults({
+    fields: allFields,
+    childId: selectedChild,
+    setValue: form.setValue,
+    watch: form.watch,
+  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -555,73 +585,94 @@ const PlanBuilder = () => {
               hasPaymentMethod={hasPaymentMethod}
             />
 
+            {/* Draft Saver */}
+            {discoveredSchema && (
+              <DraftSaver
+                formData={form.getValues()}
+                watch={form.watch}
+                setValue={form.setValue}
+                draftKey={discoveredSchema.program_ref || 'default'}
+              />
+            )}
+
             {/* Program-specific Fields */}
             {discoveredSchema && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Program Details</CardTitle>
-                  <CardDescription>
-                    Complete the required information for {discoveredSchema.program_ref}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {discoveredSchema.branches && discoveredSchema.branches.length > 0 && (
-                    <div>
-                      <FormLabel>Program Type</FormLabel>
-                      <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select program type..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {discoveredSchema.branches.map((branch) => (
-                            <SelectItem key={branch.choice} value={branch.choice}>
-                              {branch.choice}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  )}
+              <>
+                {discoveredSchema.branches && discoveredSchema.branches.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Program Selection</CardTitle>
+                      <CardDescription>
+                        Choose your program type for {discoveredSchema.program_ref}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div>
+                        <FormLabel>Program Type</FormLabel>
+                        <Select value={selectedBranch} onValueChange={setSelectedBranch}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select program type..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {discoveredSchema.branches.map((branch) => (
+                              <SelectItem key={branch.choice} value={branch.choice}>
+                                {branch.choice}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
 
-                  {fieldsToShow.map((field) => (
-                    <FormField
-                      key={field.id}
-                      control={form.control}
-                      name={`answers.${field.id}`}
-                      render={({ field: formField }) => (
-                        <FormItem>
-                          <FormLabel>
-                            {field.label} {field.required && '*'}
-                          </FormLabel>
-                          <FormControl>
-                            {field.type === 'select' ? (
-                              <Select value={formField.value} onValueChange={formField.onChange}>
-                                <SelectTrigger>
-                                  <SelectValue placeholder={`Select ${field.label.toLowerCase()}...`} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {field.options?.map((option) => (
-                                    <SelectItem key={option} value={option}>
-                                      {option}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            ) : field.type === 'textarea' ? (
-                              <Textarea {...formField} placeholder={`Enter ${field.label.toLowerCase()}`} />
-                            ) : field.type === 'number' ? (
-                              <Input {...formField} type="number" placeholder={`Enter ${field.label.toLowerCase()}`} />
-                            ) : (
-                              <Input {...formField} placeholder={`Enter ${field.label.toLowerCase()}`} />
-                            )}
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  ))}
-                </CardContent>
-              </Card>
+                {/* Categorized Field Groups */}
+                <div className="space-y-6">
+                  {Object.entries(fieldsByCategory).map(([category, fields]) => {
+                    const categoryTitles = {
+                      child_info: 'Child Information',
+                      program_selection: 'Program Selection',
+                      legal_waivers: 'Legal & Waivers',
+                      emergency_contacts: 'Emergency Contacts',
+                      payment_preferences: 'Payment Preferences',
+                    };
+
+                    const categoryDescriptions = {
+                      child_info: 'Basic information about your child',
+                      program_selection: 'Program-specific options and preferences',
+                      legal_waivers: 'Required legal documents and waivers',
+                      emergency_contacts: 'Contact information for emergencies',
+                      payment_preferences: 'Payment and billing preferences',
+                    };
+
+                    return (
+                      <FieldGroup
+                        key={category}
+                        title={categoryTitles[category as keyof typeof categoryTitles] || 'Other Fields'}
+                        description={categoryDescriptions[category as keyof typeof categoryDescriptions]}
+                        fields={fields}
+                        control={form.control}
+                        watch={form.watch}
+                        category={category}
+                        defaultOpen={category === 'child_info' || category === 'program_selection'}
+                      />
+                    );
+                  })}
+                </div>
+
+                {/* Plan Preview */}
+                {allFields.length > 0 && (
+                  <PlanPreview
+                    programRef={discoveredSchema.program_ref}
+                    childName={selectedChild ? 'Selected Child' : 'No child selected'}
+                    opensAt={form.watch('opensAt')}
+                    selectedBranch={selectedBranch}
+                    answers={form.watch('answers') || {}}
+                    discoveredFields={allFields}
+                    credentialAlias={form.watch('credentialId') ? 'Selected Credentials' : 'No credentials'}
+                  />
+                )}
+              </>
             )}
 
             {/* Submit */}
