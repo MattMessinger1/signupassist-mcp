@@ -65,7 +65,10 @@ Deno.serve(async (req) => {
 
     // Load and decrypt the credential
     const { data: credentialData, error: credError } = await supabase.functions.invoke('cred-get', {
-      body: { credential_id }
+      headers: {
+        Authorization: authHeader
+      },
+      body: { id: credential_id }
     });
 
     if (credError) {
@@ -141,10 +144,12 @@ Deno.serve(async (req) => {
     }
 
     const overall_status = checks.every(c => c.status === 'pass') ? 'ready' : 'blocked';
+    const can_proceed = checks.every(c => c.status === 'pass');
 
     const result = {
       checks,
-      overall_status
+      overall_status,
+      can_proceed
     };
 
     console.log('Prerequisites check result:', result);
