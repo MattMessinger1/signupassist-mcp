@@ -763,14 +763,14 @@ async function checkAccountStatus(args: any, planExecutionId: string) {
     }
   } catch (error) {
     console.error('Account status check failed:', error);
-    throw new Error(`Account verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(`Account Verification Failed: ${error instanceof Error ? error.message : 'Unable to verify account login credentials'}`);
   } finally {
     if (session) {
       await closeBrowserbaseSession(session);
     }
   }
   
-  throw new Error('No valid credentials provided for account verification');
+  throw new Error('Account Verification Failed: No valid credentials provided for verification');
 }
 
 async function checkMembershipStatus(args: any, planExecutionId: string) {
@@ -822,7 +822,7 @@ async function checkMembershipStatus(args: any, planExecutionId: string) {
     
   } catch (error) {
     console.error('Membership status check failed:', error);
-    throw new Error(`Membership verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(`Membership Verification Failed: ${error instanceof Error ? error.message : 'Unable to verify membership status'}`);
   } finally {
     if (session) {
       await closeBrowserbaseSession(session);
@@ -883,7 +883,7 @@ async function checkStoredPaymentMethod(args: any, planExecutionId: string) {
     
   } catch (error) {
     console.error('Payment method check failed:', error);
-    throw new Error(`Payment method verification failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    throw new Error(`Payment Method Verification Failed: ${error instanceof Error ? error.message : 'Unable to verify stored payment methods'}`);
   } finally {
     if (session) {
       await closeBrowserbaseSession(session);
@@ -965,7 +965,7 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify(result),
         { 
-          status: 500, 
+          status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
@@ -984,11 +984,10 @@ Deno.serve(async (req) => {
     
     return new Response(
       JSON.stringify({ 
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: `SkiClubPro Tool Error: ${error instanceof Error ? error.message : 'Unable to execute automation tool'}`
       }),
       { 
-        status: 500, 
+        status: 400, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );

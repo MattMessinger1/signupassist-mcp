@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       return new Response(
-        JSON.stringify({ error: 'Authorization header required' }),
+        JSON.stringify({ error: 'Authentication Required: Please log in to discover program fields' }),
         { 
           status: 401, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -42,7 +42,7 @@ Deno.serve(async (req) => {
 
     if (authError || !user) {
       return new Response(
-        JSON.stringify({ error: 'Invalid authentication' }),
+        JSON.stringify({ error: 'Session Expired: Please log in again to continue' }),
         { 
           status: 401, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -56,7 +56,7 @@ Deno.serve(async (req) => {
 
     if (!program_ref || !credential_id) {
       return new Response(
-        JSON.stringify({ error: 'program_ref and credential_id are required' }),
+        JSON.stringify({ error: 'Missing Information: Program reference and credential ID are required' }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -200,10 +200,10 @@ Deno.serve(async (req) => {
       const error = err as any;
       return new Response(
         JSON.stringify({ 
-          error: error?.message || "MCP call failed"
+          error: `Field Discovery Failed: ${error?.message || "Unable to discover form fields for this program"}`
         }),
         { 
-          status: 500, 
+          status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
         }
       );
@@ -215,11 +215,10 @@ Deno.serve(async (req) => {
     
     return new Response(
       JSON.stringify({ 
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: `Field Discovery Error: ${error instanceof Error ? error.message : 'Unable to process field discovery request'}`
       }),
       { 
-        status: 500, 
+        status: 400, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );

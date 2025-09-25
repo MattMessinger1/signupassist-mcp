@@ -95,7 +95,12 @@ export function PrereqsPanel({ provider, credentialId, childId, onResultsChange 
       });
     } catch (error) {
       console.error('Error checking prerequisites:', error);
-      showFunctionError(error, 'Prerequisites Check');
+      const message = (error as any)?.message || (error as any)?.error || 'Prerequisites check failed';
+      toast({
+        title: 'Prerequisites Check Failed',
+        description: message,
+        variant: 'destructive',
+      });
     } finally {
       setChecking(false);
     }

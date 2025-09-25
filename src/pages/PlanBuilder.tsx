@@ -244,20 +244,10 @@ const PlanBuilder = () => {
         }
       });
 
-      if (error) {
-        const message = (error as any)?.message || (error as any)?.context?.statusText || "Discover Fields failed";
+      if (error || data?.error) {
+        const message = error?.message || data?.error || "Field discovery failed";
         toast({
-          title: "Discover Fields Failed",
-          description: message,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      if (!data || (data as any).error) {
-        const message = (data as any)?.error || "Discover Fields failed";
-        toast({
-          title: "Discover Fields Failed",
+          title: "Field Discovery Failed",
           description: message,
           variant: "destructive",
         });
@@ -347,8 +337,9 @@ const PlanBuilder = () => {
         }
       });
 
-      if (error) {
-        if (error.message?.includes('Not authenticated')) {
+      if (error || data?.error) {
+        const message = error?.message || data?.error || "Mandate creation failed";
+        if (message.includes('Not authenticated')) {
           toast({
             title: 'Session Expired',
             description: 'Please log in again to continue.',
@@ -357,7 +348,12 @@ const PlanBuilder = () => {
           navigate('/auth');
           return;
         }
-        throw error;
+        toast({
+          title: "Mandate Creation Failed",
+          description: message,
+          variant: "destructive",
+        });
+        return;
       }
 
       // Create plan using the new create-plan function
@@ -371,8 +367,9 @@ const PlanBuilder = () => {
         }
       });
 
-      if (planError) {
-        if (planError.message?.includes('Not authenticated')) {
+      if (planError || planData?.error) {
+        const message = planError?.message || planData?.error || "Plan creation failed";
+        if (message.includes('Not authenticated')) {
           toast({
             title: 'Session Expired',
             description: 'Please log in again to continue.',
@@ -381,7 +378,12 @@ const PlanBuilder = () => {
           navigate('/auth');
           return;
         }
-        throw planError;
+        toast({
+          title: "Plan Creation Failed",
+          description: message,
+          variant: "destructive",
+        });
+        return;
       }
 
       setCreatedPlan(planData);
@@ -401,9 +403,10 @@ const PlanBuilder = () => {
       navigate('/');
     } catch (error) {
       console.error('Error creating mandate:', error);
+      const message = error instanceof Error ? error.message : 'Failed to create plan. Please try again.';
       toast({
-        title: 'Error',
-        description: 'Failed to create plan. Please try again.',
+        title: 'Plan Creation Failed',
+        description: message,
         variant: 'destructive',
       });
     } finally {

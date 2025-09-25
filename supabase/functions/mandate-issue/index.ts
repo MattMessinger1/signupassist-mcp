@@ -178,7 +178,7 @@ Deno.serve(async (req) => {
     console.error('Error in mandate-issue function:', error);
     return new Response(
       JSON.stringify({ 
-        error: error instanceof Error ? error.message : 'Internal server error'
+        error: `Mandate Creation Failed: ${error instanceof Error ? error.message : 'Unable to create authorization mandate'}`
       }),
       {
         status: 400,

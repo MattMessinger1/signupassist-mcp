@@ -180,11 +180,10 @@ Deno.serve(async (req) => {
     
     return new Response(
       JSON.stringify({ 
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        error: `Prerequisites Check Failed: ${error instanceof Error ? error.message : 'Unable to verify prerequisites'}`
       }),
       { 
-        status: 500, 
+        status: 400, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );

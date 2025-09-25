@@ -133,7 +133,7 @@ Deno.serve(async (req) => {
     console.error('Error in create-plan function:', error);
     return new Response(
       JSON.stringify({ 
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: `Plan Creation Failed: ${error instanceof Error ? error.message : 'Unable to create registration plan'}`
       }),
       {
         status: 400,

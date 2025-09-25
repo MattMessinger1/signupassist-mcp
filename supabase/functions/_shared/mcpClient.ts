@@ -35,7 +35,7 @@ export async function invokeMCPTool(
     });
 
     if (error) {
-      throw new Error(`MCP tool failed: ${error.message || 'Unknown error'}`);
+      throw new Error(`MCP Tool Failed: ${error.message || 'Unknown automation error'}`);
     }
 
     // Log audit trail if not skipped and we have required IDs
@@ -87,7 +87,7 @@ export async function invokeMCPToolDirect(tool: string, args: any): Promise<any>
 
   if (!res.ok) {
     const errorText = await res.text();
-    throw new Error(`MCP tool failed: ${res.status} - ${errorText}`);
+    throw new Error(`MCP Server Error: ${res.status} - ${errorText || 'Direct server communication failed'}`);
   }
 
   return res.json();
