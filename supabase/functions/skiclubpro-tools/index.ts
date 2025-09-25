@@ -126,8 +126,8 @@ async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
 
     console.log('Creating Browserbase session for field discovery...');
     
-    // Create Browserbase session using REST API
-    const response = await fetch('https://www.browserbase.com/v1/sessions', {
+    // Create Browserbase session using correct API endpoint
+    const response = await fetch('https://api.browserbase.com/v1/sessions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${browserbaseApiKey}`,
@@ -147,7 +147,7 @@ async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
     console.log(`Browserbase session created: ${session.id}`);
 
     // Connect Playwright to Browserbase using CDP
-    const wsUrl = `wss://connect.browserbase.com?apiKey=${browserbaseApiKey}&sessionId=${session.id}`;
+    const wsUrl = `wss://connect.browserbase.com?sessionId=${session.id}`;
     console.log('Connecting Playwright to Browserbase...');
     
     const browser = await chromium.connectOverCDP(wsUrl);
