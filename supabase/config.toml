@@ -1,4 +1,5 @@
-project_id = "jpcrphdevmvzcfgokgym"
+[project]
+ref = "jpcrphdevmvzcfgokgym"
 
 [api]
 enabled = true
@@ -9,16 +10,16 @@ max_rows = 1000
 
 [auth]
 enabled = true
-port = 54324
 site_url = "http://127.0.0.1:3000"
 additional_redirect_urls = ["https://127.0.0.1:3000"]
 jwt_expiry = 3600
 enable_signup = true
 enable_anonymous_sign_ins = false
-enable_third_party_auth = false
 
 [db]
+port = 54322
 major_version = 15
+pooler_port = 54329
 
 [functions]
 verify_jwt = true
