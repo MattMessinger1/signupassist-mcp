@@ -12,9 +12,9 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 
 // Import tool providers
-import { skiClubProTools } from './providers/skiclubpro.js';
-import { daysmartTools } from '../providers/daysmart/index.js';
-import { campminderTools } from '../providers/campminder/index.js';
+import { skiClubProTools } from './providers/skiclubpro';
+import { daysmartTools } from '../providers/daysmart/index';
+import { campminderTools } from '../providers/campminder/index';
 
 class SignupAssistMCPServer {
   private server: Server;
