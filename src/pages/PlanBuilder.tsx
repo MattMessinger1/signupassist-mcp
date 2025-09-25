@@ -193,9 +193,20 @@ const PlanBuilder = () => {
       });
 
       if (error) {
+        const message = (error as any)?.message || (error as any)?.context?.statusText || "Discover Fields failed";
         toast({
           title: "Discover Fields Failed",
-          description: error.message || JSON.stringify(error),
+          description: message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!data || (data as any).error) {
+        const message = (data as any)?.error || "Discover Fields failed";
+        toast({
+          title: "Discover Fields Failed",
+          description: message,
           variant: "destructive",
         });
         return;

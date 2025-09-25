@@ -87,6 +87,7 @@ Deno.serve(async (req) => {
     // Generate mandate with JWS
     const mandate_id = crypto.randomUUID();
     const validUntil = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const validFrom = new Date();
     
     const mandatePayload = {
       mandate_id,
@@ -95,7 +96,7 @@ Deno.serve(async (req) => {
       scopes: ['scp:read:listings'],
       program_ref,
       max_amount_cents: 0,
-      valid_from: new Date().toISOString(),
+      valid_from: validFrom.toISOString(),
       valid_until: validUntil.toISOString(),
       credential_type: 'jws' as const,
     };
@@ -120,13 +121,17 @@ Deno.serve(async (req) => {
 
     const secret = await importJWK(jwk, 'HS256');
 
-    // Create and sign JWT
+    // Create and sign JWT with NumericDate seconds
+    const nbfSec = Math.floor(validFrom.getTime() / 1000);
+    const expSec = Math.floor(validUntil.getTime() / 1000);
+    
     const jws = await new SignJWT(mandatePayload)
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
+      .setNotBefore(nbfSec)
       .setIssuer('signupassist-platform')
       .setAudience('signupassist-mcp')
-      .setExpirationTime(mandatePayload.valid_until)
+      .setExpirationTime(expSec)
       .sign(secret);
 
     // Insert mandate directly into database
@@ -141,7 +146,7 @@ Deno.serve(async (req) => {
         id: mandate_id,
         user_id: user.id,
         provider: 'skiclubpro',
-        scope: ['scp:read:listings'],
+        scope: ['scp:read:listings'],  // Use singular 'scope' to match DB column
         program_ref,
         max_amount_cents: 0,
         valid_from: mandatePayload.valid_from,
@@ -210,8 +215,7 @@ Deno.serve(async (req) => {
       const error = err as any;
       return new Response(
         JSON.stringify({ 
-          error: error?.message || "MCP call failed",
-          details: error?.details || 'Unknown error'
+          error: error?.message || "MCP call failed"
         }),
         { 
           status: 500, 

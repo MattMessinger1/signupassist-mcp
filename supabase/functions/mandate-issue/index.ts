@@ -50,14 +50,18 @@ Deno.serve(async (req) => {
       valid_until,
       provider,
       scope,
+      scopes,
       credential_id,
       jws_compact
     } = body;
 
+    // Normalize scope field - accept either scope or scopes
+    const normalizedScope = scope ?? scopes;
+
     console.log(`Creating mandate for user ${user.id}, program ${program_ref}`);
 
     // Validate required fields with specific error messages
-    const requiredFields = { user_id: user.id, provider, scope, valid_until, jws_compact };
+    const requiredFields = { user_id: user.id, provider, scope: normalizedScope, valid_until, jws_compact };
     for (const [field, value] of Object.entries(requiredFields)) {
       if (!value) {
         return new Response(
@@ -68,6 +72,16 @@ Deno.serve(async (req) => {
           }
         );
       }
+    }
+    
+    if (!Array.isArray(normalizedScope)) {
+      return new Response(
+        JSON.stringify({ error: "scope must be an array" }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
     // Also validate mandate-specific fields
@@ -108,7 +122,7 @@ Deno.serve(async (req) => {
       child_id,
       program_ref,
       max_amount_cents,
-      scope,
+      scope: normalizedScope,
       credential_id
     };
 
@@ -136,7 +150,7 @@ Deno.serve(async (req) => {
         valid_from,
         valid_until,
         provider,
-        scope,
+        scope: normalizedScope,
         jws_compact: jws_compact || jws,
         status: 'active'
       }])
