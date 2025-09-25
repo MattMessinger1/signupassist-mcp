@@ -179,13 +179,16 @@ Deno.serve(async (req) => {
     console.log("invoking MCP with mandate_id:", mandate_id);
     
     try {
+      // Generate a proper UUID for the interactive session
+      const interactive_session_id = crypto.randomUUID();
+      
       const result = await invokeMCPTool("scp.discover_required_fields", {
         program_ref,
         mandate_id,
-        plan_execution_id: "interactive"
+        plan_execution_id: interactive_session_id
       }, {
         mandate_id,
-        plan_execution_id: "interactive"
+        plan_execution_id: interactive_session_id
       });
 
       console.log('Field discovery completed:', result);
