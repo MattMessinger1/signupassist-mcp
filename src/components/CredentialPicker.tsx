@@ -33,15 +33,18 @@ export function CredentialPicker({ provider, value, onChange }: CredentialPicker
   const loadCredentials = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('cred-list', {
-        body: { provider }
-      });
+      const { data, error } = await supabase.functions.invoke('cred-list');
 
       if (error) throw error;
 
-      setCredentials(data.credentials || []);
+      // Filter credentials by provider client-side and ensure we have the correct structure
+      const filteredCredentials = (data?.credentials || data || []).filter(
+        (c: Credential) => c.provider === provider
+      );
       
-      if (data.credentials?.length === 0) {
+      setCredentials(filteredCredentials);
+      
+      if (filteredCredentials.length === 0) {
         toast({
           title: 'No Credentials Found',
           description: `No stored credentials found for ${provider}. Please add credentials first.`,
@@ -50,7 +53,6 @@ export function CredentialPicker({ provider, value, onChange }: CredentialPicker
       }
     } catch (error) {
       console.error('Error loading credentials:', error);
-      console.error('Full error details:', JSON.stringify(error, null, 2));
       toast({
         title: 'Error',
         description: `Failed to load stored credentials: ${error instanceof Error ? error.message : 'Unknown error'}`,
