@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
       headers: {
         Authorization: authHeader
       },
-      body: { credential_id }
+      body: { id: credential_id }
     });
 
     if (credError) {
