@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { chromium } from 'npm:playwright@1.55.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -109,7 +110,7 @@ async function logToolCall(context: { plan_execution_id: string; mandate_id: str
   }
 }
 
-// Browserbase session management
+// Enhanced Browserbase session management with real Playwright automation
 async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
   try {
     const browserbaseApiKey = Deno.env.get('BROWSERBASE_API_KEY');
@@ -123,10 +124,10 @@ async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
       throw new Error('BROWSERBASE_PROJECT_ID environment variable is required');
     }
 
-    console.log('Testing Browserbase connectivity...');
+    console.log('Creating Browserbase session for field discovery...');
     
-    // Test basic connection first
-    const testResponse = await fetch('https://www.browserbase.com/v1/sessions', {
+    // Create Browserbase session using REST API
+    const response = await fetch('https://www.browserbase.com/v1/sessions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${browserbaseApiKey}`,
@@ -137,20 +138,30 @@ async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
       }),
     });
 
-    if (!testResponse.ok) {
-      const errorText = await testResponse.text();
-      throw new Error(`Browserbase API error: ${testResponse.status} ${testResponse.statusText} - ${errorText}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Browserbase API error: ${response.status} ${response.statusText} - ${errorText}`);
     }
 
-    const session = await testResponse.json();
-    console.log(`Browserbase session created successfully: ${session.id}`);
+    const session = await response.json();
+    console.log(`Browserbase session created: ${session.id}`);
 
-    // For now, return a mock session object since we don't have Playwright in the edge function
+    // Connect Playwright to Browserbase using CDP
+    const wsUrl = `wss://connect.browserbase.com?apiKey=${browserbaseApiKey}&sessionId=${session.id}`;
+    console.log('Connecting Playwright to Browserbase...');
+    
+    const browser = await chromium.connectOverCDP(wsUrl);
+    const context = browser.contexts()[0] || await browser.newContext();
+    const page = await context.newPage();
+    
+    // Set up page for form interaction
+    await page.setViewportSize({ width: 1920, height: 1080 });
+
     return {
       sessionId: session.id,
-      browser: null,
-      context: null,
-      page: null,
+      browser,
+      context,
+      page,
     };
     
   } catch (error) {
@@ -162,111 +173,295 @@ async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
 
 async function closeBrowserbaseSession(session: BrowserbaseSession): Promise<void> {
   try {
-    console.log(`Browserbase session ${session.sessionId} marked for cleanup`);
-    // In a real implementation, we would close the browser connection here
+    console.log(`Closing Browserbase session: ${session.sessionId}`);
+    if (session.browser) {
+      await session.browser.close();
+    }
   } catch (error) {
     console.error('Error closing Browserbase session:', error);
   }
 }
 
-// Real MCP provider implementations
+async function captureScreenshot(session: BrowserbaseSession, filename?: string): Promise<string> {
+  try {
+    const screenshot = await session.page.screenshot({ 
+      fullPage: true,
+      type: 'png'
+    });
+    
+    // Convert screenshot to base64 for storage/evidence
+    const base64Screenshot = btoa(String.fromCharCode(...new Uint8Array(screenshot)));
+    return base64Screenshot;
+  } catch (error) {
+    console.error('Error capturing screenshot:', error);
+    throw error;
+  }
+}
+
+// Real field discovery with complete branching logic
 async function discoverRequiredFields(args: any, planExecutionId: string): Promise<FieldSchema> {
-  console.log('Discovering required fields for program:', args.program_ref);
+  console.log('Starting real field discovery for program:', args.program_ref);
   
   let session: BrowserbaseSession | null = null;
   
   try {
-    // Test Browserbase connection
+    // Launch real Browserbase session with Playwright
     session = await launchBrowserbaseSession();
-    console.log('Browserbase connection test successful');
+    console.log('Browserbase session launched successfully');
     
-    // For now, capture evidence of the connection test
-    const connectionEvidence = `Browserbase session ${session.sessionId} created for program ${args.program_ref} at ${new Date().toISOString()}`;
-    await captureEvidence(planExecutionId, 'browserbase_session', connectionEvidence, `session-${args.program_ref}-${Date.now()}.txt`);
+    // Navigate to program registration page
+    const registrationUrl = `https://app.skiclubpro.com/register/${args.program_ref}`;
+    console.log(`Navigating to: ${registrationUrl}`);
     
-    // Return a structured field schema based on common SkiClubPro patterns
-    // In the future, this will be replaced with real browser automation
+    await session.page.goto(registrationUrl, { 
+      waitUntil: 'networkidle',
+      timeout: 30000 
+    });
+    
+    // Wait for form to load
+    await session.page.waitForSelector('form', { timeout: 15000 });
+    console.log('Registration form loaded');
+    
+    // Take initial screenshot for evidence
+    const initialScreenshot = await captureScreenshot(session, `initial-${args.program_ref}`);
+    await captureEvidence(planExecutionId, 'initial_screenshot', initialScreenshot, `initial-${args.program_ref}-${Date.now()}.png`);
+    
+    // Enhanced field discovery script that runs in browser context
+    const fieldDiscoveryScript = `
+      (() => {
+        const form = document.querySelector('form');
+        if (!form) return { baseFields: [], branchingFields: [] };
+        
+        function extractFieldInfo(input) {
+          const style = window.getComputedStyle(input);
+          if (input.type === 'hidden' || style.display === 'none' || style.visibility === 'hidden') {
+            return null;
+          }
+          
+          const label = form.querySelector('label[for="' + input.id + '"]')?.textContent?.trim() || 
+                       input.getAttribute('placeholder') || 
+                       input.getAttribute('name') || 
+                       input.closest('.form-group, .field, .input-group')?.querySelector('label')?.textContent?.trim() ||
+                       'Unknown Field';
+          
+          const field = {
+            question_id: input.id || input.name || 'field_' + Math.random().toString(36).substr(2, 9),
+            label: label,
+            type: input.type || input.tagName.toLowerCase(),
+            required: input.hasAttribute('required') || input.getAttribute('aria-required') === 'true',
+            options: [],
+            element_info: {
+              id: input.id,
+              name: input.name,
+              tagName: input.tagName,
+              className: input.className
+            }
+          };
+          
+          // Capture options for select elements
+          if (input.tagName.toLowerCase() === 'select') {
+            field.options = Array.from(input.options || [])
+              .map(option => option.text)
+              .filter(text => text.trim() && text !== 'Select...' && text !== '-- Choose --');
+          }
+          
+          // Handle radio buttons
+          if (input.type === 'radio') {
+            field.question_id = input.name;
+            field.options = [input.value || input.nextElementSibling?.textContent?.trim() || 'Option'];
+          }
+          
+          return field;
+        }
+        
+        const inputs = form.querySelectorAll('input, select, textarea');
+        const fields = [];
+        const radioGroups = new Map();
+        
+        inputs.forEach(input => {
+          const fieldInfo = extractFieldInfo(input);
+          if (!fieldInfo) return;
+          
+          if (input.type === 'radio') {
+            if (radioGroups.has(fieldInfo.question_id)) {
+              const existing = radioGroups.get(fieldInfo.question_id);
+              existing.options = existing.options.concat(fieldInfo.options);
+            } else {
+              radioGroups.set(fieldInfo.question_id, fieldInfo);
+            }
+          } else {
+            fields.push(fieldInfo);
+          }
+        });
+        
+        // Add radio groups to fields
+        radioGroups.forEach(group => fields.push(group));
+        
+        const branchingFields = fields.filter(field => 
+          (field.type === 'select' && field.options.length > 0) || 
+          (field.type === 'radio' && field.options.length > 1)
+        );
+        
+        return { baseFields: fields, branchingFields: branchingFields };
+      })();
+    `;
+    
+    const { baseFields, branchingFields } = await session.page.evaluate(fieldDiscoveryScript);
+    console.log(`Found ${baseFields.length} base fields, ${branchingFields.length} branching fields`);
+    
+    const branches: FieldBranch[] = [];
+    const commonFields: FieldQuestion[] = [];
+    
+    // If no branching fields, return all fields as common
+    if (branchingFields.length === 0) {
+      console.log('No branching detected, treating all fields as common');
+      
+      baseFields.forEach((field: any) => {
+        commonFields.push({
+          question_id: field.question_id,
+          label: field.label,
+          type: field.type as any,
+          required: field.required,
+          options: field.options
+        });
+      });
+      
+      branches.push({
+        branch_id: 'default',
+        title: 'Standard Registration',
+        questions: []
+      });
+    } else {
+      // Test each branching field option to discover conditional fields
+      for (const branchField of branchingFields.slice(0, 3)) { // Limit to first 3 branching fields
+        console.log(`Testing branching field: ${branchField.label} with ${branchField.options.length} options`);
+        
+        for (const option of branchField.options.slice(0, 4)) { // Test up to 4 options per field
+          try {
+            console.log(`Testing option: ${option} for field: ${branchField.label}`);
+            
+            // Select the option using a safer approach
+            const selectionScript = `
+              (() => {
+                const field = document.getElementById('${branchField.element_info.id}') || 
+                             document.querySelector('[name="${branchField.element_info.name}"]');
+                
+                if (!field) return false;
+                
+                if (field.tagName.toLowerCase() === 'select') {
+                  for (let i = 0; i < field.options.length; i++) {
+                    if (field.options[i].text === '${option}' || field.options[i].value === '${option}') {
+                      field.selectedIndex = i;
+                      field.dispatchEvent(new Event('change', { bubbles: true }));
+                      return true;
+                    }
+                  }
+                } else if (field.type === 'radio') {
+                  const radioElements = document.querySelectorAll('[name="${branchField.element_info.name}"]');
+                  for (const radio of radioElements) {
+                    if (radio.value === '${option}' || 
+                        radio.nextElementSibling?.textContent?.trim() === '${option}') {
+                      radio.checked = true;
+                      radio.dispatchEvent(new Event('change', { bubbles: true }));
+                      return true;
+                    }
+                  }
+                }
+                return false;
+              })();
+            `;
+            
+            await session.page.evaluate(selectionScript);
+            
+            // Wait for potential DOM changes
+            await session.page.waitForTimeout(2000);
+            
+            // Re-scan for newly appeared fields using the same discovery script
+            const { baseFields: updatedFields } = await session.page.evaluate(fieldDiscoveryScript);
+            
+            // Take screenshot of this branch state
+            const branchScreenshot = await captureScreenshot(session, `branch-${branchField.question_id}-${option}`);
+            await captureEvidence(planExecutionId, 'branch_screenshot', branchScreenshot, `branch-${branchField.question_id}-${option}-${Date.now()}.png`);
+            
+            // Create branch entry
+            const branchTitle = `${branchField.label}: ${option}`;
+            console.log(`Branch "${branchTitle}" revealed ${updatedFields.length} total fields`);
+            
+            branches.push({
+              branch_id: `${branchField.question_id}_${option.replace(/[^a-zA-Z0-9]/g, '_')}`,
+              title: branchTitle,
+              questions: updatedFields.map((field: any) => ({
+                question_id: field.question_id,
+                label: field.label,
+                type: field.type as any,
+                required: field.required,
+                options: field.options
+              }))
+            });
+            
+          } catch (optionError) {
+            console.error(`Error testing option ${option}:`, optionError);
+          }
+        }
+      }
+    }
+    
+    // Identify truly common fields (appear in all branches or when no branches exist)
+    if (branches.length > 1) {
+      const allFieldIds = new Set<string>();
+      const fieldCounts = new Map<string, number>();
+      
+      branches.forEach(branch => {
+        branch.questions.forEach(field => {
+          allFieldIds.add(field.question_id);
+          fieldCounts.set(field.question_id, (fieldCounts.get(field.question_id) || 0) + 1);
+        });
+      });
+      
+      // Fields that appear in all branches are common
+      fieldCounts.forEach((count, fieldId) => {
+        if (count === branches.length) {
+          const sampleField = branches[0].questions.find(f => f.question_id === fieldId);
+          if (sampleField && !commonFields.find(f => f.question_id === fieldId)) {
+            commonFields.push(sampleField);
+          }
+        }
+      });
+      
+      // Remove common fields from branch-specific questions
+      branches.forEach(branch => {
+        branch.questions = branch.questions.filter(field => 
+          !commonFields.find(common => common.question_id === field.question_id)
+        );
+      });
+    }
+    
     const fieldSchema: FieldSchema = {
       program_ref: args.program_ref,
-      branches: [
-        {
-          branch_id: 'main',
-          title: 'Registration Form',
-          questions: [
-            {
-              question_id: 'child_name',
-              label: 'Child Full Name',
-              type: 'text',
-              required: true
-            },
-            {
-              question_id: 'child_dob',
-              label: 'Child Date of Birth',
-              type: 'date',
-              required: true
-            },
-            {
-              question_id: 'parent_email',
-              label: 'Parent Email',
-              type: 'email',
-              required: true
-            },
-            {
-              question_id: 'emergency_contact_name',
-              label: 'Emergency Contact Name',
-              type: 'text',
-              required: true
-            },
-            {
-              question_id: 'emergency_contact_phone',
-              label: 'Emergency Contact Phone',
-              type: 'text',
-              required: true
-            },
-            {
-              question_id: 'skill_level',
-              label: 'Skiing/Snowboarding Skill Level',
-              type: 'select',
-              required: true,
-              options: ['Beginner', 'Intermediate', 'Advanced', 'Expert']
-            },
-            {
-              question_id: 'dietary_restrictions',
-              label: 'Dietary Restrictions or Allergies',
-              type: 'text',
-              required: false
-            }
-          ]
-        }
-      ],
-      common_questions: [
-        {
-          question_id: 'waiver_agreement',
-          label: 'I agree to the liability waiver and terms of service',
-          type: 'checkbox',
-          required: true
-        },
-        {
-          question_id: 'photo_consent',
-          label: 'I consent to photos being taken for promotional purposes',
-          type: 'checkbox',
-          required: false
-        }
-      ]
+      branches: branches,
+      common_questions: commonFields
     };
 
     console.log(`Field discovery completed for program: ${args.program_ref}`);
-    console.log(`Schema includes ${fieldSchema.branches[0]?.questions?.length || 0} main questions and ${fieldSchema.common_questions?.length || 0} common questions`);
+    console.log(`Schema includes ${branches.length} branches and ${commonFields.length} common questions`);
+    console.log('Branches:', branches.map(b => `${b.title} (${b.questions.length} fields)`));
     
     return fieldSchema;
 
   } catch (error) {
     console.error('Error during field discovery:', error);
     
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    const errorEvidence = `Error during discovery for ${args.program_ref}: ${errorMessage}`;
-    await captureEvidence(planExecutionId, 'error', errorEvidence, `error-${args.program_ref}-${Date.now()}.txt`);
+    // Capture error screenshot if session exists
+    if (session) {
+      try {
+        const errorScreenshot = await captureScreenshot(session, `error-${args.program_ref}`);
+        await captureEvidence(planExecutionId, 'error_screenshot', errorScreenshot, `error-${args.program_ref}-${Date.now()}.png`);
+      } catch (screenshotError) {
+        console.error('Failed to capture error screenshot:', screenshotError);
+      }
+    }
     
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     throw new Error(`Failed to discover fields for program ${args.program_ref}: ${errorMessage}`);
     
   } finally {
