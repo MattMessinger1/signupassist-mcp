@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { invokeMCPTool } from '../_shared/mcpClient.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -82,14 +83,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Run MCP prerequisite checks using direct tool calls
+    // Run MCP prerequisite checks using shared client
     const checks = [];
 
     try {
       // Check account status
       const accountStatus = await invokeMCPTool('scp.check_account_status', { 
         credential_data: credentialData 
-      });
+      }, { skipAudit: true }); // Skip audit for prerequisite checks
       
       checks.push({
         check: 'Account Status',
@@ -109,7 +110,7 @@ Deno.serve(async (req) => {
       // Check membership status
       const membershipStatus = await invokeMCPTool('scp.check_membership_status', { 
         credential_data: credentialData 
-      });
+      }, { skipAudit: true });
       
       checks.push({
         check: 'Membership Status',
@@ -129,7 +130,7 @@ Deno.serve(async (req) => {
       // Check stored payment method
       const paymentStatus = await invokeMCPTool('scp.check_stored_payment_method', { 
         credential_data: credentialData 
-      });
+      }, { skipAudit: true });
       
       checks.push({
         check: 'Payment Method',
@@ -364,27 +365,6 @@ async function checkAccountStatus(userId: string): Promise<PrerequisiteCheck> {
       blocking: false
     };
   }
-}
-
-// Helper function to invoke MCP tools directly
-async function invokeMCPTool(toolName: string, args: any) {
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-  );
-
-  const { data: mcpResponse, error: mcpError } = await supabase.functions.invoke('skiclubpro-tools', {
-    body: {
-      tool: toolName,
-      args
-    }
-  });
-
-  if (mcpError) {
-    throw mcpError;
-  }
-
-  return mcpResponse;
 }
 
 async function checkAllPrerequisites(

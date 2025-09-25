@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { invokeMCPTool } from '../_shared/mcpClient.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -100,37 +101,20 @@ Deno.serve(async (req) => {
 
     console.log(`Plan created successfully: ${plan.id}`);
 
-    // Record MCP audit log for plan creation
+    // Record MCP audit log for plan creation using shared client
     try {
-      const auditData = {
-        plan_execution_id: plan.id, // Use plan ID as execution ID for tracking
+      await invokeMCPTool('plan.create', {
+        program_ref,
+        child_id,
+        opens_at,
+        provider
+      }, {
         mandate_id: mandate_id,
-        tool: 'plan.create',
-        args_json: {
-          program_ref,
-          child_id,
-          opens_at,
-          provider
-        },
-        result_json: {
-          plan_id: plan.id,
-          status: 'scheduled'
-        },
-        args_hash: await generateHash(JSON.stringify({ program_ref, child_id, opens_at, provider })),
-        result_hash: await generateHash(JSON.stringify({ plan_id: plan.id, status: 'scheduled' })),
-        decision: 'allowed'
-      };
-
-      const { error: auditError } = await serviceSupabase
-        .from('mcp_tool_calls')
-        .insert(auditData);
-
-      if (auditError) {
-        console.error('Failed to create audit log:', auditError);
-        // Don't fail the plan creation if audit logging fails
-      }
+        plan_execution_id: plan.id
+      });
     } catch (auditErr) {
-      console.error('Error creating audit log:', auditErr);
+      console.error('Error logging plan creation audit:', auditErr);
+      // Don't fail the plan creation if audit logging fails
     }
 
     return new Response(
@@ -158,12 +142,3 @@ Deno.serve(async (req) => {
     );
   }
 });
-
-// Helper function to generate hash for audit logging
-async function generateHash(data: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const dataBuffer = encoder.encode(data);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-}

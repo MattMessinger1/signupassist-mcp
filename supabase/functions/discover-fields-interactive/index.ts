@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { SignJWT, importJWK } from 'https://esm.sh/jose@5.2.4';
+import { invokeMCPTool } from '../_shared/mcpClient.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -182,6 +183,9 @@ Deno.serve(async (req) => {
         program_ref,
         mandate_id,
         plan_execution_id: "interactive"
+      }, {
+        mandate_id,
+        plan_execution_id: "interactive"
       });
 
       console.log('Field discovery completed:', result);
@@ -221,24 +225,3 @@ Deno.serve(async (req) => {
     );
   }
 });
-
-// Helper function to invoke MCP tools directly
-async function invokeMCPTool(toolName: string, args: any) {
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-  );
-
-  const { data: mcpResponse, error: mcpError } = await supabase.functions.invoke('skiclubpro-tools', {
-    body: {
-      tool: toolName,
-      args
-    }
-  });
-
-  if (mcpError) {
-    throw mcpError;
-  }
-
-  return mcpResponse;
-}
