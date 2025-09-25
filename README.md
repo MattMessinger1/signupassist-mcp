@@ -36,6 +36,28 @@ We measure our product's performance continuously:
 
 ## Local Development
 
+### MCP Server Development
+
+**Development (quick iteration):**
+```bash
+npm run mcp:dev
+```
+
+**Build for production:**
+```bash
+npm run mcp:build
+```
+
+**Run production build:**
+```bash
+npm run mcp:start
+```
+
+**Why this workflow:**
+- **Development mode:** Uses ts-node for fast iteration without compilation
+- **Production mode:** Compiles TypeScript to JavaScript in `/dist` for Node.js runtime
+- **No extension conflicts:** Import paths work in both dev and production modes
+
 ### Terminal-Only Workflow (Recommended)
 
 **Deploy function to Supabase Cloud:**
