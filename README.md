@@ -42,21 +42,45 @@ We measure our product's performance continuously:
 ```bash
 npm run mcp:dev
 ```
+Uses ts-node for fast iteration without compilation.
 
 **Build for production:**
 ```bash
 npm run mcp:build
 ```
+Compiles TypeScript to JavaScript in `/dist/mcp_server/` using tsc.
 
 **Run production build:**
 ```bash
 npm run mcp:start
 ```
+Runs compiled MCP server with Node.js (production-like environment).
 
-**Why this workflow:**
-- **Development mode:** Uses ts-node for fast iteration without compilation
-- **Production mode:** Compiles TypeScript to JavaScript in `/dist` for Node.js runtime
-- **No extension conflicts:** Import paths work in both dev and production modes
+**Required package.json scripts:**
+```json
+{
+  "scripts": {
+    "mcp:build": "tsc -p tsconfig.json",
+    "mcp:start": "node dist/mcp_server/index.js",
+    "mcp:dev": "ts-node mcp_server/index.ts"
+  }
+}
+```
+
+**Required tsconfig.json configuration:**
+```json
+{
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "module": "esnext",
+    "target": "es2020"
+  },
+  "include": ["mcp_server"]
+}
+```
 
 ### Terminal-Only Workflow (Recommended)
 
