@@ -17,6 +17,13 @@ import {
   captureScreenshot,
   closeBrowserbaseSession 
 } from '../lib/browserbase';
+// Import Blackhawk-specific functions
+import {
+  checkAccountExists,
+  createSkiClubProAccount,
+  checkMembershipStatus,
+  purchaseMembership
+} from '../lib/browserbase-blackhawk';
 import { captureScreenshotEvidence } from '../lib/evidence';
 import { createClient } from '@supabase/supabase-js';
 import { randomUUID } from 'crypto';
