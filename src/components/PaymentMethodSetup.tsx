@@ -41,8 +41,7 @@ export function PaymentMethodSetup({ onPaymentMethodSaved, hasPaymentMethod }: P
     }
   };
 
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
+  const handleSubmit = async () => {
     
     if (!stripe || !elements) return;
     
@@ -130,7 +129,7 @@ export function PaymentMethodSetup({ onPaymentMethodSaved, hasPaymentMethod }: P
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="space-y-4">
           <div className="p-3 border rounded-md">
             <CardElement
               options={{
@@ -148,7 +147,8 @@ export function PaymentMethodSetup({ onPaymentMethodSaved, hasPaymentMethod }: P
           </div>
           
           <Button 
-            type="submit" 
+            type="button" 
+            onClick={handleSubmit}
             disabled={!stripe || loading}
             className="w-full"
           >
@@ -158,7 +158,7 @@ export function PaymentMethodSetup({ onPaymentMethodSaved, hasPaymentMethod }: P
           <div className="text-xs text-muted-foreground">
             Your payment method will be securely saved with Stripe. You will only be charged $20 when we successfully register your child for a program.
           </div>
-        </form>
+        </div>
       </CardContent>
     </Card>
   );

@@ -843,6 +843,7 @@ export async function captureEvidence(args: CaptureEvidenceArgs): Promise<{ asse
       mandate_id: args.mandate_id,
       tool: 'evidence.capture'
     },
+    args,
     async () => {
       // Verify mandate (any scope is sufficient for evidence capture)
       await verifyMandate(args.mandate_id, 'scp:login');
