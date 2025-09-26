@@ -16,8 +16,8 @@ import { URL } from 'url';
 
 // Import tool providers
 import { skiClubProTools } from './providers/skiclubpro';
-import { daysmartTools } from '../providers/daysmart/index';
-import { campminderTools } from '../providers/campminder/index';
+// import { daysmartTools } from '../providers/daysmart/index';
+// import { campminderTools } from '../providers/campminder/index';
 
 class SignupAssistMCPServer {
   private server: Server;
@@ -76,8 +76,7 @@ class SignupAssistMCPServer {
 
     // Register other provider tools (array format)
     const arrayTools = [
-      ...daysmartTools,
-      ...campminderTools,
+      // Only SkiClubPro tools are active
     ];
 
     arrayTools.forEach(tool => {
