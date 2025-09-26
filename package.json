@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "browserbase": "^0.1.7",
-    "@modelcontextprotocol/sdk": "^0.1.0",
+    "modelcontextprotocol": "^0.1.0",
     "playwright": "^1.55.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
