@@ -23,20 +23,33 @@ export async function invokeMCPTool(
   console.log(`Invoking MCP tool: ${tool}`, { args, mandate_id, plan_execution_id });
 
   try {
-    // For now, continue using Supabase edge function as MCP proxy
-    // In production, this would call MCP_SERVER_URL directly
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-    );
-
-    const { data: result, error } = await supabase.functions.invoke('skiclubpro-tools', {
-      body: { tool, args }
+    // Call the deployed Railway MCP server directly
+    const mcpServerUrl = Deno.env.get('MCP_SERVER_URL') || 'https://signupassist-mcp-production.up.railway.app';
+    
+    console.log(`Calling MCP server at: ${mcpServerUrl}`);
+    
+    const response = await fetch(`${mcpServerUrl}/tools/call`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        tool,
+        args: {
+          ...args,
+          mandate_id,
+          plan_execution_id
+        }
+      })
     });
 
-    if (error) {
-      throw new Error(`MCP Tool Failed: ${error.message || 'Unknown automation error'}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`MCP server returned ${response.status}:`, errorText);
+      throw new Error(`MCP Server Error: ${response.status} - ${errorText}`);
     }
+
+    const result = await response.json();
 
     // Log audit trail if not skipped and we have required IDs
     if (!skipAudit && (mandate_id || plan_execution_id)) {
