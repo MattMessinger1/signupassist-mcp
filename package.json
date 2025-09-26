@@ -3,13 +3,14 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "mcp:dev": "ts-node mcp_server/index.ts",
-    "mcp:build": "tsc -p tsconfig.json",
-    "mcp:start": "node dist/mcp_server/index.js"
+"scripts": {
+  "dev": "vite",
+  "build": "vite build",
+  "preview": "vite preview",
+  "mcp:dev": "ts-node mcp_server/index.ts",
+  "mcp:build": "tsc -p tsconfig.json",
+  "mcp:start": "node dist/mcp_server/index.js"
+}
   },
   "dependencies": {
     "@browserbasehq/sdk": "^0.1.0",
