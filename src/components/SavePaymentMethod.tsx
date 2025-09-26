@@ -71,18 +71,18 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
 
       let customerId = billingData?.stripe_customer_id;
 
-      // If no customer exists, create one via the stripe-setup-intent function
+      // If no customer exists, create one via our new edge function
       if (!customerId) {
         console.log('No customer found, creating one...');
-        const { data: setupData, error: setupError } = await supabase.functions.invoke('stripe-setup-intent');
+        const { data: customerData, error: customerError } = await supabase.functions.invoke('create-stripe-customer');
         
-        if (setupError) {
-          throw new Error(`Failed to create customer: ${setupError.message}`);
+        if (customerError) {
+          throw new Error(`Failed to create customer: ${customerError.message}`);
         }
         
-        customerId = setupData?.stripe_customer_id;
+        customerId = customerData?.customer_id;
         if (!customerId) {
-          throw new Error("Failed to get customer ID from setup intent");
+          throw new Error("Failed to get customer ID from customer creation");
         }
       }
 
