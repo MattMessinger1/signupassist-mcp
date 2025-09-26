@@ -21,24 +21,11 @@ export const StripeProvider: React.FC<StripeProviderProps> = ({ children }) => {
   useEffect(() => {
     const initializeStripe = async () => {
       try {
-        // Get publishable key from localStorage (set by the modal)
-        const publishableKey = localStorage.getItem('stripe_publishable_key');
+        // Use the platform's hardcoded Stripe publishable key
+        const publishableKey = "pk_test_51QxbzXAaGNDlVi1kJYM8eAGJrqCRyS2o2z1d6r3zU3xJjGn3J7Xo7CvlydXvteLWQ0YqG9WyNHSjA9fGXFoq5cPE";
         
-        console.log('Stripe initialization - key from localStorage:', publishableKey ? `${publishableKey.substring(0, 10)}...` : 'null');
+        console.log('Stripe initialization - using platform publishable key');
         
-        if (!publishableKey) {
-          console.warn('No Stripe publishable key found. Please set one using the modal.');
-          setLoading(false);
-          return;
-        }
-
-        if (!publishableKey.startsWith('pk_')) {
-          console.error('Invalid publishable key format. Must start with pk_');
-          setLoading(false);
-          return;
-        }
-
-        console.log('Loading Stripe with key...');
         const stripeInstance = await loadStripe(publishableKey);
         console.log('Stripe loaded successfully:', !!stripeInstance);
         setStripe(stripeInstance);
