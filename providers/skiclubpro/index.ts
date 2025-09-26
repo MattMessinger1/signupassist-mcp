@@ -111,5 +111,86 @@ export const skiclubproTools = [
       const service = new SkiClubProService();
       return await service.checkAvailability(args.programId);
     }
+  },
+  {
+    name: 'scp.check_account',
+    description: 'Check if a SkiClubPro account exists for the given org_ref + email',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_ref: { type: 'string' },
+        email: { type: 'string' },
+        mandate_id: { type: 'string' },
+        plan_execution_id: { type: 'string' }
+      },
+      required: ['org_ref', 'email', 'mandate_id', 'plan_execution_id']
+    },
+    handler: async (args: any) => {
+      // TODO: Implement account check logic
+      throw new Error('Account check logic to be implemented');
+    }
+  },
+  {
+    name: 'scp.create_account',
+    description: 'Create a new SkiClubPro account',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_ref: { type: 'string' },
+        name: { type: 'string' },
+        email: { type: 'string' },
+        phone: { type: 'string' },
+        password: { type: 'string' },
+        mandate_id: { type: 'string' },
+        plan_execution_id: { type: 'string' }
+      },
+      required: ['org_ref', 'name', 'email', 'password', 'mandate_id', 'plan_execution_id']
+    },
+    handler: async (args: any) => {
+      // TODO: Implement account creation logic
+      throw new Error('Account creation logic to be implemented');
+    }
+  },
+  {
+    name: 'scp.check_membership',
+    description: 'Check membership status for logged-in user',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_ref: { type: 'string' },
+        mandate_id: { type: 'string' },
+        plan_execution_id: { type: 'string' }
+      },
+      required: ['org_ref', 'mandate_id', 'plan_execution_id']
+    },
+    handler: async (args: any) => {
+      // TODO: Implement membership check logic
+      throw new Error('Membership check logic to be implemented');
+    }
+  },
+  {
+    name: 'scp.purchase_membership',
+    description: 'Purchase a membership plan',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_ref: { type: 'string' },
+        plan: { type: 'string' },
+        payment_method: {
+          type: 'object',
+          properties: {
+            type: { type: 'string' },
+            vgs_alias: { type: 'string' }
+          }
+        },
+        mandate_id: { type: 'string' },
+        plan_execution_id: { type: 'string' }
+      },
+      required: ['org_ref', 'plan', 'payment_method', 'mandate_id', 'plan_execution_id']
+    },
+    handler: async (args: any) => {
+      // TODO: Implement membership purchase logic
+      throw new Error('Membership purchase logic to be implemented');
+    }
   }
 ];
