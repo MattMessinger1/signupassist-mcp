@@ -23,7 +23,7 @@ import { OpenTimePicker } from '@/components/OpenTimePicker';
 import { CredentialPicker } from '@/components/CredentialPicker';
 import { PrereqsPanel } from '@/components/PrereqsPanel';
 import { ConsentModal } from '@/components/ConsentModal';
-import { PaymentMethodSetup } from '@/components/PaymentMethodSetup';
+import { SavePaymentMethod } from '@/components/SavePaymentMethod';
 import { FieldGroup } from '@/components/FieldGroup';
 import { DraftSaver } from '@/components/DraftSaver';
 import { EnhancedDiscoveredField } from '@/components/FieldRenderer';
@@ -624,7 +624,7 @@ const PlanBuilder = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <PaymentMethodSetup 
+                <SavePaymentMethod 
                   onPaymentMethodSaved={checkPaymentMethod}
                   hasPaymentMethod={hasPaymentMethod}
                 />
