@@ -22,7 +22,7 @@ export const StripeProvider: React.FC<StripeProviderProps> = ({ children }) => {
     const initializeStripe = async () => {
       try {
         // Use your Stripe account's publishable key
-        const publishableKey = "pk_test_51RujoPAaGNDlVi1kO6UMMLNxKRzCeJJ7aKKgMUjNTCUNXKuDzJKJgD5J7zlJB3PFGKY5wKYNQJhW5pCQJgMJJo8d00cJJJJJJJ";
+        const publishableKey = "pk_test_51RujoPAaGNDlVi1koVlBSBBXy2yfwz7vuMBciJxkawKBKaqwR4xw07wEFUAMa73ADIUqzwB5GwbPM3YnPYu5vo4X00rAdiwPkx";
         
         console.log('Stripe initialization - using platform publishable key');
         
