@@ -4,7 +4,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { verifyJWT, importJWK } from 'jose';
+import { jwtVerify, importJWK } from 'jose';
 
 // Initialize Supabase client for backend operations
 const supabaseUrl = process.env.SUPABASE_URL!;

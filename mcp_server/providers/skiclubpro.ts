@@ -169,6 +169,7 @@ export async function scpLogin(args: LoginArgs): Promise<{ session_ref: string }
       mandate_id: args.mandate_id,
       tool: 'scp.login'
     },
+    args,
     async () => {
       // Verify mandate has required scope
       await verifyMandate(args.mandate_id, 'scp:login');
@@ -225,7 +226,8 @@ export async function scpLogin(args: LoginArgs): Promise<{ session_ref: string }
       } catch (error) {
         throw new Error(`SkiClubPro login failed: ${error.message}`);
       }
-    }
+    },
+    'scp:login'
   );
 }
 
@@ -239,6 +241,7 @@ export async function scpFindPrograms(args: FindProgramsArgs): Promise<{ program
       mandate_id: args.mandate_id,
       tool: 'scp.find_programs'
     },
+    args,
     async () => {
       // Verify mandate has required scope
       await verifyMandate(args.mandate_id, 'scp:read:listings');
@@ -301,7 +304,8 @@ export async function scpFindPrograms(args: FindProgramsArgs): Promise<{ program
       } catch (error) {
         throw new Error(`SkiClubPro program discovery failed: ${error.message}`);
       }
-    }
+    },
+    'scp:read:listings'
   );
 }
 
@@ -315,6 +319,7 @@ export async function scpRegister(args: RegisterArgs): Promise<{ registration_re
       mandate_id: args.mandate_id,
       tool: 'scp.register'
     },
+    args,
     async () => {
       // Verify mandate has required scope
       await verifyMandate(args.mandate_id, 'scp:enroll');
@@ -409,7 +414,8 @@ export async function scpRegister(args: RegisterArgs): Promise<{ registration_re
       } catch (error) {
         throw new Error(`SkiClubPro registration failed: ${error.message}`);
       }
-    }
+    },
+    'scp:enroll'
   );
 }
 
@@ -423,6 +429,7 @@ export async function scpPay(args: PayArgs): Promise<{ confirmation_ref: string;
       mandate_id: args.mandate_id,
       tool: 'scp.pay'
     },
+    args,
     async () => {
       // Verify mandate has required scope and amount
       await verifyMandate(args.mandate_id, 'scp:pay', { 
@@ -506,7 +513,8 @@ export async function scpPay(args: PayArgs): Promise<{ confirmation_ref: string;
       } catch (error) {
         throw new Error(`SkiClubPro payment failed: ${error.message}`);
       }
-    }
+    },
+    'scp:pay'
   );
 }
 
@@ -522,6 +530,7 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
       mandate_id: args.mandate_id,
       tool: 'scp.discover_required_fields'
     },
+    args,
     async () => {
       try {
         console.log('✅ Verifying mandate scope for scp:read:listings...');
@@ -866,7 +875,8 @@ export async function captureEvidence(args: CaptureEvidenceArgs): Promise<{ asse
       } catch (error) {
         throw new Error(`Evidence capture failed: ${error.message}`);
       }
-    }
+    },
+    'scp:capture'
   );
 }
 
@@ -880,6 +890,7 @@ export async function scpCheckAccountStatus(args: CheckAccountStatusArgs): Promi
       mandate_id: args.mandate_id,
       tool: 'scp.check_account_status'
     },
+    args,
     async () => {
       // Verify mandate has required scope
       await verifyMandate(args.mandate_id, 'scp:read:account');
@@ -912,7 +923,8 @@ export async function scpCheckAccountStatus(args: CheckAccountStatusArgs): Promi
       } catch (error) {
         throw new Error(`Account status check failed: ${error.message}`);
       }
-    }
+    },
+    'scp:read:account'
   );
 }
 
@@ -926,6 +938,7 @@ export async function scpCreateAccount(args: CreateAccountArgs): Promise<{ accou
       mandate_id: args.mandate_id,
       tool: 'scp.create_account'
     },
+    args,
     async () => {
       // Verify mandate has required scope
       await verifyMandate(args.mandate_id, 'scp:create_account');
@@ -937,9 +950,9 @@ export async function scpCreateAccount(args: CreateAccountArgs): Promise<{ accou
         try {
           // Perform account creation automation
           const accountResult = await createSkiClubProAccount(session, 'blackhawk-ski-club', {
-            name: args.name,
+            name: args.child_info.parent_name || args.email,
             email: args.email,
-            phone: args.phone,
+            phone: args.child_info.parent_phone,
             password: args.password
           });
 
@@ -975,7 +988,8 @@ export async function scpCreateAccount(args: CreateAccountArgs): Promise<{ accou
       } catch (error) {
         throw new Error(`Account creation failed: ${error.message}`);
       }
-    }
+    },
+    'scp:create_account'
   );
 }
 
@@ -989,6 +1003,7 @@ export async function scpCheckMembershipStatus(args: CheckMembershipStatusArgs):
       mandate_id: args.mandate_id,
       tool: 'scp.check_membership_status'
     },
+    args,
     async () => {
       // Verify mandate has required scope
       await verifyMandate(args.mandate_id, 'scp:read:membership');
@@ -1046,7 +1061,8 @@ export async function scpCheckMembershipStatus(args: CheckMembershipStatusArgs):
       } catch (error) {
         throw new Error(`Membership status check failed: ${error.message}`);
       }
-    }
+    },
+    'scp:read:membership'
   );
 }
 
@@ -1060,6 +1076,7 @@ export async function scpPurchaseMembership(args: PurchaseMembershipArgs): Promi
       mandate_id: args.mandate_id,
       tool: 'scp.purchase_membership'
     },
+    args,
     async () => {
       // Verify mandate has required scope
       await verifyMandate(args.mandate_id, 'scp:pay:membership');
@@ -1090,7 +1107,10 @@ export async function scpPurchaseMembership(args: PurchaseMembershipArgs): Promi
 
         try {
           // Perform membership purchase automation
-          const membershipResult = await purchaseMembership(session, 'blackhawk-ski-club', { plan: args.plan, payment_method: args.payment_method });
+          const membershipResult = await purchaseMembership(session, 'blackhawk-ski-club', { 
+            plan: 'annual', 
+            payment_method: { type: 'stored' } 
+          });
 
           // Capture confirmation screenshot
           const screenshot = await captureScreenshot(session, 'membership-purchased.png');
@@ -1129,7 +1149,8 @@ export async function scpPurchaseMembership(args: PurchaseMembershipArgs): Promi
       } catch (error) {
         throw new Error(`Membership purchase failed: ${error.message}`);
       }
-    }
+    },
+    'scp:pay:membership'
   );
 }
 
@@ -1143,6 +1164,7 @@ export async function scpCheckStoredPaymentMethod(args: { mandate_id: string; pl
       mandate_id: args.mandate_id,
       tool: 'scp.check_stored_payment_method'
     },
+    args,
     async () => {
       // Verify mandate has billing read scope
       await verifyMandate(args.mandate_id, 'scp:read:billing');

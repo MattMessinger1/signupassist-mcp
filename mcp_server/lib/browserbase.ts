@@ -3,7 +3,7 @@
  * Handles Playwright automation via Browserbase
  */
 
-import { Browserbase } from 'browserbase';
+import Browserbase from '@browserbasehq/sdk';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 
 const browserbaseApiKey = process.env.BROWSERBASE_API_KEY!;
@@ -31,16 +31,11 @@ export async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
     }
 
     // Create Browserbase session
-    const bb = new Browserbase({
-      apiKey: browserbaseApiKey,
-    });
-
-    const session = await bb.sessions.create({
-      projectId: process.env.BROWSERBASE_PROJECT_ID || 'default',
-    });
+    const bb = new Browserbase({ apiKey: browserbaseApiKey });
+    const session = await bb.sessions.create({ projectId: process.env.BROWSERBASE_PROJECT_ID! });
 
     // Connect Playwright to Browserbase
-    const browser = await chromium.connectOverCDP(`wss://connect.browserbase.com?apiKey=${browserbaseApiKey}&sessionId=${session.id}`);
+    const browser = await chromium.connectOverCDP(session.connectUrl);
     const context = browser.contexts()[0] || await browser.newContext();
     const page = await context.newPage();
 
@@ -64,7 +59,7 @@ export async function connectToBrowserbaseSession(sessionId: string): Promise<Br
       throw new Error('BROWSERBASE_API_KEY environment variable is required');
     }
 
-    // Connect Playwright to existing Browserbase session
+    // Connect Playwright to existing Browserbase session  
     const browser = await chromium.connectOverCDP(`wss://connect.browserbase.com?apiKey=${browserbaseApiKey}&sessionId=${sessionId}`);
     const context = browser.contexts()[0] || await browser.newContext();
     const page = context.pages()[0] || await context.newPage();

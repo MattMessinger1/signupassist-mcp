@@ -10,7 +10,7 @@ import { auditToolCall } from '../middleware/audit';
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: '2024-12-18.acacia',
+  apiVersion: '2022-11-15',
 });
 
 // Initialize Supabase client
@@ -34,6 +34,7 @@ export async function chargeOnSuccess(args: ChargeOnSuccessArgs): Promise<{ char
       mandate_id: args.mandate_id,
       tool: 'billing.charge_on_success'
     },
+    args,
     async () => {
       // Verify mandate has required scope
       await verifyMandate(args.mandate_id, 'scp:pay');
@@ -118,7 +119,8 @@ export async function chargeOnSuccess(args: ChargeOnSuccessArgs): Promise<{ char
         charge_id: charge.id,
         status: charge.status
       };
-    }
+    },
+    'billing:charge'
   );
 }
 

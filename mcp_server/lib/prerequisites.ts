@@ -11,7 +11,7 @@ const supabase = createClient(
 );
 
 export interface PrerequisiteCheck {
-  type: 'membership' | 'account_status' | 'payment_method' | 'child_info';
+  type: 'membership' | 'account_status' | 'payment_method' | 'child_info' | 'membership_status';
   status: 'passed' | 'failed' | 'warning';
   message: string;
   blocking: boolean;

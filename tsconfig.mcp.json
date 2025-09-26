@@ -1,15 +1,9 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["mcp_server/**/*.ts"],
+  "include": ["mcp_server/**/*.ts", "mcp_server/**/*.tsx"],
   "exclude": ["mcp_server/tests", "**/*.test.ts", "**/*.test.tsx"],
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": ".",
-    "moduleResolution": "node",
-    "esModuleInterop": true,
-    "module": "esnext",
-    "target": "es2020",
-    "skipLibCheck": true,
+    "outDir": "dist/mcp_server",
     "noEmitOnError": true
   }
 }
