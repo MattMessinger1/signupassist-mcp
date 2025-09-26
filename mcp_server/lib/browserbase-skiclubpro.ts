@@ -4,9 +4,10 @@
  */
 
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
-import { Browserbase } from 'browserbase';
+import Browserbase from '@browserbasehq/sdk';
 import { captureScreenshotEvidence } from './evidence';
-import { getSkiClubProConfig } from '../config/skiclubpro_selectors';
+import { SKICLUBPRO_CONFIGS } from '../config/skiclubpro_selectors';
+import { fillInput } from './browserbase';
 
 const browserbaseApiKey = process.env.BROWSERBASE_API_KEY!;
 
@@ -27,16 +28,11 @@ export async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
     }
 
     // Create Browserbase session
-    const bb = new Browserbase({
-      apiKey: browserbaseApiKey,
-    });
-
-    const session = await bb.sessions.create({
-      projectId: process.env.BROWSERBASE_PROJECT_ID || 'default',
-    });
+    const bb = new Browserbase({ apiKey: browserbaseApiKey });
+    const session = await bb.sessions.create({ projectId: process.env.BROWSERBASE_PROJECT_ID! });
 
     // Connect Playwright to Browserbase
-    const browser = await chromium.connectOverCDP(`wss://connect.browserbase.com?apiKey=${browserbaseApiKey}&sessionId=${session.id}`);
+    const browser = await chromium.connectOverCDP(session.connectUrl);
     const context = browser.contexts()[0] || await browser.newContext();
     const page = await context.newPage();
 
@@ -51,15 +47,6 @@ export async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
   }
 }
 
-/**
- * Utility for safe typing of inputs
- */
-async function fillInput(page: Page, selector: string, value: string): Promise<void> {
-  const element = await page.$(selector);
-  if (element) {
-    await element.fill(value);
-  }
-}
 
 /**
  * Check if account exists on SkiClubPro for given organization
@@ -70,7 +57,8 @@ export async function checkAccountExists(
   email: string
 ): Promise<{ exists: boolean; verified?: boolean }> {
   const { page } = session;
-  const cfg = getSkiClubProConfig(org_ref);
+  const cfg = SKICLUBPRO_CONFIGS[org_ref];
+  if (!cfg) throw new Error(`No SkiClubPro config found for org_ref: ${org_ref}`);
   
   await page.goto(`https://${cfg.domain}/user/login`, { waitUntil: "networkidle" });
   await fillInput(page, cfg.selectors.loginEmail, email);
@@ -97,7 +85,8 @@ export async function createSkiClubProAccount(
   parent: { name: string; email: string; phone?: string; password: string }
 ): Promise<{ account_id: string }> {
   const { page } = session;
-  const cfg = getSkiClubProConfig(org_ref);
+  const cfg = SKICLUBPRO_CONFIGS[org_ref];
+  if (!cfg) throw new Error(`No SkiClubPro config found for org_ref: ${org_ref}`);
   
   await page.goto(`https://${cfg.domain}/user/register`, { waitUntil: "networkidle" });
   
@@ -129,7 +118,8 @@ export async function checkMembershipStatus(
   org_ref: string
 ): Promise<{ active: boolean; expires_at?: string }> {
   const { page } = session;
-  const cfg = getSkiClubProConfig(org_ref);
+  const cfg = SKICLUBPRO_CONFIGS[org_ref];
+  if (!cfg) throw new Error(`No SkiClubPro config found for org_ref: ${org_ref}`);
   
   await page.goto(`https://${cfg.domain}${cfg.selectors.membershipPage}`, { waitUntil: "networkidle" });
   
@@ -159,7 +149,8 @@ export async function purchaseMembership(
   }
 ): Promise<{ membership_id: string; final_url: string }> {
   const { page } = session;
-  const cfg = getSkiClubProConfig(org_ref);
+  const cfg = SKICLUBPRO_CONFIGS[org_ref];
+  if (!cfg) throw new Error(`No SkiClubPro config found for org_ref: ${org_ref}`);
   
   await page.goto(`https://${cfg.domain}${cfg.selectors.membershipPage}`, { waitUntil: "networkidle" });
   

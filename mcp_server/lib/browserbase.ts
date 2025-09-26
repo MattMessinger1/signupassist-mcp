@@ -419,7 +419,7 @@ async function fillPreAnsweredQuestions(session: BrowserbaseSession, answers: Re
           if (tagName === 'select') {
             await element.selectOption({ label: value.toString() });
           } else if (inputType === 'radio') {
-            if (await element.evaluate(el => el.value === value.toString())) {
+            if (await element.evaluate(el => (el as HTMLInputElement).value === value.toString())) {
               await element.check();
             }
           } else if (inputType === 'checkbox') {
@@ -462,7 +462,7 @@ async function handleDynamicQuestions(
     
     inputs.forEach((input: Element) => {
       const element = input as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
-      if (!element.value || element.value.trim() === '') {
+      if (!(element as HTMLInputElement).value || (element as HTMLInputElement).value.trim() === '') {
         const label = form.querySelector(`label[for="${element.id}"]`)?.textContent?.trim() || 
                      element.getAttribute('name') || 
                      element.getAttribute('placeholder') || 
@@ -1105,5 +1105,19 @@ export async function closeBrowserbaseSession(session: BrowserbaseSession): Prom
     await session.browser.close();
   } catch (error) {
     console.error('Error closing Browserbase session:', error);
+  }
+}
+
+/**
+ * Helper function to fill an input field
+ */
+export async function fillInput(page: Page, selector: string, value: string): Promise<void> {
+  try {
+    const element = await page.$(selector);
+    if (element) {
+      await element.fill(value);
+    }
+  } catch (error) {
+    console.log(`Could not fill input ${selector}:`, error.message);
   }
 }

@@ -16,7 +16,7 @@ import {
   performSkiClubProPayment,
   captureScreenshot,
   closeBrowserbaseSession 
-// Import SkiClubPro configurable functions
+} from '../lib/browserbase';
 import {
   checkAccountExists,
   createSkiClubProAccount,
