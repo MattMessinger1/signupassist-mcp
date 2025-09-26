@@ -4,6 +4,9 @@
   "exclude": ["mcp_server/tests", "**/*.test.ts", "**/*.test.tsx"],
   "compilerOptions": {
     "outDir": "dist/mcp_server",
+    "module": "ESNext",
+    "target": "ES2022",
+    "moduleResolution": "node",
     "noEmitOnError": true
   }
 }
