@@ -21,8 +21,16 @@ export const StripeProvider: React.FC<StripeProviderProps> = ({ children }) => {
   useEffect(() => {
     const initializeStripe = async () => {
       try {
-        // Using Stripe publishable key - this is safe to expose in frontend
-        const stripeInstance = await loadStripe('pk_test_51RujoPAaGND...');
+        // Get publishable key from localStorage (set by the modal)
+        const publishableKey = localStorage.getItem('stripe_publishable_key');
+        
+        if (!publishableKey) {
+          console.warn('No Stripe publishable key found. Please set one using the modal.');
+          setLoading(false);
+          return;
+        }
+
+        const stripeInstance = await loadStripe(publishableKey);
         setStripe(stripeInstance);
       } catch (error) {
         console.error('Failed to initialize Stripe:', error);
