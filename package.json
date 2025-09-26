@@ -15,7 +15,6 @@
   },
   "dependencies": {
     "@browserbasehq/sdk": "^2.6.0",
-    "modelcontextprotocol": "^0.1.0",
     "playwright": "^1.55.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
