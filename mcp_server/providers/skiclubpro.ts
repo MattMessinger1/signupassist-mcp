@@ -1198,9 +1198,9 @@ export const skiClubProTools = {
   'scp.discover_required_fields': scpDiscoverRequiredFields,
   'scp.register': scpRegister,
   'scp.pay': scpPay,
-  'scp.check_account_status': scpCheckAccountStatus,
+  'scp.check_account': scpCheckAccountStatus,
   'scp.create_account': scpCreateAccount,
-  'scp.check_membership_status': scpCheckMembershipStatus,
+  'scp.check_membership': scpCheckMembershipStatus,
   'scp.purchase_membership': scpPurchaseMembership,
   'scp.check_stored_payment_method': scpCheckStoredPaymentMethod,
   'evidence.capture': captureEvidence
