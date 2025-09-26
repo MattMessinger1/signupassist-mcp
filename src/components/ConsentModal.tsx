@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Shield, DollarSign, AlertTriangle } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -28,7 +28,7 @@ export function ConsentModal({
 }: ConsentModalProps) {
   const [maxCostInput, setMaxCostInput] = useState('');
 
-  const scopeDescriptions: Record<string, { label: string; description: string; icon: JSX.Element }> = {
+  const scopeDescriptions: Record<string, { label: string; description: string; icon: React.ReactElement }> = {
     'scp:login': {
       label: 'Login Access',
       description: 'Sign into your account on your behalf',
