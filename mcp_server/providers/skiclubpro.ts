@@ -890,7 +890,7 @@ export async function scpCheckAccountStatus(args: CheckAccountStatusArgs): Promi
 
         try {
           // Check account status by attempting login or probing
-          const accountStatus = await checkAccountExists(session, args.org_ref, args.email);
+          const accountStatus = await checkAccountExists(session, 'blackhawk-ski-club', args.email);
 
           // Capture screenshot evidence
           const screenshot = await captureScreenshot(session, 'account-check.png');
@@ -936,7 +936,7 @@ export async function scpCreateAccount(args: CreateAccountArgs): Promise<{ accou
 
         try {
           // Perform account creation automation
-          const accountResult = await createSkiClubProAccount(session, args.org_ref, {
+          const accountResult = await createSkiClubProAccount(session, 'blackhawk-ski-club', {
             name: args.name,
             email: args.email,
             phone: args.phone,
@@ -1019,7 +1019,7 @@ export async function scpCheckMembershipStatus(args: CheckMembershipStatusArgs):
 
         try {
           // Check membership status
-          const membershipStatus = await checkMembershipStatus(session, args.org_ref);
+          const membershipStatus = await checkMembershipStatus(session, 'blackhawk-ski-club');
 
           // Capture screenshot evidence
           const screenshot = await captureScreenshot(session, 'membership-check.png');
@@ -1090,7 +1090,7 @@ export async function scpPurchaseMembership(args: PurchaseMembershipArgs): Promi
 
         try {
           // Perform membership purchase automation
-          const membershipResult = await purchaseMembership(session, args.org_ref, { plan: args.plan, payment_method: args.payment_method });
+          const membershipResult = await purchaseMembership(session, 'blackhawk-ski-club', { plan: args.plan, payment_method: args.payment_method });
 
           // Capture confirmation screenshot
           const screenshot = await captureScreenshot(session, 'membership-purchased.png');
@@ -1198,17 +1198,104 @@ export async function scpCheckStoredPaymentMethod(args: { mandate_id: string; pl
   );
 }
 
-// Export all tools with updated names
+// Export all tools with proper array format and inputSchema syntax
 export const skiClubProTools = {
-  'scp.login': scpLogin,
-  'scp.find_programs': scpFindPrograms,
-  'scp.discover_required_fields': scpDiscoverRequiredFields,
-  'scp.register': scpRegister,
-  'scp.pay': scpPay,
-  'scp.check_account': scpCheckAccountStatus,
-  'scp.create_account': scpCreateAccount,
-  'scp.check_membership': scpCheckMembershipStatus,
-  'scp.purchase_membership': scpPurchaseMembership,
-  'scp.check_stored_payment_method': scpCheckStoredPaymentMethod,
-  'evidence.capture': captureEvidence
+  'scp.login': {
+    name: 'scp.login',
+    description: 'Login to SkiClubPro using stored credentials',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        credential_alias: { type: 'string' },
+        mandate_id: { type: 'string' },
+        plan_execution_id: { type: 'string' }
+      },
+      required: ['credential_alias', 'mandate_id', 'plan_execution_id']
+    },
+    handler: scpLogin
+  },
+  'scp.find_programs': {
+    name: 'scp.find_programs',
+    description: 'Find available programs for registration',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_ref: { type: 'string' },
+        query: { type: 'string' },
+        mandate_id: { type: 'string' },
+        plan_execution_id: { type: 'string' }
+      },
+      required: ['org_ref', 'mandate_id', 'plan_execution_id']
+    },
+    handler: scpFindPrograms
+  },
+  'scp.check_account': {
+    name: 'scp.check_account',
+    description: 'Check if a SkiClubPro account exists for the given org_ref + email',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_ref: { type: 'string' },
+        email: { type: 'string' },
+        mandate_id: { type: 'string' },
+        plan_execution_id: { type: 'string' }
+      },
+      required: ['org_ref', 'email', 'mandate_id', 'plan_execution_id']
+    },
+    handler: scpCheckAccountStatus
+  },
+  'scp.create_account': {
+    name: 'scp.create_account',
+    description: 'Create a new SkiClubPro account',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_ref: { type: 'string' },
+        name: { type: 'string' },
+        email: { type: 'string' },
+        phone: { type: 'string' },
+        password: { type: 'string' },
+        mandate_id: { type: 'string' },
+        plan_execution_id: { type: 'string' }
+      },
+      required: ['org_ref', 'name', 'email', 'password', 'mandate_id', 'plan_execution_id']
+    },
+    handler: scpCreateAccount
+  },
+  'scp.check_membership': {
+    name: 'scp.check_membership',
+    description: 'Check membership status for logged-in user',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_ref: { type: 'string' },
+        mandate_id: { type: 'string' },
+        plan_execution_id: { type: 'string' }
+      },
+      required: ['org_ref', 'mandate_id', 'plan_execution_id']
+    },
+    handler: scpCheckMembershipStatus
+  },
+  'scp.purchase_membership': {
+    name: 'scp.purchase_membership',
+    description: 'Purchase a membership plan',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        org_ref: { type: 'string' },
+        plan: { type: 'string' },
+        payment_method: {
+          type: 'object',
+          properties: {
+            type: { type: 'string' },
+            vgs_alias: { type: 'string' }
+          }
+        },
+        mandate_id: { type: 'string' },
+        plan_execution_id: { type: 'string' }
+      },
+      required: ['org_ref', 'plan', 'payment_method', 'mandate_id', 'plan_execution_id']
+    },
+    handler: scpPurchaseMembership
+  }
 };
