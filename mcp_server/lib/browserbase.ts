@@ -207,7 +207,7 @@ export async function discoverProgramRequiredFields(session: BrowserbaseSession,
           for (const option of branchField.options.slice(0, 3)) { // Test first 3 options
             try {
               // Select the option
-              await session.page.evaluate((fieldId: string, optionValue: string, fieldType: string) => {
+              await session.page.evaluate(({ fieldId, optionValue, fieldType }) => {
                 const field = document.getElementById(fieldId) || document.querySelector(`[name="${fieldId}"]`);
                 if (!field) return;
                 
@@ -230,7 +230,7 @@ export async function discoverProgramRequiredFields(session: BrowserbaseSession,
                     }
                   });
                 }
-              }, branchField.id, option, branchField.type);
+              }, { fieldId: branchField.id, optionValue: option, fieldType: branchField.type });
               
               // Wait for potential DOM changes
               await session.page.waitForTimeout(1000);

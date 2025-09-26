@@ -1194,7 +1194,7 @@ export async function scpCheckStoredPaymentMethod(args: { mandate_id: string; pl
           
           // Capture screenshot of billing page
           const screenshot = await captureScreenshot(session, 'billing-page.png');
-          const evidenceId = await captureScreenshotEvidence(
+          const evidenceResult = await captureScreenshotEvidence(
             args.plan_execution_id || '',
             screenshot,
             'billing-page-check'
@@ -1205,7 +1205,7 @@ export async function scpCheckStoredPaymentMethod(args: { mandate_id: string; pl
           // TODO: Parse the page to detect stored payment methods
           return { 
             on_file: false, // Placeholder - will detect actual cards when implemented
-            screenshot_evidence: evidenceId
+            screenshot_evidence: evidenceResult.asset_url
           };
 
         } catch (error) {
@@ -1216,7 +1216,8 @@ export async function scpCheckStoredPaymentMethod(args: { mandate_id: string; pl
       } catch (error) {
         throw new Error(`Payment method check failed: ${error.message}`);
       }
-    }
+    },
+    'scp:read:payment'
   );
 }
 
