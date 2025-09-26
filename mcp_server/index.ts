@@ -120,6 +120,46 @@ class SignupAssistMCPServer {
         return;
       }
 
+      if (req.method === 'POST' && url.pathname === '/tools/call') {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', async () => {
+          try {
+            const { tool, args } = JSON.parse(body);
+            
+            if (!this.tools.has(tool)) {
+              res.writeHead(404, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: `Tool ${tool} not found` }));
+              return;
+            }
+
+            const toolInstance = this.tools.get(tool);
+            const result = await toolInstance.handler(args);
+            
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(result));
+          } catch (error) {
+            console.error('Tool execution error:', error);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ 
+              error: error instanceof Error ? error.message : 'Unknown error' 
+            }));
+          }
+        });
+        return;
+      }
+
+      if (req.method === 'GET' && url.pathname === '/tools') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          tools: Array.from(this.tools.values()).map(tool => ({
+            name: tool.name,
+            description: tool.description
+          }))
+        }));
+        return;
+      }
+
       // Default response for unknown routes
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not found' }));
