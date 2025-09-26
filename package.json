@@ -12,20 +12,20 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
+
     "mcp:dev": "node --loader ts-node/esm mcp_server/index.ts",
     "mcp:build": "tsc -p tsconfig.mcp.json",
     "mcp:start": "node dist/mcp_server/index.js",
+
     "prestart": "npm run mcp:build",
     "start": "npm run mcp:start"
   },
   "dependencies": {
     "@browserbasehq/sdk": "^2.6.0",
-    "@vitejs/plugin-react-swc": "^4.1.0",
-    "autoprefixer": "^10.4.21",
-    "lovable-tagger": "^1.1.10",
     "playwright": "^1.55.1",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "tailwindcss-animate": "^1.0.7"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
