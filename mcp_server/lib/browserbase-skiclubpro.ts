@@ -1,11 +1,12 @@
 /**
- * Blackhawk-Specific Browserbase Functions
- * Updated to target blackhawk.skiclubpro.team with precise selectors
+ * SkiClubPro Configurable Browserbase Functions
+ * Supports multiple organizations via selector configuration
  */
 
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { Browserbase } from 'browserbase';
 import { captureScreenshotEvidence } from './evidence';
+import { getSkiClubProConfig } from '../config/skiclubpro_selectors';
 
 const browserbaseApiKey = process.env.BROWSERBASE_API_KEY!;
 
@@ -61,16 +62,22 @@ async function fillInput(page: Page, selector: string, value: string): Promise<v
 }
 
 /**
- * Check if account exists on Blackhawk SkiClubPro
+ * Check if account exists on SkiClubPro for given organization
  */
-export async function checkAccountExists(session: BrowserbaseSession, email: string): Promise<{ exists: boolean; verified?: boolean }> {
+export async function checkAccountExists(
+  session: BrowserbaseSession, 
+  org_ref: string, 
+  email: string
+): Promise<{ exists: boolean; verified?: boolean }> {
   const { page } = session;
-  await page.goto("https://blackhawk.skiclubpro.team/user/login", { waitUntil: "networkidle" });
-  await fillInput(page, 'input[name="email"]', email);
+  const cfg = getSkiClubProConfig(org_ref);
   
-  // Click "Continue" or "Next" button (Blackhawk page may label differently)
+  await page.goto(`https://${cfg.domain}/user/login`, { waitUntil: "networkidle" });
+  await fillInput(page, cfg.selectors.loginEmail, email);
+  
+  // Click submit button
   await Promise.all([
-    page.locator('button[type="submit"], input[type="submit"]').click(),
+    page.locator(cfg.selectors.loginSubmit).click(),
     page.waitForNavigation({ waitUntil: "networkidle" })
   ]);
   
@@ -82,41 +89,50 @@ export async function checkAccountExists(session: BrowserbaseSession, email: str
 }
 
 /**
- * Create account on Blackhawk SkiClubPro
+ * Create account on SkiClubPro for given organization
  */
 export async function createSkiClubProAccount(
-  session: BrowserbaseSession, 
+  session: BrowserbaseSession,
+  org_ref: string,
   parent: { name: string; email: string; phone?: string; password: string }
 ): Promise<{ account_id: string }> {
   const { page } = session;
-  await page.goto("https://blackhawk.skiclubpro.team/user/register", { waitUntil: "networkidle" });
+  const cfg = getSkiClubProConfig(org_ref);
   
-  await fillInput(page, 'input[name="name"], input[name="full_name"]', parent.name);
-  await fillInput(page, 'input[name="email"]', parent.email);
+  await page.goto(`https://${cfg.domain}/user/register`, { waitUntil: "networkidle" });
+  
+  await fillInput(page, cfg.selectors.createName, parent.name);
+  await fillInput(page, cfg.selectors.createEmail, parent.email);
   if (parent.phone) {
-    await fillInput(page, 'input[name="phone"]', parent.phone);
+    await fillInput(page, cfg.selectors.createPhone, parent.phone);
   }
-  await fillInput(page, 'input[name="password"]', parent.password);
-  // Sometimes "repeat password" field needed:
-  await fillInput(page, 'input[name="password_confirm"]', parent.password);
+  await fillInput(page, cfg.selectors.createPassword, parent.password);
+  
+  // Fill password confirmation if selector exists
+  if (cfg.selectors.createPasswordConfirm) {
+    await fillInput(page, cfg.selectors.createPasswordConfirm, parent.password);
+  }
   
   await Promise.all([
-    page.locator('button[type="submit"], input[type="submit"]').click(),
+    page.locator(cfg.selectors.createSubmit).click(),
     page.waitForNavigation({ waitUntil: "networkidle" })
   ]);
   
-  // Return an account_id (use email or page-detected ID)
   return { account_id: parent.email };
 }
 
 /**
- * Check membership status on Blackhawk SkiClubPro
+ * Check membership status on SkiClubPro for given organization
  */
-export async function checkMembershipStatus(session: BrowserbaseSession): Promise<{ active: boolean; expires_at?: string }> {
+export async function checkMembershipStatus(
+  session: BrowserbaseSession,
+  org_ref: string
+): Promise<{ active: boolean; expires_at?: string }> {
   const { page } = session;
-  await page.goto("https://blackhawk.skiclubpro.team/list/memberships", { waitUntil: "networkidle" });
+  const cfg = getSkiClubProConfig(org_ref);
   
-  // The membership listing page may show active memberships
+  await page.goto(`https://${cfg.domain}${cfg.selectors.membershipPage}`, { waitUntil: "networkidle" });
+  
   const text = await page.textContent("body");
   const active = /Active|Current Member|Expires/i.test(text || "");
   
@@ -128,10 +144,11 @@ export async function checkMembershipStatus(session: BrowserbaseSession): Promis
 }
 
 /**
- * Purchase membership on Blackhawk SkiClubPro
+ * Purchase membership on SkiClubPro for given organization
  */
 export async function purchaseMembership(
-  session: BrowserbaseSession, 
+  session: BrowserbaseSession,
+  org_ref: string,
   opts: { 
     plan: string; 
     payment_method: { 
@@ -142,7 +159,9 @@ export async function purchaseMembership(
   }
 ): Promise<{ membership_id: string; final_url: string }> {
   const { page } = session;
-  await page.goto("https://blackhawk.skiclubpro.team/list/memberships", { waitUntil: "networkidle" });
+  const cfg = getSkiClubProConfig(org_ref);
+  
+  await page.goto(`https://${cfg.domain}${cfg.selectors.membershipPage}`, { waitUntil: "networkidle" });
   
   // Click the button or link for the desired plan (matching by visible text)
   await page.click(`text=${opts.plan}`);
@@ -155,8 +174,10 @@ export async function purchaseMembership(
     await page.click(`[data-card-alias="${opts.payment_method.card_alias}"], .stored-payment-method`);
   }
   
+  // Use org-specific buy button selector or fallback to generic
+  const buySelector = cfg.selectors.membershipBuyButton || 'button[type="submit"], input[type="submit"]';
   await Promise.all([
-    page.locator('button[type="submit"], input[type="submit"]').click(),
+    page.locator(buySelector).click(),
     page.waitForNavigation({ waitUntil: "networkidle" })
   ]);
   

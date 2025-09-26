@@ -16,14 +16,13 @@ import {
   performSkiClubProPayment,
   captureScreenshot,
   closeBrowserbaseSession 
-} from '../lib/browserbase';
-// Import Blackhawk-specific functions
+// Import SkiClubPro configurable functions
 import {
   checkAccountExists,
   createSkiClubProAccount,
   checkMembershipStatus,
   purchaseMembership
-} from '../lib/browserbase-blackhawk';
+} from '../lib/browserbase-skiclubpro';
 import { captureScreenshotEvidence } from '../lib/evidence';
 import { createClient } from '@supabase/supabase-js';
 import { randomUUID } from 'crypto';
@@ -891,7 +890,7 @@ export async function scpCheckAccountStatus(args: CheckAccountStatusArgs): Promi
 
         try {
           // Check account status by attempting login or probing
-          const accountStatus = await checkAccountExists(session, args.email);
+          const accountStatus = await checkAccountExists(session, args.org_ref, args.email);
 
           // Capture screenshot evidence
           const screenshot = await captureScreenshot(session, 'account-check.png');
@@ -937,10 +936,11 @@ export async function scpCreateAccount(args: CreateAccountArgs): Promise<{ accou
 
         try {
           // Perform account creation automation
-          const accountResult = await createSkiClubProAccount(session, {
+          const accountResult = await createSkiClubProAccount(session, args.org_ref, {
+            name: args.name,
             email: args.email,
-            password: args.password,
-            child_info: args.child_info
+            phone: args.phone,
+            password: args.password
           });
 
           // Capture confirmation screenshot
@@ -1019,7 +1019,7 @@ export async function scpCheckMembershipStatus(args: CheckMembershipStatusArgs):
 
         try {
           // Check membership status
-          const membershipStatus = await checkMembershipStatus(session);
+          const membershipStatus = await checkMembershipStatus(session, args.org_ref);
 
           // Capture screenshot evidence
           const screenshot = await captureScreenshot(session, 'membership-check.png');
@@ -1090,7 +1090,7 @@ export async function scpPurchaseMembership(args: PurchaseMembershipArgs): Promi
 
         try {
           // Perform membership purchase automation
-          const membershipResult = await purchaseMembership(session);
+          const membershipResult = await purchaseMembership(session, args.org_ref, { plan: args.plan, payment_method: args.payment_method });
 
           // Capture confirmation screenshot
           const screenshot = await captureScreenshot(session, 'membership-purchased.png');
@@ -1198,7 +1198,7 @@ export async function scpCheckStoredPaymentMethod(args: { mandate_id: string; pl
   );
 }
 
-// Export all tools
+// Export all tools with updated names
 export const skiClubProTools = {
   'scp.login': scpLogin,
   'scp.find_programs': scpFindPrograms,
