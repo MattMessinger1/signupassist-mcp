@@ -15,6 +15,3 @@ port = 54323
 [auth]
 site_url = "http://localhost:54321"
 additional_redirect_urls = ["http://localhost:3000"]
-
-[functions.verify_jwt]
-enabled = true
