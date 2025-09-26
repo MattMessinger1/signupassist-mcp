@@ -31,7 +31,7 @@ import { useSmartDefaults } from '@/hooks/useSmartDefaults';
 import { PlanPreview } from '@/components/PlanPreview';
 import { useRegistrationFlow } from '@/lib/registrationFlow';
 
-const stripePromise = loadStripe('pk_test_51QaUhLLyGRQVXFaLxe3Ygv0wfVr8z6FTKFqCJ9Lw6dAI1PTWT1NCGSSHDhtYN8lFyR35gKP5CJH8djqXEp3qfaLp00XFMN5cPE');
+const stripePromise = loadStripe('pk_test_51RujoPAaGNDlVi1koVlBSBBXy2yfwz7vuMBciJxkawKBKaqwR4xw07wEFUAMa73ADIUqzwB5GwbPM3YnPYu5vo4X00rAdiwPkx');
 
 // Schema for form validation
 const planBuilderSchema = z.object({
