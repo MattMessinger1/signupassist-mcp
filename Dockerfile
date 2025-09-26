@@ -5,7 +5,7 @@ WORKDIR /app
 
 # Faster installs by copying manifests first
 COPY package*.json ./
-RUN npm install
+RUN npm install --legacy-peer-deps
 
 # Copy source
 COPY . .
