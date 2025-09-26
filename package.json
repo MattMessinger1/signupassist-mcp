@@ -12,11 +12,9 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
-
     "mcp:dev": "node --loader ts-node/esm mcp_server/index.ts",
     "mcp:build": "tsc -p tsconfig.mcp.json",
     "mcp:start": "node dist/mcp_server/index.js",
-
     "prestart": "npm run mcp:build",
     "start": "npm run mcp:start"
   },
