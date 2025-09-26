@@ -10,7 +10,6 @@
   "mcp:dev": "ts-node mcp_server/index.ts",
   "mcp:build": "tsc -p tsconfig.json",
   "mcp:start": "node dist/mcp_server/index.js"
-}
   },
   "dependencies": {
     "@browserbasehq/sdk": "^0.1.0",
