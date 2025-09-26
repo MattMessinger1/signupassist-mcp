@@ -188,7 +188,7 @@ describe('SkiClubPro Registration and Payment', () => {
       registration_ref: 'reg_test_12345',
       amount_cents: 15000, // $150.00
       payment_method: {
-        type: 'stored',
+        type: 'stored' as const,
         card_alias: 'visa_1234'
       },
       mandate_id: 'mandate-123',
@@ -228,10 +228,10 @@ describe('SkiClubPro Registration and Payment', () => {
     });
 
     it('should process payment with VGS alias', async () => {
-      const vgsPayArgs = {
+      const vgsPayArgs: PayArgs = {
         ...mockPayArgs,
         payment_method: {
-          type: 'vgs_alias',
+          type: 'vgs_alias' as const,
           vgs_alias: 'tok_vgs_abcd1234'
         }
       };
