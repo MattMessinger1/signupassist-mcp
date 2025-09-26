@@ -1,5 +1,6 @@
 /**
  * MCP Server - Registers all MCP tools with the framework
+ * Production-ready with HTTP endpoints, CORS, and health checks
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -10,6 +11,8 @@ import {
   ListToolsRequestSchema,
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
+import { createServer } from 'http';
+import { URL } from 'url';
 
 // Import tool providers
 import { skiClubProTools } from './providers/skiclubpro';
@@ -82,13 +85,61 @@ class SignupAssistMCPServer {
     });
   }
 
+  getToolsList() {
+    return Array.from(this.tools.keys());
+  }
+
   async start() {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
     console.log('SignupAssist MCP Server started');
   }
+
+  async startHTTP() {
+    const port = parseInt(process.env.PORT ?? "4000", 10);
+    
+    const httpServer = createServer((req, res) => {
+      // CORS headers
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+      
+      if (req.method === 'OPTIONS') {
+        res.writeHead(200);
+        res.end();
+        return;
+      }
+
+      const url = new URL(req.url!, `http://localhost:${port}`);
+      
+      if (req.method === 'GET' && url.pathname === '/health') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: true,
+          tools: this.getToolsList()
+        }));
+        return;
+      }
+
+      // Default response for unknown routes
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Not found' }));
+    });
+
+    httpServer.listen(port, () => {
+      console.log(`MCP Server listening on port ${port}`);
+      console.log(`Health check available at http://localhost:${port}/health`);
+    });
+  }
 }
 
-// Start the server
+// Start both stdio and HTTP servers
 const server = new SignupAssistMCPServer();
-server.start().catch(console.error);
+
+// Start HTTP server for production/Railway
+if (process.env.NODE_ENV === 'production' || process.env.PORT) {
+  server.startHTTP().catch(console.error);
+} else {
+  // Start stdio server for local MCP development
+  server.start().catch(console.error);
+}
