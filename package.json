@@ -3,25 +3,28 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-"scripts": {
-  "dev": "vite",
-  "build": "vite build",
-  "preview": "vite preview",
-  "mcp:dev": "ts-node mcp_server/index.ts",
-  "mcp:build": "tsc -p tsconfig.json",
-  "mcp:start": "node dist/mcp_server/index.js"
-},
-"dependencies": {
-  "@browserbasehq/browserbase": "^0.1.5",
-  "modelcontextprotocol": "^0.1.0",
-  "playwright": "^1.55.1",
-  "react": "^18.2.0",
-  "react-dom": "^18.2.0"
-},
-"devDependencies": {
-  "@types/node": "^20.0.0",
-  "ts-node": "^10.9.2",
-  "typescript": "^5.2.2",
-  "vite": "^4.5.0",
-  "eslint": "^8.57.0"
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:dev": "vite build --mode development",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "mcp:dev": "ts-node mcp_server/index.ts",
+    "mcp:build": "tsc -p tsconfig.json",
+    "mcp:start": "node dist/mcp_server/index.js"
+  },
+  "dependencies": {
+    "@browserbasehq/browserbase": "^0.1.5",
+    "modelcontextprotocol": "^0.1.0",
+    "playwright": "^1.55.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.2.2",
+    "vite": "^4.5.0",
+    "eslint": "^8.57.0"
+  }
 }
