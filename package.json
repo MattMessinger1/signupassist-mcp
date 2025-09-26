@@ -12,7 +12,7 @@
   "mcp:start": "node dist/mcp_server/index.js"
   },
   "dependencies": {
-    "@browserbasehq/sdk": "^0.1.0",
+    "browserbase": "^0.1.7",
     "@modelcontextprotocol/sdk": "^0.1.0",
     "playwright": "^1.55.1",
     "react": "^18.2.0",
