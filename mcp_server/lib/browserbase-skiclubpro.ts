@@ -5,9 +5,9 @@
 
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import Browserbase from '@browserbasehq/sdk';
-import { captureScreenshotEvidence } from './evidence';
-import { SKICLUBPRO_CONFIGS } from '../config/skiclubpro_selectors';
-import { fillInput } from './browserbase';
+import { captureScreenshotEvidence } from './evidence.js';
+import { SKICLUBPRO_CONFIGS } from '../config/skiclubpro_selectors.js';
+import { fillInput } from './browserbase.js';
 
 const browserbaseApiKey = process.env.BROWSERBASE_API_KEY!;
 

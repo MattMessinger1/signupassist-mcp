@@ -3,10 +3,12 @@
   "include": ["mcp_server/**/*.ts", "mcp_server/**/*.tsx"],
   "exclude": ["mcp_server/tests", "**/*.test.ts", "**/*.test.tsx"],
   "compilerOptions": {
-    "outDir": "dist/mcp_server",
+    "outDir": "dist",
     "module": "ESNext",
     "target": "ES2022",
     "moduleResolution": "node",
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
     "noEmitOnError": true
   }
 }

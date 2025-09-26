@@ -15,7 +15,7 @@ import { createServer } from 'http';
 import { URL } from 'url';
 
 // Import tool providers
-import { skiClubProTools } from './providers/skiclubpro';
+import { skiClubProTools } from './providers/skiclubpro.js';
 // import { daysmartTools } from '../providers/daysmart/index';
 // import { campminderTools } from '../providers/campminder/index';
 

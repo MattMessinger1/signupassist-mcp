@@ -5,8 +5,8 @@
 
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
-import { verifyMandate } from './mandates';
-import { auditToolCall } from '../middleware/audit';
+import { verifyMandate } from './mandates.js';
+import { auditToolCall } from '../middleware/audit.js';
 
 // Initialize Stripe
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {

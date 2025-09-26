@@ -3,9 +3,9 @@
  * MCP tools for automated registration and payment
  */
 
-import { verifyMandate } from '../lib/mandates';
-import { auditToolCall, logEvidence } from '../middleware/audit';
-import { lookupCredentials } from '../lib/credentials';
+import { verifyMandate } from '../lib/mandates.js';
+import { auditToolCall, logEvidence } from '../middleware/audit.js';
+import { lookupCredentials } from '../lib/credentials.js';
 import { 
   launchBrowserbaseSession, 
   connectToBrowserbaseSession,
@@ -16,14 +16,14 @@ import {
   performSkiClubProPayment,
   captureScreenshot,
   closeBrowserbaseSession 
-} from '../lib/browserbase';
+} from '../lib/browserbase.js';
 import {
   checkAccountExists,
   createSkiClubProAccount,
   checkMembershipStatus,
   purchaseMembership
-} from '../lib/browserbase-skiclubpro';
-import { captureScreenshotEvidence } from '../lib/evidence';
+} from '../lib/browserbase-skiclubpro.js';
+import { captureScreenshotEvidence } from '../lib/evidence.js';
 import { createClient } from '@supabase/supabase-js';
 import { randomUUID } from 'crypto';
 
