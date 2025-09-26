@@ -5,5 +5,9 @@
   "compilerOptions": {
     "allowJs": true,
     "lib": ["deno.window"]
-  }
+  },
+  "tasks": {
+    "dev": "deno run --allow-all --watch main.ts"
+  },
+  "exclude": ["verify_jwt/**"]
 }
