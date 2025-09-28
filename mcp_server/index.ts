@@ -120,32 +120,70 @@ class SignupAssistMCPServer {
         return;
       }
 
-      if (req.method === 'POST' && url.pathname === '/tools/call') {
-        let body = '';
-        req.on('data', chunk => body += chunk);
-        req.on('end', async () => {
-          try {
-            const { tool, args } = JSON.parse(body);
-            
-            if (!this.tools.has(tool)) {
-              res.writeHead(404, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: `Tool ${tool} not found` }));
-              return;
-            }
+      if (url.pathname === '/tools/call') {
+        if (req.method === 'GET') {
+          res.writeHead(405, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ 
+            error: 'This endpoint only supports POST. Use POST with { tool, args }.' 
+          }));
+          return;
+        }
 
-            const toolInstance = this.tools.get(tool);
-            const result = await toolInstance.handler(args);
-            
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify(result));
-          } catch (error) {
-            console.error('Tool execution error:', error);
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ 
-              error: error instanceof Error ? error.message : 'Unknown error' 
-            }));
-          }
-        });
+        if (req.method === 'POST') {
+          let body = '';
+          req.on('data', chunk => body += chunk);
+          req.on('end', async () => {
+            try {
+              let parsedBody;
+              try {
+                parsedBody = JSON.parse(body);
+              } catch (parseError) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ 
+                  error: 'Invalid JSON in request body' 
+                }));
+                return;
+              }
+
+              const { tool, args } = parsedBody;
+              
+              if (!tool) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ 
+                  error: 'Missing required field: tool' 
+                }));
+                return;
+              }
+              
+              if (!this.tools.has(tool)) {
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ 
+                  error: `Tool '${tool}' not found. Available tools: ${Array.from(this.tools.keys()).join(', ')}` 
+                }));
+                return;
+              }
+
+              const toolInstance = this.tools.get(tool);
+              const result = await toolInstance.handler(args || {});
+              
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify(result));
+            } catch (error) {
+              console.error('Tool execution error:', error);
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ 
+                error: error instanceof Error ? error.message : 'Unknown error' 
+              }));
+            }
+          });
+          return;
+        }
+
+        // Method not allowed for /tools/call
+        res.writeHead(405, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ 
+          error: `Method ${req.method} not allowed. This endpoint only supports POST.` 
+        }));
         return;
       }
 
