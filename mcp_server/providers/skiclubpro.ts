@@ -15,39 +15,52 @@ export interface SkiClubProTool {
 
 export const skiClubProTools = {
   'scp.discover_required_fields': async (args: { program_ref: string; mandate_id?: string; plan_execution_id?: string }) => {
-    // Stub implementation - return mock field schema
+    // Stub implementation - return schema in expected frontend format
     return {
       program_ref: args.program_ref,
-      fields: [
+      branches: [
         {
-          name: 'child_name',
-          type: 'string',
+          choice: "Standard Registration",
+          questions: [
+            {
+              id: 'child_name',
+              label: 'Child Name',
+              type: 'text',
+              required: true,
+              category: 'child_info'
+            },
+            {
+              id: 'emergency_contact',
+              label: 'Emergency Contact',
+              type: 'text',
+              required: true,
+              category: 'emergency_contacts'
+            },
+            {
+              id: 'ski_experience',
+              label: 'Skiing Experience',
+              type: 'select',
+              required: true,
+              options: ['Beginner', 'Intermediate', 'Advanced'],
+              category: 'program_selection'
+            }
+          ]
+        }
+      ],
+      common_questions: [
+        {
+          id: 'parent_email',
+          label: 'Parent Email',
+          type: 'text',
           required: true,
-          label: 'Child Name'
+          category: 'child_info'
         },
         {
-          name: 'dob',
-          type: 'date',
-          required: true,
-          label: 'Date of Birth'
-        },
-        {
-          name: 'parent_email',
-          type: 'email',
-          required: true,
-          label: 'Parent Email'
-        },
-        {
-          name: 'parent_phone',
-          type: 'tel',
+          id: 'parent_phone',
+          label: 'Parent Phone',
+          type: 'text',
           required: false,
-          label: 'Parent Phone'
-        },
-        {
-          name: 'emergency_contact',
-          type: 'string',
-          required: true,
-          label: 'Emergency Contact'
+          category: 'child_info'
         }
       ],
       success: true,
