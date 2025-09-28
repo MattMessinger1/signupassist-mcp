@@ -122,6 +122,72 @@ export const skiClubProTools = {
     };
   },
 
+  'scp.find_programs': async (args: { query?: string; mandate_id?: string; plan_execution_id?: string }) => {
+    // Stub implementation - return mock programs
+    const allPrograms = [
+      {
+        id: 'blackhawk_beginner_sat',
+        program_ref: 'blackhawk_beginner_sat',
+        title: 'Beginner Skiing - Saturday Morning',
+        description: 'Perfect for first-time skiers ages 4-8',
+        schedule: 'Saturdays 9:00 AM - 12:00 PM',
+        age_range: '4-8 years',
+        skill_level: 'Beginner',
+        price: '$150/session'
+      },
+      {
+        id: 'blackhawk_intermediate_sun',
+        program_ref: 'blackhawk_intermediate_sun',
+        title: 'Intermediate Skiing - Sunday Afternoon',
+        description: 'For kids who can ski basic slopes confidently',
+        schedule: 'Sundays 1:00 PM - 4:00 PM',
+        age_range: '6-12 years',
+        skill_level: 'Intermediate',
+        price: '$175/session'
+      },
+      {
+        id: 'blackhawk_advanced_weekend',
+        program_ref: 'blackhawk_advanced_weekend',
+        title: 'Advanced Skiing - Weekend Intensive',
+        description: 'High-level training for experienced young skiers',
+        schedule: 'Sat & Sun 8:00 AM - 3:00 PM',
+        age_range: '8-16 years',
+        skill_level: 'Advanced',
+        price: '$300/weekend'
+      },
+      {
+        id: 'blackhawk_snowboard_fri',
+        program_ref: 'blackhawk_snowboard_fri',
+        title: 'Snowboarding Basics - Friday Evening',
+        description: 'Learn snowboarding fundamentals',
+        schedule: 'Fridays 4:00 PM - 7:00 PM',
+        age_range: '10-16 years',
+        skill_level: 'Beginner',
+        price: '$160/session'
+      }
+    ];
+
+    // Filter by query if provided
+    let filteredPrograms = allPrograms;
+    if (args.query) {
+      const query = args.query.toLowerCase();
+      filteredPrograms = allPrograms.filter(program => 
+        program.title.toLowerCase().includes(query) ||
+        program.description.toLowerCase().includes(query) ||
+        program.skill_level.toLowerCase().includes(query) ||
+        program.schedule.toLowerCase().includes(query)
+      );
+    }
+
+    return {
+      programs: filteredPrograms,
+      total: filteredPrograms.length,
+      query: args.query || '',
+      success: true,
+      timestamp: new Date().toISOString()
+    };
+  },
+
   'scp.pay': async (args: any) => {
     // Stub implementation
     return {

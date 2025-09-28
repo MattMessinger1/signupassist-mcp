@@ -28,6 +28,7 @@ import { FieldGroup } from '@/components/FieldGroup';
 import { DraftSaver } from '@/components/DraftSaver';
 import { EnhancedDiscoveredField } from '@/components/FieldRenderer';
 import { useSmartDefaults } from '@/hooks/useSmartDefaults';
+import { ProgramBrowser } from '@/components/ProgramBrowser';
 import { PlanPreview } from '@/components/PlanPreview';
 import { useRegistrationFlow } from '@/lib/registrationFlow';
 
@@ -535,41 +536,49 @@ const PlanBuilder = () => {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="programRef"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Program Reference</FormLabel>
-                      <FormControl>
-                        <div className="flex space-x-2">
-                          <Input
-                            placeholder="e.g., blackhawk_winter_2024"
-                            {...field}
-                          />
-                          <Button 
-                            type="button" 
-                            onClick={() => discoverFields(field.value)}
-                            disabled={!field.value || isDiscovering}
-                          >
-                            {isDiscovering ? (
-                              <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Loading...
-                              </>
-                            ) : (
-                              'Load Registration Form'
+                  <FormField
+                    control={form.control}
+                    name="programRef"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Program Selection</FormLabel>
+                        <FormControl>
+                          <div className="space-y-3">
+                            <ProgramBrowser 
+                              onProgramSelect={(programRef) => {
+                                field.onChange(programRef);
+                                // Auto-load the registration form when a program is selected
+                                setTimeout(() => discoverFields(programRef), 100);
+                              }}
+                              selectedProgram={field.value}
+                            />
+                            {field.value && (
+                              <Button 
+                                type="button" 
+                                onClick={() => discoverFields(field.value)}
+                                disabled={isDiscovering}
+                                variant="outline"
+                                size="sm"
+                              >
+                                {isDiscovering ? (
+                                  <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Loading...
+                                  </>
+                                ) : (
+                                  'Reload Registration Form'
+                                )}
+                              </Button>
                             )}
-                          </Button>
-                        </div>
-                      </FormControl>
-                      <FormDescription>
-                        Enter the program reference and click "Load Registration Form" to see what questions parents need to answer
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                          </div>
+                        </FormControl>
+                        <FormDescription>
+                          Browse and select a program to automatically load the registration form
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
                 <FormField
                   control={form.control}
