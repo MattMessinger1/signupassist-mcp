@@ -173,6 +173,41 @@ export default function Credentials() {
         </div>
 
         <div className="grid gap-6">
+          {/* MCP Server URL Info */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Info className="h-5 w-5" />
+                MCP Server URL
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Alert>
+                <AlertDescription>
+                  Current MCP Server URL: https://signupassist-mcp-production.up.railway.app/
+                </AlertDescription>
+              </Alert>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" className="mt-3">
+                    View Full URL
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>MCP Server URL</DialogTitle>
+                    <DialogDescription>
+                      This is the URL used to communicate with the MCP server.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="p-4 bg-muted rounded-md">
+                    <code className="text-sm">https://signupassist-mcp-production.up.railway.app/</code>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </CardContent>
+          </Card>
+
           {/* Encryption Key Info */}
           <Card>
             <CardHeader>
