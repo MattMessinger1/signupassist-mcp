@@ -555,16 +555,16 @@ const PlanBuilder = () => {
                             {isDiscovering ? (
                               <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Discovering...
+                                Loading...
                               </>
                             ) : (
-                              'Discover Fields'
+                              'Load Registration Form'
                             )}
                           </Button>
                         </div>
                       </FormControl>
                       <FormDescription>
-                        Enter the program reference and click "Discover Fields" to load program-specific questions
+                        Enter the program reference and click "Load Registration Form" to see what questions parents need to answer
                       </FormDescription>
                       <FormMessage />
                     </FormItem>
