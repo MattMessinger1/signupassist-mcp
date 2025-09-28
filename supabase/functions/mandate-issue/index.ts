@@ -60,8 +60,8 @@ Deno.serve(async (req) => {
 
     console.log(`Creating mandate for user ${user.id}, program ${program_ref}`);
 
-    // Validate required fields with specific error messages
-    const requiredFields = { user_id: user.id, provider, scope: normalizedScope, valid_until, jws_compact };
+    // Validate required fields with specific error messages (excluding jws_compact since we generate it)
+    const requiredFields = { user_id: user.id, provider, scope: normalizedScope, valid_until };
     for (const [field, value] of Object.entries(requiredFields)) {
       if (!value) {
         return new Response(

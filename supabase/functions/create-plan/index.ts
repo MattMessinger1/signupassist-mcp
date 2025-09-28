@@ -44,7 +44,8 @@ Deno.serve(async (req) => {
       child_id, 
       opens_at, 
       mandate_id,
-      provider = 'skiclubpro'
+      provider = 'skiclubpro',
+      answers = null
     } = await req.json();
     
     // Validate required fields
@@ -89,6 +90,7 @@ Deno.serve(async (req) => {
         provider,
         opens_at,
         mandate_id,
+        answers,
         status: 'scheduled'
       })
       .select()

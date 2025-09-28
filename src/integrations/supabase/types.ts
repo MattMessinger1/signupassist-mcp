@@ -258,6 +258,7 @@ export type Database = {
       }
       plans: {
         Row: {
+          answers: Json | null
           child_id: string | null
           created_at: string
           id: string
@@ -269,6 +270,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          answers?: Json | null
           child_id?: string | null
           created_at?: string
           id?: string
@@ -280,6 +282,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          answers?: Json | null
           child_id?: string | null
           created_at?: string
           id?: string
