@@ -1321,5 +1321,68 @@ export const skiClubProTools = {
       required: ['org_ref', 'plan', 'payment_method', 'mandate_id', 'plan_execution_id']
     },
     handler: scpPurchaseMembership
+  },
+  'scp.discover_required_fields': {
+    name: 'scp.discover_required_fields',
+    description: 'Discover required form fields for a specific program',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        program_ref: { type: 'string' },
+        mandate_id: { type: 'string' },
+        plan_execution_id: { type: 'string' },
+        credential_id: { type: 'string' }
+      },
+      required: ['program_ref', 'mandate_id', 'plan_execution_id']
+    },
+    handler: scpDiscoverRequiredFields
+  },
+  'scp.register': {
+    name: 'scp.register',
+    description: 'Register a child for a program',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        session_ref: { type: 'string' },
+        program_ref: { type: 'string' },
+        child_id: { type: 'string' },
+        answers: { type: 'object' },
+        mandate_id: { type: 'string' },
+        plan_execution_id: { type: 'string' }
+      },
+      required: ['program_ref', 'child_id', 'mandate_id', 'plan_execution_id']
+    },
+    handler: scpRegister
+  },
+  'scp.pay': {
+    name: 'scp.pay',
+    description: 'Process payment for registration',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        session_ref: { type: 'string' },
+        registration_ref: { type: 'string' },
+        amount_cents: { type: 'number' },
+        payment_method: { type: 'object' },
+        mandate_id: { type: 'string' },
+        plan_execution_id: { type: 'string' }
+      },
+      required: ['registration_ref', 'amount_cents', 'mandate_id', 'plan_execution_id']
+    },
+    handler: scpPay
+  },
+  'evidence.capture': {
+    name: 'evidence.capture',
+    description: 'Capture evidence (screenshot, page source, etc.)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        plan_execution_id: { type: 'string' },
+        mandate_id: { type: 'string' },
+        kind: { type: 'string' }
+      },
+      required: ['plan_execution_id', 'mandate_id', 'kind']
+    },
+    handler: captureEvidence
   }
 };
