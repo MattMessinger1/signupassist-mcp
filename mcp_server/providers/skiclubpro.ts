@@ -13,60 +13,92 @@ export interface SkiClubProTool {
   handler: (args: any) => Promise<any>;
 }
 
+// Define types for field discovery
+export interface DiscoverRequiredFieldsArgs {
+  program_ref: string;
+  mandate_id?: string;
+  plan_execution_id?: string;
+}
+
+export interface FieldSchema {
+  program_ref: string;
+  branches: Array<{
+    choice: string;
+    questions: Array<{
+      id: string;
+      label: string;
+      type: string;
+      required: boolean;
+      options?: string[];
+      category?: string;
+    }>;
+  }>;
+}
+
+/**
+ * Real implementation of SkiClubPro field discovery
+ */
+export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs): Promise<FieldSchema> {
+  const { verifyMandate } = require('../lib/mandates');
+  const { auditToolCall } = require('../middleware/audit');
+  const { lookupCredentials } = require('../lib/credentials');
+  const { launchBrowserbaseSession, discoverProgramRequiredFields, captureScreenshot, closeBrowserbaseSession } = require('../lib/browserbase');
+  const { captureScreenshotEvidence } = require('../lib/evidence');
+
+  return await auditToolCall(
+    {
+      tool: 'scp.discover_required_fields',
+      args,
+      mandate_id: args.mandate_id,
+      plan_execution_id: args.plan_execution_id
+    },
+    async () => {
+      // Verify mandate has required scope
+      if (args.mandate_id) {
+        await verifyMandate(args.mandate_id, 'scp:read:listings');
+      }
+
+      let session = null;
+      try {
+        // Launch browser session
+        session = await launchBrowserbaseSession();
+        
+        // Discover program fields using real browser automation
+        const fieldSchema = await discoverProgramRequiredFields(session, args.program_ref, 'blackhawk-ski-club');
+        
+        // Capture evidence screenshot
+        if (args.plan_execution_id) {
+          const screenshot = await captureScreenshot(session);
+          await captureScreenshotEvidence(args.plan_execution_id, screenshot, 'discovery');
+        }
+        
+        return fieldSchema;
+        
+      } catch (error) {
+        console.error('SkiClubPro field discovery failed:', error);
+        
+        // Capture error screenshot if session exists
+        if (session && args.plan_execution_id) {
+          try {
+            const errorScreenshot = await captureScreenshot(session, 'discovery-failed.png');
+            await captureScreenshotEvidence(args.plan_execution_id, errorScreenshot, 'failed-field-discovery');
+          } catch (evidenceError) {
+            console.error('Failed to capture error evidence:', evidenceError);
+          }
+        }
+        
+        throw new Error(`SkiClubPro field discovery failed: ${error.message}`);
+      } finally {
+        if (session) {
+          await closeBrowserbaseSession(session);
+        }
+      }
+    }
+  );
+}
+
 export const skiClubProTools = {
-  'scp.discover_required_fields': async (args: { program_ref: string; mandate_id?: string; plan_execution_id?: string }) => {
-    // Stub implementation - return schema in expected frontend format
-    return {
-      program_ref: args.program_ref,
-      branches: [
-        {
-          choice: "Standard Registration",
-          questions: [
-            {
-              id: 'child_name',
-              label: 'Child Name',
-              type: 'text',
-              required: true,
-              category: 'child_info'
-            },
-            {
-              id: 'emergency_contact',
-              label: 'Emergency Contact',
-              type: 'text',
-              required: true,
-              category: 'emergency_contacts'
-            },
-            {
-              id: 'ski_experience',
-              label: 'Skiing Experience',
-              type: 'select',
-              required: true,
-              options: ['Beginner', 'Intermediate', 'Advanced'],
-              category: 'program_selection'
-            }
-          ]
-        }
-      ],
-      common_questions: [
-        {
-          id: 'parent_email',
-          label: 'Parent Email',
-          type: 'text',
-          required: true,
-          category: 'child_info'
-        },
-        {
-          id: 'parent_phone',
-          label: 'Parent Phone',
-          type: 'text',
-          required: false,
-          category: 'child_info'
-        }
-      ],
-      success: true,
-      timestamp: new Date().toISOString()
-    };
-  },
+  'scp.discover_required_fields': scpDiscoverRequiredFields,
 
   'scp.check_account_status': async (args: { credential_id: string; org_ref?: string; email?: string; mandate_id?: string; plan_execution_id?: string }) => {
     // Stub implementation
@@ -122,50 +154,26 @@ export const skiClubProTools = {
     };
   },
 
-  'scp.find_programs': async (args: { query?: string; mandate_id?: string; plan_execution_id?: string }) => {
-    // Stub implementation - return mock programs
-    const allPrograms = [
-      {
-        id: 'blackhawk_beginner_sat',
-        program_ref: 'blackhawk_beginner_sat',
-        title: 'Beginner Skiing - Saturday Morning',
-        description: 'Perfect for first-time skiers ages 4-8',
-        schedule: 'Saturdays 9:00 AM - 12:00 PM',
-        age_range: '4-8 years',
-        skill_level: 'Beginner',
-        price: '$150/session'
-      },
-      {
-        id: 'blackhawk_intermediate_sun',
-        program_ref: 'blackhawk_intermediate_sun',
-        title: 'Intermediate Skiing - Sunday Afternoon',
-        description: 'For kids who can ski basic slopes confidently',
-        schedule: 'Sundays 1:00 PM - 4:00 PM',
-        age_range: '6-12 years',
-        skill_level: 'Intermediate',
-        price: '$175/session'
-      },
-      {
-        id: 'blackhawk_advanced_weekend',
-        program_ref: 'blackhawk_advanced_weekend',
-        title: 'Advanced Skiing - Weekend Intensive',
-        description: 'High-level training for experienced young skiers',
-        schedule: 'Sat & Sun 8:00 AM - 3:00 PM',
-        age_range: '8-16 years',
-        skill_level: 'Advanced',
-        price: '$300/weekend'
-      },
-      {
-        id: 'blackhawk_snowboard_fri',
-        program_ref: 'blackhawk_snowboard_fri',
-        title: 'Snowboarding Basics - Friday Evening',
-        description: 'Learn snowboarding fundamentals',
-        schedule: 'Fridays 4:00 PM - 7:00 PM',
-        age_range: '10-16 years',
-        skill_level: 'Beginner',
-        price: '$160/session'
-      }
-    ];
+  'scp.find_programs': async (args: { org_ref?: string; query?: string; mandate_id?: string; plan_execution_id?: string }) => {
+    const { getAvailablePrograms } = require('../config/program_mapping');
+    const orgRef = args.org_ref || 'blackhawk-ski-club';
+    
+    // Get real program mappings
+    const availablePrograms = getAvailablePrograms(orgRef);
+    
+    // Convert to the expected format with realistic data
+    const allPrograms = availablePrograms.map(mapping => ({
+      id: mapping.text_ref,
+      program_ref: mapping.text_ref,
+      title: mapping.title,
+      description: mapping.description || `${mapping.title} program`,
+      schedule: 'Registration opens December 1st, 2024',
+      age_range: '6-12 years',
+      skill_level: 'All levels',
+      price: '$150/session',
+      actual_id: mapping.actual_id, // Include the real SkiClubPro ID
+      org_ref: mapping.org_ref
+    }));
 
     // Filter by query if provided
     let filteredPrograms = allPrograms;

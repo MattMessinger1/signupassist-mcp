@@ -80,13 +80,16 @@ export async function connectToBrowserbaseSession(sessionId: string): Promise<Br
  */
 export async function performSkiClubProLogin(
   session: BrowserbaseSession,
-  credentials: { email: string; password: string }
+  credentials: { email: string; password: string },
+  orgRef: string = 'blackhawk-ski-club'
 ): Promise<void> {
   const { page } = session;
+  const { getSkiClubProConfig } = require('../config/skiclubpro_selectors');
+  const config = getSkiClubProConfig(orgRef);
 
   try {
     // Navigate to SkiClubPro login page
-    await page.goto('https://register.blackhawkskiclub.org/', { 
+    await page.goto(`https://${config.domain}/`, { 
       waitUntil: 'networkidle' 
     });
 
@@ -133,12 +136,24 @@ export async function performSkiClubProLogin(
 /**
  * Discover required fields for a program with branching support
  */
-export async function discoverProgramRequiredFields(session: BrowserbaseSession, programRef: string): Promise<any> {
+export async function discoverProgramRequiredFields(
+  session: BrowserbaseSession, 
+  programRef: string,
+  orgRef: string = 'blackhawk-ski-club'
+): Promise<any> {
   try {
     console.log(`Starting field discovery for program: ${programRef}`);
     
-    // Navigate to the program registration page
-    const registrationUrl = `https://register.blackhawkskiclub.org/register/${programRef}`;
+    const { getSkiClubProConfig } = require('../config/skiclubpro_selectors');
+    const { getProgramId } = require('../config/program_mapping');
+    const config = getSkiClubProConfig(orgRef);
+    
+    // Convert text reference to actual program ID
+    const actualProgramId = getProgramId(programRef, orgRef);
+    
+    // Navigate to the program registration page - use correct SkiClubPro URL structure
+    const registrationUrl = `https://${config.domain}/registration/${actualProgramId}/start`;
+    console.log(`Navigating to: ${registrationUrl} (mapped ${programRef} -> ${actualProgramId})`);
     await session.page.goto(registrationUrl, { waitUntil: 'networkidle' });
     
     // Wait for form to load
@@ -151,40 +166,134 @@ export async function discoverProgramRequiredFields(session: BrowserbaseSession,
         throw new Error('Registration form not found');
       }
       
-      // Find all form fields
+      // Enhanced field discovery for SkiClubPro forms
       const fields: any[] = [];
-      const inputs = form.querySelectorAll('input, select, textarea');
+      const inputs = form.querySelectorAll('input, select, textarea, [role="button"], [role="radio"], [role="checkbox"]');
       
       inputs.forEach((input: Element) => {
         const element = input as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
-        const label = form.querySelector(`label[for="${element.id}"]`)?.textContent?.trim() || 
-                     element.getAttribute('placeholder') || 
-                     element.getAttribute('name') || 
-                     'Unknown Field';
         
-        const field = {
-          id: element.id || element.name || `field_${fields.length}`,
-          label: label,
-          type: element.type || element.tagName.toLowerCase(),
-          required: element.hasAttribute('required') || element.getAttribute('aria-required') === 'true',
-          options: []
-        };
+        // Enhanced label detection for SkiClubPro
+        let label = '';
         
-        // For select elements, capture options
-        if (element.tagName.toLowerCase() === 'select') {
-          const selectElement = element as HTMLSelectElement;
-          field.options = Array.from(selectElement.options).map(option => option.text).filter(text => text.trim());
+        // Try multiple strategies to find the label
+        if (element.labels && element.labels.length > 0) {
+          label = element.labels[0].textContent?.trim() || '';
+        } else {
+          // Look for label by 'for' attribute
+          const labelEl = form.querySelector(`label[for="${element.id}"]`);
+          if (labelEl) {
+            label = labelEl.textContent?.trim() || '';
+          } else {
+            // Try placeholder, aria-label, or name
+            label = element.getAttribute('placeholder') || 
+                   element.getAttribute('aria-label') || 
+                   element.getAttribute('name') || '';
+            
+            // If still no label, look for nearby text
+            if (!label) {
+              const parent = element.parentElement;
+              if (parent) {
+                // Look for text in parent or preceding elements
+                const textNodes = Array.from(parent.childNodes)
+                  .filter(node => node.nodeType === Node.TEXT_NODE && node.textContent?.trim())
+                  .map(node => node.textContent?.trim())
+                  .filter(Boolean);
+                
+                if (textNodes.length > 0) {
+                  label = textNodes[0];
+                } else {
+                  // Look for span/div siblings with text
+                  const siblings = Array.from(parent.children)
+                    .filter(el => el !== element && el.textContent?.trim())
+                    .map(el => el.textContent?.trim())
+                    .filter(Boolean);
+                  
+                  if (siblings.length > 0) {
+                    label = siblings[0];
+                  }
+                }
+              }
+            }
+          }
         }
         
-        // For radio buttons, group by name
+        // Clean up label
+        label = label?.replace(/[*:]/g, '').trim() || 'Unknown Field';
+        
+        // Skip if label is too long or looks like helper text
+        if (label.length > 100 || 
+            label.toLowerCase().includes('please') ||
+            label.toLowerCase().includes('select an option')) {
+          return;
+        }
+        
+        const fieldId = element.id || element.name || `field_${fields.length}`;
+        
+        // Determine field type
+        let fieldType = element.type || element.tagName.toLowerCase();
+        if (fieldType === 'select-one') fieldType = 'select';
+        if (fieldType === 'select-multiple') fieldType = 'multi-select';
+        
+        const field = {
+          id: fieldId,
+          label: label,
+          type: fieldType,
+          required: element.hasAttribute('required') || 
+                   element.getAttribute('aria-required') === 'true' ||
+                   label.includes('*'),
+          options: [] as string[]
+        };
+        
+        // Handle select options
+        if (element.tagName.toLowerCase() === 'select') {
+          const selectElement = element as HTMLSelectElement;
+          field.options = Array.from(selectElement.options)
+            .map(option => option.text.trim())
+            .filter(text => text && 
+                          text !== 'Please select...' && 
+                          text !== '-- Select --' &&
+                          text !== 'Choose...');
+        }
+        
+        // Handle radio button groups
         if (element.type === 'radio') {
-          const existingField = fields.find(f => f.id === element.name);
+          const groupName = element.name;
+          const existingField = fields.find(f => f.id === groupName);
           if (existingField) {
-            existingField.options.push(element.value || label);
+            const optionLabel = element.getAttribute('value') || 
+                               element.nextElementSibling?.textContent?.trim() ||
+                               label;
+            if (optionLabel && !existingField.options.includes(optionLabel)) {
+              existingField.options.push(optionLabel);
+            }
             return;
           }
-          field.id = element.name;
-          field.options = [element.value || label];
+          field.id = groupName;
+          field.type = 'radio';
+          field.options = [element.getAttribute('value') || label];
+        }
+        
+        // Handle checkbox groups (common for volunteering, rentals, etc.)
+        if (element.type === 'checkbox') {
+          const groupName = element.name;
+          // Check if this is part of a group
+          const siblingCheckboxes = form.querySelectorAll(`input[type="checkbox"][name="${groupName}"]`);
+          if (siblingCheckboxes.length > 1) {
+            const existingField = fields.find(f => f.id === groupName);
+            if (existingField) {
+              const optionLabel = element.getAttribute('value') || 
+                                 element.nextElementSibling?.textContent?.trim() ||
+                                 label;
+              if (optionLabel && !existingField.options.includes(optionLabel)) {
+                existingField.options.push(optionLabel);
+              }
+              return;
+            }
+            field.id = groupName;
+            field.type = 'checkbox-group';
+            field.options = [element.getAttribute('value') || label];
+          }
         }
         
         fields.push(field);
@@ -317,8 +426,12 @@ export async function performSkiClubProRegistration(
   try {
     console.log(`Starting registration for program: ${registrationData.program_ref}`);
     
-    // Navigate to the program registration page
-    const registrationUrl = `https://register.blackhawkskiclub.org/register/${registrationData.program_ref}`;
+    // Navigate to the program registration page using correct domain
+    const { getSkiClubProConfig } = require('../config/skiclubpro_selectors');
+    const { getProgramId } = require('../config/program_mapping');
+    const config = getSkiClubProConfig('blackhawk-ski-club');
+    const actualProgramId = getProgramId(registrationData.program_ref, 'blackhawk-ski-club');
+    const registrationUrl = `https://${config.domain}/registration/${actualProgramId}/start`;
     await session.page.goto(registrationUrl, { waitUntil: 'networkidle' });
     
     // Wait for form to load
