@@ -1,0 +1,110 @@
+name: CRED_SEAL_KEY Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test-cred-seal-key:
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Install Playwright Browsers
+      run: npx playwright install --with-deps chromium
+    
+    - name: Verify CRED_SEAL_KEY exists
+      run: |
+        if [ -z "${{ secrets.CRED_SEAL_KEY }}" ]; then
+          echo "❌ CRED_SEAL_KEY secret is not set in GitHub"
+          exit 1
+        else
+          echo "✅ CRED_SEAL_KEY secret is configured"
+        fi
+    
+    - name: Run CRED_SEAL_KEY Tests
+      run: npm run test:cred
+      env:
+        CI: true
+        PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: 1
+    
+    - name: Upload Test Results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: playwright-report
+        path: playwright-report/
+        retention-days: 30
+    
+    - name: Upload Test Screenshots
+      uses: actions/upload-artifact@v4
+      if: failure()
+      with:
+        name: test-screenshots
+        path: test-results/
+        retention-days: 7
+
+  verify-edge-functions:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Verify CRED_SEAL_KEY usage in edge functions
+      run: |
+        echo "🔍 Checking edge functions for CRED_SEAL_KEY usage..."
+        
+        FUNCTIONS=("store-credentials" "cred-get" "cred-debug" "start-signup-job")
+        MISSING_FUNCTIONS=()
+        
+        for func in "${FUNCTIONS[@]}"; do
+          if ! grep -q "CRED_SEAL_KEY" "supabase/functions/$func/index.ts"; then
+            MISSING_FUNCTIONS+=("$func")
+          else
+            echo "✅ $func properly uses CRED_SEAL_KEY"
+          fi
+        done
+        
+        if [ ${#MISSING_FUNCTIONS[@]} -ne 0 ]; then
+          echo "❌ The following functions are missing CRED_SEAL_KEY usage:"
+          printf '%s\n' "${MISSING_FUNCTIONS[@]}"
+          exit 1
+        else
+          echo "✅ All required functions use CRED_SEAL_KEY"
+        fi
+    
+    - name: Verify error handling
+      run: |
+        echo "🔍 Checking error handling for missing CRED_SEAL_KEY..."
+        
+        FUNCTIONS=("store-credentials" "cred-get" "cred-debug")
+        MISSING_ERROR_HANDLING=()
+        
+        for func in "${FUNCTIONS[@]}"; do
+          if ! grep -q "Missing CRED_SEAL_KEY" "supabase/functions/$func/index.ts"; then
+            MISSING_ERROR_HANDLING+=("$func")
+          else
+            echo "✅ $func properly handles missing CRED_SEAL_KEY"
+          fi
+        done
+        
+        if [ ${#MISSING_ERROR_HANDLING[@]} -ne 0 ]; then
+          echo "❌ The following functions don't handle missing CRED_SEAL_KEY:"
+          printf '%s\n' "${MISSING_ERROR_HANDLING[@]}"
+          exit 1
+        else
+          echo "✅ All functions properly handle missing CRED_SEAL_KEY"
+        fi

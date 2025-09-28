@@ -35,6 +35,7 @@ serve(async (req) => {
       SB_URL: Deno.env.get('SB_URL')?.substring(0, 30) || 'MISSING',
       SUPABASE_ANON_KEY: Deno.env.get('SUPABASE_ANON_KEY')?.substring(0, 10) || 'MISSING',
       SUPABASE_PUBLISHABLE_KEY: Deno.env.get('SUPABASE_PUBLISHABLE_KEY')?.substring(0, 10) || 'MISSING',
+      CRED_SEAL_KEY: Deno.env.get('CRED_SEAL_KEY') ? `${Deno.env.get('CRED_SEAL_KEY')!.substring(0, 5)}...` : 'MISSING',
     }
 
     return new Response(
