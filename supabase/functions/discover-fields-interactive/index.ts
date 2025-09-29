@@ -204,8 +204,7 @@ Deno.serve(async (req) => {
         credential_id
       }, {
         mandate_id,
-        plan_execution_id: undefined,
-        skipAudit: true    // ✅ important
+        skipAudit: true   // ✅ enforce skip audit
       });
 
       console.log('Field discovery completed:', result);
