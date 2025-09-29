@@ -49,13 +49,19 @@ async function executeMCPTool(toolName: string, args: any, planExecutionId: stri
 
   try {
     // Call the actual MCP tool implementation
-    const toolResult = await supabase.functions.invoke(edgeFunction, {
-      body: {
-        action: toolName,
+    const requestBody = {
+      tool: toolName,
+      args: {
         ...args,
         plan_execution_id: planExecutionId,
         mandate_id: mandateId
       }
+    };
+    
+    console.log(`Calling ${edgeFunction} with body:`, JSON.stringify(requestBody));
+    
+    const toolResult = await supabase.functions.invoke(edgeFunction, {
+      body: requestBody
     });
 
     if (toolResult.error) {
@@ -128,19 +134,28 @@ Deno.serve(async (req) => {
       }
 
       // For individual tool calls, invoke the tool directly
+      const requestBody = {
+        tool: tool,
+        args: args
+      };
+      
+      console.log(`Individual tool call - invoking ${edgeFunction} with body:`, JSON.stringify(requestBody));
+      
       const toolResult = await createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
       ).functions.invoke(edgeFunction, {
-        body: {
-          action: tool,
-          ...args
-        }
+        body: requestBody
       });
 
+      console.log(`Individual tool call result:`, JSON.stringify(toolResult));
+
       if (toolResult.error) {
+        console.error(`MCP tool failed:`, toolResult.error);
         throw new Error(`MCP tool failed: ${toolResult.error.message}`);
       }
+
+      console.log(`Individual tool call success for ${tool}:`, toolResult.data);
 
       return new Response(
         JSON.stringify(toolResult.data),

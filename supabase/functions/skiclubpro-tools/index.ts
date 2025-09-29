@@ -12,9 +12,17 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { tool, args } = await req.json();
+    const requestBody = await req.json();
+    console.log(`skiclubpro-tools received raw body:`, JSON.stringify(requestBody));
     
-    console.log(`skiclubpro-tools invoked with tool: ${tool}`, { args });
+    const { tool, args } = requestBody;
+    
+    if (!tool) {
+      throw new Error('Tool parameter is required');
+    }
+    
+    console.log(`skiclubpro-tools processing tool: ${tool}`, { args });
+    console.log(`MCP_SERVER_URL: ${Deno.env.get('MCP_SERVER_URL')?.substring(0, 50)}...`);
 
     // Map the tool to the correct MCP server call
     let result;
