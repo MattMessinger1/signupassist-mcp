@@ -258,10 +258,10 @@ const PlanBuilder = () => {
       const payload = { 
         program_ref: programRef,
         credential_id: credentialId,
-        plan_execution_id: "interactive"
+        plan_execution_id: null  // prevent invalid UUID error
       };
       
-      console.log('Discover fields payload:', payload);
+      console.log("DEBUG PlanBuilder sending payload:", payload);
       
       const { data, error } = await supabase.functions.invoke('discover-fields-interactive', {
         body: payload
