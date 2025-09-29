@@ -5,6 +5,8 @@
 
 import Browserbase from '@browserbasehq/sdk';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
+import { getSkiClubProConfig } from '../config/skiclubpro_selectors.js';
+import { getProgramId } from '../config/program_mapping.js';
 
 const browserbaseApiKey = process.env.BROWSERBASE_API_KEY!;
 
@@ -84,7 +86,6 @@ export async function performSkiClubProLogin(
   orgRef: string = 'blackhawk-ski-club'
 ): Promise<void> {
   const { page } = session;
-  const { getSkiClubProConfig } = require('../config/skiclubpro_selectors');
   const config = getSkiClubProConfig(orgRef);
 
   try {
@@ -144,8 +145,6 @@ export async function discoverProgramRequiredFields(
   try {
     console.log(`Starting field discovery for program: ${programRef}`);
     
-    const { getSkiClubProConfig } = require('../config/skiclubpro_selectors');
-    const { getProgramId } = require('../config/program_mapping');
     const config = getSkiClubProConfig(orgRef);
     
     // Convert text reference to actual program ID
@@ -427,8 +426,6 @@ export async function performSkiClubProRegistration(
     console.log(`Starting registration for program: ${registrationData.program_ref}`);
     
     // Navigate to the program registration page using correct domain
-    const { getSkiClubProConfig } = require('../config/skiclubpro_selectors');
-    const { getProgramId } = require('../config/program_mapping');
     const config = getSkiClubProConfig('blackhawk-ski-club');
     const actualProgramId = getProgramId(registrationData.program_ref, 'blackhawk-ski-club');
     const registrationUrl = `https://${config.domain}/registration/${actualProgramId}/start`;

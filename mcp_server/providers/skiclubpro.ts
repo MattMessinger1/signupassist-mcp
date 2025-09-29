@@ -2,6 +2,13 @@
  * SkiClubPro Provider - MCP Tools for SkiClubPro automation
  */
 
+import { verifyMandate } from '../lib/mandates.js';
+import { auditToolCall } from '../middleware/audit.js';
+import { lookupCredentials } from '../lib/credentials.js';
+import { launchBrowserbaseSession, discoverProgramRequiredFields, captureScreenshot, closeBrowserbaseSession } from '../lib/browserbase.js';
+import { captureScreenshotEvidence } from '../lib/evidence.js';
+import { getAvailablePrograms } from '../config/program_mapping.js';
+
 export interface SkiClubProTool {
   name: string;
   description: string;
@@ -39,11 +46,6 @@ export interface FieldSchema {
  * Real implementation of SkiClubPro field discovery
  */
 export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs): Promise<FieldSchema> {
-  const { verifyMandate } = require('../lib/mandates');
-  const { auditToolCall } = require('../middleware/audit');
-  const { lookupCredentials } = require('../lib/credentials');
-  const { launchBrowserbaseSession, discoverProgramRequiredFields, captureScreenshot, closeBrowserbaseSession } = require('../lib/browserbase');
-  const { captureScreenshotEvidence } = require('../lib/evidence');
   
   // Inline program mapping to avoid import issues
   const PROGRAM_MAPPINGS = {
@@ -80,10 +82,10 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
   return await auditToolCall(
     {
       tool: 'scp.discover_required_fields',
-      args,
-      mandate_id: args.mandate_id,
-      plan_execution_id: args.plan_execution_id
+      mandate_id: args.mandate_id || '',
+      plan_execution_id: args.plan_execution_id || ''
     },
+    args,
     async () => {
       // Verify mandate has required scope
       if (args.mandate_id) {
@@ -194,7 +196,6 @@ export const skiClubProTools = {
   },
 
   'scp.find_programs': async (args: { org_ref?: string; query?: string; mandate_id?: string; plan_execution_id?: string }) => {
-    const { getAvailablePrograms } = require('../config/program_mapping');
     const orgRef = args.org_ref || 'blackhawk-ski-club';
     
     // Get real program mappings
