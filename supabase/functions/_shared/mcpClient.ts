@@ -37,9 +37,10 @@ export async function invokeMCPTool(
     // Only add plan_execution_id if we're NOT skipping audit AND it's a valid value
     if (!skipAudit && plan_execution_id && plan_execution_id !== "") {
       requestArgs.plan_execution_id = plan_execution_id;
+      console.log(`DEBUG adding plan_execution_id to request: ${plan_execution_id}`);
+    } else if (skipAudit) {
+      console.log(`DEBUG skipAudit=true — completely omitting plan_execution_id from MCP request`);
     }
-    
-    console.log(`MCP request args (skipAudit=${skipAudit}):`, requestArgs);
     
     console.log(`MCP request body being sent:`, JSON.stringify({
       tool,
@@ -67,9 +68,9 @@ export async function invokeMCPTool(
 
     // Log audit trail if not skipped and we have required IDs
     if (!skipAudit && (mandate_id || plan_execution_id)) {
-      let safePlanExecutionId: string | null = plan_execution_id || null;
-      if (safePlanExecutionId === "" || safePlanExecutionId === undefined) {
-        console.log("DEBUG replacing empty plan_execution_id with null before audit");
+      let safePlanExecutionId = plan_execution_id;
+      if (!safePlanExecutionId) {
+        console.log("DEBUG plan_execution_id falsy, forcing null before audit");
         safePlanExecutionId = null;
       }
 
@@ -81,7 +82,7 @@ export async function invokeMCPTool(
         plan_execution_id: safePlanExecutionId
       });
     } else if (skipAudit) {
-      console.log("DEBUG skipAudit is true — audit logging intentionally skipped for tool:", tool);
+      console.log("DEBUG skipAudit=true — audit logging intentionally skipped for tool:", tool);
     }
 
     return result;

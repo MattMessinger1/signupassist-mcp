@@ -261,7 +261,7 @@ const PlanBuilder = () => {
         plan_execution_id: null
       };
       
-      console.log("DEBUG PlanBuilder sending payload:", payload);
+      console.log("DEBUG PlanBuilder payload:", payload);
       
       const { data, error } = await supabase.functions.invoke('discover-fields-interactive', {
         body: payload
