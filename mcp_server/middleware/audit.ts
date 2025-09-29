@@ -181,8 +181,13 @@ export async function auditToolCall<T>(
   let auditId: string | null = null;
   
   try {
-    // Start audit logging
-    auditId = await logToolCallStart(context, args);
+    // Skip audit logging for interactive sessions (non-UUID plan_execution_id)
+    const shouldSkipAudit = context.plan_execution_id === 'interactive';
+    
+    // Start audit logging only if not interactive
+    if (!shouldSkipAudit) {
+      auditId = await logToolCallStart(context, args);
+    }
     
     // Verify mandate if required scope is provided
     if (requiredScope) {
