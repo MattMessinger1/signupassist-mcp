@@ -198,20 +198,20 @@ export const skiClubProTools = {
   'scp.find_programs': async (args: { org_ref?: string; query?: string; mandate_id?: string; plan_execution_id?: string }) => {
     const orgRef = args.org_ref || 'blackhawk-ski-club';
     
-    // Get real program mappings
+    // Get real program mappings with current data
     const availablePrograms = getAvailablePrograms(orgRef);
     
-    // Convert to the expected format with realistic data
+    // Convert to the expected format using data from program mappings
     const allPrograms = availablePrograms.map(mapping => ({
       id: mapping.text_ref,
       program_ref: mapping.text_ref,
       title: mapping.title,
       description: mapping.description || `${mapping.title} program`,
-      schedule: 'Registration opens December 1st, 2024',
-      age_range: '6-12 years',
-      skill_level: 'All levels',
-      price: '$150/session',
-      actual_id: mapping.actual_id, // Include the real SkiClubPro ID
+      schedule: mapping.schedule,
+      age_range: mapping.age_range,
+      skill_level: mapping.skill_level,
+      price: mapping.price,
+      actual_id: mapping.actual_id,
       org_ref: mapping.org_ref
     }));
 

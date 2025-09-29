@@ -15,28 +15,47 @@ export interface ProgramMapping {
  * Program mappings for different ski clubs
  * This allows us to map user-friendly names to actual SkiClubPro numeric IDs
  */
-export const PROGRAM_MAPPINGS: Record<string, ProgramMapping[]> = {
+export interface ProgramDetails extends ProgramMapping {
+  schedule: string;
+  age_range: string;
+  skill_level: string;
+  price: string;
+}
+
+export const PROGRAM_MAPPINGS: Record<string, ProgramDetails[]> = {
   'blackhawk-ski-club': [
     {
       text_ref: 'blackhawk_winter',
       actual_id: '309',
       title: 'Nordic Kids Wednesday',
       description: 'Wednesday Nordic Kids Program',
-      org_ref: 'blackhawk-ski-club'
+      org_ref: 'blackhawk-ski-club',
+      schedule: 'Registration opens December 1st, 2025',
+      age_range: '6-12 years',
+      skill_level: 'All levels',
+      price: '$175/session'
     },
     {
       text_ref: 'blackhawk_beginner_sat',
       actual_id: '310',
       title: 'Beginner Skiing - Saturday Morning',
       description: 'Perfect for first-time skiers ages 4-8',
-      org_ref: 'blackhawk-ski-club'
+      org_ref: 'blackhawk-ski-club',
+      schedule: 'Registration opens November 15th, 2025',
+      age_range: '4-8 years',
+      skill_level: 'Beginner',
+      price: '$165/session'
     },
     {
       text_ref: 'blackhawk_intermediate_sun',
       actual_id: '311',
       title: 'Intermediate Skiing - Sunday Afternoon',
       description: 'For kids who can ski basic slopes confidently',
-      org_ref: 'blackhawk-ski-club'
+      org_ref: 'blackhawk-ski-club',
+      schedule: 'Registration opens December 15th, 2025',
+      age_range: '8-14 years',
+      skill_level: 'Intermediate',
+      price: '$185/session'
     }
   ],
   
@@ -46,7 +65,11 @@ export const PROGRAM_MAPPINGS: Record<string, ProgramMapping[]> = {
       actual_id: '201',
       title: 'Beginner Program',
       description: 'Entry level skiing program',
-      org_ref: 'oak-park-ski-club'
+      org_ref: 'oak-park-ski-club',
+      schedule: 'Registration opens January 10th, 2026',
+      age_range: '5-10 years',
+      skill_level: 'Beginner',
+      price: '$150/session'
     }
   ]
 };
