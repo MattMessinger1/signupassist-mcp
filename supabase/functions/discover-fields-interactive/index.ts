@@ -184,7 +184,7 @@ Deno.serve(async (req) => {
 
     // Call the MCP provider tool for field discovery directly
     console.log("invoking MCP with mandate_id:", mandate_id, "credential_id:", credential_id);
-    console.log("DEBUG interactive discovery: skipping audit log, omitting plan_execution_id");
+    console.log("DEBUG interactive discovery: skipAudit=true, omitting plan_execution_id");
     
     try {
       const result = await invokeMCPTool("scp.discover_required_fields", {
@@ -193,7 +193,7 @@ Deno.serve(async (req) => {
         credential_id
       }, {
         mandate_id,
-        skipAudit: true
+        skipAudit: true   // ✅ no audit for discovery
       });
 
       console.log('Field discovery completed:', result);

@@ -69,8 +69,9 @@ export async function invokeMCPTool(
     // Log audit trail if not skipped and we have required IDs
     if (!skipAudit && (mandate_id || plan_execution_id)) {
       let safePlanExecutionId = plan_execution_id;
-      if (!safePlanExecutionId) {
-        console.log("DEBUG plan_execution_id falsy, forcing null before audit");
+      
+      if (!safePlanExecutionId || safePlanExecutionId === "") {
+        console.log("DEBUG replacing empty or falsy plan_execution_id with null before audit");
         safePlanExecutionId = null;
       }
 
