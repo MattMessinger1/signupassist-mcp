@@ -129,14 +129,17 @@ Deno.serve(async (req) => {
 
     const secret = await importJWK(jwk, 'HS256');
 
-    // Create and sign JWT with ISO string for expiration to match MCP server expectations
+    console.log("DEBUG validFrom:", validFrom.toISOString());
+    console.log("DEBUG validUntil:", validUntil.toISOString());
+
+    // Create and sign JWT with Date objects for proper time handling
     const jws = await new SignJWT(mandatePayload)
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
-      .setNotBefore(validFrom.toISOString()) // Use ISO string format
+      .setNotBefore(validFrom)        // Pass Date instead of seconds
       .setIssuer('signupassist-platform')
       .setAudience('signupassist-mcp')
-      .setExpirationTime(validUntil.toISOString()) // Use ISO string format
+      .setExpirationTime(validUntil)  // Pass Date instead of seconds
       .sign(secret);
 
     // Insert mandate directly into database
