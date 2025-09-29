@@ -239,9 +239,21 @@ const PlanBuilder = () => {
       return;
     }
 
+    // Validate programRef format
+    console.log('PlanBuilder: discoverFields called with programRef:', programRef);
+    if (programRef && programRef.includes(' ')) {
+      console.error('PlanBuilder ERROR: programRef appears to be a title instead of text_ref:', programRef);
+      toast({
+        title: 'Invalid Program Reference',
+        description: 'Program reference appears to be a title instead of a stable reference. Please reselect the program.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     setIsDiscovering(true);
     try {
-      console.log('Calling discover-fields with:', form.getValues('programRef'));
+      console.log('PlanBuilder: Calling discover-fields with validated programRef:', programRef);
       
       const payload = { 
         program_ref: programRef,

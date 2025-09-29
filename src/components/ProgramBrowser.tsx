@@ -65,7 +65,10 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
 
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
-    if (newOpen && programs.length === 0) {
+    if (newOpen) {
+      // Always clear programs state and fetch fresh data to avoid stale references
+      console.log('ProgramBrowser: Dialog opened, clearing state and fetching fresh programs');
+      setPrograms([]);
       fetchPrograms();
     }
   };
@@ -75,7 +78,14 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
   };
 
   const handleProgramSelect = (program: Program) => {
-    console.log('Program selected in browser:', program.title, program.program_ref);
+    console.log('ProgramBrowser: Full program object selected:', program);
+    console.log('ProgramBrowser: Passing to onProgramSelect - ref:', program.program_ref, 'title:', program.title);
+    
+    // Validate that program_ref looks like a text_ref (not a human title)
+    if (program.program_ref && program.program_ref.includes(' ')) {
+      console.warn('ProgramBrowser WARNING: program_ref contains spaces, might be a title instead of text_ref:', program.program_ref);
+    }
+    
     onProgramSelect({ ref: program.program_ref, title: program.title });
     setOpen(false);
   };
