@@ -38,7 +38,7 @@ export async function invokeMCPTool(
         args: {
           ...args,
           mandate_id,
-          plan_execution_id
+          ...(plan_execution_id ? { plan_execution_id } : {})  // Only include if it has a value
         }
       })
     });
@@ -135,7 +135,7 @@ async function logMCPAudit({
       result_hash: await generateHash(JSON.stringify(result)),
       decision,
       mandate_id: mandate_id || crypto.randomUUID(), // Fallback if not provided
-      plan_execution_id: plan_execution_id || crypto.randomUUID() // Fallback if not provided
+      ...(plan_execution_id ? { plan_execution_id } : {}) // Only include if it has a value
     };
 
     const { error: auditError } = await serviceSupabase
