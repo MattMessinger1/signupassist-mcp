@@ -93,7 +93,7 @@ export function getProgramId(textRef: string, orgRef: string = 'blackhawk-ski-cl
 /**
  * Get program info by text reference
  */
-export function getProgramInfo(textRef: string, orgRef: string = 'blackhawk-ski-club'): ProgramMapping | null {
+export function getProgramInfo(textRef: string, orgRef: string = 'blackhawk-ski-club'): ProgramDetails | null {
   const mappings = PROGRAM_MAPPINGS[orgRef] || PROGRAM_MAPPINGS['blackhawk-ski-club'];
   return mappings.find(m => m.text_ref === textRef) || null;
 }
@@ -101,6 +101,6 @@ export function getProgramInfo(textRef: string, orgRef: string = 'blackhawk-ski-
 /**
  * Get all available programs for an organization
  */
-export function getAvailablePrograms(orgRef: string = 'blackhawk-ski-club'): ProgramMapping[] {
+export function getAvailablePrograms(orgRef: string = 'blackhawk-ski-club'): ProgramDetails[] {
   return PROGRAM_MAPPINGS[orgRef] || PROGRAM_MAPPINGS['blackhawk-ski-club'] || [];
 }
