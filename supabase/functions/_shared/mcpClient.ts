@@ -28,6 +28,16 @@ export async function invokeMCPTool(
     
     console.log(`Calling MCP server at: ${mcpServerUrl}`);
     
+    // Build args, only include plan_execution_id if it's a valid UUID and not skipping audit
+    const requestArgs = {
+      ...args,
+      mandate_id,
+      // Only include plan_execution_id if we're not skipping audit and it's a valid value
+      ...((!skipAudit && plan_execution_id && plan_execution_id !== "") ? { plan_execution_id } : {})
+    };
+    
+    console.log(`MCP request args:`, requestArgs);
+    
     const response = await fetch(`${mcpServerUrl}/tools/call`, {
       method: 'POST',
       headers: {
@@ -35,11 +45,7 @@ export async function invokeMCPTool(
       },
       body: JSON.stringify({
         tool,
-        args: {
-          ...args,
-          mandate_id,
-          ...(plan_execution_id ? { plan_execution_id } : {})  // Only include if it has a value
-        }
+        args: requestArgs
       })
     });
 
