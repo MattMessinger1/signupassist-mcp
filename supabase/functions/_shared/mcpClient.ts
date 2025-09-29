@@ -9,7 +9,7 @@ export interface MCPToolCall {
 
 export interface MCPAuditOptions {
   mandate_id?: string;
-  plan_execution_id?: string;
+  plan_execution_id?: string | null;
   skipAudit?: boolean;
 }
 
@@ -53,15 +53,21 @@ export async function invokeMCPTool(
 
     // Log audit trail if not skipped and we have required IDs
     if (!skipAudit && (mandate_id || plan_execution_id)) {
+      let safePlanExecutionId: string | null = plan_execution_id || null;
+      if (safePlanExecutionId === "" || safePlanExecutionId === undefined) {
+        console.log("DEBUG replacing empty plan_execution_id with null before audit");
+        safePlanExecutionId = null;
+      }
+
       await logMCPAudit({
         tool,
         args,
         result,
         mandate_id,
-        plan_execution_id
+        plan_execution_id: safePlanExecutionId
       });
     } else if (skipAudit) {
-      console.log("DEBUG skipAudit flag is true — audit logging intentionally skipped for tool:", tool);
+      console.log("DEBUG skipAudit is true — audit logging intentionally skipped for tool:", tool);
     }
 
     return result;
@@ -120,7 +126,7 @@ async function logMCPAudit({
   args: any;
   result: any;
   mandate_id?: string;
-  plan_execution_id?: string;
+  plan_execution_id?: string | null;
   decision?: 'allowed' | 'denied';
 }): Promise<void> {
   try {

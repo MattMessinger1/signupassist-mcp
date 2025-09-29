@@ -255,10 +255,10 @@ const PlanBuilder = () => {
     try {
       console.log('PlanBuilder: Calling discover-fields with validated programRef:', programRef);
       
-      const payload = { 
+      const payload = {
         program_ref: programRef,
         credential_id: credentialId,
-        plan_execution_id: crypto.randomUUID() // always generate a UUID
+        plan_execution_id: null
       };
       
       console.log("DEBUG PlanBuilder sending payload:", payload);
