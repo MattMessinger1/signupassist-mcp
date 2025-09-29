@@ -41,6 +41,11 @@ export async function invokeMCPTool(
     
     console.log(`MCP request args (skipAudit=${skipAudit}):`, requestArgs);
     
+    console.log(`MCP request body being sent:`, JSON.stringify({
+      tool,
+      args: requestArgs
+    }, null, 2));
+
     const response = await fetch(`${mcpServerUrl}/tools/call`, {
       method: 'POST',
       headers: {
