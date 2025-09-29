@@ -108,6 +108,7 @@ const PlanBuilder = () => {
   const [prerequisiteChecks, setPrerequisiteChecks] = useState<PrerequisiteCheck[]>([]);
   const [hasPaymentMethod, setHasPaymentMethod] = useState(false);
   const [checkingPayment, setCheckingPayment] = useState(false);
+  const [friendlyProgramTitle, setFriendlyProgramTitle] = useState<string | null>(null);
 
   // Safe derived variables with null checks and defaults
   const currentBranch = discoveredSchema?.branches?.find(b => b.choice === selectedBranch) ?? null;
@@ -653,9 +654,9 @@ const PlanBuilder = () => {
                       <FormLabel>Program Selection</FormLabel>
                       <FormControl>
                         <ProgramBrowser
-                          onProgramSelect={(programRef) => {
-                            field.onChange(programRef);
-                            // Clear discovered schema when program changes
+                          onProgramSelect={({ ref, title }) => {
+                            field.onChange(ref);       // pass text_ref to backend
+                            setFriendlyProgramTitle(title); // save human-friendly title
                             setDiscoveredSchema(null);
                             setSelectedBranch('');
                           }}
@@ -814,7 +815,7 @@ const PlanBuilder = () => {
             {/* Plan Preview */}
             {discoveredSchema && allFields.length > 0 && (
               <PlanPreview
-                programRef={form.watch('programRef')}
+                programRef={friendlyProgramTitle || form.watch('programRef')}
                 childName="Selected Child"
                 opensAt={opensAt}
                 selectedBranch={selectedBranch}
@@ -872,7 +873,7 @@ const PlanBuilder = () => {
           open={showConsent}
           onClose={() => setShowConsent(false)}
           onApprove={(maxCostCents) => createMandate(maxCostCents)}
-          programRef={form.watch('programRef')}
+          programRef={friendlyProgramTitle || form.watch('programRef')}
           childName="Selected Child"
           scopes={['scp:login', 'scp:enroll', 'scp:pay', 'scp:write:register', 'signupassist:fee']}
           loading={isCreatingMandate}
