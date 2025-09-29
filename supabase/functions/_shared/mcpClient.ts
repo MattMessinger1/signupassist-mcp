@@ -92,7 +92,7 @@ export async function invokeMCPToolDirect(tool: string, args: any): Promise<any>
 
   console.log(`Invoking MCP tool directly: ${tool}`, { args });
 
-  const res = await fetch(`${mcpServerUrl}/tools`, {
+  const res = await fetch(`${mcpServerUrl}/tools/call`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ tool, args })
