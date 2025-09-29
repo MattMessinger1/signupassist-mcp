@@ -241,6 +241,8 @@ const PlanBuilder = () => {
 
     setIsDiscovering(true);
     try {
+      console.log('Calling discover-fields with:', form.getValues('programRef'));
+      
       const payload = { 
         program_ref: programRef,
         credential_id: credentialId,
