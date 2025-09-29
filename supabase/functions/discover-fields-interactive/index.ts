@@ -118,10 +118,10 @@ Deno.serve(async (req) => {
       throw new Error('MANDATE_SIGNING_KEY environment variable is required');
     }
 
-    // Decode the base64 signing key  
-    const keyBytes = new Uint8Array(atob(signingKey).split('').map(c => c.charCodeAt(0)));
+    // Decode the base64 signing key using Buffer-compatible method  
+    const keyBytes = Uint8Array.from(atob(signingKey), c => c.charCodeAt(0));
     
-    // Create JWK from the raw key
+    // Create JWK using consistent base64url encoding that matches MCP server
     const jwk = {
       kty: 'oct',
       k: btoa(String.fromCharCode(...keyBytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, ''),
@@ -129,17 +129,14 @@ Deno.serve(async (req) => {
 
     const secret = await importJWK(jwk, 'HS256');
 
-    // Create and sign JWT with NumericDate seconds
-    const nbfSec = Math.floor(validFrom.getTime() / 1000);
-    const expSec = Math.floor(validUntil.getTime() / 1000);
-    
+    // Create and sign JWT with ISO string for expiration to match MCP server expectations
     const jws = await new SignJWT(mandatePayload)
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
-      .setNotBefore(nbfSec)
+      .setNotBefore(validFrom.toISOString()) // Use ISO string format
       .setIssuer('signupassist-platform')
       .setAudience('signupassist-mcp')
-      .setExpirationTime(expSec)
+      .setExpirationTime(validUntil.toISOString()) // Use ISO string format
       .sign(secret);
 
     // Insert mandate directly into database
