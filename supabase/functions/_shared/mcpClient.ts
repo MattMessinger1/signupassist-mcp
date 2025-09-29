@@ -92,14 +92,22 @@ export async function invokeMCPTool(
     
     // Log failed audit trail
     if (!skipAudit && (mandate_id || plan_execution_id)) {
+      let safePlanExecutionId = plan_execution_id;
+      if (!safePlanExecutionId) {
+        console.log("DEBUG plan_execution_id falsy in catch block, forcing null before failed audit");
+        safePlanExecutionId = null;
+      }
+
       await logMCPAudit({
         tool,
         args,
         result: { error: error instanceof Error ? error.message : 'Unknown error' },
         mandate_id,
-        plan_execution_id,
+        plan_execution_id: safePlanExecutionId,
         decision: 'denied'
       });
+    } else if (skipAudit) {
+      console.log("DEBUG skipAudit=true — failed audit logging also skipped for tool:", tool);
     }
     
     throw error;
