@@ -44,8 +44,11 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
       if (error) throw error;
 
       if (data?.programs) {
+        console.log('Programs received from MCP:', data.programs);
+        console.log('First program structure:', data.programs[0]);
         setPrograms(data.programs);
       } else {
+        console.log('No programs in MCP response:', data);
         setPrograms([]);
       }
     } catch (error) {

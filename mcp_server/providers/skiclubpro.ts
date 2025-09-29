@@ -44,7 +44,38 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
   const { lookupCredentials } = require('../lib/credentials');
   const { launchBrowserbaseSession, discoverProgramRequiredFields, captureScreenshot, closeBrowserbaseSession } = require('../lib/browserbase');
   const { captureScreenshotEvidence } = require('../lib/evidence');
-  const { getProgramId } = require('../config/program_mapping');
+  
+  // Inline program mapping to avoid import issues
+  const PROGRAM_MAPPINGS = {
+    'blackhawk-ski-club': [
+      {
+        text_ref: 'blackhawk_winter',
+        actual_id: '309',
+        title: 'Nordic Kids Wednesday',
+        description: 'Wednesday Nordic Kids Program',
+        org_ref: 'blackhawk-ski-club'
+      },
+      {
+        text_ref: 'blackhawk_beginner_sat', 
+        actual_id: '310',
+        title: 'Beginner Skiing - Saturday Morning',
+        description: 'Perfect for first-time skiers ages 4-8',
+        org_ref: 'blackhawk-ski-club'
+      }
+    ]
+  };
+  
+  const getProgramId = (textRef: string, orgRef: string = 'blackhawk-ski-club'): string => {
+    const mappings = PROGRAM_MAPPINGS[orgRef] || PROGRAM_MAPPINGS['blackhawk-ski-club'];
+    const mapping = mappings.find(m => m.text_ref === textRef || m.title === textRef);
+    
+    if (mapping) {
+      return mapping.actual_id;
+    }
+    
+    console.warn(`No program mapping found for ${textRef} in ${orgRef}, using as-is`);
+    return textRef;
+  };
 
   return await auditToolCall(
     {
@@ -194,6 +225,14 @@ export const skiClubProTools = {
         program.schedule.toLowerCase().includes(query)
       );
     }
+
+    console.log('MCP scp.find_programs returning:', {
+      programs: filteredPrograms,
+      total: filteredPrograms.length,
+      query: args.query || '',
+      success: true,
+      timestamp: new Date().toISOString()
+    });
 
     return {
       programs: filteredPrograms,
