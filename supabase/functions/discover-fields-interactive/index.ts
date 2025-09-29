@@ -196,18 +196,16 @@ Deno.serve(async (req) => {
     });
     
     try {
-      const planExecutionId = crypto.randomUUID();
-      console.log("DEBUG plan_execution_id generated:", planExecutionId);
-      
+      console.log("DEBUG interactive discovery: skipping audit logging");
+
       const result = await invokeMCPTool("scp.discover_required_fields", {
         program_ref,
         mandate_id,
-        credential_id,
-        plan_execution_id: planExecutionId
+        credential_id
       }, {
         mandate_id,
-        plan_execution_id: planExecutionId,
-        skipAudit: true // Skip audit logging for interactive discovery
+        plan_execution_id: undefined,
+        skipAudit: true    // ✅ important
       });
 
       console.log('Field discovery completed:', result);
