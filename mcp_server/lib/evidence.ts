@@ -19,6 +19,15 @@ export interface EvidenceCapture {
 /**
  * Upload evidence to storage and log to database
  */
+/**
+ * Check if a string is a valid UUID
+ */
+function isValidUUID(uuid: string | null | undefined): boolean {
+  if (!uuid || typeof uuid !== 'string') return false;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(uuid);
+}
+
 export async function captureEvidence(
   planExecutionId: string,
   evidenceType: string,
@@ -26,6 +35,12 @@ export async function captureEvidence(
   filename?: string
 ): Promise<EvidenceCapture> {
   try {
+    // Validate planExecutionId is a valid UUID
+    if (!isValidUUID(planExecutionId)) {
+      console.error('Invalid planExecutionId UUID:', planExecutionId);
+      throw new Error(`Invalid UUID format for planExecutionId: ${planExecutionId}`);
+    }
+
     // Generate filename if not provided
     const finalFilename = filename || `${evidenceType}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.png`;
     

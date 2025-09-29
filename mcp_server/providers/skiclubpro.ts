@@ -83,7 +83,7 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
     {
       tool: 'scp.discover_required_fields',
       mandate_id: args.mandate_id || '',
-      plan_execution_id: args.plan_execution_id || ''
+      plan_execution_id: args.plan_execution_id || null
     },
     args,
     async () => {

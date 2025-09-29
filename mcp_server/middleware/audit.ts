@@ -13,14 +13,23 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Types
 export interface AuditContext {
-  plan_execution_id: string;
+  plan_execution_id: string | null;
   mandate_id: string;
   tool: string;
 }
 
+/**
+ * Check if a string is a valid UUID
+ */
+function isValidUUID(uuid: string | null | undefined): boolean {
+  if (!uuid || typeof uuid !== 'string') return false;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(uuid);
+}
+
 export interface AuditLogStart {
   id: string;
-  plan_execution_id: string;
+  plan_execution_id: string | null;
   mandate_id: string;
   tool: string;
   args_hash: string;
@@ -79,6 +88,12 @@ function redactSensitiveData(obj: any): any {
  */
 async function logToolCallStart(context: AuditContext, args: any): Promise<string> {
   try {
+    // Validate plan_execution_id is a valid UUID or null
+    if (context.plan_execution_id && !isValidUUID(context.plan_execution_id)) {
+      console.error('Invalid plan_execution_id UUID:', context.plan_execution_id);
+      throw new Error(`Invalid UUID format for plan_execution_id: ${context.plan_execution_id}`);
+    }
+
     const argsHash = await computeHash(args);
     
     const { data, error } = await supabase
@@ -181,10 +196,17 @@ export async function auditToolCall<T>(
   let auditId: string | null = null;
   
   try {
-    // Skip audit logging for interactive sessions (non-UUID plan_execution_id)
-    const shouldSkipAudit = context.plan_execution_id === 'interactive';
+    // Skip audit logging if plan_execution_id is null, empty, 'interactive', or invalid UUID
+    const shouldSkipAudit = !context.plan_execution_id || 
+                           context.plan_execution_id === 'interactive' ||
+                           context.plan_execution_id === '' ||
+                           !isValidUUID(context.plan_execution_id);
     
-    // Start audit logging only if not interactive
+    if (shouldSkipAudit) {
+      console.log('Skipping audit logging: plan_execution_id is', context.plan_execution_id);
+    }
+    
+    // Start audit logging only if not skipping
     if (!shouldSkipAudit) {
       auditId = await logToolCallStart(context, args);
     }
