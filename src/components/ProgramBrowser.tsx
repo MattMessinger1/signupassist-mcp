@@ -36,7 +36,7 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
     try {
       const { data, error } = await supabase.functions.invoke('mcp-executor', {
         body: {
-          tool: 'scp.find_programs',
+          tool: 'scp:find_programs',
           args: query ? { query } : {}
         }
       });
