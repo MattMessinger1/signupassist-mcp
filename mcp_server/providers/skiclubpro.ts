@@ -44,6 +44,7 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
   const { lookupCredentials } = require('../lib/credentials');
   const { launchBrowserbaseSession, discoverProgramRequiredFields, captureScreenshot, closeBrowserbaseSession } = require('../lib/browserbase');
   const { captureScreenshotEvidence } = require('../lib/evidence');
+  const { getProgramId } = require('../config/program_mapping');
 
   return await auditToolCall(
     {
@@ -63,8 +64,14 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         // Launch browser session
         session = await launchBrowserbaseSession();
         
-        // Discover program fields using real browser automation
-        const fieldSchema = await discoverProgramRequiredFields(session, args.program_ref, 'blackhawk-ski-club');
+        // Convert text reference to actual program ID using program mapping
+        const orgRef = 'blackhawk-ski-club'; // Default org
+        const programId = getProgramId(args.program_ref, orgRef);
+        
+        console.log(`Converting program_ref "${args.program_ref}" to ID "${programId}" for org "${orgRef}"`);
+        
+        // Discover program fields using real browser automation with converted ID
+        const fieldSchema = await discoverProgramRequiredFields(session, programId, orgRef);
         
         // Capture evidence screenshot
         if (args.plan_execution_id) {
@@ -72,6 +79,7 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           await captureScreenshotEvidence(args.plan_execution_id, screenshot, 'discovery');
         }
         
+        console.log('Field discovery result:', fieldSchema);
         return fieldSchema;
         
       } catch (error) {

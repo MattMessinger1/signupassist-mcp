@@ -72,6 +72,8 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
   };
 
   const handleProgramSelect = (program: Program) => {
+    console.log('Program selected in browser:', program);
+    console.log('Passing program_ref to parent:', program.program_ref);
     onProgramSelect(program.program_ref);
     setOpen(false);
   };
