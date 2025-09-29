@@ -258,7 +258,7 @@ const PlanBuilder = () => {
       const payload = { 
         program_ref: programRef,
         credential_id: credentialId,
-        plan_execution_id: null  // prevent invalid UUID error
+        plan_execution_id: crypto.randomUUID() // always generate a UUID
       };
       
       console.log("DEBUG PlanBuilder sending payload:", payload);

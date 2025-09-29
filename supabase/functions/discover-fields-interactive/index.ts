@@ -196,16 +196,17 @@ Deno.serve(async (req) => {
     });
     
     try {
-      console.log("DEBUG plan_execution_id being used:", null);
-      // Use undefined instead of string to avoid FK constraint
+      const planExecutionId = crypto.randomUUID();
+      console.log("DEBUG plan_execution_id generated:", planExecutionId);
+      
       const result = await invokeMCPTool("scp.discover_required_fields", {
         program_ref,
         mandate_id,
         credential_id,
-        plan_execution_id: null
+        plan_execution_id: planExecutionId
       }, {
         mandate_id,
-        plan_execution_id: undefined, // Use undefined to satisfy TypeScript interface
+        plan_execution_id: planExecutionId,
         skipAudit: true // Skip audit logging for interactive discovery
       });
 
