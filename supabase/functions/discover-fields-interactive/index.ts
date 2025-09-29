@@ -186,22 +186,22 @@ Deno.serve(async (req) => {
         program_ref,
         mandate_id,
         credential_id,
-        plan_execution_id: "interactive"
+        plan_execution_id: undefined
       },
       mandate_id,
-      plan_execution_id: "interactive"
+      plan_execution_id: undefined
     });
     
     try {
-      // Use "interactive" as a string instead of generating UUID to avoid FK constraint
+      // Use undefined instead of string to avoid FK constraint
       const result = await invokeMCPTool("scp.discover_required_fields", {
         program_ref,
         mandate_id,
         credential_id,
-        plan_execution_id: "interactive"
+        plan_execution_id: undefined
       }, {
         mandate_id,
-        plan_execution_id: "interactive", // Pass plan_execution_id for proper logging
+        plan_execution_id: undefined, // Pass plan_execution_id for proper logging
         skipAudit: true // Skip audit logging for interactive discovery
       });
 
