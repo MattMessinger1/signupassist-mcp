@@ -60,6 +60,8 @@ export async function invokeMCPTool(
         mandate_id,
         plan_execution_id
       });
+    } else if (skipAudit) {
+      console.log("DEBUG skipAudit flag is true — audit logging intentionally skipped for tool:", tool);
     }
 
     return result;
