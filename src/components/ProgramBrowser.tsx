@@ -20,7 +20,7 @@ interface Program {
 }
 
 interface ProgramBrowserProps {
-  onProgramSelect: (programRef: string) => void;
+  onProgramSelect: (program: { ref: string; title: string }) => void;
   selectedProgram?: string;
 }
 
@@ -75,9 +75,8 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
   };
 
   const handleProgramSelect = (program: Program) => {
-    console.log('Program selected in browser:', program);
-    console.log('Passing program_ref to parent:', program.program_ref);
-    onProgramSelect(program.program_ref);
+    console.log('Program selected in browser:', program.title, program.program_ref);
+    onProgramSelect({ ref: program.program_ref, title: program.title });
     setOpen(false);
   };
 
