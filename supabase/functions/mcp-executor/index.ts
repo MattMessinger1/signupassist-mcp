@@ -113,7 +113,43 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { plan_id } = await req.json();
+    const body = await req.json();
+    console.log("mcp-executor invoked with body:", body);
+
+    // Handle individual MCP tool calls
+    if (body.tool) {
+      const { tool, ...args } = body;
+      console.log("mcp-executor invoked with tool:", tool, "args:", args);
+      
+      // Get the edge function that handles this tool
+      const edgeFunction = MCP_TOOLS[tool];
+      if (!edgeFunction) {
+        throw new Error(`No handler found for MCP tool: ${tool}`);
+      }
+
+      // For individual tool calls, invoke the tool directly
+      const toolResult = await createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      ).functions.invoke(edgeFunction, {
+        body: {
+          action: tool,
+          ...args
+        }
+      });
+
+      if (toolResult.error) {
+        throw new Error(`MCP tool failed: ${toolResult.error.message}`);
+      }
+
+      return new Response(
+        JSON.stringify(toolResult.data),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Handle plan execution
+    const { plan_id } = body;
     
     if (!plan_id) {
       throw new Error('plan_id is required');
