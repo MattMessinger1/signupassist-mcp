@@ -32,3 +32,16 @@ export async function loginWithCredentials(
 
   console.log("DEBUG Login successful for", creds.email);
 }
+
+export async function logoutIfLoggedIn(page: Page, logoutSelector: string = 'text=Logout') {
+  if (await page.$(logoutSelector)) {
+    console.log("DEBUG Found logout link — logging out...");
+    await Promise.all([
+      page.click(logoutSelector),
+      page.waitForNavigation({ waitUntil: "networkidle" })
+    ]);
+    console.log("DEBUG Logout successful");
+  } else {
+    console.log("DEBUG No logout link found — already logged out");
+  }
+}

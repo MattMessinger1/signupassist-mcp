@@ -9,7 +9,7 @@ import { launchBrowserbaseSession, discoverProgramRequiredFields, captureScreens
 import { captureScreenshotEvidence } from '../lib/evidence.js';
 import { getAvailablePrograms } from '../config/program_mapping.js';
 import { createClient } from '@supabase/supabase-js';
-import { loginWithCredentials } from '../lib/login.js';
+import { loginWithCredentials, logoutIfLoggedIn } from '../lib/login.js';
 import { skiClubProConfig } from '../config/skiclubproConfig.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
@@ -76,25 +76,14 @@ async function ensureLoggedIn(session: any, credential_id: string, user_jwt: str
 }
 
 /**
- * Helper: Ensure user is logged out
+ * Helper: Ensure user is logged out using config-based logout system
  */
 async function ensureLoggedOut(session: any) {
   const { page } = session;
   
   try {
-    // Check if logout link/button exists
-    const logoutElement = await page.$('text=Logout, a[href*="logout"], button:has-text("Log out")');
-    
-    if (logoutElement) {
-      console.log('DEBUG: Logging out...');
-      await Promise.all([
-        logoutElement.click(),
-        page.waitForNavigation({ waitUntil: 'networkidle', timeout: 5000 }).catch(() => {
-          // Ignore timeout - logout might not trigger navigation
-        })
-      ]);
-      console.log('DEBUG: Logged out');
-    }
+    console.log('DEBUG: Attempting logout...');
+    await logoutIfLoggedIn(page, skiClubProConfig.postLoginCheck);
   } catch (error) {
     console.log('DEBUG: Logout not needed or already logged out');
   }
