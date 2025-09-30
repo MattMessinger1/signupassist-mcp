@@ -4,7 +4,6 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { jwtVerify, importJWK } from 'jose';
 
 // Initialize Supabase client for backend operations
 const supabaseUrl = process.env.SUPABASE_URL!;
@@ -25,7 +24,54 @@ export interface StoredCredential {
 }
 
 /**
- * Look up stored credentials by alias
+ * Look up credentials by ID using Supabase cred-get edge function
+ * This ensures consistent decryption using the deployed edge function
+ */
+export async function lookupCredentialsById(
+  credential_id: string,
+  authToken?: string
+): Promise<SkiClubProCredentials> {
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'apikey': supabaseServiceKey,
+    };
+
+    // Add Authorization header if authToken is provided
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
+
+    const response = await fetch(`${supabaseUrl}/functions/v1/cred-get`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ id: credential_id }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`cred-get failed: ${response.status} ${response.statusText} - ${errorText}`);
+    }
+
+    const result = await response.json();
+    
+    if (result.error) {
+      throw new Error(`cred-get error: ${result.error}`);
+    }
+
+    console.log('DEBUG: Retrieved credentials from cred-get for:', result.email);
+
+    return {
+      email: result.email,
+      password: result.password,
+    };
+  } catch (error) {
+    throw new Error(`Failed to lookup credentials: ${error.message}`);
+  }
+}
+
+/**
+ * Look up stored credentials by alias (legacy method)
  */
 export async function lookupCredentials(
   credentialAlias: string,

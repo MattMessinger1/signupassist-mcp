@@ -4,7 +4,7 @@
 
 import { verifyMandate } from '../lib/mandates.js';
 import { auditToolCall } from '../middleware/audit.js';
-import { lookupCredentials } from '../lib/credentials.js';
+import { lookupCredentialsById } from '../lib/credentials.js';
 import { launchBrowserbaseSession, discoverProgramRequiredFields, captureScreenshot, closeBrowserbaseSession, performSkiClubProLogin } from '../lib/browserbase.js';
 import { captureScreenshotEvidence } from '../lib/evidence.js';
 import { getAvailablePrograms } from '../config/program_mapping.js';
@@ -57,71 +57,13 @@ export interface FieldSchema {
 }
 
 /**
- * Helper: Lookup credentials by ID
- * Uses Web Crypto API (Deno-compatible) to decrypt credentials stored in encryptedBase64:ivBase64 format
- */
-async function lookupCredentialsById(credential_id: string): Promise<{ email: string; password: string }> {
-  const { data: credential, error } = await supabase
-    .from('stored_credentials')
-    .select('encrypted_data, user_id')
-    .eq('id', credential_id)
-    .single();
-
-  if (error || !credential) {
-    throw new Error(`Credentials not found for ID: ${credential_id}`);
-  }
-
-  // Decrypt using Web Crypto API (Deno-compatible) with AES-GCM
-  const credSealKey = process.env.CRED_SEAL_KEY!;
-  
-  // Parse the encryptedBase64:ivBase64 format (same as cred-get)
-  const [encryptedBase64, ivBase64] = credential.encrypted_data.split(':');
-  
-  if (!encryptedBase64 || !ivBase64) {
-    throw new Error('Invalid encrypted data format');
-  }
-  
-  // Decode base64 to Uint8Array
-  const encryptedData = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0));
-  const iv = Uint8Array.from(atob(ivBase64), c => c.charCodeAt(0));
-  
-  // Derive a proper 256-bit key from CRED_SEAL_KEY using SHA-256
-  const keyMaterial = new TextEncoder().encode(credSealKey);
-  const keyHash = await crypto.subtle.digest('SHA-256', keyMaterial);
-  
-  // Import the hashed key for AES-GCM decryption
-  const cryptoKey = await crypto.subtle.importKey(
-    'raw',
-    keyHash,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['decrypt']
-  );
-  
-  // Decrypt using AES-GCM
-  const decryptedBuffer = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
-    cryptoKey,
-    encryptedData
-  );
-  
-  // Convert decrypted buffer to string and parse JSON
-  const decryptedText = new TextDecoder().decode(decryptedBuffer);
-  const parsed = JSON.parse(decryptedText);
-  
-  return {
-    email: parsed.email,
-    password: parsed.password
-  };
-}
-
-/**
  * Helper: Ensure user is logged in
  */
 async function ensureLoggedIn(session: any, credential_id: string) {
   const creds = await lookupCredentialsById(credential_id);
   const { page } = session;
 
+  console.log('DEBUG: Using credentials from cred-get:', creds.email);
   console.log('DEBUG: Attempting login to SkiClubPro...');
   
   // Use the existing performSkiClubProLogin function
