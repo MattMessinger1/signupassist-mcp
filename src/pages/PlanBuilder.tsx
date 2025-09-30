@@ -827,11 +827,11 @@ const PlanBuilder = () => {
             )}
 
             {/* Plan Preview */}
-            {discoveredSchema && allFields.length > 0 && (
+            {discoveredSchema && allFields.length > 0 && opensAt && (
               <PlanPreview
                 programRef={friendlyProgramTitle || form.watch('programRef')}
                 childName="Selected Child"
-                opensAt={opensAt}
+                opensAt={new Date(opensAt)}
                 selectedBranch={selectedBranch}
                 answers={form.watch('answers') || {}}
                 discoveredFields={allFields}
