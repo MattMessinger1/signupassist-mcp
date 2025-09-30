@@ -87,11 +87,7 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
     },
     args,
     async () => {
-      // Verify mandate has required scope
-      if (args.mandate_id) {
-        await verifyMandate(args.mandate_id, 'scp:read:listings');
-      }
-
+      // Audit middleware will verify mandate with correct JWS token
       let session = null;
       try {
         // Launch browser session
@@ -134,7 +130,8 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           await closeBrowserbaseSession(session);
         }
       }
-    }
+    },
+    'scp:read:listings' // Required scope for mandate verification
   );
 }
 
