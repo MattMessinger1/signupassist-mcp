@@ -477,8 +477,12 @@ const PlanBuilder = () => {
       </div>
     );
   }
+  // Debug logging
+  console.log('PlanBuilder render check:', { loading, user: !!user, session: !!session });
+
   // Show loading while checking authentication
   if (loading) {
+    console.log('PlanBuilder: Showing loading state');
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center space-y-4">
@@ -490,6 +494,7 @@ const PlanBuilder = () => {
   }
 
   if (!user || !session) {
+    console.log('PlanBuilder: No user/session, showing auth required');
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Card className="w-full max-w-md">
@@ -511,6 +516,7 @@ const PlanBuilder = () => {
 
   // Show confirmation screen after successful plan creation
   if (showConfirmation && createdPlan) {
+    console.log('PlanBuilder: Showing confirmation screen');
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto py-8 px-4 max-w-2xl">
@@ -606,6 +612,7 @@ const PlanBuilder = () => {
     );
   }
 
+  console.log('PlanBuilder: Rendering main content');
   return (
     <div className="min-h-screen bg-background">
       <div className="container mx-auto py-8 px-4 max-w-4xl">
