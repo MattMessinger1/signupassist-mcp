@@ -16,8 +16,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Shield, DollarSign, AlertTriangle, CheckCircle, Loader2 } from 'lucide-react';
+import { Shield, DollarSign, AlertTriangle, CheckCircle, Loader2, RefreshCw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { Header } from '@/components/Header';
 import { ChildSelect } from '@/components/ChildSelect';
 import { OpenTimePicker } from '@/components/OpenTimePicker';
 import { CredentialPicker } from '@/components/CredentialPicker';
@@ -93,9 +95,7 @@ const PlanBuilder = () => {
     },
   });
 
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { user, session, loading: authLoading } = useAuth();
   const [discoveredSchema, setDiscoveredSchema] = useState<DiscoveredSchema | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [isDiscovering, setIsDiscovering] = useState(false);
@@ -149,34 +149,12 @@ const PlanBuilder = () => {
     watch: form.watch,
   });
 
-  // Authentication setup
+  // Redirect to auth if not authenticated
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-        
-        // Redirect to auth if signed out
-        if (event === 'SIGNED_OUT' || !session) {
-          navigate('/auth');
-        }
-      }
-    );
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-      
-      // Redirect to auth if no session
-      if (!session) {
-        navigate('/auth');
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+    if (!authLoading && (!user || !session)) {
+      navigate('/auth');
+    }
+  }, [user, session, authLoading, navigate]);
 
   // Check for payment method
   useEffect(() => {
@@ -467,7 +445,7 @@ const PlanBuilder = () => {
   };
 
   // EARLY RETURNS AFTER ALL HOOKS
-  if (loading) {
+  if (authLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center space-y-4">
@@ -597,6 +575,7 @@ const PlanBuilder = () => {
 
   return (
     <div className="min-h-screen bg-background">
+      <Header />
       <div className="container mx-auto py-8 px-4 max-w-4xl">
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Create Signup Plan</h1>

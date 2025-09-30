@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle, XCircle, Clock, AlertTriangle, Eye, RefreshCw, Play } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, AlertTriangle, Eye, RefreshCw, Play, Loader2 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -10,6 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
+import { useAuth } from '@/contexts/AuthContext';
+import { Header } from '@/components/Header';
 
 interface Plan {
   id: string;
@@ -53,10 +55,15 @@ export default function RegistrationDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user, loading: authLoading } = useAuth();
 
   useEffect(() => {
-    loadPlansData();
-  }, []);
+    if (!authLoading && !user) {
+      navigate('/auth');
+    } else if (user) {
+      loadPlansData();
+    }
+  }, [user, authLoading, navigate]);
 
   const loadPlansData = async () => {
     try {
@@ -189,11 +196,11 @@ export default function RegistrationDashboard() {
     return 'destructive';
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
+          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
           <p className="mt-4 text-muted-foreground">Loading registration data...</p>
         </div>
       </div>
@@ -202,6 +209,7 @@ export default function RegistrationDashboard() {
 
   return (
     <div className="min-h-screen bg-background">
+      <Header />
       <div className="container mx-auto py-8 px-4 max-w-6xl">
         <div className="mb-8">
           <div className="flex items-center justify-between">

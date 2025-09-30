@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Key, Plus, Trash2, Info } from 'lucide-react';
+import { Key, Plus, Trash2, Info, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,8 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { useAuth } from '@/contexts/AuthContext';
+import { Header } from '@/components/Header';
 
 const credentialsSchema = z.object({
   alias: z.string().min(1, 'Alias is required').max(50, 'Alias must be less than 50 characters'),
@@ -29,9 +31,8 @@ interface Credential {
 }
 
 export default function Credentials() {
-  const [user, setUser] = useState<any>(null);
+  const { user, loading: authLoading } = useAuth();
   const [credentials, setCredentials] = useState<Credential[]>([]);
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const { toast } = useToast();
@@ -47,25 +48,12 @@ export default function Credentials() {
   });
 
   useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        navigate('/auth');
-        return;
-      }
-      setUser(user);
-      await loadCredentials();
-    } catch (error) {
-      console.error('Auth check failed:', error);
+    if (!authLoading && !user) {
       navigate('/auth');
-    } finally {
-      setLoading(false);
+    } else if (user) {
+      loadCredentials();
     }
-  };
+  }, [user, authLoading, navigate]);
 
   const loadCredentials = async () => {
     try {
@@ -149,16 +137,17 @@ export default function Credentials() {
     }
   };
 
-  if (loading) {
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-background">
+      <Header />
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="flex items-center justify-between mb-8">
           <div>

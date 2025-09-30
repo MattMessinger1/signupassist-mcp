@@ -140,7 +140,8 @@ export async function performSkiClubProLogin(
 export async function discoverProgramRequiredFields(
   session: BrowserbaseSession, 
   programRef: string,
-  orgRef: string = 'blackhawk-ski-club'
+  orgRef: string = 'blackhawk-ski-club',
+  credentials?: { email: string; password: string }
 ): Promise<any> {
   try {
     console.log(`Starting field discovery for program: ${programRef}`);
@@ -149,6 +150,18 @@ export async function discoverProgramRequiredFields(
     
     // Convert text reference to actual program ID
     const actualProgramId = getProgramId(programRef, orgRef);
+    
+    // If credentials are provided, authenticate first
+    if (credentials) {
+      console.log('Authenticating before field discovery...');
+      try {
+        await performSkiClubProLogin(session, credentials, orgRef);
+        console.log('Authentication successful');
+      } catch (authError) {
+        console.error('Authentication failed during field discovery:', authError);
+        // Continue anyway - the registration page might be accessible without login
+      }
+    }
     
     // Navigate to the program registration OPTIONS page (not the start/login page)
     // The /options page contains the actual registration form fields
