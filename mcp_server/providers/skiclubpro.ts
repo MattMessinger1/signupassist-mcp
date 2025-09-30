@@ -5,9 +5,14 @@
 import { verifyMandate } from '../lib/mandates.js';
 import { auditToolCall } from '../middleware/audit.js';
 import { lookupCredentials } from '../lib/credentials.js';
-import { launchBrowserbaseSession, discoverProgramRequiredFields, captureScreenshot, closeBrowserbaseSession } from '../lib/browserbase.js';
+import { launchBrowserbaseSession, discoverProgramRequiredFields, captureScreenshot, closeBrowserbaseSession, performSkiClubProLogin } from '../lib/browserbase.js';
 import { captureScreenshotEvidence } from '../lib/evidence.js';
 import { getAvailablePrograms } from '../config/program_mapping.js';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export interface SkiClubProTool {
   name: string;
@@ -23,12 +28,21 @@ export interface SkiClubProTool {
 // Define types for field discovery
 export interface DiscoverRequiredFieldsArgs {
   program_ref: string;
+  credential_id: string;
   mandate_id?: string;
   plan_execution_id?: string;
 }
 
 export interface FieldSchema {
   program_ref: string;
+  prerequisites?: Array<{
+    id: string;
+    label: string;
+    type: string;
+    required: boolean;
+    options?: string[];
+    category?: string;
+  }>;
   branches: Array<{
     choice: string;
     questions: Array<{
@@ -43,7 +57,83 @@ export interface FieldSchema {
 }
 
 /**
- * Real implementation of SkiClubPro field discovery
+ * Helper: Lookup credentials by ID
+ */
+async function lookupCredentialsById(credential_id: string): Promise<{ email: string; password: string }> {
+  const { data: credential, error } = await supabase
+    .from('stored_credentials')
+    .select('encrypted_data, user_id')
+    .eq('id', credential_id)
+    .single();
+
+  if (error || !credential) {
+    throw new Error(`Credentials not found for ID: ${credential_id}`);
+  }
+
+  // Decrypt using CRED_SEAL_KEY
+  const credSealKey = process.env.CRED_SEAL_KEY!;
+  const [encryptedData, ivHex, authTagHex] = credential.encrypted_data.split(':');
+  
+  const crypto = await import('crypto');
+  const key = crypto.scryptSync(credSealKey, 'salt', 32);
+  const iv = Buffer.from(ivHex, 'hex');
+  const authTag = Buffer.from(authTagHex, 'hex');
+  
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(authTag);
+  
+  let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+  
+  const parsed = JSON.parse(decrypted);
+  return {
+    email: parsed.email,
+    password: parsed.password
+  };
+}
+
+/**
+ * Helper: Ensure user is logged in
+ */
+async function ensureLoggedIn(session: any, credential_id: string) {
+  const creds = await lookupCredentialsById(credential_id);
+  const { page } = session;
+
+  console.log('DEBUG: Attempting login to SkiClubPro...');
+  
+  // Use the existing performSkiClubProLogin function
+  await performSkiClubProLogin(session, creds, 'blackhawk-ski-club');
+  
+  console.log('DEBUG: Logged in as', creds.email);
+}
+
+/**
+ * Helper: Ensure user is logged out
+ */
+async function ensureLoggedOut(session: any) {
+  const { page } = session;
+  
+  try {
+    // Check if logout link/button exists
+    const logoutElement = await page.$('text=Logout, a[href*="logout"], button:has-text("Log out")');
+    
+    if (logoutElement) {
+      console.log('DEBUG: Logging out...');
+      await Promise.all([
+        logoutElement.click(),
+        page.waitForNavigation({ waitUntil: 'networkidle', timeout: 5000 }).catch(() => {
+          // Ignore timeout - logout might not trigger navigation
+        })
+      ]);
+      console.log('DEBUG: Logged out');
+    }
+  } catch (error) {
+    console.log('DEBUG: Logout not needed or already logged out');
+  }
+}
+
+/**
+ * Real implementation of SkiClubPro field discovery with login/logout handling
  */
 export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs): Promise<FieldSchema> {
   
@@ -87,11 +177,13 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
     },
     args,
     async () => {
-      // Audit middleware will verify mandate with correct JWS token
       let session = null;
       try {
         // Launch browser session
         session = await launchBrowserbaseSession();
+        
+        // ✅ Login first
+        await ensureLoggedIn(session, args.credential_id);
         
         // Convert text reference to actual program ID using program mapping
         const orgRef = 'blackhawk-ski-club'; // Default org
@@ -101,6 +193,26 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         
         // Discover program fields using real browser automation with converted ID
         const fieldSchema = await discoverProgramRequiredFields(session, programId, orgRef);
+        
+        // ✅ Prerequisite separation:
+        // If schema only contains login fields (edit-name, edit-pass, email, password),
+        // return them under prerequisites instead of fields.
+        const loginFieldIds = ['edit-name', 'edit-pass', 'email', 'password', 'name', 'pass'];
+        const firstBranch = fieldSchema.branches?.[0];
+        const questions = firstBranch?.questions || [];
+        
+        const hasOnlyLoginFields = questions.length > 0 && questions.every(
+          q => loginFieldIds.some(loginId => q.id?.toLowerCase().includes(loginId.toLowerCase()))
+        );
+
+        if (hasOnlyLoginFields) {
+          console.log('DEBUG: Only login fields detected, returning as prerequisites');
+          return {
+            program_ref: args.program_ref,
+            prerequisites: questions,
+            branches: []  // no program fields yet
+          };
+        }
         
         // Capture evidence screenshot
         if (args.plan_execution_id) {
@@ -126,7 +238,9 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         
         throw new Error(`SkiClubPro field discovery failed: ${error.message}`);
       } finally {
+        // ✅ Logout after scraping
         if (session) {
+          await ensureLoggedOut(session);
           await closeBrowserbaseSession(session);
         }
       }
