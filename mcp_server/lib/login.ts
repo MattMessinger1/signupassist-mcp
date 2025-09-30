@@ -21,10 +21,16 @@ export async function loginWithCredentials(
   await page.fill(config.selectors.username, creds.email);
   await page.fill(config.selectors.password, creds.password);
 
-  await Promise.all([
-    page.click(config.selectors.submit),
-    page.waitForNavigation({ waitUntil: "networkidle" }),
-  ]);
+  // Click submit and wait for navigation with more lenient settings
+  await page.click(config.selectors.submit);
+  
+  // Wait for either the post-login element or a reasonable timeout
+  try {
+    await page.waitForSelector(config.postLoginCheck, { timeout: 10000 });
+  } catch (error) {
+    console.log("DEBUG Waiting a bit longer after submit...");
+    await page.waitForTimeout(2000);
+  }
 
   if (await page.$(config.postLoginCheck) === null) {
     throw new Error("Login failed: post-login check not found");
