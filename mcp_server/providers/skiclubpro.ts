@@ -5,10 +5,12 @@
 import { verifyMandate } from '../lib/mandates.js';
 import { auditToolCall } from '../middleware/audit.js';
 import { lookupCredentialsById } from '../lib/credentials.js';
-import { launchBrowserbaseSession, discoverProgramRequiredFields, captureScreenshot, closeBrowserbaseSession, performSkiClubProLogin } from '../lib/browserbase.js';
+import { launchBrowserbaseSession, discoverProgramRequiredFields, captureScreenshot, closeBrowserbaseSession } from '../lib/browserbase.js';
 import { captureScreenshotEvidence } from '../lib/evidence.js';
 import { getAvailablePrograms } from '../config/program_mapping.js';
 import { createClient } from '@supabase/supabase-js';
+import { loginWithCredentials } from '../lib/login.js';
+import { skiClubProConfig } from '../config/skiclubproConfig.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -58,7 +60,7 @@ export interface FieldSchema {
 }
 
 /**
- * Helper: Ensure user is logged in
+ * Helper: Ensure user is logged in using config-based login system
  */
 async function ensureLoggedIn(session: any, credential_id: string, user_jwt: string) {
   const creds = await lookupCredentialsById(credential_id, user_jwt);
@@ -67,8 +69,8 @@ async function ensureLoggedIn(session: any, credential_id: string, user_jwt: str
   console.log('DEBUG: Using credentials from cred-get:', creds.email);
   console.log('DEBUG: Attempting login to SkiClubPro...');
   
-  // Use the existing performSkiClubProLogin function
-  await performSkiClubProLogin(session, creds, 'blackhawk-ski-club');
+  // Use the new config-based login helper
+  await loginWithCredentials(page, skiClubProConfig, creds);
   
   console.log('DEBUG: Logged in as', creds.email);
 }
