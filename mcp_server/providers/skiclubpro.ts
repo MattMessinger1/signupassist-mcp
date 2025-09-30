@@ -29,6 +29,7 @@ export interface SkiClubProTool {
 export interface DiscoverRequiredFieldsArgs {
   program_ref: string;
   credential_id: string;
+  user_jwt: string;
   mandate_id?: string;
   plan_execution_id?: string;
 }
@@ -59,8 +60,8 @@ export interface FieldSchema {
 /**
  * Helper: Ensure user is logged in
  */
-async function ensureLoggedIn(session: any, credential_id: string) {
-  const creds = await lookupCredentialsById(credential_id);
+async function ensureLoggedIn(session: any, credential_id: string, user_jwt: string) {
+  const creds = await lookupCredentialsById(credential_id, user_jwt);
   const { page } = session;
 
   console.log('DEBUG: Using credentials from cred-get:', creds.email);
@@ -101,6 +102,11 @@ async function ensureLoggedOut(session: any) {
  * Real implementation of SkiClubPro field discovery with login/logout handling
  */
 export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs): Promise<FieldSchema> {
+  
+  // Validate user JWT is provided
+  if (!args.user_jwt) {
+    throw new Error('Missing user_jwt for credential lookup');
+  }
   
   // Inline program mapping to avoid import issues
   const PROGRAM_MAPPINGS = {
@@ -148,7 +154,7 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         session = await launchBrowserbaseSession();
         
         // ✅ Login first
-        await ensureLoggedIn(session, args.credential_id);
+        await ensureLoggedIn(session, args.credential_id, args.user_jwt);
         
         // Convert text reference to actual program ID using program mapping
         const orgRef = 'blackhawk-ski-club'; // Default org

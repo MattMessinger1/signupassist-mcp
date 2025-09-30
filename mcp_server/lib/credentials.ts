@@ -29,18 +29,20 @@ export interface StoredCredential {
  */
 export async function lookupCredentialsById(
   credential_id: string,
-  authToken?: string
+  userJwt: string
 ): Promise<SkiClubProCredentials> {
   try {
+    if (!userJwt) {
+      throw new Error('User JWT is required for credential lookup');
+    }
+
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY!;
+    
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'apikey': supabaseServiceKey,
+      'Authorization': `Bearer ${userJwt}`,  // Use user's JWT for proper scoping
+      'apikey': supabaseAnonKey,  // Use anon key, not service role
     };
-
-    // Add Authorization header if authToken is provided
-    if (authToken) {
-      headers['Authorization'] = `Bearer ${authToken}`;
-    }
 
     const response = await fetch(`${supabaseUrl}/functions/v1/cred-get`, {
       method: 'POST',
