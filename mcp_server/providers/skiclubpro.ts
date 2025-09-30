@@ -58,6 +58,7 @@ export interface FieldSchema {
 
 /**
  * Helper: Lookup credentials by ID
+ * Uses Web Crypto API (Deno-compatible) to decrypt credentials stored in encryptedBase64:ivBase64 format
  */
 async function lookupCredentialsById(credential_id: string): Promise<{ email: string; password: string }> {
   const { data: credential, error } = await supabase
@@ -70,22 +71,44 @@ async function lookupCredentialsById(credential_id: string): Promise<{ email: st
     throw new Error(`Credentials not found for ID: ${credential_id}`);
   }
 
-  // Decrypt using CRED_SEAL_KEY
+  // Decrypt using Web Crypto API (Deno-compatible) with AES-GCM
   const credSealKey = process.env.CRED_SEAL_KEY!;
-  const [encryptedData, ivHex, authTagHex] = credential.encrypted_data.split(':');
   
-  const crypto = await import('crypto');
-  const key = crypto.scryptSync(credSealKey, 'salt', 32);
-  const iv = Buffer.from(ivHex, 'hex');
-  const authTag = Buffer.from(authTagHex, 'hex');
+  // Parse the encryptedBase64:ivBase64 format (same as cred-get)
+  const [encryptedBase64, ivBase64] = credential.encrypted_data.split(':');
   
-  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
-  decipher.setAuthTag(authTag);
+  if (!encryptedBase64 || !ivBase64) {
+    throw new Error('Invalid encrypted data format');
+  }
   
-  let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
+  // Decode base64 to Uint8Array
+  const encryptedData = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0));
+  const iv = Uint8Array.from(atob(ivBase64), c => c.charCodeAt(0));
   
-  const parsed = JSON.parse(decrypted);
+  // Derive a proper 256-bit key from CRED_SEAL_KEY using SHA-256
+  const keyMaterial = new TextEncoder().encode(credSealKey);
+  const keyHash = await crypto.subtle.digest('SHA-256', keyMaterial);
+  
+  // Import the hashed key for AES-GCM decryption
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyHash,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['decrypt']
+  );
+  
+  // Decrypt using AES-GCM
+  const decryptedBuffer = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    cryptoKey,
+    encryptedData
+  );
+  
+  // Convert decrypted buffer to string and parse JSON
+  const decryptedText = new TextDecoder().decode(decryptedBuffer);
+  const parsed = JSON.parse(decryptedText);
+  
   return {
     email: parsed.email,
     password: parsed.password
