@@ -725,13 +725,16 @@ const PlanBuilder = () => {
                   )}
                 />
 
-                {form.watch('programRef') && form.watch('credentialId') && (
-                  <div className="pt-4">
+                {form.watch('programRef') && form.watch('credentialId') && !discoveredSchema && (
+                  <div className="pt-4 space-y-2">
+                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
+                      <strong>Next Step:</strong> Click below to load the registration form fields
+                    </div>
                     <Button
                       type="button"
                       onClick={() => discoverFields(form.getValues('programRef'))}
                       disabled={isDiscovering}
-                      variant="outline"
+                      variant="default"
                       className="w-full"
                     >
                       {isDiscovering ? (
@@ -743,6 +746,12 @@ const PlanBuilder = () => {
                         'Load Registration Form'
                       )}
                     </Button>
+                  </div>
+                )}
+
+                {discoveredSchema && (
+                  <div className="pt-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
+                    ✓ Registration form loaded successfully
                   </div>
                 )}
               </CardContent>
