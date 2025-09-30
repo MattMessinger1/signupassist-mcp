@@ -150,9 +150,10 @@ export async function discoverProgramRequiredFields(
     // Convert text reference to actual program ID
     const actualProgramId = getProgramId(programRef, orgRef);
     
-    // Navigate to the program registration page - use correct SkiClubPro URL structure
-    const registrationUrl = `https://${config.domain}/registration/${actualProgramId}/start`;
-    console.log(`Navigating to: ${registrationUrl} (mapped ${programRef} -> ${actualProgramId})`);
+    // Navigate to the program registration OPTIONS page (not the start/login page)
+    // The /options page contains the actual registration form fields
+    const registrationUrl = `https://${config.domain}/registration/${actualProgramId}/options`;
+    console.log(`Navigating to registration form: ${registrationUrl} (mapped ${programRef} -> ${actualProgramId})`);
     await session.page.goto(registrationUrl, { waitUntil: 'networkidle' });
     
     // Wait for form to load
