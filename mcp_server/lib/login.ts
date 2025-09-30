@@ -49,16 +49,39 @@ export async function loginWithCredentials(
   console.log("DEBUG Clicking submit button...");
   await page.click(config.selectors.submit);
 
-  // Wait for logout link instead of navigation idle
-  if (await page.waitForSelector(config.postLoginCheck, { timeout: 15000 }).catch(() => null)) {
+  // Wait for login success indicators (logout link OR dashboard URL)
+  const logoutFound = await page.waitForSelector(config.postLoginCheck, { timeout: 15000 }).catch(() => null);
+  const dashboardReached = await page.waitForURL('**/*dashboard*', { timeout: 15000 }).catch(() => null);
+
+  if (logoutFound || dashboardReached) {
     const url = page.url();
     const title = await page.title();
+    console.log("DEBUG: Login successful – Antibot bypass confirmed (logout link visible)");
     console.log("DEBUG Login successful, landed on:", url, "title:", title);
     return { url, title };
   } else {
+    // Check for Drupal error messages on the page
+    const errorElement = await page.$('.messages.error, .messages--error, div[role="alert"]');
+    let errorMessage = '';
+    if (errorElement) {
+      errorMessage = await errorElement.textContent() || '';
+      console.log("DEBUG: Login error message –", errorMessage.trim());
+    }
+
+    // Capture page HTML for debugging
     const html = await page.content();
     console.log("DEBUG Login failed, page snippet:", html.slice(0, 500));
-    throw new Error("Login failed: Logout not found after form submit");
+
+    // Determine failure reason
+    if (errorMessage) {
+      if (errorMessage.toLowerCase().includes('antibot')) {
+        throw new Error(`Login failed: Antibot verification failed – ${errorMessage.trim()}`);
+      } else {
+        throw new Error(`Login failed: ${errorMessage.trim()}`);
+      }
+    } else {
+      throw new Error("Login failed: likely blocked by Antibot (no post-login element found, no error message displayed)");
+    }
   }
 }
 
