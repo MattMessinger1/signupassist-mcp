@@ -90,13 +90,16 @@ export async function performSkiClubProLogin(
 
   try {
     // Navigate to SkiClubPro login page
-    await page.goto(`https://${config.domain}/`, { 
-      waitUntil: 'networkidle' 
+    console.log(`Navigating to login page: https://${config.domain}/user/login`);
+    await page.goto(`https://${config.domain}/user/login`, { 
+      waitUntil: 'networkidle',
+      timeout: 30000
     });
 
     // Wait for login form
+    console.log('Waiting for email input field...');
     await page.waitForSelector('input[type="email"], input[name="email"], #email', { 
-      timeout: 10000 
+      timeout: 15000 
     });
 
     // Fill in credentials
