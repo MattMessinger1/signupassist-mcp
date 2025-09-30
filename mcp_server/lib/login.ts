@@ -30,7 +30,11 @@ export async function loginWithCredentials(
     throw new Error("Login failed: post-login check not found");
   }
 
-  console.log("DEBUG Login successful for", creds.email);
+  const url = page.url();
+  const title = await page.title();
+  console.log("DEBUG Login successful, landed on:", url, "title:", title);
+
+  return { url, title };
 }
 
 export async function logoutIfLoggedIn(page: Page, logoutSelector: string = 'text=Logout') {

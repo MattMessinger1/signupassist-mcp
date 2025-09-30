@@ -1,5 +1,5 @@
 export const skiClubProConfig = {
-  loginUrl: "https://blackhawk.skiclubpro.team/user/login",
+  loginUrl: "https://blackhawk.skiclubpro.team/user/login?destination=/dashboard",
   selectors: {
     username: 'input[name="name"]',
     password: 'input[name="pass"]',

@@ -69,10 +69,11 @@ async function ensureLoggedIn(session: any, credential_id: string, user_jwt: str
   console.log('DEBUG: Using credentials from cred-get:', creds.email);
   console.log('DEBUG: Attempting login to SkiClubPro...');
   
-  // Use the new config-based login helper
-  await loginWithCredentials(page, skiClubProConfig, creds);
+  // Use the new config-based login helper and capture proof
+  const proof = await loginWithCredentials(page, skiClubProConfig, creds);
   
   console.log('DEBUG: Logged in as', creds.email);
+  return proof;
 }
 
 /**
@@ -144,60 +145,18 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         // Launch browser session
         session = await launchBrowserbaseSession();
         
-        // ✅ Login first
-        await ensureLoggedIn(session, args.credential_id, args.user_jwt);
+        // ✅ Login first and capture proof
+        const proof = await ensureLoggedIn(session, args.credential_id, args.user_jwt);
         
-        // Convert text reference to actual program ID using program mapping
-        const orgRef = 'blackhawk-ski-club'; // Default org
-        const programId = getProgramId(args.program_ref, orgRef);
-        
-        console.log(`Converting program_ref "${args.program_ref}" to ID "${programId}" for org "${orgRef}"`);
-        
-        // Discover program fields using real browser automation with converted ID
-        const fieldSchema = await discoverProgramRequiredFields(session, programId, orgRef);
-        
-        // ✅ Prerequisite separation:
-        // If schema only contains login fields (edit-name, edit-pass, email, password),
-        // return them under prerequisites instead of fields.
-        const loginFieldIds = ['edit-name', 'edit-pass', 'email', 'password', 'name', 'pass'];
-        const firstBranch = fieldSchema.branches?.[0];
-        const questions = firstBranch?.questions || [];
-        
-        const hasOnlyLoginFields = questions.length > 0 && questions.every(
-          q => loginFieldIds.some(loginId => q.id?.toLowerCase().includes(loginId.toLowerCase()))
-        );
-
-        if (hasOnlyLoginFields) {
-          console.log('DEBUG: Only login fields detected, returning as prerequisites');
-          return {
-            program_ref: args.program_ref,
-            prerequisites: questions,
-            branches: []  // no program fields yet
-          };
-        }
-        
-        // Capture evidence screenshot
-        if (args.plan_execution_id) {
-          const screenshot = await captureScreenshot(session);
-          await captureScreenshotEvidence(args.plan_execution_id, screenshot, 'discovery');
-        }
-        
-        console.log('Field discovery result:', fieldSchema);
-        return fieldSchema;
+        // For now, just return proof of login
+        return {
+          status: "ok",
+          message: "Login successful",
+          proof
+        } as any;
         
       } catch (error) {
         console.error('SkiClubPro field discovery failed:', error);
-        
-        // Capture error screenshot if session exists
-        if (session && args.plan_execution_id) {
-          try {
-            const errorScreenshot = await captureScreenshot(session, 'discovery-failed.png');
-            await captureScreenshotEvidence(args.plan_execution_id, errorScreenshot, 'failed-field-discovery');
-          } catch (evidenceError) {
-            console.error('Failed to capture error evidence:', evidenceError);
-          }
-        }
-        
         throw new Error(`SkiClubPro field discovery failed: ${error.message}`);
       } finally {
         // ✅ Logout after scraping
