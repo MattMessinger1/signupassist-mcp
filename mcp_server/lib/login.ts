@@ -141,6 +141,21 @@ export async function loginWithCredentials(
   // Detect honeypot fields
   await detectHoneypots(page);
 
+  // Wait for Drupal Antibot key to be populated
+  console.log("DEBUG Waiting for Antibot key to be populated...");
+  try {
+    await page.waitForFunction(
+      () => {
+        const el = document.querySelector('input[name="antibot_key"]') as HTMLInputElement;
+        return el && el.getAttribute('value') && el.getAttribute('value').length > 0;
+      },
+      { timeout: 15000 }
+    );
+    console.log("DEBUG Antibot key detected, ready to log in");
+  } catch (e) {
+    console.log("DEBUG No Antibot key found or timeout (site may not use Antibot) – continuing...");
+  }
+
   // Antibot bypass: randomized human-like delay (2-4 seconds)
   const readingDelay = randomDelay(2000, 4000);
   console.log(`DEBUG Pausing ${readingDelay}ms to mimic human reading time (Antibot bypass)...`);
