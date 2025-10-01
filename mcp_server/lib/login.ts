@@ -1,5 +1,5 @@
 import { Page } from 'playwright';
-import { sleep, humanPause, jitter } from './humanize';
+import { sleep, humanPause, jitter } from './humanize.js';
 
 export interface ProviderLoginConfig {
   loginUrl: string;
