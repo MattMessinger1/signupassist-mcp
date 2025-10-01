@@ -341,16 +341,21 @@ export const skiClubProTools = {
           console.log('DEBUG: Login successful, proof:', loginProof);
           
           // Capture screenshot as evidence
-          const screenshot = await captureScreenshot(session, `login_${orgRef}_${Date.now()}.png`);
-          await captureScreenshotEvidence(screenshot, `login_${orgRef}_${Date.now()}.png`);
+          const screenshotBuffer = await captureScreenshot(session, `login_${orgRef}_${Date.now()}.png`);
+          await captureScreenshotEvidence(screenshotBuffer, `login_${orgRef}_${Date.now()}.png`);
+          
+          // Handle the different return types from ensureLoggedIn
+          const email = typeof loginProof === 'object' && 'email' in loginProof ? loginProof.email : undefined;
+          const cached = typeof loginProof === 'object' && 'cached' in loginProof ? loginProof.cached : false;
+          const url = typeof loginProof === 'object' && 'url' in loginProof ? loginProof.url : undefined;
           
           return {
             success: true,
             session_id: session.sessionId,
             message: 'Login successful via Browserbase',
-            email: loginProof.email || loginProof.url,
-            cached: loginProof.cached || false,
-            url: loginProof.url,
+            email: email || url || 'logged in',
+            cached: cached,
+            url: url || baseUrl,
             timestamp: new Date().toISOString()
           };
           
