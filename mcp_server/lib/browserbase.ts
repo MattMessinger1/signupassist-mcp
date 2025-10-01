@@ -484,7 +484,7 @@ export async function discoverProgramRequiredFields(
       program_ref: programRef,
       org_ref: orgRef,
       error: error.message,
-      current_url: await session.page.url().catch(() => 'unknown'),
+      current_url: session.page.url(),
       screenshots_captured: screenshotCount,
       timestamp: new Date().toISOString()
     };
