@@ -149,334 +149,210 @@ export async function discoverProgramRequiredFields(
   let screenshotCount = 0;
   
   try {
-    console.log(`[Field Discovery] Starting for program: ${programRef}, org: ${orgRef}`);
+    console.log(`[discoverRegistrationFields] Starting for program: ${programRef}, org: ${orgRef}`);
     
     const config = getSkiClubProConfig(orgRef);
     const actualProgramId = getProgramId(programRef, orgRef);
     
-    console.log(`[Field Discovery] Resolved: ${programRef} -> ID ${actualProgramId} at ${config.domain}`);
+    console.log(`[discoverRegistrationFields] Resolved: ${programRef} -> ID ${actualProgramId}`);
     
     // If credentials are provided, authenticate first
     if (credentials) {
-      console.log('[Field Discovery] Authenticating...');
+      console.log('[discoverRegistrationFields] Authenticating...');
       try {
         await performSkiClubProLogin(session, credentials, orgRef);
-        console.log('[Field Discovery] ✓ Authentication successful');
+        console.log('[discoverRegistrationFields] ✓ Authentication successful');
       } catch (authError) {
-        console.error('[Field Discovery] ⚠ Authentication failed, continuing:', authError.message);
+        console.error('[discoverRegistrationFields] ⚠ Authentication failed, continuing:', authError.message);
       }
     }
     
-    // Try multiple URL patterns to find the registration form
-    const urlPatterns = [
-      `https://${config.domain}/registration/${actualProgramId}`,
-      `https://${config.domain}/registration/${actualProgramId}/options`,
-      `https://${config.domain}/registration/${actualProgramId}/start`,
-      `https://${config.domain}/node/${actualProgramId}/register`
-    ];
+    // Construct the registration URL using full org_ref
+    const registrationUrl = `https://${orgRef}.skiclubpro.team/registration/${actualProgramId}/options`;
     
-    let successfulUrl: string | null = null;
-    let navigationError: Error | null = null;
+    console.log('[discoverRegistrationFields] Navigating to:', registrationUrl);
     
-    for (const url of urlPatterns) {
-      try {
-        console.log(`[Field Discovery] Trying URL: ${url}`);
-        
-        const response = await session.page.goto(url, { 
-          waitUntil: 'domcontentloaded',
-          timeout: 15000 
-        });
-        
-        // Check for 404 or error pages
-        if (response && response.status() >= 400) {
-          console.log(`[Field Discovery] ✗ ${url} returned ${response.status()}`);
-          continue;
-        }
-        
-        // Wait briefly for any redirects
-        await session.page.waitForTimeout(1000);
-        
-        // Check if we have a form or registration content
-        const hasForm = await session.page.$('form') !== null;
-        const hasRegistration = await session.page.evaluate(() => {
-          const bodyText = document.body.textContent?.toLowerCase() || '';
-          return bodyText.includes('registration') || 
-                 bodyText.includes('register') ||
-                 bodyText.includes('participant') ||
-                 bodyText.includes('volunteer');
-        });
-        
-        if (hasForm || hasRegistration) {
-          successfulUrl = url;
-          console.log(`[Field Discovery] ✓ Found registration content at: ${url}`);
-          break;
-        } else {
-          console.log(`[Field Discovery] ✗ No registration form found at ${url}`);
-        }
-      } catch (error) {
-        console.log(`[Field Discovery] ✗ Navigation failed for ${url}: ${error.message}`);
-        navigationError = error;
-        continue;
-      }
+    // Navigate to registration page
+    await session.page.goto(registrationUrl, { 
+      waitUntil: 'networkidle',
+      timeout: 30000 
+    });
+
+    // Wait for form to appear
+    await session.page.waitForSelector('form', { timeout: 10000 });
+    
+    // Allow time for dynamic fields to load via JavaScript
+    await session.page.waitForTimeout(2000);
+    
+    console.log('[discoverRegistrationFields] ✓ Registration form loaded');
+    
+    // Comprehensive field extraction with categorization
+    console.log('[discoverRegistrationFields] Extracting fields...');
+    
+    interface DiscoveredField {
+      id: string;
+      label: string;
+      type: string;
+      required: boolean;
+      category: string;
+      options?: string[];
     }
-    
-    if (!successfulUrl) {
-      // Capture screenshot for diagnostics
-      try {
-        await captureScreenshot(session, `field_discovery_error_${Date.now()}.png`);
-      } catch {}
-      
-      throw new Error(
-        `Could not find registration form. Tried ${urlPatterns.length} URLs. ` +
-        `Last error: ${navigationError?.message || 'No valid form found'}`
-      );
-    }
-    
-    // Enhanced waiting for dynamic content
-    console.log('[Field Discovery] Waiting for dynamic content to load...');
-    
-    // Wait for form element
-    try {
-      await session.page.waitForSelector('form', { timeout: 10000 });
-    } catch {
-      console.log('[Field Discovery] ⚠ No form element found, continuing...');
-    }
-    
-    // Wait for common SkiClubPro elements
-    const commonSelectors = [
-      'input[type="text"]',
-      'input[type="email"]',
-      'select',
-      '.form-item',
-      '.field-wrapper',
-      '[class*="registration"]'
-    ];
-    
-    for (const selector of commonSelectors) {
-      try {
-        await session.page.waitForSelector(selector, { timeout: 2000 });
-        break;
-      } catch {}
-    }
-    
-    // Additional wait for JavaScript-rendered content
-    await session.page.waitForTimeout(3000);
-    
-    // Capture screenshot after load
-    try {
-      await captureScreenshot(session, `field_discovery_loaded_${Date.now()}.png`);
-      screenshotCount++;
-    } catch {}
-    
-    console.log('[Field Discovery] Extracting fields...');
-    
-    // Comprehensive field extraction
-    const fieldSchema = await session.page.evaluate(() => {
-      const fields: any[] = [];
-      const processedGroups = new Set<string>();
-      
-      // Find all potential form containers
-      const containers = [
-        document.querySelector('form'),
-        ...Array.from(document.querySelectorAll('[class*="registration"], [class*="form"], [id*="registration"]'))
-      ].filter(Boolean);
-      
-      console.log(`Found ${containers.length} potential form containers`);
-      
-      // Helper to extract label text
-      const getLabel = (element: Element): string => {
-        // Try associated label
-        if (element.id) {
-          const labelEl = document.querySelector(`label[for="${element.id}"]`);
-          if (labelEl?.textContent) return labelEl.textContent.trim();
-        }
+
+    const fields: DiscoveredField[] = await session.page.$$eval(
+      'form input, form select, form textarea',
+      (elements: any[]) => {
+        const fieldMap = new Map();
         
-        // Try parent label
-        const parentLabel = element.closest('label');
-        if (parentLabel) {
-          const clone = parentLabel.cloneNode(true) as HTMLElement;
-          // Remove the input itself from text extraction
-          const inputClone = clone.querySelector('input, select, textarea');
-          if (inputClone) inputClone.remove();
-          return clone.textContent?.trim() || '';
-        }
-        
-        // Try adjacent label elements
-        const prevLabel = element.previousElementSibling;
-        if (prevLabel?.tagName === 'LABEL' || prevLabel?.classList.contains('label')) {
-          return prevLabel.textContent?.trim() || '';
-        }
-        
-        // Try wrapper div/span with label-like classes
-        const wrapper = element.closest('[class*="field"], [class*="form-item"], [class*="question"]');
-        if (wrapper) {
-          const labelLike = wrapper.querySelector('[class*="label"], [class*="title"], .form-label, legend');
-          if (labelLike?.textContent) return labelLike.textContent.trim();
-        }
-        
-        // Fallback to attributes
-        return element.getAttribute('placeholder') || 
-               element.getAttribute('aria-label') || 
-               element.getAttribute('title') ||
-               element.getAttribute('name') || 
-               '';
-      };
-      
-      // Helper to determine category from label/wrapper
-      const getCategory = (element: Element, label: string): string => {
-        const text = (element.closest('[class*="section"]')?.textContent || label).toLowerCase();
-        
-        if (text.includes('volunteer')) return 'volunteering';
-        if (text.includes('rental') || text.includes('equipment')) return 'rentals';
-        if (text.includes('waiver') || text.includes('consent') || text.includes('agreement')) return 'waivers';
-        if (text.includes('emergency') || text.includes('contact')) return 'emergency';
-        if (text.includes('medical') || text.includes('health') || text.includes('allergy')) return 'medical';
-        if (text.includes('parent') || text.includes('guardian')) return 'guardian';
-        if (text.includes('participant') || text.includes('child')) return 'participant';
-        
-        return 'general';
-      };
-      
-      // Process all input elements
-      containers.forEach(container => {
-        if (!container) return;
-        
-        const inputs = container.querySelectorAll('input:not([type="hidden"]), select, textarea');
-        
-        inputs.forEach((element: Element) => {
-          const el = element as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
-          
-          // Skip hidden or invisible elements
-          const style = window.getComputedStyle(el);
-          if (style.display === 'none' || style.visibility === 'hidden' || el.type === 'hidden') {
+        elements.forEach((el: any) => {
+          // Skip hidden fields, submit buttons, and system fields
+          if (el.type === 'hidden' || el.type === 'submit' || el.type === 'button') {
             return;
           }
+
+          const tag = el.tagName.toLowerCase();
+          const type = el.getAttribute('type') || tag;
+          const name = el.getAttribute('name') || '';
+          const id = el.getAttribute('id') || '';
+
+          // Get label text from various sources
+          let label = '';
           
-          const label = getLabel(el);
-          if (!label || label.length > 150) return; // Skip invalid or overly long labels
+          // Try to find associated label
+          const labelElement = el.closest('label') || 
+                             (id ? document.querySelector(`label[for="${id}"]`) : null);
           
-          const category = getCategory(el, label);
-          const fieldId = el.id || el.name || `field_${fields.length}`;
-          
-          // Determine field type
-          let fieldType = el.type || el.tagName.toLowerCase();
-          if (fieldType === 'select-one') fieldType = 'select';
-          if (fieldType === 'select-multiple') fieldType = 'multiselect';
-          
-          // Handle radio button groups
-          if (el.type === 'radio') {
-            const groupName = el.name;
-            if (processedGroups.has(groupName)) return;
-            processedGroups.add(groupName);
-            
-            const radioGroup = container.querySelectorAll(`input[type="radio"][name="${groupName}"]`);
-            const options = Array.from(radioGroup).map((radio: Element) => {
-              const r = radio as HTMLInputElement;
-              return getLabel(r) || r.value || r.getAttribute('value') || '';
-            }).filter(Boolean);
-            
-            fields.push({
-              id: groupName,
-              label: getLabel(radioGroup[0]),
-              type: 'radio',
-              required: el.hasAttribute('required') || label.includes('*'),
-              options: options,
-              category: category
-            });
-            return;
+          if (labelElement) {
+            label = labelElement.innerText || labelElement.textContent || '';
           }
           
-          // Handle checkbox groups
-          if (el.type === 'checkbox') {
-            const groupName = el.name;
-            const checkboxGroup = container.querySelectorAll(`input[type="checkbox"][name="${groupName}"]`);
+          // Fallback to other sources
+          if (!label) {
+            label = el.getAttribute('placeholder') || 
+                    el.getAttribute('aria-label') || 
+                    el.getAttribute('title') || 
+                    name || 
+                    id || 
+                    '';
+          }
+
+          label = label.trim();
+          
+          if (!label) return; // Skip fields without labels
+
+          // Normalize to field_id
+          const field_id = label.toLowerCase()
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/^_+|_+$/g, '');
+
+          if (!field_id) return;
+
+          // Categorize based on label content
+          let category = 'general';
+          const lowerLabel = label.toLowerCase();
+          
+          if (/volunteer/i.test(lowerLabel)) {
+            category = 'volunteering';
+          } else if (/emergency|contact.*case/i.test(lowerLabel)) {
+            category = 'emergency';
+          } else if (/waiver|consent|liability|agree|acknowledge/i.test(lowerLabel)) {
+            category = 'waiver';
+          } else if (/medical|allerg|condition|medication|health/i.test(lowerLabel)) {
+            category = 'medical';
+          }
+
+          // Handle radio/checkbox groups
+          if (type === 'radio' || type === 'checkbox') {
+            const groupKey = `${field_id}_${category}`;
             
-            if (checkboxGroup.length > 1 && !processedGroups.has(groupName)) {
-              processedGroups.add(groupName);
-              
-              const options = Array.from(checkboxGroup).map((checkbox: Element) => {
-                const cb = checkbox as HTMLInputElement;
-                return getLabel(cb) || cb.value || cb.getAttribute('value') || '';
-              }).filter(Boolean);
-              
-              fields.push({
-                id: groupName,
-                label: getLabel(checkboxGroup[0]),
-                type: 'checkbox-group',
+            if (!fieldMap.has(groupKey)) {
+              fieldMap.set(groupKey, {
+                id: field_id,
+                label: label.replace(/\s*\(.*?\)\s*$/, ''), // Remove trailing options
+                type: type,
                 required: el.hasAttribute('required'),
-                options: options,
-                category: category
+                category: category,
+                options: []
               });
-              return;
             }
+            
+            // Add option value
+            const optionValue = el.getAttribute('value') || label;
+            const field = fieldMap.get(groupKey);
+            if (!field.options.includes(optionValue)) {
+              field.options.push(optionValue);
+            }
+          } else {
+            // Regular input, select, textarea
+            const fieldData: any = {
+              id: field_id,
+              label: label,
+              type: type,
+              required: el.hasAttribute('required'),
+              category: category
+            };
+
+            // Extract options for select elements
+            if (tag === 'select') {
+              const options = Array.from(el.querySelectorAll('option'))
+                .map((opt: any) => opt.textContent?.trim())
+                .filter((text: string) => text && text !== 'Select...' && text !== '- Select -');
+              
+              if (options.length > 0) {
+                fieldData.options = options;
+              }
+            }
+
+            fieldMap.set(field_id, fieldData);
           }
-          
-          // Build field object
-          const field: any = {
-            id: fieldId,
-            label: label.replace(/[*:]+\s*$/, '').trim(),
-            type: fieldType,
-            required: el.hasAttribute('required') || 
-                     el.getAttribute('aria-required') === 'true' ||
-                     label.includes('*') ||
-                     label.toLowerCase().includes('required'),
-            category: category
-          };
-          
-          // Handle select options
-          if (el.tagName.toLowerCase() === 'select') {
-            const selectEl = el as HTMLSelectElement;
-            field.options = Array.from(selectEl.options)
-              .map(opt => opt.text.trim())
-              .filter(text => text && 
-                            !text.toLowerCase().includes('select') &&
-                            !text.toLowerCase().includes('choose') &&
-                            text !== '--' &&
-                            text !== '...');
-          }
-          
-          fields.push(field);
         });
+
+        return Array.from(fieldMap.values());
+      }
+    );
+    
+    console.log(`[discoverRegistrationFields] ✓ Extracted ${fields.length} fields`);
+
+    // Log field categories
+    const categoryCounts = fields.reduce((acc: any, field: any) => {
+      acc[field.category] = (acc[field.category] || 0) + 1;
+      return acc;
+    }, {});
+    console.log('[discoverRegistrationFields] Fields by category:', categoryCounts);
+
+    // Capture screenshot of the form
+    try {
+      const screenshot = await session.page.screenshot({ 
+        fullPage: true,
+        type: 'png'
       });
       
-      console.log(`Extracted ${fields.length} fields`);
-      return fields;
-    });
-    
-    console.log(`[Field Discovery] ✓ Extracted ${fieldSchema.length} fields`);
-    
-    // Group fields by category for better organization
-    const categorizedFields: Record<string, any[]> = {};
-    fieldSchema.forEach((field: any) => {
-      const cat = field.category || 'general';
-      if (!categorizedFields[cat]) categorizedFields[cat] = [];
-      categorizedFields[cat].push(field);
-    });
-    
-    console.log('[Field Discovery] Categories found:', Object.keys(categorizedFields));
-    
-    // Return flattened schema (no branches wrapper)
+      if (screenshot) {
+        screenshotCount++;
+        console.log('[discoverRegistrationFields] ✓ Screenshot captured');
+      }
+    } catch (error) {
+      console.log('[discoverRegistrationFields] ✗ Screenshot failed:', error.message);
+    }
+
+    // Return clean schema ready for Plan Builder
     return {
       program_ref: programRef,
-      questions: fieldSchema,
-      categories: categorizedFields,
-      metadata: {
-        url: successfulUrl,
-        field_count: fieldSchema.length,
-        categories: Object.keys(categorizedFields),
-        discovered_at: new Date().toISOString()
-      }
+      questions: fields
     };
     
   } catch (error) {
-    console.error('[Field Discovery] Error:', error);
+    console.error('[discoverRegistrationFields] Error:', error);
     
     // Capture error screenshot
     try {
-      const screenshot = await captureScreenshot(session, `field_discovery_error_${Date.now()}.png`);
-      console.log('[Field Discovery] Error screenshot captured');
+      await session.page.screenshot({ 
+        fullPage: true,
+        type: 'png',
+        path: `error_${Date.now()}.png`
+      });
+      console.log('[discoverRegistrationFields] Error screenshot captured');
     } catch (screenshotError) {
-      console.error('[Field Discovery] Could not capture error screenshot:', screenshotError);
+      console.error('[discoverRegistrationFields] Could not capture error screenshot:', screenshotError);
     }
     
     // Provide detailed error information
