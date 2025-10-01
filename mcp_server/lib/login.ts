@@ -3,11 +3,82 @@ import { Page } from 'playwright';
 export interface ProviderLoginConfig {
   loginUrl: string;
   selectors: {
-    username: string;
-    password: string;
-    submit: string;
+    username: string | string[];
+    password: string | string[];
+    submit: string | string[];
   };
-  postLoginCheck: string; // CSS or text locator
+  postLoginCheck: string | string[]; // CSS or text locator
+}
+
+// Fallback selector arrays for progressive detection
+const DEFAULT_EMAIL_SELECTORS = [
+  '#edit-name',
+  'input[name="name"]',
+  'input[type="email"]',
+  'input[name="email"]',
+  'input[name="username"]',
+  'input[name="user"]'
+];
+
+const DEFAULT_PASS_SELECTORS = [
+  '#edit-pass',
+  'input[name="pass"]',
+  'input[type="password"]',
+  'input[name="password"]'
+];
+
+const DEFAULT_SUBMIT_SELECTORS = [
+  '#edit-submit',
+  'button#edit-submit',
+  'input[type="submit"]',
+  'button[type="submit"]',
+  'input.form-submit'
+];
+
+// Honeypot field patterns to avoid
+const HONEYPOT_PATTERNS = [
+  'input[name*="antibot"]',
+  'input[class*="antibot"]',
+  'input[style*="display: none"]',
+  'input[type="hidden"][name*="bot"]'
+];
+
+// Helper to find first available selector from array or string
+async function findSelector(page: Page, selectors: string | string[], timeout = 5000): Promise<string | null> {
+  const selectorArray = Array.isArray(selectors) ? selectors : [selectors];
+  
+  for (const sel of selectorArray) {
+    try {
+      await page.waitForSelector(sel, { timeout });
+      console.log(`DEBUG Found selector: ${sel}`);
+      return sel;
+    } catch (e) {
+      // Try next selector
+    }
+  }
+  return null;
+}
+
+// Detect and log honeypot fields
+async function detectHoneypots(page: Page): Promise<void> {
+  console.log("DEBUG Checking for Antibot honeypot fields...");
+  for (const pattern of HONEYPOT_PATTERNS) {
+    const honeypots = await page.$$(pattern);
+    if (honeypots.length > 0) {
+      console.log(`DEBUG Found ${honeypots.length} potential honeypot field(s) matching: ${pattern}`);
+      for (const hp of honeypots) {
+        const name = await hp.getAttribute('name');
+        const type = await hp.getAttribute('type');
+        const value = await hp.getAttribute('value');
+        console.log(`  - Honeypot: name="${name}", type="${type}", value="${value}"`);
+      }
+    }
+  }
+}
+
+// Random delay between min and max ms
+function randomDelay(min: number, max: number): number {
+  return min + Math.floor(Math.random() * (max - min));
 }
 
 export async function loginWithCredentials(
@@ -16,61 +87,184 @@ export async function loginWithCredentials(
   creds: { email: string; password: string }
 ) {
   console.log("DEBUG Navigating to login page:", config.loginUrl);
+  
+  // Patch C: Simulate viewport jitter (realistic window resize)
+  const viewport = page.viewportSize();
+  if (viewport) {
+    await page.setViewportSize({ 
+      width: viewport.width + randomDelay(-5, 5), 
+      height: viewport.height + randomDelay(-5, 5) 
+    });
+  }
+
   // Wait for full page load including scripts (Antibot JS needs to load)
   await page.goto(config.loginUrl, { waitUntil: "networkidle" });
 
-  // Wait for form elements to be present
+  // Monitor console errors for antibot issues
+  const consoleErrors: string[] = [];
+  page.on('console', msg => {
+    if (msg.type() === 'error' && msg.text().toLowerCase().includes('antibot')) {
+      consoleErrors.push(msg.text());
+      console.log("DEBUG JS Console Error (Antibot):", msg.text());
+    }
+  });
+
+  // Patch C: Simulate tab focus events
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('focus'));
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+
+  // Wait for form elements with progressive fallback
   console.log("DEBUG Waiting for login form to be ready...");
-  await page.waitForSelector(config.selectors.username, { timeout: 15000 });
-  await page.waitForSelector(config.selectors.password, { timeout: 15000 });
+  
+  const usernameSelectors = Array.isArray(config.selectors.username) 
+    ? config.selectors.username 
+    : [...DEFAULT_EMAIL_SELECTORS, config.selectors.username];
+  const passwordSelectors = Array.isArray(config.selectors.password) 
+    ? config.selectors.password 
+    : [...DEFAULT_PASS_SELECTORS, config.selectors.password];
+  const submitSelectors = Array.isArray(config.selectors.submit) 
+    ? config.selectors.submit 
+    : [...DEFAULT_SUBMIT_SELECTORS, config.selectors.submit];
 
-  // Antibot bypass: simulate human-like behavior with delay
-  console.log("DEBUG Pausing to mimic human reading time (Antibot bypass)...");
-  await page.waitForTimeout(3000);
+  const usernameSelector = await findSelector(page, usernameSelectors, 15000);
+  if (!usernameSelector) {
+    throw new Error(`Login failed: no username/email field found. Tried: ${usernameSelectors.join(', ')}`);
+  }
 
-  // Simulate mouse movement to trigger pointer events
+  const passwordSelector = await findSelector(page, passwordSelectors, 15000);
+  if (!passwordSelector) {
+    throw new Error(`Login failed: no password field found. Tried: ${passwordSelectors.join(', ')}`);
+  }
+
+  // Detect honeypot fields
+  await detectHoneypots(page);
+
+  // Antibot bypass: randomized human-like delay (2-4 seconds)
+  const readingDelay = randomDelay(2000, 4000);
+  console.log(`DEBUG Pausing ${readingDelay}ms to mimic human reading time (Antibot bypass)...`);
+  await page.waitForTimeout(readingDelay);
+
+  // Simulate realistic mouse movement to trigger pointer events
+  console.log("DEBUG Simulating mouse movement...");
   await page.mouse.move(0, 0);
-  await page.mouse.move(100, 100, { steps: 20 });
+  await page.mouse.move(randomDelay(80, 150), randomDelay(60, 120), { steps: randomDelay(15, 25) });
+  await page.waitForTimeout(randomDelay(100, 300));
 
-  // Focus and type username with realistic delay (not instant fill)
+  // Focus and type username with realistic delay
   console.log("DEBUG Clicking and typing username...");
-  await page.click(config.selectors.username);
-  await page.type(config.selectors.username, creds.email, { delay: 75 });
+  await page.click(usernameSelector);
+  
+  // Clear field first (form field validation)
+  await page.fill(usernameSelector, '');
+  await page.waitForTimeout(randomDelay(100, 200));
+  
+  // Type with randomized per-keystroke delay
+  await page.type(usernameSelector, creds.email, { delay: randomDelay(50, 100) });
+
+  // Random pause between fields
+  await page.waitForTimeout(randomDelay(300, 600));
 
   // Focus and type password with realistic delay
   console.log("DEBUG Clicking and typing password...");
-  await page.click(config.selectors.password);
-  await page.type(config.selectors.password, creds.password, { delay: 75 });
+  await page.click(passwordSelector);
+  
+  // Clear field first
+  await page.fill(passwordSelector, '');
+  await page.waitForTimeout(randomDelay(100, 200));
+  
+  // Type with randomized delay
+  await page.type(passwordSelector, creds.password, { delay: randomDelay(50, 100) });
 
-  // Small pause before submit
-  await page.waitForTimeout(500);
+  // Randomized pause before submit (antibot timing analysis)
+  const preSubmitDelay = randomDelay(800, 1500);
+  console.log(`DEBUG Waiting ${preSubmitDelay}ms before submit...`);
+  await page.waitForTimeout(preSubmitDelay);
 
-  // Submit the form
-  console.log("DEBUG Clicking submit button...");
-  await page.click(config.selectors.submit);
+  // Find and click submit button
+  const submitSelector = await findSelector(page, submitSelectors, 5000);
+  if (!submitSelector) {
+    console.log("DEBUG No submit button found, trying keyboard Enter...");
+    await page.keyboard.press('Enter');
+  } else {
+    console.log("DEBUG Clicking submit button...");
+    await page.click(submitSelector);
+  }
 
-  // Wait for login success indicators (logout link OR dashboard URL)
-  const logoutFound = await page.waitForSelector(config.postLoginCheck, { timeout: 15000 }).catch(() => null);
+  // Track form submission timing
+  const submitTime = Date.now();
+
+  // Wait for login success indicators with progressive fallback
+  const postLoginSelectors = Array.isArray(config.postLoginCheck) 
+    ? config.postLoginCheck 
+    : [config.postLoginCheck, 'a[href*="logout"]', 'a:has-text("Logout")'];
+
+  let logoutFound = false;
+  for (const sel of postLoginSelectors) {
+    const found = await page.waitForSelector(sel, { timeout: 15000 }).catch(() => null);
+    if (found) {
+      logoutFound = true;
+      console.log(`DEBUG Found post-login indicator: ${sel}`);
+      break;
+    }
+  }
+  
   const dashboardReached = await page.waitForURL('**/*dashboard*', { timeout: 15000 }).catch(() => null);
+
+  // Calculate time from submit to success/failure
+  const responseTime = Date.now() - submitTime;
+  console.log(`DEBUG Form submission took ${responseTime}ms to respond`);
 
   if (logoutFound || dashboardReached) {
     const url = page.url();
     const title = await page.title();
-    console.log("DEBUG: Login successful – Antibot bypass confirmed (logout link visible)");
-    console.log("DEBUG Login successful, landed on:", url, "title:", title);
+    console.log("DEBUG: ✓ Login successful – Antibot bypass confirmed");
+    console.log(`DEBUG Logged in to: ${url} (title: ${title})`);
+    
+    // Log any console errors that occurred
+    if (consoleErrors.length > 0) {
+      console.log("DEBUG Note: Antibot JS errors occurred but login succeeded:", consoleErrors);
+    }
+    
     return { url, title };
   } else {
-    // Check for Drupal error messages on the page
-    const errorElement = await page.$('.messages.error, .messages--error, div[role="alert"]');
+    // Enhanced diagnostics on failure
+    console.log("DEBUG: ✗ Login failed – gathering diagnostics...");
+    
+    // Check for Antibot-specific elements
+    const antibotElements = await page.$$('[class*="antibot"], [id*="antibot"], [name*="antibot"]');
+    if (antibotElements.length > 0) {
+      console.log(`DEBUG Found ${antibotElements.length} Antibot-related elements on page`);
+      for (const el of antibotElements.slice(0, 5)) {
+        const tag = await el.evaluate(e => e.tagName);
+        const id = await el.getAttribute('id');
+        const className = await el.getAttribute('class');
+        console.log(`  - ${tag}: id="${id}", class="${className}"`);
+      }
+    }
+
+    // Check for Drupal error messages
+    const errorElement = await page.$('.messages.error, .messages--error, div[role="alert"], .form-item--error-message');
     let errorMessage = '';
     if (errorElement) {
       errorMessage = await errorElement.textContent() || '';
-      console.log("DEBUG: Login error message –", errorMessage.trim());
+      console.log("DEBUG Drupal error message:", errorMessage.trim());
+    }
+
+    // Log console errors
+    if (consoleErrors.length > 0) {
+      console.log("DEBUG JS Console Errors:", consoleErrors);
     }
 
     // Capture page HTML for debugging
     const html = await page.content();
-    console.log("DEBUG Login failed, page snippet:", html.slice(0, 500));
+    console.log("DEBUG Page HTML snippet (first 1000 chars):", html.slice(0, 1000));
+    
+    // Check if submit was too fast (antibot timing check)
+    if (responseTime < 500) {
+      console.log("DEBUG WARNING: Form responded very quickly (<500ms) – possible timing-based block");
+    }
 
     // Determine failure reason
     if (errorMessage) {
@@ -79,8 +273,10 @@ export async function loginWithCredentials(
       } else {
         throw new Error(`Login failed: ${errorMessage.trim()}`);
       }
+    } else if (antibotElements.length > 0) {
+      throw new Error("Login failed: Antibot elements detected on page (likely blocked by Antibot protection)");
     } else {
-      throw new Error("Login failed: likely blocked by Antibot (no post-login element found, no error message displayed)");
+      throw new Error("Login failed: no post-login element found, no error message displayed (likely blocked by Antibot)");
     }
   }
 }
