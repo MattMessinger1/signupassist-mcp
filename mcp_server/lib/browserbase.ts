@@ -206,7 +206,8 @@ export async function discoverProgramRequiredFields(
     // Capture diagnostics (HTML snippet and screenshot)
     try {
       const html = await session.page.content();
-      console.log('[Field Discovery] Page HTML snippet:', html.substring(0, 500));
+      console.log('[Field Discovery] Page HTML snippet (first 2000 chars):', html.substring(0, 2000));
+      console.log('[Field Discovery] Page HTML snippet (chars 2000-4000):', html.substring(2000, 4000));
       
       await session.page.screenshot({ 
         path: `discovery-debug-${Date.now()}.png`, 
