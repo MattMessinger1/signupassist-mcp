@@ -1,4 +1,5 @@
 import { Page } from 'playwright';
+import { sleep, humanPause, jitter } from './humanize';
 
 export interface ProviderLoginConfig {
   loginUrl: string;
@@ -76,9 +77,21 @@ async function detectHoneypots(page: Page): Promise<void> {
   }
 }
 
-// Random delay between min and max ms
-function randomDelay(min: number, max: number): number {
-  return min + Math.floor(Math.random() * (max - min));
+// Check if user is logged in via multiple signals
+async function hasDrupalSessCookie(page: Page): Promise<boolean> {
+  const cookies = await page.context().cookies();
+  return cookies.some(c => /S?SESS/i.test(c.name));
+}
+
+async function pageHasLogoutOrDashboard(page: Page): Promise<boolean> {
+  const url = page.url();
+  if (/\/user(\/|$)|\/dashboard/i.test(url)) return true;
+  const body = await page.locator('body').innerText().catch(() => '');
+  return /logout|sign out/i.test(body);
+}
+
+async function isLoggedIn(page: Page): Promise<boolean> {
+  return (await hasDrupalSessCookie(page)) || (await pageHasLogoutOrDashboard(page));
 }
 
 export async function loginWithCredentials(
@@ -88,218 +101,210 @@ export async function loginWithCredentials(
 ) {
   console.log("DEBUG Navigating to login page:", config.loginUrl);
   
-  // Patch C: Simulate viewport jitter (realistic window resize)
-  const viewport = page.viewportSize();
-  if (viewport) {
-    await page.setViewportSize({ 
-      width: viewport.width + randomDelay(-5, 5), 
-      height: viewport.height + randomDelay(-5, 5) 
-    });
+  // Navigate explicitly to Drupal login with destination
+  await page.goto(config.loginUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.waitForLoadState('domcontentloaded');
+
+  // Quick check if already logged in
+  if (await isLoggedIn(page)) {
+    console.log("DEBUG Already logged in, skipping login flow");
+    return { url: page.url(), title: await page.title() };
   }
 
-  // Wait for full page load including scripts (Antibot JS needs to load)
-  await page.goto(config.loginUrl, { waitUntil: "networkidle" });
-
-  // Monitor console errors for antibot issues
-  const consoleErrors: string[] = [];
-  page.on('console', msg => {
-    if (msg.type() === 'error' && msg.text().toLowerCase().includes('antibot')) {
-      consoleErrors.push(msg.text());
-      console.log("DEBUG JS Console Error (Antibot):", msg.text());
-    }
-  });
-
-  // Patch C: Simulate tab focus events
-  await page.evaluate(() => {
-    window.dispatchEvent(new Event('focus'));
-    document.dispatchEvent(new Event('visibilitychange'));
-  });
-
-  // Wait for form elements with progressive fallback
-  console.log("DEBUG Waiting for login form to be ready...");
-  
-  const usernameSelectors = Array.isArray(config.selectors.username) 
-    ? config.selectors.username 
-    : [...DEFAULT_EMAIL_SELECTORS, config.selectors.username];
-  const passwordSelectors = Array.isArray(config.selectors.password) 
-    ? config.selectors.password 
-    : [...DEFAULT_PASS_SELECTORS, config.selectors.password];
-  const submitSelectors = Array.isArray(config.selectors.submit) 
-    ? config.selectors.submit 
-    : [...DEFAULT_SUBMIT_SELECTORS, config.selectors.submit];
-
-  const usernameSelector = await findSelector(page, usernameSelectors, 15000);
-  if (!usernameSelector) {
-    throw new Error(`Login failed: no username/email field found. Tried: ${usernameSelectors.join(', ')}`);
+  // Quick human pause + tiny mouse wiggle (Antibot micro-behavior)
+  await humanPause(350, 900);
+  try {
+    const box = page.locator('body');
+    await box.hover({ position: { x: jitter(10, 200), y: jitter(10, 200) } }).catch(() => {});
+  } catch (e) {
+    // Hover might fail, that's ok
   }
 
-  const passwordSelector = await findSelector(page, passwordSelectors, 15000);
-  if (!passwordSelector) {
-    throw new Error(`Login failed: no password field found. Tried: ${passwordSelectors.join(', ')}`);
-  }
+  console.log("DEBUG Waiting for login form elements...");
 
-  // Detect honeypot fields
+  // Build comprehensive selector lists with fallbacks
+  const emailSelectors = [
+    '#edit-name',
+    'input[name="name"]',
+    'input[type="email"]',
+    'input[name*="email" i]',
+    'input[name="username"]',
+    'input[name="user"]'
+  ];
+  const passSelectors = [
+    '#edit-pass',
+    'input[type="password"]',
+    'input[name*="pass" i]',
+    'input[name="password"]'
+  ];
+  const submitSelectors = [
+    '#edit-submit',
+    'input[type="submit"]',
+    'button[type="submit"]',
+    'input[value*="log" i]',
+    'button:has-text("Log in")',
+    'button:has-text("Sign in")'
+  ];
+
+  // Combined selector strings for Playwright
+  const emailSel = emailSelectors.join(', ');
+  const passSel = passSelectors.join(', ');
+  const submitSel = submitSelectors.join(', ');
+
+  // Wait for form fields
+  await page.waitForSelector(emailSel, { timeout: 15000 });
+  await page.waitForSelector(passSel, { timeout: 15000 });
+  console.log("DEBUG Form fields detected");
+
+  // Detect honeypot fields (but don't interact)
   await detectHoneypots(page);
 
-  // STEP 1: Do human-like interactions FIRST to trigger Antibot JavaScript
-  console.log("DEBUG Simulating initial human behavior (scroll, mouse movement) to trigger Antibot...");
-  await page.mouse.move(0, 0);
-  await page.mouse.move(randomDelay(100, 200), randomDelay(100, 200), { steps: randomDelay(15, 25) });
-  await page.waitForTimeout(randomDelay(500, 1000));
-  
-  // Scroll down then back up (mimics reading)
-  await page.evaluate(() => window.scrollTo(0, 200));
-  await page.waitForTimeout(randomDelay(500, 1000));
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await page.waitForTimeout(randomDelay(1000, 1500));
+  // Antibot micro-behavior: pause before interacting (JS needs time to set up)
+  console.log("DEBUG Pausing for Antibot JS initialization...");
+  await humanPause(500, 1400);
 
-  // STEP 2: NOW wait for Antibot key to be populated (after human-like interaction)
-  console.log("DEBUG Waiting for Antibot key to be populated (after interaction)...");
-  let antibotPopulated = false;
+  // Small scroll to trigger visibility events
   try {
-    await page.waitForFunction(
-      () => {
-        const el = document.querySelector('input[name="antibot_key"]') as HTMLInputElement;
-        return el && el.getAttribute('value') && el.getAttribute('value').length > 0;
-      },
-      { timeout: 20000 } // Increased timeout to 20s
-    );
-    console.log("DEBUG ✓ Antibot key is now populated");
-    antibotPopulated = true;
+    await page.evaluate(() => window.scrollTo(0, 100));
+    await humanPause(200, 400);
+    await page.evaluate(() => window.scrollTo(0, 0));
   } catch (e) {
-    console.log("DEBUG ⚠ Antibot key NOT populated after 20s – will check again before submit");
+    // Scroll might fail, that's ok
   }
 
-  // Additional reading delay
-  const readingDelay = randomDelay(1500, 2500);
-  console.log(`DEBUG Pausing ${readingDelay}ms to mimic human reading time...`);
-  await page.waitForTimeout(readingDelay);
-
-  // Focus and type username with realistic delay
-  console.log("DEBUG Clicking and typing username...");
-  await page.click(usernameSelector);
+  // Type credentials with human-like delays
+  console.log("DEBUG Typing email...");
+  await page.click(emailSel, { timeout: 5000 }).catch(() => {});
+  await page.type(emailSel, creds.email, { delay: jitter(35, 95) });
   
-  // Clear field first (form field validation)
-  await page.fill(usernameSelector, '');
-  await page.waitForTimeout(randomDelay(100, 200));
+  await humanPause(200, 500);
   
-  // Type with randomized per-keystroke delay
-  await page.type(usernameSelector, creds.email, { delay: randomDelay(50, 100) });
-
-  // Random pause between fields
-  await page.waitForTimeout(randomDelay(300, 600));
-
-  // Focus and type password with realistic delay
-  console.log("DEBUG Clicking and typing password...");
-  await page.click(passwordSelector);
+  console.log("DEBUG Typing password...");
+  await page.click(passSel, { timeout: 5000 }).catch(() => {});
+  await page.type(passSel, creds.password, { delay: jitter(35, 95) });
   
-  // Clear field first
-  await page.fill(passwordSelector, '');
-  await page.waitForTimeout(randomDelay(100, 200));
-  
-  // Type with randomized delay
-  await page.type(passwordSelector, creds.password, { delay: randomDelay(50, 100) });
+  await humanPause(300, 700);
 
-  // CRITICAL: Check Antibot key RIGHT BEFORE submit
-  console.log("DEBUG Final Antibot key check before submit...");
+  // Check if Antibot key is populated before submit
+  console.log("DEBUG Checking Antibot key before submit...");
   try {
     const antibotKey = await page.evaluate(() => {
       const el = document.querySelector('input[name="antibot_key"]') as HTMLInputElement;
-      return el ? el.getAttribute('value') : null;
+      return el ? el.value : null;
     });
     
     if (antibotKey && antibotKey.length > 0) {
-      console.log(`DEBUG ✓ Antibot key confirmed populated: ${antibotKey.substring(0, 20)}...`);
+      console.log(`DEBUG ✓ Antibot key populated: ${antibotKey.substring(0, 20)}...`);
     } else {
-      console.log('DEBUG ⚠ WARNING: Antibot key is STILL EMPTY!');
-      console.log('DEBUG Waiting additional 4s and checking one more time...');
-      await page.waitForTimeout(4000);
+      console.log('DEBUG ⚠ Antibot key empty - waiting 2s more...');
+      await humanPause(1500, 2500);
       
       const retryKey = await page.evaluate(() => {
         const el = document.querySelector('input[name="antibot_key"]') as HTMLInputElement;
-        return el ? el.getAttribute('value') : null;
+        return el ? el.value : null;
       });
       
       if (retryKey && retryKey.length > 0) {
-        console.log(`DEBUG ✓ Antibot key populated after retry: ${retryKey.substring(0, 20)}...`);
+        console.log(`DEBUG ✓ Antibot key populated after wait: ${retryKey.substring(0, 20)}...`);
       } else {
-        console.log('DEBUG ✗ Antibot key STILL empty – login will be BLOCKED by Antibot');
-        // Dump page info for debugging
-        const url = page.url();
-        const title = await page.title();
-        console.log(`DEBUG Current page: ${url} (title: ${title})`);
+        console.log('DEBUG ⚠ Antibot key still empty - proceeding anyway');
       }
     }
   } catch (e) {
     console.log('DEBUG Could not check Antibot key:', e);
   }
 
-  // Randomized pause before submit (antibot timing analysis)
-  const preSubmitDelay = randomDelay(800, 1500);
-  console.log(`DEBUG Waiting ${preSubmitDelay}ms before submit...`);
-  await page.waitForTimeout(preSubmitDelay);
-
-  // Find and click submit button
-  const submitSelector = await findSelector(page, submitSelectors, 5000);
-  if (!submitSelector) {
-    console.log("DEBUG No submit button found, trying keyboard Enter...");
-    await page.keyboard.press('Enter');
-  } else {
-    console.log("DEBUG Clicking submit button...");
-    await page.click(submitSelector);
-  }
-
-  // Track form submission timing
-  const submitTime = Date.now();
-
-  // Wait for login success indicators with progressive fallback
-  const postLoginSelectors = Array.isArray(config.postLoginCheck) 
-    ? config.postLoginCheck 
-    : [config.postLoginCheck, 'a[href*="logout"]', 'a:has-text("Logout")'];
-
-  let logoutFound = false;
-  for (const sel of postLoginSelectors) {
-    const found = await page.waitForSelector(sel, { timeout: 15000 }).catch(() => null);
-    if (found) {
-      logoutFound = true;
-      console.log(`DEBUG Found post-login indicator: ${sel}`);
-      break;
-    }
-  }
+  // Submit the form
+  console.log("DEBUG Submitting form...");
+  const submitBtn = page.locator(submitSel).first();
+  const submitExists = await submitBtn.count();
   
-  const dashboardReached = await page.waitForURL('**/*dashboard*', { timeout: 15000 }).catch(() => null);
+  if (submitExists > 0) {
+    await submitBtn.click({ trial: false }).catch(() => {});
+  } else {
+    console.log("DEBUG No submit button found, pressing Enter in password field");
+    await page.press(passSel, 'Enter').catch(() => {});
+  }
 
-  // Calculate time from submit to success/failure
-  const responseTime = Date.now() - submitTime;
-  console.log(`DEBUG Form submission took ${responseTime}ms to respond`);
+  // Race between success signals and error messages
+  console.log("DEBUG Waiting for login result...");
+  const submitTime = Date.now();
+  
+  try {
+    const success = await Promise.race([
+      // Success detection: poll for cookie/URL/text
+      (async () => {
+        for (let i = 0; i < 12; i++) {
+          if (await isLoggedIn(page)) {
+            console.log(`DEBUG ✓ Login success detected (iteration ${i + 1})`);
+            return true;
+          }
+          await humanPause(300, 900);
+        }
+        return false;
+      })(),
+      
+      // Error detection: wait for Drupal error messages
+      (async () => {
+        await page.waitForSelector('.messages--error, .messages--warning, div[role="alert"]', { 
+          timeout: 12000 
+        }).catch(() => {});
+        
+        const errorMsg = await page.locator('.messages--error, .messages--warning, div[role="alert"]')
+          .innerText()
+          .catch(() => '');
+        
+        if (errorMsg) {
+          console.log(`DEBUG ✗ Drupal error message: ${errorMsg.trim()}`);
+          throw new Error(`Login failed: ${errorMsg.trim()}`);
+        }
+        return false;
+      })()
+    ]);
 
-  if (logoutFound || dashboardReached) {
+    const responseTime = Date.now() - submitTime;
+    console.log(`DEBUG Form response took ${responseTime}ms`);
+
+    if (success) {
+      const url = page.url();
+      const title = await page.title();
+      const hasCookie = await hasDrupalSessCookie(page);
+      
+      console.log("DEBUG ✓ Login successful");
+      console.log(`DEBUG - URL: ${url}`);
+      console.log(`DEBUG - Title: ${title}`);
+      console.log(`DEBUG - Session cookie: ${hasCookie ? 'present' : 'absent'}`);
+      
+      return { url, title };
+    } else {
+      // No success signal detected
+      throw new Error('Login failed: no cookie/URL/text success signal detected within timeout');
+    }
+  } catch (error) {
+    // Enhanced diagnostics on failure
+    console.log("DEBUG ✗ Login failed - gathering diagnostics...");
+    
     const url = page.url();
     const title = await page.title();
-    console.log("DEBUG: ✓ Login successful – Antibot bypass confirmed");
-    console.log(`DEBUG Logged in to: ${url} (title: ${title})`);
+    const hasCookie = await hasDrupalSessCookie(page);
     
-    // Log any console errors that occurred
-    if (consoleErrors.length > 0) {
-      console.log("DEBUG Note: Antibot JS errors occurred but login succeeded:", consoleErrors);
-    }
+    console.log(`DEBUG - Current URL: ${url}`);
+    console.log(`DEBUG - Page title: ${title}`);
+    console.log(`DEBUG - Session cookie: ${hasCookie ? 'present' : 'absent'}`);
     
-    return { url, title };
-  } else {
-    // Enhanced diagnostics on failure
-    console.log("DEBUG: ✗ Login failed – gathering diagnostics...");
-    
-    // Check for Antibot-specific elements
+    // Check for Antibot elements
     const antibotElements = await page.$$('[class*="antibot"], [id*="antibot"], [name*="antibot"]');
     if (antibotElements.length > 0) {
-      console.log(`DEBUG Found ${antibotElements.length} Antibot-related elements on page`);
-      for (const el of antibotElements.slice(0, 5)) {
-        const tag = await el.evaluate(e => e.tagName);
-        const id = await el.getAttribute('id');
-        const className = await el.getAttribute('class');
-        console.log(`  - ${tag}: id="${id}", class="${className}"`);
-      }
+      console.log(`DEBUG Found ${antibotElements.length} Antibot-related elements`);
     }
+    
+    // Capture HTML snippet
+    const html = await page.content();
+    console.log("DEBUG Page HTML (first 800 chars):", html.slice(0, 800));
+    
+    throw error;
+  }
+}
 
     // Check for Drupal error messages
     const errorElement = await page.$('.messages.error, .messages--error, div[role="alert"], .form-item--error-message');
