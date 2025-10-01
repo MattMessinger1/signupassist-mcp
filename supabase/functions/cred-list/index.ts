@@ -29,24 +29,52 @@ serve(async (req) => {
       )
     }
 
+    // Get the Authorization header
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) {
+      console.error('No Authorization header provided')
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized - No auth header' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    console.log('Auth header present:', authHeader.substring(0, 20) + '...')
+
     const supabaseClient = createClient(
       sbUrl,
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       {
         global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
+          headers: { Authorization: authHeader },
         },
       }
     )
 
     // Get current user
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
-    if (userError || !user) {
+    
+    if (userError) {
+      console.error('Error getting user:', userError.message)
+      console.error('Error details:', JSON.stringify(userError, null, 2))
       return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
+        JSON.stringify({ 
+          error: 'Session expired or invalid. Please log in again.',
+          details: userError.message 
+        }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     }
+    
+    if (!user) {
+      console.error('No user found in token')
+      return new Response(
+        JSON.stringify({ error: 'No user found. Please log in again.' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
+
+    console.log('User authenticated:', user.id)
 
     // Use service role client for database operations
     const supabase = createClient(sbUrl, sbServiceKey)
