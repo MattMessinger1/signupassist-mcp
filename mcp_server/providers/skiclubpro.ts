@@ -60,17 +60,48 @@ export interface FieldSchema {
 }
 
 /**
- * Helper: Ensure user is logged in using config-based login system
+ * Helper: Resolve base URL from org_ref or program_ref
  */
-async function ensureLoggedIn(session: any, credential_id: string, user_jwt: string) {
+function resolveBaseUrl(args: any): string {
+  // Extract org_ref from args (could be in different places)
+  let orgRef = args?.org_ref || 'blackhawk-ski-club';
+  
+  // If we have program_ref instead, try to extract org from program mapping
+  if (!args?.org_ref && args?.program_ref) {
+    const programs = getAvailablePrograms('blackhawk-ski-club'); // Default org
+    const program = programs.find(p => p.text_ref === args.program_ref);
+    if (program?.org_ref) {
+      orgRef = program.org_ref;
+    }
+  }
+  
+  // Normalize: lowercase, strip non-alphanumeric except hyphens
+  const normalized = orgRef.toLowerCase().replace(/[^a-z0-9-]/g, '');
+  const baseUrl = `https://${normalized}.skiclubpro.team`;
+  
+  console.log(`DEBUG: Resolved base URL: ${baseUrl} (from org_ref: ${orgRef})`);
+  return baseUrl;
+}
+
+/**
+ * Helper: Ensure user is logged in using dynamic base URL
+ */
+async function ensureLoggedIn(session: any, credential_id: string, user_jwt: string, baseUrl: string) {
   const creds = await lookupCredentialsById(credential_id, user_jwt);
   const { page } = session;
 
   console.log('DEBUG: Using credentials from cred-get:', creds.email);
-  console.log('DEBUG: Attempting login to SkiClubPro...');
+  console.log('DEBUG: Attempting login to SkiClubPro at:', baseUrl);
   
-  // Use the new config-based login helper and capture proof
-  const proof = await loginWithCredentials(page, skiClubProConfig, creds);
+  // Build dynamic config with resolved base URL
+  const loginConfig = {
+    loginUrl: `${baseUrl}/user/login?destination=/dashboard`,
+    selectors: skiClubProConfig.selectors,
+    postLoginCheck: skiClubProConfig.postLoginCheck
+  };
+  
+  // Use the new robust login helper with credentials
+  const proof = await loginWithCredentials(page, loginConfig, creds);
   
   console.log('DEBUG: Logged in as', creds.email);
   return proof;
@@ -142,11 +173,14 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
     async () => {
       let session = null;
       try {
+        // Resolve base URL from org_ref or program_ref
+        const baseUrl = resolveBaseUrl(args);
+        
         // Launch browser session
         session = await launchBrowserbaseSession();
         
-        // ✅ Login first and capture proof
-        const proof = await ensureLoggedIn(session, args.credential_id, args.user_jwt);
+        // ✅ Login first with dynamic base URL and capture proof
+        const proof = await ensureLoggedIn(session, args.credential_id, args.user_jwt, baseUrl);
         
         // For now, just return proof of login
         return {
