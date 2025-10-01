@@ -3,8 +3,9 @@
     "supabase": "https://esm.sh/@supabase/supabase-js@2"
   },
   "compilerOptions": {
-    "allowJs": true,
-    "lib": ["deno.window"]
+    "lib": ["deno.window"],
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
   },
   "tasks": {
     "dev": "deno run --allow-all --watch main.ts"
