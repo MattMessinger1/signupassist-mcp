@@ -14,6 +14,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      browser_sessions: {
+        Row: {
+          created_at: string | null
+          expires_at: string
+          id: string
+          session_data: Json
+          session_key: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          expires_at: string
+          id?: string
+          session_data: Json
+          session_key: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          expires_at?: string
+          id?: string
+          session_data?: Json
+          session_key?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       charges: {
         Row: {
           amount_cents: number | null
@@ -369,7 +396,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      cleanup_expired_sessions: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never
