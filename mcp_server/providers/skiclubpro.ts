@@ -176,18 +176,26 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         // Resolve base URL from org_ref or program_ref
         const baseUrl = resolveBaseUrl(args);
         
+        // Extract org_ref for field discovery
+        const orgRef = args?.org_ref || 'blackhawk-ski-club';
+        
         // Launch browser session
         session = await launchBrowserbaseSession();
         
-        // ✅ Login first with dynamic base URL and capture proof
-        const proof = await ensureLoggedIn(session, args.credential_id, args.user_jwt, baseUrl);
+        // ✅ Login first with dynamic base URL
+        await ensureLoggedIn(session, args.credential_id, args.user_jwt, baseUrl);
+        console.log('DEBUG: Login successful, starting field discovery');
         
-        // For now, just return proof of login
-        return {
-          status: "ok",
-          message: "Login successful",
-          proof
-        } as any;
+        // ✅ Discover program fields (credentials not needed since we're already logged in)
+        const fieldSchema = await discoverProgramRequiredFields(
+          session,
+          args.program_ref,
+          orgRef
+        );
+        
+        console.log('DEBUG: Field discovery completed:', fieldSchema);
+        
+        return fieldSchema;
         
       } catch (error) {
         console.error('SkiClubPro field discovery failed:', error);

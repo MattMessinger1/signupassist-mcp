@@ -200,7 +200,22 @@ Deno.serve(async (req) => {
 
       console.log('Field discovery completed:', result);
 
-      return new Response(JSON.stringify(result), { 
+      // Normalize MCP response to match frontend expectations
+      const discoveredSchema = result?.branches ? {
+        program_ref,
+        branches: result.branches,
+        common_questions: result.prerequisites || result.common_questions || []
+      } : null;
+
+      const response = {
+        success: !!discoveredSchema,
+        ...discoveredSchema,
+        prerequisiteChecks: result?.prerequisiteChecks || []
+      };
+
+      console.log('Normalized response:', response);
+
+      return new Response(JSON.stringify(response), { 
         status: 200, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       });
