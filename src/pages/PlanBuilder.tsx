@@ -247,11 +247,34 @@ const PlanBuilder = () => {
 
       if (error || data?.error) {
         const message = error?.message || data?.error || "Field discovery failed";
-        toast({
-          title: "Field Discovery Failed",
-          description: message,
-          variant: "destructive",
-        });
+        
+        // Show detailed diagnostics if available
+        if (data?.diagnostics) {
+          console.error('Field discovery diagnostics:', data.diagnostics);
+          toast({
+            title: "Field Discovery Failed",
+            description: (
+              <div className="space-y-2">
+                <p>{message}</p>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-sm font-medium hover:underline">
+                    Show Details
+                  </summary>
+                  <pre className="mt-2 text-xs bg-muted p-2 rounded overflow-auto max-h-40">
+                    {JSON.stringify(data.diagnostics, null, 2)}
+                  </pre>
+                </details>
+              </div>
+            ),
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Field Discovery Failed",
+            description: message,
+            variant: "destructive",
+          });
+        }
         return;
       }
 

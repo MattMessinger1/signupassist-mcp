@@ -223,10 +223,18 @@ Deno.serve(async (req) => {
     } catch (err) {
       console.error("MCP call failed:", err);
       const error = err as any;
+      
+      // Extract diagnostics if available
+      const errorResponse: any = {
+        error: `Field Discovery Failed: ${error?.message || "Unable to discover form fields for this program"}`
+      };
+      
+      if (error?.diagnostics) {
+        errorResponse.diagnostics = error.diagnostics;
+      }
+      
       return new Response(
-        JSON.stringify({ 
-          error: `Field Discovery Failed: ${error?.message || "Unable to discover form fields for this program"}`
-        }),
+        JSON.stringify(errorResponse),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

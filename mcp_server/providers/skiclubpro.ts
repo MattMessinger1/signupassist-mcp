@@ -199,7 +199,25 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         
       } catch (error) {
         console.error('SkiClubPro field discovery failed:', error);
-        throw new Error(`SkiClubPro field discovery failed: ${error.message}`);
+        
+        // Try to parse structured error for better diagnostics
+        let errorMessage = error.message;
+        let diagnostics = null;
+        
+        try {
+          const parsed = JSON.parse(error.message);
+          errorMessage = parsed.message;
+          diagnostics = parsed.diagnostics;
+        } catch {
+          // Not JSON, use as-is
+        }
+        
+        const finalError: any = new Error(errorMessage);
+        if (diagnostics) {
+          finalError.diagnostics = diagnostics;
+        }
+        
+        throw finalError;
       } finally {
         // ✅ Logout after scraping
         if (session) {

@@ -277,8 +277,40 @@ export async function loginWithCredentials(
       
       return { url, title };
     } else {
-      // No success signal detected
-      throw new Error('Login failed: no cookie/URL/text success signal detected within timeout');
+      // No success signal detected - gather comprehensive diagnostics
+      const currentUrl = page.url();
+      const pageTitle = await page.title().catch(() => 'unknown');
+      const hasCookie = await hasDrupalSessCookie(page);
+      const hasLogout = await pageHasLogoutOrDashboard(page);
+      
+      // Get page snippets for debugging
+      const titleText = await page.locator('title').innerText().catch(() => '');
+      const h1Text = await page.locator('h1').first().innerText().catch(() => '');
+      const messagesText = await page.locator('.messages, .messages--error, .messages--warning, .messages--status')
+        .allInnerTexts()
+        .catch(() => []);
+      const bodySnippet = await page.locator('body').innerText().catch(() => '');
+      
+      const diagnostics = {
+        url: currentUrl,
+        title: pageTitle,
+        hasCookie,
+        hasLogout,
+        pageSnippet: `Title: ${titleText}\nH1: ${h1Text}\nMessages: ${messagesText.join(', ')}\nBody (first 600): ${bodySnippet.substring(0, 600)}`
+      };
+      
+      console.log('DEBUG ✗ Login failed – diagnostics:', JSON.stringify(diagnostics, null, 2));
+      
+      const failureReason = !hasCookie 
+        ? 'no session cookie found'
+        : !hasLogout
+        ? 'no logout link or dashboard URL detected'
+        : 'unknown reason';
+      
+      throw new Error(JSON.stringify({
+        message: `Login failed: ${failureReason}`,
+        diagnostics
+      }));
     }
   } catch (error) {
     // Enhanced diagnostics on failure
