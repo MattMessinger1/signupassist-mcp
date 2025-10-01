@@ -34,6 +34,11 @@ export function PlanPreview({
 }: PlanPreviewProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
+  // Ensure opensAt is a valid Date object
+  const validOpensAt = opensAt instanceof Date && !isNaN(opensAt.getTime()) 
+    ? opensAt 
+    : new Date();
+
   const getCategoryIcon = (category: string) => {
     switch (category) {
       case 'child_info': return <User className="h-4 w-4" />;
@@ -128,7 +133,7 @@ export function PlanPreview({
                 <div className="space-y-1 text-sm">
                   <div><strong>Program:</strong> {programRef}</div>
                   <div><strong>Child:</strong> {childName}</div>
-                  <div><strong>Opens:</strong> {format(opensAt, 'PPP p')}</div>
+                  <div><strong>Opens:</strong> {format(validOpensAt, 'PPP p')}</div>
                   {selectedBranch && <div><strong>Type:</strong> {selectedBranch}</div>}
                   <div><strong>Credentials:</strong> {credentialAlias}</div>
                 </div>

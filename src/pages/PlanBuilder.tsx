@@ -84,6 +84,7 @@ interface PrerequisiteCheck {
 }
 
 const PlanBuilder = () => {
+  console.log('[PlanBuilder] Component mounting/rendering');
   const navigate = useNavigate();
   const { toast } = useToast();
   
@@ -96,6 +97,7 @@ const PlanBuilder = () => {
   });
 
   const { user, session, loading: authLoading } = useAuth();
+  console.log('[PlanBuilder] Auth state:', { hasUser: !!user, hasSession: !!session, authLoading });
   const [discoveredSchema, setDiscoveredSchema] = useState<DiscoveredSchema | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [isDiscovering, setIsDiscovering] = useState(false);
@@ -471,6 +473,7 @@ const PlanBuilder = () => {
 
   // EARLY RETURNS AFTER ALL HOOKS
   if (authLoading) {
+    console.log('[PlanBuilder] Rendering loading state');
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center space-y-4">
@@ -482,6 +485,7 @@ const PlanBuilder = () => {
   }
 
   if (!user || !session) {
+    console.log('[PlanBuilder] No auth - redirecting to /auth');
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Card className="w-full max-w-md">
@@ -503,6 +507,7 @@ const PlanBuilder = () => {
 
   // Show confirmation screen after successful plan creation
   if (showConfirmation && createdPlan) {
+    console.log('[PlanBuilder] Rendering confirmation screen');
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto py-8 px-4 max-w-2xl">
@@ -598,6 +603,8 @@ const PlanBuilder = () => {
     );
   }
 
+  console.log('[PlanBuilder] Rendering main form');
+  
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -844,7 +851,14 @@ const PlanBuilder = () => {
               <PlanPreview
                 programRef={friendlyProgramTitle || form.watch('programRef')}
                 childName="Selected Child"
-                opensAt={opensAt instanceof Date ? opensAt : new Date(opensAt)}
+                opensAt={(() => {
+                  try {
+                    return opensAt instanceof Date ? opensAt : new Date(opensAt);
+                  } catch (error) {
+                    console.error('[PlanBuilder] Error parsing opensAt:', error, opensAt);
+                    return new Date();
+                  }
+                })()}
                 selectedBranch={selectedBranch}
                 answers={form.watch('answers') || {}}
                 discoveredFields={allFields}
