@@ -40,7 +40,7 @@ export interface DiscoverRequiredFieldsArgs {
 
 export interface FieldSchema {
   program_ref: string;
-  prerequisites?: Array<{
+  questions: Array<{
     id: string;
     label: string;
     type: string;
@@ -48,17 +48,13 @@ export interface FieldSchema {
     options?: string[];
     category?: string;
   }>;
-  branches: Array<{
-    choice: string;
-    questions: Array<{
-      id: string;
-      label: string;
-      type: string;
-      required: boolean;
-      options?: string[];
-      category?: string;
-    }>;
-  }>;
+  categories?: Record<string, any[]>;
+  metadata?: {
+    url: string;
+    field_count: number;
+    categories: string[];
+    discovered_at: string;
+  };
 }
 
 /**
