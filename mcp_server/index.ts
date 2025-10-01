@@ -213,12 +213,25 @@ class SignupAssistMCPServer {
 }
 
 // Start both stdio and HTTP servers
+console.log('[STARTUP] Creating SignupAssistMCPServer instance...');
 const server = new SignupAssistMCPServer();
+console.log('[STARTUP] Server instance created');
 
 // Start HTTP server for production/Railway
+console.log('[STARTUP] NODE_ENV:', process.env.NODE_ENV);
+console.log('[STARTUP] PORT:', process.env.PORT);
+
 if (process.env.NODE_ENV === 'production' || process.env.PORT) {
-  server.startHTTP().catch(console.error);
+  console.log('[STARTUP] Starting HTTP server...');
+  server.startHTTP().catch((err) => {
+    console.error('[STARTUP ERROR]', err);
+    process.exit(1);
+  });
 } else {
+  console.log('[STARTUP] Starting stdio server...');
   // Start stdio server for local MCP development
-  server.start().catch(console.error);
+  server.start().catch((err) => {
+    console.error('[STARTUP ERROR]', err);
+    process.exit(1);
+  });
 }
