@@ -844,7 +844,7 @@ const PlanBuilder = () => {
               <PlanPreview
                 programRef={friendlyProgramTitle || form.watch('programRef')}
                 childName="Selected Child"
-                opensAt={new Date(opensAt)}
+                opensAt={opensAt instanceof Date ? opensAt : new Date(opensAt)}
                 selectedBranch={selectedBranch}
                 answers={form.watch('answers') || {}}
                 discoveredFields={allFields}
