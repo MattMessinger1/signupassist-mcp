@@ -281,49 +281,152 @@ export async function fillFormHumanLike(
 }
 
 /**
- * Submit form with human-like behavior
+ * Submit a form with Antibot awareness and human-like timing
+ * Waits for Antibot key to be populated before submitting
  * 
  * @param page - Playwright page instance
  * @param submitSelectors - CSS selector(s) for the submit button
- * @param options - Optional configuration
+ * @returns Result object with success status and optional error message
  */
 export async function submitFormHumanLike(
   page: Page,
-  submitSelectors: string | string[],
-  options: { preClickPause?: number; postClickWait?: number } = {}
-): Promise<void> {
-  const opts = {
-    preClickPause: options.preClickPause ?? randomDelay(300, 700),
-    postClickWait: options.postClickWait ?? 1000
-  };
+  submitSelectors: string | string[] = ['button[type="submit"]', 'input[type="submit"]', '#edit-submit']
+): Promise<{ success: boolean; errorMessage?: string }> {
+  console.log("DEBUG Preparing to submit form with Antibot bypass...");
 
-  console.log(`DEBUG Pausing ${opts.preClickPause}ms before clicking submit...`);
-  await page.waitForTimeout(opts.preClickPause);
-
-  // Find submit button
-  const submitField = await findField(page, submitSelectors, 5000);
-  
-  if (!submitField) {
-    console.log("DEBUG Submit button not found, trying keyboard Enter...");
-    await page.keyboard.press('Enter');
-  } else {
-    console.log("DEBUG Clicking submit button...");
-    
-    // Scroll to submit button
-    await submitField.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(randomDelay(100, 200));
-    
-    // Move mouse to submit button
-    const box = await submitField.boundingBox();
-    if (box) {
-      await moveMouseToTarget(page, box.x + box.width / 2, box.y + box.height / 2);
-      await page.waitForTimeout(randomDelay(100, 300));
-    }
-    
-    // Click submit
-    await submitField.click();
+  // Step 1: Wait for Drupal Antibot key to be populated
+  console.log("DEBUG Waiting for Antibot key to be populated...");
+  try {
+    await page.waitForFunction(
+      () => {
+        const el = document.querySelector('input[name="antibot_key"]') as HTMLInputElement;
+        return el && el.getAttribute('value') && el.getAttribute('value').length > 0;
+      },
+      { timeout: 15000 }
+    );
+    console.log("DEBUG Antibot key populated before form submit");
+  } catch (e) {
+    console.log("DEBUG No Antibot key found or timeout (site may not use Antibot) – continuing with submit...");
   }
 
-  console.log(`DEBUG Waiting ${opts.postClickWait}ms after submission...`);
-  await page.waitForTimeout(opts.postClickWait);
+  // Step 2: Human-like pause before submit (2-4 seconds)
+  const preSubmitDelay = 2000 + Math.floor(Math.random() * 2000);
+  console.log(`DEBUG Pausing ${preSubmitDelay}ms before form submission (human simulation)...`);
+  await page.waitForTimeout(preSubmitDelay);
+
+  // Step 3: Simulate mouse movement to submit button
+  try {
+    await moveMouseToTarget(page, randomDelay(400, 600), randomDelay(300, 500));
+  } catch (e) {
+    console.log("DEBUG Could not simulate mouse movement to submit:", e);
+  }
+
+  // Step 4: Find and click submit button
+  const selArray = Array.isArray(submitSelectors) ? submitSelectors : [submitSelectors];
+  let clicked = false;
+  
+  for (const sel of selArray) {
+    try {
+      const button = await page.$(sel);
+      if (button) {
+        console.log(`DEBUG Clicking submit button: ${sel}`);
+        
+        // Scroll to button
+        await button.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(randomDelay(100, 200));
+        
+        // Get bounding box for mouse movement
+        const box = await button.boundingBox();
+        if (box) {
+          await moveMouseToTarget(page, box.x + box.width / 2, box.y + box.height / 2);
+          await page.waitForTimeout(randomDelay(100, 300));
+        }
+        
+        await button.click();
+        clicked = true;
+        break;
+      }
+    } catch (e) {
+      console.log(`DEBUG Failed to click ${sel}:`, e);
+    }
+  }
+
+  if (!clicked) {
+    console.log("DEBUG No submit button found, trying keyboard Enter...");
+    await page.keyboard.press('Enter');
+  }
+
+  // Step 5: Wait for navigation or response
+  await page.waitForTimeout(1000);
+
+  // Step 6: Verify submission success
+  console.log("DEBUG Checking for submission confirmation or errors...");
+  
+  try {
+    // Check for success indicators
+    const successSelectors = [
+      'text=Confirmation',
+      'text=Success',
+      'text=Thank you',
+      '.messages--status',
+      '.messages.status',
+      'div.messages.status'
+    ];
+    
+    for (const sel of successSelectors) {
+      const found = await page.waitForSelector(sel, { timeout: 5000 }).catch(() => null);
+      if (found) {
+        const successText = await found.textContent();
+        console.log(`DEBUG Form submission successful – found: ${sel} (${successText?.slice(0, 50)}...)`);
+        return { success: true };
+      }
+    }
+  } catch (e) {
+    // Continue to error checking
+  }
+
+  // Check for error messages
+  const errorSelectors = [
+    '.messages--error',
+    '.messages.error',
+    'div.messages.error',
+    'div[role="alert"]',
+    '.form-item--error-message',
+    '.error-message'
+  ];
+
+  for (const sel of errorSelectors) {
+    try {
+      const errorEl = await page.$(sel);
+      if (errorEl) {
+        const errorMsg = await errorEl.textContent();
+        console.log("DEBUG Form submission failed with error:", errorMsg?.trim() || "no error text");
+        return { 
+          success: false, 
+          errorMessage: errorMsg?.trim() || "Form submission error (no message)" 
+        };
+      }
+    } catch (e) {
+      // Try next selector
+    }
+  }
+
+  // No clear success or error indicator found
+  console.log("DEBUG Form submission result unclear – no confirmation or error found");
+  
+  // Capture page state for debugging
+  const currentUrl = page.url();
+  const pageTitle = await page.title();
+  console.log(`DEBUG Current URL: ${currentUrl}, Title: ${pageTitle}`);
+  
+  // If URL changed from login/register page, assume success
+  if (!currentUrl.includes('/user/login') && !currentUrl.includes('/register')) {
+    console.log("DEBUG Assuming success based on URL change");
+    return { success: true };
+  }
+
+  return { 
+    success: false, 
+    errorMessage: "Form submission result unclear – no confirmation found" 
+  };
 }
