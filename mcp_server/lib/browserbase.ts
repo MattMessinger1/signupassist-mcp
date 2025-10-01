@@ -38,7 +38,20 @@ export async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
 
     // Connect Playwright to Browserbase
     const browser = await chromium.connectOverCDP(session.connectUrl);
-    const context = browser.contexts()[0] || await browser.newContext();
+    
+    // Load session state if available (for persistent login)
+    const contextOptions: any = {};
+    try {
+      const fs = await import('fs');
+      if (fs.existsSync('session.json')) {
+        contextOptions.storageState = 'session.json';
+        console.log('[Session] Loading cached session state');
+      }
+    } catch (err) {
+      console.log('[Session] No cached session found, starting fresh');
+    }
+    
+    const context = browser.contexts()[0] || await browser.newContext(contextOptions);
     const page = await context.newPage();
 
     return {
@@ -131,6 +144,14 @@ export async function performSkiClubProLogin(
     if (!isLoggedIn) {
       throw new Error('Login may have failed - could not find user menu or logout option');
     }
+    
+    // Save session state for future reuse
+    try {
+      await session.context.storageState({ path: 'session.json' });
+      console.log('[Session] Session state saved for future reuse');
+    } catch (err) {
+      console.warn('[Session] Could not save session state:', err.message);
+    }
 
   } catch (error) {
     throw new Error(`SkiClubPro login failed: ${error.message}`);
@@ -182,17 +203,44 @@ export async function discoverProgramRequiredFields(
     const currentUrl = session.page.url();
     console.log('[Field Discovery] Current URL after navigation:', currentUrl);
     
+    // Capture diagnostics (HTML snippet and screenshot)
+    try {
+      const html = await session.page.content();
+      console.log('[Field Discovery] Page HTML snippet:', html.substring(0, 500));
+      
+      await session.page.screenshot({ 
+        path: `discovery-debug-${Date.now()}.png`, 
+        fullPage: true 
+      });
+      console.log('[Field Discovery] Debug screenshot captured');
+    } catch (diagErr) {
+      console.warn('[Field Discovery] Could not capture diagnostics:', diagErr.message);
+    }
+    
     // Check if we were redirected to login page
     if (currentUrl.includes('/user/login')) {
       console.error('[Field Discovery] ⚠️  Redirected to login page - session may have expired');
       throw new Error(`Redirected to login page. Current URL: ${currentUrl}`);
     }
+    
+    // Handle wizard-style flows that require clicking "Continue"
+    try {
+      const continueBtn = await session.page.$('text=Continue, button:has-text("Continue"), a:has-text("Continue")');
+      if (continueBtn) {
+        console.log('[Field Discovery] Found "Continue" button, clicking...');
+        await continueBtn.click();
+        await session.page.waitForTimeout(2000);
+        console.log('[Field Discovery] ✓ Clicked "Continue", waiting for next page...');
+      }
+    } catch (continueErr) {
+      console.log('[Field Discovery] No "Continue" button found or error clicking:', continueErr.message);
+    }
 
     // Wait for form with flexible selectors (supports various form structures)
     try {
       await session.page.waitForSelector(
-        'form, .webform-submission-form, [id*=registration], [role=form]',
-        { timeout: 20000 }
+        'form, .webform-submission-form, [id*=registration], [role=form], .registration-page',
+        { timeout: 30000 }
       );
       console.log('[Field Discovery] ✓ Form container detected');
     } catch (err) {
