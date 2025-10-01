@@ -33,6 +33,7 @@ export interface DiscoverRequiredFieldsArgs {
   program_ref: string;
   credential_id: string;
   user_jwt: string;
+  org_ref?: string;
   mandate_id?: string;
   plan_execution_id?: string;
 }
