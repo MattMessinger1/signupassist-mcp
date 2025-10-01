@@ -340,9 +340,11 @@ export const skiClubProTools = {
           
           console.log('DEBUG: Login successful, proof:', loginProof);
           
-          // Capture screenshot as evidence
-          const screenshotBuffer = await captureScreenshot(session, `login_${orgRef}_${Date.now()}.png`);
-          await captureScreenshotEvidence(screenshotBuffer, `login_${orgRef}_${Date.now()}.png`);
+          // Capture screenshot as evidence (if we have a plan_execution_id)
+          if (args.plan_execution_id) {
+            const screenshotBuffer = await captureScreenshot(session, `login_${orgRef}_${Date.now()}.png`);
+            await captureScreenshotEvidence(args.plan_execution_id, screenshotBuffer, `login_${orgRef}`);
+          }
           
           // Handle the different return types from ensureLoggedIn
           const email = typeof loginProof === 'object' && 'email' in loginProof ? loginProof.email : undefined;
