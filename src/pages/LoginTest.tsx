@@ -85,8 +85,11 @@ export default function LoginTest() {
       console.log('Login test response:', data);
 
       if (error) {
+        console.error('Function invocation error:', error);
         throw error;
       }
+
+      console.log('Login test response data:', data);
 
       if (data?.error) {
         setTestResult({
@@ -99,7 +102,7 @@ export default function LoginTest() {
           description: data.error,
           variant: 'destructive',
         });
-      } else {
+      } else if (data?.success) {
         setTestResult({
           success: true,
           message: 'Login successful!',
@@ -109,14 +112,49 @@ export default function LoginTest() {
           title: 'Login Successful',
           description: 'Successfully authenticated with SkiClubPro!',
         });
+      } else {
+        // Handle unexpected response format
+        setTestResult({
+          success: false,
+          message: 'Unexpected response format',
+          details: data
+        });
+        toast({
+          title: 'Test Failed',
+          description: 'Received unexpected response from server',
+          variant: 'destructive',
+        });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error testing login:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      
+      // Extract the most useful error message
+      let errorMessage = 'Unknown error';
+      let errorDetails = error;
+      
+      if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      // Check if there's a response body with more details
+      if (error?.context?.body) {
+        try {
+          const body = typeof error.context.body === 'string' 
+            ? JSON.parse(error.context.body) 
+            : error.context.body;
+          if (body?.error) {
+            errorMessage = body.error;
+            errorDetails = body;
+          }
+        } catch (e) {
+          console.error('Failed to parse error body:', e);
+        }
+      }
+      
       setTestResult({
         success: false,
         message: errorMessage,
-        details: error
+        details: errorDetails
       });
       toast({
         title: 'Login Test Failed',
