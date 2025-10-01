@@ -6,11 +6,15 @@ const corsHeaders = {
 };
 
 // Forward to MCP executor
-async function executePlanViaMCP(planId: string, supabase: any) {
-  console.log(`Forwarding plan ${planId} to MCP executor`);
+async function executePlanViaMCP(planId: string, planExecutionId: string, mandateId: string, supabase: any) {
+  console.log(`Forwarding plan ${planId} to MCP executor with execution ${planExecutionId}`);
   
   const mcpResult = await supabase.functions.invoke('mcp-executor', {
-    body: { plan_id: planId }
+    body: { 
+      plan_id: planId,
+      plan_execution_id: planExecutionId,
+      mandate_id: mandateId
+    }
   });
 
   if (mcpResult.error) {
@@ -94,7 +98,7 @@ Deno.serve(async (req) => {
     try {
       // Execute plan via MCP
       console.log('Executing plan via MCP executor');
-      const mcpResult = await executePlanViaMCP(plan.id, serviceSupabase);
+      const mcpResult = await executePlanViaMCP(plan.id, planExecution.id, plan.mandate_id, serviceSupabase);
 
       // Update plan status to completed
       await serviceSupabase

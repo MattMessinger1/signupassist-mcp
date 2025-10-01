@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
     }
 
     // Handle plan execution
-    const { plan_id } = body;
+    const { plan_id, plan_execution_id, mandate_id } = body;
     
     if (!plan_id) {
       throw new Error('plan_id is required');
@@ -201,21 +201,47 @@ Deno.serve(async (req) => {
       throw new Error(`Plan status is ${plan.status}, expected 'running'`);
     }
 
-    // Create plan execution record
-    const { data: planExecution, error: executionError } = await serviceSupabase
-      .from('plan_executions')
-      .insert({
-        plan_id: plan.id,
-        started_at: new Date().toISOString()
-      })
-      .select()
-      .single();
+    // Use provided plan_execution_id or create a new one
+    let planExecutionId = plan_execution_id;
+    let planExecution;
+    
+    if (planExecutionId) {
+      console.log(`Using existing plan execution: ${planExecutionId}`);
+      // Fetch the existing plan execution
+      const { data: existingExecution, error: fetchError } = await serviceSupabase
+        .from('plan_executions')
+        .select('*')
+        .eq('id', planExecutionId)
+        .single();
+      
+      if (fetchError || !existingExecution) {
+        throw new Error(`Plan execution ${planExecutionId} not found`);
+      }
+      
+      planExecution = existingExecution;
+    } else {
+      console.log('Creating new plan execution record');
+      // Create plan execution record
+      const { data: newExecution, error: executionError } = await serviceSupabase
+        .from('plan_executions')
+        .insert({
+          plan_id: plan.id,
+          started_at: new Date().toISOString()
+        })
+        .select()
+        .single();
 
-    if (executionError) {
-      throw new Error(`Failed to create plan execution: ${executionError.message}`);
+      if (executionError) {
+        throw new Error(`Failed to create plan execution: ${executionError.message}`);
+      }
+      
+      planExecution = newExecution;
+      planExecutionId = newExecution.id;
+      console.log(`Plan execution created: ${planExecutionId}`);
     }
 
-    console.log(`Plan execution created: ${planExecution.id}`);
+    // Use provided mandate_id or get from plan
+    const executionMandateId = mandate_id || plan.mandate_id;
 
     let finalResult = 'success';
     let totalAmount = 0;
@@ -231,8 +257,8 @@ Deno.serve(async (req) => {
           credential_alias: 'skiclubpro-default',
           program_ref: plan.program_ref
         },
-        planExecution.id,
-        plan.mandate_id,
+        planExecutionId,
+        executionMandateId,
         serviceSupabase
       );
 
@@ -247,8 +273,8 @@ Deno.serve(async (req) => {
           program_ref: plan.program_ref,
           child_id: plan.child_id
         },
-        planExecution.id,
-        plan.mandate_id,
+        planExecutionId,
+        executionMandateId,
         serviceSupabase
       );
 
@@ -263,8 +289,8 @@ Deno.serve(async (req) => {
           registration_ref: registerResult.registration_ref,
           amount_cents: 15000 // Default $150, should come from program data
         },
-        planExecution.id,
-        plan.mandate_id,
+        planExecutionId,
+        executionMandateId,
         serviceSupabase
       );
 
@@ -274,7 +300,7 @@ Deno.serve(async (req) => {
       console.log('Step 4: Charging success fee');
       const chargeResponse = await serviceSupabase.functions.invoke('stripe-charge-success', {
         body: {
-          plan_execution_id: planExecution.id,
+          plan_execution_id: planExecutionId,
           user_id: plan.user_id
         }
       });
@@ -314,12 +340,12 @@ Deno.serve(async (req) => {
         amount_cents: totalAmount,
         confirmation_ref: confirmationRef
       })
-      .eq('id', planExecution.id);
+      .eq('id', planExecutionId);
 
     return new Response(
       JSON.stringify({
         success: finalResult === 'success',
-        plan_execution_id: planExecution.id,
+        plan_execution_id: planExecutionId,
         result: finalResult,
         amount_cents: totalAmount,
         confirmation_ref: confirmationRef,
