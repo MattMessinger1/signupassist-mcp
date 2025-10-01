@@ -1,5 +1,6 @@
 import { Page } from 'playwright';
 import { sleep, humanPause, jitter } from './humanize.js';
+// Force rebuild - cache bust
 
 export interface ProviderLoginConfig {
   loginUrl: string;
