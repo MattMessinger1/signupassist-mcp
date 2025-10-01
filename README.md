@@ -1,130 +1,39 @@
-# SignupAssist-MCP
+# SignupAssist MCP
 
-**SignupAssist** is an MCP-native project designed to act as a responsible delegate for parents. Our system automates competitive signups for kids' activities (camps, sports, clubs), giving families peace of mind.
+This repository implements the MCP (Mandated Control Protocol) agent for automating responsible delegate actions such as logging in, discovering fields, and submitting forms on behalf of parents with explicit mandates.
 
-## Mission
-Parents shouldn't have to wake up at midnight to grab a spot for their child. SignupAssist automates this process securely, reliably, and with a full audit trail.
+It provides:
 
-## Value Propositions
-1. **Set & Forget:** Parents schedule once, and our agent handles the signup.
-2. **Fast Competitive Signup:** We trigger at the exact moment signups open, maximizing the chance of success.
-3. **Credential Reuse:** Securely store and reuse login/payment info across providers.
-4. **Reminders:** Parents receive alerts 30 days and 7 days before signups open.
+- **Antibot-aware login flows**: Human-like typing, randomized delays, and detection of hidden honeypot fields (`antibot_key`) to mimic real user behavior.
+- **Form submission helpers**: Functions that wait for Antibot JavaScript tokens to populate before submitting, to avoid rejection by Drupal-based providers like SkiClubPro.
+- **Mandate + scope enforcement**: All actions are logged and tied to explicit parent mandates, creating a transparent audit trail.
 
-## Revenue Model
-We only get paid upon success. Each successful signup (with proof of confirmation) triggers billing via Stripe. Parents never pay for failures.
+## Future Build: Verifiable Credentials (VCs)
 
-## Architecture
-- **MCP-Native Design:** Each provider (e.g., SkiClubPro, DaySmart, CampMinder) is implemented as a set of MCP tools (login, register, pay).
-- **Scheduler:** Jobs fire at exact signup open times.
-- **Billing:** Stripe integration triggered only when signup success is logged.
-- **Auth:** All credentials tokenized/encrypted; never stored in plaintext.
-- **Audit Trail:** Every tool call is logged (inputs, outputs, timestamps, confirmations).
+Looking ahead, we plan to extend MCP to use **W3C Verifiable Credentials** or **cryptographic client tokens** to bypass legacy Antibot measures responsibly.
 
-## Evals
-We measure our product's performance continuously:
-- **Coverage Score:** (# providers fully automated ÷ # providers targeted).
-- **Win Rate:** (# successful competitive signups ÷ total attempts).
-- **Reuse Rate:** (% of signups completed using stored credentials).
-- **Billing Alignment:** % of successful signups correctly billed once and only once.
+- **Why?** Today, Antibot blocks legitimate delegate automation by treating all automation as bots.
+- **How VCs help:** MCP can issue signed credentials proving:
+  - Parent consent was granted.
+  - Scope of action (login, registration, payment).
+- **Provider integration:** Providers like SkiClubPro could add a Drupal module to validate MCP-issued tokens. This would allow them to **trust MCP clients** and skip Antibot/Honeypot checks when mandates are cryptographically verified.
 
-## Roadmap
-- [ ] Stabilize Blackhawk (SkiClubPro) signup.
-- [ ] Add DaySmart integration as MCP tools.
-- [ ] Build out eval dashboards.
-- [ ] Expand to more providers.
+This approach aligns with the **Responsible Delegate Mode (RDM)** vision: moving from mimicking humans to presenting cryptographic proof of authorization.
 
-## Local Development
+## Getting Started
 
-### MCP Server Development
+- Clone this repo
+- Deploy with Supabase Edge Functions + MCP server
+- Configure provider credentials via `cred-get`
+- Run MCP server:
+  ```bash
+  npm run mcp:start
+  ```
 
-**Development (quick iteration):**
-```bash
-npm run mcp:dev
-```
-Uses ts-node for fast iteration without compilation.
+## Contributing
 
-**Build for production:**
-```bash
-npm run mcp:build
-```
-Compiles TypeScript to JavaScript in `/dist/mcp_server/` using tsc.
+Future contributors should extend the `lib/login.ts` and `lib/formHelpers.ts` modules to:
 
-**Run production build:**
-```bash
-npm run mcp:start
-```
-Runs compiled MCP server with Node.js (production-like environment).
-
-**Required package.json scripts:**
-```json
-{
-  "scripts": {
-    "mcp:build": "tsc -p tsconfig.json",
-    "mcp:start": "node dist/mcp_server/index.js",
-    "mcp:dev": "ts-node mcp_server/index.ts"
-  }
-}
-```
-
-**Required tsconfig.json configuration:**
-```json
-{
-  "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": ".",
-    "moduleResolution": "node",
-    "esModuleInterop": true,
-    "module": "esnext",
-    "target": "es2020"
-  },
-  "include": ["mcp_server"]
-}
-```
-
-### Terminal-Only Workflow (Recommended)
-
-**Deploy function to Supabase Cloud:**
-```bash
-supabase functions deploy discover-fields-interactive
-```
-
-**Invoke function directly in cloud for testing:**
-```bash
-supabase functions invoke discover-fields-interactive \
-  --data '{"program_ref":"Nordic Kids Wednesday","credential_id":"42952a6b-173f-44a2-8785-b1b783ee189d","plan_execution_id":"interactive"}'
-```
-
-**Fast iteration with npm scripts:**
-```bash
-npm run deploy:discover-fields    # Deploy updates
-npm run test:discover-fields      # Test function output
-```
-
-**Why this approach:**
-- **No Docker dependency:** CLI runs entirely via Supabase Cloud
-- **Same environment:** Matches deployed runtime, not a local simulation  
-- **Fast iteration:** Change → deploy → invoke → see logs
-
-### Debug Supabase Functions
-To confirm which config file the CLI is using:
-```bash
-supabase --debug functions serve discover-fields-interactive
-```
-Look for "Using config file: …" in the output.
-
-To force CLI to use this repo's config:
-```bash
-supabase --workdir "$(pwd)" functions serve discover-fields-interactive
-```
-
-**Always run Supabase locally with the --workdir flag to ensure CLI uses the repo's supabase/config.toml, not any stray configs on the system.**
-
-### Test Functions Locally
-To test the function locally with curl:
-```bash
-curl -X POST http://localhost:54321/functions/v1/discover-fields-interactive \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <anon_or_session_token>" \
-  -d '{"program_ref":"Nordic Kids Wednesday","credential_id":"42952a6b-173f-44a2-8785-b1b783ee189d","plan_execution_id":"interactive"}'
-```
+- Add support for new providers.
+- Integrate VC-based authentication once providers are ready.
+- Expand Antibot detection and debugging capabilities.
