@@ -335,6 +335,7 @@ export async function loginWithCredentials(
     console.log("DEBUG Page HTML (first 800 chars):", html.slice(0, 800));
     
     throw error;
+  }
 }
 
 export async function logoutIfLoggedIn(page: Page, logoutSelector: string = 'text=Logout') {
