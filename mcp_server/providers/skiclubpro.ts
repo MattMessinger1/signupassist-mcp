@@ -11,6 +11,7 @@ import { getAvailablePrograms } from '../config/program_mapping.js';
 import { createClient } from '@supabase/supabase-js';
 import { loginWithCredentials, logoutIfLoggedIn } from '../lib/login.js';
 import { skiClubProConfig } from '../config/skiclubproConfig.js';
+import { saveSessionState, restoreSessionState, generateSessionKey } from '../lib/session.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -84,13 +85,40 @@ function resolveBaseUrl(args: any): string {
 }
 
 /**
- * Helper: Ensure user is logged in using dynamic base URL
+ * Helper: Ensure user is logged in using dynamic base URL with optional session caching
  */
-async function ensureLoggedIn(session: any, credential_id: string, user_jwt: string, baseUrl: string) {
+async function ensureLoggedIn(
+  session: any, 
+  credential_id: string, 
+  user_jwt: string, 
+  baseUrl: string,
+  userId: string,
+  orgRef: string
+) {
   const creds = await lookupCredentialsById(credential_id, user_jwt);
   const { page } = session;
 
   console.log('DEBUG: Using credentials from cred-get:', creds.email);
+  
+  // Generate session key for caching
+  const sessionKey = generateSessionKey(userId, credential_id, orgRef);
+  
+  // Try to restore cached session first
+  const restored = await restoreSessionState(page, sessionKey);
+  if (restored) {
+    console.log('DEBUG: Session restored from cache, skipping login');
+    // Verify we're actually logged in
+    await page.goto(`${baseUrl}/dashboard`, { waitUntil: 'domcontentloaded' });
+    const isLoggedIn = await page.locator('a[href*="logout"], a[href*="sign-out"]').count() > 0;
+    
+    if (isLoggedIn) {
+      console.log('DEBUG: ✓ Cached session is valid');
+      return { cached: true, email: creds.email };
+    } else {
+      console.log('DEBUG: Cached session invalid, proceeding with fresh login');
+    }
+  }
+  
   console.log('DEBUG: Attempting login to SkiClubPro at:', baseUrl);
   
   // Build dynamic config with resolved base URL
@@ -102,6 +130,9 @@ async function ensureLoggedIn(session: any, credential_id: string, user_jwt: str
   
   // Use the new robust login helper with credentials
   const proof = await loginWithCredentials(page, loginConfig, creds);
+  
+  // Save session state after successful login
+  await saveSessionState(page, sessionKey);
   
   console.log('DEBUG: Logged in as', creds.email);
   return proof;
@@ -179,11 +210,14 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         // Extract org_ref for field discovery
         const orgRef = args?.org_ref || 'blackhawk-ski-club';
         
+        // Extract user_id from JWT for session caching
+        const userId = args.user_jwt ? JSON.parse(atob(args.user_jwt.split('.')[1])).sub : 'anonymous';
+        
         // Launch browser session
         session = await launchBrowserbaseSession();
         
-        // ✅ Login first with dynamic base URL
-        await ensureLoggedIn(session, args.credential_id, args.user_jwt, baseUrl);
+        // ✅ Login first with dynamic base URL and optional session caching
+        await ensureLoggedIn(session, args.credential_id, args.user_jwt, baseUrl, userId, orgRef);
         console.log('DEBUG: Login successful, starting field discovery');
         
         // ✅ Discover program fields (credentials not needed since we're already logged in)
