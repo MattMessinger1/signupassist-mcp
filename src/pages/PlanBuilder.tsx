@@ -119,11 +119,16 @@ const PlanBuilder = () => {
   const opensAt = form.watch('opensAt') ?? null;
 
   // Debug logging for troubleshooting
+  const formWatchOpensAt = form.watch('opensAt');
   console.log('PlanBuilder Debug:', {
     discoveredSchema,
+    discoveredSchemaIsNull: discoveredSchema === null,
+    discoveredSchemaBranches: discoveredSchema?.branches?.length ?? 0,
+    discoveredSchemaCommonQuestions: discoveredSchema?.common_questions?.length ?? 0,
     prerequisiteChecks,
     formWatchChildId: form.watch('childId'),
-    formWatchOpensAt: form.watch('opensAt'),
+    formWatchOpensAt,
+    formWatchOpensAtType: typeof formWatchOpensAt,
     formWatchAnswers: form.watch('answers'),
     selectedChildId,
     currentBranch,
@@ -277,9 +282,28 @@ const PlanBuilder = () => {
             variant: "destructive",
           });
         }
+        
+        // Keep schema null to show error UI
+        console.warn("⚠️ No schema discovered, keeping discoveredSchema as null");
         return;
       }
 
+      // Validate schema has required structure
+      if (!data || (!data.branches && !data.common_questions)) {
+        console.warn("⚠️ Invalid schema structure received:", data);
+        toast({
+          title: "Invalid Form Structure",
+          description: "The registration form couldn't be loaded properly. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      console.log("✅ Schema discovered successfully:", {
+        branches: data.branches?.length ?? 0,
+        commonQuestions: data.common_questions?.length ?? 0
+      });
+      
       setDiscoveredSchema(data);
       
       const branchCount = data.branches?.length || 0;
@@ -386,13 +410,27 @@ const PlanBuilder = () => {
       }
 
       // Create plan using the new create-plan function
+      // Safe date handling for opens_at
+      let opensAtISO: string;
+      try {
+        if (formData.opensAt instanceof Date && !isNaN(formData.opensAt.getTime())) {
+          opensAtISO = formData.opensAt.toISOString();
+        } else if (typeof formData.opensAt === 'string') {
+          opensAtISO = new Date(formData.opensAt).toISOString();
+        } else {
+          opensAtISO = new Date().toISOString();
+        }
+        console.log('[PlanBuilder] Using opens_at:', opensAtISO);
+      } catch (err) {
+        console.warn('[PlanBuilder] Invalid opens_at, using current time:', formData.opensAt);
+        opensAtISO = new Date().toISOString();
+      }
+
       const { data: planData, error: planError } = await supabase.functions.invoke('create-plan', {
         body: {
           program_ref: formData.programRef,
           child_id: formData.childId,
-          opens_at: formData.opensAt 
-            ? (formData.opensAt instanceof Date ? formData.opensAt.toISOString() : formData.opensAt)
-            : new Date().toISOString(),
+          opens_at: opensAtISO,
           mandate_id: data.mandate_id,
           provider: 'skiclubpro',
           answers: formData.answers
@@ -812,36 +850,60 @@ const PlanBuilder = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {/* Branch Selection */}
-                  {discoveredSchema.branches && discoveredSchema.branches.length > 1 && (
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Program Options</label>
-                      <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select a program option" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {discoveredSchema.branches.map((branch, index) => (
-                            <SelectItem key={index} value={branch.choice}>
-                              {branch.choice}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                  {/* Check if schema has any questions */}
+                  {!discoveredSchema.branches?.length && !discoveredSchema.common_questions?.length ? (
+                    <div className="p-6 bg-yellow-50 border border-yellow-300 rounded-lg">
+                      <h3 className="text-sm font-semibold text-yellow-900 mb-2">
+                        Registration Form Unavailable
+                      </h3>
+                      <p className="text-sm text-yellow-800">
+                        We couldn't load the required form fields from the provider. 
+                        This may be a login issue or a temporary provider error. 
+                        Please try reloading the form or check your login credentials.
+                      </p>
                     </div>
-                  )}
+                  ) : (
+                    <>
+                      {/* Branch Selection */}
+                      {discoveredSchema.branches && discoveredSchema.branches.length > 1 && (
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Program Options</label>
+                          <Select value={selectedBranch} onValueChange={setSelectedBranch}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a program option" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {discoveredSchema.branches.map((branch, index) => (
+                                <SelectItem key={index} value={branch.choice}>
+                                  {branch.choice}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
 
-                  {/* Render fields grouped by category */}
-                  {Object.entries(fieldsByCategory).map(([category, fields]) => (
-                    <FieldGroup
-                      key={category}
-                      title={category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                      category={category}
-                      fields={fields}
-                      control={form.control}
-                      watch={form.watch}
-                    />
-                  ))}
+                      {/* Render fields grouped by category */}
+                      {Object.entries(fieldsByCategory).length > 0 ? (
+                        Object.entries(fieldsByCategory).map(([category, fields]) => (
+                          <FieldGroup
+                            key={category}
+                            title={category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                            category={category}
+                            fields={fields}
+                            control={form.control}
+                            watch={form.watch}
+                          />
+                        ))
+                      ) : (
+                        <div className="p-4 bg-gray-50 border border-gray-300 rounded-lg">
+                          <p className="text-sm text-gray-700">
+                            No form fields available for this program. This is unusual - please contact support if this persists.
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -853,10 +915,23 @@ const PlanBuilder = () => {
                 childName="Selected Child"
                 opensAt={(() => {
                   try {
-                    return opensAt instanceof Date ? opensAt : new Date(opensAt);
+                    // Ensure opensAt is a valid Date
+                    let dateValue: Date;
+                    if (opensAt instanceof Date && !isNaN(opensAt.getTime())) {
+                      dateValue = opensAt;
+                    } else if (typeof opensAt === 'string') {
+                      dateValue = new Date(opensAt);
+                      if (isNaN(dateValue.getTime())) {
+                        throw new Error('Invalid date string');
+                      }
+                    } else {
+                      throw new Error('Invalid date format');
+                    }
+                    console.log('[PlanBuilder] Valid opensAt for PlanPreview:', dateValue.toISOString());
+                    return dateValue;
                   } catch (error) {
-                    console.error('[PlanBuilder] Error parsing opensAt:', error, opensAt);
-                    return new Date();
+                    console.error('[PlanBuilder] Error parsing opensAt:', error, 'Raw value:', opensAt);
+                    return new Date(); // Fallback to current date
                   }
                 })()}
                 selectedBranch={selectedBranch}
