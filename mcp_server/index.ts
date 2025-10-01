@@ -95,7 +95,8 @@ class SignupAssistMCPServer {
   }
 
   async startHTTP() {
-    const port = parseInt(process.env.PORT ?? "4000", 10);
+    // Railway provides PORT env var; fallback to 8080 for local development
+    const port = process.env.PORT ? parseInt(process.env.PORT) : 8080;
     
     const httpServer = createServer((req, res) => {
       // CORS headers
@@ -203,7 +204,8 @@ class SignupAssistMCPServer {
       res.end(JSON.stringify({ error: 'Not found' }));
     });
 
-    httpServer.listen(port, () => {
+    // Bind to 0.0.0.0 so Railway can route traffic to the container
+    httpServer.listen(port, "0.0.0.0", () => {
       console.log(`MCP Server listening on port ${port}`);
       console.log(`Health check available at http://localhost:${port}/health`);
     });
