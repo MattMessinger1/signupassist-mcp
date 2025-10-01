@@ -388,7 +388,9 @@ const PlanBuilder = () => {
         body: {
           program_ref: formData.programRef,
           child_id: formData.childId,
-          opens_at: formData.opensAt ? formData.opensAt.toISOString() : new Date().toISOString(),
+          opens_at: formData.opensAt 
+            ? (formData.opensAt instanceof Date ? formData.opensAt.toISOString() : formData.opensAt)
+            : new Date().toISOString(),
           mandate_id: data.mandate_id,
           provider: 'skiclubpro',
           answers: formData.answers
