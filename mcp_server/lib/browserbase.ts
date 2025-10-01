@@ -149,28 +149,28 @@ export async function discoverProgramRequiredFields(
   let screenshotCount = 0;
   
   try {
-    console.log(`[discoverRegistrationFields] Starting for program: ${programRef}, org: ${orgRef}`);
+    console.log(`[Field Discovery] Starting for program: ${programRef}, org: ${orgRef}`);
     
     const config = getSkiClubProConfig(orgRef);
     const actualProgramId = getProgramId(programRef, orgRef);
     
-    console.log(`[discoverRegistrationFields] Resolved: ${programRef} -> ID ${actualProgramId}`);
+    console.log(`[Field Discovery] Resolved: ${programRef} -> ID ${actualProgramId}`);
     
     // If credentials are provided, authenticate first
     if (credentials) {
-      console.log('[discoverRegistrationFields] Authenticating...');
+      console.log('[Field Discovery] Authenticating...');
       try {
         await performSkiClubProLogin(session, credentials, orgRef);
-        console.log('[discoverRegistrationFields] ✓ Authentication successful');
+        console.log('[Field Discovery] ✓ Authentication successful');
       } catch (authError) {
-        console.error('[discoverRegistrationFields] ⚠ Authentication failed, continuing:', authError.message);
+        console.error('[Field Discovery] ⚠ Authentication failed, continuing:', authError.message);
       }
     }
     
     // Construct the registration URL using full org_ref
     const registrationUrl = `https://${orgRef}.skiclubpro.team/registration/${actualProgramId}/options`;
     
-    console.log('[discoverRegistrationFields] Navigating to:', registrationUrl);
+    console.log('[Field Discovery] Navigating to:', registrationUrl);
     
     // Navigate to registration page
     await session.page.goto(registrationUrl, { 
@@ -178,16 +178,47 @@ export async function discoverProgramRequiredFields(
       timeout: 30000 
     });
 
-    // Wait for form to appear
-    await session.page.waitForSelector('form', { timeout: 10000 });
+    // Log current URL to detect redirects (e.g., back to login)
+    const currentUrl = session.page.url();
+    console.log('[Field Discovery] Current URL after navigation:', currentUrl);
+    
+    // Check if we were redirected to login page
+    if (currentUrl.includes('/user/login')) {
+      console.error('[Field Discovery] ⚠️  Redirected to login page - session may have expired');
+      throw new Error(`Redirected to login page. Current URL: ${currentUrl}`);
+    }
+
+    // Wait for form with flexible selectors (supports various form structures)
+    try {
+      await session.page.waitForSelector(
+        'form, .webform-submission-form, [id*=registration], [role=form]',
+        { timeout: 20000 }
+      );
+      console.log('[Field Discovery] ✓ Form container detected');
+    } catch (err) {
+      console.error('[Field Discovery] ⚠️  Timeout waiting for form - capturing screenshot...');
+      
+      // Capture full-page screenshot for debugging
+      try {
+        await session.page.screenshot({ 
+          path: `discovery-error-${Date.now()}.png`, 
+          fullPage: true 
+        });
+        console.log('[Field Discovery] Error screenshot saved');
+      } catch (screenshotErr) {
+        console.error('[Field Discovery] Could not capture screenshot:', screenshotErr);
+      }
+      
+      throw new Error(`Field discovery failed at ${currentUrl}: ${err.message || err}`);
+    }
     
     // Allow time for dynamic fields to load via JavaScript
     await session.page.waitForTimeout(2000);
     
-    console.log('[discoverRegistrationFields] ✓ Registration form loaded');
+    console.log('[Field Discovery] ✓ Registration form loaded');
     
     // Comprehensive field extraction with categorization
-    console.log('[discoverRegistrationFields] Extracting fields...');
+    console.log('[Field Discovery] Extracting fields...');
     
     interface DiscoveredField {
       id: string;
@@ -310,14 +341,14 @@ export async function discoverProgramRequiredFields(
       }
     );
     
-    console.log(`[discoverRegistrationFields] ✓ Extracted ${fields.length} fields`);
+    console.log(`[Field Discovery] ✓ Extracted ${fields.length} fields`);
 
     // Log field categories
     const categoryCounts = fields.reduce((acc: any, field: any) => {
       acc[field.category] = (acc[field.category] || 0) + 1;
       return acc;
     }, {});
-    console.log('[discoverRegistrationFields] Fields by category:', categoryCounts);
+    console.log('[Field Discovery] Fields by category:', categoryCounts);
 
     // Capture screenshot of the form
     try {
@@ -328,10 +359,10 @@ export async function discoverProgramRequiredFields(
       
       if (screenshot) {
         screenshotCount++;
-        console.log('[discoverRegistrationFields] ✓ Screenshot captured');
+        console.log('[Field Discovery] ✓ Screenshot captured');
       }
     } catch (error) {
-      console.log('[discoverRegistrationFields] ✗ Screenshot failed:', error.message);
+      console.log('[Field Discovery] ✗ Screenshot failed:', error.message);
     }
 
     // Return clean schema ready for Plan Builder
@@ -341,18 +372,19 @@ export async function discoverProgramRequiredFields(
     };
     
   } catch (error) {
-    console.error('[discoverRegistrationFields] Error:', error);
+    console.error('[Field Discovery] Error:', error);
     
-    // Capture error screenshot
+    // Capture error screenshot with timestamp
     try {
+      const errorScreenshotPath = `discovery-error-${Date.now()}.png`;
       await session.page.screenshot({ 
         fullPage: true,
         type: 'png',
-        path: `error_${Date.now()}.png`
+        path: errorScreenshotPath
       });
-      console.log('[discoverRegistrationFields] Error screenshot captured');
+      console.log(`[Field Discovery] Error screenshot captured: ${errorScreenshotPath}`);
     } catch (screenshotError) {
-      console.error('[discoverRegistrationFields] Could not capture error screenshot:', screenshotError);
+      console.error('[Field Discovery] Could not capture error screenshot:', screenshotError);
     }
     
     // Provide detailed error information
@@ -365,10 +397,9 @@ export async function discoverProgramRequiredFields(
       timestamp: new Date().toISOString()
     };
     
-    throw new Error(JSON.stringify({
-      message: `Field discovery failed for ${programRef}: ${error.message}`,
-      diagnostics
-    }));
+    console.error('[Field Discovery] Diagnostics:', JSON.stringify(diagnostics, null, 2));
+    
+    throw new Error(`Field discovery failed for ${programRef}: ${error.message}. Current URL: ${session.page.url()}`);
   }
 }
 
