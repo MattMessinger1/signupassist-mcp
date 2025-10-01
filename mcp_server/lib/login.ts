@@ -335,44 +335,6 @@ export async function loginWithCredentials(
     console.log("DEBUG Page HTML (first 800 chars):", html.slice(0, 800));
     
     throw error;
-  }
-}
-
-    // Check for Drupal error messages
-    const errorElement = await page.$('.messages.error, .messages--error, div[role="alert"], .form-item--error-message');
-    let errorMessage = '';
-    if (errorElement) {
-      errorMessage = await errorElement.textContent() || '';
-      console.log("DEBUG Drupal error message:", errorMessage.trim());
-    }
-
-    // Log console errors
-    if (consoleErrors.length > 0) {
-      console.log("DEBUG JS Console Errors:", consoleErrors);
-    }
-
-    // Capture page HTML for debugging
-    const html = await page.content();
-    console.log("DEBUG Page HTML snippet (first 1000 chars):", html.slice(0, 1000));
-    
-    // Check if submit was too fast (antibot timing check)
-    if (responseTime < 500) {
-      console.log("DEBUG WARNING: Form responded very quickly (<500ms) – possible timing-based block");
-    }
-
-    // Determine failure reason
-    if (errorMessage) {
-      if (errorMessage.toLowerCase().includes('antibot')) {
-        throw new Error(`Login failed: Antibot verification failed – ${errorMessage.trim()}`);
-      } else {
-        throw new Error(`Login failed: ${errorMessage.trim()}`);
-      }
-    } else if (antibotElements.length > 0) {
-      throw new Error("Login failed: Antibot elements detected on page (likely blocked by Antibot protection)");
-    } else {
-      throw new Error("Login failed: no post-login element found, no error message displayed (likely blocked by Antibot)");
-    }
-  }
 }
 
 export async function logoutIfLoggedIn(page: Page, logoutSelector: string = 'text=Logout') {
