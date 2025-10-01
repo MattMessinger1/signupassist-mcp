@@ -301,14 +301,72 @@ export const skiClubProTools = {
     };
   },
 
-  'scp.login': async (args: any) => {
-    // Stub implementation
-    return {
-      success: true,
-      session_id: 'mock_session_' + Date.now(),
-      message: 'Login successful',
-      timestamp: new Date().toISOString()
-    };
+  'scp.login': async (args: { credential_id: string; user_jwt: string; org_ref?: string; mandate_id?: string; plan_execution_id?: string }) => {
+    return await auditToolCall(
+      {
+        tool: 'scp.login',
+        mandate_id: args.mandate_id || '',
+        plan_execution_id: args.plan_execution_id || null
+      },
+      args,
+      async () => {
+        let session = null;
+        try {
+          // Validate inputs
+          if (!args.credential_id) throw new Error('credential_id is required');
+          if (!args.user_jwt) throw new Error('user_jwt is required');
+          
+          const orgRef = args.org_ref || 'blackhawk-ski-club';
+          const baseUrl = resolveBaseUrl({ org_ref: orgRef });
+          
+          // Extract user_id from JWT for session caching
+          const userId = JSON.parse(atob(args.user_jwt.split('.')[1])).sub;
+          
+          console.log(`DEBUG: Starting real login for org: ${orgRef}, baseUrl: ${baseUrl}`);
+          
+          // Launch Browserbase session
+          session = await launchBrowserbaseSession();
+          console.log(`DEBUG: Browserbase session launched: ${session.sessionId}`);
+          
+          // Perform login using existing infrastructure
+          const loginProof = await ensureLoggedIn(
+            session,
+            args.credential_id,
+            args.user_jwt,
+            baseUrl,
+            userId,
+            orgRef
+          );
+          
+          console.log('DEBUG: Login successful, proof:', loginProof);
+          
+          // Capture screenshot as evidence
+          const screenshot = await captureScreenshot(session, `login_${orgRef}_${Date.now()}.png`);
+          await captureScreenshotEvidence(screenshot, `login_${orgRef}_${Date.now()}.png`);
+          
+          return {
+            success: true,
+            session_id: session.sessionId,
+            message: 'Login successful via Browserbase',
+            email: loginProof.email || loginProof.url,
+            cached: loginProof.cached || false,
+            url: loginProof.url,
+            timestamp: new Date().toISOString()
+          };
+          
+        } catch (error) {
+          console.error('Real login failed:', error);
+          throw new Error(`Login failed: ${error.message}`);
+        } finally {
+          // Close the Browserbase session (cached cookies will persist)
+          if (session) {
+            await closeBrowserbaseSession(session);
+            console.log('DEBUG: Browserbase session closed');
+          }
+        }
+      },
+      'scp:authenticate' // Required scope for mandate verification
+    );
   },
 
   'scp.register': async (args: any) => {
