@@ -141,31 +141,39 @@ export async function loginWithCredentials(
   // Detect honeypot fields
   await detectHoneypots(page);
 
-  // Wait for Drupal Antibot key to be populated
-  console.log("DEBUG Waiting for Antibot key to be populated...");
+  // STEP 1: Do human-like interactions FIRST to trigger Antibot JavaScript
+  console.log("DEBUG Simulating initial human behavior (scroll, mouse movement) to trigger Antibot...");
+  await page.mouse.move(0, 0);
+  await page.mouse.move(randomDelay(100, 200), randomDelay(100, 200), { steps: randomDelay(15, 25) });
+  await page.waitForTimeout(randomDelay(500, 1000));
+  
+  // Scroll down then back up (mimics reading)
+  await page.evaluate(() => window.scrollTo(0, 200));
+  await page.waitForTimeout(randomDelay(500, 1000));
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(randomDelay(1000, 1500));
+
+  // STEP 2: NOW wait for Antibot key to be populated (after human-like interaction)
+  console.log("DEBUG Waiting for Antibot key to be populated (after interaction)...");
+  let antibotPopulated = false;
   try {
     await page.waitForFunction(
       () => {
         const el = document.querySelector('input[name="antibot_key"]') as HTMLInputElement;
         return el && el.getAttribute('value') && el.getAttribute('value').length > 0;
       },
-      { timeout: 15000 }
+      { timeout: 20000 } // Increased timeout to 20s
     );
-    console.log("DEBUG Antibot key detected, ready to log in");
+    console.log("DEBUG ✓ Antibot key is now populated");
+    antibotPopulated = true;
   } catch (e) {
-    console.log("DEBUG No Antibot key found or timeout (site may not use Antibot) – continuing...");
+    console.log("DEBUG ⚠ Antibot key NOT populated after 20s – will check again before submit");
   }
 
-  // Antibot bypass: randomized human-like delay (2-4 seconds)
-  const readingDelay = randomDelay(2000, 4000);
-  console.log(`DEBUG Pausing ${readingDelay}ms to mimic human reading time (Antibot bypass)...`);
+  // Additional reading delay
+  const readingDelay = randomDelay(1500, 2500);
+  console.log(`DEBUG Pausing ${readingDelay}ms to mimic human reading time...`);
   await page.waitForTimeout(readingDelay);
-
-  // Simulate realistic mouse movement to trigger pointer events
-  console.log("DEBUG Simulating mouse movement...");
-  await page.mouse.move(0, 0);
-  await page.mouse.move(randomDelay(80, 150), randomDelay(60, 120), { steps: randomDelay(15, 25) });
-  await page.waitForTimeout(randomDelay(100, 300));
 
   // Focus and type username with realistic delay
   console.log("DEBUG Clicking and typing username...");
@@ -191,6 +199,40 @@ export async function loginWithCredentials(
   
   // Type with randomized delay
   await page.type(passwordSelector, creds.password, { delay: randomDelay(50, 100) });
+
+  // CRITICAL: Check Antibot key RIGHT BEFORE submit
+  console.log("DEBUG Final Antibot key check before submit...");
+  try {
+    const antibotKey = await page.evaluate(() => {
+      const el = document.querySelector('input[name="antibot_key"]') as HTMLInputElement;
+      return el ? el.getAttribute('value') : null;
+    });
+    
+    if (antibotKey && antibotKey.length > 0) {
+      console.log(`DEBUG ✓ Antibot key confirmed populated: ${antibotKey.substring(0, 20)}...`);
+    } else {
+      console.log('DEBUG ⚠ WARNING: Antibot key is STILL EMPTY!');
+      console.log('DEBUG Waiting additional 4s and checking one more time...');
+      await page.waitForTimeout(4000);
+      
+      const retryKey = await page.evaluate(() => {
+        const el = document.querySelector('input[name="antibot_key"]') as HTMLInputElement;
+        return el ? el.getAttribute('value') : null;
+      });
+      
+      if (retryKey && retryKey.length > 0) {
+        console.log(`DEBUG ✓ Antibot key populated after retry: ${retryKey.substring(0, 20)}...`);
+      } else {
+        console.log('DEBUG ✗ Antibot key STILL empty – login will be BLOCKED by Antibot');
+        // Dump page info for debugging
+        const url = page.url();
+        const title = await page.title();
+        console.log(`DEBUG Current page: ${url} (title: ${title})`);
+      }
+    }
+  } catch (e) {
+    console.log('DEBUG Could not check Antibot key:', e);
+  }
 
   // Randomized pause before submit (antibot timing analysis)
   const preSubmitDelay = randomDelay(800, 1500);
