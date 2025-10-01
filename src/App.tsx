@@ -8,6 +8,7 @@ import Index from "./pages/Index";
 import PlanBuilderWithStripe from "./pages/PlanBuilder";
 import Auth from "./pages/auth";
 import Credentials from "./pages/Credentials";
+import LoginTest from "./pages/LoginTest";
 import RegistrationDashboard from "./pages/RegistrationDashboard";
 import NotFound from "./pages/NotFound";
 
@@ -26,6 +27,7 @@ const App = () => (
             <Route path="/dashboard" element={<RegistrationDashboard />} />
             <Route path="/plan-builder" element={<PlanBuilderWithStripe />} />
             <Route path="/credentials" element={<Credentials />} />
+            <Route path="/login-test" element={<LoginTest />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

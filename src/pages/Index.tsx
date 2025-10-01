@@ -29,7 +29,7 @@ const Index = () => {
           <p className="text-xl text-muted-foreground mb-8">
             Automated registration for your children's programs
           </p>
-          <div className="flex gap-4 justify-center">
+          <div className="flex gap-4 justify-center flex-wrap">
             <Link to="/plan-builder">
               <Button size="lg" className="text-lg px-8 py-3">
                 Create Signup Plan
@@ -43,6 +43,11 @@ const Index = () => {
             <Link to="/credentials">
               <Button size="lg" variant="outline" className="text-lg px-8 py-3">
                 Manage Credentials
+              </Button>
+            </Link>
+            <Link to="/login-test">
+              <Button size="lg" variant="secondary" className="text-lg px-8 py-3">
+                Test Login
               </Button>
             </Link>
             <Button size="lg" variant="secondary" className="text-lg px-8 py-3" onClick={testCredDebug}>
