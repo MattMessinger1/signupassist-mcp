@@ -2,6 +2,7 @@
  * SkiClubPro Provider - MCP Tools for SkiClubPro automation
  */
 
+import { Page } from 'playwright';
 import { verifyMandate } from '../lib/mandates.js';
 import { auditToolCall } from '../middleware/audit.js';
 import { lookupCredentialsById } from '../lib/credentials.js';
@@ -293,6 +294,103 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
   );
 }
 
+/**
+ * Prerequisites check types and helpers
+ */
+type Check = { 
+  ok: boolean | null; 
+  summary?: string; 
+  reason?: string; 
+  confidence?: "high" | "medium" | "low"; 
+  lastCheckedAt?: string; 
+  evidenceSnippet?: string 
+};
+
+async function innerText(page: Page): Promise<string> {
+  return page.evaluate(() => document.body.innerText || "");
+}
+
+// Robust nav helper: tries a list of candidate paths, stops at first success
+async function go(page: Page, base: string, paths: string[], timeout = 15000) {
+  for (const p of paths) {
+    try {
+      await page.goto(`${base}${p}`, { waitUntil: "domcontentloaded", timeout });
+      return true;
+    } catch {}
+  }
+  return false;
+}
+
+async function checkAccount(page: Page): Promise<Check> {
+  const txt = (await innerText(page)).slice(0, 600);
+  const signedIn =
+    /dashboard|my account|log\s*out|welcome|profile/i.test(txt) ||
+    await page.$('a[href*="/user/logout"], [data-user], nav .avatar, .user-menu');
+  return {
+    ok: !!signedIn,
+    summary: signedIn ? "Logged in and on account area" : "Could not verify logged-in state",
+    confidence: signedIn ? "high" : "low",
+    lastCheckedAt: new Date().toISOString(),
+    evidenceSnippet: txt
+  };
+}
+
+async function checkMembership(page: Page, base: string): Promise<Check> {
+  await go(page, base, ["/membership", "/user/membership", "/my-account", "/account"]);
+  const txt = await innerText(page);
+  // Keywords common across orgs
+  const active = /(current|active)\s+(membership|member)/i.test(txt) || /renew/i.test(txt) && !/expired/i.test(txt);
+  const expired = /expired/i.test(txt);
+  return {
+    ok: active && !expired,
+    summary: active ? "Active membership detected" : (expired ? "Membership appears expired" : "Could not confirm membership"),
+    reason: active ? undefined : "We didn't find 'Active/Current membership' language on the membership pages.",
+    confidence: active ? "medium" : "low",
+    lastCheckedAt: new Date().toISOString(),
+    evidenceSnippet: txt.slice(0, 500)
+  };
+}
+
+async function checkPayment(page: Page, base: string): Promise<Check> {
+  // Stripe Customer Portal is cross‑origin. We can't read inside the iframe reliably.
+  // Heuristic: confirm the portal/section loads and visible CTAs are present.
+  await go(page, base, ["/user/payment-methods", "/billing", "/payments", "/customer-portal", "/account/payment"]);
+  const txt = await innerText(page);
+  const portalPresent =
+    /payment methods|update card|manage payment|customer portal|card ending|visa|mastercard|amex/i.test(txt);
+  return {
+    ok: portalPresent, // mark success if portal is accessible (we'll rely on the portal at checkout)
+    summary: portalPresent ? "Stripe payment portal accessible" : "No payment portal found",
+    reason: portalPresent ? undefined : "Could not locate a payment method area. If your card is saved inside Stripe, this may still pass at checkout.",
+    confidence: portalPresent ? "medium" : "low",
+    lastCheckedAt: new Date().toISOString(),
+    evidenceSnippet: txt.slice(0, 300)
+  };
+}
+
+async function checkChild(page: Page, base: string, childName?: string): Promise<Check> {
+  await go(page, base, ["/user/family", "/family", "/children", "/household"]);
+  const txt = await innerText(page);
+  if (!childName) {
+    const anyChild = /(child|children|family member)/i.test(txt);
+    return {
+      ok: anyChild ? true : null,
+      summary: anyChild ? "Family/child section found" : "Could not confirm child info",
+      confidence: anyChild ? "low" : "low",
+      lastCheckedAt: new Date().toISOString(),
+      evidenceSnippet: txt.slice(0, 300)
+    };
+  }
+  const found = new RegExp(childName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(txt);
+  return {
+    ok: found,
+    summary: found ? `Found child profile: ${childName}` : `Could not find child profile: ${childName}`,
+    confidence: found ? "high" : "low",
+    lastCheckedAt: new Date().toISOString(),
+    evidenceSnippet: txt.slice(0, 300)
+  };
+}
+
 export const skiClubProTools = {
   'scp.discover_required_fields': scpDiscoverRequiredFields,
 
@@ -563,5 +661,101 @@ export const skiClubProTools = {
       status: 'completed',
       timestamp: new Date().toISOString()
     };
+  },
+
+  'scp:check_prerequisites': async (args: { 
+    credential_id: string; 
+    user_jwt: string; 
+    org_ref: string; 
+    force_login?: boolean; 
+    child_name?: string;
+    mandate_id?: string; 
+    plan_execution_id?: string 
+  }) => {
+    return await auditToolCall(
+      {
+        tool: 'scp.check_prerequisites',
+        mandate_id: args.mandate_id || '',
+        plan_execution_id: args.plan_execution_id || null
+      },
+      args,
+      async () => {
+        let session = null;
+        try {
+          // Validate inputs
+          if (!args.credential_id) throw new Error('credential_id is required');
+          if (!args.user_jwt) throw new Error('user_jwt is required');
+          
+          const orgRef = args.org_ref || 'blackhawk-ski-club';
+          const base = `https://${orgRef}.skiclubpro.team`;
+          const baseUrl = resolveBaseUrl({ org_ref: orgRef });
+          
+          // Extract user_id from JWT for session caching
+          const userId = JSON.parse(atob(args.user_jwt.split('.')[1])).sub;
+          
+          console.log(`[scp:check_prerequisites] Starting checks for org: ${orgRef}`);
+          
+          // Launch Browserbase session
+          session = await launchBrowserbaseSession();
+          const { page } = session;
+          
+          // Perform a clean login (force_login ensures fresh check)
+          await ensureLoggedIn(
+            session,
+            args.credential_id,
+            args.user_jwt,
+            baseUrl,
+            userId,
+            orgRef
+          );
+          
+          // Run all prerequisite checks
+          console.log('[scp:check_prerequisites] Running account checks...');
+          const account = await checkAccount(page);
+          
+          console.log('[scp:check_prerequisites] Running membership checks...');
+          const membership = await checkMembership(page, base);
+          
+          console.log('[scp:check_prerequisites] Running payment checks...');
+          const payment = await checkPayment(page, base);
+          
+          console.log('[scp:check_prerequisites] Running child info checks...');
+          const child = await checkChild(page, base, args.child_name);
+          
+          // Capture screenshot evidence if plan execution exists
+          if (args.plan_execution_id) {
+            try {
+              const screenshot = await captureScreenshot(session);
+              await captureScreenshotEvidence(args.plan_execution_id, screenshot, 'prerequisites-check');
+              console.log('[scp:check_prerequisites] Screenshot evidence captured');
+            } catch (evidenceError) {
+              console.warn('[scp:check_prerequisites] Could not capture evidence:', evidenceError);
+            }
+          }
+          
+          return {
+            login_status: account.ok ? "success" : "failed",
+            account,
+            membership,
+            payment,
+            child
+          };
+          
+        } catch (error) {
+          console.error('[scp:check_prerequisites] Failed:', error);
+          throw new Error(`Prerequisites check failed: ${error.message}`);
+        } finally {
+          if (session) {
+            try {
+              await closeBrowserbaseSession(session);
+            } catch (closeError) {
+              console.warn('[scp:check_prerequisites] Error closing session:', closeError);
+            }
+          }
+        }
+      },
+      'scp:read:account' // Required scope for mandate verification
+    );
   }
+
 };

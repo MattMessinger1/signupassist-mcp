@@ -12,12 +12,14 @@ const MCP_TOOLS: Record<string, string> = {
   'scp:pay': 'skiclubpro-tools',
   'scp:discover_fields': 'skiclubpro-tools',
   'scp:find_programs': 'skiclubpro-tools',
+  'scp:check_prerequisites': 'skiclubpro-tools',
   // Backward compatibility aliases for dot notation
   'scp.login': 'skiclubpro-tools',
   'scp.register': 'skiclubpro-tools',
   'scp.pay': 'skiclubpro-tools',
   'scp.discover_fields': 'skiclubpro-tools',
-  'scp.find_programs': 'skiclubpro-tools'
+  'scp.find_programs': 'skiclubpro-tools',
+  'scp.check_prerequisites': 'skiclubpro-tools'
 };
 
 async function executeMCPTool(toolName: string, args: any, planExecutionId: string, mandateId: string, supabase: any) {
