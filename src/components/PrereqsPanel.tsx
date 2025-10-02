@@ -6,6 +6,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, CheckCircle2, XCircle, Clock, RotateCw, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 
 type CheckResult = {
   ok: boolean | null;                 // true = pass, false = fail, null = unknown
@@ -29,11 +32,14 @@ interface Props {
   credentialId: string | null;   // user's SkiClubPro cred id
   childName?: string;            // optional: for child check
   onReadyToContinue?: (allPass: boolean) => void;
+  onChildSelected?: (childName: string) => void;
 }
 
-export default function PrerequisitesPanel({ orgRef, credentialId, childName, onReadyToContinue }: Props) {
+export default function PrerequisitesPanel({ orgRef, credentialId, childName, onReadyToContinue, onChildSelected }: Props) {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PrereqPayload | null>(null);
+  const [children, setChildren] = useState<Array<{ id?: string; name: string }>>([]);
+  const [selectedChild, setSelectedChild] = useState<string>("");
   const { toast } = useToast();
 
   const links = useMemo(() => {
@@ -81,6 +87,17 @@ export default function PrerequisitesPanel({ orgRef, credentialId, childName, on
 
       const payload: PrereqPayload = data?.prereqs || data;
       setData(payload);
+      
+      // Hydrate children list from response
+      const discoveredChildren = (data as any)?.children || [];
+      setChildren(discoveredChildren);
+      
+      // If only 1 child, default-select it
+      if (discoveredChildren.length === 1) {
+        const only = discoveredChildren[0];
+        setSelectedChild(only.name);
+        onChildSelected?.(only.name);
+      }
 
       if (payload?.login_status === "success") {
         toast({ title: "Connected to Blackhawk", description: "Login verified." });
@@ -210,12 +227,44 @@ export default function PrerequisitesPanel({ orgRef, credentialId, childName, on
       />
 
       <Row
-        title="Child Information"
-        sub="Does your child's profile exist (name + DOB) so we can fill forms without asking again?"
+        title="Child Profile"
+        sub="Do you have a child profile in Blackhawk? If not, add one. If you have multiple, choose which child to use for this plan."
         result={data?.child}
         actionHref={links.family}
         actionLabel="Manage Family"
       />
+
+      {children && children.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Choose Child for This Plan</CardTitle>
+            <CardDescription>We'll use this child during checkout. You can change it later.</CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <Select value={selectedChild} onValueChange={(v) => { setSelectedChild(v); onChildSelected?.(v); }}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select a child" />
+              </SelectTrigger>
+              <SelectContent>
+                {children.map((c, idx) => (
+                  <SelectItem key={`${c.id || idx}-${c.name}`} value={c.name}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex gap-2">
+              <Button 
+                type="button" 
+                variant="secondary" 
+                onClick={() => selectedChild && onReadyToContinue?.(true)}
+                disabled={!selectedChild}
+              >
+                Use Selected Child
+              </Button>
+              <Button type="button" variant="outline" onClick={() => recheck(false)}>Refresh list</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {allPass && (
         <Alert>
