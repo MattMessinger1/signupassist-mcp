@@ -1,6 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { SignJWT, importJWK } from 'https://esm.sh/jose@5.2.4';
 import { invokeMCPTool } from '../_shared/mcpClient.ts';
+import { toIsoStringSafe } from '../_shared/utils.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -210,7 +211,11 @@ Deno.serve(async (req) => {
       const response = {
         success: !!discoveredSchema,
         ...discoveredSchema,
-        prerequisiteChecks: result?.prerequisiteChecks || []
+        prerequisiteChecks: result?.prerequisiteChecks || [],
+        // ✅ Normalize all date fields to ISO strings
+        formWatchOpensAt: toIsoStringSafe(result?.formWatchOpensAt),
+        formWatchClosesAt: toIsoStringSafe(result?.formWatchClosesAt),
+        timestamp: new Date().toISOString()
       };
 
       console.log('Normalized response:', response);
