@@ -52,6 +52,10 @@ Deno.serve(async (req) => {
       case 'scp.check_prerequisites':
         result = await invokeMCPToolDirect('scp:check_prerequisites', args);
         break;
+      case 'scp:list_children':
+      case 'scp.list_children':
+        result = await invokeMCPToolDirect('scp:list_children', args);
+        break;
       default:
         console.error(`Unknown SkiClubPro tool: ${tool}`);
         return new Response(

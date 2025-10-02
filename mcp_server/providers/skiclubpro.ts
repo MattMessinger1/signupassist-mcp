@@ -391,6 +391,54 @@ async function checkChild(page: Page, base: string, childName?: string): Promise
   };
 }
 
+/**
+ * List children from the family/children area
+ */
+async function listChildren(page: Page, base: string): Promise<Array<{ id?: string; name: string; raw?: string }>> {
+  // Navigate to family/children area
+  await go(page, base, ["/user/family", "/family", "/children", "/household", "/account/family"]);
+  await page.waitForLoadState("networkidle").catch(() => {});
+
+  const children: Array<{ id?: string; name: string; raw?: string }> = [];
+
+  // Strategy 1: rows or cards with obvious labels
+  const rowLike = page.locator('table tbody tr, .views-row, .family-member, li');
+  const n = await rowLike.count();
+  for (let i = 0; i < Math.min(n, 200); i++) {
+    const el = rowLike.nth(i);
+    const text = (await el.innerText().catch(() => ""))?.trim();
+    if (!text) continue;
+    // Common keywords hinting this row is a child profile block
+    if (!/child|children|family|dob|grade|age|profile/i.test(text)) continue;
+
+    // Try to extract a name (first non-empty line / bold heading)
+    const name =
+      (await el.locator('h2, h3, .title, .name, strong').first().innerText().catch(() => "")) ||
+      text.split('\n').map(s => s.trim()).filter(Boolean)[0];
+
+    if (name && name.length > 1 && name.length < 120) {
+      // Try to find an id-ish attribute in links/inputs
+      const href = await el.locator('a[href*="child"], a[href*="family"]').first().getAttribute('href').catch(() => null);
+      const idMatch = href?.match(/(child|member|id)=(\d+)/i) || href?.match(/\/(child|member)\/(\d+)/i);
+      children.push({ id: idMatch?.[2], name: name.trim(), raw: text.slice(0, 300) });
+    }
+  }
+
+  // Strategy 2: fallback – scrape any obvious name fields from lists
+  if (children.length === 0) {
+    const txt = await page.evaluate(() => document.body.innerText || "");
+    // very light heuristic – pick likely names from "Children" section
+    const blocks = txt.split(/\n{2,}/).filter(b => /child|children|family/i.test(b));
+    for (const b of blocks) {
+      const firstLine = b.split('\n').map(s => s.trim()).filter(Boolean)[0];
+      if (firstLine && firstLine.length < 120) children.push({ name: firstLine, raw: b.slice(0, 300) });
+      if (children.length >= 5) break;
+    }
+  }
+
+  return children;
+}
+
 export const skiClubProTools = {
   'scp.discover_required_fields': scpDiscoverRequiredFields,
 
@@ -663,6 +711,78 @@ export const skiClubProTools = {
     };
   },
 
+  'scp:list_children': async (args: {
+    credential_id: string;
+    user_jwt: string;
+    org_ref: string;
+    force_login?: boolean;
+    mandate_id?: string;
+    plan_execution_id?: string;
+  }) => {
+    return await auditToolCall(
+      {
+        tool: 'scp.list_children',
+        mandate_id: args.mandate_id || '',
+        plan_execution_id: args.plan_execution_id || null
+      },
+      args,
+      async () => {
+        let session = null;
+        try {
+          // Validate inputs
+          if (!args.credential_id) throw new Error('credential_id is required');
+          if (!args.user_jwt) throw new Error('user_jwt is required');
+          
+          const orgRef = args.org_ref || 'blackhawk-ski-club';
+          const base = `https://${orgRef}.skiclubpro.team`;
+          const baseUrl = resolveBaseUrl({ org_ref: orgRef });
+          
+          // Extract user_id from JWT for session caching
+          const userId = JSON.parse(atob(args.user_jwt.split('.')[1])).sub;
+          
+          console.log(`[scp:list_children] Starting for org: ${orgRef}`);
+          
+          // Launch Browserbase session
+          session = await launchBrowserbaseSession();
+          const { page } = session;
+          
+          // Perform login if requested
+          if (args.force_login) {
+            await ensureLoggedIn(
+              session,
+              args.credential_id,
+              args.user_jwt,
+              baseUrl,
+              userId,
+              orgRef
+            );
+          }
+          
+          // List children
+          console.log('[scp:list_children] Listing children...');
+          const children = await listChildren(page, base);
+          
+          console.log(`[scp:list_children] Found ${children.length} children`);
+          
+          return { children };
+          
+        } catch (error) {
+          console.error('[scp:list_children] Failed:', error);
+          throw new Error(`List children failed: ${error.message}`);
+        } finally {
+          if (session) {
+            try {
+              await closeBrowserbaseSession(session);
+            } catch (closeError) {
+              console.warn('[scp:list_children] Error closing session:', closeError);
+            }
+          }
+        }
+      },
+      'scp:read:account' // Required scope for mandate verification
+    );
+  },
+
   'scp:check_prerequisites': async (args: { 
     credential_id: string; 
     user_jwt: string; 
@@ -722,6 +842,15 @@ export const skiClubProTools = {
           console.log('[scp:check_prerequisites] Running child info checks...');
           const child = await checkChild(page, base, args.child_name);
           
+          console.log('[scp:check_prerequisites] Listing children...');
+          let children: Array<{ id?: string; name: string; raw?: string }> = [];
+          try {
+            children = await listChildren(page, base);
+            console.log(`[scp:check_prerequisites] Found ${children.length} children`);
+          } catch (childrenError) {
+            console.warn('[scp:check_prerequisites] Could not list children:', childrenError);
+          }
+          
           // Capture screenshot evidence if plan execution exists
           if (args.plan_execution_id) {
             try {
@@ -738,7 +867,8 @@ export const skiClubProTools = {
             account,
             membership,
             payment,
-            child
+            child,
+            children
           };
           
         } catch (error) {
