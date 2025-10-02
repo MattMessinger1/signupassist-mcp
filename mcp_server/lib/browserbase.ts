@@ -940,72 +940,144 @@ export async function scrapeSkiClubProPrograms(
   const { page } = session;
 
   try {
-    // Navigate to programs/listings page for the organization
-    const programsUrl = `https://app.skiclubpro.com/org/${orgRef}/programs`;
-    await page.goto(programsUrl, { 
-      waitUntil: 'networkidle' 
-    });
+    // Build base URL using org-specific subdomain
+    const baseUrl = `https://${orgRef}.skiclubpro.team`;
+    
+    console.log(`[Scraper] Navigating to programs for org: ${orgRef}`);
 
-    // Wait for programs to load
-    await page.waitForSelector('.program-card, .program-item, tr[data-program], .program-listing', { 
-      timeout: 10000 
-    });
+    // Try to navigate via left-nav (mirrors worker's openProgramsFromSidebar)
+    const navCandidates = [
+      'nav a.nav-link--registration:has-text("Programs")',
+      'a[href="/registration"]:has-text("Programs")',
+      '#block-register a[href="/registration"]',
+      'nav[aria-label*="register" i] a:has-text("Programs")'
+    ];
 
-    // Scrape program data
-    const programs = await page.evaluate(() => {
-      const programElements = document.querySelectorAll('.program-card, .program-item, tr[data-program], .program-listing');
-      const results: SkiClubProProgram[] = [];
-
-      programElements.forEach((element, index) => {
-        // Extract program data from different possible DOM structures
-        let title = '';
-        let programRef = '';
-        let opensAt = '';
-
-        // Try to find title
-        const titleEl = element.querySelector('.title, .program-title, .name, h3, h4, td.title');
-        if (titleEl) {
-          title = titleEl.textContent?.trim() || '';
+    let navigated = false;
+    for (const sel of navCandidates) {
+      try {
+        const link = page.locator(sel).first();
+        const count = await link.count();
+        if (count > 0) {
+          console.log(`[Scraper] Found nav link: ${sel}`);
+          await link.scrollIntoViewIfNeeded().catch(() => {});
+          await link.click();
+          navigated = true;
+          break;
         }
+      } catch (e) {
+        // Try next selector
+      }
+    }
 
-        // Try to find program reference/ID
-        const refEl = element.querySelector('[data-program-id], [data-ref]');
-        if (refEl) {
-          programRef = refEl.getAttribute('data-program-id') || refEl.getAttribute('data-ref') || '';
-        } else {
-          // Generate a reference based on title and index
-          programRef = title.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') + `-${index}`;
-        }
+    // Fallback to direct navigation
+    if (!navigated) {
+      console.log(`[Scraper] Nav links not found, navigating directly to ${baseUrl}/registration`);
+      await page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
+    }
 
-        // Try to find opening date/time
-        const dateEl = element.querySelector('.opens-at, .date, .start-date, td.date');
-        if (dateEl) {
-          opensAt = dateEl.textContent?.trim() || '';
-        }
+    // Check if we got redirected back to login (session expired)
+    if (page.url().includes('/user/login')) {
+      throw new Error('Redirected to login while opening /registration (session expired)');
+    }
 
-        // Convert opensAt to ISO format if possible
-        if (opensAt && !opensAt.includes('T')) {
-          try {
-            const date = new Date(opensAt);
-            if (!isNaN(date.getTime())) {
-              opensAt = date.toISOString();
-            }
-          } catch (e) {
-            // Keep original format if parsing fails
-          }
-        }
+    // Wait for page to settle and any listing container to appear
+    await page.waitForLoadState('networkidle');
+    await page.waitForSelector('table, .views-row, .view, section', { timeout: 15000 });
 
-        if (title && programRef) {
-          results.push({
-            program_ref: programRef,
-            title,
-            opens_at: opensAt || new Date().toISOString(),
-          });
-        }
+    const programs: SkiClubProProgram[] = [];
+
+    // Strategy 1: Extract from cards/views
+    const cards = page.locator('.views-row, .card, article');
+    const cardCount = await cards.count();
+    console.log(`[Scraper] Found ${cardCount} card elements`);
+
+    for (let i = 0; i < Math.min(cardCount, 400); i++) {
+      const c = cards.nth(i);
+      const html = (await c.innerHTML().catch(() => '')) || '';
+      const text = (await c.innerText().catch(() => '')) || '';
+      
+      // Skip non-program content
+      if (/skip to main content|account\s+dashboard|memberships|events|view search filters/i.test(text)) {
+        continue;
+      }
+
+      // Find registration link to resolve program id
+      const regLink = c.locator('a[href*="/registration/"]');
+      const linkCount = await regLink.count();
+      if (!linkCount) continue;
+
+      const href = await regLink.first().getAttribute('href').catch(() => null);
+      const match = href?.match(/\/registration\/(\d+)(?:\/|$)/);
+      if (!match) continue;
+
+      const program_ref = match[1];
+      const titleText = (await c.locator('h2, h3, .card-title, .views-field-title').first().innerText().catch(() => '')) 
+                    || text.split('\n')[0];
+
+      // Optional: parse "Registration opens" date from text
+      const opensMatch = text.match(/opens?\s+(?:on|at)?\s*([A-Za-z0-9,:\-\s/]+)/i);
+      const opens_at = opensMatch?.[1]?.trim() || undefined;
+
+      programs.push({ 
+        program_ref, 
+        title: titleText.trim(), 
+        opens_at: opens_at || new Date().toISOString()
       });
+    }
 
-      return results;
-    });
+    // Strategy 2: Table fallback
+    if (programs.length === 0) {
+      console.log(`[Scraper] No cards found, trying table extraction`);
+      const rows = page.locator('table tbody tr');
+      const rowCount = await rows.count();
+      console.log(`[Scraper] Found ${rowCount} table rows`);
+
+      for (let i = 0; i < Math.min(rowCount, 400); i++) {
+        const r = rows.nth(i);
+        const regLink = r.locator('a[href*="/registration/"]');
+        const linkCount = await regLink.count();
+        if (!linkCount) continue;
+
+        const href = await regLink.first().getAttribute('href').catch(() => null);
+        const match = href?.match(/\/registration\/(\d+)(?:\/|$)/);
+        if (!match) continue;
+
+        const program_ref = match[1];
+        const rowText = (await r.innerText().catch(() => '')) || '';
+        const title = rowText.split('\n')[0] || `Program ${program_ref}`;
+        const opensMatch = rowText.match(/opens?\s+(?:on|at)?\s*([A-Za-z0-9,:\-\s/]+)/i);
+        const opens_at = opensMatch?.[1]?.trim();
+
+        programs.push({ 
+          program_ref, 
+          title: title.trim(), 
+          opens_at: opens_at || new Date().toISOString()
+        });
+      }
+    }
+
+    // Diagnostics if no programs found
+    if (programs.length === 0) {
+      const currentUrl = page.url();
+      const pageTitle = await page.title().catch(() => '');
+      const bodyPreview = await page.evaluate(() => document.body.innerText.slice(0, 1000)).catch(() => '');
+      
+      console.log('[Scrape Debug] URL:', currentUrl);
+      console.log('[Scrape Debug] Title:', pageTitle);
+      console.log('[Scrape Debug] Body preview:', bodyPreview);
+      
+      // Try to save screenshot for debugging
+      try {
+        await page.screenshot({ path: `programs-debug-${Date.now()}.png`, fullPage: true });
+      } catch (e) {
+        console.log('[Scrape Debug] Could not save screenshot:', e);
+      }
+      
+      throw new Error(`No program listings found on /registration. URL: ${currentUrl}, Title: "${pageTitle}"`);
+    }
+
+    console.log(`[Scraper] Successfully extracted ${programs.length} programs`);
 
     // Filter by query if provided
     if (query && programs.length > 0) {
@@ -1013,6 +1085,7 @@ export async function scrapeSkiClubProPrograms(
         p.title.toLowerCase().includes(query.toLowerCase()) ||
         p.program_ref.toLowerCase().includes(query.toLowerCase())
       );
+      console.log(`[Scraper] Filtered to ${filtered.length} programs matching "${query}"`);
       return filtered;
     }
 
