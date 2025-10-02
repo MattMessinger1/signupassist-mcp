@@ -1,13 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Search, AlertCircle } from 'lucide-react';
+import { Loader2, Search, AlertCircle, Info } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface Program {
   id: string;
@@ -45,13 +46,9 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
         }
 
         const { data, error } = await supabase.functions.invoke('cred-list');
-        
         if (error) throw error;
 
-        const skiClubProCreds = data?.credentials?.filter(
-          (cred: any) => cred.provider === 'skiclubpro'
-        );
-
+        const skiClubProCreds = data?.credentials?.filter((cred: any) => cred.provider === 'skiclubpro');
         if (skiClubProCreds && skiClubProCreds.length > 0) {
           setCredentialId(skiClubProCreds[0].id);
           setHasCredentials(true);
@@ -71,7 +68,7 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
     if (!credentialId) {
       toast({
         title: "Credentials Required",
-        description: "Please add SkiClubPro credentials before browsing programs.",
+        description: "Please add your Blackhawk (SkiClubPro) login in Settings before browsing live programs.",
         variant: "destructive"
       });
       return;
@@ -83,6 +80,12 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
       if (!session) {
         throw new Error('No active session');
       }
+
+      // Informative toast at start
+      toast({
+        title: "Connecting to Blackhawk…",
+        description: "We'll log into your Blackhawk account and fetch live program listings.",
+      });
 
       const { data, error } = await supabase.functions.invoke('mcp-executor', {
         body: {
@@ -98,32 +101,30 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
 
       if (error) throw error;
 
-      // Surface login status from MCP
+      // ✅ Surface login status from MCP if present
       if (data?.login_status === 'success') {
         toast({
-          title: "Login Successful",
-          description: "Connected to SkiClubPro and ready to browse programs.",
+          title: "Connected to Blackhawk",
+          description: "Login successful. Live programs loaded.",
         });
       } else if (data?.login_status === 'failed') {
         toast({
           title: "Login Failed",
-          description: "Could not log into SkiClubPro. Please recheck credentials.",
+          description: "Could not log into Blackhawk. Please recheck your credentials.",
           variant: "destructive"
         });
       }
 
-      if (data?.programs) {
-        console.log('Programs received from MCP:', data.programs);
+      if (Array.isArray(data?.programs)) {
         setPrograms(data.programs);
       } else {
-        console.log('No programs in MCP response:', data);
         setPrograms([]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching programs:', error);
       toast({
         title: "Error",
-        description: "Failed to load programs. Please try again.",
+        description: error?.message || "Failed to load programs. Please try again.",
         variant: "destructive"
       });
     } finally {
@@ -134,7 +135,7 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
     if (newOpen && hasCredentials) {
-      console.log('ProgramBrowser: Dialog opened, clearing state and fetching fresh programs');
+      // fresh fetch on open
       setPrograms([]);
       fetchPrograms();
     }
@@ -145,14 +146,10 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
   };
 
   const handleProgramSelect = (program: Program) => {
-    console.log('ProgramBrowser: Full program object selected:', program);
-    console.log('ProgramBrowser: Passing to onProgramSelect - ref:', program.program_ref, 'title:', program.title);
-    
-    // Validate that program_ref looks like a text_ref (not a human title)
+    // Warn if a title accidentally made it into program_ref
     if (program.program_ref && program.program_ref.includes(' ')) {
-      console.warn('ProgramBrowser WARNING: program_ref contains spaces, might be a title instead of text_ref:', program.program_ref);
+      console.warn('ProgramBrowser WARNING: program_ref contains spaces (may be a human title):', program.program_ref);
     }
-    
     onProgramSelect({ ref: program.program_ref, title: program.title });
     setOpen(false);
   };
@@ -164,90 +161,120 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
   };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button variant="outline" type="button" className="w-full">
-          {selectedProgram ? getSelectedProgramTitle() : 'Browse Available Programs'}
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Select a Program</DialogTitle>
-        </DialogHeader>
-        
-        <div className="flex gap-2 mb-4">
-          <Input
-            placeholder="Search programs (e.g., beginner, saturday, snowboard)..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            className="flex-1"
-          />
-          <Button onClick={handleSearch} disabled={loading}>
-            <Search className="h-4 w-4" />
-          </Button>
-        </div>
+    <TooltipProvider>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <DialogTrigger asChild>
+              <Button variant="outline" type="button" className="w-full">
+                {selectedProgram ? getSelectedProgramTitle() : 'Browse Available Programs'}
+              </Button>
+            </DialogTrigger>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            This will log into your Blackhawk (SkiClubPro) account to fetch live program data.
+          </TooltipContent>
+        </Tooltip>
 
-        <div className="flex-1 overflow-y-auto">
-          {hasCredentials === false ? (
-            <Alert>
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                Please add SkiClubPro credentials in the Credentials page before browsing programs.
-              </AlertDescription>
-            </Alert>
-          ) : loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin mr-2" />
-              Fetching live programs from SkiClubPro...
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <DialogTitle className="flex items-center gap-2">
+                  <Info className="h-4 w-4" />
+                  Select a Program
+                </DialogTitle>
+                <DialogDescription>
+                  We'll connect to your <strong>Blackhawk Ski Club</strong> account (SkiClubPro) to load
+                  live program listings. Make sure your credentials are saved in Settings.
+                </DialogDescription>
+              </div>
+
+              {/* Credentials badge */}
+              {hasCredentials === true ? (
+                <Badge variant="secondary" className="bg-green-100 text-green-800">
+                  Login Ready
+                </Badge>
+              ) : hasCredentials === false ? (
+                <Badge variant="destructive">
+                  No Credentials
+                </Badge>
+              ) : null}
             </div>
-          ) : programs.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              {searchQuery ? 'No programs found matching your search.' : 'Click search to load programs.'}
-            </div>
-          ) : (
-            <div className="grid gap-4">
-              {programs.map((program) => (
-                <Card 
-                  key={program.id} 
-                  className={`cursor-pointer transition-all hover:shadow-md ${
-                    selectedProgram === program.program_ref ? 'ring-2 ring-primary' : ''
-                  }`}
-                  onClick={() => handleProgramSelect(program)}
-                >
-                  <CardHeader className="pb-3">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <CardTitle className="text-lg mb-1">{program.title}</CardTitle>
-                        <CardDescription>{program.description}</CardDescription>
+          </DialogHeader>
+
+          <div className="flex gap-2 mb-4 px-1">
+            <Input
+              placeholder="Search programs (e.g., beginner, saturday, snowboard)…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              className="flex-1"
+            />
+            <Button onClick={handleSearch} disabled={loading}>
+              <Search className="h-4 w-4" />
+            </Button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {hasCredentials === false ? (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Please add your Blackhawk (SkiClubPro) credentials in Settings before browsing programs.
+                </AlertDescription>
+              </Alert>
+            ) : loading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                Fetching live programs from Blackhawk…
+              </div>
+            ) : programs.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                {searchQuery ? 'No programs found matching your search.' : 'Click search to load programs.'}
+              </div>
+            ) : (
+              <div className="grid gap-4">
+                {programs.map((program) => (
+                  <Card
+                    key={program.id}
+                    className="cursor-pointer transition-all hover:shadow-md"
+                    onClick={() => handleProgramSelect(program)}
+                  >
+                    <CardHeader className="pb-3">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <CardTitle className="text-lg mb-1">{program.title}</CardTitle>
+                          <CardDescription>{program.description}</CardDescription>
+                        </div>
+                        <Badge variant="secondary" className="ml-2">
+                          {program.skill_level}
+                        </Badge>
                       </div>
-                      <Badge variant="secondary" className="ml-2">
-                        {program.skill_level}
-                      </Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-0">
-                    <div className="grid grid-cols-3 gap-4 text-sm">
-                      <div>
-                        <span className="font-medium text-muted-foreground">Schedule:</span>
-                        <p>{program.schedule}</p>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div>
+                          <span className="font-medium text-muted-foreground">Schedule:</span>
+                          <p>{program.schedule}</p>
+                        </div>
+                        <div>
+                          <span className="font-medium text-muted-foreground">Age Range:</span>
+                          <p>{program.age_range}</p>
+                        </div>
+                        <div>
+                          <span className="font-medium text-muted-foreground">Price:</span>
+                          <p>{program.price}</p>
+                        </div>
                       </div>
-                      <div>
-                        <span className="font-medium text-muted-foreground">Age Range:</span>
-                        <p>{program.age_range}</p>
-                      </div>
-                      <div>
-                        <span className="font-medium text-muted-foreground">Price:</span>
-                        <p>{program.price}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </TooltipProvider>
   );
 }
