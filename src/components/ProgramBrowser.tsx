@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Search } from 'lucide-react';
+import { Loader2, Search, AlertCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface Program {
   id: string;
@@ -29,15 +30,69 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [credentialId, setCredentialId] = useState<string | null>(null);
+  const [hasCredentials, setHasCredentials] = useState<boolean | null>(null);
   const { toast } = useToast();
 
+  // Fetch user's SkiClubPro credentials
+  useEffect(() => {
+    const loadCredentials = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          setHasCredentials(false);
+          return;
+        }
+
+        const { data, error } = await supabase.functions.invoke('cred-list');
+        
+        if (error) throw error;
+
+        const skiClubProCreds = data?.credentials?.filter(
+          (cred: any) => cred.provider === 'skiclubpro'
+        );
+
+        if (skiClubProCreds && skiClubProCreds.length > 0) {
+          setCredentialId(skiClubProCreds[0].id);
+          setHasCredentials(true);
+        } else {
+          setHasCredentials(false);
+        }
+      } catch (error) {
+        console.error('Error loading credentials:', error);
+        setHasCredentials(false);
+      }
+    };
+
+    loadCredentials();
+  }, []);
+
   const fetchPrograms = async (query?: string) => {
+    if (!credentialId) {
+      toast({
+        title: "Credentials Required",
+        description: "Please add SkiClubPro credentials before browsing programs.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setLoading(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No active session');
+      }
+
       const { data, error } = await supabase.functions.invoke('mcp-executor', {
         body: {
           tool: 'scp:find_programs',
-          args: query ? { query } : {}
+          args: {
+            query: query || undefined,
+            credential_id: credentialId,
+            user_jwt: session.access_token,
+            org_ref: 'blackhawk-ski-club'
+          }
         }
       });
 
@@ -45,7 +100,6 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
 
       if (data?.programs) {
         console.log('Programs received from MCP:', data.programs);
-        console.log('First program structure:', data.programs[0]);
         setPrograms(data.programs);
       } else {
         console.log('No programs in MCP response:', data);
@@ -65,8 +119,7 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
 
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
-    if (newOpen) {
-      // Always clear programs state and fetch fresh data to avoid stale references
+    if (newOpen && hasCredentials) {
       console.log('ProgramBrowser: Dialog opened, clearing state and fetching fresh programs');
       setPrograms([]);
       fetchPrograms();
@@ -122,14 +175,21 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {loading ? (
+          {hasCredentials === false ? (
+            <Alert>
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Please add SkiClubPro credentials in the Credentials page before browsing programs.
+              </AlertDescription>
+            </Alert>
+          ) : loading ? (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-6 w-6 animate-spin mr-2" />
-              Loading programs...
+              Fetching live programs from SkiClubPro...
             </div>
           ) : programs.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              {searchQuery ? 'No programs found matching your search.' : 'No programs available.'}
+              {searchQuery ? 'No programs found matching your search.' : 'Click search to load programs.'}
             </div>
           ) : (
             <div className="grid gap-4">
