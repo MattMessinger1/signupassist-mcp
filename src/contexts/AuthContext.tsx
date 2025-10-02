@@ -8,6 +8,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  isSessionValid: () => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,16 +23,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Set up auth state listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
+        console.log('[AuthContext] Auth state changed:', event, !!session);
+        
+        // Handle session expiry
+        if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
+          setSession(session);
+          setUser(session?.user ?? null);
+        } else if (session) {
+          setSession(session);
+          setUser(session.user);
+        } else {
+          // Clear stale session data
+          setSession(null);
+          setUser(null);
+        }
+        
         setLoading(false);
       }
     );
 
     // THEN check for existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+      if (session) {
+        // Validate session is not expired
+        const expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
+        const now = Date.now();
+        
+        if (expiresAt > now) {
+          setSession(session);
+          setUser(session.user);
+        } else {
+          console.warn('[AuthContext] Session expired, clearing');
+          setSession(null);
+          setUser(null);
+          // Sign out to clear stale data
+          supabase.auth.signOut();
+        }
+      }
       setLoading(false);
     });
 
@@ -45,8 +73,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     navigate('/auth');
   };
 
+  const isSessionValid = (): boolean => {
+    if (!session) return false;
+    
+    const expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
+    const now = Date.now();
+    
+    // Session expires in less than 5 minutes
+    if (expiresAt - now < 5 * 60 * 1000) {
+      console.warn('[AuthContext] Session expiring soon');
+      return false;
+    }
+    
+    return true;
+  };
+
   return (
-    <AuthContext.Provider value={{ user, session, loading, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, signOut, isSessionValid }}>
       {children}
     </AuthContext.Provider>
   );

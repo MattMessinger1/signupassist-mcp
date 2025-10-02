@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -33,6 +33,7 @@ import { useSmartDefaults } from '@/hooks/useSmartDefaults';
 import { ProgramBrowser } from '@/components/ProgramBrowser';
 import { PlanPreview } from '@/components/PlanPreview';
 import { useRegistrationFlow } from '@/lib/registrationFlow';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 const stripePromise = loadStripe('pk_test_51RujoPAaGNDlVi1koVlBSBBXy2yfwz7vuMBciJxkawKBKaqwR4xw07wEFUAMa73ADIUqzwB5GwbPM3YnPYu5vo4X00rAdiwPkx');
 
@@ -96,9 +97,10 @@ const PlanBuilder = () => {
     },
   });
 
-  const { user, session, loading: authLoading } = useAuth();
+  const { user, session, loading: authLoading, isSessionValid } = useAuth();
   console.log('[PlanBuilder] Auth state:', { hasUser: !!user, hasSession: !!session, authLoading });
   const [discoveredSchema, setDiscoveredSchema] = useState<DiscoveredSchema | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [isCreatingMandate, setIsCreatingMandate] = useState(false);
@@ -165,12 +167,32 @@ const PlanBuilder = () => {
     watch: form.watch,
   });
 
-  // Redirect to auth if not authenticated
+  // Cleanup abort controller on unmount
   useEffect(() => {
-    if (!authLoading && (!user || !session)) {
-      navigate('/auth');
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  // Redirect to auth if not authenticated or session invalid
+  useEffect(() => {
+    if (!authLoading) {
+      if (!user || !session) {
+        console.warn('[PlanBuilder] No user/session, redirecting to auth');
+        navigate('/auth');
+      } else if (!isSessionValid()) {
+        console.warn('[PlanBuilder] Session invalid, redirecting to auth');
+        toast({
+          title: 'Session Expired',
+          description: 'Your session has expired. Please log in again.',
+          variant: 'destructive',
+        });
+        navigate('/auth');
+      }
     }
-  }, [user, session, authLoading, navigate]);
+  }, [user, session, authLoading, navigate, isSessionValid, toast]);
 
   // Check for payment method
   useEffect(() => {
@@ -238,6 +260,17 @@ const PlanBuilder = () => {
       return;
     }
 
+    // Check session validity before making API call
+    if (!isSessionValid()) {
+      toast({
+        title: 'Session Expired',
+        description: 'Your session has expired. Please log in again.',
+        variant: 'destructive',
+      });
+      navigate('/auth');
+      return;
+    }
+
     const credentialId = form.getValues('credentialId');
     if (!credentialId) {
       toast({
@@ -260,7 +293,24 @@ const PlanBuilder = () => {
       return;
     }
 
+    // Cancel any existing request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+
     setIsDiscovering(true);
+    const timeoutId = setTimeout(() => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        toast({
+          title: 'Request Timeout',
+          description: 'Field discovery took too long. Please try again.',
+          variant: 'destructive',
+        });
+      }
+    }, 30000); // 30 second timeout
+
     try {
       console.log('[PlanBuilder] Calling discover-fields with validated programRef:', programRef);
       
@@ -275,6 +325,8 @@ const PlanBuilder = () => {
       const { data, error } = await supabase.functions.invoke('discover-fields-interactive', {
         body: payload
       });
+
+      clearTimeout(timeoutId);
 
       if (error || data?.error) {
         const message = error?.message || data?.error || "Field discovery failed";
@@ -1048,8 +1100,10 @@ const PlanBuilder = () => {
 
 export default function PlanBuilderWithStripe() {
   return (
-    <Elements stripe={stripePromise}>
-      <PlanBuilder />
-    </Elements>
+    <ErrorBoundary>
+      <Elements stripe={stripePromise}>
+        <PlanBuilder />
+      </Elements>
+    </ErrorBoundary>
   );
 }
