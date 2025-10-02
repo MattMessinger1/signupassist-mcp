@@ -12,6 +12,7 @@ import { createClient } from '@supabase/supabase-js';
 import { loginWithCredentials, logoutIfLoggedIn } from '../lib/login.js';
 import { skiClubProConfig } from '../config/skiclubproConfig.js';
 import { saveSessionState, restoreSessionState, generateSessionKey } from '../lib/session.js';
+import type { ProviderResponse } from './types.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -391,7 +392,7 @@ export const skiClubProTools = {
     };
   },
 
-  'scp.find_programs': async (args: { org_ref?: string; query?: string; mandate_id?: string; plan_execution_id?: string; credential_id?: string; user_jwt?: string }) => {
+  'scp.find_programs': async (args: { org_ref?: string; query?: string; mandate_id?: string; plan_execution_id?: string; credential_id?: string; user_jwt?: string }): Promise<ProviderResponse<{ programs: any[] }>> => {
     const orgRef = args.org_ref || 'blackhawk-ski-club';
     
     // If credentials provided, use live Browserbase scraping
@@ -407,7 +408,11 @@ export const skiClubProTools = {
             await verifyMandate(args.mandate_id, 'scp:read:listings');
           } catch (mandateError) {
             console.error('[scp.find_programs] Mandate verification failed:', mandateError);
-            throw mandateError;
+            return { 
+              login_status: 'failed', 
+              error: `Mandate verification failed: ${mandateError.message}`,
+              timestamp: new Date().toISOString()
+            };
           }
         }
         
@@ -420,8 +425,22 @@ export const skiClubProTools = {
         const credentials = await lookupCredentialsById(args.credential_id, args.user_jwt);
         const loginResult = await performSkiClubProLogin(session, credentials, orgRef);
         
+        // ✅ Verify actual login success by checking URL and DOM
+        const currentUrl = await session.page.url();
+        const loggedIn = !currentUrl.includes('/user/login') && 
+          (await session.page.$('.logout, .profile, .user-menu, [data-testid="user-menu"]'));
+        
+        if (!loggedIn) {
+          console.error('[scp.find_programs] Login verification failed - still on login page or missing user menu');
+          return { 
+            login_status: 'failed', 
+            error: 'Login failed - still on login page or could not verify user session',
+            timestamp: new Date().toISOString()
+          };
+        }
+        
         // Scrape programs from live site
-        console.log('[scp.find_programs] Scraping programs...');
+        console.log('[scp.find_programs] ✓ Login verified, scraping programs...');
         const scrapedPrograms = await scrapeSkiClubProPrograms(session, orgRef, args.query);
         
         // Capture screenshot evidence if plan execution exists
@@ -449,72 +468,40 @@ export const skiClubProTools = {
           org_ref: orgRef
         }));
         
-        console.log(`[scp.find_programs] Successfully scraped ${programs.length} programs`);
+        console.log(`[scp.find_programs] ✓ Successfully scraped ${programs.length} programs`);
         
         return {
-          programs,
-          total: programs.length,
-          query: args.query || '',
-          success: true,
-          login_status: loginResult.login_status,
+          login_status: 'success',
+          data: {
+            programs
+          },
           timestamp: new Date().toISOString()
         };
         
       } catch (error) {
         console.error('[scp.find_programs] Live scraping failed:', error);
         
-        // Fallback to static data
-        console.log('[scp.find_programs] Falling back to static program data');
-        const availablePrograms = getAvailablePrograms(orgRef);
-        const fallbackPrograms = availablePrograms.map(mapping => ({
-          id: mapping.text_ref,
-          program_ref: mapping.text_ref,
-          title: mapping.title,
-          description: mapping.description || `${mapping.title} program`,
-          schedule: mapping.schedule,
-          age_range: mapping.age_range,
-          skill_level: mapping.skill_level,
-          price: mapping.price,
-          actual_id: mapping.actual_id,
-          org_ref: mapping.org_ref
-        }));
-        
-        let filteredPrograms = fallbackPrograms;
-        if (args.query) {
-          const query = args.query.toLowerCase();
-          filteredPrograms = fallbackPrograms.filter(program => 
-            program.title.toLowerCase().includes(query) ||
-            program.description.toLowerCase().includes(query)
-          );
-        }
-        
         return {
-          programs: filteredPrograms,
-          total: filteredPrograms.length,
-          query: args.query || '',
-          success: true,
-          fallback: true,
           login_status: 'failed',
+          error: error.message || 'Unknown error during live scraping',
           timestamp: new Date().toISOString()
         };
         
       } finally {
-        // Always close session
         if (session) {
           try {
             await closeBrowserbaseSession(session);
-            console.log('[scp.find_programs] Browserbase session closed');
           } catch (closeError) {
-            console.error('[scp.find_programs] Error closing session:', closeError);
+            console.warn('[scp.find_programs] Error closing session:', closeError);
           }
         }
       }
     }
     
-    // No credentials provided - use static data
-    console.log('[scp.find_programs] No credentials provided, using static data');
+    // No credentials - return static fallback data
+    console.log('[scp.find_programs] No credentials provided, returning static data');
     const availablePrograms = getAvailablePrograms(orgRef);
-    const allPrograms = availablePrograms.map(mapping => ({
+    const fallbackPrograms = availablePrograms.map(mapping => ({
       id: mapping.text_ref,
       program_ref: mapping.text_ref,
       title: mapping.title,
@@ -526,23 +513,22 @@ export const skiClubProTools = {
       actual_id: mapping.actual_id,
       org_ref: mapping.org_ref
     }));
-
-    let filteredPrograms = allPrograms;
+    
+    let filteredPrograms = fallbackPrograms;
     if (args.query) {
       const query = args.query.toLowerCase();
-      filteredPrograms = allPrograms.filter(program => 
+      filteredPrograms = fallbackPrograms.filter(program => 
         program.title.toLowerCase().includes(query) ||
-        program.description.toLowerCase().includes(query) ||
-        program.skill_level.toLowerCase().includes(query) ||
-        program.schedule.toLowerCase().includes(query)
+        program.description.toLowerCase().includes(query)
       );
     }
-
+    
     return {
-      programs: filteredPrograms,
-      total: filteredPrograms.length,
-      query: args.query || '',
-      success: true,
+      login_status: 'failed',
+      data: {
+        programs: filteredPrograms
+      },
+      error: 'No credentials provided - showing static fallback data',
       timestamp: new Date().toISOString()
     };
   },

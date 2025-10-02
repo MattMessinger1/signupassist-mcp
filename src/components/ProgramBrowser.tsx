@@ -101,24 +101,23 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
 
       if (error) throw error;
 
-      // ✅ Surface login status from MCP if present
+      // ✅ Handle standardized ProviderResponse format
       if (data?.login_status === 'success') {
         toast({
           title: "Connected to Blackhawk",
           description: "Login successful. Live programs loaded.",
         });
-      } else if (data?.login_status === 'failed') {
+        // Extract programs from data.data.programs (ProviderResponse structure)
+        setPrograms(data?.data?.programs || []);
+      } else {
+        // login_status === 'failed' or missing
         toast({
           title: "Login Failed",
-          description: "Could not log into Blackhawk. Please recheck your credentials.",
+          description: data?.error || "Could not log into Blackhawk. Please recheck your credentials.",
           variant: "destructive"
         });
-      }
-
-      if (Array.isArray(data?.programs)) {
-        setPrograms(data.programs);
-      } else {
-        setPrograms([]);
+        // Still show fallback data if available
+        setPrograms(data?.data?.programs || []);
       }
     } catch (error: any) {
       console.error('Error fetching programs:', error);
