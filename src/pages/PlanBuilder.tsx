@@ -23,7 +23,7 @@ import { Header } from '@/components/Header';
 import { ChildSelect } from '@/components/ChildSelect';
 import { OpenTimePicker } from '@/components/OpenTimePicker';
 import { CredentialPicker } from '@/components/CredentialPicker';
-import { PrereqsPanel } from '@/components/PrereqsPanel';
+import PrerequisitesPanel from '@/components/PrereqsPanel';
 import { ConsentModal } from '@/components/ConsentModal';
 import { SavePaymentMethod } from '@/components/SavePaymentMethod';
 import { FieldGroup } from '@/components/FieldGroup';
@@ -854,11 +854,13 @@ const PlanBuilder = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <PrereqsPanel
-                    provider="skiclubpro"
-                    childId={selectedChildId}
+                  <PrerequisitesPanel
+                    orgRef="blackhawk-ski-club"
                     credentialId={form.watch('credentialId')}
-                    onResultsChange={setPrerequisiteChecks}
+                    childName={selectedChildId ? 'childName' : undefined}
+                    onReadyToContinue={(ready) => {
+                      setPrerequisiteChecks([{ check: 'all', status: ready ? 'pass' : 'fail', message: '' }]);
+                    }}
                   />
                 </CardContent>
               </Card>
