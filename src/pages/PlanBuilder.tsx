@@ -113,6 +113,7 @@ const PlanBuilder = () => {
   const [hasPaymentMethod, setHasPaymentMethod] = useState(false);
   const [checkingPayment, setCheckingPayment] = useState(false);
   const [friendlyProgramTitle, setFriendlyProgramTitle] = useState<string | null>(null);
+  const [selectedChildName, setSelectedChildName] = useState<string>('');
 
   // Safe derived variables with null checks and defaults
   const currentBranch = discoveredSchema?.branches?.find(b => b.choice === selectedBranch) ?? null;
@@ -506,6 +507,7 @@ const PlanBuilder = () => {
         body: {
           program_ref: formData.programRef,
           child_id: formData.childId,
+          child_name: selectedChildName,
           opens_at: opensAtISO,
           mandate_id: data.mandate_id,
           provider: 'skiclubpro',
@@ -563,10 +565,10 @@ const PlanBuilder = () => {
   const onSubmit = (data: PlanBuilderForm) => {
     // Check prerequisites first
     const allPassed = prerequisiteChecks.every(check => check.status === 'pass');
-    if (!allPassed) {
+    if (!allPassed || !selectedChildName) {
       toast({
         title: 'Prerequisites Required',
-        description: 'Please ensure all prerequisites are met before creating the plan.',
+        description: 'Please ensure all prerequisites are met and a child is selected before creating the plan.',
         variant: 'destructive',
       });
       return;
@@ -717,7 +719,7 @@ const PlanBuilder = () => {
     );
   }
 
-  const allRequirementsMet = prerequisiteChecks.length > 0 && prerequisiteChecks.every(r => r.status === 'pass');
+  const allRequirementsMet = prerequisiteChecks.length > 0 && prerequisiteChecks.every(r => r.status === 'pass') && !!selectedChildName;
   
   console.log('[PlanBuilder] Rendering main form');
   
@@ -857,9 +859,12 @@ const PlanBuilder = () => {
                   <PrerequisitesPanel
                     orgRef="blackhawk-ski-club"
                     credentialId={form.watch('credentialId')}
-                    childName={selectedChildId ? 'childName' : undefined}
+                    childName={selectedChildName}
                     onReadyToContinue={(ready) => {
                       setPrerequisiteChecks([{ check: 'all', status: ready ? 'pass' : 'fail', message: '' }]);
+                    }}
+                    onChildSelected={(childName) => {
+                      setSelectedChildName(childName);
                     }}
                   />
                 </CardContent>
