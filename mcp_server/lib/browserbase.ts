@@ -125,8 +125,15 @@ export async function performSkiClubProLogin(
     // Verify that we are not still on the login page
     const currentUrl = await page.url();
     if (currentUrl.includes('/user/login')) {
-      console.log('[Login] ✗ Login verification failed - still on login page');
-      throw new Error('Login failed: Still on login page after authentication');
+      console.log('[Login] ✗ Login verification failed - still on login page, clearing cookies and retrying');
+      await page.context().clearCookies();
+      
+      // Retry login
+      await loginWithCredentials(page, loginConfig, credentials);
+      const retryUrl = await page.url();
+      if (retryUrl.includes('/user/login')) {
+        throw new Error('Login failed after retry — still on login page');
+      }
     }
     
     console.log('[Login] ✓ Login verified - successfully bypassed login page');

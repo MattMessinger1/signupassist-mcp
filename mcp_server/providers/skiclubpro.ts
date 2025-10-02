@@ -104,14 +104,37 @@ async function ensureLoggedIn(
   // Try to restore cached session first
   const restored = await restoreSessionState(page, sessionKey);
   if (restored) {
-    console.log('DEBUG: Session restored from cache, skipping login');
-    // Verify we're actually logged in
+    console.log('DEBUG: Session restored from cache, skipping login attempt');
     await page.goto(`${baseUrl}/dashboard`, { waitUntil: 'domcontentloaded' });
     
-    // Verify that we are not still on the login page
     const currentUrl = await page.url();
     if (currentUrl.includes('/user/login')) {
-      console.log('DEBUG: Cached session invalid (still on login page), proceeding with fresh login');
+      console.log('DEBUG: Cached session invalid (still on login page), clearing cookies and retrying fresh login');
+      
+      // Clear cookies + storage
+      await page.context().clearCookies();
+      try { 
+        await page.context().clearPermissions(); 
+      } catch (_) {
+        // clearPermissions may not be available in all contexts
+      }
+      
+      // Build dynamic config with resolved base URL
+      const loginConfig = {
+        loginUrl: `${baseUrl}/user/login?destination=/dashboard`,
+        selectors: skiClubProConfig.selectors,
+        postLoginCheck: skiClubProConfig.postLoginCheck
+      };
+      
+      // Retry full login with credentials
+      const proof = await loginWithCredentials(page, loginConfig, creds);
+      const retryUrl = await page.url();
+      if (retryUrl.includes('/user/login')) {
+        throw new Error('Login failed after clearing session — still on login page');
+      }
+      
+      await saveSessionState(page, sessionKey);
+      return { ...proof, login_status: 'success' };
     } else {
       console.log('DEBUG: ✓ Cached session is valid');
       return { cached: true, email: creds.email, login_status: 'success' };
