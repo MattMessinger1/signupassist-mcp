@@ -124,7 +124,7 @@ Deno.serve(async (req) => {
 
     // Handle individual MCP tool calls
     if (body.tool) {
-      const { tool, ...args } = body;
+      const { tool, args } = body;
       console.log("mcp-executor invoked with tool:", tool, "args:", args);
       
       // Get the edge function that handles this tool
