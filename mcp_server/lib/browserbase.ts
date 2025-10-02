@@ -132,17 +132,31 @@ export async function performSkiClubProLogin(
       throw new Error('Could not find login button');
     }
 
-    await loginButton.click();
+    console.log('Clicking login button and waiting for navigation...');
+    
+    // Click and wait for navigation to complete
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'networkidle', timeout: 20000 }),
+      loginButton.click()
+    ]);
 
-    // Wait for successful login (dashboard page)
-    await page.waitForURL(/dashboard|home|main/, { 
-      timeout: 15000 
-    });
+    const currentUrl = page.url();
+    console.log(`Navigation complete. Current URL: ${currentUrl}`);
+
+    // Check if we're still on the login page (login failed)
+    if (currentUrl.includes('/user/login')) {
+      // Check for error messages
+      const errorElement = await page.$('.messages--error, .alert-danger, .error');
+      const errorText = errorElement ? await errorElement.textContent() : 'Unknown error';
+      throw new Error(`Login failed - still on login page. Error: ${errorText}`);
+    }
 
     // Verify we're logged in by checking for logout or profile elements
-    const isLoggedIn = await page.$('.logout, .profile, .user-menu, [data-testid="user-menu"]');
+    const isLoggedIn = await page.$('a[href*="logout"], a[href*="/user/"], .user-menu, .profile, nav .account');
     if (!isLoggedIn) {
-      throw new Error('Login may have failed - could not find user menu or logout option');
+      console.warn('Could not find typical logout/profile elements, but navigation occurred');
+    } else {
+      console.log('Login successful - found logged-in user indicators');
     }
     
     // Save session state for future reuse
