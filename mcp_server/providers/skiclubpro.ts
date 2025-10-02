@@ -233,7 +233,6 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
     args,
     async () => {
       let session = null;
-      let sessionToken = args.session_token;
       
       try {
         // Resolve base URL from org_ref or program_ref
@@ -253,16 +252,6 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         const loginResult = await ensureLoggedIn(session, args.credential_id, args.user_jwt, baseUrl, userId, orgRef);
         console.log('DEBUG: Login successful, starting field discovery');
         
-        // Capture screenshot evidence after login
-        try {
-          await captureScreenshotEvidence(session, 'discover_login', {
-            program_ref: args.program_ref,
-            org_ref: orgRef
-          });
-        } catch (evidenceError) {
-          console.warn('[Discover] Failed to capture login evidence:', evidenceError);
-        }
-        
         // ✅ Discover program fields (credentials not needed since we're already logged in)
         const fieldSchema = await discoverProgramRequiredFields(
           session,
@@ -270,31 +259,12 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           orgRef
         );
         
-        // Capture screenshot evidence after discovery
-        try {
-          await captureScreenshotEvidence(session, 'discover_complete', {
-            program_ref: args.program_ref,
-            field_count: fieldSchema.questions?.length || 0
-          });
-        } catch (evidenceError) {
-          console.warn('[Discover] Failed to capture completion evidence:', evidenceError);
-        }
-        
         console.log('DEBUG: Field discovery completed:', fieldSchema);
         
         return fieldSchema;
         
       } catch (error) {
         console.error('SkiClubPro field discovery failed:', error);
-        
-        // Capture error screenshot
-        if (session) {
-          try {
-            await captureScreenshotEvidence(session, 'discover_error', {
-              error: error.message
-            });
-          } catch {}
-        }
         
         // Try to parse structured error for better diagnostics
         let errorMessage = error.message;
