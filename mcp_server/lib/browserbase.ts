@@ -109,25 +109,25 @@ export async function performSkiClubProLogin(
       timeout: 30000
     });
 
-    // Wait for login form
-    console.log('Waiting for email input field...');
-    await page.waitForSelector('input[type="email"], input[name="email"], #email', { 
+    // Wait for login form using config selectors
+    console.log('Waiting for username input field...');
+    await page.waitForSelector(config.selectors.username, { 
       timeout: 15000 
     });
 
-    // Fill in credentials
-    const emailSelector = await page.$('input[type="email"], input[name="email"], #email');
-    const passwordSelector = await page.$('input[type="password"], input[name="password"], #password');
+    // Fill in credentials using config selectors
+    const usernameInput = await page.$(config.selectors.username);
+    const passwordInput = await page.$(config.selectors.password);
 
-    if (!emailSelector || !passwordSelector) {
-      throw new Error('Could not find email or password input fields');
+    if (!usernameInput || !passwordInput) {
+      throw new Error('Could not find username or password input fields');
     }
 
-    await emailSelector.fill(credentials.email);
-    await passwordSelector.fill(credentials.password);
+    await usernameInput.fill(credentials.email);
+    await passwordInput.fill(credentials.password);
 
-    // Click login button
-    const loginButton = await page.$('button[type="submit"], input[type="submit"], button:has-text("Login"), button:has-text("Sign In")');
+    // Click login button using config selector
+    const loginButton = await page.$(config.selectors.submit);
     if (!loginButton) {
       throw new Error('Could not find login button');
     }
