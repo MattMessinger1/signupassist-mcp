@@ -33,9 +33,11 @@ interface Props {
   childName?: string;            // optional: for child check
   onReadyToContinue?: (allPass: boolean) => void;
   onChildSelected?: (childName: string) => void;
+  sessionToken?: string | null;
+  onSessionToken?: (token: string | null) => void;
 }
 
-export default function PrerequisitesPanel({ orgRef, credentialId, childName, onReadyToContinue, onChildSelected }: Props) {
+export default function PrerequisitesPanel({ orgRef, credentialId, childName, onReadyToContinue, onChildSelected, sessionToken, onSessionToken }: Props) {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PrereqPayload | null>(null);
   const [children, setChildren] = useState<Array<{ id?: string; name: string }>>([]);
@@ -70,20 +72,38 @@ export default function PrerequisitesPanel({ orgRef, credentialId, childName, on
     }
     setLoading(true);
     try {
-      toast({ title: "Checking your Blackhawk account…", description: "We'll sign in and verify membership, payment, and child info." });
+      toast({ title: "Connecting to Blackhawk…", description: "Launching browser session and verifying your account…" });
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('No active session');
+
+      const args: any = {
+        org_ref: orgRef,
+        credential_id: credentialId,
+        user_jwt: session.access_token,
+        child_name: childName || undefined,
+        force_login: forceLogin
+      };
+
+      // Include session token if available (for immediate chaining)
+      if (sessionToken) {
+        args.session_token = sessionToken;
+      }
 
       const { data, error } = await supabase.functions.invoke("mcp-executor", {
         body: {
           tool: "scp:check_prerequisites",
-          args: {
-            org_ref: orgRef,
-            credential_id: credentialId,
-            child_name: childName || undefined,
-            force_login: forceLogin
-          }
+          args
         }
       });
       if (error) throw error;
+
+      // Store session token for optional reuse
+      if (data?.session_token && onSessionToken) {
+        onSessionToken(data.session_token);
+      } else if (onSessionToken) {
+        onSessionToken(null);
+      }
 
       const payload: PrereqPayload = data?.prereqs || data;
       setData(payload);
@@ -100,7 +120,7 @@ export default function PrerequisitesPanel({ orgRef, credentialId, childName, on
       }
 
       if (payload?.login_status === "success") {
-        toast({ title: "Connected to Blackhawk", description: "Login verified." });
+        toast({ title: "Connected to Blackhawk", description: "Account verified successfully." });
       } else if (payload?.login_status === "failed") {
         toast({
           title: "Login failed",

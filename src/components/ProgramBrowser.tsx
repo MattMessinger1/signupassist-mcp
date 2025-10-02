@@ -35,6 +35,7 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
   const [hasCredentials, setHasCredentials] = useState<boolean | null>(null);
   const [hardReset, setHardReset] = useState(false);
   const [loginFailed, setLoginFailed] = useState(false);
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
   const { toast } = useToast();
 
   // Fetch user's SkiClubPro credentials
@@ -89,7 +90,7 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
         title: hardReset ? "Resetting Session…" : "Connecting to Blackhawk…",
         description: hardReset 
           ? "Clearing cached session and performing fresh login…" 
-          : "We'll log into your Blackhawk account and fetch live program listings.",
+          : "Launching browser session and logging in…",
       });
 
       const { data, error } = await supabase.functions.invoke('mcp-executor', {
@@ -107,11 +108,16 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
 
       if (error) throw error;
 
+      // Store session token for optional reuse (micro-session)
+      if (data?.session_token) {
+        setSessionToken(data.session_token);
+      }
+
       // ✅ Handle standardized ProviderResponse format
       if (data?.login_status === 'success') {
         toast({
           title: "Connected to Blackhawk",
-          description: "Login successful. Live programs loaded.",
+          description: "Programs loaded successfully.",
         });
         setPrograms(data?.data?.programs || []);
         setLoginFailed(false);
@@ -125,6 +131,7 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
         });
         setPrograms(data?.data?.programs || []);
         setLoginFailed(true);
+        setSessionToken(null); // Clear invalid token
       }
     } catch (error: any) {
       console.error('Error fetching programs:', error);

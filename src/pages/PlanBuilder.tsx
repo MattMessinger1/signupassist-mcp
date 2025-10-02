@@ -114,6 +114,7 @@ const PlanBuilder = () => {
   const [checkingPayment, setCheckingPayment] = useState(false);
   const [friendlyProgramTitle, setFriendlyProgramTitle] = useState<string | null>(null);
   const [selectedChildName, setSelectedChildName] = useState<string>('');
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
 
   // Safe derived variables with null checks and defaults
   const currentBranch = discoveredSchema?.branches?.find(b => b.choice === selectedBranch) ?? null;
@@ -860,6 +861,8 @@ const PlanBuilder = () => {
                     orgRef="blackhawk-ski-club"
                     credentialId={form.watch('credentialId')}
                     childName={selectedChildName}
+                    sessionToken={sessionToken}
+                    onSessionToken={setSessionToken}
                     onReadyToContinue={(ready) => {
                       setPrerequisiteChecks([{ check: 'all', status: ready ? 'pass' : 'fail', message: '' }]);
                     }}

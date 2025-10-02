@@ -185,7 +185,7 @@ async function ensureLoggedOut(session: any) {
 /**
  * Real implementation of SkiClubPro field discovery with login/logout handling
  */
-export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs): Promise<FieldSchema> {
+export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs & { session_token?: string }): Promise<FieldSchema> {
   
   // Validate user JWT is provided
   if (!args.user_jwt) {
@@ -233,6 +233,8 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
     args,
     async () => {
       let session = null;
+      let sessionToken = args.session_token;
+      
       try {
         // Resolve base URL from org_ref or program_ref
         const baseUrl = resolveBaseUrl(args);
@@ -243,12 +245,23 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         // Extract user_id from JWT for session caching
         const userId = args.user_jwt ? JSON.parse(atob(args.user_jwt.split('.')[1])).sub : 'anonymous';
         
-        // Launch browser session
+        // Launch browser session (always fresh - no session reuse)
         session = await launchBrowserbaseSession();
+        console.log('[Discover] Launched fresh Browserbase session');
         
         // ✅ Login first with dynamic base URL and optional session caching
-        await ensureLoggedIn(session, args.credential_id, args.user_jwt, baseUrl, userId, orgRef);
+        const loginResult = await ensureLoggedIn(session, args.credential_id, args.user_jwt, baseUrl, userId, orgRef);
         console.log('DEBUG: Login successful, starting field discovery');
+        
+        // Capture screenshot evidence after login
+        try {
+          await captureScreenshotEvidence(session, 'discover_login', {
+            program_ref: args.program_ref,
+            org_ref: orgRef
+          });
+        } catch (evidenceError) {
+          console.warn('[Discover] Failed to capture login evidence:', evidenceError);
+        }
         
         // ✅ Discover program fields (credentials not needed since we're already logged in)
         const fieldSchema = await discoverProgramRequiredFields(
@@ -257,12 +270,31 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           orgRef
         );
         
+        // Capture screenshot evidence after discovery
+        try {
+          await captureScreenshotEvidence(session, 'discover_complete', {
+            program_ref: args.program_ref,
+            field_count: fieldSchema.questions?.length || 0
+          });
+        } catch (evidenceError) {
+          console.warn('[Discover] Failed to capture completion evidence:', evidenceError);
+        }
+        
         console.log('DEBUG: Field discovery completed:', fieldSchema);
         
         return fieldSchema;
         
       } catch (error) {
         console.error('SkiClubPro field discovery failed:', error);
+        
+        // Capture error screenshot
+        if (session) {
+          try {
+            await captureScreenshotEvidence(session, 'discover_error', {
+              error: error.message
+            });
+          } catch {}
+        }
         
         // Try to parse structured error for better diagnostics
         let errorMessage = error.message;
@@ -283,10 +315,11 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         
         throw finalError;
       } finally {
-        // ✅ Logout after scraping
+        // ✅ Always close session (no reuse)
         if (session) {
           await ensureLoggedOut(session);
           await closeBrowserbaseSession(session);
+          console.log('[Discover] Closed Browserbase session');
         }
       }
     },
