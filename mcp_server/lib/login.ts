@@ -86,7 +86,15 @@ async function hasDrupalSessCookie(page: Page): Promise<boolean> {
 
 async function pageHasLogoutOrDashboard(page: Page): Promise<boolean> {
   const url = page.url();
-  if (/\/user(\/|$)|\/dashboard/i.test(url)) return true;
+  
+  // ✅ Exclude login/register pages explicitly
+  if (/\/user\/(login|register|password)/i.test(url)) {
+    return false;
+  }
+  
+  // ✅ Only consider logged in if on dashboard or general /user page (not login sub-pages)
+  if (/\/dashboard/i.test(url)) return true;
+  
   const body = await page.locator('body').innerText().catch(() => '');
   return /logout|sign out/i.test(body);
 }
