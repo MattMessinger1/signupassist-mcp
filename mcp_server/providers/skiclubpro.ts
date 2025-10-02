@@ -106,13 +106,14 @@ async function ensureLoggedIn(
     console.log('DEBUG: Session restored from cache, skipping login');
     // Verify we're actually logged in
     await page.goto(`${baseUrl}/dashboard`, { waitUntil: 'domcontentloaded' });
-    const isLoggedIn = await page.locator('a[href*="logout"], a[href*="sign-out"]').count() > 0;
     
-    if (isLoggedIn) {
-      console.log('DEBUG: ✓ Cached session is valid');
-      return { cached: true, email: creds.email };
+    // Verify that we are not still on the login page
+    const currentUrl = await page.url();
+    if (currentUrl.includes('/user/login')) {
+      console.log('DEBUG: Cached session invalid (still on login page), proceeding with fresh login');
     } else {
-      console.log('DEBUG: Cached session invalid, proceeding with fresh login');
+      console.log('DEBUG: ✓ Cached session is valid');
+      return { cached: true, email: creds.email, login_status: 'success' };
     }
   }
   
@@ -128,11 +129,18 @@ async function ensureLoggedIn(
   // Use the new robust login helper with credentials
   const proof = await loginWithCredentials(page, loginConfig, creds);
   
+  // Verify that we are not still on the login page
+  const currentUrl = await page.url();
+  if (currentUrl.includes('/user/login')) {
+    console.log('DEBUG: Login failed - still on login page');
+    return { ...proof, login_status: 'failed' };
+  }
+  
   // Save session state after successful login
   await saveSessionState(page, sessionKey);
   
   console.log('DEBUG: Logged in as', creds.email);
-  return proof;
+  return { ...proof, login_status: 'success' };
 }
 
 /**
@@ -410,7 +418,7 @@ export const skiClubProTools = {
         // Login to SkiClubPro
         console.log('[scp.find_programs] Logging in...');
         const credentials = await lookupCredentialsById(args.credential_id, args.user_jwt);
-        await performSkiClubProLogin(session, credentials, orgRef);
+        const loginResult = await performSkiClubProLogin(session, credentials, orgRef);
         
         // Scrape programs from live site
         console.log('[scp.find_programs] Scraping programs...');
@@ -448,6 +456,7 @@ export const skiClubProTools = {
           total: programs.length,
           query: args.query || '',
           success: true,
+          login_status: loginResult.login_status,
           timestamp: new Date().toISOString()
         };
         
@@ -485,6 +494,7 @@ export const skiClubProTools = {
           query: args.query || '',
           success: true,
           fallback: true,
+          login_status: 'failed',
           timestamp: new Date().toISOString()
         };
         

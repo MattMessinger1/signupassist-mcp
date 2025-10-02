@@ -98,6 +98,20 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
 
       if (error) throw error;
 
+      // Surface login status from MCP
+      if (data?.login_status === 'success') {
+        toast({
+          title: "Login Successful",
+          description: "Connected to SkiClubPro and ready to browse programs.",
+        });
+      } else if (data?.login_status === 'failed') {
+        toast({
+          title: "Login Failed",
+          description: "Could not log into SkiClubPro. Please recheck credentials.",
+          variant: "destructive"
+        });
+      }
+
       if (data?.programs) {
         console.log('Programs received from MCP:', data.programs);
         setPrograms(data.programs);

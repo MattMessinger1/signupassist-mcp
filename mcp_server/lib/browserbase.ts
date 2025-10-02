@@ -98,7 +98,7 @@ export async function performSkiClubProLogin(
   session: BrowserbaseSession,
   credentials: { email: string; password: string },
   orgRef: string = 'blackhawk-ski-club'
-): Promise<void> {
+): Promise<{ login_status: 'success' | 'failed' }> {
   const { page } = session;
   const config = getSkiClubProConfig(orgRef);
 
@@ -122,6 +122,15 @@ export async function performSkiClubProLogin(
     
     console.log(`[Login] ✓ Login successful - URL: ${result.url}`);
     
+    // Verify that we are not still on the login page
+    const currentUrl = await page.url();
+    if (currentUrl.includes('/user/login')) {
+      console.log('[Login] ✗ Login verification failed - still on login page');
+      throw new Error('Login failed: Still on login page after authentication');
+    }
+    
+    console.log('[Login] ✓ Login verified - successfully bypassed login page');
+    
     // Save session state for future reuse
     try {
       await session.context.storageState({ path: 'session.json' });
@@ -129,6 +138,8 @@ export async function performSkiClubProLogin(
     } catch (err) {
       console.warn('[Session] Could not save session state:', err.message);
     }
+    
+    return { login_status: 'success' };
 
   } catch (error) {
     console.error('[Login] ✗ Login failed:', error.message);
