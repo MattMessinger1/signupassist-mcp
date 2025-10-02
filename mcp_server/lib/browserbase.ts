@@ -7,6 +7,7 @@ import Browserbase from '@browserbasehq/sdk';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { getSkiClubProConfig } from '../config/skiclubpro_selectors.js';
 import { getProgramId } from '../config/program_mapping.js';
+import { loginWithCredentials, ProviderLoginConfig } from './login.js';
 
 const browserbaseApiKey = process.env.BROWSERBASE_API_KEY!;
 
@@ -91,7 +92,7 @@ export async function connectToBrowserbaseSession(sessionId: string): Promise<Br
 }
 
 /**
- * Login to SkiClubPro using Playwright automation
+ * Login to SkiClubPro using Playwright automation with anti-bot evasion
  */
 export async function performSkiClubProLogin(
   session: BrowserbaseSession,
@@ -102,62 +103,24 @@ export async function performSkiClubProLogin(
   const config = getSkiClubProConfig(orgRef);
 
   try {
-    // Navigate to SkiClubPro login page
-    console.log(`Navigating to login page: https://${config.domain}/user/login`);
-    await page.goto(`https://${config.domain}/user/login`, { 
-      waitUntil: 'networkidle',
-      timeout: 30000
-    });
-
-    // Wait for login form using config selectors
-    console.log('Waiting for login email/username input field...');
-    await page.waitForSelector(config.selectors.loginEmail, { 
-      timeout: 15000 
-    });
-
-    // Fill in credentials using config selectors
-    const usernameInput = await page.$(config.selectors.loginEmail);
-    const passwordInput = await page.$(config.selectors.loginPassword);
-
-    if (!usernameInput || !passwordInput) {
-      throw new Error('Could not find username or password input fields');
-    }
-
-    await usernameInput.fill(credentials.email);
-    await passwordInput.fill(credentials.password);
-
-    // Click login button using config selector
-    const loginButton = await page.$(config.selectors.loginSubmit);
-    if (!loginButton) {
-      throw new Error('Could not find login button');
-    }
-
-    console.log('Clicking login button and waiting for navigation...');
+    console.log(`[Login] Starting login for org: ${orgRef}`);
     
-    // Click and wait for navigation to complete
-    await Promise.all([
-      page.waitForNavigation({ waitUntil: 'networkidle', timeout: 20000 }),
-      loginButton.click()
-    ]);
+    // Convert SkiClubProConfig to ProviderLoginConfig format
+    const loginConfig: ProviderLoginConfig = {
+      loginUrl: `https://${config.domain}/user/login?destination=/dashboard`,
+      selectors: {
+        username: config.selectors.loginEmail,
+        password: config.selectors.loginPassword,
+        submit: config.selectors.loginSubmit,
+      },
+      postLoginCheck: 'text=Logout'
+    };
 
-    const currentUrl = page.url();
-    console.log(`Navigation complete. Current URL: ${currentUrl}`);
-
-    // Check if we're still on the login page (login failed)
-    if (currentUrl.includes('/user/login')) {
-      // Check for error messages
-      const errorElement = await page.$('.messages--error, .alert-danger, .error');
-      const errorText = errorElement ? await errorElement.textContent() : 'Unknown error';
-      throw new Error(`Login failed - still on login page. Error: ${errorText}`);
-    }
-
-    // Verify we're logged in by checking for logout or profile elements
-    const isLoggedIn = await page.$('a[href*="logout"], a[href*="/user/"], .user-menu, .profile, nav .account');
-    if (!isLoggedIn) {
-      console.warn('Could not find typical logout/profile elements, but navigation occurred');
-    } else {
-      console.log('Login successful - found logged-in user indicators');
-    }
+    // Use the sophisticated loginWithCredentials function with anti-bot evasion
+    console.log('[Login] Using sophisticated login with anti-bot evasion');
+    const result = await loginWithCredentials(page, loginConfig, credentials);
+    
+    console.log(`[Login] ✓ Login successful - URL: ${result.url}`);
     
     // Save session state for future reuse
     try {
@@ -168,6 +131,7 @@ export async function performSkiClubProLogin(
     }
 
   } catch (error) {
+    console.error('[Login] ✗ Login failed:', error.message);
     throw new Error(`SkiClubPro login failed: ${error.message}`);
   }
 }
