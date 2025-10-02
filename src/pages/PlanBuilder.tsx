@@ -717,6 +717,8 @@ const PlanBuilder = () => {
     );
   }
 
+  const allRequirementsMet = prerequisiteChecks.length > 0 && prerequisiteChecks.every(r => r.status === 'pass');
+  
   console.log('[PlanBuilder] Rendering main form');
   
   return (
@@ -726,7 +728,7 @@ const PlanBuilder = () => {
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Create Signup Plan</h1>
           <p className="text-muted-foreground">
-            Set up automated registration for your child's program
+            Follow the steps below to set up automated registration
           </p>
         </div>
 
@@ -740,16 +742,22 @@ const PlanBuilder = () => {
         </Alert>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
-            {/* Login Credentials */}
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            {/* Step 1: Login Credentials */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Shield className="h-5 w-5" />
-                  Login Credentials
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">Step 1</Badge>
+                    <CardTitle className="flex items-center gap-2">
+                      <Shield className="h-5 w-5" />
+                      Login Credentials
+                    </CardTitle>
+                  </div>
+                  {form.watch('credentialId') && <CheckCircle className="h-5 w-5 text-green-600" />}
+                </div>
                 <CardDescription>
-                  Select the login credentials to use for automated registration
+                  Select credentials for automated login
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -766,9 +774,6 @@ const PlanBuilder = () => {
                           provider="skiclubpro"
                         />
                       </FormControl>
-                      <FormDescription>
-                        These credentials will be used to log into the registration system
-                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -776,15 +781,21 @@ const PlanBuilder = () => {
               </CardContent>
             </Card>
 
-            {/* Program Information */}
+            {/* Step 2: Program & Child Selection */}
             <Card>
               <CardHeader>
-                <CardTitle>Program Information</CardTitle>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">Step 2</Badge>
+                    <CardTitle>Program & Child</CardTitle>
+                  </div>
+                  {form.watch('programRef') && form.watch('childId') && <CheckCircle className="h-5 w-5 text-green-600" />}
+                </div>
                 <CardDescription>
-                  Select the program and child for automated registration
+                  Choose the program and child to register
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-6">
+              <CardContent className="space-y-4">
                 <FormField
                   control={form.control}
                   name="programRef"
@@ -794,17 +805,15 @@ const PlanBuilder = () => {
                       <FormControl>
                         <ProgramBrowser
                           onProgramSelect={({ ref, title }) => {
-                            field.onChange(ref);       // pass text_ref to backend
-                            setFriendlyProgramTitle(title); // save human-friendly title
+                            field.onChange(ref);
+                            setFriendlyProgramTitle(title);
                             setDiscoveredSchema(null);
                             setSelectedBranch('');
+                            setPrerequisiteChecks([]);
                           }}
                           selectedProgram={field.value}
                         />
                       </FormControl>
-                      <FormDescription>
-                        Browse and select the program you want to register for
-                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
@@ -822,118 +831,95 @@ const PlanBuilder = () => {
                           onChange={field.onChange}
                         />
                       </FormControl>
-                      <FormDescription>
-                        Select which child to register for this program
-                      </FormDescription>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-
-                <FormField
-                  control={form.control}
-                  name="opensAt"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Registration Opens At</FormLabel>
-                      <FormControl>
-                        <OpenTimePicker
-                          value={field.value}
-                          onChange={field.onChange}
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        When should the automated signup begin? (must be in the future)
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                {form.watch('programRef') && form.watch('credentialId') && !discoveredSchema && !isDiscovering && (
-                  <div className="pt-4 space-y-3">
-                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                      <h3 className="text-sm font-semibold text-amber-900 mb-1">
-                        Next Step: Load Registration Form
-                      </h3>
-                      <p className="text-sm text-amber-800">
-                        Click below to fetch the registration form fields from the provider
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      onClick={() => discoverFields(form.getValues('programRef'))}
-                      disabled={isDiscovering}
-                      variant="default"
-                      className="w-full"
-                    >
-                      <RefreshCw className="mr-2 h-4 w-4" />
-                      Load Registration Form
-                    </Button>
-                  </div>
-                )}
-
-                {isDiscovering && (
-                  <div className="pt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div className="flex items-center gap-2 text-sm text-blue-800">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span>Discovering registration form fields...</span>
-                    </div>
-                  </div>
-                )}
-
-                {discoveredSchema && (
-                  <div className="pt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <div className="flex items-center gap-2 text-sm text-green-800">
-                      <CheckCircle className="h-4 w-4" />
-                      <span>Registration form loaded successfully</span>
-                    </div>
-                  </div>
-                )}
               </CardContent>
             </Card>
 
-            {/* Prerequisites Panel */}
-            {discoveredSchema && (
-              <PrereqsPanel
-                provider="skiclubpro"
-                childId={selectedChildId}
-                credentialId={form.watch('credentialId')}
-                onResultsChange={setPrerequisiteChecks}
-              />
-            )}
-
-            {/* Payment Method */}
-            {prerequisiteChecks.length > 0 && (
+            {/* Step 3: Prerequisites Check */}
+            {form.watch('programRef') && form.watch('childId') && form.watch('credentialId') && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <DollarSign className="h-5 w-5" />
-                    Payment Method
-                  </CardTitle>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">Step 3</Badge>
+                      <CardTitle>Account Prerequisites</CardTitle>
+                    </div>
+                    {allRequirementsMet && <CheckCircle className="h-5 w-5 text-green-600" />}
+                  </div>
                   <CardDescription>
-                    Set up payment for the $20 success fee
+                    Verify your account meets all requirements
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <SavePaymentMethod 
-                    onPaymentMethodSaved={() => {
-                      setHasPaymentMethod(true);
-                      checkPaymentMethod();
-                    }}
-                    hasPaymentMethod={hasPaymentMethod}
+                  <PrereqsPanel
+                    provider="skiclubpro"
+                    childId={selectedChildId}
+                    credentialId={form.watch('credentialId')}
+                    onResultsChange={setPrerequisiteChecks}
                   />
                 </CardContent>
               </Card>
             )}
 
-            {/* Discovered Fields */}
+            {/* Step 4: Optional Questions */}
+            {allRequirementsMet && !discoveredSchema && (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">Step 4</Badge>
+                    <CardTitle>Program Preferences</CardTitle>
+                  </div>
+                  <CardDescription>
+                    Load program-specific questions (color group, volunteering, etc.)
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {!isDiscovering && (
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                      <p className="text-sm text-blue-800 mb-3">
+                        Click below to fetch optional questions from SkiClubPro
+                      </p>
+                      <Button
+                        type="button"
+                        onClick={() => discoverFields(form.getValues('programRef'))}
+                        disabled={isDiscovering}
+                        variant="default"
+                        className="w-full"
+                      >
+                        <RefreshCw className="mr-2 h-4 w-4" />
+                        Load Optional Questions
+                      </Button>
+                    </div>
+                  )}
+
+                  {isDiscovering && (
+                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-center gap-2 text-sm text-blue-800">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>Fetching program questions from SkiClubPro...</span>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Step 5: Registration Form */}
             {discoveredSchema && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Registration Form</CardTitle>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">Step 5</Badge>
+                      <CardTitle>Optional Questions</CardTitle>
+                    </div>
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                  </div>
                   <CardDescription>
-                    Complete the required information for automated registration
+                    Answer program-specific questions
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -1007,14 +993,82 @@ const PlanBuilder = () => {
               </Card>
             )}
 
+            {/* Step 6: Registration Timing */}
+            {discoveredSchema && (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">Step 6</Badge>
+                      <CardTitle>Registration Timing</CardTitle>
+                    </div>
+                    {opensAt && <CheckCircle className="h-5 w-5 text-green-600" />}
+                  </div>
+                  <CardDescription>
+                    When should automated registration begin?
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <FormField
+                    control={form.control}
+                    name="opensAt"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Registration Opens At</FormLabel>
+                        <FormControl>
+                          <OpenTimePicker
+                            value={field.value}
+                            onChange={field.onChange}
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Must be in the future
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Step 7: Payment Method */}
+            {discoveredSchema && opensAt && (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">Step 7</Badge>
+                      <CardTitle className="flex items-center gap-2">
+                        <DollarSign className="h-5 w-5" />
+                        Payment Method
+                      </CardTitle>
+                    </div>
+                    {hasPaymentMethod && <CheckCircle className="h-5 w-5 text-green-600" />}
+                  </div>
+                  <CardDescription>
+                    Set up payment for the $20 success fee
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <SavePaymentMethod 
+                    onPaymentMethodSaved={() => {
+                      setHasPaymentMethod(true);
+                      checkPaymentMethod();
+                    }}
+                    hasPaymentMethod={hasPaymentMethod}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
             {/* Plan Preview */}
-            {discoveredSchema && allFields.length > 0 && opensAt && (
+            {discoveredSchema && allFields.length > 0 && opensAt && hasPaymentMethod && (
               <PlanPreview
                 programRef={friendlyProgramTitle || form.watch('programRef')}
                 childName="Selected Child"
                 opensAt={(() => {
                   try {
-                    // Ensure opensAt is a valid Date
                     let dateValue: Date;
                     if (opensAt instanceof Date && !isNaN(opensAt.getTime())) {
                       dateValue = opensAt;
@@ -1026,11 +1080,10 @@ const PlanBuilder = () => {
                     } else {
                       throw new Error('Invalid date format');
                     }
-                    console.log('[PlanBuilder] Valid opensAt for PlanPreview:', dateValue.toISOString());
                     return dateValue;
                   } catch (error) {
-                    console.error('[PlanBuilder] Error parsing opensAt:', error, 'Raw value:', opensAt);
-                    return new Date(); // Fallback to current date
+                    console.error('[PlanBuilder] Error parsing opensAt:', error);
+                    return new Date();
                   }
                 })()}
                 selectedBranch={selectedBranch}
@@ -1041,31 +1094,33 @@ const PlanBuilder = () => {
             )}
 
             {/* Action Buttons */}
-            <div className="flex gap-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => navigate('/')}
-                className="flex-1"
-              >
-                Cancel
-              </Button>
-              
-              <Button
-                type="submit"
-                disabled={isCreatingMandate || !discoveredSchema}
-                className="flex-1"
-              >
-                {isCreatingMandate ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating Plan...
-                  </>
-                ) : (
-                  'Create Plan'
-                )}
-              </Button>
-            </div>
+            {discoveredSchema && opensAt && hasPaymentMethod && (
+              <div className="flex gap-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => navigate('/')}
+                  className="flex-1"
+                >
+                  Cancel
+                </Button>
+                
+                <Button
+                  type="submit"
+                  disabled={isCreatingMandate || !allRequirementsMet}
+                  className="flex-1"
+                >
+                  {isCreatingMandate ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Creating Plan...
+                    </>
+                  ) : (
+                    'Create Plan'
+                  )}
+                </Button>
+              </div>
+            )}
           </form>
         </Form>
 

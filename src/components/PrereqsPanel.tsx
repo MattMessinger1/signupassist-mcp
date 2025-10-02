@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { CheckCircle, XCircle, AlertCircle, RefreshCw } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { CheckCircle, XCircle, AlertCircle, RefreshCw, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -23,18 +23,16 @@ interface PrereqsPanelProps {
 export function PrereqsPanel({ provider, credentialId, childId, onResultsChange }: PrereqsPanelProps) {
   const [results, setResults] = useState<PrerequisiteCheck[]>([]);
   const [checking, setChecking] = useState(false);
+  const [hasChecked, setHasChecked] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Helper function for showing function errors
-  const showFunctionError = (error: any, action: string) => {
-    const message = error?.message || `${action} failed. Please try again.`;
-    toast({
-      title: `${action} Failed`,
-      description: message,
-      variant: 'destructive',
-    });
-  };
+  // Auto-check prerequisites when all required fields are available
+  useEffect(() => {
+    if (credentialId && childId && !hasChecked && !checking) {
+      checkPrerequisites();
+    }
+  }, [credentialId, childId]);
 
   const checkPrerequisites = async () => {
     // Check authentication
@@ -87,12 +85,20 @@ export function PrereqsPanel({ provider, credentialId, childId, onResultsChange 
 
       setResults(transformedResults);
       onResultsChange(transformedResults);
+      setHasChecked(true);
 
-      toast({
-        title: 'Prerequisites Checked',
-        description: data.overall_status === 'ready' ? 'All checks passed!' : 'Some issues found.',
-        variant: data.overall_status === 'ready' ? 'default' : 'destructive',
-      });
+      if (data.overall_status === 'ready') {
+        toast({
+          title: 'Prerequisites Passed',
+          description: 'All account requirements verified!',
+        });
+      } else {
+        toast({
+          title: 'Prerequisites Failed',
+          description: 'Please address the issues below before continuing.',
+          variant: 'destructive',
+        });
+      }
     } catch (error) {
       console.error('Error checking prerequisites:', error);
       const message = (error as any)?.message || (error as any)?.error || 'Prerequisites check failed';
@@ -131,31 +137,33 @@ export function PrereqsPanel({ provider, credentialId, childId, onResultsChange 
   const allRequirementsMet = results.length > 0 && results.every(r => r.status === 'pass');
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          <span>Prerequisites Check</span>
-          <Button
-            onClick={checkPrerequisites}
-            disabled={checking || !credentialId}
-            size="sm"
-          >
-            {checking ? (
-              <RefreshCw className="h-4 w-4 animate-spin mr-2" />
-            ) : (
-              <AlertCircle className="h-4 w-4 mr-2" />
-            )}
-            {checking ? 'Checking...' : 'Check Prerequisites'}
-          </Button>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {results.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Click "Check Prerequisites" to verify account requirements.
-          </p>
-        ) : (
-          <>
+    <>
+      {checking && results.length === 0 && (
+        <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center gap-2 text-sm text-blue-800">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>Checking account prerequisites...</span>
+          </div>
+        </div>
+      )}
+
+      {results.length > 0 && (
+        <div className="space-y-3">
+          {!checking && (
+            <div className="flex justify-end">
+              <Button
+                onClick={checkPrerequisites}
+                disabled={checking || !credentialId}
+                size="sm"
+                variant="outline"
+              >
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Recheck
+              </Button>
+            </div>
+          )}
+          
+          <div className="space-y-3">
             {results.map((result) => (
               <div key={result.check} className="flex items-center justify-between p-3 border rounded-lg">
                 <div className="flex items-center space-x-3">
@@ -174,23 +182,34 @@ export function PrereqsPanel({ provider, credentialId, childId, onResultsChange 
                 {getStatusBadge(result.status)}
               </div>
             ))}
-            
-            {!allRequirementsMet && (
-              <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-lg">
-                <div className="flex items-center space-x-2">
-                  <AlertCircle className="h-4 w-4 text-amber-600" />
-                  <span className="text-sm font-medium text-amber-800">
-                    Action Required
-                  </span>
-                </div>
-                <p className="text-sm text-amber-700 mt-1">
-                  Please address the failed requirements before creating your plan.
-                </p>
+          </div>
+          
+          {!allRequirementsMet && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                <span className="text-sm font-medium text-amber-800">
+                  Action Required
+                </span>
               </div>
-            )}
-          </>
-        )}
-      </CardContent>
-    </Card>
+              <p className="text-sm text-amber-700 mt-1">
+                Please resolve the issues above before continuing.
+              </p>
+            </div>
+          )}
+
+          {allRequirementsMet && (
+            <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <CheckCircle className="h-4 w-4 text-green-600" />
+                <span className="text-sm font-medium text-green-800">
+                  All Requirements Met
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </>
   );
 }
