@@ -19,9 +19,9 @@ export const SKICLUBPRO_CONFIGS: Record<string, SkiClubProConfig> = {
   "blackhawk-ski-club": {
     domain: "blackhawk.skiclubpro.team",
     selectors: {
-      loginEmail: 'input[name="email"]',
-      loginPassword: 'input[name="password"]',
-      loginSubmit: 'button[type="submit"], input[type="submit"]',
+      loginEmail: '#edit-name, input[name="name"]',
+      loginPassword: '#edit-pass, input[name="pass"]',
+      loginSubmit: '#edit-submit, button#edit-submit, input[type="submit"]',
       createName: 'input[name="name"], input[name="full_name"]',
       createEmail: 'input[name="email"]',
       createPhone: 'input[name="phone"]',

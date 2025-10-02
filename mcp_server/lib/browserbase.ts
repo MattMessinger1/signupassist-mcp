@@ -110,14 +110,14 @@ export async function performSkiClubProLogin(
     });
 
     // Wait for login form using config selectors
-    console.log('Waiting for username input field...');
-    await page.waitForSelector(config.selectors.username, { 
+    console.log('Waiting for login email/username input field...');
+    await page.waitForSelector(config.selectors.loginEmail, { 
       timeout: 15000 
     });
 
     // Fill in credentials using config selectors
-    const usernameInput = await page.$(config.selectors.username);
-    const passwordInput = await page.$(config.selectors.password);
+    const usernameInput = await page.$(config.selectors.loginEmail);
+    const passwordInput = await page.$(config.selectors.loginPassword);
 
     if (!usernameInput || !passwordInput) {
       throw new Error('Could not find username or password input fields');
@@ -127,7 +127,7 @@ export async function performSkiClubProLogin(
     await passwordInput.fill(credentials.password);
 
     // Click login button using config selector
-    const loginButton = await page.$(config.selectors.submit);
+    const loginButton = await page.$(config.selectors.loginSubmit);
     if (!loginButton) {
       throw new Error('Could not find login button');
     }
