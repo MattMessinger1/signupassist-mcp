@@ -92,65 +92,141 @@ export async function connectToBrowserbaseSession(sessionId: string): Promise<Br
 }
 
 /**
- * Login to SkiClubPro using Playwright automation with anti-bot evasion
+ * Hard reset: clear cookies and storage
+ */
+async function hardResetStorage(page: Page, baseUrl: string) {
+  await page.context().clearCookies().catch(() => {});
+  
+  try {
+    await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
+    await page.evaluate(() => {
+      try { localStorage.clear(); } catch {}
+      try { sessionStorage.clear(); } catch {}
+      try {
+        // @ts-ignore
+        if (window.caches && caches.keys) {
+          caches.keys().then(keys => keys.forEach(k => caches.delete(k)));
+        }
+      } catch {}
+    });
+  } catch {}
+}
+
+/**
+ * Create a brand-new incognito context with NO storageState
+ */
+async function newIncognitoContext(browser: Browser) {
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  return { ctx, page };
+}
+
+/**
+ * Verify we are truly logged in (strict check)
+ */
+async function verifyLoggedIn(page: Page): Promise<boolean> {
+  const url = page.url();
+  if (url.includes('/user/login')) return false;
+
+  // Look for reliable signals (logout link or user menu)
+  const hasUserUi =
+    (await page.$('a[href*="/user/logout"], .user-menu, [data-testid="user-menu"], nav [aria-label*="user" i]')) ||
+    (await page.locator('text=/logout|sign out/i').first().count()) > 0;
+
+  // Fallback: Drupal SESS cookie check
+  const cookies = await page.context().cookies().catch(() => []);
+  const hasDrupalSess = cookies?.some(c => /S?SESS/i.test(c.name));
+
+  return Boolean(hasUserUi || hasDrupalSess);
+}
+
+type LoginOpts = { force_login?: boolean };
+
+/**
+ * Login to SkiClubPro using Playwright automation with brutal reset capability
  */
 export async function performSkiClubProLogin(
   session: BrowserbaseSession,
   credentials: { email: string; password: string },
-  orgRef: string = 'blackhawk-ski-club'
+  orgRef: string = 'blackhawk-ski-club',
+  opts: LoginOpts = {}
 ): Promise<{ login_status: 'success' | 'failed' }> {
-  const { page } = session;
   const config = getSkiClubProConfig(orgRef);
+  const baseUrl = `https://${config.domain}`;
+  const loginUrl = `${baseUrl}/user/login?destination=/dashboard`;
 
   try {
     console.log(`[Login] Starting login for org: ${orgRef}`);
     
-    // Convert SkiClubProConfig to ProviderLoginConfig format
-    const loginConfig: ProviderLoginConfig = {
-      loginUrl: `https://${config.domain}/user/login?destination=/dashboard`,
-      selectors: {
-        username: config.selectors.loginEmail,
-        password: config.selectors.loginPassword,
-        submit: config.selectors.loginSubmit,
-      },
-      postLoginCheck: 'text=Logout'
-    };
+    // Step 1: If not forcing fresh login, try fast path
+    if (!opts.force_login) {
+      await session.page.goto(loginUrl, { waitUntil: 'domcontentloaded' });
 
-    // Use the sophisticated loginWithCredentials function with anti-bot evasion
-    console.log('[Login] Using sophisticated login with anti-bot evasion');
-    const result = await loginWithCredentials(page, loginConfig, credentials);
-    
-    console.log(`[Login] ✓ Login successful - URL: ${result.url}`);
-    
-    // Verify that we are not still on the login page
-    const currentUrl = await page.url();
-    if (currentUrl.includes('/user/login')) {
-      console.log('[Login] ✗ Login verification failed - still on login page, clearing cookies and retrying');
-      await page.context().clearCookies();
-      
-      // Retry login
-      await loginWithCredentials(page, loginConfig, credentials);
-      const retryUrl = await page.url();
-      if (retryUrl.includes('/user/login')) {
-        throw new Error('Login failed after retry — still on login page');
+      if (await verifyLoggedIn(session.page)) {
+        console.log('DEBUG: ✓ Cached session is valid');
+        return { login_status: 'success' };
       }
     }
-    
-    console.log('[Login] ✓ Login verified - successfully bypassed login page');
-    
-    // Save session state for future reuse
+
+    // Step 2: HARD RESET - clear cookies+storage and use a brand-new context
+    console.log('DEBUG: Performing hard reset: clear cookies/storage and new context');
+    await hardResetStorage(session.page, baseUrl);
+
+    // New incognito context guarantees no storageState is reused
+    const { ctx: freshCtx, page: freshPage } = await newIncognitoContext(session.browser);
+
+    // Navigate to login page in the clean context
+    await freshPage.goto(loginUrl, { waitUntil: 'domcontentloaded' });
+
+    // Wait for login form with multiple selector fallbacks
+    const userSel = ['#edit-name', 'input[name="name"]', 'input[type="email"]'].join(', ');
+    const passSel = ['#edit-pass', 'input[name="pass"]', 'input[type="password"]'].join(', ');
+
     try {
-      await session.context.storageState({ path: 'session.json' });
-      console.log('[Session] Session state saved for future reuse');
-    } catch (err) {
-      console.warn('[Session] Could not save session state:', err.message);
+      await freshPage.waitForSelector(userSel, { timeout: 20000 });
+      await freshPage.waitForSelector(passSel, { timeout: 20000 });
+    } catch {
+      // If Cloudflare or interstitial, give it a second chance
+      await freshPage.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
     }
+
+    // If still on login and fields are present, do real login
+    if (freshPage.url().includes('/user/login')) {
+      const user = freshPage.locator(userSel).first();
+      const pass = freshPage.locator(passSel).first();
+      if ((await user.count()) && (await pass.count())) {
+        await user.fill(credentials.email);
+        await pass.fill(credentials.password);
+        
+        // Try multiple submit options
+        const submit = freshPage.locator('#edit-submit, button[type="submit"], input[type="submit"]').first();
+        if (await submit.count()) {
+          await submit.click();
+        } else {
+          await pass.press('Enter');
+        }
+        await freshPage.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+      }
+    }
+
+    // Final verification (strict)
+    const ok = await verifyLoggedIn(freshPage);
+    if (!ok) {
+      console.log('[Login] ✗ Login failed after hard reset (still on login page)');
+      // Replace session.page with freshPage for subsequent steps
+      (session as any).page = freshPage;
+      return { login_status: 'failed' };
+    }
+
+    console.log('[Login] ✓ Verified logged in after hard reset');
+    // Swap session.page to the fresh logged-in page for the rest of the flow
+    (session as any).page = freshPage;
     
     return { login_status: 'success' };
 
   } catch (error) {
     console.error('[Login] ✗ Login failed:', error.message);
-    throw new Error(`SkiClubPro login failed: ${error.message}`);
+    return { login_status: 'failed' };
   }
 }
 

@@ -415,7 +415,7 @@ export const skiClubProTools = {
     };
   },
 
-  'scp.find_programs': async (args: { org_ref?: string; query?: string; mandate_id?: string; plan_execution_id?: string; credential_id?: string; user_jwt?: string }): Promise<ProviderResponse<{ programs: any[] }>> => {
+  'scp.find_programs': async (args: { org_ref?: string; query?: string; mandate_id?: string; plan_execution_id?: string; credential_id?: string; user_jwt?: string; force_login?: boolean }): Promise<ProviderResponse<{ programs: any[] }>> => {
     const orgRef = args.org_ref || 'blackhawk-ski-club';
     
     // If credentials provided, use live Browserbase scraping
@@ -443,21 +443,19 @@ export const skiClubProTools = {
         console.log('[scp.find_programs] Launching Browserbase session...');
         session = await launchBrowserbaseSession();
         
-        // Login to SkiClubPro
+        // Login to SkiClubPro with optional force_login
         console.log('[scp.find_programs] Logging in...');
         const credentials = await lookupCredentialsById(args.credential_id, args.user_jwt);
-        const loginResult = await performSkiClubProLogin(session, credentials, orgRef);
+        const loginResult = await performSkiClubProLogin(session, credentials, orgRef, {
+          force_login: !!args.force_login
+        });
         
-        // ✅ Verify actual login success by checking URL and DOM
-        const currentUrl = await session.page.url();
-        const loggedIn = !currentUrl.includes('/user/login') && 
-          (await session.page.$('.logout, .profile, .user-menu, [data-testid="user-menu"]'));
-        
-        if (!loggedIn) {
-          console.error('[scp.find_programs] Login verification failed - still on login page or missing user menu');
+        // ✅ Check login result
+        if (loginResult.login_status === 'failed') {
+          console.error('[scp.find_programs] Login failed');
           return { 
             login_status: 'failed', 
-            error: 'Login failed - still on login page or could not verify user session',
+            error: 'Login failed - unable to authenticate. Try again with hard reset.',
             timestamp: new Date().toISOString()
           };
         }

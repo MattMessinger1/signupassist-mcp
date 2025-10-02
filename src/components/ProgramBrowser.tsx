@@ -33,6 +33,8 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
   const [searchQuery, setSearchQuery] = useState('');
   const [credentialId, setCredentialId] = useState<string | null>(null);
   const [hasCredentials, setHasCredentials] = useState<boolean | null>(null);
+  const [hardReset, setHardReset] = useState(false);
+  const [loginFailed, setLoginFailed] = useState(false);
   const { toast } = useToast();
 
   // Fetch user's SkiClubPro credentials
@@ -75,6 +77,7 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
     }
 
     setLoading(true);
+    setLoginFailed(false);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
@@ -83,8 +86,10 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
 
       // Informative toast at start
       toast({
-        title: "Connecting to Blackhawk…",
-        description: "We'll log into your Blackhawk account and fetch live program listings.",
+        title: hardReset ? "Resetting Session…" : "Connecting to Blackhawk…",
+        description: hardReset 
+          ? "Clearing cached session and performing fresh login…" 
+          : "We'll log into your Blackhawk account and fetch live program listings.",
       });
 
       const { data, error } = await supabase.functions.invoke('mcp-executor', {
@@ -94,7 +99,8 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
             query: query || undefined,
             credential_id: credentialId,
             user_jwt: session.access_token,
-            org_ref: 'blackhawk-ski-club'
+            org_ref: 'blackhawk-ski-club',
+            force_login: hardReset
           }
         }
       });
@@ -107,8 +113,9 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
           title: "Connected to Blackhawk",
           description: "Login successful. Live programs loaded.",
         });
-        // Extract programs from data.data.programs (ProviderResponse structure)
         setPrograms(data?.data?.programs || []);
+        setLoginFailed(false);
+        setHardReset(false); // Reset flag after success
       } else {
         // login_status === 'failed' or missing
         toast({
@@ -116,8 +123,8 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
           description: data?.error || "Could not log into Blackhawk. Please recheck your credentials.",
           variant: "destructive"
         });
-        // Still show fallback data if available
         setPrograms(data?.data?.programs || []);
+        setLoginFailed(true);
       }
     } catch (error: any) {
       console.error('Error fetching programs:', error);
@@ -126,6 +133,7 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
         description: error?.message || "Failed to load programs. Please try again.",
         variant: "destructive"
       });
+      setLoginFailed(true);
     } finally {
       setLoading(false);
     }
@@ -202,17 +210,34 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
             </div>
           </DialogHeader>
 
-          <div className="flex gap-2 mb-4 px-1">
-            <Input
-              placeholder="Search programs (e.g., beginner, saturday, snowboard)…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              className="flex-1"
-            />
-            <Button onClick={handleSearch} disabled={loading}>
-              <Search className="h-4 w-4" />
-            </Button>
+          <div className="space-y-2 mb-4 px-1">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Search programs (e.g., beginner, saturday, snowboard)…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                className="flex-1"
+              />
+              <Button onClick={handleSearch} disabled={loading}>
+                <Search className="h-4 w-4" />
+              </Button>
+            </div>
+            
+            {loginFailed && (
+              <Button 
+                onClick={() => {
+                  setHardReset(true);
+                  fetchPrograms(searchQuery);
+                }} 
+                disabled={loading}
+                variant="destructive"
+                size="sm"
+                className="w-full"
+              >
+                Try Again (Reset Session)
+              </Button>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto">
