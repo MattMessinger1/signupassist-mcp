@@ -120,18 +120,27 @@ const PlanBuilder = () => {
 
   // Debug logging for troubleshooting
   const formWatchOpensAt = form.watch('opensAt');
-  console.log('PlanBuilder Debug:', {
-    discoveredSchema,
-    discoveredSchemaIsNull: discoveredSchema === null,
-    discoveredSchemaBranches: discoveredSchema?.branches?.length ?? 0,
-    discoveredSchemaCommonQuestions: discoveredSchema?.common_questions?.length ?? 0,
-    prerequisiteChecks,
-    formWatchChildId: form.watch('childId'),
-    formWatchOpensAt,
-    formWatchOpensAtType: typeof formWatchOpensAt,
-    formWatchAnswers: form.watch('answers'),
+  console.log('[PlanBuilder] Render state:', {
+    authState: { hasUser: !!user, hasSession: !!session, authLoading },
+    discoveredSchema: discoveredSchema ? {
+      isNull: false,
+      hasBranches: !!discoveredSchema.branches,
+      branchCount: discoveredSchema.branches?.length ?? 0,
+      hasCommonQuestions: !!discoveredSchema.common_questions,
+      commonQuestionsCount: discoveredSchema.common_questions?.length ?? 0,
+    } : { isNull: true },
+    formState: {
+      childId: form.watch('childId'),
+      programRef: form.watch('programRef'),
+      credentialId: form.watch('credentialId'),
+      opensAt: formWatchOpensAt,
+      opensAtType: typeof formWatchOpensAt,
+      opensAtIsDate: formWatchOpensAt instanceof Date,
+      opensAtValid: formWatchOpensAt instanceof Date && !isNaN(formWatchOpensAt.getTime()),
+    },
+    prerequisiteChecks: prerequisiteChecks.length,
     selectedChildId,
-    currentBranch,
+    currentBranch: !!currentBranch,
     fieldsToShow: fieldsToShow.length
   });
 
@@ -203,6 +212,21 @@ const PlanBuilder = () => {
     });
   };
 
+  // Retry handler for field discovery
+  const retryDiscovery = async () => {
+    const programRef = form.getValues('programRef');
+    if (!programRef) {
+      toast({
+        title: 'Program Required',
+        description: 'Please select a program first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    console.log('[PlanBuilder] Retrying field discovery for:', programRef);
+    await discoverFields(programRef);
+  };
+
   const discoverFields = async (programRef: string) => {
     if (!user || !session) {
       toast({
@@ -225,9 +249,9 @@ const PlanBuilder = () => {
     }
 
     // Validate programRef format
-    console.log('PlanBuilder: discoverFields called with programRef:', programRef);
+    console.log('[PlanBuilder] discoverFields called with programRef:', programRef);
     if (programRef && programRef.includes(' ')) {
-      console.error('PlanBuilder ERROR: programRef appears to be a title instead of text_ref:', programRef);
+      console.error('[PlanBuilder] ERROR: programRef appears to be a title instead of text_ref:', programRef);
       toast({
         title: 'Invalid Program Reference',
         description: 'Program reference appears to be a title instead of a stable reference. Please reselect the program.',
@@ -238,7 +262,7 @@ const PlanBuilder = () => {
 
     setIsDiscovering(true);
     try {
-      console.log('PlanBuilder: Calling discover-fields with validated programRef:', programRef);
+      console.log('[PlanBuilder] Calling discover-fields with validated programRef:', programRef);
       
       const payload = {
         program_ref: programRef,
@@ -246,7 +270,7 @@ const PlanBuilder = () => {
         plan_execution_id: null
       };
       
-      console.log("DEBUG PlanBuilder payload:", payload);
+      console.log('[PlanBuilder] Discovery payload:', payload);
       
       const { data, error } = await supabase.functions.invoke('discover-fields-interactive', {
         body: payload
@@ -257,7 +281,7 @@ const PlanBuilder = () => {
         
         // Show detailed diagnostics if available
         if (data?.diagnostics) {
-          console.error('Field discovery diagnostics:', data.diagnostics);
+          console.error('[PlanBuilder] Field discovery diagnostics:', data.diagnostics);
           toast({
             title: "Field Discovery Failed",
             description: (
@@ -284,13 +308,13 @@ const PlanBuilder = () => {
         }
         
         // Keep schema null to show error UI
-        console.warn("⚠️ No schema discovered, keeping discoveredSchema as null");
+        console.warn('[PlanBuilder] ⚠️ No schema discovered, keeping discoveredSchema as null');
         return;
       }
 
       // Validate schema has required structure
       if (!data || (!data.branches && !data.common_questions)) {
-        console.warn("⚠️ Invalid schema structure received:", data);
+        console.warn('[PlanBuilder] ⚠️ Invalid schema structure received:', data);
         toast({
           title: "Invalid Form Structure",
           description: "The registration form couldn't be loaded properly. Please try again.",
@@ -299,7 +323,7 @@ const PlanBuilder = () => {
         return;
       }
 
-      console.log("✅ Schema discovered successfully:", {
+      console.log('[PlanBuilder] ✅ Schema discovered successfully:', {
         branches: data.branches?.length ?? 0,
         commonQuestions: data.common_questions?.length ?? 0
       });
@@ -313,7 +337,7 @@ const PlanBuilder = () => {
         description: `Found ${branchCount} program options${commonQuestions > 0 ? ` and ${commonQuestions} common questions` : ''}.`,
       });
     } catch (error) {
-      console.error('Error discovering fields:', error);
+      console.error('[PlanBuilder] Error discovering fields:', error);
       const err = error as any;
       toast({
         title: "Discover Fields Failed",
@@ -774,10 +798,15 @@ const PlanBuilder = () => {
                   )}
                 />
 
-                {form.watch('programRef') && form.watch('credentialId') && !discoveredSchema && (
-                  <div className="pt-4 space-y-2">
-                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
-                      <strong>Next Step:</strong> Click below to load the registration form fields
+                {form.watch('programRef') && form.watch('credentialId') && !discoveredSchema && !isDiscovering && (
+                  <div className="pt-4 space-y-3">
+                    <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                      <h3 className="text-sm font-semibold text-amber-900 mb-1">
+                        Next Step: Load Registration Form
+                      </h3>
+                      <p className="text-sm text-amber-800">
+                        Click below to fetch the registration form fields from the provider
+                      </p>
                     </div>
                     <Button
                       type="button"
@@ -786,21 +815,27 @@ const PlanBuilder = () => {
                       variant="default"
                       className="w-full"
                     >
-                      {isDiscovering ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Discovering Fields...
-                        </>
-                      ) : (
-                        'Load Registration Form'
-                      )}
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Load Registration Form
                     </Button>
                   </div>
                 )}
 
+                {isDiscovering && (
+                  <div className="pt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-sm text-blue-800">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Discovering registration form fields...</span>
+                    </div>
+                  </div>
+                )}
+
                 {discoveredSchema && (
-                  <div className="pt-4 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
-                    ✓ Registration form loaded successfully
+                  <div className="pt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <div className="flex items-center gap-2 text-sm text-green-800">
+                      <CheckCircle className="h-4 w-4" />
+                      <span>Registration form loaded successfully</span>
+                    </div>
                   </div>
                 )}
               </CardContent>
@@ -852,15 +887,27 @@ const PlanBuilder = () => {
                 <CardContent className="space-y-6">
                   {/* Check if schema has any questions */}
                   {!discoveredSchema.branches?.length && !discoveredSchema.common_questions?.length ? (
-                    <div className="p-6 bg-yellow-50 border border-yellow-300 rounded-lg">
-                      <h3 className="text-sm font-semibold text-yellow-900 mb-2">
-                        Registration Form Unavailable
-                      </h3>
-                      <p className="text-sm text-yellow-800">
-                        We couldn't load the required form fields from the provider. 
-                        This may be a login issue or a temporary provider error. 
-                        Please try reloading the form or check your login credentials.
-                      </p>
+                    <div className="space-y-4">
+                      <div className="p-6 bg-yellow-50 border border-yellow-300 rounded-lg">
+                        <h3 className="text-lg font-semibold text-yellow-900 mb-2">
+                          Registration Form Not Available
+                        </h3>
+                        <p className="text-sm text-yellow-800 mb-4">
+                          We couldn't fetch the registration form fields from the provider. 
+                          This may be due to a login issue or temporary provider error. 
+                          Please check your login credentials or try again.
+                        </p>
+                        <Button
+                          type="button"
+                          onClick={retryDiscovery}
+                          variant="default"
+                          size="sm"
+                          className="w-full sm:w-auto"
+                        >
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          Retry Discovery
+                        </Button>
+                      </div>
                     </div>
                   ) : (
                     <>
