@@ -5,7 +5,7 @@
 import { verifyMandate } from '../lib/mandates.js';
 import { auditToolCall } from '../middleware/audit.js';
 import { lookupCredentialsById } from '../lib/credentials.js';
-import { launchBrowserbaseSession, discoverProgramRequiredFields, captureScreenshot, closeBrowserbaseSession } from '../lib/browserbase.js';
+import { launchBrowserbaseSession, discoverProgramRequiredFields, captureScreenshot, closeBrowserbaseSession, performSkiClubProLogin, scrapeSkiClubProPrograms } from '../lib/browserbase.js';
 import { captureScreenshotEvidence } from '../lib/evidence.js';
 import { getAvailablePrograms } from '../config/program_mapping.js';
 import { createClient } from '@supabase/supabase-js';
@@ -383,13 +383,127 @@ export const skiClubProTools = {
     };
   },
 
-  'scp.find_programs': async (args: { org_ref?: string; query?: string; mandate_id?: string; plan_execution_id?: string }) => {
+  'scp.find_programs': async (args: { org_ref?: string; query?: string; mandate_id?: string; plan_execution_id?: string; credential_id?: string; user_jwt?: string }) => {
     const orgRef = args.org_ref || 'blackhawk-ski-club';
     
-    // Get real program mappings with current data
-    const availablePrograms = getAvailablePrograms(orgRef);
+    // If credentials provided, use live Browserbase scraping
+    if (args.credential_id && args.user_jwt) {
+      console.log('[scp.find_programs] Using live Browserbase scraping');
+      
+      let session: any = null;
+      
+      try {
+        // Verify mandate includes required scope
+        if (args.mandate_id) {
+          try {
+            await verifyMandate(args.mandate_id, 'scp:read:listings');
+          } catch (mandateError) {
+            console.error('[scp.find_programs] Mandate verification failed:', mandateError);
+            throw mandateError;
+          }
+        }
+        
+        // Launch Browserbase session
+        console.log('[scp.find_programs] Launching Browserbase session...');
+        session = await launchBrowserbaseSession();
+        
+        // Login to SkiClubPro
+        console.log('[scp.find_programs] Logging in...');
+        const credentials = await lookupCredentialsById(args.credential_id, args.user_jwt);
+        await performSkiClubProLogin(session, credentials, orgRef);
+        
+        // Scrape programs from live site
+        console.log('[scp.find_programs] Scraping programs...');
+        const scrapedPrograms = await scrapeSkiClubProPrograms(session, orgRef, args.query);
+        
+        // Capture screenshot evidence if plan execution exists
+        if (args.plan_execution_id) {
+          try {
+            const screenshot = await captureScreenshot(session);
+            await captureScreenshotEvidence(args.plan_execution_id, screenshot, 'programs-listing');
+            console.log('[scp.find_programs] Screenshot evidence captured');
+          } catch (evidenceError) {
+            console.warn('[scp.find_programs] Could not capture evidence:', evidenceError);
+          }
+        }
+        
+        // Map scraped programs to expected format
+        const programs = scrapedPrograms.map(program => ({
+          id: program.program_ref,
+          program_ref: program.program_ref,
+          title: program.title,
+          description: `Opens at ${program.opens_at}`,
+          schedule: `Registration opens ${new Date(program.opens_at).toLocaleDateString()}`,
+          age_range: 'See program details',
+          skill_level: 'All levels',
+          price: 'See website',
+          actual_id: program.program_ref,
+          org_ref: orgRef
+        }));
+        
+        console.log(`[scp.find_programs] Successfully scraped ${programs.length} programs`);
+        
+        return {
+          programs,
+          total: programs.length,
+          query: args.query || '',
+          success: true,
+          timestamp: new Date().toISOString()
+        };
+        
+      } catch (error) {
+        console.error('[scp.find_programs] Live scraping failed:', error);
+        
+        // Fallback to static data
+        console.log('[scp.find_programs] Falling back to static program data');
+        const availablePrograms = getAvailablePrograms(orgRef);
+        const fallbackPrograms = availablePrograms.map(mapping => ({
+          id: mapping.text_ref,
+          program_ref: mapping.text_ref,
+          title: mapping.title,
+          description: mapping.description || `${mapping.title} program`,
+          schedule: mapping.schedule,
+          age_range: mapping.age_range,
+          skill_level: mapping.skill_level,
+          price: mapping.price,
+          actual_id: mapping.actual_id,
+          org_ref: mapping.org_ref
+        }));
+        
+        let filteredPrograms = fallbackPrograms;
+        if (args.query) {
+          const query = args.query.toLowerCase();
+          filteredPrograms = fallbackPrograms.filter(program => 
+            program.title.toLowerCase().includes(query) ||
+            program.description.toLowerCase().includes(query)
+          );
+        }
+        
+        return {
+          programs: filteredPrograms,
+          total: filteredPrograms.length,
+          query: args.query || '',
+          success: true,
+          fallback: true,
+          timestamp: new Date().toISOString()
+        };
+        
+      } finally {
+        // Always close session
+        if (session) {
+          try {
+            await closeBrowserbaseSession(session);
+            console.log('[scp.find_programs] Browserbase session closed');
+          } catch (closeError) {
+            console.error('[scp.find_programs] Error closing session:', closeError);
+          }
+        }
+      }
+    }
     
-    // Convert to the expected format using data from program mappings
+    // No credentials provided - use static data
+    console.log('[scp.find_programs] No credentials provided, using static data');
+    const availablePrograms = getAvailablePrograms(orgRef);
     const allPrograms = availablePrograms.map(mapping => ({
       id: mapping.text_ref,
       program_ref: mapping.text_ref,
@@ -403,7 +517,6 @@ export const skiClubProTools = {
       org_ref: mapping.org_ref
     }));
 
-    // Filter by query if provided
     let filteredPrograms = allPrograms;
     if (args.query) {
       const query = args.query.toLowerCase();
@@ -414,14 +527,6 @@ export const skiClubProTools = {
         program.schedule.toLowerCase().includes(query)
       );
     }
-
-    console.log('MCP scp.find_programs returning:', {
-      programs: filteredPrograms,
-      total: filteredPrograms.length,
-      query: args.query || '',
-      success: true,
-      timestamp: new Date().toISOString()
-    });
 
     return {
       programs: filteredPrograms,
