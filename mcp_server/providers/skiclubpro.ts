@@ -38,6 +38,9 @@ export interface DiscoverRequiredFieldsArgs {
   org_ref?: string;
   mandate_id?: string;
   plan_execution_id?: string;
+  plan_id?: string;
+  user_id?: string;
+  session_token?: string;
 }
 
 export interface FieldSchema {
@@ -93,7 +96,13 @@ async function ensureLoggedIn(
   baseUrl: string,
   userId: string,
   orgRef: string,
-  auditParams?: { tool_name?: string; mandate_id?: string }
+  auditParams?: { 
+    tool_name?: string; 
+    mandate_id?: string;
+    plan_id?: string;
+    plan_execution_id?: string;
+    session_token?: string;
+  }
 ) {
   const creds = await lookupCredentialsById(credential_id, user_jwt);
   const { page } = session;
@@ -267,7 +276,13 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           baseUrl, 
           userId, 
           orgRef,
-          { tool_name: 'scp.discover_required_fields', mandate_id: args.mandate_id }
+          { 
+            tool_name: 'scp.discover_required_fields', 
+            mandate_id: args.mandate_id,
+            plan_id: args.plan_id,
+            plan_execution_id: args.plan_execution_id,
+            session_token: args.session_token
+          }
         );
         console.log('DEBUG: Login successful, starting field discovery');
         
@@ -584,7 +599,18 @@ export const skiClubProTools = {
     };
   },
 
-  'scp.find_programs': async (args: { org_ref?: string; query?: string; mandate_id?: string; plan_execution_id?: string; credential_id?: string; user_jwt?: string; force_login?: boolean }): Promise<ProviderResponse<{ programs: any[] }>> => {
+  'scp.find_programs': async (args: { 
+    org_ref?: string; 
+    query?: string; 
+    mandate_id?: string; 
+    plan_execution_id?: string; 
+    plan_id?: string;
+    credential_id?: string; 
+    user_jwt?: string; 
+    user_id?: string;
+    session_token?: string;
+    force_login?: boolean 
+  }): Promise<ProviderResponse<{ programs: any[] }>> => {
     const orgRef = args.org_ref || 'blackhawk-ski-club';
     
     // If credentials provided, use live Browserbase scraping
@@ -612,11 +638,17 @@ export const skiClubProTools = {
         console.log('[scp.find_programs] Launching Browserbase session...');
         session = await launchBrowserbaseSession();
         
-        // Login to SkiClubPro with optional force_login
+        // Login to SkiClubPro with optional force_login and audit context
         console.log('[scp.find_programs] Logging in...');
         const credentials = await lookupCredentialsById(args.credential_id, args.user_jwt);
         const loginResult = await performSkiClubProLogin(session, credentials, orgRef, {
-          force_login: !!args.force_login
+          force_login: !!args.force_login,
+          toolName: 'scp.find_programs',
+          mandate_id: args.mandate_id,
+          plan_id: args.plan_id,
+          plan_execution_id: args.plan_execution_id,
+          user_id: args.user_id,
+          session_token: args.session_token
         });
         
         // ✅ Check login result
@@ -814,7 +846,10 @@ export const skiClubProTools = {
     force_login?: boolean; 
     child_name?: string;
     mandate_id?: string; 
-    plan_execution_id?: string 
+    plan_execution_id?: string;
+    plan_id?: string;
+    user_id?: string;
+    session_token?: string;
   }) => {
     return await auditToolCall(
       {
@@ -851,7 +886,13 @@ export const skiClubProTools = {
             baseUrl,
             userId,
             orgRef,
-            { tool_name: 'scp.check_prerequisites', mandate_id: args.mandate_id }
+            { 
+              tool_name: 'scp.check_prerequisites', 
+              mandate_id: args.mandate_id,
+              plan_id: args.plan_id,
+              plan_execution_id: args.plan_execution_id,
+              session_token: args.session_token
+            }
           );
           
           // Run all prerequisite checks
