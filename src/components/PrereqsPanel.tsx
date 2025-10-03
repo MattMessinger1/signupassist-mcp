@@ -77,12 +77,51 @@ export default function PrerequisitesPanel({ orgRef, credentialId, childName, on
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('No active session');
 
+      // Step 1: Create a plan for this prerequisites check
+      const { data: planData, error: planError } = await supabase.functions.invoke('create-plan', {
+        body: {
+          org_ref: orgRef,
+          provider: 'skiclubpro',
+          program_ref: 'prerequisites-check',
+          opens_at: new Date().toISOString()
+        }
+      });
+
+      if (planError) throw planError;
+
+      const planId = planData?.plan?.id;
+      const planExecutionId = planData?.plan?.execution_id;
+
+      // Step 2: Issue mandate with comprehensive scopes for prerequisites
+      const { data: mandateData, error: mandateError } = await supabase.functions.invoke('mandate-issue', {
+        body: {
+          plan_id: planId,
+          scopes: [
+            'skiclubpro:account.read',
+            'skiclubpro:membership.read',
+            'skiclubpro:billing.read',
+            'skiclubpro:children.read'
+          ],
+          tool: 'scp.check_prerequisites',
+          reason: 'Check account prerequisites (account, membership, payment, child profiles)'
+        }
+      });
+
+      if (mandateError) throw mandateError;
+
+      const mandateId = mandateData?.mandate?.id;
+
+      // Step 3: Build args with audit context
       const args: any = {
         org_ref: orgRef,
         credential_id: credentialId,
         user_jwt: session.access_token,
+        user_id: session.user.id,
         child_name: childName || undefined,
-        force_login: forceLogin
+        force_login: forceLogin,
+        mandate_id: mandateId,
+        plan_id: planId,
+        plan_execution_id: planExecutionId
       };
 
       // Include session token if available (for immediate chaining)

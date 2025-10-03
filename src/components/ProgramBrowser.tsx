@@ -93,6 +93,36 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
           : "Launching browser session and logging in…",
       });
 
+      // Step 1: Create a plan for this browse action
+      const { data: planData, error: planError } = await supabase.functions.invoke('create-plan', {
+        body: {
+          org_ref: 'blackhawk-ski-club',
+          provider: 'skiclubpro',
+          program_ref: 'browse',
+          opens_at: new Date().toISOString()
+        }
+      });
+
+      if (planError) throw planError;
+
+      const planId = planData?.plan?.id;
+      const planExecutionId = planData?.plan?.execution_id;
+
+      // Step 2: Issue minimal mandate for browse action
+      const { data: mandateData, error: mandateError } = await supabase.functions.invoke('mandate-issue', {
+        body: {
+          plan_id: planId,
+          scopes: ['skiclubpro:listings.read'],
+          tool: 'scp.find_programs',
+          reason: 'Browse live programs (requires login)'
+        }
+      });
+
+      if (mandateError) throw mandateError;
+
+      const mandateId = mandateData?.mandate?.id;
+
+      // Step 3: Call MCP executor with audit context
       const { data, error } = await supabase.functions.invoke('mcp-executor', {
         body: {
           tool: 'scp:find_programs',
@@ -100,8 +130,12 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
             query: query || undefined,
             credential_id: credentialId,
             user_jwt: session.access_token,
+            user_id: session.user.id,
             org_ref: 'blackhawk-ski-club',
-            force_login: hardReset
+            force_login: hardReset,
+            mandate_id: mandateId,
+            plan_id: planId,
+            plan_execution_id: planExecutionId
           }
         }
       });
