@@ -92,7 +92,8 @@ async function ensureLoggedIn(
   user_jwt: string, 
   baseUrl: string,
   userId: string,
-  orgRef: string
+  orgRef: string,
+  auditParams?: { tool_name?: string; mandate_id?: string }
 ) {
   const creds = await lookupCredentialsById(credential_id, user_jwt);
   const { page } = session;
@@ -128,7 +129,12 @@ async function ensureLoggedIn(
       };
       
       // Retry full login with credentials
-      const proof = await loginWithCredentials(page, loginConfig, creds);
+      const proof = await loginWithCredentials(page, loginConfig, creds, {
+        provider: 'skiclubpro',
+        org_ref: orgRef,
+        user_id: userId,
+        ...auditParams
+      });
       const retryUrl = await page.url();
       if (retryUrl.includes('/user/login')) {
         throw new Error('Login failed after clearing session — still on login page');
@@ -152,7 +158,12 @@ async function ensureLoggedIn(
   };
   
   // Use the new robust login helper with credentials
-  const proof = await loginWithCredentials(page, loginConfig, creds);
+  const proof = await loginWithCredentials(page, loginConfig, creds, {
+    provider: 'skiclubpro',
+    org_ref: orgRef,
+    user_id: userId,
+    ...auditParams
+  });
   
   // Verify that we are not still on the login page
   const currentUrl = await page.url();
@@ -249,7 +260,15 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         console.log('[Discover] Launched fresh Browserbase session');
         
         // ✅ Login first with dynamic base URL and optional session caching
-        const loginResult = await ensureLoggedIn(session, args.credential_id, args.user_jwt, baseUrl, userId, orgRef);
+        const loginResult = await ensureLoggedIn(
+          session, 
+          args.credential_id, 
+          args.user_jwt, 
+          baseUrl, 
+          userId, 
+          orgRef,
+          { tool_name: 'scp.discover_required_fields', mandate_id: args.mandate_id }
+        );
         console.log('DEBUG: Login successful, starting field discovery');
         
         // ✅ Discover program fields (credentials not needed since we're already logged in)
@@ -512,7 +531,8 @@ export const skiClubProTools = {
             args.user_jwt,
             baseUrl,
             userId,
-            orgRef
+            orgRef,
+            { tool_name: 'scp.find_programs', mandate_id: args.mandate_id }
           );
           
           console.log('DEBUG: Login successful, proof:', loginProof);
@@ -757,7 +777,8 @@ export const skiClubProTools = {
               args.user_jwt,
               baseUrl,
               userId,
-              orgRef
+              orgRef,
+              { tool_name: 'scp.list_children', mandate_id: args.mandate_id }
             );
           }
           
@@ -829,7 +850,8 @@ export const skiClubProTools = {
             args.user_jwt,
             baseUrl,
             userId,
-            orgRef
+            orgRef,
+            { tool_name: 'scp.check_prerequisites', mandate_id: args.mandate_id }
           );
           
           // Run all prerequisite checks

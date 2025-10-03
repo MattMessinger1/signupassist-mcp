@@ -14,6 +14,59 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_events: {
+        Row: {
+          created_at: string
+          details: Json | null
+          event_type: string
+          finished_at: string | null
+          id: string
+          mandate_id: string | null
+          org_ref: string | null
+          provider: string
+          result: string | null
+          started_at: string
+          tool_name: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          details?: Json | null
+          event_type: string
+          finished_at?: string | null
+          id?: string
+          mandate_id?: string | null
+          org_ref?: string | null
+          provider: string
+          result?: string | null
+          started_at?: string
+          tool_name?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          details?: Json | null
+          event_type?: string
+          finished_at?: string | null
+          id?: string
+          mandate_id?: string | null
+          org_ref?: string | null
+          provider?: string
+          result?: string | null
+          started_at?: string
+          tool_name?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "audit_events_mandate_id_fkey"
+            columns: ["mandate_id"]
+            isOneToOne: false
+            referencedRelation: "mandates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       browser_sessions: {
         Row: {
           created_at: string | null

@@ -1,5 +1,6 @@
 import { Page } from 'playwright';
 import { sleep, humanPause, jitter } from './humanize.js';
+import { startLoginAudit, finishLoginAudit, type LoginAuditDetails } from './auditLogin.js';
 // Force rebuild - cache bust
 
 export interface ProviderLoginConfig {
@@ -106,8 +107,24 @@ async function isLoggedIn(page: Page): Promise<boolean> {
 export async function loginWithCredentials(
   page: Page, 
   config: ProviderLoginConfig, 
-  creds: { email: string; password: string }
+  creds: { email: string; password: string },
+  auditParams?: { provider: string; org_ref?: string; tool_name?: string; mandate_id?: string; user_id?: string }
 ) {
+  const startTime = Date.now();
+  let auditId: string | undefined;
+
+  // Start audit logging if params provided
+  if (auditParams) {
+    try {
+      auditId = await startLoginAudit({
+        ...auditParams,
+        login_strategy: 'fresh'
+      });
+    } catch (error) {
+      console.error('[loginWithCredentials] Failed to start audit:', error);
+    }
+  }
+
   console.log("DEBUG Navigating to login page:", config.loginUrl);
   
   // Navigate explicitly to Drupal login with destination
@@ -278,11 +295,33 @@ export async function loginWithCredentials(
       const url = page.url();
       const title = await page.title();
       const hasCookie = await hasDrupalSessCookie(page);
+      const duration_ms = Date.now() - startTime;
       
       console.log("DEBUG ✓ Login successful");
       console.log(`DEBUG - URL: ${url}`);
       console.log(`DEBUG - Title: ${title}`);
       console.log(`DEBUG - Session cookie: ${hasCookie ? 'present' : 'absent'}`);
+      
+      // Finish audit with success
+      if (auditId) {
+        try {
+          await finishLoginAudit({
+            audit_id: auditId,
+            result: 'success',
+            details: {
+              login_strategy: 'fresh',
+              verification: {
+                url,
+                dom_check: 'success',
+                session_cookie: hasCookie
+              },
+              duration_ms
+            }
+          });
+        } catch (auditError) {
+          console.error('[loginWithCredentials] Failed to finish audit:', auditError);
+        }
+      }
       
       return { url, title };
     } else {
@@ -316,6 +355,24 @@ export async function loginWithCredentials(
         ? 'no logout link or dashboard URL detected'
         : 'unknown reason';
       
+      // Finish audit with failure
+      if (auditId) {
+        try {
+          await finishLoginAudit({
+            audit_id: auditId,
+            result: 'failure',
+            details: {
+              login_strategy: 'fresh',
+              verification: diagnostics,
+              error: `Login failed: ${failureReason}`,
+              duration_ms: Date.now() - startTime
+            }
+          });
+        } catch (auditError) {
+          console.error('[loginWithCredentials] Failed to finish audit:', auditError);
+        }
+      }
+      
       throw new Error(JSON.stringify({
         message: `Login failed: ${failureReason}`,
         diagnostics
@@ -342,6 +399,23 @@ export async function loginWithCredentials(
     // Capture HTML snippet
     const html = await page.content();
     console.log("DEBUG Page HTML (first 800 chars):", html.slice(0, 800));
+    
+    // Finish audit with failure
+    if (auditId) {
+      try {
+        await finishLoginAudit({
+          audit_id: auditId,
+          result: 'failure',
+          details: {
+            login_strategy: 'fresh',
+            error: error instanceof Error ? error.message : String(error),
+            duration_ms: Date.now() - startTime
+          }
+        });
+      } catch (auditError) {
+        console.error('[loginWithCredentials] Failed to finish audit:', auditError);
+      }
+    }
     
     throw error;
   }
