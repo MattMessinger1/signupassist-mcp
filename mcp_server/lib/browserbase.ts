@@ -8,7 +8,6 @@ import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { getSkiClubProConfig } from '../config/skiclubpro_selectors.js';
 import { getProgramId } from '../config/program_mapping.js';
 import { loginWithCredentials, ProviderLoginConfig } from './login.js';
-import { startLoginAudit, finishLoginAudit, LoginAuditDetails } from './auditLogin.js';
 
 const browserbaseApiKey = process.env.BROWSERBASE_API_KEY!;
 
@@ -164,9 +163,8 @@ export async function performSkiClubProLogin(
   const baseUrl = `https://${config.domain}`;
   const loginUrl = `${baseUrl}/user/login?destination=/dashboard`;
 
-  // Audit tracking variables
+  // Login tracking variables
   const startedAt = Date.now();
-  let auditId: string | undefined;
   let loginStrategy: 'restore' | 'fresh' | 'hard_reset' = opts.force_login ? 'hard_reset' : 'restore';
   let verified = false;
   let hadLogoutUi = false;
@@ -177,17 +175,6 @@ export async function performSkiClubProLogin(
   let currentPage: Page = session.page;
 
   try {
-    // Start audit logging
-    if (opts.toolName) {
-      auditId = await startLoginAudit({
-        provider: 'skiclubpro',
-        org_ref: orgRef,
-        tool: opts.toolName,
-        mandate_id: opts.mandate_id,
-        user_id: opts.user_id,
-        login_strategy: loginStrategy
-      });
-    }
 
     console.log(`[Login] Starting login for org: ${orgRef}`);
     
@@ -297,36 +284,9 @@ export async function performSkiClubProLogin(
     
     return { login_status: 'failed' };
   } finally {
-    // Finish audit logging with all details
-    if (auditId) {
-      const endedAt = Date.now();
-      const details: LoginAuditDetails = {
-        login_strategy: loginStrategy,
-        verified,
-        verification: {
-          url: lastUrl,
-          hadLogoutUi,
-          hadSessCookie
-        },
-        timing: {
-          started_at: new Date(startedAt).toISOString(),
-          ended_at: new Date(endedAt).toISOString(),
-          ms: endedAt - startedAt
-        },
-        session_token: opts.session_token ? 'present' : undefined,
-        evidence: screenshotPath ? { screenshot_path: screenshotPath } : undefined,
-        error,
-        duration_ms: endedAt - startedAt
-      };
-
-      await finishLoginAudit({
-        audit_id: auditId,
-        result: verified ? 'success' : 'failure',
-        details
-      }).catch(auditError => {
-        console.error('[Login] Failed to finish audit:', auditError);
-      });
-    }
+    // Log summary
+    const endedAt = Date.now();
+    console.log(`[Login] Completed: strategy=${loginStrategy}, verified=${verified}, duration=${endedAt - startedAt}ms`);
   }
 }
 
