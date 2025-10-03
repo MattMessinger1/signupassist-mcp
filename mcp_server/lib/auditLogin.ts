@@ -10,13 +10,37 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 export interface LoginAuditDetails {
   login_strategy?: 'restore' | 'fresh' | 'hard_reset';
+  
+  // Verification outcome
+  verified?: boolean;
+  
+  // Verification signals
   verification?: {
     url?: string;
     dom_check?: string;
     session_cookie?: boolean;
+    hadLogoutUi?: boolean;  // Found logout link/user menu
+    hadSessCookie?: boolean;  // Found Drupal SESS cookie
   };
+  
+  // Precise timing
+  timing?: {
+    started_at: string;  // ISO timestamp
+    ended_at: string;    // ISO timestamp
+    ms: number;          // Duration in milliseconds
+  };
+  
+  // Session token presence indicator (not the actual token)
+  session_token?: string;
+  
+  // Evidence metadata
+  evidence?: {
+    screenshot_path?: string;
+    body_snippet?: string;
+  };
+  
   error?: string;
-  duration_ms?: number;
+  duration_ms?: number;  // Backward compatibility
 }
 
 export interface StartLoginAuditParams {
