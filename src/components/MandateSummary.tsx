@@ -1,0 +1,182 @@
+import { useMemo, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Textarea } from '@/components/ui/textarea';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { Loader2, Info } from 'lucide-react';
+
+type Caps = { max_provider_charge_cents: number | null; service_fee_cents: number | null };
+
+interface Props {
+  orgRef: string;                    // e.g. 'blackhawk-ski-club'
+  programTitle: string;
+  programRef: string;
+  credentialId: string;
+  childName: string;
+  answers: Record<string, unknown>;
+  detectedPriceCents: number | null;
+  caps: Caps;
+  openTimeISO: string;               // ISO datetime when registration opens
+  preferredSlot: string;             // human-friendly slot description
+  onCreated: (planId: string, mandateId: string) => void;
+}
+
+export default function MandateSummary({
+  orgRef, programTitle, programRef, credentialId, childName, answers,
+  detectedPriceCents, caps, openTimeISO, preferredSlot, onCreated
+}: Props) {
+  const { toast } = useToast();
+  const [agreeActions, setAgreeActions] = useState(false);
+  const [agreeFees, setAgreeFees] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const fmtUSD = (cents: number | null) =>
+    cents == null ? '—' : `$${(cents / 100).toFixed(2)} USD`;
+
+  const scopeList = useMemo(() => ([
+    { key: 'scp:login', label: 'Sign in to Blackhawk (SkiClubPro) on your behalf' },
+    { key: 'scp:enroll', label: 'Fill and submit the program registration form' },
+    { key: 'scp:write:register', label: 'Click buttons/links required to complete registration' },
+    { key: 'scp:pay', label: `Pay the provider up to your cap (${fmtUSD(caps.max_provider_charge_cents)})` },
+    { key: 'signupassist:fee', label: `Charge a ${fmtUSD(caps.service_fee_cents)} success fee only if we get the spot` },
+  ]), [caps]);
+
+  const valid = agreeActions && agreeFees && !!childName && !!programRef && !!credentialId && !!openTimeISO;
+
+  const createPlanAndMandate = async () => {
+    if (!valid) {
+      toast({ title: 'Missing consent or fields', description: 'Please review and accept the terms above.', variant: 'destructive' });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('No active session');
+
+      // 1) Create plan with full payload (store answers + caps in meta)
+      const { data: planRes, error: planErr } = await supabase.functions.invoke('create-plan', {
+        body: {
+          provider_slug: 'skiclubpro',
+          org: orgRef,
+          base_url: `https://${orgRef}.skiclubpro.team`,
+          program_ref: programRef,
+          program_title: programTitle,
+          child_name: childName,
+          open_time: openTimeISO,
+          preferred: preferredSlot,
+          credential_id: credentialId,
+          answers,
+          max_provider_charge_cents: caps.max_provider_charge_cents,
+          service_fee_cents: caps.service_fee_cents,
+          notes
+        }
+      });
+      if (planErr) throw planErr;
+      const planId = planRes?.plan?.id;
+      if (!planId) throw new Error('create-plan did not return plan.id');
+
+      // 2) Issue one mandate with scopes + embed caps in details if supported
+      const { data: mandRes, error: mandErr } = await supabase.functions.invoke('mandate-issue', {
+        body: {
+          plan_id: planId,
+          scopes: scopeList.map(s => s.key),
+          caps: {
+            max_provider_charge_cents: caps.max_provider_charge_cents,
+            service_fee_cents: caps.service_fee_cents
+          }
+        }
+      });
+      if (mandErr) throw mandErr;
+      const mandateId = mandRes?.mandate?.id || mandRes?.mandate_id;
+      if (!mandateId) throw new Error('mandate-issue did not return mandate_id');
+
+      toast({ title: 'Plan created', description: "Mandate signed. We'll handle registration at the right time." });
+      onCreated(planId, mandateId);
+    } catch (e: any) {
+      toast({ title: 'Could not create plan', description: e?.message || 'Unknown error', variant: 'destructive' });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Mandate Summary</CardTitle>
+            <CardDescription>Confirm what you authorize us to do for this plan.</CardDescription>
+          </div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild><Info className="h-4 w-4 text-muted-foreground" /></TooltipTrigger>
+              <TooltipContent side="left" className="max-w-xs">
+                One-time authorization that covers login, registration, and payment for this plan.
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <div className="grid gap-2">
+            <div><span className="text-muted-foreground">Organization:</span> <Badge variant="secondary">{orgRef}</Badge></div>
+            <div><span className="text-muted-foreground">Program:</span> <strong>{programTitle}</strong></div>
+            <div><span className="text-muted-foreground">Child:</span> <strong>{childName}</strong></div>
+            <div><span className="text-muted-foreground">Opens:</span> <strong>{new Date(openTimeISO).toLocaleString()}</strong></div>
+            <div><span className="text-muted-foreground">Preferred slot:</span> <strong>{preferredSlot}</strong></div>
+          </div>
+
+          <Separator />
+
+          <div className="grid gap-1">
+            <div className="font-medium">Payment limits</div>
+            <div>Detected price: <strong>{fmtUSD(detectedPriceCents)}</strong></div>
+            <div>Max you authorize us to pay the provider: <strong>{fmtUSD(caps.max_provider_charge_cents)}</strong></div>
+            <div>Success fee (only on success): <strong>{fmtUSD(caps.service_fee_cents)}</strong></div>
+          </div>
+
+          <Separator />
+
+          <div className="grid gap-2">
+            <div className="font-medium">What we will do</div>
+            <ul className="list-disc pl-5">
+              {scopeList.map(s => <li key={s.key}>{s.label}</li>)}
+            </ul>
+          </div>
+
+          <Separator />
+
+          <div className="grid gap-2">
+            <div className="font-medium">Optional notes for our operator</div>
+            <Textarea placeholder="Anything we should know? (allergies, carpool preference, etc.)" value={notes} onChange={e => setNotes(e.target.value)} />
+          </div>
+
+          <Separator />
+
+          <div className="grid gap-2">
+            <label className="flex items-center gap-2">
+              <Checkbox checked={agreeActions} onCheckedChange={(v) => setAgreeActions(!!v)} />
+              <span>I authorize SignupAssist to log in, fill forms, and submit my registration for this plan.</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <Checkbox checked={agreeFees} onCheckedChange={(v) => setAgreeFees(!!v)} />
+              <span>I authorize payment up to the cap above and a success fee only if registration succeeds.</span>
+            </label>
+          </div>
+
+          <div className="flex gap-2 pt-1">
+            <Button type="button" onClick={createPlanAndMandate} disabled={!valid || submitting} className="gap-2">
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Sign & Create Plan
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
