@@ -1,6 +1,6 @@
 // mcp_server/config/providers/skiclubpro/prereqs.ts
-import type { Checker, Ctx, Result } from '../../../prereqs/types';
-import { gotoAny, bodyText } from '../../../prereqs/helpers';
+import type { Checker, Ctx, Result } from '../../../prereqs/types.js';
+import { gotoAny, bodyText } from '../../../prereqs/helpers.js';
 
 // Lightweight heuristics + URL fallbacks + text hints.
 // Org-specific overrides can extend these arrays later.
