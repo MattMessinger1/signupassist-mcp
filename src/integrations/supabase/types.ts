@@ -324,6 +324,7 @@ export type Database = {
           created_at: string
           id: string
           mandate_id: string | null
+          meta: Json | null
           opens_at: string
           program_ref: string
           provider: string
@@ -336,6 +337,7 @@ export type Database = {
           created_at?: string
           id?: string
           mandate_id?: string | null
+          meta?: Json | null
           opens_at: string
           program_ref: string
           provider: string
@@ -348,6 +350,7 @@ export type Database = {
           created_at?: string
           id?: string
           mandate_id?: string | null
+          meta?: Json | null
           opens_at?: string
           program_ref?: string
           provider?: string

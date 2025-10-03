@@ -6,9 +6,11 @@ import { Separator } from '@/components/ui/separator';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Textarea } from '@/components/ui/textarea';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, Info } from 'lucide-react';
+import { Loader2, Info, ChevronDown, ChevronUp } from 'lucide-react';
+import ReminderPreferences, { ReminderPrefs } from './ReminderPreferences';
 
 type Caps = { max_provider_charge_cents: number | null; service_fee_cents: number | null };
 
@@ -35,6 +37,11 @@ export default function MandateSummary({
   const [agreeFees, setAgreeFees] = useState(false);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [showMandateJSON, setShowMandateJSON] = useState(false);
+  const [reminders, setReminders] = useState<ReminderPrefs>({
+    channels: { email: true, sms: false },
+    offsets_sec: [86400, 3600] // 24h and 1h defaults
+  });
 
   const fmtUSD = (cents: number | null) =>
     cents == null ? '—' : `$${(cents / 100).toFixed(2)} USD`;
@@ -46,6 +53,18 @@ export default function MandateSummary({
     { key: 'scp:pay', label: `Pay the provider up to your cap (${fmtUSD(caps.max_provider_charge_cents)})` },
     { key: 'signupassist:fee', label: `Charge a ${fmtUSD(caps.service_fee_cents)} success fee only if we get the spot` },
   ]), [caps]);
+
+  const mandateJSON = useMemo(() => ({
+    scopes: scopeList.map(s => s.key),
+    caps: {
+      max_provider_charge_cents: caps.max_provider_charge_cents,
+      service_fee_cents: caps.service_fee_cents
+    },
+    program_ref: programRef,
+    child_name: childName,
+    opens_at: openTimeISO,
+    credential_id: credentialId
+  }), [scopeList, caps, programRef, childName, openTimeISO, credentialId]);
 
   const valid = agreeActions && agreeFees && !!childName && !!programRef && !!credentialId && !!openTimeISO;
 
@@ -59,7 +78,7 @@ export default function MandateSummary({
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('No active session');
 
-      // 1) Create plan with full payload (store answers + caps in meta)
+      // 1) Create plan with full payload (store answers + caps + reminders in meta)
       const { data: planRes, error: planErr } = await supabase.functions.invoke('create-plan', {
         body: {
           provider_slug: 'skiclubpro',
@@ -74,7 +93,8 @@ export default function MandateSummary({
           answers,
           max_provider_charge_cents: caps.max_provider_charge_cents,
           service_fee_cents: caps.service_fee_cents,
-          notes
+          notes,
+          reminders
         }
       });
       if (planErr) throw planErr;
@@ -151,10 +171,30 @@ export default function MandateSummary({
 
           <Separator />
 
+          <ReminderPreferences value={reminders} onChange={setReminders} />
+
+          <Separator />
+
           <div className="grid gap-2">
             <div className="font-medium">Optional notes for our operator</div>
             <Textarea placeholder="Anything we should know? (allergies, carpool preference, etc.)" value={notes} onChange={e => setNotes(e.target.value)} />
           </div>
+
+          <Separator />
+
+          <Collapsible open={showMandateJSON} onOpenChange={setShowMandateJSON}>
+            <CollapsibleTrigger asChild>
+              <Button variant="ghost" size="sm" className="w-full justify-between">
+                <span className="font-medium">View Mandate JSON</span>
+                {showMandateJSON ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <pre className="mt-2 rounded-md bg-muted p-3 text-xs overflow-auto max-h-64">
+                {JSON.stringify(mandateJSON, null, 2)}
+              </pre>
+            </CollapsibleContent>
+          </Collapsible>
 
           <Separator />
 

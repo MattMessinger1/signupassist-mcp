@@ -45,7 +45,11 @@ Deno.serve(async (req) => {
       opens_at,
       mandate_id,
       provider = 'skiclubpro',
-      answers = null
+      answers = null,
+      max_provider_charge_cents,
+      service_fee_cents,
+      notes,
+      reminders
     } = await req.json();
     
     // Validate required fields
@@ -80,6 +84,15 @@ Deno.serve(async (req) => {
       throw new Error('Invalid or inactive mandate');
     }
 
+    // Build meta object
+    const meta: any = {};
+    if (answers) meta.answers = answers;
+    if (max_provider_charge_cents !== undefined || service_fee_cents !== undefined) {
+      meta.caps = { max_provider_charge_cents, service_fee_cents };
+    }
+    if (notes) meta.notes = notes;
+    if (reminders) meta.reminders = reminders;
+
     // Insert plan
     const { data: plan, error: planError } = await serviceSupabase
       .from('plans')
@@ -91,6 +104,7 @@ Deno.serve(async (req) => {
         opens_at,
         mandate_id,
         answers,
+        meta: Object.keys(meta).length > 0 ? meta : null,
         status: 'scheduled'
       })
       .select()
