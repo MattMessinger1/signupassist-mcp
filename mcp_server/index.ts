@@ -19,6 +19,9 @@ import { skiClubProTools } from './providers/skiclubpro.js';
 // import { daysmartTools } from '../providers/daysmart/index';
 // import { campminderTools } from '../providers/campminder/index';
 
+// Import prereqs registry
+import { registerAllProviders } from './prereqs/providers.js';
+
 class SignupAssistMCPServer {
   private server: Server;
   private tools: Map<string, any> = new Map();
@@ -211,6 +214,11 @@ class SignupAssistMCPServer {
     });
   }
 }
+
+// Register all provider prerequisite checkers
+console.log('[STARTUP] Registering prerequisite checkers...');
+registerAllProviders();
+console.log('[STARTUP] Prerequisite checkers registered');
 
 // Start both stdio and HTTP servers
 console.log('[STARTUP] Creating SignupAssistMCPServer instance...');
