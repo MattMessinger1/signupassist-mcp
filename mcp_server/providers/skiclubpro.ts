@@ -13,7 +13,8 @@ import { createClient } from '@supabase/supabase-js';
 import { loginWithCredentials, logoutIfLoggedIn } from '../lib/login.js';
 import { skiClubProConfig } from '../config/skiclubproConfig.js';
 import { saveSessionState, restoreSessionState, generateSessionKey } from '../lib/session.js';
-import { runChecks } from '../prereqs/registry.js';
+import { runChecks, buildBaseUrl } from '../prereqs/registry.js';
+import { getOrgOverride } from '../prereqs/providers.js';
 import type { ProviderResponse } from './types.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
@@ -853,7 +854,8 @@ export const skiClubProTools = {
       if (!args.user_jwt) throw new Error('user_jwt is required');
       
       const orgRef = args.org_ref || 'blackhawk-ski-club';
-      const base = `https://${orgRef}.skiclubpro.team`;
+      const override = getOrgOverride(orgRef);
+      const base = buildBaseUrl(orgRef, override.customDomain);
       
       console.log(`[scp:check_prerequisites] Starting checks for org: ${orgRef} (no mandate required)`);
       

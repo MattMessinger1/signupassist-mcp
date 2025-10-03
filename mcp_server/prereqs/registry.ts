@@ -1,10 +1,15 @@
 // mcp_server/prereqs/registry.ts
-import type { Checker, Ctx, Result } from './types';
+import type { Checker, Ctx, Result } from './types.js';
 
 const registries: Record<string, Checker[]> = {}; // provider -> checkers
 
 export function registerProvider(provider: string, checkers: Checker[]) {
   registries[provider] = checkers;
+}
+
+export function buildBaseUrl(orgRef: string, customDomain?: string) {
+  const sub = customDomain || orgRef;
+  return `https://${sub}.skiclubpro.team`;
 }
 
 export async function runChecks(provider: string, ctx: Ctx): Promise<Result[]> {
