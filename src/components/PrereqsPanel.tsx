@@ -34,8 +34,13 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
   const { toast } = useToast();
 
   useEffect(() => {
-    const allPass = !!data && [data.account, data.membership, data.payment, data.child].every(r => r.ok === true) && !!childName;
-    onReadyToContinue?.(allPass);
+    // All core checks must pass (ok === true) and no unknowns blocking
+    const coreChecks = data ? [data.account, data.membership, data.payment, data.child] : [];
+    const allPass = !!data && coreChecks.every(r => r?.ok === true) && !!childName;
+    const hasUnknown = coreChecks.some(r => r && r.ok === null && r.reason);
+    
+    // Block if any unknown states (they need manual verification)
+    onReadyToContinue?.(allPass && !hasUnknown);
   }, [data, childName, onReadyToContinue]);
 
   const baseUrl = useMemo(() => `https://${orgRef}.skiclubpro.team`, [orgRef]);
@@ -86,14 +91,20 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
   };
 
   const Row = ({ title, sub, result, href }: { title: string; sub: string; result?: CheckResult; href: string }) => {
-    const badge = !result || result.ok === null
+    // Handle three states: not checked (null), unknown (ok=null but has reason), pass (ok=true), fail (ok=false)
+    const isUnknown = result && result.ok === null && result.reason;
+    const badge = !result
       ? <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" /> Not checked</Badge>
-      : result.ok
-        ? <Badge className="bg-emerald-100 text-emerald-800 gap-1"><CheckCircle2 className="h-3 w-3" /> Pass</Badge>
-        : <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" /> Fail</Badge>;
+      : isUnknown
+        ? <Badge variant="outline" className="gap-1 border-amber-400 text-amber-700 bg-amber-50"><Clock className="h-3 w-3" /> Unknown</Badge>
+        : result.ok === true
+          ? <Badge className="bg-emerald-100 text-emerald-800 gap-1"><CheckCircle2 className="h-3 w-3" /> Pass</Badge>
+          : <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" /> Fail</Badge>;
+
+    const showAction = !result || result.ok !== true; // Show action for not-checked, unknown, or fail
 
     return (
-      <Card>
+      <Card className={isUnknown ? "border-amber-200" : undefined}>
         <CardHeader className="flex-row items-start justify-between gap-3">
           <div>
             <CardTitle className="text-base">{title}</CardTitle>
@@ -103,11 +114,19 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
         </CardHeader>
         <CardContent className="space-y-3">
           {result?.summary && <div className="text-sm">{result.summary}</div>}
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" className="gap-2" onClick={() => window.open(href, '_blank')}>
-              Open in Blackhawk <ExternalLink className="h-4 w-4" />
-            </Button>
-          </div>
+          {result?.reason && <div className="text-sm text-muted-foreground">{result.reason}</div>}
+          {isUnknown && (
+            <div className="text-sm text-amber-700 bg-amber-50 p-3 rounded-md border border-amber-200">
+              ⚠️ Please verify this manually on the club's website.
+            </div>
+          )}
+          {showAction && (
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" className="gap-2" onClick={() => window.open(href, '_blank')}>
+                Open in Club Portal <ExternalLink className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     );

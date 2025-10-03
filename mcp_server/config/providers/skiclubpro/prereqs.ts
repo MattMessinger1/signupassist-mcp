@@ -47,86 +47,215 @@ export const SkiClubProCheckers: Checker[] = [
   {
     id: 'membership.active',
     label: 'Membership Status',
-    explain: 'Many programs require an active Blackhawk membership for the current season.',
+    explain: 'Many programs require an active membership for the current season.',
     blocking: true,
-    appliesTo: () => true, // later: make conditional by programRef if needed
+    appliesTo: () => true,
     check: async (ctx: Ctx) => {
       const { page, baseUrl } = ctx;
       await gotoAny(page, baseUrl, URLS.membership);
       const url = page.url();
-      const text = await bodyText(page, 1200);
-      const active = /(active|current)\s+(member|membership)/i.test(text) && !/expired|inactive/i.test(text);
+      const text = await bodyText(page, 1500);
+      
+      // Strong positive indicators
+      const activeIndicators = [
+        /(active|current|valid)\s+(member|membership)/i,
+        /membership\s+(status|type):\s*(active|current)/i,
+        /season\s+\d{4}.*?(active|current)/i,
+        /renew(ed|al)?\s+for\s+\d{4}/i
+      ];
+      
+      // Strong negative indicators
+      const inactiveIndicators = [
+        /(expired|inactive|lapsed)\s+(member|membership)/i,
+        /membership\s+(expired|inactive)/i,
+        /renew\s+your\s+membership/i,
+        /purchase.*membership/i,
+        /no\s+(active|current)\s+membership/i
+      ];
+      
+      const hasActive = activeIndicators.some(rx => rx.test(text));
+      const hasInactive = inactiveIndicators.some(rx => rx.test(text));
+      
       const ev = { url, text_excerpt: text.slice(0, 300) };
-      return active
-        ? pass('membership.active', 'Membership Status', 'Active membership detected for this season.', true, ev)
-        : fail('membership.active', 'Membership Status', 'Active membership required for most registrations.', true, ev, {
-            label: 'Manage Membership', url: `${baseUrl}/membership`
-          });
+      
+      if (hasActive && !hasInactive) {
+        return pass('membership.active', 'Membership Status', 'Active membership detected for this season.', true, ev, 0.9);
+      }
+      
+      if (hasInactive || /join\s+now|become\s+a\s+member/i.test(text)) {
+        return fail('membership.active', 'Membership Status', 'Active membership required for most registrations.', true, ev, {
+          label: 'Manage Membership', url: `${baseUrl}/membership`
+        }, 0.85);
+      }
+      
+      // Ambiguous - can't determine clearly
+      return unknown('membership.active', 'Membership Status', 
+        'Unable to confirm membership status automatically. Please verify on the membership page.', true, ev);
     }
   },
   {
     id: 'payment.method',
     label: 'Payment Method',
-    explain: 'A chargeable payment method should be available via Blackhawk\'s billing portal.',
+    explain: 'A chargeable payment method should be available for registration fees.',
     blocking: true,
     appliesTo: () => true,
     check: async (ctx: Ctx) => {
       const { page, baseUrl } = ctx;
       await gotoAny(page, baseUrl, URLS.payment);
       const url = page.url();
-      const text = await bodyText(page, 1000);
-      const portal = /(payment methods|customer portal|update card|card ending|billing)/i.test(text);
-      const ev = { url, text_excerpt: text.slice(0, 250) };
-      return portal
-        ? pass('payment.method', 'Payment Method', 'Payment portal is accessible.', true, ev)
-        : fail('payment.method', 'Payment Method', 'Add or update a card in the Blackhawk billing portal.', true, ev, {
-            label: 'Open Billing', url: `${baseUrl}/user/payment-methods`
-          });
+      const text = await bodyText(page, 1200);
+      
+      // Positive indicators - card exists
+      const hasCard = [
+        /card\s+ending\s+(in\s+)?\d{4}/i,
+        /\*{4,}\s*\d{4}/i,
+        /visa|mastercard|amex|discover.*\d{4}/i,
+        /saved\s+card/i,
+        /default\s+(card|payment\s+method)/i
+      ].some(rx => rx.test(text));
+      
+      // Negative indicators - no card
+      const noCard = [
+        /no\s+payment\s+method/i,
+        /add\s+(a\s+)?payment\s+method/i,
+        /no\s+saved\s+cards?/i,
+        /please\s+add.*card/i
+      ].some(rx => rx.test(text));
+      
+      const ev = { url, text_excerpt: text.slice(0, 300) };
+      
+      if (hasCard) {
+        return pass('payment.method', 'Payment Method', 'Payment method on file detected.', true, ev, 0.9);
+      }
+      
+      if (noCard) {
+        return fail('payment.method', 'Payment Method', 'Add a payment method in the billing portal.', true, ev, {
+          label: 'Add Payment Method', url: `${baseUrl}/user/payment-methods`
+        }, 0.85);
+      }
+      
+      // Can access portal but unclear if card exists
+      if (/(payment methods?|billing|customer portal)/i.test(text)) {
+        return unknown('payment.method', 'Payment Method',
+          'Payment portal accessible but unable to confirm saved payment method. Please verify manually.', true, ev);
+      }
+      
+      // Can't even find payment portal
+      return unknown('payment.method', 'Payment Method',
+        'Unable to locate payment settings. Please check billing portal manually.', true, ev);
     }
   },
   {
     id: 'child.profile',
     label: 'Child Profile',
-    explain: 'You must have at least one child profile in Blackhawk to register them.',
+    explain: 'You must have at least one child profile to register them.',
     blocking: true,
     appliesTo: () => true,
     check: async (ctx: Ctx) => {
       const { page, baseUrl } = ctx;
       await gotoAny(page, baseUrl, URLS.family);
 
-      // Multi-strategy extraction (table rows, cards, lists)
-      const rows = page.locator('table tbody tr, .views-row, .family-member, li, .card, .panel');
+      const url = page.url();
+      const bodyContent = await bodyText(page, 1500);
+      
+      // Strong negative indicators - definitely no children
+      const noChildIndicators = [
+        /no\s+(child|participant|family\s+member)s?\s+(found|added)/i,
+        /add\s+your\s+first\s+(child|participant)/i,
+        /you\s+don'?t\s+have\s+any\s+(child|participant)/i
+      ];
+      
+      const clearlyEmpty = noChildIndicators.some(rx => rx.test(bodyContent));
+      
+      // Multi-strategy extraction with better patterns
+      const selectors = [
+        'table tbody tr',
+        '.views-row',
+        '.family-member',
+        '.participant',
+        '.child-profile',
+        '[data-child]',
+        '.household-member',
+        'ul.children li',
+        '.card.child',
+        '.panel-child'
+      ];
+      
+      const rows = page.locator(selectors.join(', '));
       const n = await rows.count();
       const children: { name: string }[] = [];
+      
       for (let i = 0; i < Math.min(n, 200); i++) {
         const el = rows.nth(i);
         const text = ((await el.innerText().catch(() => '')) || '').trim();
-        if (!text) continue;
-        if (!/(child|children|youth|participant|dob|birth|grade|family)/i.test(text)) continue;
-        const name = (
-          await el.locator('h1,h2,h3,.title,.name,strong,td:first-child').first().innerText().catch(()=>'')
-        ) || text.split('\n')[0];
-        if (name && name.trim() && name.trim().length < 120) children.push({ name: name.trim() });
-      }
-
-      // Fallback: look for an "Add Child/Family Member" button (a sign that no children exist)
-      const hasAdd = !!(await page.$('a:has-text("Add Child"), a:has-text("Add Family"), button:has-text("Add Child")'));
-
-      const url = page.url();
-      const ev = { url, text_excerpt: await bodyText(page, 300) };
-      const ok = children.length > 0;
-
-      return ok
-        ? {
-            id: 'child.profile', label: 'Child Profile',
-            explain: 'You must have at least one child profile in Blackhawk to register them.',
-            blocking: true, outcome: 'pass', confidence: 0.85,
-            evidence: ev, extra: { children }
+        if (!text || text.length < 2) continue;
+        
+        // Skip navigation, headers, footers
+        if (/(navigation|menu|header|footer|logout|account)/i.test(text)) continue;
+        
+        // Must have child-relevant keywords
+        const relevantPatterns = [
+          /(child|youth|participant|student|kid)/i,
+          /\b(dob|birth|age|grade)\b/i,
+          /\d{1,2}\/\d{1,2}\/\d{2,4}/,  // date pattern
+          /\b(son|daughter)\b/i
+        ];
+        
+        if (!relevantPatterns.some(rx => rx.test(text))) continue;
+        
+        // Extract name - try multiple strategies
+        let name = await el.locator('h1,h2,h3,h4,.title,.name,.child-name,strong,b,td:first-child,[data-name]')
+          .first().innerText().catch(() => '');
+        
+        if (!name) {
+          // Fallback: first line of text
+          const lines = text.split('\n').filter(l => l.trim().length > 0);
+          name = lines[0] || '';
+        }
+        
+        name = name.trim();
+        
+        // Validate name
+        if (name && name.length >= 2 && name.length < 100) {
+          // Skip common non-name patterns
+          if (!/^(add|edit|delete|remove|view|details|actions?|home|dashboard)/i.test(name)) {
+            children.push({ name });
           }
-        : fail('child.profile', 'Child Profile',
-            'Add a child profile to proceed with registration.', true, ev,
-            { label: 'Open Family', url: `${baseUrl}/user/family` },
-            hasAdd ? 0.95 : 0.8);
+        }
+      }
+      
+      // Deduplicate by name
+      const uniqueChildren = Array.from(new Map(children.map(c => [c.name, c])).values());
+      
+      // Check for "Add" button as secondary indicator
+      const addButtons = await page.$$('a:has-text("Add Child"), a:has-text("Add Family Member"), a:has-text("Add Participant"), button:has-text("Add Child"), button:has-text("Add Participant")');
+      const hasAddButton = addButtons.length > 0;
+      
+      const ev = { url, text_excerpt: bodyContent.slice(0, 400) };
+      
+      if (uniqueChildren.length > 0) {
+        return {
+          id: 'child.profile', 
+          label: 'Child Profile',
+          explain: `Found ${uniqueChildren.length} child profile${uniqueChildren.length > 1 ? 's' : ''}.`,
+          blocking: true, 
+          outcome: 'pass', 
+          confidence: 0.85,
+          evidence: ev, 
+          extra: { children: uniqueChildren }
+        };
+      }
+      
+      if (clearlyEmpty || (hasAddButton && uniqueChildren.length === 0)) {
+        return fail('child.profile', 'Child Profile',
+          'Add a child profile to proceed with registration.', true, ev,
+          { label: 'Add Child Profile', url: `${baseUrl}/user/family` },
+          0.9);
+      }
+      
+      // Uncertain - couldn't find children but also no clear "empty" state
+      return unknown('child.profile', 'Child Profile',
+        'Unable to detect child profiles automatically. Please verify on the family page.', true, ev);
     }
   },
   {
