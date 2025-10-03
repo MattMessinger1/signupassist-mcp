@@ -67,7 +67,7 @@ export const SkiClubProCheckers: Checker[] = [
   {
     id: 'payment.method',
     label: 'Payment Method',
-    explain: 'A chargeable payment method should be available via Blackhawk's billing portal.',
+    explain: 'A chargeable payment method should be available via Blackhawk\'s billing portal.',
     blocking: true,
     appliesTo: () => true,
     check: async (ctx: Ctx) => {
