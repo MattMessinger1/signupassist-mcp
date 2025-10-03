@@ -268,66 +268,84 @@ export const SkiClubProCheckers: Checker[] = [
       const { page, baseUrl } = ctx;
 
       // Try common waiver pages first
-      await gotoAny(page, baseUrl, ['/waiver', '/waivers', '/account/waivers', '/user/waivers']);
+      await gotoAny(page, baseUrl, ['/waiver', '/waivers', '/account/waivers', '/user/waivers', '/dashboard/waivers']);
       const url = page.url();
-      const text = await bodyText(page, 1200);
+      const text = await bodyText(page, 1500);
 
-      const signed = /waiver signed|waiver on file|accepted waiver/i.test(text);
-      const pending = /please sign|waiver required|sign waiver/i.test(text);
-
+      // Strong positive indicators - waiver definitely signed
+      const signedIndicators = [
+        /waiver\s+(signed|on\s+file|accepted|completed)/i,
+        /accepted\s+waiver/i,
+        /liability\s+waiver:\s*(signed|complete|accepted)/i,
+        /waiver\s+status:\s*(signed|complete|active)/i,
+        /you\s+have\s+signed.*waiver/i
+      ];
+      
+      // Strong negative indicators - waiver definitely needs signing
+      const pendingIndicators = [
+        /please\s+sign.*waiver/i,
+        /waiver\s+required/i,
+        /sign\s+(the\s+)?waiver/i,
+        /waiver\s+not\s+(signed|complete)/i,
+        /you\s+must\s+sign.*waiver/i,
+        /complete.*waiver/i
+      ];
+      
+      const hasSigned = signedIndicators.some(rx => rx.test(text));
+      const needsSignature = pendingIndicators.some(rx => rx.test(text));
+      
       const ev = { url, text_excerpt: text.slice(0, 300) };
 
-      if (signed) {
-        return {
-          id: 'waiver.signed',
-          label: 'Required Waivers',
-          explain: 'Waiver appears to be signed already.',
-          blocking: true,
-          outcome: 'pass',
-          confidence: 0.9,
-          evidence: ev,
-          extra: { source: 'standalone' }
-        };
+      if (hasSigned) {
+        return pass('waiver.signed', 'Required Waivers',
+          'Waiver appears to be signed already.',
+          true, ev, 0.9);
       }
 
-      if (pending) {
-        return {
-          id: 'waiver.signed',
-          label: 'Required Waivers',
-          explain: 'Waiver signature is required before registration.',
-          blocking: true,
-          outcome: 'fail',
-          confidence: 0.9,
-          evidence: ev,
-          remediation: { label: 'Sign Waiver', url: `${baseUrl}/waivers` }
-        };
+      if (needsSignature) {
+        return fail('waiver.signed', 'Required Waivers',
+          'Waiver signature is required before registration.',
+          true, ev,
+          { label: 'Sign Waiver', url: `${baseUrl}/waivers` },
+          0.9);
       }
 
-      // fallback: check membership page for waiver hints
-      await gotoAny(page, baseUrl, ['/membership', '/account']);
-      const mtext = await bodyText(page, 1200);
-      if (/waiver accepted/i.test(mtext) || /waiver completed/i.test(mtext)) {
-        return {
-          id: 'waiver.signed',
-          label: 'Required Waivers',
-          explain: 'Waiver appears satisfied as part of membership.',
-          blocking: true,
-          outcome: 'pass',
-          confidence: 0.7,
-          evidence: { url: page.url(), text_excerpt: mtext.slice(0, 200) },
-          extra: { source: 'membership-bundle' }
-        };
+      // Check membership page for bundled waiver completion
+      await gotoAny(page, baseUrl, ['/membership', '/user/membership', '/account']);
+      const mtext = await bodyText(page, 1500);
+      
+      const membershipWaiverIndicators = [
+        /waiver\s+(accepted|completed|included)/i,
+        /membership.*waiver.*complete/i,
+        /waiver.*included.*membership/i
+      ];
+      
+      if (membershipWaiverIndicators.some(rx => rx.test(mtext))) {
+        return pass('waiver.signed', 'Required Waivers',
+          'Waiver appears satisfied as part of membership.',
+          true,
+          { url: page.url(), text_excerpt: mtext.slice(0, 200) },
+          0.75);
       }
 
-      return {
-        id: 'waiver.signed',
-        label: 'Required Waivers',
-        explain: 'Could not confirm waiver status automatically. It may be bundled in membership or program checkout.',
-        blocking: true,
-        outcome: 'unknown',
-        confidence: 0.3,
-        evidence: ev
-      };
+      // Check account/dashboard for waiver prompts or confirmations
+      await gotoAny(page, baseUrl, ['/dashboard', '/user', '/account']);
+      const dashText = await bodyText(page, 1200);
+      
+      // If we see a clear waiver prompt on dashboard
+      if (pendingIndicators.some(rx => rx.test(dashText))) {
+        return fail('waiver.signed', 'Required Waivers',
+          'Waiver signature is required before registration.',
+          true,
+          { url: page.url(), text_excerpt: dashText.slice(0, 200) },
+          { label: 'Sign Waiver', url: `${baseUrl}/waivers` },
+          0.85);
+      }
+
+      // Ambiguous - can't determine clearly
+      return unknown('waiver.signed', 'Required Waivers',
+        'Could not confirm waiver status automatically. It may be bundled in membership or program checkout.',
+        true, ev);
     }
   }
 ];

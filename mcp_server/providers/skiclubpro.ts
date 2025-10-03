@@ -936,6 +936,7 @@ export const skiClubProTools = {
         membership: toCheck('membership.active'),
         payment: toCheck('payment.method'),
         child: toCheck('child.profile'),
+        waiver: toCheck('waiver.signed'),
         children,
         // New rich payload for future enhancements:
         requirements: results

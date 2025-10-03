@@ -35,7 +35,7 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
 
   useEffect(() => {
     // All core checks must pass (ok === true) and no unknowns blocking
-    const coreChecks = data ? [data.account, data.membership, data.payment, data.child] : [];
+    const coreChecks = data ? [data.account, data.membership, data.payment, data.child, data.waiver] : [];
     const allPass = !!data && coreChecks.every(r => r?.ok === true) && !!childName;
     const hasUnknown = coreChecks.some(r => r && r.ok === null && r.reason);
     
