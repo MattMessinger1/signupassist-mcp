@@ -14,7 +14,9 @@ type PrereqPayload = {
   membership: CheckResult;
   payment: CheckResult;
   child: CheckResult;
+  waiver?: CheckResult;
   children?: Array<{ name: string }>;
+  requirements?: Array<{ id: string; remediation?: { url?: string } }>;
 };
 
 interface Props {
@@ -35,6 +37,8 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
     const allPass = !!data && [data.account, data.membership, data.payment, data.child].every(r => r.ok === true) && !!childName;
     onReadyToContinue?.(allPass);
   }, [data, childName, onReadyToContinue]);
+
+  const baseUrl = useMemo(() => `https://${orgRef}.skiclubpro.team`, [orgRef]);
 
   const links = useMemo(() => {
     const base = `https://${orgRef}.skiclubpro.team`;
@@ -145,6 +149,12 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
         sub="We'll use this child during registration. Add one if needed, then pick here."
         result={data?.child}
         href={links.family}
+      />
+      <Row
+        title="Required Waivers"
+        sub="Most clubs require you to sign a seasonal waiver. Sometimes this is part of membership or program signup."
+        result={data?.waiver}
+        href={data?.requirements?.find(r => r.id === 'waiver.signed')?.remediation?.url || `${baseUrl}/waivers`}
       />
 
       {data?.children && data.children.length > 0 && (
