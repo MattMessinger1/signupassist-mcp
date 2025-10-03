@@ -34,6 +34,7 @@ import { ProgramBrowser } from '@/components/ProgramBrowser';
 import { PlanPreview } from '@/components/PlanPreview';
 import { useRegistrationFlow } from '@/lib/registrationFlow';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
+import MandateSummary from '@/components/MandateSummary';
 
 const stripePromise = loadStripe('pk_test_51RujoPAaGNDlVi1koVlBSBBXy2yfwz7vuMBciJxkawKBKaqwR4xw07wEFUAMa73ADIUqzwB5GwbPM3YnPYu5vo4X00rAdiwPkx');
 
@@ -115,6 +116,12 @@ const PlanBuilder = () => {
   const [friendlyProgramTitle, setFriendlyProgramTitle] = useState<string | null>(null);
   const [selectedChildName, setSelectedChildName] = useState<string>('');
   const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [detectedPriceCents, setDetectedPriceCents] = useState<number | null>(null);
+  const [caps, setCaps] = useState<{ max_provider_charge_cents: number | null; service_fee_cents: number | null }>({
+    max_provider_charge_cents: null,
+    service_fee_cents: 2000 // $20 success fee
+  });
+  const [showMandateSummary, setShowMandateSummary] = useState(false);
 
   // Safe derived variables with null checks and defaults
   const currentBranch = discoveredSchema?.branches?.find(b => b.choice === selectedBranch) ?? null;
@@ -1072,7 +1079,7 @@ const PlanBuilder = () => {
             )}
 
             {/* Step 7: Payment Method */}
-            {discoveredSchema && opensAt && (
+            {discoveredSchema && opensAt && !showMandateSummary && (
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -1099,6 +1106,27 @@ const PlanBuilder = () => {
                   />
                 </CardContent>
               </Card>
+            )}
+
+            {/* Step 8: Mandate Summary & Finalize */}
+            {discoveredSchema && opensAt && hasPaymentMethod && allRequirementsMet && showMandateSummary && (
+              <MandateSummary
+                orgRef="blackhawk-ski-club"
+                programTitle={friendlyProgramTitle || form.watch('programRef')}
+                programRef={form.watch('programRef')}
+                credentialId={form.watch('credentialId')}
+                childName={selectedChildName}
+                answers={form.watch('answers') || {}}
+                detectedPriceCents={detectedPriceCents}
+                caps={caps}
+                openTimeISO={opensAt instanceof Date ? opensAt.toISOString() : new Date(opensAt).toISOString()}
+                preferredSlot={selectedBranch || 'Standard Registration'}
+                onCreated={(planId, mandateId) => {
+                  setCreatedPlan({ plan_id: planId, mandate_id: mandateId });
+                  setShowConfirmation(true);
+                  setShowMandateSummary(false);
+                }}
+              />
             )}
 
             {/* Plan Preview */}
@@ -1133,7 +1161,7 @@ const PlanBuilder = () => {
             )}
 
             {/* Action Buttons */}
-            {discoveredSchema && opensAt && hasPaymentMethod && (
+            {!showMandateSummary && discoveredSchema && opensAt && hasPaymentMethod && (
               <div className="flex gap-4">
                 <Button
                   type="button"
@@ -1145,18 +1173,25 @@ const PlanBuilder = () => {
                 </Button>
                 
                 <Button
-                  type="submit"
-                  disabled={isCreatingMandate || !allRequirementsMet}
+                  type="button"
+                  disabled={!allRequirementsMet}
+                  className="flex-1"
+                  onClick={() => setShowMandateSummary(true)}
+                >
+                  Continue to Review
+                </Button>
+              </div>
+            )}
+            
+            {showMandateSummary && (
+              <div className="flex gap-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowMandateSummary(false)}
                   className="flex-1"
                 >
-                  {isCreatingMandate ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Creating Plan...
-                    </>
-                  ) : (
-                    'Create Plan'
-                  )}
+                  Back to Form
                 </Button>
               </div>
             )}
