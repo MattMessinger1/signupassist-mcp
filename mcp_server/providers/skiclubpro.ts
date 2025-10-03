@@ -13,6 +13,7 @@ import { createClient } from '@supabase/supabase-js';
 import { loginWithCredentials, logoutIfLoggedIn } from '../lib/login.js';
 import { skiClubProConfig } from '../config/skiclubproConfig.js';
 import { saveSessionState, restoreSessionState, generateSessionKey } from '../lib/session.js';
+import { runChecks } from '../prereqs/registry.js';
 import type { ProviderResponse } from './types.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
@@ -834,6 +835,7 @@ export const skiClubProTools = {
     credential_id: string; 
     user_jwt: string; 
     org_ref: string; 
+    program_ref?: string;
     force_login?: boolean; 
     child_name?: string;
     mandate_id?: string; 
@@ -883,31 +885,36 @@ export const skiClubProTools = {
           payment: { ok: null, summary: 'Not checked - login failed' },
           child: { ok: null, summary: 'Not checked - login failed' },
           children: [],
+          requirements: [],
           error: 'Login failed - unable to authenticate'
         };
       }
       
-      // Run all prerequisite checks
-      console.log('[scp:check_prerequisites] Running account checks...');
-      const account = await checkAccount(page);
+      // Run registry checkers
+      console.log('[scp:check_prerequisites] Running prerequisite checks via registry...');
+      const results = await runChecks('skiclubpro', {
+        orgRef,
+        programRef: args.program_ref,
+        page,
+        baseUrl: base,
+        userId: args.user_id
+      });
       
-      console.log('[scp:check_prerequisites] Running membership checks...');
-      const membership = await checkMembership(page, base);
+      // Map to legacy UI shape (account/membership/payment/child + children[])
+      const byId = Object.fromEntries(results.map(r => [r.id, r]));
+      const toCheck = (id: string) => {
+        const r = byId[id];
+        if (!r) return { ok: null, summary: 'Not checked' };
+        return {
+          ok: r.outcome === 'pass' ? true : r.outcome === 'fail' ? false : null,
+          summary: r.explain + (r.evidence?.text_excerpt ? ` — ${r.evidence.text_excerpt.slice(0, 120)}` : '')
+        };
+      };
       
-      console.log('[scp:check_prerequisites] Running payment checks...');
-      const payment = await checkPayment(page, base);
+      const childExtra = (byId['child.profile']?.extra as any) || {};
+      const children = childExtra.children || [];
       
-      console.log('[scp:check_prerequisites] Running child info checks...');
-      const child = await checkChild(page, base, args.child_name);
-      
-      console.log('[scp:check_prerequisites] Listing children...');
-      let children: Array<{ id?: string; name: string; raw?: string }> = [];
-      try {
-        children = await listChildren(page, base);
-        console.log(`[scp:check_prerequisites] Found ${children.length} children`);
-      } catch (childrenError) {
-        console.warn('[scp:check_prerequisites] Could not list children:', childrenError);
-      }
+      console.log(`[scp:check_prerequisites] Completed ${results.length} checks, found ${children.length} children`);
       
       // Capture screenshot evidence if plan execution exists
       if (args.plan_execution_id) {
@@ -921,12 +928,15 @@ export const skiClubProTools = {
       }
       
       return {
-        login_status: account.ok ? "success" : "failed",
-        account,
-        membership,
-        payment,
-        child,
-        children
+        login_status: 'success',
+        // Legacy shape for current UI:
+        account: toCheck('account.login'),
+        membership: toCheck('membership.active'),
+        payment: toCheck('payment.method'),
+        child: toCheck('child.profile'),
+        children,
+        // New rich payload for future enhancements:
+        requirements: results
       };
       
     } catch (error) {
@@ -938,6 +948,7 @@ export const skiClubProTools = {
         payment: { ok: null, summary: 'Not checked - error occurred' },
         child: { ok: null, summary: 'Not checked - error occurred' },
         children: [],
+        requirements: [],
         error: error.message
       };
     } finally {
@@ -950,4 +961,5 @@ export const skiClubProTools = {
       }
     }
   }
+
 };
