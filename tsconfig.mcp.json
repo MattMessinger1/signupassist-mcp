@@ -1,7 +1,12 @@
 {
   "extends": "./tsconfig.json",
   "include": ["mcp_server/**/*.ts", "mcp_server/**/*.tsx"],
-  "exclude": ["mcp_server/tests", "**/*.test.ts", "**/*.test.tsx"],
+  "exclude": [
+    "mcp_server/tests", 
+    "mcp_server/lib/auditLogin.ts",
+    "**/*.test.ts", 
+    "**/*.test.tsx"
+  ],
   "compilerOptions": {
     "outDir": "dist/mcp_server",
     "module": "ESNext",
