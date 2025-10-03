@@ -375,11 +375,18 @@ const PlanBuilder = () => {
 
       // Validate schema has required structure
       if (!data || (!data.branches && !data.common_questions)) {
-        console.warn('[PlanBuilder] ⚠️ Invalid schema structure received:', data);
+        console.warn('[PlanBuilder] ⚠️ Empty schema received - no questions for this program');
+        
+        // Empty schema is valid - it means no extra questions
+        setDiscoveredSchema({
+          program_ref: form.getValues('programRef'),
+          branches: [],
+          common_questions: []
+        });
+        
         toast({
-          title: "Invalid Form Structure",
-          description: "The registration form couldn't be loaded properly. Please try again.",
-          variant: "destructive",
+          title: "No Additional Questions Required",
+          description: "This program doesn't require any extra information. You can proceed to the next step.",
         });
         return;
       }
@@ -910,42 +917,70 @@ const PlanBuilder = () => {
               </Card>
             )}
 
-            {/* Step 4: Optional Questions */}
+            {/* Step 4: Optional Questions Discovery */}
             {allRequirementsMet && !discoveredSchema && (
               <Card>
                 <CardHeader>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="text-xs">Step 4</Badge>
-                    <CardTitle>Program Preferences</CardTitle>
+                    <CardTitle>Program-Specific Questions</CardTitle>
                   </div>
                   <CardDescription>
-                    Load program-specific questions (color group, volunteering, etc.)
+                    Some programs require additional information like color groups, volunteering preferences, or session choices
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {!isDiscovering && (
-                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                      <p className="text-sm text-blue-800 mb-3">
-                        Click below to fetch optional questions from SkiClubPro
-                      </p>
-                      <Button
-                        type="button"
-                        onClick={() => discoverFields(form.getValues('programRef'))}
-                        disabled={isDiscovering}
-                        variant="default"
-                        className="w-full"
-                      >
-                        <RefreshCw className="mr-2 h-4 w-4" />
-                        Load Optional Questions
-                      </Button>
+                    <div className="space-y-4">
+                      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
+                        <div className="flex items-start gap-3">
+                          <div className="bg-blue-100 p-2 rounded-full">
+                            <RefreshCw className="h-4 w-4 text-blue-700" />
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="text-sm font-semibold text-blue-900 mb-1">
+                              Check for Program Questions
+                            </h4>
+                            <p className="text-xs text-blue-700">
+                              We'll securely log in to the program's registration page to discover any additional required fields.
+                              This typically takes 5-10 seconds.
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          onClick={() => discoverFields(form.getValues('programRef'))}
+                          disabled={isDiscovering}
+                          variant="default"
+                          className="w-full"
+                        >
+                          <RefreshCw className="mr-2 h-4 w-4" />
+                          Load Program Questions
+                        </Button>
+                      </div>
+                      
+                      <div className="text-xs text-muted-foreground bg-muted p-3 rounded-lg">
+                        <p className="font-medium mb-1">Why is this needed?</p>
+                        <p>
+                          Many programs have specific questions (like color group assignments or volunteer preferences) 
+                          that only appear during registration. We need to collect these in advance for automated signup.
+                        </p>
+                      </div>
                     </div>
                   )}
 
                   {isDiscovering && (
-                    <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                      <div className="flex items-center gap-2 text-sm text-blue-800">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>Fetching program questions from SkiClubPro...</span>
+                    <div className="p-6 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex flex-col items-center gap-3 text-center">
+                        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium text-blue-900">
+                            Fetching program questions...
+                          </p>
+                          <p className="text-xs text-blue-700">
+                            Logging into the registration form to discover required fields
+                          </p>
+                        </div>
                       </div>
                     </div>
                   )}
@@ -953,43 +988,71 @@ const PlanBuilder = () => {
               </Card>
             )}
 
-            {/* Step 5: Registration Form */}
+            {/* Step 5: Registration Form Fields */}
             {discoveredSchema && (
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className="text-xs">Step 5</Badge>
-                      <CardTitle>Optional Questions</CardTitle>
+                      <CardTitle>Program Questions</CardTitle>
                     </div>
-                    <CheckCircle className="h-5 w-5 text-green-600" />
+                    {(discoveredSchema.branches?.length || discoveredSchema.common_questions?.length) && (
+                      <CheckCircle className="h-5 w-5 text-green-600" />
+                    )}
                   </div>
                   <CardDescription>
-                    Answer program-specific questions
+                    {(discoveredSchema.branches?.length || discoveredSchema.common_questions?.length) 
+                      ? 'Answer program-specific questions below'
+                      : 'No additional questions required for this program'}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {/* Check if schema has any questions */}
+                  {/* Handle case where no questions were found */}
                   {!discoveredSchema.branches?.length && !discoveredSchema.common_questions?.length ? (
                     <div className="space-y-4">
-                      <div className="p-6 bg-yellow-50 border border-yellow-300 rounded-lg">
-                        <h3 className="text-lg font-semibold text-yellow-900 mb-2">
-                          Registration Form Not Available
-                        </h3>
-                        <p className="text-sm text-yellow-800 mb-4">
-                          We couldn't fetch the registration form fields from the provider. 
-                          This may be due to a login issue or temporary provider error. 
-                          Please check your login credentials or try again.
-                        </p>
+                      <div className="p-6 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="flex items-start gap-3">
+                          <div className="bg-green-100 p-2 rounded-full">
+                            <CheckCircle className="h-5 w-5 text-green-700" />
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="text-base font-semibold text-green-900 mb-2">
+                              No Additional Questions Required
+                            </h3>
+                            <p className="text-sm text-green-800 mb-3">
+                              Good news! This program doesn't require any additional information beyond what we've already collected.
+                              You can proceed directly to setting up your registration timing.
+                            </p>
+                            <div className="text-xs text-green-700 bg-green-100 p-3 rounded border border-green-200">
+                              <p className="font-medium mb-1">What we checked:</p>
+                              <ul className="list-disc list-inside space-y-1">
+                                <li>Registration form fields</li>
+                                <li>Program-specific options</li>
+                                <li>Additional preferences</li>
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                      
+                      <div className="flex gap-3">
                         <Button
                           type="button"
                           onClick={retryDiscovery}
-                          variant="default"
+                          variant="outline"
                           size="sm"
-                          className="w-full sm:w-auto"
                         >
                           <RefreshCw className="mr-2 h-4 w-4" />
-                          Retry Discovery
+                          Recheck
+                        </Button>
+                        <Button
+                          type="button"
+                          onClick={() => window.open(`https://blackhawk-ski-club.skiclubpro.team/program/${form.getValues('programRef')}`, '_blank')}
+                          variant="outline"
+                          size="sm"
+                        >
+                          View Program Page
                         </Button>
                       </div>
                     </div>
@@ -999,6 +1062,9 @@ const PlanBuilder = () => {
                       {discoveredSchema.branches && discoveredSchema.branches.length > 1 && (
                         <div className="space-y-2">
                           <label className="text-sm font-medium">Program Options</label>
+                          <p className="text-xs text-muted-foreground mb-2">
+                            This program has multiple sessions or tracks. Select the one you want to register for:
+                          </p>
                           <Select value={selectedBranch} onValueChange={setSelectedBranch}>
                             <SelectTrigger>
                               <SelectValue placeholder="Select a program option" />
@@ -1014,25 +1080,55 @@ const PlanBuilder = () => {
                         </div>
                       )}
 
-                      {/* Render fields grouped by category */}
-                      {Object.entries(fieldsByCategory).length > 0 ? (
-                        Object.entries(fieldsByCategory).map(([category, fields]) => (
-                          <FieldGroup
-                            key={category}
-                            title={category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                            category={category}
-                            fields={fields}
-                            control={form.control}
-                            watch={form.watch}
-                          />
-                        ))
-                      ) : (
-                        <div className="p-4 bg-gray-50 border border-gray-300 rounded-lg">
-                          <p className="text-sm text-gray-700">
-                            No form fields available for this program. This is unusual - please contact support if this persists.
-                          </p>
+                      {/* Auto-select if only one branch */}
+                      {discoveredSchema.branches && discoveredSchema.branches.length === 1 && !selectedBranch && (
+                        <div className="hidden">
+                          {(() => {
+                            setSelectedBranch(discoveredSchema.branches[0].choice);
+                            return null;
+                          })()}
                         </div>
                       )}
+
+                      {/* Render fields grouped by category */}
+                      {Object.entries(fieldsByCategory).length > 0 ? (
+                        <div className="space-y-6">
+                          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <p className="text-xs text-blue-800">
+                              <strong>Tip:</strong> Fill out all required fields marked with an asterisk (*).
+                              Your answers will be automatically provided during registration.
+                            </p>
+                          </div>
+                          
+                          {Object.entries(fieldsByCategory).map(([category, fields]) => (
+                            <FieldGroup
+                              key={category}
+                              title={category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                              category={category}
+                              fields={fields}
+                              control={form.control}
+                              watch={form.watch}
+                            />
+                          ))}
+                        </div>
+                      ) : selectedBranch ? (
+                        <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                          <p className="text-sm text-amber-800">
+                            No additional fields found for the selected option. This may indicate the program 
+                            doesn't require extra information, or the form structure wasn't recognized.
+                          </p>
+                          <Button
+                            type="button"
+                            onClick={retryDiscovery}
+                            variant="outline"
+                            size="sm"
+                            className="mt-3"
+                          >
+                            <RefreshCw className="mr-2 h-4 w-4" />
+                            Retry Discovery
+                          </Button>
+                        </div>
+                      ) : null}
                     </>
                   )}
                 </CardContent>
