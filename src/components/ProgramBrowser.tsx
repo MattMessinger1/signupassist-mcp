@@ -1,13 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Search, AlertCircle, Info } from 'lucide-react';
+import { Loader2, Search, Info } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface Program {
@@ -22,49 +21,36 @@ interface Program {
 }
 
 interface ProgramBrowserProps {
+  credentialId: string | null;                 // ✅ pass from parent
   onProgramSelect: (program: { ref: string; title: string }) => void;
   selectedProgram?: string;
-  credentialId: string | null;
+  orgRef?: string;                              // default 'blackhawk-ski-club'
 }
 
-export function ProgramBrowser({ onProgramSelect, selectedProgram, credentialId }: ProgramBrowserProps) {
+export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram, orgRef = 'blackhawk-ski-club' }: ProgramBrowserProps) {
   const [open, setOpen] = useState(false);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [hardReset, setHardReset] = useState(false);
-  const [loginFailed, setLoginFailed] = useState(false);
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
   const { toast } = useToast();
-
 
   const fetchPrograms = async (query?: string) => {
     if (!credentialId) {
       toast({
-        title: "Credentials Required",
-        description: "Please select a Blackhawk account before browsing programs.",
+        title: "Select an account",
+        description: "Choose your Blackhawk (SkiClubPro) credential first.",
         variant: "destructive"
       });
       return;
     }
 
     setLoading(true);
-    setLoginFailed(false);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('No active session');
-      }
+      if (!session) throw new Error('No active session');
 
-      // Informative toast at start
-      toast({
-        title: hardReset ? "Resetting Session…" : "Connecting to Blackhawk…",
-        description: hardReset 
-          ? "Clearing cached session and performing fresh login…" 
-          : "Launching browser session and logging in…",
-      });
+      toast({ title: "Connecting to Blackhawk…", description: "Fetching live program listings." });
 
-      // Call MCP tool directly (no plan creation for browsing)
       const { data, error } = await supabase.functions.invoke('mcp-executor', {
         body: {
           tool: 'scp:find_programs',
@@ -72,79 +58,36 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram, credentialId 
             query: query || undefined,
             credential_id: credentialId,
             user_jwt: session.access_token,
-            user_id: session.user.id,
-            org_ref: 'blackhawk-ski-club',
-            force_login: hardReset
+            org_ref: orgRef
           }
         }
       });
-
       if (error) throw error;
 
-      // Store session token for optional reuse (micro-session)
-      if (data?.session_token) {
-        setSessionToken(data.session_token);
-      }
-
-      // ✅ Handle standardized ProviderResponse format
-      if (data?.login_status === 'success') {
-        toast({
-          title: "Connected to Blackhawk",
-          description: "Programs loaded successfully.",
-        });
-        setPrograms(data?.data?.programs || []);
-        setLoginFailed(false);
-        setHardReset(false); // Reset flag after success
+      if (Array.isArray(data?.programs)) {
+        setPrograms(data.programs);
       } else {
-        // login_status === 'failed' or missing
-        toast({
-          title: "Login Failed",
-          description: data?.error || "Could not log into Blackhawk. Please recheck your credentials.",
-          variant: "destructive"
-        });
-        setPrograms(data?.data?.programs || []);
-        setLoginFailed(true);
-        setSessionToken(null); // Clear invalid token
+        setPrograms([]);
       }
-    } catch (error: any) {
-      console.error('Error fetching programs:', error);
-      toast({
-        title: "Error",
-        description: error?.message || "Failed to load programs. Please try again.",
-        variant: "destructive"
-      });
-      setLoginFailed(true);
+    } catch (err: any) {
+      toast({ title: "Error loading programs", description: err?.message || 'Unknown error', variant: "destructive" });
+      setPrograms([]);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleOpenChange = (newOpen: boolean) => {
-    setOpen(newOpen);
-    if (newOpen && credentialId) {
-      // fresh fetch on open
+  const handleOpenChange = (v: boolean) => {
+    setOpen(v);
+    if (v) {
       setPrograms([]);
       fetchPrograms();
     }
   };
 
-  const handleSearch = () => {
-    fetchPrograms(searchQuery);
-  };
-
-  const handleProgramSelect = (program: Program) => {
-    // Warn if a title accidentally made it into program_ref
-    if (program.program_ref && program.program_ref.includes(' ')) {
-      console.warn('ProgramBrowser WARNING: program_ref contains spaces (may be a human title):', program.program_ref);
-    }
-    onProgramSelect({ ref: program.program_ref, title: program.title });
+  const handleProgramSelect = (p: Program) => {
+    onProgramSelect({ ref: p.program_ref, title: p.title });
     setOpen(false);
-  };
-
-  const getSelectedProgramTitle = () => {
-    if (!selectedProgram) return null;
-    const program = programs.find(p => p.program_ref === selectedProgram);
-    return program?.title || selectedProgram;
   };
 
   return (
@@ -154,122 +97,66 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram, credentialId 
           <TooltipTrigger asChild>
             <DialogTrigger asChild>
               <Button variant="outline" type="button" className="w-full">
-                {selectedProgram ? getSelectedProgramTitle() : 'Browse Available Programs'}
+                {selectedProgram ? 'Change Program' : 'Browse Available Programs'}
               </Button>
             </DialogTrigger>
           </TooltipTrigger>
-          <TooltipContent side="top">
-            This will log into your Blackhawk (SkiClubPro) account to fetch live program data.
-          </TooltipContent>
+          <TooltipContent side="top">This logs into Blackhawk (SkiClubPro) to load live programs.</TooltipContent>
         </Tooltip>
 
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <DialogTitle className="flex items-center gap-2">
-                  <Info className="h-4 w-4" />
-                  Select a Program
-                </DialogTitle>
-                <DialogDescription>
-                  We'll connect to your <strong>Blackhawk Ski Club</strong> account (SkiClubPro) to load
-                  live program listings. Make sure your credentials are saved in Settings.
-                </DialogDescription>
+                <DialogTitle className="flex items-center gap-2"><Info className="h-4 w-4" /> Select a Program</DialogTitle>
+                <DialogDescription>We'll connect to your Blackhawk account to load live listings.</DialogDescription>
               </div>
-
-              {/* Credentials badge */}
-              {credentialId ? (
-                <Badge variant="secondary" className="bg-green-100 text-green-800">
-                  Login Ready
-                </Badge>
-              ) : (
-                <Badge variant="destructive">
-                  No Credentials
-                </Badge>
-              )}
+              <Badge variant={credentialId ? 'secondary' : 'destructive'}>
+                {credentialId ? 'Login Ready' : 'No Credentials'}
+              </Badge>
             </div>
           </DialogHeader>
 
-          <div className="space-y-2 mb-4 px-1">
-            <div className="flex gap-2">
-              <Input
-                placeholder="Search programs (e.g., beginner, saturday, snowboard)…"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                className="flex-1"
-              />
-              <Button onClick={handleSearch} disabled={loading}>
-                <Search className="h-4 w-4" />
-              </Button>
-            </div>
-            
-            {loginFailed && (
-              <Button 
-                onClick={() => {
-                  setHardReset(true);
-                  fetchPrograms(searchQuery);
-                }} 
-                disabled={loading}
-                variant="destructive"
-                size="sm"
-                className="w-full"
-              >
-                Try Again (Reset Session)
-              </Button>
-            )}
+          <div className="flex gap-2 mb-4 px-1">
+            <Input
+              placeholder="Search programs (e.g., beginner, saturday)…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && fetchPrograms(searchQuery)}
+              className="flex-1"
+            />
+            <Button onClick={() => fetchPrograms(searchQuery)} disabled={loading}>
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+            </Button>
           </div>
 
           <div className="flex-1 overflow-y-auto">
             {!credentialId ? (
-              <Alert>
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>
-                  Please select a Blackhawk (SkiClubPro) account in Step 1 before browsing programs.
-                </AlertDescription>
-              </Alert>
-            ) : loading ? (
-              <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin mr-2" />
-                Fetching live programs from Blackhawk…
-              </div>
-            ) : programs.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                {searchQuery ? 'No programs found matching your search.' : 'Click search to load programs.'}
+                Add your Blackhawk credentials in Settings, then try again.
               </div>
+            ) : loading ? (
+              <div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading…</div>
+            ) : programs.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">Click search to load programs.</div>
             ) : (
               <div className="grid gap-4">
                 {programs.map((program) => (
-                  <Card
-                    key={program.id}
-                    className="cursor-pointer transition-all hover:shadow-md"
-                    onClick={() => handleProgramSelect(program)}
-                  >
+                  <Card key={program.id} className="cursor-pointer transition-all hover:shadow-md" onClick={() => handleProgramSelect(program)}>
                     <CardHeader className="pb-3">
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
                           <CardTitle className="text-lg mb-1">{program.title}</CardTitle>
                           <CardDescription>{program.description}</CardDescription>
                         </div>
-                        <Badge variant="secondary" className="ml-2">
-                          {program.skill_level}
-                        </Badge>
+                        <Badge variant="secondary" className="ml-2">{program.skill_level}</Badge>
                       </div>
                     </CardHeader>
                     <CardContent className="pt-0">
                       <div className="grid grid-cols-3 gap-4 text-sm">
-                        <div>
-                          <span className="font-medium text-muted-foreground">Schedule:</span>
-                          <p>{program.schedule}</p>
-                        </div>
-                        <div>
-                          <span className="font-medium text-muted-foreground">Age Range:</span>
-                          <p>{program.age_range}</p>
-                        </div>
-                        <div>
-                          <span className="font-medium text-muted-foreground">Price:</span>
-                          <p>{program.price}</p>
-                        </div>
+                        <div><span className="font-medium text-muted-foreground">Schedule:</span><p>{program.schedule}</p></div>
+                        <div><span className="font-medium text-muted-foreground">Age Range:</span><p>{program.age_range}</p></div>
+                        <div><span className="font-medium text-muted-foreground">Price:</span><p>{program.price}</p></div>
                       </div>
                     </CardContent>
                   </Card>
