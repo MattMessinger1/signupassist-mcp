@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle2, XCircle, Clock, RotateCw, ExternalLink } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2, CheckCircle2, XCircle, Clock, RotateCw, ExternalLink, Info, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -32,6 +34,18 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
   const [data, setData] = useState<PrereqPayload | null>(null);
   const [childName, setChildName] = useState<string>(selectedChildName || "");
   const { toast } = useToast();
+
+  // Calculate progress metrics
+  const progressMetrics = useMemo(() => {
+    if (!data) return { total: 5, completed: 0, percentage: 0 };
+    
+    const checks = [data.account, data.membership, data.payment, data.child, data.waiver];
+    const completed = checks.filter(c => c?.ok === true).length;
+    const total = checks.length;
+    const percentage = Math.round((completed / total) * 100);
+    
+    return { total, completed, percentage };
+  }, [data]);
 
   useEffect(() => {
     // All core checks must pass (ok === true) and no unknowns blocking
@@ -93,100 +107,166 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
   const Row = ({ title, sub, result, href }: { title: string; sub: string; result?: CheckResult; href: string }) => {
     // Handle three states: not checked (null), unknown (ok=null but has reason), pass (ok=true), fail (ok=false)
     const isUnknown = result && result.ok === null && result.reason;
+    const isPassing = result?.ok === true;
     const badge = !result
       ? <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" /> Not checked</Badge>
       : isUnknown
         ? <Badge variant="outline" className="gap-1 border-amber-400 text-amber-700 bg-amber-50"><Clock className="h-3 w-3" /> Unknown</Badge>
         : result.ok === true
-          ? <Badge className="bg-emerald-100 text-emerald-800 gap-1"><CheckCircle2 className="h-3 w-3" /> Pass</Badge>
-          : <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" /> Fail</Badge>;
+          ? <Badge className="bg-emerald-100 text-emerald-800 gap-1"><CheckCircle2 className="h-3 w-3" /> Complete</Badge>
+          : <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" /> Action Needed</Badge>;
 
     const showAction = !result || result.ok !== true; // Show action for not-checked, unknown, or fail
 
     return (
-      <Card className={isUnknown ? "border-amber-200" : undefined}>
-        <CardHeader className="flex-row items-start justify-between gap-3">
-          <div>
-            <CardTitle className="text-base">{title}</CardTitle>
-            <CardDescription>{sub}</CardDescription>
+      <Card className={isUnknown ? "border-amber-200" : isPassing ? "border-emerald-200 bg-emerald-50/30" : undefined}>
+        <CardHeader className="flex-row items-start justify-between gap-3 pb-3">
+          <div className="flex-1">
+            <CardTitle className="text-sm font-medium">{title}</CardTitle>
+            <CardDescription className="text-xs mt-1">{sub}</CardDescription>
           </div>
           {badge}
         </CardHeader>
-        <CardContent className="space-y-3">
-          {result?.summary && <div className="text-sm">{result.summary}</div>}
-          {result?.reason && <div className="text-sm text-muted-foreground">{result.reason}</div>}
-          {isUnknown && (
-            <div className="text-sm text-amber-700 bg-amber-50 p-3 rounded-md border border-amber-200">
-              ⚠️ Please verify this manually on the club's website.
-            </div>
-          )}
-          {showAction && (
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" className="gap-2" onClick={() => window.open(href, '_blank')}>
-                Open in Club Portal <ExternalLink className="h-4 w-4" />
+        {(result?.summary || result?.reason || showAction) && (
+          <CardContent className="pt-0 space-y-2">
+            {result?.summary && !isPassing && <div className="text-xs text-muted-foreground">{result.summary}</div>}
+            {result?.reason && <div className="text-xs text-muted-foreground italic">{result.reason}</div>}
+            {isUnknown && (
+              <Alert className="border-amber-200 bg-amber-50">
+                <Info className="h-3 w-3 text-amber-600" />
+                <AlertDescription className="text-xs text-amber-800">
+                  Please verify this manually on the club's website.
+                </AlertDescription>
+              </Alert>
+            )}
+            {showAction && (
+              <Button 
+                type="button" 
+                variant="outline" 
+                size="sm"
+                className="gap-2 h-8 text-xs" 
+                onClick={() => window.open(href, '_blank')}
+              >
+                Open in Club Portal <ExternalLink className="h-3 w-3" />
               </Button>
-            </div>
-          )}
-        </CardContent>
+            )}
+          </CardContent>
+        )}
       </Card>
     );
   };
 
+  const allComplete = progressMetrics.completed === progressMetrics.total && !!childName;
+
   return (
-    <div className="space-y-4" aria-label="Account prerequisites">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold">Account Prerequisites</h2>
-          <p className="text-sm text-muted-foreground">We verify you can sign in and have what Blackhawk requires before registration.</p>
+    <div className="space-y-6" aria-label="Account prerequisites">
+      {/* Header with Progress */}
+      <div className="space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1">
+            <h2 className="text-xl font-semibold mb-1">Account Prerequisites</h2>
+            <p className="text-sm text-muted-foreground">
+              Verify your account meets requirements for automated registration
+            </p>
+          </div>
+          <Button 
+            type="button" 
+            onClick={recheck} 
+            disabled={loading} 
+            size="sm"
+            variant="outline"
+            className="gap-2"
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
+            Recheck
+          </Button>
         </div>
-        <Button type="button" onClick={recheck} disabled={loading} className="gap-2">
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
-          Recheck
-        </Button>
+
+        {/* Progress Bar */}
+        {data && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium">
+                {progressMetrics.completed} of {progressMetrics.total} requirements complete
+              </span>
+              <span className="text-muted-foreground">{progressMetrics.percentage}%</span>
+            </div>
+            <Progress value={progressMetrics.percentage} className="h-2" />
+          </div>
+        )}
+
+        {/* One-Time Setup Message */}
+        {!allComplete && data && (
+          <Alert className="border-blue-200 bg-blue-50">
+            <Sparkles className="h-4 w-4 text-blue-600" />
+            <AlertDescription className="text-sm text-blue-800">
+              <strong>One-time setup:</strong> These requirements (membership, payment method, waivers) are typically 
+              completed once. After setup, future registrations will be much faster!
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* All Complete Message */}
+        {allComplete && (
+          <Alert className="border-emerald-200 bg-emerald-50">
+            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            <AlertDescription className="text-sm text-emerald-800 font-medium">
+              ✨ All prerequisites complete! You're ready to proceed with registration.
+            </AlertDescription>
+          </Alert>
+        )}
       </div>
 
-      <Row
-        title="Account Status"
-        sub="Can we sign in to Blackhawk (SkiClubPro) and reach your dashboard?"
-        result={data?.account}
-        href={links.dashboard}
-      />
-      <Row
-        title="Membership Status"
-        sub="Do you have an active Blackhawk membership for this season? Required for most registrations."
-        result={data?.membership}
-        href={links.membership}
-      />
-      <Row
-        title="Payment Method"
-        sub="Is a chargeable card/bank method available via Blackhawk's billing portal?"
-        result={data?.payment}
-        href={links.payment}
-      />
-      <Row
-        title="Child Profile"
-        sub="We'll use this child during registration. Add one if needed, then pick here."
-        result={data?.child}
-        href={links.family}
-      />
-      <Row
-        title="Required Waivers"
-        sub="Most clubs require you to sign a seasonal waiver. Sometimes this is part of membership or program signup."
-        result={data?.waiver}
-        href={data?.requirements?.find(r => r.id === 'waiver.signed')?.remediation?.url || `${baseUrl}/waivers`}
-      />
+      {/* Requirement Cards */}
+      <div className="space-y-3">
+        <Row
+          title="Account Login"
+          sub="Can we access your Blackhawk account dashboard?"
+          result={data?.account}
+          href={links.dashboard}
+        />
+        <Row
+          title="Active Membership"
+          sub="Required for most programs (typically renewed annually)"
+          result={data?.membership}
+          href={links.membership}
+        />
+        <Row
+          title="Payment Method"
+          sub="Card or bank account saved in club's billing portal"
+          result={data?.payment}
+          href={links.payment}
+        />
+        <Row
+          title="Seasonal Waiver"
+          sub="Liability waiver (often bundled with membership)"
+          result={data?.waiver}
+          href={data?.requirements?.find(r => r.id === 'waiver.signed')?.remediation?.url || `${baseUrl}/waivers`}
+        />
+        <Row
+          title="Child Profile"
+          sub="At least one child must be added to your account"
+          result={data?.child}
+          href={links.family}
+        />
+      </div>
 
+      {/* Child Selection */}
       {data?.children && data.children.length > 0 && (
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Choose Child for This Plan</CardTitle>
-            <CardDescription>We'll use this child during registration.</CardDescription>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium">Select Child for Registration</CardTitle>
+            <CardDescription className="text-xs">Choose which child to register for this program</CardDescription>
           </CardHeader>
-          <CardContent className="flex flex-col gap-3">
+          <CardContent>
             <Select value={childName} onValueChange={(v) => { setChildName(v); onChildSelected?.(v); }}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Select a child" /></SelectTrigger>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select a child" />
+              </SelectTrigger>
               <SelectContent>
-                {data.children.map((c, i) => <SelectItem key={`${i}-${c.name}`} value={c.name}>{c.name}</SelectItem>)}
+                {data.children.map((c, i) => (
+                  <SelectItem key={`${i}-${c.name}`} value={c.name}>{c.name}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </CardContent>
