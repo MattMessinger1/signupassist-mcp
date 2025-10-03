@@ -8,6 +8,7 @@ import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { getSkiClubProConfig } from '../config/skiclubpro_selectors.js';
 import { getProgramId } from '../config/program_mapping.js';
 import { loginWithCredentials, ProviderLoginConfig } from './login.js';
+import { startLoginAudit, finishLoginAudit, LoginAuditDetails } from './auditLogin.js';
 
 const browserbaseApiKey = process.env.BROWSERBASE_API_KEY!;
 
@@ -140,7 +141,15 @@ async function verifyLoggedIn(page: Page): Promise<boolean> {
   return Boolean(hasUserUi || hasDrupalSess);
 }
 
-type LoginOpts = { force_login?: boolean };
+type LoginOpts = { 
+  force_login?: boolean;
+  toolName?: string;
+  mandate_id?: string;
+  plan_id?: string;
+  plan_execution_id?: string;
+  user_id?: string;
+  session_token?: string;
+};
 
 /**
  * Login to SkiClubPro using Playwright automation with brutal reset capability
@@ -155,7 +164,31 @@ export async function performSkiClubProLogin(
   const baseUrl = `https://${config.domain}`;
   const loginUrl = `${baseUrl}/user/login?destination=/dashboard`;
 
+  // Audit tracking variables
+  const startedAt = Date.now();
+  let auditId: string | undefined;
+  let loginStrategy: 'restore' | 'fresh' | 'hard_reset' = opts.force_login ? 'hard_reset' : 'restore';
+  let verified = false;
+  let hadLogoutUi = false;
+  let hadSessCookie = false;
+  let lastUrl = '';
+  let error: string | undefined;
+  let screenshotPath: string | undefined;
+  let currentPage: Page = session.page;
+
   try {
+    // Start audit logging
+    if (opts.toolName) {
+      auditId = await startLoginAudit({
+        provider: 'skiclubpro',
+        org_ref: orgRef,
+        tool: opts.toolName,
+        mandate_id: opts.mandate_id,
+        user_id: opts.user_id,
+        login_strategy: loginStrategy
+      });
+    }
+
     console.log(`[Login] Starting login for org: ${orgRef}`);
     
     // Step 1: If not forcing fresh login, try fast path
@@ -164,16 +197,28 @@ export async function performSkiClubProLogin(
 
       if (await verifyLoggedIn(session.page)) {
         console.log('DEBUG: ✓ Cached session is valid');
+        loginStrategy = 'restore';
+        verified = true;
+        currentPage = session.page;
+        lastUrl = session.page.url();
+        
+        // Capture verification signals
+        hadLogoutUi = !!(await session.page.$('a[href*="/user/logout"], .user-menu, [data-testid="user-menu"]').catch(() => null));
+        const cookies = await session.page.context().cookies().catch(() => []);
+        hadSessCookie = cookies?.some(c => /S?SESS/i.test(c.name)) ?? false;
+        
         return { login_status: 'success' };
       }
     }
 
     // Step 2: HARD RESET - clear cookies+storage and use a brand-new context
     console.log('DEBUG: Performing hard reset: clear cookies/storage and new context');
+    loginStrategy = 'hard_reset';
     await hardResetStorage(session.page, baseUrl);
 
     // New incognito context guarantees no storageState is reused
     const { ctx: freshCtx, page: freshPage } = await newIncognitoContext(session.browser);
+    currentPage = freshPage;
 
     // Navigate to login page in the clean context
     await freshPage.goto(loginUrl, { waitUntil: 'domcontentloaded' });
@@ -210,9 +255,17 @@ export async function performSkiClubProLogin(
     }
 
     // Final verification (strict)
-    const ok = await verifyLoggedIn(freshPage);
-    if (!ok) {
+    lastUrl = freshPage.url();
+    verified = await verifyLoggedIn(freshPage);
+    
+    // Capture verification signals
+    hadLogoutUi = !!(await freshPage.$('a[href*="/user/logout"], .user-menu, [data-testid="user-menu"]').catch(() => null));
+    const cookies = await freshPage.context().cookies().catch(() => []);
+    hadSessCookie = cookies?.some(c => /S?SESS/i.test(c.name)) ?? false;
+    
+    if (!verified) {
       console.log('[Login] ✗ Login failed after hard reset (still on login page)');
+      error = 'Verification failed: still on login page';
       // Replace session.page with freshPage for subsequent steps
       (session as any).page = freshPage;
       return { login_status: 'failed' };
@@ -222,11 +275,58 @@ export async function performSkiClubProLogin(
     // Swap session.page to the fresh logged-in page for the rest of the flow
     (session as any).page = freshPage;
     
+    // Capture safe screenshot evidence (dashboard/header, avoid PII)
+    try {
+      const filename = `evidence/login-${orgRef}-${Date.now()}.png`;
+      await freshPage.screenshot({ path: filename, fullPage: false });
+      screenshotPath = filename;
+    } catch (screenshotError) {
+      console.log('[Login] Screenshot capture failed:', screenshotError.message);
+    }
+    
     return { login_status: 'success' };
 
-  } catch (error) {
-    console.error('[Login] ✗ Login failed:', error.message);
+  } catch (err: any) {
+    error = err?.message || String(err);
+    console.error('[Login] ✗ Login failed:', error);
+    
+    // Try to capture current URL even on error
+    try {
+      lastUrl = currentPage.url();
+    } catch {}
+    
     return { login_status: 'failed' };
+  } finally {
+    // Finish audit logging with all details
+    if (auditId) {
+      const endedAt = Date.now();
+      const details: LoginAuditDetails = {
+        login_strategy: loginStrategy,
+        verified,
+        verification: {
+          url: lastUrl,
+          hadLogoutUi,
+          hadSessCookie
+        },
+        timing: {
+          started_at: new Date(startedAt).toISOString(),
+          ended_at: new Date(endedAt).toISOString(),
+          ms: endedAt - startedAt
+        },
+        session_token: opts.session_token ? 'present' : undefined,
+        evidence: screenshotPath ? { screenshot_path: screenshotPath } : undefined,
+        error,
+        duration_ms: endedAt - startedAt
+      };
+
+      await finishLoginAudit({
+        audit_id: auditId,
+        result: verified ? 'success' : 'failure',
+        details
+      }).catch(auditError => {
+        console.error('[Login] Failed to finish audit:', auditError);
+      });
+    }
   }
 }
 
