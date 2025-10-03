@@ -35,6 +35,10 @@ export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram,
   const { toast } = useToast();
 
   const fetchPrograms = async (query?: string) => {
+    console.log('[ProgramBrowser] fetchPrograms called with query:', query);
+    console.log('[ProgramBrowser] credentialId:', credentialId);
+    console.log('[ProgramBrowser] orgRef:', orgRef);
+    
     if (!credentialId) {
       toast({
         title: "Select an account",
@@ -51,6 +55,13 @@ export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram,
 
       toast({ title: "Connecting to Blackhawk…", description: "Fetching live program listings." });
 
+      console.log('[ProgramBrowser] Invoking mcp-executor with args:', {
+        tool: 'scp:find_programs',
+        credential_id: credentialId,
+        org_ref: orgRef,
+        query
+      });
+
       const { data, error } = await supabase.functions.invoke('mcp-executor', {
         body: {
           tool: 'scp:find_programs',
@@ -62,22 +73,34 @@ export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram,
           }
         }
       });
+      
+      console.log('[ProgramBrowser] Raw response from mcp-executor:', data);
+      console.log('[ProgramBrowser] Error from mcp-executor:', error);
+      
       if (error) throw error;
 
       // Check for login failure
       if (data?.login_status === 'failed') {
+        console.error('[ProgramBrowser] Login failed:', data?.error);
         throw new Error(data?.error || 'Login failed');
       }
 
       // Handle nested data structure: data.data.programs or fallback to data.programs
       const programs = data?.data?.programs || data?.programs;
       
+      console.log('[ProgramBrowser] Extracted programs:', programs);
+      console.log('[ProgramBrowser] Programs is array?:', Array.isArray(programs));
+      console.log('[ProgramBrowser] Programs length:', programs?.length);
+      
       if (Array.isArray(programs)) {
+        console.log('[ProgramBrowser] Setting programs state with', programs.length, 'programs');
         setPrograms(programs);
       } else {
+        console.warn('[ProgramBrowser] Programs is not an array, setting empty array');
         setPrograms([]);
       }
     } catch (err: any) {
+      console.error('[ProgramBrowser] Error in fetchPrograms:', err);
       toast({ title: "Error loading programs", description: err?.message || 'Unknown error', variant: "destructive" });
       setPrograms([]);
     } finally {
@@ -146,30 +169,45 @@ export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram,
             ) : loading ? (
               <div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading…</div>
             ) : programs.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">Click search to load programs.</div>
+              (() => {
+                console.log('[ProgramBrowser] Rendering empty state. programs.length:', programs.length);
+                return (
+                  <div className="text-center py-8 text-muted-foreground">
+                    Click search to load programs.
+                  </div>
+                );
+              })()
             ) : (
-              <div className="grid gap-4">
-                {programs.map((program) => (
-                  <Card key={program.id} className="cursor-pointer transition-all hover:shadow-md" onClick={() => handleProgramSelect(program)}>
-                    <CardHeader className="pb-3">
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <CardTitle className="text-lg mb-1">{program.title}</CardTitle>
-                          <CardDescription>{program.description}</CardDescription>
-                        </div>
-                        <Badge variant="secondary" className="ml-2">{program.skill_level}</Badge>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <div className="grid grid-cols-3 gap-4 text-sm">
-                        <div><span className="font-medium text-muted-foreground">Schedule:</span><p>{program.schedule}</p></div>
-                        <div><span className="font-medium text-muted-foreground">Age Range:</span><p>{program.age_range}</p></div>
-                        <div><span className="font-medium text-muted-foreground">Price:</span><p>{program.price}</p></div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+              (() => {
+                console.log('[ProgramBrowser] Rendering programs list. Count:', programs.length);
+                return (
+                  <div className="grid gap-4">
+                    {programs.map((program) => {
+                      console.log('[ProgramBrowser] Rendering program:', program.id, program.title);
+                      return (
+                        <Card key={program.id} className="cursor-pointer transition-all hover:shadow-md" onClick={() => handleProgramSelect(program)}>
+                          <CardHeader className="pb-3">
+                            <div className="flex justify-between items-start">
+                              <div className="flex-1">
+                                <CardTitle className="text-lg mb-1">{program.title}</CardTitle>
+                                <CardDescription>{program.description}</CardDescription>
+                              </div>
+                              <Badge variant="secondary" className="ml-2">{program.skill_level}</Badge>
+                            </div>
+                          </CardHeader>
+                          <CardContent className="pt-0">
+                            <div className="grid grid-cols-3 gap-4 text-sm">
+                              <div><span className="font-medium text-muted-foreground">Schedule:</span><p>{program.schedule}</p></div>
+                              <div><span className="font-medium text-muted-foreground">Age Range:</span><p>{program.age_range}</p></div>
+                              <div><span className="font-medium text-muted-foreground">Price:</span><p>{program.price}</p></div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                );
+              })()
             )}
           </div>
         </DialogContent>
