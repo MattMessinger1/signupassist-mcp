@@ -52,7 +52,8 @@ Deno.serve(async (req) => {
       scope,
       scopes,
       credential_id,
-      jws_compact
+      jws_compact,
+      caps
     } = body;
 
     // Normalize scope field - accept either scope or scopes
@@ -123,7 +124,8 @@ Deno.serve(async (req) => {
       program_ref,
       max_amount_cents,
       scope: normalizedScope,
-      credential_id
+      credential_id,
+      ...(caps ? { caps } : {})
     };
 
     // Sign the JWT with the mandate signing key
@@ -152,7 +154,8 @@ Deno.serve(async (req) => {
         provider,
         scope: normalizedScope,
         jws_compact: jws_compact || jws,
-        status: 'active'
+        status: 'active',
+        details: caps ? { caps } : null
       }])
       .select()
       .single();
