@@ -24,54 +24,25 @@ interface Program {
 interface ProgramBrowserProps {
   onProgramSelect: (program: { ref: string; title: string }) => void;
   selectedProgram?: string;
+  credentialId: string | null;
 }
 
-export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrowserProps) {
+export function ProgramBrowser({ onProgramSelect, selectedProgram, credentialId }: ProgramBrowserProps) {
   const [open, setOpen] = useState(false);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [credentialId, setCredentialId] = useState<string | null>(null);
-  const [hasCredentials, setHasCredentials] = useState<boolean | null>(null);
   const [hardReset, setHardReset] = useState(false);
   const [loginFailed, setLoginFailed] = useState(false);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const { toast } = useToast();
 
-  // Fetch user's SkiClubPro credentials
-  useEffect(() => {
-    const loadCredentials = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          setHasCredentials(false);
-          return;
-        }
-
-        const { data, error } = await supabase.functions.invoke('cred-list');
-        if (error) throw error;
-
-        const skiClubProCreds = data?.credentials?.filter((cred: any) => cred.provider === 'skiclubpro');
-        if (skiClubProCreds && skiClubProCreds.length > 0) {
-          setCredentialId(skiClubProCreds[0].id);
-          setHasCredentials(true);
-        } else {
-          setHasCredentials(false);
-        }
-      } catch (error) {
-        console.error('Error loading credentials:', error);
-        setHasCredentials(false);
-      }
-    };
-
-    loadCredentials();
-  }, []);
 
   const fetchPrograms = async (query?: string) => {
     if (!credentialId) {
       toast({
         title: "Credentials Required",
-        description: "Please add your Blackhawk (SkiClubPro) login in Settings before browsing live programs.",
+        description: "Please select a Blackhawk account before browsing programs.",
         variant: "destructive"
       });
       return;
@@ -150,7 +121,7 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
 
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
-    if (newOpen && hasCredentials) {
+    if (newOpen && credentialId) {
       // fresh fetch on open
       setPrograms([]);
       fetchPrograms();
@@ -207,15 +178,15 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
               </div>
 
               {/* Credentials badge */}
-              {hasCredentials === true ? (
+              {credentialId ? (
                 <Badge variant="secondary" className="bg-green-100 text-green-800">
                   Login Ready
                 </Badge>
-              ) : hasCredentials === false ? (
+              ) : (
                 <Badge variant="destructive">
                   No Credentials
                 </Badge>
-              ) : null}
+              )}
             </div>
           </DialogHeader>
 
@@ -250,11 +221,11 @@ export function ProgramBrowser({ onProgramSelect, selectedProgram }: ProgramBrow
           </div>
 
           <div className="flex-1 overflow-y-auto">
-            {hasCredentials === false ? (
+            {!credentialId ? (
               <Alert>
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
-                  Please add your Blackhawk (SkiClubPro) credentials in Settings before browsing programs.
+                  Please select a Blackhawk (SkiClubPro) account in Step 1 before browsing programs.
                 </AlertDescription>
               </Alert>
             ) : loading ? (

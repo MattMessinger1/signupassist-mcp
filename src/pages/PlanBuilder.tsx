@@ -845,6 +845,7 @@ const PlanBuilder = () => {
                             setPrerequisiteChecks([]);
                           }}
                           selectedProgram={field.value}
+                          credentialId={form.watch('credentialId')}
                         />
                       </FormControl>
                       <FormMessage />
