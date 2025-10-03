@@ -39,28 +39,18 @@ Deno.serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    const requestBody = await req.json();
-    console.log('create-plan received body:', JSON.stringify(requestBody));
-    
     const { 
       program_ref, 
       child_id, 
-      opens_at, 
+      opens_at,
       mandate_id,
       provider = 'skiclubpro',
       answers = null
-    } = requestBody;
+    } = await req.json();
     
-    // Validate required fields with detailed logging
-    const missingFields = [];
-    if (!program_ref) missingFields.push('program_ref');
-    if (!child_id) missingFields.push('child_id');
-    if (!opens_at) missingFields.push('opens_at');
-    if (!mandate_id) missingFields.push('mandate_id');
-    
-    if (missingFields.length > 0) {
-      console.error('Missing fields:', missingFields, 'Received:', { program_ref, child_id, opens_at, mandate_id });
-      throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
+    // Validate required fields
+    if (!program_ref || !child_id || !opens_at || !mandate_id) {
+      throw new Error('Missing required fields: program_ref, child_id, opens_at, mandate_id');
     }
 
     // Validate opens_at is in the future
