@@ -842,107 +842,116 @@ export const skiClubProTools = {
     user_id?: string;
     session_token?: string;
   }) => {
-    return await auditToolCall(
-      {
-        tool: 'scp.check_prerequisites',
-        mandate_id: args.mandate_id || '',
-        plan_execution_id: args.plan_execution_id || null
-      },
-      args,
-      async () => {
-        let session = null;
+    // ✅ NO mandate enforcement for prerequisites check (pre-plan interactive)
+    // ✅ Login is still audited via performSkiClubProLogin → audit-login
+    let session = null;
+    try {
+      // Validate inputs
+      if (!args.credential_id) throw new Error('credential_id is required');
+      if (!args.user_jwt) throw new Error('user_jwt is required');
+      
+      const orgRef = args.org_ref || 'blackhawk-ski-club';
+      const base = `https://${orgRef}.skiclubpro.team`;
+      
+      console.log(`[scp:check_prerequisites] Starting checks for org: ${orgRef} (no mandate required)`);
+      
+      // Launch Browserbase session
+      session = await launchBrowserbaseSession();
+      const { page } = session;
+      
+      // Perform login - this internally calls audit-login via performSkiClubProLogin
+      console.log('[scp:check_prerequisites] Logging in...');
+      const credentials = await lookupCredentialsById(args.credential_id, args.user_jwt);
+      const loginResult = await performSkiClubProLogin(session, credentials, orgRef, {
+        force_login: !!args.force_login,
+        toolName: 'scp.check_prerequisites',
+        mandate_id: args.mandate_id,
+        plan_id: args.plan_id,
+        plan_execution_id: args.plan_execution_id,
+        user_id: args.user_id,
+        session_token: args.session_token,
+        user_jwt: args.user_jwt
+      });
+      
+      // Check login result
+      if (loginResult.login_status === 'failed') {
+        console.error('[scp:check_prerequisites] Login failed');
+        return {
+          login_status: 'failed',
+          account: { ok: false, summary: 'Login failed' },
+          membership: { ok: null, summary: 'Not checked - login failed' },
+          payment: { ok: null, summary: 'Not checked - login failed' },
+          child: { ok: null, summary: 'Not checked - login failed' },
+          children: [],
+          error: 'Login failed - unable to authenticate'
+        };
+      }
+      
+      // Run all prerequisite checks
+      console.log('[scp:check_prerequisites] Running account checks...');
+      const account = await checkAccount(page);
+      
+      console.log('[scp:check_prerequisites] Running membership checks...');
+      const membership = await checkMembership(page, base);
+      
+      console.log('[scp:check_prerequisites] Running payment checks...');
+      const payment = await checkPayment(page, base);
+      
+      console.log('[scp:check_prerequisites] Running child info checks...');
+      const child = await checkChild(page, base, args.child_name);
+      
+      console.log('[scp:check_prerequisites] Listing children...');
+      let children: Array<{ id?: string; name: string; raw?: string }> = [];
+      try {
+        children = await listChildren(page, base);
+        console.log(`[scp:check_prerequisites] Found ${children.length} children`);
+      } catch (childrenError) {
+        console.warn('[scp:check_prerequisites] Could not list children:', childrenError);
+      }
+      
+      // Capture screenshot evidence if plan execution exists
+      if (args.plan_execution_id) {
         try {
-          // Validate inputs
-          if (!args.credential_id) throw new Error('credential_id is required');
-          if (!args.user_jwt) throw new Error('user_jwt is required');
-          
-          const orgRef = args.org_ref || 'blackhawk-ski-club';
-          const base = `https://${orgRef}.skiclubpro.team`;
-          const baseUrl = resolveBaseUrl({ org_ref: orgRef });
-          
-          // Extract user_id from JWT for session caching
-          const userId = JSON.parse(atob(args.user_jwt.split('.')[1])).sub;
-          
-          console.log(`[scp:check_prerequisites] Starting checks for org: ${orgRef}`);
-          
-          // Launch Browserbase session
-          session = await launchBrowserbaseSession();
-          const { page } = session;
-          
-          // Perform a clean login (force_login ensures fresh check)
-          await ensureLoggedIn(
-            session,
-            args.credential_id,
-            args.user_jwt,
-            baseUrl,
-            userId,
-            orgRef,
-            { 
-              tool_name: 'scp.check_prerequisites', 
-              mandate_id: args.mandate_id,
-              plan_id: args.plan_id,
-              plan_execution_id: args.plan_execution_id,
-              session_token: args.session_token
-            }
-          );
-          
-          // Run all prerequisite checks
-          console.log('[scp:check_prerequisites] Running account checks...');
-          const account = await checkAccount(page);
-          
-          console.log('[scp:check_prerequisites] Running membership checks...');
-          const membership = await checkMembership(page, base);
-          
-          console.log('[scp:check_prerequisites] Running payment checks...');
-          const payment = await checkPayment(page, base);
-          
-          console.log('[scp:check_prerequisites] Running child info checks...');
-          const child = await checkChild(page, base, args.child_name);
-          
-          console.log('[scp:check_prerequisites] Listing children...');
-          let children: Array<{ id?: string; name: string; raw?: string }> = [];
-          try {
-            children = await listChildren(page, base);
-            console.log(`[scp:check_prerequisites] Found ${children.length} children`);
-          } catch (childrenError) {
-            console.warn('[scp:check_prerequisites] Could not list children:', childrenError);
-          }
-          
-          // Capture screenshot evidence if plan execution exists
-          if (args.plan_execution_id) {
-            try {
-              const screenshot = await captureScreenshot(session);
-              await captureScreenshotEvidence(args.plan_execution_id, screenshot, 'prerequisites-check');
-              console.log('[scp:check_prerequisites] Screenshot evidence captured');
-            } catch (evidenceError) {
-              console.warn('[scp:check_prerequisites] Could not capture evidence:', evidenceError);
-            }
-          }
-          
-          return {
-            login_status: account.ok ? "success" : "failed",
-            account,
-            membership,
-            payment,
-            child,
-            children
-          };
-          
-        } catch (error) {
-          console.error('[scp:check_prerequisites] Failed:', error);
-          throw new Error(`Prerequisites check failed: ${error.message}`);
-        } finally {
-          if (session) {
-            try {
-              await closeBrowserbaseSession(session);
-            } catch (closeError) {
-              console.warn('[scp:check_prerequisites] Error closing session:', closeError);
-            }
-          }
+          const screenshot = await captureScreenshot(session);
+          await captureScreenshotEvidence(args.plan_execution_id, screenshot, 'prerequisites-check');
+          console.log('[scp:check_prerequisites] Screenshot evidence captured');
+        } catch (evidenceError) {
+          console.warn('[scp:check_prerequisites] Could not capture evidence:', evidenceError);
         }
-      },
-      'scp:read:account' // Required scope for mandate verification
-    );
+      }
+      
+      return {
+        login_status: account.ok ? "success" : "failed",
+        account,
+        membership,
+        payment,
+        child,
+        children
+      };
+      
+    } catch (error) {
+      console.error('[scp:check_prerequisites] Failed:', error);
+      return {
+        login_status: 'failed',
+        account: { ok: false, summary: 'Error occurred' },
+        membership: { ok: null, summary: 'Not checked - error occurred' },
+        payment: { ok: null, summary: 'Not checked - error occurred' },
+        child: { ok: null, summary: 'Not checked - error occurred' },
+        children: [],
+        error: error.message
+      };
+    } finally {
+      if (session) {
+        try {
+          await closeBrowserbaseSession(session);
+        } catch (closeError) {
+          console.warn('[scp:check_prerequisites] Error closing session:', closeError);
+        }
+      }
+    }
+  },
+  'scp:read:account' // Required scope for mandate verification
+);
   }
 
 };
