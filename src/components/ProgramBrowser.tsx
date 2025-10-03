@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -33,6 +33,14 @@ export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram,
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const { toast } = useToast();
+
+  // Debug logging for programs state changes
+  useEffect(() => {
+    console.log('[ProgramBrowser] Programs state changed:', {
+      count: programs.length,
+      programs: programs
+    });
+  }, [programs]);
 
   const fetchPrograms = async (query?: string) => {
     console.log('[ProgramBrowser] fetchPrograms called with query:', query);
@@ -169,45 +177,32 @@ export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram,
             ) : loading ? (
               <div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading…</div>
             ) : programs.length === 0 ? (
-              (() => {
-                console.log('[ProgramBrowser] Rendering empty state. programs.length:', programs.length);
-                return (
-                  <div className="text-center py-8 text-muted-foreground">
-                    Click search to load programs.
-                  </div>
-                );
-              })()
+              <div className="text-center py-8 text-muted-foreground">
+                Click search to load programs.
+              </div>
             ) : (
-              (() => {
-                console.log('[ProgramBrowser] Rendering programs list. Count:', programs.length);
-                return (
-                  <div className="grid gap-4">
-                    {programs.map((program) => {
-                      console.log('[ProgramBrowser] Rendering program:', program.id, program.title);
-                      return (
-                        <Card key={program.id} className="cursor-pointer transition-all hover:shadow-md" onClick={() => handleProgramSelect(program)}>
-                          <CardHeader className="pb-3">
-                            <div className="flex justify-between items-start">
-                              <div className="flex-1">
-                                <CardTitle className="text-lg mb-1">{program.title}</CardTitle>
-                                <CardDescription>{program.description}</CardDescription>
-                              </div>
-                              <Badge variant="secondary" className="ml-2">{program.skill_level}</Badge>
-                            </div>
-                          </CardHeader>
-                          <CardContent className="pt-0">
-                            <div className="grid grid-cols-3 gap-4 text-sm">
-                              <div><span className="font-medium text-muted-foreground">Schedule:</span><p>{program.schedule}</p></div>
-                              <div><span className="font-medium text-muted-foreground">Age Range:</span><p>{program.age_range}</p></div>
-                              <div><span className="font-medium text-muted-foreground">Price:</span><p>{program.price}</p></div>
-                            </div>
-                          </CardContent>
-                        </Card>
-                      );
-                    })}
-                  </div>
-                );
-              })()
+              <div className="grid gap-4">
+                {programs.map((program) => (
+                  <Card key={program.id} className="cursor-pointer transition-all hover:shadow-md" onClick={() => handleProgramSelect(program)}>
+                    <CardHeader className="pb-3">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <CardTitle className="text-lg mb-1">{program.title}</CardTitle>
+                          <CardDescription>{program.description}</CardDescription>
+                        </div>
+                        <Badge variant="secondary" className="ml-2">{program.skill_level}</Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-0">
+                      <div className="grid grid-cols-3 gap-4 text-sm">
+                        <div><span className="font-medium text-muted-foreground">Schedule:</span><p>{program.schedule}</p></div>
+                        <div><span className="font-medium text-muted-foreground">Age Range:</span><p>{program.age_range}</p></div>
+                        <div><span className="font-medium text-muted-foreground">Price:</span><p>{program.price}</p></div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
             )}
           </div>
         </DialogContent>
