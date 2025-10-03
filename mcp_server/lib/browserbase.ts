@@ -8,7 +8,6 @@ import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { getSkiClubProConfig } from '../config/skiclubpro_selectors.js';
 import { getProgramId } from '../config/program_mapping.js';
 import { loginWithCredentials, ProviderLoginConfig } from './login.js';
-import { recordLoginAudit } from './audit-login.js';
 
 const browserbaseApiKey = process.env.BROWSERBASE_API_KEY!;
 
@@ -149,6 +148,7 @@ type LoginOpts = {
   plan_execution_id?: string;
   user_id?: string;
   session_token?: string;
+  user_jwt?: string;
 };
 
 /**
@@ -289,16 +289,27 @@ export async function performSkiClubProLogin(
     const endedAt = Date.now();
     console.log(`[Login] Completed: strategy=${loginStrategy}, verified=${verified}, duration=${endedAt - startedAt}ms`);
     
-    // Record login audit
-    await recordLoginAudit({
-      user_id: opts.user_id,
-      provider: 'skiclubpro',
-      org_ref: orgRef,
-      tool: opts.toolName || 'unknown',
-      result: verified ? 'success' : 'failed',
-      verification: { url: lastUrl, hadLogoutUi, hadSessCookie },
-      error
-    });
+    // Call audit-login edge function
+    if (opts.user_jwt) {
+      try {
+        await fetch(`${process.env.SUPABASE_URL}/functions/v1/audit-login`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${opts.user_jwt}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            provider: 'skiclubpro',
+            org_ref: orgRef,
+            tool: opts.toolName || 'unknown',
+            result: verified ? 'success' : 'failed',
+            details: { url: lastUrl, hadLogoutUi, hadSessCookie, error }
+          })
+        });
+      } catch (e) {
+        console.error('Audit login call failed:', e);
+      }
+    }
   }
 }
 

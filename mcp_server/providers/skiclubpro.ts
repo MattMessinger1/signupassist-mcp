@@ -638,7 +638,8 @@ export const skiClubProTools = {
           plan_id: args.plan_id,
           plan_execution_id: args.plan_execution_id,
           user_id: args.user_id,
-          session_token: args.session_token
+          session_token: args.session_token,
+          user_jwt: args.user_jwt
         });
         
         // ✅ Check login result
