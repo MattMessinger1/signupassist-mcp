@@ -128,5 +128,77 @@ export const SkiClubProCheckers: Checker[] = [
             { label: 'Open Family', url: `${baseUrl}/user/family` },
             hasAdd ? 0.95 : 0.8);
     }
+  },
+  {
+    id: 'waiver.signed',
+    label: 'Required Waivers',
+    explain: 'Many clubs require you to sign a seasonal waiver (sometimes bundled in membership).',
+    blocking: true,
+    appliesTo: () => true,
+    check: async (ctx: Ctx) => {
+      const { page, baseUrl } = ctx;
+
+      // Try common waiver pages first
+      await gotoAny(page, baseUrl, ['/waiver', '/waivers', '/account/waivers', '/user/waivers']);
+      const url = page.url();
+      const text = await bodyText(page, 1200);
+
+      const signed = /waiver signed|waiver on file|accepted waiver/i.test(text);
+      const pending = /please sign|waiver required|sign waiver/i.test(text);
+
+      const ev = { url, text_excerpt: text.slice(0, 300) };
+
+      if (signed) {
+        return {
+          id: 'waiver.signed',
+          label: 'Required Waivers',
+          explain: 'Waiver appears to be signed already.',
+          blocking: true,
+          outcome: 'pass',
+          confidence: 0.9,
+          evidence: ev,
+          extra: { source: 'standalone' }
+        };
+      }
+
+      if (pending) {
+        return {
+          id: 'waiver.signed',
+          label: 'Required Waivers',
+          explain: 'Waiver signature is required before registration.',
+          blocking: true,
+          outcome: 'fail',
+          confidence: 0.9,
+          evidence: ev,
+          remediation: { label: 'Sign Waiver', url: `${baseUrl}/waivers` }
+        };
+      }
+
+      // fallback: check membership page for waiver hints
+      await gotoAny(page, baseUrl, ['/membership', '/account']);
+      const mtext = await bodyText(page, 1200);
+      if (/waiver accepted/i.test(mtext) || /waiver completed/i.test(mtext)) {
+        return {
+          id: 'waiver.signed',
+          label: 'Required Waivers',
+          explain: 'Waiver appears satisfied as part of membership.',
+          blocking: true,
+          outcome: 'pass',
+          confidence: 0.7,
+          evidence: { url: page.url(), text_excerpt: mtext.slice(0, 200) },
+          extra: { source: 'membership-bundle' }
+        };
+      }
+
+      return {
+        id: 'waiver.signed',
+        label: 'Required Waivers',
+        explain: 'Could not confirm waiver status automatically. It may be bundled in membership or program checkout.',
+        blocking: true,
+        outcome: 'unknown',
+        confidence: 0.3,
+        evidence: ev
+      };
+    }
   }
 ];
