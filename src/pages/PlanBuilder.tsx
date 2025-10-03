@@ -454,6 +454,29 @@ const PlanBuilder = () => {
     try {
       const formData = form.getValues();
       
+      // Validate required fields before proceeding
+      console.log('[PlanBuilder] Form data before validation:', {
+        programRef: formData.programRef,
+        childId: formData.childId,
+        opensAt: formData.opensAt,
+        credentialId: formData.credentialId
+      });
+
+      if (!formData.programRef || !formData.childId || !formData.opensAt || !formData.credentialId) {
+        const missingFields = [];
+        if (!formData.programRef) missingFields.push('Program');
+        if (!formData.childId) missingFields.push('Child');
+        if (!formData.opensAt) missingFields.push('Registration Time');
+        if (!formData.credentialId) missingFields.push('Login Credentials');
+        
+        toast({
+          title: 'Missing Required Fields',
+          description: `Please fill out: ${missingFields.join(', ')}`,
+          variant: 'destructive',
+        });
+        return;
+      }
+      
       // Create mandate using edge function
       const { data, error } = await supabase.functions.invoke('mandate-issue', {
         body: {
@@ -503,6 +526,13 @@ const PlanBuilder = () => {
         console.warn('[PlanBuilder] Invalid opens_at, using current time:', formData.opensAt);
         opensAtISO = new Date().toISOString();
       }
+
+      console.log('[PlanBuilder] Calling create-plan with:', {
+        program_ref: formData.programRef,
+        child_id: formData.childId,
+        opens_at: opensAtISO,
+        mandate_id: data.mandate_id
+      });
 
       const { data: planData, error: planError } = await supabase.functions.invoke('create-plan', {
         body: {
