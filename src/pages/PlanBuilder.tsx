@@ -891,9 +891,7 @@ const PlanBuilder = () => {
                   <PrerequisitesPanel
                     orgRef="blackhawk-ski-club"
                     credentialId={form.watch('credentialId')}
-                    childName={selectedChildName}
-                    sessionToken={sessionToken}
-                    onSessionToken={setSessionToken}
+                    selectedChildName={selectedChildName}
                     onReadyToContinue={(ready) => {
                       setPrerequisiteChecks([{ check: 'all', status: ready ? 'pass' : 'fail', message: '' }]);
                     }}
