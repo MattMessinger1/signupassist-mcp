@@ -64,8 +64,16 @@ export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram,
       });
       if (error) throw error;
 
-      if (Array.isArray(data?.programs)) {
-        setPrograms(data.programs);
+      // Check for login failure
+      if (data?.login_status === 'failed') {
+        throw new Error(data?.error || 'Login failed');
+      }
+
+      // Handle nested data structure: data.data.programs or fallback to data.programs
+      const programs = data?.data?.programs || data?.programs;
+      
+      if (Array.isArray(programs)) {
+        setPrograms(programs);
       } else {
         setPrograms([]);
       }
