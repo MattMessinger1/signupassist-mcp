@@ -138,12 +138,7 @@ async function ensureLoggedIn(
       };
       
       // Retry full login with credentials
-      const proof = await loginWithCredentials(page, loginConfig, creds, {
-        provider: 'skiclubpro',
-        org_ref: orgRef,
-        user_id: userId,
-        ...auditParams
-      });
+      const proof = await loginWithCredentials(page, loginConfig, creds);
       const retryUrl = await page.url();
       if (retryUrl.includes('/user/login')) {
         throw new Error('Login failed after clearing session — still on login page');
@@ -167,12 +162,7 @@ async function ensureLoggedIn(
   };
   
   // Use the new robust login helper with credentials
-  const proof = await loginWithCredentials(page, loginConfig, creds, {
-    provider: 'skiclubpro',
-    org_ref: orgRef,
-    user_id: userId,
-    ...auditParams
-  });
+  const proof = await loginWithCredentials(page, loginConfig, creds);
   
   // Verify that we are not still on the login page
   const currentUrl = await page.url();
