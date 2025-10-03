@@ -8,6 +8,7 @@ import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { getSkiClubProConfig } from '../config/skiclubpro_selectors.js';
 import { getProgramId } from '../config/program_mapping.js';
 import { loginWithCredentials, ProviderLoginConfig } from './login.js';
+import { recordLoginAudit } from './audit-login.js';
 
 const browserbaseApiKey = process.env.BROWSERBASE_API_KEY!;
 
@@ -287,6 +288,17 @@ export async function performSkiClubProLogin(
     // Log summary
     const endedAt = Date.now();
     console.log(`[Login] Completed: strategy=${loginStrategy}, verified=${verified}, duration=${endedAt - startedAt}ms`);
+    
+    // Record login audit
+    await recordLoginAudit({
+      user_id: opts.user_id,
+      provider: 'skiclubpro',
+      org_ref: orgRef,
+      tool: opts.toolName || 'unknown',
+      result: verified ? 'success' : 'failed',
+      verification: { url: lastUrl, hadLogoutUi, hadSessCookie },
+      error
+    });
   }
 }
 
