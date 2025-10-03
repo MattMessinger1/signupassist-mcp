@@ -22,7 +22,7 @@ export interface LoginAuditDetails {
 export interface StartLoginAuditParams {
   provider: string;
   org_ref?: string;
-  tool_name?: string;
+  tool?: string;
   mandate_id?: string;
   user_id?: string;
   login_strategy?: 'restore' | 'fresh' | 'hard_reset';
@@ -38,7 +38,7 @@ export interface FinishLoginAuditParams {
  * Start logging a provider login attempt
  */
 export async function startLoginAudit(params: StartLoginAuditParams): Promise<string> {
-  const { provider, org_ref, tool_name, mandate_id, user_id, login_strategy } = params;
+  const { provider, org_ref, tool, mandate_id, user_id, login_strategy } = params;
 
   const { data, error } = await supabase
     .from('audit_events')
@@ -46,7 +46,7 @@ export async function startLoginAudit(params: StartLoginAuditParams): Promise<st
       event_type: 'provider_login',
       provider,
       org_ref,
-      tool_name,
+      tool,
       mandate_id,
       user_id,
       details: { login_strategy }

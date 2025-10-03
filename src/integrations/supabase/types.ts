@@ -16,45 +16,66 @@ export type Database = {
     Tables: {
       audit_events: {
         Row: {
+          args_hash: string | null
+          args_json: Json | null
           created_at: string
+          decision: string | null
           details: Json | null
           event_type: string
           finished_at: string | null
           id: string
           mandate_id: string | null
           org_ref: string | null
+          plan_execution_id: string | null
+          plan_id: string | null
           provider: string
           result: string | null
+          result_hash: string | null
+          result_json: Json | null
           started_at: string
-          tool_name: string | null
+          tool: string | null
           user_id: string | null
         }
         Insert: {
+          args_hash?: string | null
+          args_json?: Json | null
           created_at?: string
+          decision?: string | null
           details?: Json | null
           event_type: string
           finished_at?: string | null
           id?: string
           mandate_id?: string | null
           org_ref?: string | null
+          plan_execution_id?: string | null
+          plan_id?: string | null
           provider: string
           result?: string | null
+          result_hash?: string | null
+          result_json?: Json | null
           started_at?: string
-          tool_name?: string | null
+          tool?: string | null
           user_id?: string | null
         }
         Update: {
+          args_hash?: string | null
+          args_json?: Json | null
           created_at?: string
+          decision?: string | null
           details?: Json | null
           event_type?: string
           finished_at?: string | null
           id?: string
           mandate_id?: string | null
           org_ref?: string | null
+          plan_execution_id?: string | null
+          plan_id?: string | null
           provider?: string
           result?: string | null
+          result_hash?: string | null
+          result_json?: Json | null
           started_at?: string
-          tool_name?: string | null
+          tool?: string | null
           user_id?: string | null
         }
         Relationships: [
@@ -63,6 +84,20 @@ export type Database = {
             columns: ["mandate_id"]
             isOneToOne: false
             referencedRelation: "mandates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_events_plan_execution_id_fkey"
+            columns: ["plan_execution_id"]
+            isOneToOne: false
+            referencedRelation: "plan_executions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "audit_events_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
             referencedColumns: ["id"]
           },
         ]
@@ -240,60 +275,6 @@ export type Database = {
             columns: ["child_id"]
             isOneToOne: false
             referencedRelation: "children"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      mcp_tool_calls: {
-        Row: {
-          args_hash: string | null
-          args_json: Json | null
-          decision: string | null
-          id: string
-          mandate_id: string
-          plan_execution_id: string
-          result_hash: string | null
-          result_json: Json | null
-          tool: string
-          ts: string
-        }
-        Insert: {
-          args_hash?: string | null
-          args_json?: Json | null
-          decision?: string | null
-          id?: string
-          mandate_id: string
-          plan_execution_id: string
-          result_hash?: string | null
-          result_json?: Json | null
-          tool: string
-          ts?: string
-        }
-        Update: {
-          args_hash?: string | null
-          args_json?: Json | null
-          decision?: string | null
-          id?: string
-          mandate_id?: string
-          plan_execution_id?: string
-          result_hash?: string | null
-          result_json?: Json | null
-          tool?: string
-          ts?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "mcp_tool_calls_mandate_id_fkey"
-            columns: ["mandate_id"]
-            isOneToOne: false
-            referencedRelation: "mandates"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "mcp_tool_calls_plan_execution_id_fkey"
-            columns: ["plan_execution_id"]
-            isOneToOne: false
-            referencedRelation: "plan_executions"
             referencedColumns: ["id"]
           },
         ]

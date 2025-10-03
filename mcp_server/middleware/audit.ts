@@ -97,15 +97,17 @@ async function logToolCallStart(context: AuditContext, args: any): Promise<strin
     const argsHash = await computeHash(args);
     
     const { data, error } = await supabase
-      .from('mcp_tool_calls')
+      .from('audit_events')
       .insert({
+        event_type: 'tool_call',
         plan_execution_id: context.plan_execution_id,
         mandate_id: context.mandate_id,
         tool: context.tool,
         args_json: args,
         args_hash: argsHash,
         decision: 'pending',
-        ts: new Date().toISOString(),
+        started_at: new Date().toISOString(),
+        created_at: new Date().toISOString(),
       })
       .select('id')
       .single();
@@ -135,11 +137,12 @@ async function logToolCallFinish(
     const redactedResult = redactSensitiveData(result);
     
     const { error } = await supabase
-      .from('mcp_tool_calls')
+      .from('audit_events')
       .update({
         result_json: redactedResult,
         result_hash: resultHash,
         decision,
+        finished_at: new Date().toISOString(),
       })
       .eq('id', auditId);
 
