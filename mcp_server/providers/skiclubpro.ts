@@ -949,9 +949,5 @@ export const skiClubProTools = {
         }
       }
     }
-  },
-  'scp:read:account' // Required scope for mandate verification
-);
   }
-
 };
