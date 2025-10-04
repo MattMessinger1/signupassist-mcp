@@ -7,6 +7,7 @@ import { OrgConfig } from '../../types';
 export const BLACKHAWK_CONFIG: OrgConfig = {
   orgRef: 'blackhawk-ski-club',
   displayName: 'Blackhawk Ski Club',
+  customDomain: 'blackhawk.skiclubpro.team',
   
   // Org-specific overrides (if needed)
   selectorOverrides: {
