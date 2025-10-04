@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { validateSchemaConsistency, getValidationHeaders } from '../_shared/validate-schema-consistency.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,6 +17,13 @@ Deno.serve(async (req) => {
   }
 
   const executionId = crypto.randomUUID();
+  
+  // Validate schema consistency on startup
+  const schemaValidation = await validateSchemaConsistency();
+  if (!schemaValidation.valid) {
+    console.warn('[Edge] Schema validation failed:', schemaValidation.mismatches);
+  }
+  
   console.log(`[Edge] Starting schedule-from-readiness with execution_id: ${executionId}`);
 
   try {
@@ -178,6 +186,12 @@ Deno.serve(async (req) => {
 
     console.log(`[Edge] Execution triggered successfully: ${executionId}`);
 
+    const responseHeaders = {
+      ...corsHeaders,
+      ...getValidationHeaders(schemaValidation),
+      'Content-Type': 'application/json'
+    };
+
     return new Response(
       JSON.stringify({ 
         status: 'execution_started',
@@ -186,7 +200,7 @@ Deno.serve(async (req) => {
       }),
       { 
         status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        headers: responseHeaders
       }
     );
 
