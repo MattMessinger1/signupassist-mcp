@@ -275,7 +275,8 @@ export async function fillFormHumanLike(
     antibotTokenWait: options.antibotTokenWait ?? 1500,
     scrollDelay: options.scrollDelay ?? randomDelay(100, 300),
     enableMouseMovement: options.enableMouseMovement ?? true,
-    detectCaptcha: options.detectCaptcha ?? true
+    detectCaptcha: options.detectCaptcha ?? true,
+    maxAmountCents: options.maxAmountCents ?? Number.MAX_SAFE_INTEGER
   };
 
   console.log("DEBUG Starting human-like form fill with Antibot bypass...");
