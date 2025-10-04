@@ -223,6 +223,73 @@ export type Database = {
           },
         ]
       }
+      execution_logs: {
+        Row: {
+          attempt: number
+          correlation_id: string
+          created_at: string
+          error_message: string | null
+          id: string
+          mandate_id: string | null
+          metadata: Json | null
+          plan_execution_id: string | null
+          plan_id: string | null
+          stage: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempt?: number
+          correlation_id: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          mandate_id?: string | null
+          metadata?: Json | null
+          plan_execution_id?: string | null
+          plan_id?: string | null
+          stage: string
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          attempt?: number
+          correlation_id?: string
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          mandate_id?: string | null
+          metadata?: Json | null
+          plan_execution_id?: string | null
+          plan_id?: string | null
+          stage?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "execution_logs_mandate_id_fkey"
+            columns: ["mandate_id"]
+            isOneToOne: false
+            referencedRelation: "mandates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "execution_logs_plan_execution_id_fkey"
+            columns: ["plan_execution_id"]
+            isOneToOne: false
+            referencedRelation: "plan_executions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "execution_logs_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "plans"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mandates: {
         Row: {
           child_id: string | null
@@ -436,6 +503,20 @@ export type Database = {
       cleanup_expired_sessions: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      insert_execution_log: {
+        Args: {
+          p_attempt?: number
+          p_correlation_id: string
+          p_error_message?: string
+          p_mandate_id?: string
+          p_metadata?: Json
+          p_plan_execution_id?: string
+          p_plan_id: string
+          p_stage?: string
+          p_status?: string
+        }
+        Returns: string
       }
     }
     Enums: {
