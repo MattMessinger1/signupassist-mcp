@@ -84,7 +84,7 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
 
       const { data, error } = await supabase.functions.invoke('mcp-executor', {
         body: {
-          tool: 'scp.run_checks',
+          tool: 'scp:check_prerequisites',
           args: { org_ref: orgRef, credential_id: credentialId }
         }
       });
