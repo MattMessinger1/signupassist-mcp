@@ -2,6 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { SignJWT, importJWK } from 'https://esm.sh/jose@5.2.4';
 import { invokeMCPTool } from '../_shared/mcpClient.ts';
 import { toIsoStringSafe } from '../_shared/utils.ts';
+import { logStructuredError, sanitizeError } from '../_shared/errors.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -74,18 +75,41 @@ Deno.serve(async (req) => {
     console.log(`Interactive field discovery for program ${program_ref}, credential ${credential_id}`);
     console.log('Payload received:', { program_ref, credential_id });
 
-    // Load and decrypt the credential - pass through the Authorization header
-    const { data: credentialData, error: credError } = await supabase.functions.invoke('cred-get', {
-      headers: {
-        Authorization: authHeader
-      },
-      body: { id: credential_id }
-    });
+    // Load and decrypt the credential - wrap in try/catch for proper error handling
+    let credentialData;
+    try {
+      const { data, error: credError } = await supabase.functions.invoke('cred-get', {
+        headers: {
+          Authorization: authHeader
+        },
+        body: { id: credential_id }
+      });
 
-    if (credError) {
-      console.error('Failed to load credential:', credError);
+      if (credError || !data) {
+        throw new Error(credError?.message || 'Credential decryption failed');
+      }
+
+      credentialData = data;
+      console.log('Credential successfully decrypted');
+
+    } catch (credError) {
+      const sanitizedError = sanitizeError(credError);
+      console.error('Credential verification failed:', sanitizedError);
+
+      // Log structured error
+      await logStructuredError(supabase, {
+        stage: 'credential_verification',
+        error: sanitizedError,
+        credential_id,
+        program_ref
+      });
+
       return new Response(
-        JSON.stringify({ error: 'Failed to load credential' }),
+        JSON.stringify({ 
+          error_code: 'CREDENTIAL_INVALID',
+          error: 'Credential verification failed',
+          message: 'The provided credentials could not be verified. Please check your credentials and try again.'
+        }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
