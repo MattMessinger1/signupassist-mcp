@@ -8,6 +8,7 @@ import { Loader2, CheckCircle2, XCircle, Clock, RotateCw, ExternalLink, Info, Sp
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { prompts } from "@/lib/prompts";
 
 type CheckResult = { ok: boolean | null; summary?: string; reason?: string };
 type PrereqPayload = {
@@ -79,7 +80,7 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('No active session');
 
-      toast({ title: "Checking prerequisites…", description: "We'll sign in briefly to verify membership, payment, and child profiles." });
+      toast({ title: "Checking prerequisites…", description: prompts.ui.signin.helpers.purpose('Blackhawk') });
 
       const { data, error } = await supabase.functions.invoke('mcp-executor', {
         body: {
@@ -95,8 +96,8 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
         onChildSelected?.(data.children[0].name);
       }
 
-      if (data?.login_status === 'success') toast({ title: 'Connected to Blackhawk', description: 'Login verified.' });
-      if (data?.login_status === 'failed') toast({ title: 'Login failed', description: 'Please recheck your credentials.', variant: 'destructive' });
+      if (data?.login_status === 'success') toast({ description: prompts.ui.toasts.prereqsOk });
+      if (data?.login_status === 'failed') toast({ title: 'Login failed', description: prompts.ui.signin.errors.badLogin, variant: 'destructive' });
     } catch (e: any) {
       toast({ title: 'Error', description: e?.message || 'Prereq check failed', variant: 'destructive' });
     } finally {

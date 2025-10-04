@@ -4,6 +4,7 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
+import { prompts, fmt } from '@/lib/prompts';
 
 interface OpenTimePickerProps {
   value?: Date;
@@ -75,10 +76,11 @@ export function OpenTimePicker({ value, onChange }: OpenTimePickerProps) {
   return (
     <Card>
       <CardContent className="pt-6 space-y-4">
-        <div className="flex items-center space-x-2 mb-4">
+        <div className="flex items-center space-x-2 mb-2">
           <Clock className="h-4 w-4" />
-          <span className="font-medium">Registration Opens At</span>
+          <span className="font-medium">{prompts.ui.titles.openTime}</span>
         </div>
+        <p className="text-xs text-muted-foreground mb-4">{prompts.ui.openTime.helper}</p>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -112,9 +114,14 @@ export function OpenTimePicker({ value, onChange }: OpenTimePickerProps) {
           </div>
         </div>
         
-        {value && (
-          <div className="text-sm text-muted-foreground">
-            UTC: {value.toISOString().replace('T', ' ').slice(0, 19)}
+        {value && localDateTime && (
+          <div className="text-sm space-y-1">
+            <div className="text-muted-foreground">
+              {prompts.ui.openTime.preview(
+                fmt.dateTimeLocal(new Date(localDateTime)),
+                value.toISOString().replace('T', ' ').slice(0, 19)
+              )}
+            </div>
           </div>
         )}
       </CardContent>

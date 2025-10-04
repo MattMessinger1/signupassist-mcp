@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
+import { prompts } from '@/lib/prompts';
 
 interface Child {
   id: string;
@@ -121,8 +122,7 @@ export function ChildSelect({ value, onChange }: ChildSelectProps) {
       setShowAddForm(false);
 
       toast({
-        title: 'Success',
-        description: `${data.name} has been added and selected.`,
+        description: prompts.ui.child.toastSelected(data.name),
       });
     } catch (error) {
       console.error('Error adding child:', error);
@@ -147,10 +147,11 @@ export function ChildSelect({ value, onChange }: ChildSelectProps) {
     <div className="space-y-4">
       {children.length > 0 && (
         <div>
-          <Label htmlFor="child-select">Select Child</Label>
+          <Label htmlFor="child-select">{prompts.ui.child.label}</Label>
+          <p className="text-xs text-muted-foreground mt-1 mb-2">{prompts.ui.child.helper('Blackhawk')}</p>
           <Select value={value} onValueChange={onChange}>
             <SelectTrigger>
-              <SelectValue placeholder="Choose a child..." />
+              <SelectValue placeholder={prompts.ui.child.ph} />
             </SelectTrigger>
             <SelectContent>
               {children.map((child) => (

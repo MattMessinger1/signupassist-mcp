@@ -803,7 +803,7 @@ const PlanBuilder = () => {
                     <Badge variant="outline" className="text-xs">Step 1</Badge>
                     <CardTitle className="flex items-center gap-2">
                       <Shield className="h-5 w-5" />
-                      Login Credentials
+                      {prompts.ui.titles.signin('Blackhawk')}
                     </CardTitle>
                   </div>
                   {form.watch('credentialId') && <CheckCircle className="h-5 w-5 text-green-600" />}
@@ -1147,7 +1147,7 @@ const PlanBuilder = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className="text-xs">Step 6</Badge>
-                      <CardTitle>Registration Timing</CardTitle>
+                      <CardTitle>{prompts.ui.titles.openTime}</CardTitle>
                     </div>
                     {opensAt && <CheckCircle className="h-5 w-5 text-green-600" />}
                   </div>

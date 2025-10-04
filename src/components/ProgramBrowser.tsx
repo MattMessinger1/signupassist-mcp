@@ -8,6 +8,7 @@ import { Loader2, Search, Info } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { prompts } from '@/lib/prompts';
 
 interface Program {
   id: string;
@@ -61,7 +62,7 @@ export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram,
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('No active session');
 
-      toast({ title: "Connecting to Blackhawk…", description: "Fetching live program listings." });
+      toast({ title: "Connecting…", description: prompts.ui.programs.helper('Blackhawk') });
 
       console.log('[ProgramBrowser] Invoking mcp-executor with args:', {
         tool: 'scp:find_programs',
@@ -109,7 +110,7 @@ export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram,
       }
     } catch (err: any) {
       console.error('[ProgramBrowser] Error in fetchPrograms:', err);
-      toast({ title: "Error loading programs", description: err?.message || 'Unknown error', variant: "destructive" });
+      toast({ title: "Error", description: err?.message || prompts.ui.programs.loadError, variant: "destructive" });
       setPrograms([]);
     } finally {
       setLoading(false);
@@ -126,6 +127,7 @@ export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram,
 
   const handleProgramSelect = (p: Program) => {
     onProgramSelect({ ref: p.program_ref, title: p.title });
+    toast({ description: prompts.ui.programs.toastSelected(p.title) });
     setOpen(false);
   };
 
@@ -136,19 +138,19 @@ export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram,
           <TooltipTrigger asChild>
             <DialogTrigger asChild>
               <Button variant="outline" type="button" className="w-full">
-                {selectedProgram ? 'Change Program' : 'Browse Available Programs'}
+                {selectedProgram ? prompts.ui.cta.changeProgram : prompts.ui.cta.fetchPrograms}
               </Button>
             </DialogTrigger>
           </TooltipTrigger>
-          <TooltipContent side="top">This logs into Blackhawk (SkiClubPro) to load live programs.</TooltipContent>
+          <TooltipContent side="top">{prompts.ui.programs.helper('Blackhawk')}</TooltipContent>
         </Tooltip>
 
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <DialogTitle className="flex items-center gap-2"><Info className="h-4 w-4" /> Select a Program</DialogTitle>
-                <DialogDescription>We'll connect to your Blackhawk account to load live listings.</DialogDescription>
+                <DialogTitle className="flex items-center gap-2"><Info className="h-4 w-4" /> {prompts.ui.titles.program}</DialogTitle>
+                <DialogDescription>{prompts.ui.programs.helper('Blackhawk')}</DialogDescription>
               </div>
               <Badge variant={credentialId ? 'secondary' : 'destructive'}>
                 {credentialId ? 'Login Ready' : 'No Credentials'}
@@ -158,7 +160,7 @@ export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram,
 
           <div className="flex gap-2 mb-4 px-1">
             <Input
-              placeholder="Search programs (e.g., beginner, saturday)…"
+              placeholder={prompts.ui.programs.searchPh}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && fetchPrograms(searchQuery)}
@@ -178,7 +180,7 @@ export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram,
               <div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading…</div>
             ) : programs.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                Click search to load programs.
+                {searchQuery ? prompts.ui.programs.empty : 'Click search to load programs.'}
               </div>
             ) : (
               <div className="grid gap-4">
