@@ -130,9 +130,10 @@ const PlanBuilder = () => {
   });
   const [showMandateSummary, setShowMandateSummary] = useState(false);
   const [executionStatus, setExecutionStatus] = useState<{
-    status: 'idle' | 'running' | 'success' | 'failed' | 'credential_invalid' | 'mandate_missing';
+    status: 'idle' | 'running' | 'success' | 'failed' | 'credential_invalid' | 'mandate_missing' | 'verified';
     message?: string;
     result?: string;
+    verified?: boolean;
   }>({ status: 'idle' });
   const [mvpTestProgress, setMvpTestProgress] = useState<{
     inProgress: boolean;
@@ -294,8 +295,22 @@ const PlanBuilder = () => {
           
           const log = payload.new;
           
-          // Handle specific error stages
+          // Check for verified authentication success
+          if (log.status === 'success' && log.metadata?.verified === true) {
+            setExecutionStatus({
+              status: 'verified',
+              message: 'Authentication verified successfully',
+              verified: true
+            });
+          }
+          
+          // Handle specific error stages - only show Action Needed for real failures
           if (log.status === 'failed') {
+            // Check if it's a login verification failure (not just uncertain)
+            const isLoginFailure = log.stage === 'login' && 
+              (log.error_message?.includes('LOGIN_VERIFICATION_FAILED') || 
+               log.error_message?.includes('Login failed'));
+            
             if (log.stage === 'credential_decryption' || log.stage === 'token_validation') {
               setExecutionStatus({
                 status: 'credential_invalid',
@@ -314,6 +329,17 @@ const PlanBuilder = () => {
               toast({
                 title: 'Mandate Required',
                 description: 'The required mandate is missing or not signed.',
+                variant: 'destructive'
+              });
+            } else if (isLoginFailure) {
+              // Only show Action Needed for confirmed login failures
+              setExecutionStatus({
+                status: 'failed',
+                message: 'Login verification failed. Please check your credentials.'
+              });
+              toast({
+                title: 'Login Failed',
+                description: 'Unable to verify login. Please check your credentials and try again.',
                 variant: 'destructive'
               });
             }
@@ -947,6 +973,13 @@ const PlanBuilder = () => {
             title: 'Invalid Credentials',
             titleColor: 'text-warning',
             badge: <Badge className="bg-warning text-warning-foreground">Credential Error</Badge>
+          };
+        case 'verified':
+          return {
+            icon: <CheckCircle className="h-16 w-16 text-success mx-auto mb-4" />,
+            title: 'Authentication Verified',
+            titleColor: 'text-success',
+            badge: <Badge className="bg-success text-success-foreground">Verified</Badge>
           };
         case 'mandate_missing':
           return {
