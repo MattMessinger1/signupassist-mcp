@@ -1370,9 +1370,8 @@ const PlanBuilder = () => {
                   <PrerequisitesPanel
                     orgRef="blackhawk-ski-club"
                     credentialId={form.watch('credentialId')}
-                    selectedChildName={selectedChildName}
-                    onReadyToContinue={(ready) => {
-                      setPrerequisiteChecks([{ check: 'all', status: ready ? 'pass' : 'fail', message: '' }]);
+                    onReadyToContinue={() => {
+                      setPrerequisiteChecks([{ check: 'all', status: 'pass', message: '' }]);
                     }}
                     onChildSelected={(childName) => {
                       setSelectedChildName(childName);
