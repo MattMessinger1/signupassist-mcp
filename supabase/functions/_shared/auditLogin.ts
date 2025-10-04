@@ -21,6 +21,7 @@ export interface LoginAuditDetails {
     session_cookie?: boolean;
     hadLogoutUi?: boolean;  // Found logout link/user menu
     hadSessCookie?: boolean;  // Found Drupal SESS cookie
+    welcomeMessage?: boolean; // Found welcome message
   };
   
   // Precise timing
@@ -38,6 +39,9 @@ export interface LoginAuditDetails {
     screenshot_path?: string;
     body_snippet?: string;
   };
+  
+  // Authentication status message for UI
+  authentication_message?: string;
   
   error?: string;
   duration_ms?: number;  // Backward compatibility

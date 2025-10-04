@@ -135,6 +135,7 @@ const PlanBuilder = () => {
     result?: string;
     verified?: boolean;
   }>({ status: 'idle' });
+  const [loginStatus, setLoginStatus] = useState<'checking' | 'authenticated' | 'action_needed'>('checking');
   const [mvpTestProgress, setMvpTestProgress] = useState<{
     inProgress: boolean;
     stage: 'idle' | 'checking_mandates' | 'discovering_fields' | 'submitting_form' | 'complete' | 'error';
@@ -229,6 +230,9 @@ const PlanBuilder = () => {
   }, [user]);
 
   // Realtime subscription for plan executions and execution logs
+  // This enables automatic UI updates when backend processes complete
+  // - Plan executions: tracks overall registration status
+  // - Execution logs: provides detailed step-by-step progress including login verification
   useEffect(() => {
     if (!createdPlan?.plan_id) return;
 
@@ -294,6 +298,40 @@ const PlanBuilder = () => {
           console.log('[PlanBuilder] Execution log update:', payload);
           
           const log = payload.new;
+          const logMessage = (log.error_message || '').toLowerCase();
+          const logMetadata = log.metadata || {};
+          
+          // Check for login verification status messages
+          if (logMessage.includes('authenticated session verified') || 
+              logMessage.includes('login verified') ||
+              logMetadata.verified === true) {
+            setLoginStatus('authenticated');
+            setExecutionStatus({
+              status: 'verified',
+              message: 'Authentication verified successfully',
+              verified: true
+            });
+            
+            // Show success toast
+            toast({
+              title: 'Account Verified',
+              description: 'Login session authenticated successfully ✅',
+              className: 'bg-success text-success-foreground',
+            });
+          } else if (logMessage.includes('login verification failed') || 
+                     logMessage.includes('login failed') ||
+                     logMessage.includes('verification uncertain')) {
+            setLoginStatus('action_needed');
+            
+            // Show warning toast for uncertain verification
+            if (logMessage.includes('uncertain')) {
+              toast({
+                title: 'Verification Uncertain',
+                description: 'Login verification is uncertain. Retrying...',
+                variant: 'default',
+              });
+            }
+          }
           
           // Check for verified authentication success
           if (log.status === 'success' && log.metadata?.verified === true) {
@@ -312,6 +350,7 @@ const PlanBuilder = () => {
                log.error_message?.includes('Login failed'));
             
             if (log.stage === 'credential_decryption' || log.stage === 'token_validation') {
+              setLoginStatus('action_needed');
               setExecutionStatus({
                 status: 'credential_invalid',
                 message: 'Credential validation failed. Please update your credentials.'
@@ -333,6 +372,7 @@ const PlanBuilder = () => {
               });
             } else if (isLoginFailure) {
               // Only show Action Needed for confirmed login failures
+              setLoginStatus('action_needed');
               setExecutionStatus({
                 status: 'failed',
                 message: 'Login verification failed. Please check your credentials.'
@@ -1044,6 +1084,38 @@ const PlanBuilder = () => {
                 <div className="flex justify-between items-center">
                   <span className="font-medium">Status:</span>
                   {statusDisplay.badge}
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="font-medium">Login Status:</span>
+                  <Badge 
+                    variant={
+                      loginStatus === 'action_needed' ? 'destructive' :
+                      loginStatus === 'authenticated' ? 'default' : 
+                      'secondary'
+                    }
+                    className={
+                      loginStatus === 'authenticated' 
+                        ? 'bg-success text-success-foreground' 
+                        : ''
+                    }
+                  >
+                    {loginStatus === 'action_needed' ? (
+                      <>
+                        <AlertTriangle className="h-3 w-3 mr-1" />
+                        Action Needed
+                      </>
+                    ) : loginStatus === 'authenticated' ? (
+                      <>
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Authenticated
+                      </>
+                    ) : (
+                      <>
+                        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                        Checking…
+                      </>
+                    )}
+                  </Badge>
                 </div>
                 {executionStatus.result && (
                   <div className="flex justify-between">
