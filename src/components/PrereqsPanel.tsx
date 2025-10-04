@@ -85,32 +85,60 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
       return;
     }
 
-    // Phase 3.3: Check cache (5 minute cooldown)
+    console.log('[PrereqCheck] 🚀 Starting prerequisite check...', { credentialId, orgRef });
+
+    // Check cache (5 minute cooldown)
     const now = Date.now();
     if (now - lastCheckTime < 300000) {
+      console.log('[PrereqCheck] ⏸️ Skipping - recently checked (cache cooldown)');
       toast({ description: 'Prerequisites recently checked. Please wait a few minutes before rechecking.' });
       return;
     }
 
     setLoading(true);
-    setCheckStatus('Connecting to browser...');
+    setCheckStatus('Verifying session...');
     
-    // Phase 3.2: Retry logic
+    // Retry logic
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) throw new Error('No active session');
+        // Step 1: Session verification with detailed logging
+        console.log('[PrereqCheck] 📝 Step 1: Getting session...');
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          console.error('[PrereqCheck] ❌ Session error:', sessionError);
+          throw new Error(`Session error: ${sessionError.message}`);
+        }
+        
+        if (!session) {
+          console.error('[PrereqCheck] ❌ No session found');
+          throw new Error('Please log in again - your session has expired');
+        }
+        
+        console.log('[PrereqCheck] ✅ Session valid, user:', session.user.email, 'token:', session.access_token.substring(0, 20) + '...');
 
         toast({ title: "Checking prerequisites…", description: prompts.ui.signin.helpers.purpose('Blackhawk') });
         
-        setCheckStatus('Logging in to SkiClubPro...');
+        setCheckStatus('Connecting to browser...');
         
-        // Phase 1.2: Add timeout wrapper (30 seconds)
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Check timed out after 30 seconds')), 30000)
-        );
+        // Step 2: Prepare the edge function call
+        console.log('[PrereqCheck] 📡 Step 2: Preparing mcp-executor call...', {
+          tool: 'scp:check_prerequisites',
+          org_ref: orgRef,
+          credential_id: credentialId,
+          has_token: !!session.access_token
+        });
         
-        const checkPromise = supabase.functions.invoke('mcp-executor', {
+        // Step 3: Create timeout promise
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            console.error('[PrereqCheck] ⏱️ Request timed out after 30 seconds');
+            reject(new Error('Check timed out after 30 seconds'));
+          }, 30000);
+        });
+        
+        // Step 4: Create invoke promise with explicit logging
+        const invokePromise = supabase.functions.invoke('mcp-executor', {
           body: {
             tool: 'scp:check_prerequisites',
             args: { 
@@ -119,41 +147,58 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
               user_jwt: session.access_token
             }
           }
+        }).then(result => {
+          console.log('[PrereqCheck] ✅ Edge function returned:', result);
+          return result;
+        }).catch(err => {
+          console.error('[PrereqCheck] ❌ Invoke failed:', err);
+          throw new Error(`Network error: ${err.message || 'Failed to reach edge function'}`);
         });
         
-        const { data, error } = await Promise.race([checkPromise, timeoutPromise]) as any;
+        console.log('[PrereqCheck] ⏳ Step 3: Waiting for response (30s timeout)...');
         
-        if (error) throw error;
+        const result = await Promise.race([invokePromise, timeoutPromise]) as any;
+        
+        console.log('[PrereqCheck] 📦 Received result:', { hasData: !!result.data, hasError: !!result.error });
+        
+        const { data, error } = result;
+        
+        if (error) {
+          console.error('[PrereqCheck] ❌ Edge function returned error:', error);
+          throw error;
+        }
         
         setCheckStatus('Checking account status...');
         
-        // Phase 1.3: Robust error handling - validate response structure
+        // Validate response structure
         if (!data || typeof data !== 'object') {
-          console.warn('Malformed response:', data);
+          console.warn('[PrereqCheck] ⚠️ Malformed response:', data);
           toast({ title: 'Error', description: 'Received incomplete prerequisite data', variant: 'destructive' });
           return;
         }
         
         // Validate we got at least some basic data
         if (!data.account && !data.membership) {
-          console.warn('No prerequisite data returned:', data);
+          console.warn('[PrereqCheck] ⚠️ No prerequisite data returned:', data);
           toast({ title: 'Error', description: 'No prerequisite data returned', variant: 'destructive' });
           return;
         }
 
+        console.log('[PrereqCheck] ✅ Valid prerequisite data received');
         setData(data);
         
         // Auto-select single child
         if (data?.children?.length === 1 && !childName) {
+          console.log('[PrereqCheck] 👶 Auto-selecting single child:', data.children[0].name);
           setChildName(data.children[0].name);
           onChildSelected?.(data.children[0].name);
         }
         
-        // Phase 2.3: Validate child selection after recheck
+        // Validate child selection after recheck
         if (childName && data?.children) {
           const stillExists = data.children.some((c: any) => c.name === childName);
           if (!stillExists) {
-            console.warn('Previously selected child no longer found');
+            console.warn('[PrereqCheck] ⚠️ Previously selected child no longer found');
             setChildName('');
             toast({ title: 'Notice', description: 'Please select a child again', variant: 'default' });
           }
@@ -162,6 +207,8 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
         setCheckStatus('Complete');
         setLastCheckTime(Date.now());
 
+        console.log('[PrereqCheck] 🎉 Check complete, login_status:', data?.login_status);
+
         if (data?.login_status === 'success') toast({ description: prompts.ui.toasts.prereqsOk });
         if (data?.login_status === 'failed') toast({ title: 'Login failed', description: prompts.ui.signin.errors.badLogin, variant: 'destructive' });
         
@@ -169,18 +216,23 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
         break;
         
       } catch (e: any) {
-        console.error(`Prerequisite check failed (attempt ${attempt + 1}/${retries + 1}):`, e);
+        console.error(`[PrereqCheck] ❌ Fatal error (attempt ${attempt + 1}/${retries + 1}):`, e);
+        console.error('[PrereqCheck] Error stack:', e.stack);
         
-        // Phase 3.2: Retry logic for timeouts
+        // Retry logic for timeouts
         if (attempt < retries && e.message?.includes('timeout')) {
-          console.log(`Retrying after timeout... (${attempt + 1}/${retries})`);
+          console.log(`[PrereqCheck] 🔄 Retrying after timeout... (${attempt + 1}/${retries})`);
           setCheckStatus(`Retrying (${attempt + 1}/${retries})...`);
           await new Promise(r => setTimeout(r, 2000));
           continue;
         }
         
         // Final failure
-        toast({ title: 'Error', description: e?.message || 'Prereq check failed', variant: 'destructive' });
+        toast({ 
+          title: 'Prerequisite Check Failed', 
+          description: e?.message || 'Unable to check prerequisites. Please try browsing programs first.', 
+          variant: 'destructive' 
+        });
         break;
         
       } finally {
