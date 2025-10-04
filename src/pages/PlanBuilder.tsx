@@ -35,6 +35,7 @@ import { PlanPreview } from '@/components/PlanPreview';
 import { useRegistrationFlow } from '@/lib/registrationFlow';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import MandateSummary from '@/components/MandateSummary';
+import { prompts, fmt } from '@/lib/prompts';
 
 const stripePromise = loadStripe('pk_test_51RujoPAaGNDlVi1koVlBSBBXy2yfwz7vuMBciJxkawKBKaqwR4xw07wEFUAMa73ADIUqzwB5GwbPM3YnPYu5vo4X00rAdiwPkx');
 
@@ -44,6 +45,8 @@ const planBuilderSchema = z.object({
   childId: z.string().min(1, 'Child selection is required'),
   opensAt: z.date({ message: 'Date is required' }),
   credentialId: z.string().min(1, 'Login credentials are required'),
+  maxAmountCents: z.number().min(0, 'Payment limit must be positive'),
+  contactPhone: z.string().min(10, 'Please enter a valid mobile number'),
   answers: z.record(z.string(), z.string()).optional(),
 });
 
@@ -95,6 +98,8 @@ const PlanBuilder = () => {
     resolver: zodResolver(planBuilderSchema),
     defaultValues: {
       answers: {},
+      maxAmountCents: 0,
+      contactPhone: '',
     },
   });
 
@@ -1174,13 +1179,140 @@ const PlanBuilder = () => {
               </Card>
             )}
 
-            {/* Step 7: Payment Method */}
+            {/* Step 7: Payment Limit */}
             {discoveredSchema && opensAt && !showMandateSummary && (
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className="text-xs">Step 7</Badge>
+                      <CardTitle className="flex items-center gap-2">
+                        <DollarSign className="h-5 w-5" />
+                        {prompts.ui.titles.priceLimit}
+                      </CardTitle>
+                    </div>
+                    {form.watch('maxAmountCents') > 0 && <CheckCircle className="h-5 w-5 text-green-600" />}
+                  </div>
+                  <CardDescription>
+                    {prompts.ui.limit.helper}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="maxAmountCents"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{prompts.ui.limit.label}</FormLabel>
+                        <FormControl>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                            <Input
+                              type="number"
+                              placeholder="175.00"
+                              className="pl-7"
+                              value={field.value ? (field.value / 100).toFixed(2) : ''}
+                              onChange={(e) => {
+                                const dollars = parseFloat(e.target.value) || 0;
+                                field.onChange(Math.round(dollars * 100));
+                              }}
+                            />
+                          </div>
+                        </FormControl>
+                        {detectedPriceCents && (
+                          <div className="text-sm space-y-1 p-3 bg-muted rounded-lg">
+                            <div className="flex items-center justify-between">
+                              <span className="text-muted-foreground">Detected program cost:</span>
+                              <span className="font-medium">{fmt.money(detectedPriceCents)}</span>
+                            </div>
+                            {field.value > 0 && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground">Your cap:</span>
+                                <span className="font-medium">{fmt.money(field.value)}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Step 8: How We'll Handle Extra Questions */}
+            {discoveredSchema && opensAt && form.watch('maxAmountCents') > 0 && !showMandateSummary && (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">Step 8</Badge>
+                    <CardTitle>{prompts.ui.defaults.headline}</CardTitle>
+                  </div>
+                  <CardDescription>
+                    {prompts.ui.defaults.explainer}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-3">
+                    <h4 className="text-sm font-semibold">Rules we'll follow:</h4>
+                    <ul className="space-y-2">
+                      {prompts.ui.defaults.rules.map((rule, idx) => (
+                        <li key={idx} className="flex items-start gap-3 text-sm">
+                          <CheckCircle className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                          <span className="text-muted-foreground">{rule}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Step 9: Contact Information */}
+            {discoveredSchema && opensAt && form.watch('maxAmountCents') > 0 && !showMandateSummary && (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">Step 9</Badge>
+                      <CardTitle>{prompts.ui.titles.contact}</CardTitle>
+                    </div>
+                    {form.watch('contactPhone') && <CheckCircle className="h-5 w-5 text-green-600" />}
+                  </div>
+                  <CardDescription>
+                    {prompts.ui.contact.helper}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <FormField
+                    control={form.control}
+                    name="contactPhone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{prompts.ui.contact.label}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="tel"
+                            placeholder={prompts.ui.contact.ph}
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Step 10: Payment Method */}
+            {discoveredSchema && opensAt && form.watch('maxAmountCents') > 0 && form.watch('contactPhone') && !showMandateSummary && (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">Step 10</Badge>
                       <CardTitle className="flex items-center gap-2">
                         <DollarSign className="h-5 w-5" />
                         Payment Method
@@ -1204,8 +1336,8 @@ const PlanBuilder = () => {
               </Card>
             )}
 
-            {/* Step 8: Mandate Summary & Finalize */}
-            {discoveredSchema && opensAt && hasPaymentMethod && allRequirementsMet && showMandateSummary && (
+            {/* Step 11: Mandate Summary & Finalize */}
+            {discoveredSchema && opensAt && hasPaymentMethod && allRequirementsMet && form.watch('maxAmountCents') > 0 && form.watch('contactPhone') && showMandateSummary && (
               <MandateSummary
                 orgRef="blackhawk-ski-club"
                 programTitle={friendlyProgramTitle || form.watch('programRef')}
@@ -1214,7 +1346,10 @@ const PlanBuilder = () => {
                 childName={selectedChildName}
                 answers={form.watch('answers') || {}}
                 detectedPriceCents={detectedPriceCents}
-                caps={caps}
+                caps={{
+                  max_provider_charge_cents: form.watch('maxAmountCents'),
+                  service_fee_cents: caps.service_fee_cents
+                }}
                 openTimeISO={opensAt instanceof Date ? opensAt.toISOString() : new Date(opensAt).toISOString()}
                 preferredSlot={selectedBranch || 'Standard Registration'}
                 onCreated={(planId, mandateId) => {
@@ -1257,7 +1392,7 @@ const PlanBuilder = () => {
             )}
 
             {/* Action Buttons */}
-            {!showMandateSummary && discoveredSchema && opensAt && hasPaymentMethod && (
+            {!showMandateSummary && discoveredSchema && opensAt && hasPaymentMethod && form.watch('maxAmountCents') > 0 && form.watch('contactPhone') && (
               <div className="flex gap-4">
                 <Button
                   type="button"
@@ -1274,7 +1409,7 @@ const PlanBuilder = () => {
                   className="flex-1"
                   onClick={() => setShowMandateSummary(true)}
                 >
-                  Continue to Review
+                  {prompts.ui.cta.createMandate}
                 </Button>
               </div>
             )}
