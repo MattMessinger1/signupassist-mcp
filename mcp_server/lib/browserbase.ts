@@ -8,6 +8,10 @@ import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { getSkiClubProConfig } from '../config/skiclubpro_selectors.js';
 import { getProgramId } from '../config/program_mapping.js';
 import { loginWithCredentials, ProviderLoginConfig } from './login.js';
+import { annotatePrice } from './pricing/annotatePrice.js';
+import { chooseDefaultAnswer } from './pricing/chooseAnswer.js';
+import { computeTotalCents } from './pricing/computeTotal.js';
+import type { DiscoveredField } from '../types/pricing.js';
 
 const browserbaseApiKey = process.env.BROWSERBASE_API_KEY!;
 
@@ -424,16 +428,7 @@ export async function discoverProgramRequiredFields(
     // Comprehensive field extraction with categorization
     console.log('[Field Discovery] Extracting fields...');
     
-    interface DiscoveredField {
-      id: string;
-      label: string;
-      type: string;
-      required: boolean;
-      category: string;
-      options?: string[];
-    }
-
-    const fields: DiscoveredField[] = await session.page.$$eval(
+    const fields: any[] = await session.page.$$eval(
       'form input, form select, form textarea',
       (elements: any[]) => {
         const fieldMap = new Map();
@@ -529,8 +524,11 @@ export async function discoverProgramRequiredFields(
             // Extract options for select elements
             if (tag === 'select') {
               const options = Array.from(el.querySelectorAll('option'))
-                .map((opt: any) => opt.textContent?.trim())
-                .filter((text: string) => text && text !== 'Select...' && text !== '- Select -');
+                .map((opt: any) => ({
+                  value: opt.value || opt.textContent?.trim() || '',
+                  label: opt.textContent?.trim() || ''
+                }))
+                .filter((o: any) => o.label && o.label !== 'Select...' && o.label !== '- Select -');
               
               if (options.length > 0) {
                 fieldData.options = options;
@@ -547,8 +545,17 @@ export async function discoverProgramRequiredFields(
     
     console.log(`[Field Discovery] ✓ Extracted ${fields.length} fields`);
 
+    // ✅ PHASE 1: Annotate fields with price information
+    const annotatedFields = fields.map(field => {
+      const annotated = annotatePrice(field as DiscoveredField);
+      if (annotated.isPriceBearing) {
+        console.log(`[Price Detection] ${field.label}: price-bearing field detected`);
+      }
+      return annotated;
+    });
+
     // Log field categories
-    const categoryCounts = fields.reduce((acc: any, field: any) => {
+    const categoryCounts = annotatedFields.reduce((acc: any, field: any) => {
       acc[field.category] = (acc[field.category] || 0) + 1;
       return acc;
     }, {});
@@ -572,7 +579,7 @@ export async function discoverProgramRequiredFields(
     // Return clean schema ready for Plan Builder
     return {
       program_ref: programRef,
-      questions: fields
+      questions: annotatedFields
     };
     
   } catch (error) {
@@ -620,8 +627,10 @@ export async function performSkiClubProRegistration(
     child: any;
     answers: Record<string, any>;
     mandate_scope: string[];
+    discovered_fields?: DiscoveredField[]; // ✅ PHASE 1: Accept discovered field schema
+    max_amount_cents?: number; // ✅ PHASE 1: Accept payment limit
   }
-): Promise<{ registration_ref: string }> {
+): Promise<{ registration_ref: string; total_cents?: number }> {
   try {
     console.log(`Starting registration for program: ${registrationData.program_ref}`);
     
@@ -634,14 +643,42 @@ export async function performSkiClubProRegistration(
     // Wait for form to load
     await session.page.waitForSelector('form', { timeout: 10000 });
     
+    // ✅ PHASE 1: Apply smart defaults to unanswered fields
+    let enhancedAnswers = { ...registrationData.answers };
+    if (registrationData.discovered_fields) {
+      console.log('[Smart Defaults] Applying price-aware defaults to unanswered fields...');
+      for (const field of registrationData.discovered_fields) {
+        if (!enhancedAnswers[field.id]) {
+          const defaultValue = chooseDefaultAnswer(field);
+          if (defaultValue) {
+            enhancedAnswers[field.id] = defaultValue;
+            console.log(`[Smart Defaults] ${field.label}: selected "${defaultValue}" ${field.isPriceBearing ? '(price-aware)' : ''}`);
+          }
+        }
+      }
+    }
+    
+    // ✅ PHASE 1: Compute total price before filling
+    const baseProgramPrice = 0; // TODO: Extract from program metadata if available
+    const estimatedTotal = registrationData.discovered_fields
+      ? computeTotalCents(baseProgramPrice, registrationData.discovered_fields, enhancedAnswers)
+      : 0;
+    
+    console.log(`[Price Check] Estimated total: $${estimatedTotal / 100}`);
+    if (registrationData.max_amount_cents && estimatedTotal > registrationData.max_amount_cents) {
+      throw new Error(
+        `PRICE_EXCEEDS_LIMIT: Estimated total $${estimatedTotal / 100} exceeds limit of $${registrationData.max_amount_cents / 100}`
+      );
+    }
+    
     // Fill basic child information
     await fillBasicChildInfo(session, registrationData.child);
     
-    // Fill pre-answered questions from mandate
-    await fillPreAnsweredQuestions(session, registrationData.answers);
+    // Fill pre-answered questions from mandate (now with smart defaults)
+    await fillPreAnsweredQuestions(session, enhancedAnswers);
     
     // Handle dynamic/branching questions
-    await handleDynamicQuestions(session, registrationData.answers, registrationData.mandate_scope);
+    await handleDynamicQuestions(session, enhancedAnswers, registrationData.mandate_scope);
     
     // Set donations and optional fields to minimum/no
     await setOptionalFieldsToMinimum(session);
@@ -673,7 +710,10 @@ export async function performSkiClubProRegistration(
     
     console.log(`Registration completed with reference: ${registrationRef}`);
     
-    return { registration_ref: registrationRef };
+    return { 
+      registration_ref: registrationRef,
+      total_cents: estimatedTotal // ✅ PHASE 1: Return computed total
+    };
     
   } catch (error) {
     console.error('Error during registration:', error);

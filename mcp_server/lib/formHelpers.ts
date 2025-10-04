@@ -1,4 +1,7 @@
 import { Page, Locator } from 'playwright';
+import { chooseDefaultAnswer } from './pricing/chooseAnswer.js';
+import { computeTotalCents } from './pricing/computeTotal.js';
+import type { DiscoveredField } from '../types/pricing.js';
 
 export interface FormFieldMapping {
   [logicalField: string]: string | string[];
