@@ -1370,8 +1370,24 @@ const PlanBuilder = () => {
                   <PrerequisitesPanel
                     orgRef="blackhawk-ski-club"
                     credentialId={form.watch('credentialId')}
-                    onReadyToContinue={() => {
-                      setPrerequisiteChecks([{ check: 'all', status: 'pass', message: '' }]);
+                    onReadyToContinue={async () => {
+                      const childId = form.watch('childId');
+                      if (childId) {
+                        const { data, error } = await supabase
+                          .from('children')
+                          .select('name')
+                          .eq('id', childId)
+                          .maybeSingle();
+                        
+                        if (data && !error) {
+                          setSelectedChildName(data.name);
+                          setPrerequisiteChecks([{ check: 'all', status: 'pass', message: 'Manual prerequisites confirmed' }]);
+                          toast({
+                            title: 'Prerequisites Confirmed',
+                            description: `Ready to continue registration for ${data.name}`,
+                          });
+                        }
+                      }
                     }}
                     onChildSelected={(childName) => {
                       setSelectedChildName(childName);
