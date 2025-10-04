@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
+import { showErrorToast } from '@/lib/toastHelpers';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 interface Credential {
@@ -23,7 +23,6 @@ interface CredentialPickerProps {
 export function CredentialPicker({ provider, value, onChange }: CredentialPickerProps) {
   const [credentials, setCredentials] = useState<Credential[]>([]);
   const [loading, setLoading] = useState(false);
-  const { toast } = useToast();
 
   useEffect(() => {
     if (provider) {
@@ -39,11 +38,7 @@ export function CredentialPicker({ provider, value, onChange }: CredentialPicker
       if (error) {
         // Handle 401 specifically
         if (error.message?.includes('401')) {
-          toast({
-            title: 'Session Expired',
-            description: 'Your session has expired. Please refresh the page and log in again.',
-            variant: 'destructive',
-          });
+          showErrorToast('Session Expired', 'Your session has expired. Please refresh the page and log in again.');
           return;
         }
         throw error;
@@ -57,19 +52,11 @@ export function CredentialPicker({ provider, value, onChange }: CredentialPicker
       setCredentials(filteredCredentials);
       
       if (filteredCredentials.length === 0) {
-        toast({
-          title: 'No Credentials Found',
-          description: `No stored credentials found for ${provider}. Please add credentials first.`,
-          variant: 'destructive',
-        });
+        showErrorToast('No Credentials Found', `No stored credentials found for ${provider}. Please add credentials first.`);
       }
     } catch (error) {
       console.error('Error loading credentials:', error);
-      toast({
-        title: 'Error',
-        description: `Failed to load stored credentials: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        variant: 'destructive',
-      });
+      showErrorToast('Error', `Failed to load stored credentials: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }

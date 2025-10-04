@@ -8,7 +8,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
+import { showPromptToast, showErrorToast } from '@/lib/toastHelpers';
 import { format } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
 import { Header } from '@/components/Header';
@@ -54,7 +54,6 @@ export default function RegistrationDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const navigate = useNavigate();
-  const { toast } = useToast();
   const { user, loading: authLoading } = useAuth();
 
   useEffect(() => {
@@ -115,11 +114,7 @@ export default function RegistrationDashboard() {
 
     } catch (error) {
       console.error('Error loading plans:', error);
-      toast({
-        title: 'Error Loading Data',
-        description: 'Failed to load registration data. Please try again.',
-        variant: 'destructive',
-      });
+      showErrorToast('Error Loading Data', 'Failed to load registration data. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -129,10 +124,7 @@ export default function RegistrationDashboard() {
     setRefreshing(true);
     await loadPlansData();
     setRefreshing(false);
-    toast({
-      title: 'Data Refreshed',
-      description: 'Registration status updated successfully.',
-    });
+    showPromptToast('dataRefreshed');
   };
 
   const startSignupJob = async (planId: string) => {
@@ -143,20 +135,13 @@ export default function RegistrationDashboard() {
 
       if (error) throw error;
 
-      toast({
-        title: 'Signup Job Started',
-        description: 'Registration process has been initiated.',
-      });
+      showPromptToast('jobStarted');
 
       // Refresh data to show new execution
       await refreshData();
     } catch (error) {
       console.error('Error starting signup job:', error);
-      toast({
-        title: 'Error Starting Job',
-        description: 'Failed to start signup job. Please try again.',
-        variant: 'destructive',
-      });
+      showPromptToast('jobFailed', { variant: 'destructive' });
     }
   };
 

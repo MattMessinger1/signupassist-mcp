@@ -6,6 +6,8 @@
 import { supabase } from '@/integrations/supabase/client';
 import { mapFormDataToBackend, validateFieldMapping, createRegistrationPayload, MappedFieldData } from './fieldMapping';
 import { useToast } from '@/hooks/use-toast';
+import { showPromptToast, showSuccessToast, showErrorToast } from './toastHelpers';
+import { prompts } from './prompts';
 
 export interface RegistrationFlowResult {
   success: boolean;
@@ -151,16 +153,22 @@ async function executeRegistration(payload: any): Promise<{
 
     if (error) {
       console.error('Registration error:', error);
+      const errorMessage = error.message?.toUpperCase().replace(/ /g, '_') || 'UNKNOWN_ERROR';
+      const mappedError = prompts.backend.errors[errorMessage as keyof typeof prompts.backend.errors] 
+        || prompts.backend.errors.UNKNOWN_ERROR;
       return {
         success: false,
-        errors: [error.message || 'Registration failed']
+        errors: [mappedError]
       };
     }
 
     if (data?.error) {
+      const errorCode = data.error.toUpperCase().replace(/ /g, '_');
+      const mappedError = prompts.backend.errors[errorCode as keyof typeof prompts.backend.errors]
+        || prompts.backend.errors.UNKNOWN_ERROR;
       return {
         success: false,
-        errors: [data.error]
+        errors: [mappedError]
       };
     }
 
@@ -207,16 +215,22 @@ async function executePayment(options: {
 
     if (error) {
       console.error('Payment error:', error);
+      const errorMessage = error.message?.toUpperCase().replace(/ /g, '_') || 'UNKNOWN_ERROR';
+      const mappedError = prompts.backend.errors[errorMessage as keyof typeof prompts.backend.errors]
+        || prompts.backend.errors.UNKNOWN_ERROR;
       return {
         success: false,
-        errors: [error.message || 'Payment failed']
+        errors: [mappedError]
       };
     }
 
     if (data?.error) {
+      const errorCode = data.error.toUpperCase().replace(/ /g, '_');
+      const mappedError = prompts.backend.errors[errorCode as keyof typeof prompts.backend.errors]
+        || prompts.backend.errors.UNKNOWN_ERROR;
       return {
         success: false,
-        errors: [data.error]
+        errors: [mappedError]
       };
     }
 
@@ -245,16 +259,12 @@ export function useRegistrationFlow() {
 
     // Show appropriate toast messages
     if (result.success) {
-      toast({
-        title: 'Registration Successful',
-        description: `Registration completed${result.confirmationRef ? ' with payment' : ''}. Reference: ${result.registrationRef}`,
-      });
+      showSuccessToast(
+        'Registration Successful',
+        `Registration completed${result.confirmationRef ? ' with payment' : ''}. Reference: ${result.registrationRef}`
+      );
     } else {
-      toast({
-        title: 'Registration Failed',
-        description: result.errors[0] || 'Unknown error occurred',
-        variant: 'destructive',
-      });
+      showErrorToast('Registration Failed', result.errors[0] || prompts.backend.errors.UNKNOWN_ERROR);
     }
 
     // Show warnings if any
