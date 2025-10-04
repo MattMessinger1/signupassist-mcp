@@ -13,6 +13,7 @@ export interface FormFillOptions {
   scrollDelay?: number;
   enableMouseMovement?: boolean;
   detectCaptcha?: boolean;
+  maxAmountCents?: number; // Payment limit in cents
 }
 
 export interface FormFillResult {
@@ -22,6 +23,8 @@ export interface FormFillResult {
   fieldsFilledCount?: number;
   fieldsMissedCount?: number;
   error?: string;
+  totalPriceCents?: number; // Total price detected after filling
+  priceExceeded?: boolean; // True if price exceeded max
 }
 
 // Common antibot field patterns
@@ -120,6 +123,135 @@ async function moveMouseToTarget(page: Page, targetX: number, targetY: number): 
 }
 
 /**
+ * Detects if a select option contains pricing information
+ * Returns { isPriceBearing: boolean, priceCents: number | null }
+ */
+function detectOptionPrice(optionText: string): { isPriceBearing: boolean; priceCents: number | null } {
+  // Match patterns like: "$75", "75.00", "$0", "No charge", "Free"
+  const pricePattern = /\$?\s*(\d+(?:\.\d{2})?)\s*(?:USD|CAD)?/i;
+  const freePattern = /\b(free|no\s+charge|no\s+cost|\$0(?:\.00)?)\b/i;
+  
+  if (freePattern.test(optionText)) {
+    return { isPriceBearing: true, priceCents: 0 };
+  }
+  
+  const priceMatch = optionText.match(pricePattern);
+  if (priceMatch) {
+    const dollars = parseFloat(priceMatch[1]);
+    return { isPriceBearing: true, priceCents: Math.round(dollars * 100) };
+  }
+  
+  // Check for price-bearing keywords even without explicit price
+  const priceBearingKeywords = /\b(rental|t-shirt|jersey|equipment|gear|add-on|upgrade|fee)\b/i;
+  if (priceBearingKeywords.test(optionText)) {
+    return { isPriceBearing: true, priceCents: null };
+  }
+  
+  return { isPriceBearing: false, priceCents: null };
+}
+
+/**
+ * Handle select field with price-aware logic
+ * - For price-bearing fields: chooses $0/free option
+ * - For non-price fields: chooses first non-placeholder option
+ */
+async function fillSelectField(
+  page: Page,
+  field: Locator,
+  logical: string,
+  value: any,
+  maxAmountCents: number | undefined,
+  currentTotalCents: number
+): Promise<{ success: boolean; addedPriceCents: number; errorMessage?: string }> {
+  try {
+    const options = await field.locator('option').all();
+    const optionTexts = await Promise.all(options.map(opt => opt.textContent()));
+    
+    console.log(`DEBUG: Select field "${logical}" has ${options.length} options:`, optionTexts);
+    
+    // Analyze all options for pricing
+    const optionPrices = optionTexts.map((text, idx) => ({
+      index: idx,
+      text: text || '',
+      ...detectOptionPrice(text || '')
+    }));
+    
+    const hasPricingOptions = optionPrices.some(o => o.isPriceBearing);
+    
+    let selectedIndex: number | undefined;
+    let addedPriceCents = 0;
+    
+    if (hasPricingOptions) {
+      // Price-bearing field: choose $0/free option
+      console.log(`DEBUG: "${logical}" is price-bearing, selecting $0 option`);
+      const freeOptions = optionPrices.filter(o => o.priceCents === 0 && o.index > 0);
+      
+      if (freeOptions.length > 0) {
+        selectedIndex = freeOptions[0].index;
+        console.log(`DEBUG: Selected free option at index ${selectedIndex}: "${freeOptions[0].text}"`);
+      } else {
+        // No free option, look for lowest price
+        const pricedOptions = optionPrices
+          .filter(o => o.priceCents !== null && o.index > 0)
+          .sort((a, b) => (a.priceCents || 0) - (b.priceCents || 0));
+        
+        if (pricedOptions.length > 0) {
+          selectedIndex = pricedOptions[0].index;
+          addedPriceCents = pricedOptions[0].priceCents || 0;
+          console.log(`DEBUG: No free option, selected lowest price at index ${selectedIndex}: "${pricedOptions[0].text}" ($${addedPriceCents / 100})`);
+          
+          // Check payment limit
+          if (maxAmountCents && (currentTotalCents + addedPriceCents) > maxAmountCents) {
+            return {
+              success: false,
+              addedPriceCents: 0,
+              errorMessage: `PRICE_EXCEEDS_LIMIT: Adding $${addedPriceCents / 100} would exceed limit of $${maxAmountCents / 100} (current: $${currentTotalCents / 100})`
+            };
+          }
+        }
+      }
+    } else {
+      // Non-price field: choose first non-placeholder option or match value
+      const nonPlaceholder = optionPrices.filter((opt, idx) => 
+        idx > 0 && // Skip first option (usually placeholder)
+        opt.text.trim() &&
+        !/(select|choose|pick|—|\.\.\.)/i.test(opt.text)
+      );
+      
+      if (nonPlaceholder.length > 0) {
+        // Try to match value if provided
+        if (value) {
+          const matchedOption = nonPlaceholder.find(opt => 
+            opt.text.toLowerCase().includes(String(value).toLowerCase())
+          );
+          selectedIndex = matchedOption ? matchedOption.index : nonPlaceholder[0].index;
+        } else {
+          selectedIndex = nonPlaceholder[0].index;
+        }
+        console.log(`DEBUG: Non-price field, selected option at index ${selectedIndex}: "${optionTexts[selectedIndex]}"`);
+      }
+    }
+    
+    if (selectedIndex !== undefined) {
+      await field.selectOption({ index: selectedIndex });
+      return { success: true, addedPriceCents };
+    } else {
+      return { 
+        success: false, 
+        addedPriceCents: 0,
+        errorMessage: `Could not determine option for "${logical}"`
+      };
+    }
+  } catch (error) {
+    return {
+      success: false,
+      addedPriceCents: 0,
+      errorMessage: error instanceof Error ? error.message : String(error)
+    };
+  }
+}
+
+/**
  * Fill a form with human-like behavior to bypass Antibot protection
  * 
  * @param page - Playwright page instance
@@ -166,6 +298,7 @@ export async function fillFormHumanLike(
 
     let fieldsFilledCount = 0;
     let fieldsMissedCount = 0;
+    let totalPriceCents = 0;
 
     // Iterate through logical fields in mapping order
     const entries = Object.entries(mapping);
@@ -192,38 +325,73 @@ export async function fillFormHumanLike(
       }
 
       try {
-        // Scroll field into view with realistic timing
-        await field.scrollIntoViewIfNeeded();
-        await page.waitForTimeout(opts.scrollDelay);
-
-        // Get field bounding box for mouse movement
-        if (opts.enableMouseMovement) {
-          const box = await field.boundingBox();
-          if (box) {
-            await moveMouseToTarget(page, box.x + box.width / 2, box.y + box.height / 2);
-            await page.waitForTimeout(randomDelay(50, 150));
+        // Check if this is a select/dropdown field
+        const tagName = await field.evaluate(el => el.tagName.toLowerCase());
+        
+        if (tagName === 'select') {
+          // Handle select with price-aware logic
+          const selectResult = await fillSelectField(
+            page,
+            field,
+            logical,
+            value,
+            options.maxAmountCents,
+            totalPriceCents
+          );
+          
+          if (!selectResult.success) {
+            if (selectResult.errorMessage?.startsWith('PRICE_EXCEEDS_LIMIT')) {
+              console.log(`ERROR: ${selectResult.errorMessage}`);
+              return {
+                success: false,
+                priceExceeded: true,
+                totalPriceCents: totalPriceCents + selectResult.addedPriceCents,
+                error: selectResult.errorMessage,
+                fieldsFilledCount,
+                fieldsMissedCount: fieldsMissedCount + 1
+              };
+            }
+            console.log(`DEBUG ⚠️  ${selectResult.errorMessage}`);
+            fieldsMissedCount++;
+          } else {
+            totalPriceCents += selectResult.addedPriceCents;
+            fieldsFilledCount++;
           }
+        } else {
+          // Handle text/input fields normally
+          // Scroll field into view with realistic timing
+          await field.scrollIntoViewIfNeeded();
+          await page.waitForTimeout(opts.scrollDelay);
+
+          // Get field bounding box for mouse movement
+          if (opts.enableMouseMovement) {
+            const box = await field.boundingBox();
+            if (box) {
+              await moveMouseToTarget(page, box.x + box.width / 2, box.y + box.height / 2);
+              await page.waitForTimeout(randomDelay(50, 150));
+            }
+          }
+
+          // Click to focus
+          await field.click();
+          await page.waitForTimeout(randomDelay(100, 250));
+
+          // Clear existing value
+          await field.fill('');
+          await page.waitForTimeout(randomDelay(50, 150));
+
+          // Type value with per-character delay
+          const stringValue = String(value);
+          for (const char of stringValue) {
+            await field.type(char, { delay: opts.typeDelay });
+          }
+
+          console.log(`DEBUG ✓ Filled "${logical}" with ${stringValue.length} characters`);
+          fieldsFilledCount++;
+
+          // Blur the field (trigger validation)
+          await field.blur();
         }
-
-        // Click to focus
-        await field.click();
-        await page.waitForTimeout(randomDelay(100, 250));
-
-        // Clear existing value
-        await field.fill('');
-        await page.waitForTimeout(randomDelay(50, 150));
-
-        // Type value with per-character delay
-        const stringValue = String(value);
-        for (const char of stringValue) {
-          await field.type(char, { delay: opts.typeDelay });
-        }
-
-        console.log(`DEBUG ✓ Filled "${logical}" with ${stringValue.length} characters`);
-        fieldsFilledCount++;
-
-        // Blur the field (trigger validation)
-        await field.blur();
 
         // Random pause between fields (mimic human form-filling rhythm)
         const interFieldDelay = randomDelay(opts.interFieldPauseMin, opts.interFieldPauseMax);
@@ -263,12 +431,15 @@ export async function fillFormHumanLike(
     }
 
     console.log("DEBUG Form fill complete - ready for submission");
+    console.log(`DEBUG Total price detected: $${totalPriceCents / 100}`);
 
     return {
       success: true,
       antibotFieldsFound: antibotFields.length > 0 ? antibotFields : undefined,
       fieldsFilledCount,
-      fieldsMissedCount
+      fieldsMissedCount,
+      totalPriceCents,
+      priceExceeded: false
     };
 
   } catch (error) {
