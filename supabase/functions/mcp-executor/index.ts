@@ -43,6 +43,7 @@ const MCP_TOOLS: Record<string, string> = {
   'scp:find_programs': 'skiclubpro-tools',
   'scp:check_prerequisites': 'skiclubpro-tools',
   'scp:list_children': 'skiclubpro-tools',
+  'scp:run_checks': 'skiclubpro-tools',
   // Backward compatibility aliases for dot notation
   'scp.login': 'skiclubpro-tools',
   'scp.register': 'skiclubpro-tools',
@@ -50,7 +51,8 @@ const MCP_TOOLS: Record<string, string> = {
   'scp.discover_fields': 'skiclubpro-tools',
   'scp.find_programs': 'skiclubpro-tools',
   'scp.check_prerequisites': 'skiclubpro-tools',
-  'scp.list_children': 'skiclubpro-tools'
+  'scp.list_children': 'skiclubpro-tools',
+  'scp.run_checks': 'skiclubpro-tools'
 };
 
 async function executeMCPTool(toolName: string, args: any, planExecutionId: string, mandateId: string, supabase: any) {
