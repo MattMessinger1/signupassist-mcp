@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import ReminderPreferences, { ReminderPrefs } from './ReminderPreferences';
+import { prompts, fmt } from '@/lib/prompts';
 
 type Caps = { max_provider_charge_cents: number | null; service_fee_cents: number | null };
 
@@ -33,8 +34,7 @@ export default function MandateSummary({
   detectedPriceCents, caps, openTimeISO, preferredSlot, onCreated
 }: Props) {
   const { toast } = useToast();
-  const [agreeActions, setAgreeActions] = useState(false);
-  const [agreeFees, setAgreeFees] = useState(false);
+  const [consents, setConsents] = useState<boolean[]>([false, false, false, false, false, false]);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showMandateJSON, setShowMandateJSON] = useState(false);
@@ -66,7 +66,12 @@ export default function MandateSummary({
     credential_id: credentialId
   }), [scopeList, caps, programRef, childName, openTimeISO, credentialId]);
 
-  const valid = agreeActions && agreeFees && !!childName && !!programRef && !!credentialId && !!openTimeISO;
+  const consentItems = useMemo(
+    () => prompts.ui.review.consent(fmt.money(caps.max_provider_charge_cents || 0), orgRef),
+    [caps.max_provider_charge_cents, orgRef]
+  );
+
+  const valid = consents.every(c => c) && !!childName && !!programRef && !!credentialId && !!openTimeISO;
 
   const createPlanAndMandate = async () => {
     if (!valid) {
@@ -198,15 +203,20 @@ export default function MandateSummary({
 
           <Separator />
 
-          <div className="grid gap-2">
-            <label className="flex items-center gap-2">
-              <Checkbox checked={agreeActions} onCheckedChange={(v) => setAgreeActions(!!v)} />
-              <span>I authorize SignupAssist to log in, fill forms, and submit my registration for this plan.</span>
-            </label>
-            <label className="flex items-center gap-2">
-              <Checkbox checked={agreeFees} onCheckedChange={(v) => setAgreeFees(!!v)} />
-              <span>I authorize payment up to the cap above and a success fee only if registration succeeds.</span>
-            </label>
+          <div className="grid gap-3">
+            {consentItems.map((consentText, idx) => (
+              <label key={idx} className="flex items-start gap-2 cursor-pointer">
+                <Checkbox 
+                  checked={consents[idx]}
+                  onCheckedChange={(v) => {
+                    const newConsents = [...consents];
+                    newConsents[idx] = !!v;
+                    setConsents(newConsents);
+                  }}
+                />
+                <span className="text-sm leading-tight">{consentText}</span>
+              </label>
+            ))}
           </div>
 
           <div className="flex gap-2 pt-1">
