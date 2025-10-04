@@ -158,11 +158,25 @@ export default function MandateSummary({
 
           <Separator />
 
-          <div className="grid gap-1">
+          <div className="space-y-2">
             <div className="font-medium">Payment limits</div>
-            <div>Detected price: <strong>{fmtUSD(detectedPriceCents)}</strong></div>
-            <div>Max you authorize us to pay the provider: <strong>{fmtUSD(caps.max_provider_charge_cents)}</strong></div>
-            <div>Success fee (only on success): <strong>{fmtUSD(caps.service_fee_cents)}</strong></div>
+            <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-1.5 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Estimated total:</span>
+                <strong>{fmtUSD(detectedPriceCents)}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Your payment cap:</span>
+                <strong className="text-primary">{fmtUSD(caps.max_provider_charge_cents)}</strong>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Success fee (only if we get the spot):</span>
+                <strong>{fmtUSD(caps.service_fee_cents)}</strong>
+              </div>
+              <div className="pt-2 border-t border-border text-xs text-muted-foreground">
+                Final total will not exceed your {fmtUSD(caps.max_provider_charge_cents)} limit. We'll stop if the actual cost is higher.
+              </div>
+            </div>
           </div>
 
           <Separator />

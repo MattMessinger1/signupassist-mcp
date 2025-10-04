@@ -1,6 +1,31 @@
 /**
  * Browserbase Session Management
  * Handles Playwright automation via Browserbase
+ * 
+ * RUNNER POLICY (v1.0-mcp):
+ * This module enforces deterministic, price-aware registration automation:
+ * 
+ * 1. PRICE-BEARING FIELDS:
+ *    - Always prefer $0 / "no charge" / "included" options
+ *    - If no free option exists, select the cheapest option
+ *    - Parse price signals from labels using regex (MONEY_RE, FREE_WORDS)
+ * 
+ * 2. NON-PRICE CHOICE FIELDS:
+ *    - Skip placeholder options (e.g., "-- Select --", "Choose one")
+ *    - Select the first real/valid option
+ *    - Avoid "None", empty values, or placeholder text
+ * 
+ * 3. PAYMENT CAP ENFORCEMENT:
+ *    - Compute total = base program price + sum of selected option costs
+ *    - If total > mandate max_amount_cents, throw PRICE_EXCEEDS_LIMIT
+ *    - Stop execution immediately to prevent overspending
+ * 
+ * 4. AUDIT & TRANSPARENCY:
+ *    - Log all tool calls to mcp_tool_calls table
+ *    - Include args_hash and result_hash for integrity
+ *    - Capture screenshots at key steps (login, form, confirmation)
+ * 
+ * See also: prompts/acp_prompt_pack.md for full policy text
  */
 
 import Browserbase from '@browserbasehq/sdk';

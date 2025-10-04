@@ -1,3 +1,32 @@
+/**
+ * MCP Executor Edge Function
+ * 
+ * RUNNER POLICY (v1.0-mcp):
+ * This orchestrator enforces the mandate scope and pricing policy:
+ * 
+ * 1. MANDATE VALIDATION:
+ *    - Every tool call is logged to mcp_tool_calls with mandate_id
+ *    - All operations must be within approved scopes (scp:login, scp:enroll, scp:pay)
+ *    - No actions are taken without a valid, active mandate
+ * 
+ * 2. PRICING ENFORCEMENT:
+ *    - Backend (browserbase.ts) computes total and enforces max_amount_cents cap
+ *    - If total exceeds cap, throws PRICE_EXCEEDS_LIMIT and halts execution
+ *    - Only charges success fee AFTER successful registration (scp:pay completes)
+ * 
+ * 3. AUDIT TRAIL:
+ *    - Creates audit record BEFORE each tool execution (decision='approved')
+ *    - Updates record with result_json and result_hash AFTER completion
+ *    - Maintains full chain of custody for compliance and debugging
+ * 
+ * 4. ERROR HANDLING:
+ *    - On failure, marks plan status as 'failed'
+ *    - Updates plan_execution with error details
+ *    - Does NOT charge success fee on failure
+ * 
+ * See also: prompts/acp_prompt_pack.md for full policy text
+ */
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 
 const corsHeaders = {
