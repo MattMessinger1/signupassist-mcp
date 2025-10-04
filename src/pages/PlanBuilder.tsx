@@ -132,6 +132,11 @@ const PlanBuilder = () => {
     message?: string;
     result?: string;
   }>({ status: 'idle' });
+  const [mvpTestProgress, setMvpTestProgress] = useState<{
+    inProgress: boolean;
+    stage: 'idle' | 'checking_mandates' | 'discovering_fields' | 'submitting_form' | 'complete' | 'error';
+    message?: string;
+  }>({ inProgress: false, stage: 'idle' });
 
   // Safe derived variables with null checks and defaults
   const currentBranch = discoveredSchema?.branches?.find(b => b.choice === selectedBranch) ?? null;
@@ -564,6 +569,116 @@ const PlanBuilder = () => {
     }
   };
 
+  const runMVPTest = async () => {
+    if (!user || !session || !createdPlan) {
+      toast({
+        title: 'Error',
+        description: 'Missing authentication or plan data',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setMvpTestProgress({ inProgress: true, stage: 'checking_mandates', message: 'Checking mandates...' });
+
+    try {
+      // Get credential_id from the plan
+      const { data: planData, error: planError } = await supabase
+        .from('plans')
+        .select('*, mandates(*)')
+        .eq('id', createdPlan.plan_id)
+        .single();
+
+      if (planError || !planData) {
+        throw new Error('Failed to fetch plan details');
+      }
+
+      const { data: mandate } = await supabase
+        .from('mandates')
+        .select('*')
+        .eq('id', planData.mandate_id)
+        .single();
+
+      if (!mandate) {
+        throw new Error('Mandate not found');
+      }
+
+      // Get credential_id from form
+      const credentialId = form.getValues('credentialId');
+      if (!credentialId) {
+        throw new Error('No credentials selected');
+      }
+
+      setMvpTestProgress({ inProgress: true, stage: 'discovering_fields', message: 'Discovering registration fields...' });
+
+      // Get session token
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      if (!currentSession) {
+        throw new Error('No valid session');
+      }
+
+      setMvpTestProgress({ inProgress: true, stage: 'submitting_form', message: 'Submitting registration...' });
+
+      // Call schedule-from-readiness edge function
+      const { data, error } = await supabase.functions.invoke('schedule-from-readiness', {
+        body: {
+          plan_id: createdPlan.plan_id,
+          credential_id: credentialId,
+          user_jwt: currentSession.access_token
+        }
+      });
+
+      if (error || data?.error) {
+        const errorMsg = error?.message || data?.error || 'MVP test failed';
+        
+        // Handle specific error cases
+        if (errorMsg.includes('MANDATE_MISSING')) {
+          setMvpTestProgress({ 
+            inProgress: false, 
+            stage: 'error', 
+            message: 'Mandate not signed or missing' 
+          });
+          toast({
+            title: 'Mandate Required',
+            description: 'The required mandate is missing or not signed.',
+            variant: 'destructive'
+          });
+          return;
+        }
+
+        throw new Error(errorMsg);
+      }
+
+      setMvpTestProgress({ 
+        inProgress: false, 
+        stage: 'complete', 
+        message: 'Registration execution started successfully' 
+      });
+
+      toast({
+        title: 'MVP Test Started',
+        description: 'The full signup flow has been initiated. Watch for realtime updates.',
+      });
+
+      console.log('MVP test response:', data);
+    } catch (error) {
+      console.error('Error running MVP test:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to run MVP test';
+      
+      setMvpTestProgress({ 
+        inProgress: false, 
+        stage: 'error', 
+        message: errorMessage 
+      });
+
+      toast({
+        title: 'MVP Test Failed',
+        description: errorMessage,
+        variant: 'destructive'
+      });
+    }
+  };
+
   const createMandate = async (maxCostCents: number) => {
     if (!user || !session) {
       toast({
@@ -880,6 +995,53 @@ const PlanBuilder = () => {
           </Card>
 
           <div className="space-y-4">
+            {/* MVP Test Button */}
+            <Card className="border-2 border-primary/20 bg-primary/5">
+              <CardContent className="pt-6">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Badge variant="secondary" className="text-xs">MVP Test Mode</Badge>
+                    <span className="text-sm font-medium">Full Automated Flow</span>
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Run the complete signup process: mandate check → field discovery → form submission
+                  </p>
+                  
+                  <Button 
+                    onClick={runMVPTest}
+                    disabled={mvpTestProgress.inProgress}
+                    className="w-full"
+                    size="lg"
+                    variant="default"
+                  >
+                    {mvpTestProgress.inProgress ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        {mvpTestProgress.stage === 'checking_mandates' && 'Checking Mandates...'}
+                        {mvpTestProgress.stage === 'discovering_fields' && 'Discovering Fields...'}
+                        {mvpTestProgress.stage === 'submitting_form' && 'Submitting Form...'}
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Run MVP Test
+                      </>
+                    )}
+                  </Button>
+
+                  {mvpTestProgress.message && (
+                    <Alert className={mvpTestProgress.stage === 'error' ? 'border-destructive' : ''}>
+                      <AlertDescription className="text-sm">
+                        {mvpTestProgress.message}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Separator className="my-4" />
+            
             <div className="flex gap-3">
               <Button 
                 onClick={() => startSignupJob(createdPlan.plan_id)}
