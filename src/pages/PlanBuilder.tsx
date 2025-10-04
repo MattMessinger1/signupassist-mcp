@@ -1188,7 +1188,7 @@ const PlanBuilder = () => {
                       <Badge variant="outline" className="text-xs">Step 7</Badge>
                       <CardTitle className="flex items-center gap-2">
                         <DollarSign className="h-5 w-5" />
-                        {prompts.ui.titles.priceLimit}
+                        {prompts.ui.titles.limit}
                       </CardTitle>
                     </div>
                     {form.watch('maxAmountCents') > 0 && <CheckCircle className="h-5 w-5 text-green-600" />}

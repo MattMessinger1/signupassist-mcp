@@ -71,7 +71,7 @@ export const showPromptToast = (
     'program.loadError': prompts.ui.programs.loadError,
     'child.notFound': prompts.ui.child.notFound,
     'signin.badLogin': prompts.ui.signin.errors.badLogin,
-    'signin.missingPrereq': prompts.ui.signin.errors.missingPrereq,
+    'signin.missingPrereq': prompts.ui.signin.errors.prereqMissing,
   };
 
   const messageTemplate = toastMessages[key];
