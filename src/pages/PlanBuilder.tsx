@@ -1457,11 +1457,22 @@ const PlanBuilder = () => {
                     onReadyToContinue={async () => {
                       const childId = form.watch('childId');
                       const programRef = form.watch('programRef');
+                      const openTime = form.watch('opensAt');
                       
+                      // Validate all required fields before auto-discovery
                       if (!childId || !programRef) {
                         toast({
                           title: 'Missing Information',
                           description: 'Please select both a child and program',
+                          variant: 'destructive',
+                        });
+                        return;
+                      }
+
+                      if (!openTime) {
+                        toast({
+                          title: 'Missing Registration Time',
+                          description: 'Please set when registration opens (Step 4)',
                           variant: 'destructive',
                         });
                         return;
@@ -1503,12 +1514,12 @@ const PlanBuilder = () => {
               </Card>
             )}
 
-            {/* Loading state for auto-discovery */}
-            {allRequirementsMet && isDiscovering && (
+            {/* Loading state for auto-discovery - only show during discovery */}
+            {allRequirementsMet && opensAt && isDiscovering && (
               <Card>
                 <CardHeader>
                   <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs">Step 4</Badge>
+                    <Badge variant="outline" className="text-xs">Step 5</Badge>
                     <CardTitle>Securing Your Spot</CardTitle>
                   </div>
                   <CardDescription>
@@ -1680,13 +1691,13 @@ const PlanBuilder = () => {
               </Card>
             )}
 
-            {/* Step 6: Registration Timing */}
-            {discoveredSchema && (
+            {/* Step 4: Registration Timing - Show BEFORE discovery */}
+            {allRequirementsMet && !discoveredSchema && !isDiscovering && (
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">Step 6</Badge>
+                      <Badge variant="outline" className="text-xs">Step 4</Badge>
                       <CardTitle>{prompts.ui.titles.openTime}</CardTitle>
                     </div>
                     {opensAt && <CheckCircle className="h-5 w-5 text-green-600" />}
@@ -1709,7 +1720,7 @@ const PlanBuilder = () => {
                           />
                         </FormControl>
                         <FormDescription>
-                          Must be in the future
+                          Set the exact date and time when registration opens
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -1719,13 +1730,13 @@ const PlanBuilder = () => {
               </Card>
             )}
 
-            {/* Step 7: Payment Limit */}
+            {/* Step 6: Payment Limit */}
             {discoveredSchema && opensAt && !showMandateSummary && (
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">Step 7</Badge>
+                      <Badge variant="outline" className="text-xs">Step 6</Badge>
                       <CardTitle className="flex items-center gap-2">
                         <DollarSign className="h-5 w-5" />
                         {prompts.ui.titles.limit}
