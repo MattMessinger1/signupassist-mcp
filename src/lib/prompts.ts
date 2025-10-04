@@ -160,6 +160,39 @@ export const prompts = {
       'I understand SignupAssist will pause and contact me if something requires my input (e.g., CAPTCHA or waiver).',
       'I agree that a simple audit log (including key screenshots) may be kept to confirm the steps taken for my signup.',
     ],
+    scopeDescriptions: {
+      'scp:login': {
+        label: 'Login Access',
+        description: 'Sign in to your account on your behalf',
+        icon: 'shield',
+      },
+      'scp:enroll': {
+        label: 'Enrollment',
+        description: 'Fill out and submit registration forms',
+        icon: 'user-plus',
+      },
+      'scp:pay': {
+        label: 'Payment Authorization',
+        description: 'Process payments up to your specified limit',
+        icon: 'credit-card',
+      },
+      'scp:write:register': {
+        label: 'Form Submission',
+        description: 'Submit registration on your behalf',
+        icon: 'file-text',
+      },
+      'signupassist:fee': {
+        label: 'Service Fee',
+        description: '$20 success fee upon completion',
+        icon: 'dollar-sign',
+      },
+    },
+    warnings: [
+      'This authorization is valid for 30 days from issuance',
+      'You can revoke this authorization at any time from your dashboard',
+      'We will contact you if we encounter any blockers (CAPTCHA, new waivers, etc.)',
+      'All actions are logged and can be audited',
+    ],
   },
 
   // ------------------------------------------------------------
@@ -196,7 +229,23 @@ export const prompts = {
   },
 
   // ------------------------------------------------------------
-  // 12. BACKEND RUNNER POLICY / TOOLS
+  // 12. FIELD DISCOVERY
+  // ------------------------------------------------------------
+  discovery: {
+    success: {
+      noQuestions: 'No additional questions required',
+      found: (branches: number, questions: number) =>
+        `Found ${branches} program options${questions > 0 ? ` and ${questions} common questions` : ''}`,
+    },
+    errors: {
+      failed: 'Field discovery failed',
+      timeout: 'Field discovery took too long',
+      invalidRef: 'Program reference is invalid',
+    },
+  },
+
+  // ------------------------------------------------------------
+  // 13. BACKEND RUNNER POLICY / TOOLS
   // ------------------------------------------------------------
   backend: {
     runnerPolicy: (orgName: string) =>
@@ -409,10 +458,13 @@ export const prompts = {
   errors: {
     sessionExpired: 'Your session has expired. Please sign in again.',
     notAuthenticated: 'Please sign in to continue.',
+    authRequired: 'Authentication Required',
     timeout: 'The request timed out. Please try again.',
     required: (field: string) => `${field} is required`,
+    missing: (fields: string[]) => `Please fill out: ${fields.join(', ')}`,
     invalidFormat: (field: string) => `Invalid ${field} format`,
     loadFailed: (resource: string) => `Failed to load ${resource}`,
+    invalidProgramRef: 'Program reference appears to be a title instead of a stable reference. Please reselect the program.',
   },
 };
 

@@ -266,8 +266,8 @@ const PlanBuilder = () => {
   const discoverFields = async (programRef: string) => {
     if (!user || !session) {
       toast({
-        title: 'Authentication Required',
-        description: 'Please log in to discover fields.',
+        title: prompts.errors.authRequired,
+        description: prompts.errors.notAuthenticated,
         variant: 'destructive',
       });
       navigate('/auth');
@@ -277,8 +277,8 @@ const PlanBuilder = () => {
     // Check session validity before making API call
     if (!isSessionValid()) {
       toast({
-        title: 'Session Expired',
-        description: 'Your session has expired. Please log in again.',
+        title: prompts.errors.authRequired,
+        description: prompts.errors.sessionExpired,
         variant: 'destructive',
       });
       navigate('/auth');
@@ -288,7 +288,7 @@ const PlanBuilder = () => {
     const credentialId = form.getValues('credentialId');
     if (!credentialId) {
       toast({
-        title: 'Credentials Required',
+        title: prompts.errors.required('Credentials'),
         description: 'Please select login credentials first.',
         variant: 'destructive',
       });
@@ -300,8 +300,8 @@ const PlanBuilder = () => {
     if (programRef && programRef.includes(' ')) {
       console.error('[PlanBuilder] ERROR: programRef appears to be a title instead of text_ref:', programRef);
       toast({
-        title: 'Invalid Program Reference',
-        description: 'Program reference appears to be a title instead of a stable reference. Please reselect the program.',
+        title: prompts.discovery.errors.invalidRef,
+        description: prompts.errors.invalidProgramRef,
         variant: 'destructive',
       });
       return;
@@ -318,8 +318,8 @@ const PlanBuilder = () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
         toast({
-          title: 'Request Timeout',
-          description: 'Field discovery took too long. Please try again.',
+          title: prompts.discovery.errors.timeout,
+          description: prompts.errors.timeout,
           variant: 'destructive',
         });
       }
@@ -367,7 +367,7 @@ const PlanBuilder = () => {
           });
         } else {
           toast({
-            title: "Field Discovery Failed",
+            title: prompts.discovery.errors.failed,
             description: message,
             variant: "destructive",
           });
@@ -390,7 +390,7 @@ const PlanBuilder = () => {
         });
         
         toast({
-          title: "No Additional Questions Required",
+          title: prompts.discovery.success.noQuestions,
           description: "This program doesn't require any extra information. You can proceed to the next step.",
         });
         return;
@@ -407,13 +407,13 @@ const PlanBuilder = () => {
       const commonQuestions = data.common_questions?.length || 0;
       toast({
         title: 'Fields Discovered Successfully',
-        description: `Found ${branchCount} program options${commonQuestions > 0 ? ` and ${commonQuestions} common questions` : ''}.`,
+        description: prompts.discovery.success.found(branchCount, commonQuestions),
       });
     } catch (error) {
       console.error('[PlanBuilder] Error discovering fields:', error);
       const err = error as any;
       toast({
-        title: "Discover Fields Failed",
+        title: prompts.discovery.errors.failed,
         description: err.message || err.context || JSON.stringify(err),
         variant: "destructive",
       });
@@ -425,8 +425,8 @@ const PlanBuilder = () => {
   const startSignupJob = async (planId: string) => {
     if (!user || !session) {
       toast({
-        title: 'Authentication Required',
-        description: 'Please log in to start a signup job.',
+        title: prompts.errors.authRequired,
+        description: prompts.errors.notAuthenticated,
         variant: 'destructive',
       });
       navigate('/auth');
@@ -461,8 +461,8 @@ const PlanBuilder = () => {
   const createMandate = async (maxCostCents: number) => {
     if (!user || !session) {
       toast({
-        title: 'Authentication Required',
-        description: 'Please log in to create a plan.',
+        title: prompts.errors.authRequired,
+        description: prompts.errors.notAuthenticated,
         variant: 'destructive',
       });
       navigate('/auth');
@@ -489,8 +489,8 @@ const PlanBuilder = () => {
         if (!formData.credentialId) missingFields.push('Login Credentials');
         
         toast({
-          title: 'Missing Required Fields',
-          description: `Please fill out: ${missingFields.join(', ')}`,
+          title: prompts.errors.required('Fields'),
+          description: prompts.errors.missing(missingFields),
           variant: 'destructive',
         });
         return;
@@ -514,8 +514,8 @@ const PlanBuilder = () => {
         const message = error?.message || data?.error || "Mandate creation failed";
         if (message.includes('Not authenticated')) {
           toast({
-            title: 'Session Expired',
-            description: 'Please log in again to continue.',
+            title: prompts.errors.authRequired,
+            description: prompts.errors.sessionExpired,
             variant: 'destructive',
           });
           navigate('/auth');
@@ -569,8 +569,8 @@ const PlanBuilder = () => {
         const message = planError?.message || planData?.error || "Plan creation failed";
         if (message.includes('Not authenticated')) {
           toast({
-            title: 'Session Expired',
-            description: 'Please log in again to continue.',
+            title: prompts.errors.authRequired,
+            description: prompts.errors.sessionExpired,
             variant: 'destructive',
           });
           navigate('/auth');
