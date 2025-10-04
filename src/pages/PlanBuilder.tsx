@@ -36,6 +36,7 @@ import { useRegistrationFlow } from '@/lib/registrationFlow';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import MandateSummary from '@/components/MandateSummary';
 import { prompts, fmt } from '@/lib/prompts';
+import { useToastLogger } from '@/lib/logging/useToastLogger';
 
 const stripePromise = loadStripe('pk_test_51RujoPAaGNDlVi1koVlBSBBXy2yfwz7vuMBciJxkawKBKaqwR4xw07wEFUAMa73ADIUqzwB5GwbPM3YnPYu5vo4X00rAdiwPkx');
 
@@ -92,6 +93,7 @@ const PlanBuilder = () => {
   console.log('[PlanBuilder] Component mounting/rendering');
   const navigate = useNavigate();
   const { toast } = useToast();
+  const toastLogger = useToastLogger();
   
   // ALL HOOKS MUST BE CALLED UNCONDITIONALLY
   const form = useForm<PlanBuilderForm>({
@@ -437,6 +439,7 @@ const PlanBuilder = () => {
     }, 30000); // 30 second timeout
 
     try {
+      toastLogger('field_discovery', 'Starting field discovery...', 'info', { programRef });
       console.log('[PlanBuilder] Calling discover-fields with validated programRef:', programRef);
       
       const payload = {
@@ -455,6 +458,8 @@ const PlanBuilder = () => {
 
       if (error || data?.error) {
         const message = error?.message || data?.error || "Field discovery failed";
+        
+        toastLogger('field_discovery', message, 'error', { diagnostics: data?.diagnostics });
         
         // Show detailed diagnostics if available
         if (data?.diagnostics) {
@@ -476,12 +481,6 @@ const PlanBuilder = () => {
             ),
             variant: "destructive",
           });
-        } else {
-          toast({
-            title: prompts.discovery.errors.failed,
-            description: message,
-            variant: "destructive",
-          });
         }
         
         // Keep schema null to show error UI
@@ -500,12 +499,22 @@ const PlanBuilder = () => {
           common_questions: []
         });
         
+        toastLogger('field_discovery', 'No additional questions required for this program', 'info');
+        
         toast({
           title: prompts.discovery.success.noQuestions,
           description: "This program doesn't require any extra information. You can proceed to the next step.",
         });
         return;
       }
+
+      const branchCount = data.branches?.length || 0;
+      const commonQuestions = data.common_questions?.length || 0;
+      
+      toastLogger('field_discovery', `Discovered ${branchCount} branches and ${commonQuestions} common questions`, 'success', {
+        branches: branchCount,
+        commonQuestions
+      });
 
       console.log('[PlanBuilder] ✅ Schema discovered successfully:', {
         branches: data.branches?.length ?? 0,
@@ -514,8 +523,6 @@ const PlanBuilder = () => {
       
       setDiscoveredSchema(data);
       
-      const branchCount = data.branches?.length || 0;
-      const commonQuestions = data.common_questions?.length || 0;
       toast({
         title: 'Fields Discovered Successfully',
         description: prompts.discovery.success.found(branchCount, commonQuestions),
@@ -523,6 +530,9 @@ const PlanBuilder = () => {
     } catch (error) {
       console.error('[PlanBuilder] Error discovering fields:', error);
       const err = error as any;
+      
+      toastLogger('field_discovery', err.message || 'Field discovery failed', 'error', { error: err });
+      
       toast({
         title: prompts.discovery.errors.failed,
         description: err.message || err.context || JSON.stringify(err),
@@ -580,6 +590,7 @@ const PlanBuilder = () => {
     }
 
     setMvpTestProgress({ inProgress: true, stage: 'checking_mandates', message: 'Checking mandates...' });
+    toastLogger('mvp_test', 'Starting MVP test - full signup flow', 'info', { plan_id: createdPlan.plan_id });
 
     try {
       // Get credential_id from the plan
@@ -610,6 +621,7 @@ const PlanBuilder = () => {
       }
 
       setMvpTestProgress({ inProgress: true, stage: 'discovering_fields', message: 'Discovering registration fields...' });
+      toastLogger('mvp_test', 'Mandate verified, discovering fields...', 'info');
 
       // Get session token
       const { data: { session: currentSession } } = await supabase.auth.getSession();
@@ -618,6 +630,7 @@ const PlanBuilder = () => {
       }
 
       setMvpTestProgress({ inProgress: true, stage: 'submitting_form', message: 'Submitting registration...' });
+      toastLogger('mvp_test', 'Fields discovered, submitting registration...', 'info');
 
       // Call schedule-from-readiness edge function
       const { data, error } = await supabase.functions.invoke('schedule-from-readiness', {
@@ -655,6 +668,11 @@ const PlanBuilder = () => {
         message: 'Registration execution started successfully' 
       });
 
+      toastLogger('mvp_test', 'MVP test completed - execution started', 'success', { 
+        execution_id: data.execution_id,
+        status: data.status 
+      });
+
       toast({
         title: 'MVP Test Started',
         description: 'The full signup flow has been initiated. Watch for realtime updates.',
@@ -664,6 +682,8 @@ const PlanBuilder = () => {
     } catch (error) {
       console.error('Error running MVP test:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to run MVP test';
+      
+      toastLogger('mvp_test', errorMessage, 'error', { error });
       
       setMvpTestProgress({ 
         inProgress: false, 
@@ -691,6 +711,8 @@ const PlanBuilder = () => {
     }
 
     setIsCreatingMandate(true);
+    toastLogger('mandate_creation', 'Creating mandate and plan...', 'info', { childId: form.getValues('childId') });
+    
     try {
       const formData = form.getValues();
       
@@ -807,6 +829,12 @@ const PlanBuilder = () => {
 
       setCreatedPlan(planData);
       setShowConfirmation(true);
+      
+      toastLogger('plan_creation', 'Plan created successfully', 'success', { 
+        plan_id: planData.plan_id,
+        mandate_id: data.mandate_id 
+      });
+      
       toast({
         title: 'Plan Created Successfully',
         description: 'Your automated signup plan is ready. You can now start the registration process.',
