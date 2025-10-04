@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { validateSchemaConsistency, getValidationHeaders } from '../_shared/validate-schema-consistency.ts';
+import { logStructuredError } from '../_shared/errors.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -119,7 +120,91 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`[Edge] Prerequisites passed - triggering execution`);
+    console.log(`[Edge] Prerequisites passed - verifying mandate`);
+
+    // Verify mandate is signed
+    if (plan.mandate_id) {
+      const { data: mandate, error: mandateError } = await supabase
+        .from('mandates')
+        .select('*')
+        .eq('id', plan.mandate_id)
+        .single();
+
+      if (mandateError || !mandate) {
+        console.error(`[Edge] Mandate not found:`, mandateError);
+        
+        await logStructuredError(supabase, {
+          correlationId: executionId,
+          stage: 'mandate_verification',
+          error: 'Mandate not found',
+          plan_id,
+          mandate_id: plan.mandate_id,
+          status: 'missing'
+        });
+
+        return new Response(
+          JSON.stringify({ 
+            error: 'MANDATE_MISSING',
+            execution_id: executionId
+          }),
+          { 
+            status: 412, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      if (mandate.status !== 'signed') {
+        console.log(`[Edge] Mandate not signed - status: ${mandate.status}`);
+        
+        await logStructuredError(supabase, {
+          correlationId: executionId,
+          stage: 'mandate_verification',
+          error: `Mandate not signed - status: ${mandate.status}`,
+          plan_id,
+          mandate_id: plan.mandate_id,
+          status: mandate.status
+        });
+
+        return new Response(
+          JSON.stringify({ 
+            error: 'MANDATE_MISSING',
+            current_status: mandate.status,
+            execution_id: executionId
+          }),
+          { 
+            status: 412, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      console.log(`[Edge] Mandate verified - status: signed`);
+      
+      // Log successful verification
+      const { error: logError } = await supabase.rpc('insert_execution_log', {
+        p_correlation_id: executionId,
+        p_plan_id: plan_id,
+        p_plan_execution_id: null,
+        p_mandate_id: plan.mandate_id,
+        p_stage: 'mandate_verification',
+        p_status: 'success',
+        p_attempt: 1,
+        p_error_message: null,
+        p_metadata: {
+          mandate_status: mandate.status,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+      if (logError) {
+        console.warn('[Edge] Failed to log mandate verification:', logError);
+      }
+    } else {
+      console.warn(`[Edge] Plan has no mandate_id - skipping verification`);
+    }
+
+    console.log(`[Edge] Triggering execution`);
 
     // Create plan execution record
     const { data: planExecution, error: execError } = await supabase
