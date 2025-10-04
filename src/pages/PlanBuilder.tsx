@@ -127,6 +127,11 @@ const PlanBuilder = () => {
     service_fee_cents: 2000 // $20 success fee
   });
   const [showMandateSummary, setShowMandateSummary] = useState(false);
+  const [executionStatus, setExecutionStatus] = useState<{
+    status: 'idle' | 'running' | 'success' | 'failed' | 'credential_invalid' | 'mandate_missing';
+    message?: string;
+    result?: string;
+  }>({ status: 'idle' });
 
   // Safe derived variables with null checks and defaults
   const currentBranch = discoveredSchema?.branches?.find(b => b.choice === selectedBranch) ?? null;
@@ -214,6 +219,107 @@ const PlanBuilder = () => {
       checkPaymentMethod();
     }
   }, [user]);
+
+  // Realtime subscription for plan executions and execution logs
+  useEffect(() => {
+    if (!createdPlan?.plan_id) return;
+
+    console.log('[PlanBuilder] Setting up realtime subscriptions for plan:', createdPlan.plan_id);
+
+    const channel = supabase
+      .channel('plan-execution-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'plan_executions',
+          filter: `plan_id=eq.${createdPlan.plan_id}`
+        },
+        (payload) => {
+          console.log('[PlanBuilder] Plan execution update:', payload);
+          
+          if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+            const execution = payload.new;
+            
+            // Update execution status based on result
+            if (execution.finished_at && execution.result) {
+              if (execution.result === 'success') {
+                setExecutionStatus({
+                  status: 'success',
+                  message: 'Registration completed successfully!',
+                  result: execution.confirmation_ref
+                });
+                toast({
+                  title: 'Registration Successful',
+                  description: `Confirmation: ${execution.confirmation_ref || 'N/A'}`,
+                });
+              } else if (execution.result === 'failed') {
+                setExecutionStatus({
+                  status: 'failed',
+                  message: 'Registration failed. Check execution logs for details.'
+                });
+                toast({
+                  title: 'Registration Failed',
+                  description: 'Please check the execution logs for more details.',
+                  variant: 'destructive'
+                });
+              }
+            } else if (execution.started_at && !execution.finished_at) {
+              setExecutionStatus({
+                status: 'running',
+                message: 'Registration in progress...'
+              });
+            }
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'execution_logs',
+          filter: `plan_id=eq.${createdPlan.plan_id}`
+        },
+        (payload) => {
+          console.log('[PlanBuilder] Execution log update:', payload);
+          
+          const log = payload.new;
+          
+          // Handle specific error stages
+          if (log.status === 'failed') {
+            if (log.stage === 'credential_decryption' || log.stage === 'token_validation') {
+              setExecutionStatus({
+                status: 'credential_invalid',
+                message: 'Credential validation failed. Please update your credentials.'
+              });
+              toast({
+                title: 'Invalid Credentials',
+                description: 'Your stored credentials appear to be invalid. Please update them.',
+                variant: 'destructive'
+              });
+            } else if (log.stage === 'mandate_verification') {
+              setExecutionStatus({
+                status: 'mandate_missing',
+                message: 'Mandate not signed or missing.'
+              });
+              toast({
+                title: 'Mandate Required',
+                description: 'The required mandate is missing or not signed.',
+                variant: 'destructive'
+              });
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      console.log('[PlanBuilder] Cleaning up realtime subscriptions');
+      supabase.removeChannel(channel);
+    };
+  }, [createdPlan?.plan_id, toast]);
 
   const checkPaymentMethod = async () => {
     if (!user) return;
@@ -674,14 +780,67 @@ const PlanBuilder = () => {
   // Show confirmation screen after successful plan creation
   if (showConfirmation && createdPlan) {
     console.log('[PlanBuilder] Rendering confirmation screen');
+    
+    // Status icon and color based on execution status
+    const getStatusDisplay = () => {
+      switch (executionStatus.status) {
+        case 'success':
+          return {
+            icon: <CheckCircle className="h-16 w-16 text-success mx-auto mb-4" />,
+            title: 'Registration Successful!',
+            titleColor: 'text-success',
+            badge: <Badge className="bg-success text-success-foreground">Completed</Badge>
+          };
+        case 'failed':
+          return {
+            icon: <AlertTriangle className="h-16 w-16 text-destructive mx-auto mb-4" />,
+            title: 'Registration Failed',
+            titleColor: 'text-destructive',
+            badge: <Badge variant="destructive">Failed</Badge>
+          };
+        case 'credential_invalid':
+          return {
+            icon: <AlertTriangle className="h-16 w-16 text-warning mx-auto mb-4" />,
+            title: 'Invalid Credentials',
+            titleColor: 'text-warning',
+            badge: <Badge className="bg-warning text-warning-foreground">Credential Error</Badge>
+          };
+        case 'mandate_missing':
+          return {
+            icon: <AlertTriangle className="h-16 w-16 text-warning mx-auto mb-4" />,
+            title: 'Mandate Required',
+            titleColor: 'text-warning',
+            badge: <Badge className="bg-warning text-warning-foreground">Mandate Missing</Badge>
+          };
+        case 'running':
+          return {
+            icon: <Loader2 className="h-16 w-16 text-primary mx-auto mb-4 animate-spin" />,
+            title: 'Registration In Progress',
+            titleColor: 'text-primary',
+            badge: <Badge variant="secondary">Running</Badge>
+          };
+        default:
+          return {
+            icon: <CheckCircle className="h-16 w-16 text-success mx-auto mb-4" />,
+            title: 'Plan Created Successfully!',
+            titleColor: 'text-success',
+            badge: <Badge variant="secondary">Scheduled</Badge>
+          };
+      }
+    };
+
+    const statusDisplay = getStatusDisplay();
+    
     return (
       <div className="min-h-screen bg-background">
         <div className="container mx-auto py-8 px-4 max-w-2xl">
           <div className="text-center mb-8">
-            <CheckCircle className="h-16 w-16 text-green-500 mx-auto mb-4" />
-            <h1 className="text-3xl font-bold text-green-700 mb-2">Plan Created Successfully!</h1>
+            {statusDisplay.icon}
+            <h1 className={`text-3xl font-bold mb-2 ${statusDisplay.titleColor}`}>
+              {statusDisplay.title}
+            </h1>
             <p className="text-muted-foreground">
-              Your automated signup plan is ready and scheduled.
+              {executionStatus.message || 'Your automated signup plan is ready and scheduled.'}
             </p>
           </div>
 
@@ -706,10 +865,16 @@ const PlanBuilder = () => {
                   <span className="font-medium">Opens At:</span>
                   <span>{new Date(createdPlan.opens_at).toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center">
                   <span className="font-medium">Status:</span>
-                  <Badge variant="secondary">{createdPlan.status}</Badge>
+                  {statusDisplay.badge}
                 </div>
+                {executionStatus.result && (
+                  <div className="flex justify-between">
+                    <span className="font-medium">Confirmation:</span>
+                    <span className="font-mono text-sm">{executionStatus.result}</span>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
