@@ -3,6 +3,7 @@ import { SignJWT, importJWK } from 'https://esm.sh/jose@5.2.4';
 import { invokeMCPTool } from '../_shared/mcpClient.ts';
 import { toIsoStringSafe } from '../_shared/utils.ts';
 import { logStructuredError, sanitizeError } from '../_shared/errors.ts';
+import { verifyDecryption, sanitizeCredentialsForLog, CredentialError } from '../_shared/account-credentials.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -92,13 +93,56 @@ Deno.serve(async (req) => {
       credentialData = data;
       console.log('Credential successfully decrypted');
 
+      // Verify decryption produced valid credentials
+      try {
+        verifyDecryption(credentialData);
+        console.log('Credential validation passed:', sanitizeCredentialsForLog(credentialData));
+        
+        // Log successful validation
+        await logStructuredError(supabase, {
+          stage: 'token_validation',
+          error: 'success',
+          credential_id,
+          program_ref,
+          validationResult: 'passed'
+        });
+        
+      } catch (validationError) {
+        const isCredError = validationError instanceof CredentialError;
+        const sanitizedError = sanitizeError(validationError);
+        
+        console.error('Token validation failed:', sanitizedError);
+        console.error('Credential format:', sanitizeCredentialsForLog(credentialData));
+        
+        // Log validation failure
+        await logStructuredError(supabase, {
+          stage: 'token_validation',
+          error: sanitizedError,
+          credential_id,
+          program_ref,
+          credentialFormat: sanitizeCredentialsForLog(credentialData)
+        });
+        
+        return new Response(
+          JSON.stringify({ 
+            error_code: 'TOKEN_VALIDATION_FAILED',
+            error: 'Token validation failed',
+            message: isCredError ? sanitizedError : 'Decrypted credentials are invalid. Please re-save your credentials.'
+          }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
     } catch (credError) {
       const sanitizedError = sanitizeError(credError);
-      console.error('Credential verification failed:', sanitizedError);
+      console.error('Credential decryption failed:', sanitizedError);
 
       // Log structured error
       await logStructuredError(supabase, {
-        stage: 'credential_verification',
+        stage: 'credential_decryption',
         error: sanitizedError,
         credential_id,
         program_ref
@@ -106,9 +150,9 @@ Deno.serve(async (req) => {
 
       return new Response(
         JSON.stringify({ 
-          error_code: 'CREDENTIAL_INVALID',
-          error: 'Credential verification failed',
-          message: 'The provided credentials could not be verified. Please check your credentials and try again.'
+          error_code: 'CREDENTIAL_DECRYPTION_FAILED',
+          error: 'Credential decryption failed',
+          message: 'Unable to decrypt credentials. Please verify your credentials are properly saved.'
         }),
         { 
           status: 400, 
