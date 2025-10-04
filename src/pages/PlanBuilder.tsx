@@ -37,6 +37,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import MandateSummary from '@/components/MandateSummary';
 import { prompts, fmt } from '@/lib/prompts';
 import { useToastLogger } from '@/lib/logging/useToastLogger';
+import { chooseDefaultAnswer } from '../../mcp_server/lib/pricing/chooseAnswer';
 
 const stripePromise = loadStripe('pk_test_51RujoPAaGNDlVi1koVlBSBBXy2yfwz7vuMBciJxkawKBKaqwR4xw07wEFUAMa73ADIUqzwB5GwbPM3YnPYu5vo4X00rAdiwPkx');
 
@@ -442,6 +443,24 @@ const PlanBuilder = () => {
     await discoverFields(programRef);
   };
 
+  // Auto-apply smart defaults to discovered fields
+  const autoApplySmartDefaults = (schema: DiscoveredSchema) => {
+    const answers: Record<string, string> = {};
+    const allFields = [
+      ...(schema.common_questions || []),
+      ...(schema.branches?.flatMap(b => b.questions) || [])
+    ];
+
+    allFields.forEach((field: any) => {
+      const defaultValue = chooseDefaultAnswer(field);
+      if (defaultValue) {
+        answers[field.id] = defaultValue;
+      }
+    });
+
+    return answers;
+  };
+
   const discoverFields = async (programRef: string) => {
     if (!user || !session) {
       toast({
@@ -589,9 +608,15 @@ const PlanBuilder = () => {
       
       setDiscoveredSchema(data);
       
+      // Auto-apply smart defaults
+      const autoAnswers = autoApplySmartDefaults(data);
+      form.setValue('answers', autoAnswers);
+      
+      console.log('[PlanBuilder] Auto-applied smart defaults:', autoAnswers);
+      
       toast({
-        title: 'Fields Discovered Successfully',
-        description: prompts.discovery.success.found(branchCount, commonQuestions),
+        title: 'Spot Secured!',
+        description: `Smart defaults applied for ${selectedChildName}. Review answers below or proceed to complete registration.`,
       });
     } catch (error) {
       console.error('[PlanBuilder] Error discovering fields:', error);
@@ -1127,6 +1152,65 @@ const PlanBuilder = () => {
             </CardContent>
           </Card>
 
+          {/* Auto-Applied Answers Summary */}
+          {discoveredSchema && form.getValues('answers') && Object.keys(form.getValues('answers') || {}).length > 0 && (
+            <Card className="border-green-200 bg-green-50 dark:bg-green-950">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-green-900 dark:text-green-100">
+                  <CheckCircle className="h-5 w-5" />
+                  Smart Defaults Applied
+                </CardTitle>
+                <CardDescription className="text-green-700 dark:text-green-300">
+                  These answers were automatically selected to secure your spot quickly
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {Object.entries(form.getValues('answers') || {}).map(([fieldId, value]) => {
+                    const allFields = [
+                      ...(discoveredSchema.common_questions || []),
+                      ...(discoveredSchema.branches?.flatMap(b => b.questions) || [])
+                    ];
+                    const field = allFields.find((f: any) => f.id === fieldId);
+                    const fieldLabel = field?.label || fieldId;
+                    
+                    // Display value - try to find option label or use raw value
+                    let displayValue = value as string;
+                    const fieldOptions = (field as any)?.options;
+                    if (fieldOptions && Array.isArray(fieldOptions) && fieldOptions.length > 0) {
+                      // Check if options are objects with value/label or just strings
+                      const firstOpt = fieldOptions[0];
+                      if (typeof firstOpt === 'object' && firstOpt.value && firstOpt.label) {
+                        const option = fieldOptions.find((opt: any) => opt.value === value);
+                        displayValue = option?.label || value as string;
+                        
+                        // Check if it's a price-bearing field and show cost
+                        const priceInfo = (field as any)?.priceOptions?.find((opt: any) => opt.value === value);
+                        if (priceInfo?.costCents !== undefined && priceInfo?.costCents !== null) {
+                          displayValue += ` (${priceInfo.costCents === 0 ? 'Free' : `$${(priceInfo.costCents / 100).toFixed(2)}`})`;
+                        }
+                      }
+                    }
+                    
+                    return (
+                      <div key={fieldId} className="flex justify-between items-start p-2 rounded bg-white/50 dark:bg-black/20">
+                        <span className="text-sm font-medium text-green-900 dark:text-green-100">{fieldLabel}:</span>
+                        <span className="text-sm text-green-700 dark:text-green-300 text-right max-w-[60%]">
+                          {displayValue}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <Alert className="mt-4 border-green-300 bg-green-100 dark:bg-green-900">
+                  <AlertDescription className="text-xs text-green-800 dark:text-green-200">
+                    <strong>Note:</strong> You can update these answers later by contacting the program directly after your spot is secured.
+                  </AlertDescription>
+                </Alert>
+              </CardContent>
+            </Card>
+          )}
+
           <div className="space-y-4">
             {/* MVP Test Button */}
             <Card className="border-2 border-primary/20 bg-primary/5">
@@ -1372,22 +1456,44 @@ const PlanBuilder = () => {
                     credentialId={form.watch('credentialId')}
                     onReadyToContinue={async () => {
                       const childId = form.watch('childId');
-                      if (childId) {
-                        const { data, error } = await supabase
-                          .from('children')
-                          .select('name')
-                          .eq('id', childId)
-                          .maybeSingle();
-                        
-                        if (data && !error) {
-                          setSelectedChildName(data.name);
-                          setPrerequisiteChecks([{ check: 'all', status: 'pass', message: 'Manual prerequisites confirmed' }]);
-                          toast({
-                            title: 'Prerequisites Confirmed',
-                            description: `Ready to continue registration for ${data.name}`,
-                          });
-                        }
+                      const programRef = form.watch('programRef');
+                      
+                      if (!childId || !programRef) {
+                        toast({
+                          title: 'Missing Information',
+                          description: 'Please select both a child and program',
+                          variant: 'destructive',
+                        });
+                        return;
                       }
+
+                      // Get child name
+                      const { data: childData, error: childError } = await supabase
+                        .from('children')
+                        .select('name')
+                        .eq('id', childId)
+                        .maybeSingle();
+                      
+                      if (childError || !childData) {
+                        toast({
+                          title: 'Error',
+                          description: 'Could not load child information',
+                          variant: 'destructive',
+                        });
+                        return;
+                      }
+
+                      setSelectedChildName(childData.name);
+                      setPrerequisiteChecks([{ check: 'all', status: 'pass', message: 'Manual prerequisites confirmed' }]);
+                      
+                      // Show loading toast for auto-discovery
+                      toast({
+                        title: 'Securing Your Spot...',
+                        description: 'Applying smart defaults for program questions. This may take 5-10 seconds.',
+                      });
+
+                      // Auto-discover fields and apply defaults
+                      await discoverFields(programRef);
                     }}
                     onChildSelected={(childName) => {
                       setSelectedChildName(childName);
@@ -1397,73 +1503,32 @@ const PlanBuilder = () => {
               </Card>
             )}
 
-            {/* Step 4: Optional Questions Discovery */}
-            {allRequirementsMet && !discoveredSchema && (
+            {/* Loading state for auto-discovery */}
+            {allRequirementsMet && isDiscovering && (
               <Card>
                 <CardHeader>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="text-xs">Step 4</Badge>
-                    <CardTitle>Program-Specific Questions</CardTitle>
+                    <CardTitle>Securing Your Spot</CardTitle>
                   </div>
                   <CardDescription>
-                    Some programs require additional information like color groups, volunteering preferences, or session choices
+                    Applying smart defaults to reserve your spot quickly
                   </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  {!isDiscovering && (
-                    <div className="space-y-4">
-                      <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3">
-                        <div className="flex items-start gap-3">
-                          <div className="bg-blue-100 p-2 rounded-full">
-                            <RefreshCw className="h-4 w-4 text-blue-700" />
-                          </div>
-                          <div className="flex-1">
-                            <h4 className="text-sm font-semibold text-blue-900 mb-1">
-                              Check for Program Questions
-                            </h4>
-                            <p className="text-xs text-blue-700">
-                              We'll securely log in to the program's registration page to discover any additional required fields.
-                              This typically takes 5-10 seconds.
-                            </p>
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          onClick={() => discoverFields(form.getValues('programRef'))}
-                          disabled={isDiscovering}
-                          variant="default"
-                          className="w-full"
-                        >
-                          <RefreshCw className="mr-2 h-4 w-4" />
-                          Load Program Questions
-                        </Button>
-                      </div>
-                      
-                      <div className="text-xs text-muted-foreground bg-muted p-3 rounded-lg">
-                        <p className="font-medium mb-1">Why is this needed?</p>
-                        <p>
-                          Many programs have specific questions (like color group assignments or volunteer preferences) 
-                          that only appear during registration. We need to collect these in advance for automated signup.
+                <CardContent>
+                  <div className="p-6 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex flex-col items-center gap-3 text-center">
+                      <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+                      <div className="space-y-1">
+                        <p className="text-sm font-medium text-blue-900">
+                          Loading program questions and applying defaults...
+                        </p>
+                        <p className="text-xs text-blue-700">
+                          We're using smart defaults to secure your spot. You can review and update answers after registration.
                         </p>
                       </div>
                     </div>
-                  )}
-
-                  {isDiscovering && (
-                    <div className="p-6 bg-blue-50 border border-blue-200 rounded-lg">
-                      <div className="flex flex-col items-center gap-3 text-center">
-                        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-                        <div className="space-y-1">
-                          <p className="text-sm font-medium text-blue-900">
-                            Fetching program questions...
-                          </p>
-                          <p className="text-xs text-blue-700">
-                            Logging into the registration form to discover required fields
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  </div>
                 </CardContent>
               </Card>
             )}
