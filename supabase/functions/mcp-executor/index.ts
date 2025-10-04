@@ -54,7 +54,7 @@ const MCP_TOOLS: Record<string, string> = {
 };
 
 async function executeMCPTool(toolName: string, args: any, planExecutionId: string, mandateId: string, supabase: any) {
-  console.log(`Executing MCP tool: ${toolName} with args:`, JSON.stringify(args));
+  console.log(`[Browserbase] Executing MCP tool: ${toolName} with args:`, JSON.stringify(args));
 
   // Get the edge function that handles this tool
   const edgeFunction = MCP_TOOLS[toolName];
@@ -91,7 +91,7 @@ async function executeMCPTool(toolName: string, args: any, planExecutionId: stri
       }
     };
     
-    console.log(`Calling ${edgeFunction} with body:`, JSON.stringify(requestBody));
+    console.log(`[Browserbase] Calling ${edgeFunction} with body:`, JSON.stringify(requestBody));
     
     const toolResult = await supabase.functions.invoke(edgeFunction, {
       body: requestBody
