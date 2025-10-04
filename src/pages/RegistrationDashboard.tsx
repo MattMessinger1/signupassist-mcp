@@ -12,6 +12,7 @@ import { showPromptToast, showErrorToast } from '@/lib/toastHelpers';
 import { format } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
 import { Header } from '@/components/Header';
+import { prompts } from '@/lib/prompts';
 
 interface Plan {
   id: string;
@@ -166,10 +167,10 @@ export default function RegistrationDashboard() {
   const getStatusText = (plan: Plan) => {
     const latestExecution = plan.executions[0];
     
-    if (!latestExecution) return 'Ready to Start';
-    if (!latestExecution.finished_at) return 'Running';
-    if (latestExecution.confirmation_ref) return 'Completed';
-    return 'Failed';
+    if (!latestExecution) return prompts.dashboard.status.ready;
+    if (!latestExecution.finished_at) return prompts.dashboard.status.running;
+    if (latestExecution.confirmation_ref) return prompts.dashboard.status.completed;
+    return prompts.dashboard.status.failed;
   };
 
   const getStatusVariant = (plan: Plan): 'default' | 'secondary' | 'destructive' => {
@@ -186,7 +187,7 @@ export default function RegistrationDashboard() {
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
-          <p className="mt-4 text-muted-foreground">Loading registration data...</p>
+          <p className="mt-4 text-muted-foreground">{prompts.dashboard.loading}</p>
         </div>
       </div>
     );
@@ -199,9 +200,9 @@ export default function RegistrationDashboard() {
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold mb-2">Registration Dashboard</h1>
+              <h1 className="text-3xl font-bold mb-2">{prompts.dashboard.title}</h1>
               <p className="text-muted-foreground">
-                Monitor and manage automated registrations
+                {prompts.dashboard.description}
               </p>
             </div>
             <div className="flex items-center space-x-2">
@@ -211,10 +212,10 @@ export default function RegistrationDashboard() {
                 disabled={refreshing}
               >
                 <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-                Refresh
+                {prompts.dashboard.refresh}
               </Button>
               <Button onClick={() => navigate('/plan-builder')}>
-                Create New Plan
+                {prompts.dashboard.createNew}
               </Button>
             </div>
           </div>
@@ -224,7 +225,7 @@ export default function RegistrationDashboard() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Total Plans</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">{prompts.dashboard.stats.totalPlans}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{plans.length}</div>
@@ -233,7 +234,7 @@ export default function RegistrationDashboard() {
           
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Success Rate</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">{prompts.dashboard.stats.successRate}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">{stats.success_rate}%</div>
@@ -243,7 +244,7 @@ export default function RegistrationDashboard() {
           
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Completed</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">{prompts.dashboard.stats.completed}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
@@ -252,7 +253,7 @@ export default function RegistrationDashboard() {
           
           <Card>
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Failed</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">{prompts.dashboard.stats.failed}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-red-600">{stats.failed}</div>
@@ -263,21 +264,21 @@ export default function RegistrationDashboard() {
         {/* Registration Plans */}
         <Card>
           <CardHeader>
-            <CardTitle>Registration Plans</CardTitle>
+            <CardTitle>{prompts.dashboard.plansTitle}</CardTitle>
             <CardDescription>
-              Manage your automated registration plans and monitor their status
+              {prompts.dashboard.plansDescription}
             </CardDescription>
           </CardHeader>
           <CardContent>
             {plans.length === 0 ? (
               <div className="text-center py-12">
                 <AlertTriangle className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No Plans Found</h3>
+                <h3 className="text-lg font-semibold mb-2">{prompts.dashboard.empty.title}</h3>
                 <p className="text-muted-foreground mb-4">
-                  Create your first registration plan to get started.
+                  {prompts.dashboard.empty.description}
                 </p>
                 <Button onClick={() => navigate('/plan-builder')}>
-                  Create Plan
+                  {prompts.dashboard.empty.cta}
                 </Button>
               </div>
             ) : (
@@ -306,7 +307,7 @@ export default function RegistrationDashboard() {
                             onClick={() => startSignupJob(plan.id)}
                           >
                             <Play className="h-3 w-3 mr-1" />
-                            Start
+                            {prompts.dashboard.actions.start}
                           </Button>
                         )}
                         
@@ -316,7 +317,7 @@ export default function RegistrationDashboard() {
                           onClick={() => navigate(`/plan/${plan.id}`)}
                         >
                           <Eye className="h-3 w-3 mr-1" />
-                          View
+                          {prompts.dashboard.actions.view}
                         </Button>
                       </div>
                     </div>
@@ -324,9 +325,9 @@ export default function RegistrationDashboard() {
                     {plan.executions.length > 0 && (
                       <div className="mt-3 pt-3 border-t">
                         <div className="text-xs text-muted-foreground">
-                          Last execution: {format(new Date(plan.executions[0].started_at), 'PPP p')}
+                          {prompts.dashboard.lastExecution(format(new Date(plan.executions[0].started_at), 'PPP p'))}
                           {plan.executions[0].confirmation_ref && (
-                            <span className="ml-2">• Confirmation: {plan.executions[0].confirmation_ref}</span>
+                            <span className="ml-2">• {prompts.dashboard.confirmation(plan.executions[0].confirmation_ref)}</span>
                           )}
                         </div>
                       </div>

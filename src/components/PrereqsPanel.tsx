@@ -197,12 +197,12 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
     const isUnknown = result && result.ok === null && result.reason;
     const isPassing = result?.ok === true;
     const badge = !result
-      ? <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" /> Not checked</Badge>
+      ? <Badge variant="secondary" className="gap-1"><Clock className="h-3 w-3" /> {prompts.prereqs.status.notChecked}</Badge>
       : isUnknown
-        ? <Badge variant="outline" className="gap-1 border-amber-400 text-amber-700 bg-amber-50"><Clock className="h-3 w-3" /> Unknown</Badge>
+        ? <Badge variant="outline" className="gap-1 border-amber-400 text-amber-700 bg-amber-50"><Clock className="h-3 w-3" /> {prompts.prereqs.status.unknown}</Badge>
         : result.ok === true
-          ? <Badge className="bg-emerald-100 text-emerald-800 gap-1"><CheckCircle2 className="h-3 w-3" /> Complete</Badge>
-          : <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" /> Action Needed</Badge>;
+          ? <Badge className="bg-emerald-100 text-emerald-800 gap-1"><CheckCircle2 className="h-3 w-3" /> {prompts.prereqs.status.complete}</Badge>
+          : <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" /> {prompts.prereqs.status.actionNeeded}</Badge>;
 
     const showAction = !result || result.ok !== true; // Show action for not-checked, unknown, or fail
 
@@ -223,7 +223,7 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
               <Alert className="border-amber-200 bg-amber-50">
                 <Info className="h-3 w-3 text-amber-600" />
                 <AlertDescription className="text-xs text-amber-800">
-                  Please verify this manually on the club's website.
+                  {prompts.prereqs.manualVerify}
                 </AlertDescription>
               </Alert>
             )}
@@ -235,7 +235,7 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
                 className="gap-2 h-8 text-xs" 
                 onClick={() => window.open(href, '_blank')}
               >
-                Open in Club Portal <ExternalLink className="h-3 w-3" />
+                {prompts.prereqs.openPortal} <ExternalLink className="h-3 w-3" />
               </Button>
             )}
           </CardContent>
@@ -252,9 +252,9 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
       <div className="space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1">
-            <h2 className="text-xl font-semibold mb-1">Account Prerequisites</h2>
+            <h2 className="text-xl font-semibold mb-1">{prompts.prereqs.title}</h2>
             <p className="text-sm text-muted-foreground">
-              Verify your account meets requirements for automated registration
+              {prompts.prereqs.description}
             </p>
           </div>
           <Button 
@@ -266,7 +266,7 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
             className="gap-2"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
-            Recheck
+            {prompts.prereqs.recheck}
           </Button>
         </div>
 
@@ -275,7 +275,7 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
               <span className="font-medium">
-                {progressMetrics.completed} of {progressMetrics.total} requirements complete
+                {prompts.prereqs.progress(progressMetrics.completed, progressMetrics.total)}
               </span>
               <span className="text-muted-foreground">{progressMetrics.percentage}%</span>
             </div>
@@ -295,8 +295,7 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
           <Alert className="border-blue-200 bg-blue-50">
             <Sparkles className="h-4 w-4 text-blue-600" />
             <AlertDescription className="text-sm text-blue-800">
-              <strong>One-time setup:</strong> These requirements (membership, payment method, waivers) are typically 
-              completed once. After setup, future registrations will be much faster!
+              {prompts.prereqs.oneTimeSetup}
             </AlertDescription>
           </Alert>
         )}
@@ -306,7 +305,7 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
           <Alert className="border-emerald-200 bg-emerald-50">
             <CheckCircle2 className="h-4 w-4 text-emerald-600" />
             <AlertDescription className="text-sm text-emerald-800 font-medium">
-              ✨ All prerequisites complete! You're ready to proceed with registration.
+              {prompts.prereqs.allComplete}
             </AlertDescription>
           </Alert>
         )}
@@ -315,32 +314,32 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
       {/* Requirement Cards */}
       <div className="space-y-3">
         <Row
-          title="Account Login"
-          sub="Can we access your Blackhawk account dashboard?"
+          title={prompts.prereqs.checks.account.title}
+          sub={prompts.prereqs.checks.account.description(orgRef)}
           result={data?.account}
           href={links.dashboard}
         />
         <Row
-          title="Active Membership"
-          sub="Required for most programs (typically renewed annually)"
+          title={prompts.prereqs.checks.membership.title}
+          sub={prompts.prereqs.checks.membership.description}
           result={data?.membership}
           href={links.membership}
         />
         <Row
-          title="Payment Method"
-          sub="Card or bank account saved in club's billing portal"
+          title={prompts.prereqs.checks.payment.title}
+          sub={prompts.prereqs.checks.payment.description}
           result={data?.payment}
           href={links.payment}
         />
         <Row
-          title="Seasonal Waiver"
-          sub="Liability waiver (often bundled with membership)"
+          title={prompts.prereqs.checks.waiver.title}
+          sub={prompts.prereqs.checks.waiver.description}
           result={data?.waiver}
           href={data?.requirements?.find(r => r.id === 'waiver.signed')?.remediation?.url || `${baseUrl}/waivers`}
         />
         <Row
-          title="Child Profile"
-          sub="At least one child must be added to your account"
+          title={prompts.prereqs.checks.child.title}
+          sub={prompts.prereqs.checks.child.description}
           result={data?.child}
           href={links.family}
         />
@@ -350,13 +349,13 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
       {data?.children && data.children.length > 0 && (
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm font-medium">Select Child for Registration</CardTitle>
-            <CardDescription className="text-xs">Choose which child to register for this program</CardDescription>
+            <CardTitle className="text-sm font-medium">{prompts.prereqs.child.label}</CardTitle>
+            <CardDescription className="text-xs">{prompts.prereqs.child.description}</CardDescription>
           </CardHeader>
           <CardContent>
             <Select value={childName} onValueChange={(v) => { setChildName(v); onChildSelected?.(v); }}>
               <SelectTrigger className="w-full">
-                <SelectValue placeholder="Select a child" />
+                <SelectValue placeholder={prompts.prereqs.child.placeholder} />
               </SelectTrigger>
               <SelectContent>
                 {data.children.map((c, i) => (

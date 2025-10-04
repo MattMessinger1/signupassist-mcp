@@ -225,7 +225,7 @@ export const prompts = {
     },
     errors: {
       LOGIN_FAILED: 'We could not sign in with the provided credentials.',
-      PROGRAM_NOT_OPEN: 'Registration is not open yet. We\'ll wait until the open time.',
+      PROGRAM_NOT_OPEN: "Registration is not open yet. We'll wait until the open time.",
       BLOCKER: 'A blocker requires your input (e.g., CAPTCHA or waiver).',
       PRICE_EXCEEDS_LIMIT: 'Total would exceed the approved payment limit.',
       UNKNOWN_ERROR: 'Something unexpected happened. Please try again.',
@@ -237,6 +237,182 @@ export const prompts = {
       preSubmit: 'form_filled_before_submit',
       confirmation: 'registration_confirmation',
     },
+  },
+
+  // ------------------------------------------------------------
+  // 13. PREREQUISITES PANEL
+  // ------------------------------------------------------------
+  prereqs: {
+    title: 'Account Prerequisites',
+    description: 'Verify your account meets requirements for automated registration',
+    recheck: 'Recheck',
+    checks: {
+      account: {
+        title: 'Account Login',
+        description: (orgName: string) => `Can we access your ${orgName} account dashboard?`,
+      },
+      membership: {
+        title: 'Active Membership',
+        description: 'Required for most programs (typically renewed annually)',
+      },
+      payment: {
+        title: 'Payment Method',
+        description: "Card or bank account saved in club's billing portal",
+      },
+      waiver: {
+        title: 'Seasonal Waiver',
+        description: 'Liability waiver (often bundled with membership)',
+      },
+      child: {
+        title: 'Child Profile',
+        description: 'At least one child must be added to your account',
+      },
+    },
+    status: {
+      notChecked: 'Not checked',
+      unknown: 'Unknown',
+      complete: 'Complete',
+      actionNeeded: 'Action Needed',
+    },
+    child: {
+      label: 'Select Child for Registration',
+      description: 'Choose which child to register for this program',
+      placeholder: 'Select a child',
+    },
+    progress: (completed: number, total: number) => `${completed} of ${total} requirements complete`,
+    oneTimeSetup: 'One-time setup: These requirements (membership, payment method, waivers) are typically completed once. After setup, future registrations will be much faster!',
+    allComplete: '✨ All prerequisites complete! You\'re ready to proceed with registration.',
+    manualVerify: 'Please verify this manually on the club\'s website.',
+    openPortal: 'Open in Club Portal',
+  },
+
+  // ------------------------------------------------------------
+  // 14. DASHBOARD
+  // ------------------------------------------------------------
+  dashboard: {
+    title: 'Registration Dashboard',
+    description: 'Monitor and manage automated registrations',
+    createNew: 'Create New Plan',
+    refresh: 'Refresh',
+    stats: {
+      totalPlans: 'Total Plans',
+      successRate: 'Success Rate',
+      completed: 'Completed',
+      failed: 'Failed',
+    },
+    status: {
+      ready: 'Ready to Start',
+      running: 'Running',
+      completed: 'Completed',
+      failed: 'Failed',
+    },
+    empty: {
+      title: 'No Plans Found',
+      description: 'Create your first registration plan to get started.',
+      cta: 'Create Plan',
+    },
+    plansTitle: 'Registration Plans',
+    plansDescription: 'Manage your automated registration plans and monitor their status',
+    loading: 'Loading registration data...',
+    actions: {
+      start: 'Start',
+      view: 'View',
+    },
+    lastExecution: (date: string) => `Last execution: ${date}`,
+    confirmation: (ref: string) => `Confirmation: ${ref}`,
+  },
+
+  // ------------------------------------------------------------
+  // 15. CREDENTIALS MANAGEMENT
+  // ------------------------------------------------------------
+  credentials: {
+    title: 'Credential Manager',
+    description: 'Manage your SkiClubPro login credentials securely',
+    addTitle: 'Add New Credentials',
+    addDescription: 'Store your SkiClubPro login credentials for automated access',
+    addButton: 'Add SkiClubPro Credentials',
+    storedTitle: 'Stored Credentials',
+    storedDescription: 'Your saved SkiClubPro login credentials',
+    form: {
+      alias: {
+        label: 'Alias',
+        placeholder: 'e.g., Primary Account',
+      },
+      email: {
+        label: 'Email',
+        placeholder: 'your@email.com',
+      },
+      password: {
+        label: 'Password',
+        placeholder: 'Your SkiClubPro password',
+      },
+    },
+    security: {
+      title: 'Security Information',
+      description: 'Your credentials are encrypted using AES-GCM encryption before being stored. Make sure the CRED_SEAL_KEY is properly configured in your Supabase secrets.',
+    },
+    empty: {
+      title: 'No credentials stored yet',
+      description: 'Add your first SkiClubPro credentials to get started',
+    },
+    actions: {
+      store: 'Store Credentials',
+      storing: 'Storing...',
+      cancel: 'Cancel',
+      delete: 'Delete',
+    },
+    delete: {
+      title: 'Delete Credential',
+      description: (alias: string) => `Are you sure you want to delete "${alias}"? This action cannot be undone.`,
+    },
+    success: {
+      stored: 'Credentials stored successfully!',
+      deleted: 'Credential deleted successfully!',
+    },
+    errors: {
+      loadFailed: 'Failed to load credentials.',
+      storeFailed: 'Failed to store credentials.',
+      deleteFailed: 'Failed to delete credential.',
+    },
+  },
+
+  // ------------------------------------------------------------
+  // 16. LANDING PAGE
+  // ------------------------------------------------------------
+  landing: {
+    hero: {
+      title: 'SignupAssist',
+      tagline: 'Automated registration for your children\'s programs',
+      createPlan: 'Create Signup Plan',
+      viewDashboard: 'View Dashboard',
+      manageCredentials: 'Manage Credentials',
+    },
+    features: [
+      {
+        title: 'Never Miss Registration',
+        description: 'Set up automated registration that runs exactly when registration opens, even if you\'re sleeping or busy.',
+      },
+      {
+        title: 'Secure & Trusted',
+        description: 'Your credentials are encrypted and stored securely. We only access your account to complete the specific registration you authorized.',
+      },
+      {
+        title: 'Pay Only on Success',
+        description: '$20 service fee charged only when we successfully register your child. No hidden fees or subscriptions.',
+      },
+    ],
+  },
+
+  // ------------------------------------------------------------
+  // 17. COMMON ERRORS & VALIDATION
+  // ------------------------------------------------------------
+  errors: {
+    sessionExpired: 'Your session has expired. Please sign in again.',
+    notAuthenticated: 'Please sign in to continue.',
+    timeout: 'The request timed out. Please try again.',
+    required: (field: string) => `${field} is required`,
+    invalidFormat: (field: string) => `Invalid ${field} format`,
+    loadFailed: (resource: string) => `Failed to load ${resource}`,
   },
 };
 

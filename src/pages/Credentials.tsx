@@ -14,6 +14,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/contexts/AuthContext';
 import { Header } from '@/components/Header';
+import { prompts } from '@/lib/prompts';
 
 const credentialsSchema = z.object({
   alias: z.string().min(1, 'Alias is required').max(50, 'Alias must be less than 50 characters'),
@@ -151,9 +152,9 @@ export default function Credentials() {
       <div className="container mx-auto px-4 py-8 max-w-4xl">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Credential Manager</h1>
+            <h1 className="text-3xl font-bold text-foreground">{prompts.credentials.title}</h1>
             <p className="text-muted-foreground mt-2">
-              Manage your SkiClubPro login credentials securely
+              {prompts.credentials.description}
             </p>
           </div>
           <Button onClick={() => navigate('/')} variant="outline">
@@ -202,14 +203,13 @@ export default function Credentials() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Info className="h-5 w-5" />
-                Security Information
+                {prompts.credentials.security.title}
               </CardTitle>
             </CardHeader>
             <CardContent>
               <Alert>
                 <AlertDescription>
-                  Your credentials are encrypted using AES-GCM encryption before being stored. 
-                  Make sure the CRED_SEAL_KEY is properly configured in your Supabase secrets.
+                  {prompts.credentials.security.description}
                 </AlertDescription>
               </Alert>
             </CardContent>
@@ -218,25 +218,25 @@ export default function Credentials() {
           {/* Add Credentials */}
           <Card>
             <CardHeader>
-              <CardTitle>Add New Credentials</CardTitle>
+              <CardTitle>{prompts.credentials.addTitle}</CardTitle>
               <CardDescription>
-                Store your SkiClubPro login credentials for automated access
+                {prompts.credentials.addDescription}
               </CardDescription>
             </CardHeader>
             <CardContent>
               {!showAddForm ? (
                 <Button onClick={() => setShowAddForm(true)} className="w-full">
                   <Plus className="h-4 w-4 mr-2" />
-                  Add SkiClubPro Credentials
+                  {prompts.credentials.addButton}
                 </Button>
               ) : (
                 <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
                   <div>
-                    <Label htmlFor="alias">Alias</Label>
+                    <Label htmlFor="alias">{prompts.credentials.form.alias.label}</Label>
                     <Input
                       id="alias"
                       {...register('alias')}
-                      placeholder="e.g., Primary Account"
+                      placeholder={prompts.credentials.form.alias.placeholder}
                     />
                     {errors.alias && (
                       <p className="text-destructive text-sm mt-1">{errors.alias.message}</p>
@@ -244,12 +244,12 @@ export default function Credentials() {
                   </div>
 
                   <div>
-                    <Label htmlFor="email">Email</Label>
+                    <Label htmlFor="email">{prompts.credentials.form.email.label}</Label>
                     <Input
                       id="email"
                       type="email"
                       {...register('email')}
-                      placeholder="your@email.com"
+                      placeholder={prompts.credentials.form.email.placeholder}
                     />
                     {errors.email && (
                       <p className="text-destructive text-sm mt-1">{errors.email.message}</p>
@@ -257,12 +257,12 @@ export default function Credentials() {
                   </div>
 
                   <div>
-                    <Label htmlFor="password">Password</Label>
+                    <Label htmlFor="password">{prompts.credentials.form.password.label}</Label>
                     <Input
                       id="password"
                       type="password"
                       {...register('password')}
-                      placeholder="Your SkiClubPro password"
+                      placeholder={prompts.credentials.form.password.placeholder}
                     />
                     {errors.password && (
                       <p className="text-destructive text-sm mt-1">{errors.password.message}</p>
@@ -271,7 +271,7 @@ export default function Credentials() {
 
                   <div className="flex gap-2">
                     <Button type="submit" disabled={submitting}>
-                      {submitting ? 'Storing...' : 'Store Credentials'}
+                      {submitting ? prompts.credentials.actions.storing : prompts.credentials.actions.store}
                     </Button>
                     <Button
                       type="button"
@@ -281,7 +281,7 @@ export default function Credentials() {
                         reset();
                       }}
                     >
-                      Cancel
+                      {prompts.credentials.actions.cancel}
                     </Button>
                   </div>
                 </form>
@@ -292,18 +292,18 @@ export default function Credentials() {
           {/* Existing Credentials */}
           <Card>
             <CardHeader>
-              <CardTitle>Stored Credentials</CardTitle>
+              <CardTitle>{prompts.credentials.storedTitle}</CardTitle>
               <CardDescription>
-                Your saved SkiClubPro login credentials
+                {prompts.credentials.storedDescription}
               </CardDescription>
             </CardHeader>
             <CardContent>
               {credentials.length === 0 ? (
                 <div className="text-center py-8">
                   <Key className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-                  <p className="text-muted-foreground">No credentials stored yet</p>
+                  <p className="text-muted-foreground">{prompts.credentials.empty.title}</p>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Add your first SkiClubPro credentials to get started
+                    {prompts.credentials.empty.description}
                   </p>
                 </div>
               ) : (
