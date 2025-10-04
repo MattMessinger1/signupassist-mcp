@@ -34,15 +34,24 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<PrereqPayload | null>(null);
   const [childName, setChildName] = useState<string>(selectedChildName || "");
+  const [checkStatus, setCheckStatus] = useState<string>('');
+  const [lastCheckTime, setLastCheckTime] = useState<number>(0);
   const { toast } = useToast();
 
-  // Calculate progress metrics
+  // Calculate progress metrics (Phase 2.2: Fix progress calculation)
   const progressMetrics = useMemo(() => {
     if (!data) return { total: 5, completed: 0, percentage: 0 };
     
-    const checks = [data.account, data.membership, data.payment, data.child, data.waiver];
+    const checks = [
+      data.account,
+      data.membership,
+      data.payment,
+      data.child,
+      data.waiver
+    ].filter(Boolean); // Only count checks that exist
+    
     const completed = checks.filter(c => c?.ok === true).length;
-    const total = checks.length;
+    const total = 5; // Still show total as 5 for UI consistency
     const percentage = Math.round((completed / total) * 100);
     
     return { total, completed, percentage };
@@ -70,42 +79,116 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
     };
   }, [orgRef]);
 
-  const recheck = async () => {
+  const recheck = async (retries = 1) => {
     if (!credentialId) {
       toast({ title: "Select an account", description: "Choose your Blackhawk credential first.", variant: "destructive" });
       return;
     }
+
+    // Phase 3.3: Check cache (5 minute cooldown)
+    const now = Date.now();
+    if (now - lastCheckTime < 300000) {
+      toast({ description: 'Prerequisites recently checked. Please wait a few minutes before rechecking.' });
+      return;
+    }
+
     setLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('No active session');
+    setCheckStatus('Connecting to browser...');
+    
+    // Phase 3.2: Retry logic
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) throw new Error('No active session');
 
-      toast({ title: "Checking prerequisites…", description: prompts.ui.signin.helpers.purpose('Blackhawk') });
+        toast({ title: "Checking prerequisites…", description: prompts.ui.signin.helpers.purpose('Blackhawk') });
+        
+        setCheckStatus('Logging in to SkiClubPro...');
+        
+        // Phase 1.2: Add timeout wrapper (30 seconds)
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Check timed out after 30 seconds')), 30000)
+        );
+        
+        const checkPromise = supabase.functions.invoke('mcp-executor', {
+          body: {
+            tool: 'scp:check_prerequisites',
+            args: { 
+              org_ref: orgRef, 
+              credential_id: credentialId,
+              user_jwt: session.access_token
+            }
+          }
+        });
+        
+        const { data, error } = await Promise.race([checkPromise, timeoutPromise]) as any;
+        
+        if (error) throw error;
+        
+        setCheckStatus('Checking account status...');
+        
+        // Phase 1.3: Robust error handling - validate response structure
+        if (!data || typeof data !== 'object') {
+          console.warn('Malformed response:', data);
+          toast({ title: 'Error', description: 'Received incomplete prerequisite data', variant: 'destructive' });
+          return;
+        }
+        
+        // Validate we got at least some basic data
+        if (!data.account && !data.membership) {
+          console.warn('No prerequisite data returned:', data);
+          toast({ title: 'Error', description: 'No prerequisite data returned', variant: 'destructive' });
+          return;
+        }
 
-      const { data, error } = await supabase.functions.invoke('mcp-executor', {
-        body: {
-          tool: 'scp:check_prerequisites',
-          args: { 
-            org_ref: orgRef, 
-            credential_id: credentialId,
-            user_jwt: session.access_token
+        setData(data);
+        
+        // Auto-select single child
+        if (data?.children?.length === 1 && !childName) {
+          setChildName(data.children[0].name);
+          onChildSelected?.(data.children[0].name);
+        }
+        
+        // Phase 2.3: Validate child selection after recheck
+        if (childName && data?.children) {
+          const stillExists = data.children.some((c: any) => c.name === childName);
+          if (!stillExists) {
+            console.warn('Previously selected child no longer found');
+            setChildName('');
+            toast({ title: 'Notice', description: 'Please select a child again', variant: 'default' });
           }
         }
-      });
-      if (error) throw error;
 
-      setData(data);
-      if (data?.children?.length === 1 && !childName) {
-        setChildName(data.children[0].name);
-        onChildSelected?.(data.children[0].name);
+        setCheckStatus('Complete');
+        setLastCheckTime(Date.now());
+
+        if (data?.login_status === 'success') toast({ description: prompts.ui.toasts.prereqsOk });
+        if (data?.login_status === 'failed') toast({ title: 'Login failed', description: prompts.ui.signin.errors.badLogin, variant: 'destructive' });
+        
+        // Success - break retry loop
+        break;
+        
+      } catch (e: any) {
+        console.error(`Prerequisite check failed (attempt ${attempt + 1}/${retries + 1}):`, e);
+        
+        // Phase 3.2: Retry logic for timeouts
+        if (attempt < retries && e.message?.includes('timeout')) {
+          console.log(`Retrying after timeout... (${attempt + 1}/${retries})`);
+          setCheckStatus(`Retrying (${attempt + 1}/${retries})...`);
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+        
+        // Final failure
+        toast({ title: 'Error', description: e?.message || 'Prereq check failed', variant: 'destructive' });
+        break;
+        
+      } finally {
+        if (attempt === retries) {
+          setLoading(false);
+          setTimeout(() => setCheckStatus(''), 2000);
+        }
       }
-
-      if (data?.login_status === 'success') toast({ description: prompts.ui.toasts.prereqsOk });
-      if (data?.login_status === 'failed') toast({ title: 'Login failed', description: prompts.ui.signin.errors.badLogin, variant: 'destructive' });
-    } catch (e: any) {
-      toast({ title: 'Error', description: e?.message || 'Prereq check failed', variant: 'destructive' });
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -176,7 +259,7 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
           </div>
           <Button 
             type="button" 
-            onClick={recheck} 
+            onClick={() => recheck()} 
             disabled={loading} 
             size="sm"
             variant="outline"
@@ -197,6 +280,13 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
               <span className="text-muted-foreground">{progressMetrics.percentage}%</span>
             </div>
             <Progress value={progressMetrics.percentage} className="h-2" />
+            
+            {/* Phase 2.1: Progress feedback */}
+            {checkStatus && (
+              <div className="text-sm text-muted-foreground animate-pulse">
+                {checkStatus}
+              </div>
+            )}
           </div>
         )}
 

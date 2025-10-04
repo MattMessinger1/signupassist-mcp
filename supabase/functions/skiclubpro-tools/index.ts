@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
         break;
       case 'scp:check_prerequisites':
       case 'scp.check_prerequisites':
-        result = await invokeMCPToolDirect('scp:check_prerequisites', args);
+        result = await invokeMCPToolDirect('scp.check_prerequisites', args);
         break;
       case 'scp:list_children':
       case 'scp.list_children':

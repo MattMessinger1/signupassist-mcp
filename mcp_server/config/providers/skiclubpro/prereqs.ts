@@ -8,7 +8,8 @@ const URLS = {
   dashboard: ['/dashboard', '/user', '/'],
   membership: ['/membership', '/user/membership', '/account/memberships', '/account'],
   payment: ['/user/payment-methods', '/billing', '/payments', '/customer-portal'],
-  family: ['/user/family', '/family', '/children', '/household', '/participants']
+  family: ['/user/family', '/family', '/children', '/household', '/participants'],
+  waiver: ['/waiver', '/waivers', '/account/waivers', '/user/waivers', '/dashboard/waivers', '/forms/waivers']
 };
 
 function pass(id: string, label: string, explain: string, blocking: boolean, evidence: any, confidence = 0.9): Result {
@@ -303,10 +304,12 @@ export const SkiClubProCheckers: Checker[] = [
       }
 
       if (needsSignature) {
+        // Phase 3.1: Better waiver URL resolution using first URL from config
+        const waiverUrl = `${baseUrl}${URLS.waiver[0]}`;
         return fail('waiver.signed', 'Required Waivers',
           'Waiver signature is required before registration.',
           true, ev,
-          { label: 'Sign Waiver', url: `${baseUrl}/waivers` },
+          { label: 'Sign Waiver', url: waiverUrl },
           0.9);
       }
 
@@ -334,11 +337,13 @@ export const SkiClubProCheckers: Checker[] = [
       
       // If we see a clear waiver prompt on dashboard
       if (pendingIndicators.some(rx => rx.test(dashText))) {
+        // Phase 3.1: Better waiver URL resolution using first URL from config
+        const waiverUrl = `${baseUrl}${URLS.waiver[0]}`;
         return fail('waiver.signed', 'Required Waivers',
           'Waiver signature is required before registration.',
           true,
           { url: page.url(), text_excerpt: dashText.slice(0, 200) },
-          { label: 'Sign Waiver', url: `${baseUrl}/waivers` },
+          { label: 'Sign Waiver', url: waiverUrl },
           0.85);
       }
 
