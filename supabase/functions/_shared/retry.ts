@@ -1,51 +1,37 @@
-import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { sanitizeError } from './errors.ts';
 
 /**
- * Retry configuration options
+ * Retry configuration with exponential backoff
  */
-export interface RetryOptions {
-  maxAttempts?: number;
-  initialDelayMs?: number;
-  maxDelayMs?: number;
-  backoffMultiplier?: number;
-  retryableStatuses?: number[];
-  onRetry?: (attempt: number, error: any) => void | Promise<void>;
+export interface RetryConfig {
+  maxAttempts: number;
+  initialDelayMs: number;
+  maxDelayMs: number;
+  backoffMultiplier: number;
 }
 
-/**
- * Default retry configuration for Browserbase/external API calls
- */
-const DEFAULT_RETRY_OPTIONS: Required<RetryOptions> = {
+export const DEFAULT_RETRY_CONFIG: RetryConfig = {
   maxAttempts: 3,
-  initialDelayMs: 2000,
-  maxDelayMs: 8000,
-  backoffMultiplier: 2,
-  retryableStatuses: [408, 429, 500, 502, 503, 504],
-  onRetry: async () => {}
+  initialDelayMs: 2000,  // 2s
+  maxDelayMs: 8000,      // 8s
+  backoffMultiplier: 2
 };
 
 /**
- * Check if an error is retryable
+ * Determine if an error is retryable (5xx, timeout, network)
  */
-function isRetryableError(error: any, retryableStatuses: number[]): boolean {
-  // Network errors
-  if (error.name === 'TypeError' && error.message.includes('fetch')) {
-    return true;
+function isRetryableError(error: unknown): boolean {
+  if (error instanceof Response) {
+    return error.status >= 500 && error.status < 600;
   }
   
-  // Timeout errors
-  if (error.name === 'TimeoutError' || error.message?.toLowerCase().includes('timeout')) {
-    return true;
-  }
-  
-  // HTTP status codes
-  if (error.status && retryableStatuses.includes(error.status)) {
-    return true;
-  }
-  
-  // Response status
-  if (error.response?.status && retryableStatuses.includes(error.response.status)) {
-    return true;
+  if (error instanceof Error) {
+    const message = error.message.toLowerCase();
+    return message.includes('timeout') ||
+           message.includes('econnreset') ||
+           message.includes('network') ||
+           message.includes('fetch failed');
   }
   
   return false;
@@ -54,66 +40,75 @@ function isRetryableError(error: any, retryableStatuses: number[]): boolean {
 /**
  * Calculate exponential backoff delay
  */
-function calculateDelay(
-  attempt: number,
-  initialDelayMs: number,
-  maxDelayMs: number,
-  backoffMultiplier: number
-): number {
-  const delay = initialDelayMs * Math.pow(backoffMultiplier, attempt - 1);
-  return Math.min(delay, maxDelayMs);
+function getBackoffDelay(attempt: number, config: RetryConfig): number {
+  const delay = Math.min(
+    config.initialDelayMs * Math.pow(config.backoffMultiplier, attempt - 1),
+    config.maxDelayMs
+  );
+  
+  // Add jitter to prevent thundering herd
+  const jitter = delay * 0.1 * Math.random();
+  return delay + jitter;
 }
 
 /**
- * Sleep for a specified duration
+ * Sleep for specified milliseconds
  */
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
- * Retry a function with exponential backoff
+ * Execute a function with exponential backoff retry logic
  */
-export async function retryWithBackoff<T>(
+export async function withRetry<T>(
   fn: () => Promise<T>,
-  options: RetryOptions = {}
+  config: RetryConfig = DEFAULT_RETRY_CONFIG,
+  context?: {
+    correlationId?: string;
+    planId?: string;
+    stage?: string;
+    onAttemptFailed?: (attempt: number, error: unknown) => Promise<void>;
+  }
 ): Promise<T> {
-  const opts = { ...DEFAULT_RETRY_OPTIONS, ...options };
+  let lastError: unknown;
   
-  let lastError: any;
-  
-  for (let attempt = 1; attempt <= opts.maxAttempts; attempt++) {
+  for (let attempt = 1; attempt <= config.maxAttempts; attempt++) {
     try {
-      return await fn();
+      console.log(`[Retry] Attempt ${attempt}/${config.maxAttempts}${context?.stage ? ` for stage: ${context.stage}` : ''}`);
+      
+      const result = await fn();
+      
+      if (attempt > 1) {
+        console.log(`[Retry] Success on attempt ${attempt}`);
+      }
+      
+      return result;
+      
     } catch (error) {
       lastError = error;
+      const sanitized = sanitizeError(error);
       
-      // Check if error is retryable
-      if (!isRetryableError(error, opts.retryableStatuses)) {
-        console.log(`[Retry] Non-retryable error on attempt ${attempt}:`, error.message);
-        throw error;
+      console.error(`[Retry] Attempt ${attempt}/${config.maxAttempts} failed:`, sanitized);
+      
+      // Call optional failure callback
+      if (context?.onAttemptFailed) {
+        await context.onAttemptFailed(attempt, error);
       }
       
-      // If this was the last attempt, throw the error
-      if (attempt === opts.maxAttempts) {
-        console.log(`[Retry] Max attempts (${opts.maxAttempts}) reached, giving up`);
-        throw error;
+      // Don't retry if not retryable or max attempts reached
+      if (!isRetryableError(error) || attempt >= config.maxAttempts) {
+        console.error(`[Retry] Giving up after ${attempt} attempts`);
+        break;
       }
       
-      // Calculate delay and wait
-      const delay = calculateDelay(attempt, opts.initialDelayMs, opts.maxDelayMs, opts.backoffMultiplier);
-      console.log(`[Retry] Attempt ${attempt} failed, retrying in ${delay}ms...`);
-      
-      // Call retry callback if provided
-      if (opts.onRetry) {
-        await opts.onRetry(attempt, error);
-      }
-      
-      await sleep(delay);
+      // Wait before next attempt
+      const delayMs = getBackoffDelay(attempt, config);
+      console.log(`[Retry] Waiting ${delayMs}ms before retry...`);
+      await sleep(delayMs);
     }
   }
   
-  // Should never reach here, but TypeScript needs it
   throw lastError;
 }
 
@@ -121,8 +116,9 @@ export async function retryWithBackoff<T>(
  * Log execution attempt to Supabase
  */
 export async function logExecutionAttempt(
-  supabase: SupabaseClient,
-  params: {
+  supabaseUrl: string,
+  supabaseServiceKey: string,
+  payload: {
     correlationId: string;
     planId?: string;
     planExecutionId?: string;
@@ -135,18 +131,20 @@ export async function logExecutionAttempt(
   }
 ): Promise<void> {
   try {
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
     const { error } = await supabase.rpc('insert_execution_log', {
-      p_correlation_id: params.correlationId,
-      p_plan_id: params.planId || null,
-      p_plan_execution_id: params.planExecutionId || null,
-      p_mandate_id: params.mandateId || null,
-      p_stage: params.stage,
-      p_status: params.status,
-      p_attempt: params.attempt,
-      p_error_message: params.errorMessage || null,
-      p_metadata: params.metadata || {}
+      p_correlation_id: payload.correlationId,
+      p_plan_id: payload.planId || null,
+      p_plan_execution_id: payload.planExecutionId || null,
+      p_mandate_id: payload.mandateId || null,
+      p_stage: payload.stage,
+      p_status: payload.status,
+      p_attempt: payload.attempt,
+      p_error_message: payload.errorMessage || null,
+      p_metadata: payload.metadata || {}
     });
-
+    
     if (error) {
       console.error('[Retry] Failed to log execution attempt:', error);
     }
@@ -154,45 +152,4 @@ export async function logExecutionAttempt(
     // Don't throw - logging failures shouldn't break the main flow
     console.error('[Retry] Exception while logging execution attempt:', err);
   }
-}
-
-/**
- * Fetch latest execution logs for a correlation ID
- */
-export async function getExecutionLogs(
-  supabase: SupabaseClient,
-  correlationId: string,
-  limit: number = 10
-): Promise<any[]> {
-  const { data, error } = await supabase
-    .from('execution_logs')
-    .select('*')
-    .eq('correlation_id', correlationId)
-    .order('created_at', { ascending: false })
-    .limit(limit);
-
-  if (error) {
-    console.error('[Retry] Failed to fetch execution logs:', error);
-    return [];
-  }
-
-  return data || [];
-}
-
-/**
- * Get execution summary for console display
- */
-export function formatExecutionSummary(logs: any[]): string {
-  if (logs.length === 0) {
-    return 'No execution logs found';
-  }
-
-  const summary = logs.map(log => {
-    const timestamp = new Date(log.created_at).toISOString();
-    const status = log.status.toUpperCase();
-    const error = log.error_message ? ` - ${log.error_message}` : '';
-    return `[${timestamp}] ${log.stage} (attempt ${log.attempt}): ${status}${error}`;
-  }).join('\n');
-
-  return `Execution Logs:\n${summary}`;
 }
