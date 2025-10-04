@@ -87,11 +87,11 @@ export default function PrerequisitesPanel({ orgRef, credentialId, selectedChild
 
     console.log('[PrereqCheck] 🚀 Starting prerequisite check...', { credentialId, orgRef });
 
-    // Check cache (5 minute cooldown)
+    // Check cache (30 second cooldown for testing)
     const now = Date.now();
-    if (now - lastCheckTime < 300000) {
+    if (now - lastCheckTime < 30000) {
       console.log('[PrereqCheck] ⏸️ Skipping - recently checked (cache cooldown)');
-      toast({ description: 'Prerequisites recently checked. Please wait a few minutes before rechecking.' });
+      toast({ description: 'Prerequisites recently checked. Please wait 30 seconds before rechecking.' });
       return;
     }
 
