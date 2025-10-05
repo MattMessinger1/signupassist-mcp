@@ -188,6 +188,81 @@ export type Database = {
         }
         Relationships: []
       }
+      discovery_hints: {
+        Row: {
+          confidence: number
+          form_fingerprint: string
+          hints: Json
+          id: string
+          program_key: string
+          provider_slug: string
+          samples_count: number
+          stage: string
+          updated_at: string
+        }
+        Insert: {
+          confidence?: number
+          form_fingerprint: string
+          hints: Json
+          id?: string
+          program_key: string
+          provider_slug: string
+          samples_count?: number
+          stage: string
+          updated_at?: string
+        }
+        Update: {
+          confidence?: number
+          form_fingerprint?: string
+          hints?: Json
+          id?: string
+          program_key?: string
+          provider_slug?: string
+          samples_count?: number
+          stage?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      discovery_runs: {
+        Row: {
+          created_at: string
+          errors: Json
+          form_fingerprint: string
+          id: string
+          meta: Json
+          program_key: string
+          provider_slug: string
+          run_confidence: number
+          run_id: string
+          stage: string
+        }
+        Insert: {
+          created_at?: string
+          errors: Json
+          form_fingerprint: string
+          id?: string
+          meta?: Json
+          program_key: string
+          provider_slug: string
+          run_confidence?: number
+          run_id: string
+          stage: string
+        }
+        Update: {
+          created_at?: string
+          errors?: Json
+          form_fingerprint?: string
+          id?: string
+          meta?: Json
+          program_key?: string
+          provider_slug?: string
+          run_confidence?: number
+          run_id?: string
+          stage?: string
+        }
+        Relationships: []
+      }
       evidence_assets: {
         Row: {
           id: string
@@ -441,6 +516,36 @@ export type Database = {
           },
         ]
       }
+      program_fingerprints: {
+        Row: {
+          form_fingerprint: string
+          hit_count: number
+          id: string
+          last_seen_at: string
+          program_key: string
+          provider_slug: string
+          stage: string
+        }
+        Insert: {
+          form_fingerprint: string
+          hit_count?: number
+          id?: string
+          last_seen_at?: string
+          program_key: string
+          provider_slug: string
+          stage: string
+        }
+        Update: {
+          form_fingerprint?: string
+          hit_count?: number
+          id?: string
+          last_seen_at?: string
+          program_key?: string
+          provider_slug?: string
+          stage?: string
+        }
+        Relationships: []
+      }
       stored_credentials: {
         Row: {
           alias: string
@@ -497,7 +602,20 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      discovery_best_hints: {
+        Row: {
+          confidence: number | null
+          form_fingerprint: string | null
+          hints: Json | null
+          id: string | null
+          program_key: string | null
+          provider_slug: string | null
+          samples_count: number | null
+          stage: string | null
+          updated_at: string | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       cleanup_expired_sessions: {
@@ -516,6 +634,18 @@ export type Database = {
           p_stage?: string
           p_status?: string
         }
+        Returns: string
+      }
+      merge_hints: {
+        Args: { existing: Json; newest: Json }
+        Returns: Json
+      }
+      recompute_confidence: {
+        Args: { latest: number; prev: number; samples: number }
+        Returns: number
+      }
+      sanitize_error_text: {
+        Args: { txt: string }
         Returns: string
       }
     }
