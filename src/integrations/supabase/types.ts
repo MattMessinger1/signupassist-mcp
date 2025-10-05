@@ -602,25 +602,30 @@ export type Database = {
       }
     }
     Views: {
-      discovery_best_hints: {
-        Row: {
-          confidence: number | null
-          form_fingerprint: string | null
-          hints: Json | null
-          id: string | null
-          program_key: string | null
-          provider_slug: string | null
-          samples_count: number | null
-          stage: string | null
-          updated_at: string | null
-        }
-        Relationships: []
-      }
+      [_ in never]: never
     }
     Functions: {
       cleanup_expired_sessions: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      get_best_hints: {
+        Args: {
+          p_program_key: string
+          p_provider_slug: string
+          p_stage: string
+        }
+        Returns: {
+          confidence: number
+          form_fingerprint: string
+          hints: Json
+          id: string
+          program_key: string
+          provider_slug: string
+          samples_count: number
+          stage: string
+          updated_at: string
+        }[]
       }
       insert_execution_log: {
         Args: {
