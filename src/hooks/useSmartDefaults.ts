@@ -75,12 +75,19 @@ function chooseSmartDefault(field: FieldWithPrice): string | undefined {
   }
 
   // Non-price-bearing: pick first *real* option (skip placeholders/empty)
-  const real = opts.find(o =>
-    o?.trim() &&
-    !PLACEHOLDER_RE.test(o ?? '') &&
-    o.toLowerCase() !== 'none'
-  );
-  return real ?? opts[0];
+  const real = opts.find(o => {
+    if (typeof o === 'string') {
+      return o?.trim() && !PLACEHOLDER_RE.test(o) && o.toLowerCase() !== 'none';
+    } else {
+      return o?.value?.trim() && !PLACEHOLDER_RE.test(o.label ?? '') && o.value.toLowerCase() !== 'none';
+    }
+  });
+  if (typeof real === 'string') {
+    return real;
+  } else if (real && typeof real === 'object') {
+    return (real as { value: string }).value;
+  }
+  return typeof opts[0] === 'string' ? opts[0] : (opts[0] as { value: string })?.value;
 }
 
 export function useSmartDefaults<T>({ fields, childId, setValue, watch }: SmartDefaultsProps<T>) {
@@ -160,13 +167,15 @@ export function useSmartDefaults<T>({ fields, childId, setValue, watch }: SmartD
             if (!smartDefault) {
               // Default skill level to beginner if available
               if (fieldLower.includes('skill') || fieldLower.includes('level')) {
-                const beginnerOption = field.options.find(opt => 
-                  opt.toLowerCase().includes('beginner') || 
-                  opt.toLowerCase().includes('first time') ||
-                  opt.toLowerCase().includes('never')
-                );
+                const beginnerOption = field.options.find(opt => {
+                  const val = typeof opt === 'string' ? opt : opt.value;
+                  return val.toLowerCase().includes('beginner') || 
+                         val.toLowerCase().includes('first time') ||
+                         val.toLowerCase().includes('never');
+                });
                 if (beginnerOption) {
-                  setValue(`answers.${field.id}` as any, beginnerOption as any);
+                  const value = typeof beginnerOption === 'string' ? beginnerOption : beginnerOption.value;
+                  setValue(`answers.${field.id}` as any, value as any);
                 }
               }
 
@@ -177,13 +186,15 @@ export function useSmartDefaults<T>({ fields, childId, setValue, watch }: SmartD
 
               // Default emergency contact relationship
               if (fieldLower.includes('relationship') && fieldLower.includes('emergency')) {
-                const parentOption = field.options.find(opt => 
-                  opt.toLowerCase().includes('parent') || 
-                  opt.toLowerCase().includes('mother') || 
-                  opt.toLowerCase().includes('father')
-                );
+                const parentOption = field.options.find(opt => {
+                  const val = typeof opt === 'string' ? opt : opt.value;
+                  return val.toLowerCase().includes('parent') || 
+                         val.toLowerCase().includes('mother') || 
+                         val.toLowerCase().includes('father');
+                });
                 if (parentOption) {
-                  setValue(`answers.${field.id}` as any, parentOption as any);
+                  const value = typeof parentOption === 'string' ? parentOption : parentOption.value;
+                  setValue(`answers.${field.id}` as any, value as any);
                 }
               }
             }

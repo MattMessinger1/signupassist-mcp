@@ -14,17 +14,25 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
+export interface PriceOption {
+  value: string;
+  label: string;
+  costCents: number | null;
+}
+
 export interface EnhancedDiscoveredField {
   id: string;
   label: string;
   type: 'text' | 'select' | 'textarea' | 'number' | 'date' | 'checkbox' | 'radio' | 'file' | 'multi-select';
   required: boolean;
-  options?: string[];
+  options?: string[] | Array<{ value: string; label?: string }>;
   category?: 'child_info' | 'program_selection' | 'legal_waivers' | 'emergency_contacts' | 'payment_preferences';
   placeholder?: string;
   description?: string;
   dependsOn?: string; // Field ID that this field depends on
   showWhen?: string; // Value of the dependent field that shows this field
+  isPriceBearing?: boolean;
+  priceOptions?: PriceOption[];
 }
 
 interface FieldRendererProps<T extends FieldValues> {

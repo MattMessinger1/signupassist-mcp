@@ -37,7 +37,7 @@ import { ErrorBoundary } from '@/components/ErrorBoundary';
 import MandateSummary from '@/components/MandateSummary';
 import { prompts, fmt } from '@/lib/prompts';
 import { useToastLogger } from '@/lib/logging/useToastLogger';
-import { chooseDefaultAnswer } from '../../mcp_server/lib/pricing/chooseAnswer';
+import { chooseDefaultAnswer } from '@/lib/smartDefaults';
 
 const stripePromise = loadStripe('pk_test_51RujoPAaGNDlVi1koVlBSBBXy2yfwz7vuMBciJxkawKBKaqwR4xw07wEFUAMa73ADIUqzwB5GwbPM3YnPYu5vo4X00rAdiwPkx');
 
