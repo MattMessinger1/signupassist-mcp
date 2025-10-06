@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { SignJWT, importJWK } from 'https://esm.sh/jose@5.2.4';
+import { createHash } from "https://deno.land/std@0.203.0/hash/mod.ts";
 import { invokeMCPTool } from '../_shared/mcpClient.ts';
 import { toIsoStringSafe } from '../_shared/utils.ts';
 import { logStructuredError, sanitizeError } from '../_shared/errors.ts';
@@ -251,10 +252,33 @@ Deno.serve(async (req) => {
     console.log(`Issued mandate ${mandate_id} for interactive field discovery`);
     console.log("mandate id returned:", mandateData?.id, "error:", mandateError);
 
+    // Compute a stable fingerprint for this form URL
+    const formFingerprint = createHash("sha256")
+      .update(`${program_ref}|${credential_id}`)
+      .toString();
+
+    console.log("formFingerprint:", formFingerprint);
+
+    // Try warming from existing discovery hints
+    let warmHints = {};
+    try {
+      const { data: hintData } = await supabase.rpc("get_best_hints", {
+        p_provider: "skiclubpro",
+        p_program: program_ref,
+        p_stage: "program",
+      });
+      warmHints = hintData?.hints ?? {};
+      console.log("Loaded warmHints keys:", Object.keys(warmHints));
+    } catch (err) {
+      console.warn("No warm hints available or RPC missing:", err.message);
+    }
+
     // Call the MCP provider tool for field discovery directly
     const userJwt = authHeader.replace('Bearer ', '');
     console.log("invoking MCP with mandate_id:", mandate_id, "credential_id:", credential_id);
     console.log("DEBUG interactive discovery: skipAudit=true, omitting plan_execution_id");
+    
+    const stageStart = Date.now();
     
     try {
       const result = await invokeMCPTool("scp.discover_required_fields", {
@@ -268,6 +292,33 @@ Deno.serve(async (req) => {
       });
 
       console.log('Field discovery completed:', result);
+
+      // Persist the discovery run for learning
+      try {
+        const errorsJson = JSON.stringify(result?.errors ?? []);
+        const meta = {
+          formWatchOpensAt: result?.formWatchOpensAt ?? null,
+          formWatchClosesAt: result?.formWatchClosesAt ?? null,
+          loopCount: result?.loopCount ?? null,
+          usedWarmHints: Object.keys(warmHints).length > 0,
+        };
+        const runConfidence = result?.branches ? 0.9 : 0.6; // simple heuristic
+        const runId = crypto.randomUUID();
+
+        await supabase.rpc("upsert_discovery_run", {
+          p_provider: "skiclubpro",
+          p_program: program_ref,
+          p_fingerprint: formFingerprint,
+          p_stage: "program",
+          p_errors: errorsJson,
+          p_meta: JSON.stringify(meta),
+          p_run_conf: runConfidence,
+          p_run_id: runId,
+        });
+        console.log("Persisted discovery run:", runId, "confidence:", runConfidence);
+      } catch (err) {
+        console.error("Failed to persist discovery run:", err);
+      }
 
       // Normalize MCP response to match frontend expectations
       const discoveredSchema = result?.branches ? {
@@ -287,6 +338,9 @@ Deno.serve(async (req) => {
       };
 
       console.log('Normalized response:', response);
+
+      const elapsedMs = Date.now() - stageStart;
+      console.log(`Discovery elapsed ${elapsedMs} ms`);
 
       return new Response(JSON.stringify(response), { 
         status: 200, 
