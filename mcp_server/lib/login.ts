@@ -144,10 +144,17 @@ export async function loginWithCredentials(
   // Extra wait for JS initialization - wait 1200ms after networkidle
   await page.waitForTimeout(1200);
 
-  // Quick check if already logged in
-  if (await isLoggedIn(page)) {
-    console.log("DEBUG Already logged in, skipping login flow");
+  // Quick check if already logged in - but verify by checking the current URL
+  // Don't trust cookie existence alone, as cookies can be expired
+  const currentUrl = page.url();
+  if (await isLoggedIn(page) && !currentUrl.includes('/user/login')) {
+    console.log("DEBUG Already logged in and verified (not on login page), skipping login flow");
     return { url: page.url(), title: await page.title() };
+  }
+  
+  // If we have a cookie but are still on login page, the session is expired
+  if (await isLoggedIn(page) && currentUrl.includes('/user/login')) {
+    console.log("DEBUG Found expired session cookie on login page - will perform fresh login");
   }
 
   // Quick human pause + tiny mouse wiggle (Antibot micro-behavior)
