@@ -251,7 +251,52 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         
         console.log('DEBUG: Field discovery completed:', fieldSchema);
         
-        return fieldSchema;
+        // ✅ Run prerequisite checks while we're logged in
+        console.log('DEBUG: Running prerequisite checks...');
+        const prerequisiteChecks = [];
+        
+        try {
+          const page = session.page;
+          
+          // Check account status
+          const accountCheck = await checkAccount(page);
+          prerequisiteChecks.push({
+            check: 'account_status',
+            status: accountCheck.ok ? 'pass' : (accountCheck.ok === null ? 'unknown' : 'fail'),
+            message: accountCheck.summary
+          });
+          
+          // Check membership
+          const membershipCheck = await checkMembership(page, baseUrl);
+          prerequisiteChecks.push({
+            check: 'membership_current',
+            status: membershipCheck.ok ? 'pass' : (membershipCheck.ok === null ? 'unknown' : 'fail'),
+            message: membershipCheck.summary
+          });
+          
+          // Check payment method
+          const paymentCheck = await checkPayment(page, baseUrl);
+          prerequisiteChecks.push({
+            check: 'payment_method_on_file',
+            status: paymentCheck.ok ? 'pass' : (paymentCheck.ok === null ? 'unknown' : 'fail'),
+            message: paymentCheck.summary
+          });
+          
+          console.log('DEBUG: Prerequisite checks completed:', prerequisiteChecks);
+        } catch (error) {
+          console.error('Prerequisite checks failed:', error);
+          prerequisiteChecks.push({
+            check: 'prerequisites',
+            status: 'unknown',
+            message: 'Unable to complete prerequisite checks'
+          });
+        }
+        
+        // Return field schema with prerequisite checks
+        return {
+          ...fieldSchema,
+          prerequisiteChecks
+        };
         
       } catch (error) {
         console.error('SkiClubPro field discovery failed:', error);
