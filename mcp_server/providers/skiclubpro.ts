@@ -532,12 +532,12 @@ export const skiClubProTools = {
           if (!args.user_jwt) throw new Error('user_jwt is required');
           
           const orgRef = args.org_ref || 'blackhawk-ski-club';
-          const baseUrl = resolveBaseUrl({ org_ref: orgRef });
+          const { baseUrl, baseDomain } = resolveBaseUrl({ org_ref: orgRef });
           
           // Extract user_id from JWT for session caching
           const userId = JSON.parse(atob(args.user_jwt.split('.')[1])).sub;
           
-          console.log(`DEBUG: Starting real login for org: ${orgRef}, baseUrl: ${baseUrl}`);
+          console.log(`DEBUG: Starting real login for org: ${orgRef}, baseUrl: ${baseUrl}, baseDomain: ${baseDomain}`);
           
           // Launch Browserbase session
           session = await launchBrowserbaseSession();
@@ -822,7 +822,7 @@ export const skiClubProTools = {
           
           // List children
           console.log('[scp:list_children] Listing children...');
-          const children = await listChildren(page, base);
+          const children = await listChildren(page, baseUrl);
           
           console.log(`[scp:list_children] Found ${children.length} children`);
           

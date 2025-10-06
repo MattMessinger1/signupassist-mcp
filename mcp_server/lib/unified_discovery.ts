@@ -458,7 +458,7 @@ async function discoverProgramFieldsMultiStep(
         
         // Wait for navigation/rendering with Promise.race
         await Promise.race([
-          page.waitForURL(u => u !== prevUrl, { timeout: 8000 }).catch(() => {}),
+          page.waitForURL((url: URL) => url.toString() !== prevUrl, { timeout: 8000 }).catch(() => {}),
           page.waitForLoadState('networkidle').catch(() => {}),
           page.waitForTimeout(1200)
         ]);
