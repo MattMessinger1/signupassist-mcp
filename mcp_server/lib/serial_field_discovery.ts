@@ -251,6 +251,10 @@ async function trySubmit(page: Page): Promise<boolean> {
   const submitSelectors = [
     'button[type="submit"]:visible',
     'input[type="submit"]:visible',
+    'button[name="op"]:visible',           // Drupal Webform common
+    '.webform-button--submit:visible',     // Drupal theme class
+    'a.button:has-text("Submit"):visible', // Anchors styled as buttons
+    '[role="button"]:has-text("Submit"):visible',
     'button:has-text("Next"):visible',
     'button:has-text("Continue"):visible',
     'button:has-text("Register"):visible',

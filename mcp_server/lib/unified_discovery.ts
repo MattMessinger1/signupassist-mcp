@@ -252,35 +252,83 @@ async function navigateToProgramForm(
     try {
       const url = `${baseUrl}${path}`;
       console.log(`[UnifiedDiscovery] Trying program URL: ${url}`);
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
       await humanPause(300, 600);
       
-      // Check for a registration form (stricter so /programs search forms don't false-positive)
+      // Stricter: only treat as registration if the form looks like "register" / "registration"
       const hasRegistrationForm = await page.$([
         'form[action*="register"]',
-        'form[action*="registration"]',
         'form[id*="register"]',
+        'form[action*="registration"]',
         'form[id*="registration"]',
-        '[role="form"][action*="register"]',
         '.webform-submission-form',
-        '[id*=registration]'
+        '[id*="registration"]'
       ].join(', '));
       if (hasRegistrationForm) {
         console.log(`[UnifiedDiscovery] Found registration form at: ${path}`);
         return;
       }
       
-      // If we're on the generic programs list, try to click into the specific program/register
+      // If we're on the listing, drill into the specific program and then Register
       if (path === '/programs') {
-        // Try direct register button first
-        const clicked =
-          await page.locator('a:has-text("Register"), button:has-text("Register")').first().click({ timeout: 2500 }).then(() => true).catch(() => false) ||
-          await page.locator(`a[href*="/register/${programRef}"], a[href*="/programs/${programRef}/register"]`).first().click({ timeout: 2500 }).then(() => true).catch(() => false) ||
-          await page.locator(`a[href*="/programs/${programRef}"]`).first().click({ timeout: 2500 }).then(() => true).catch(() => false);
+        console.log(`[ProgramNav] On /programs listing, searching for program ${programRef}…`);
+        await page.waitForLoadState('networkidle').catch(() => {});
+        await humanPause(500, 800);
+
+        // 1) Try direct, specific selectors first
+        const programLinkSelectors = [
+          `a[href*="/programs/${programRef}"]`,
+          `a[href*="/program/${programRef}"]`,
+          `[data-program-id="${programRef}"] a`,
+          `.program-card a[href*="${programRef}"]`
+        ];
+
+        let clicked = false;
+        for (const sel of programLinkSelectors) {
+          console.log(`[ProgramNav] Trying selector: ${sel}`);
+          clicked = await page.locator(sel).first().click({ timeout: 5000 }).then(() => true).catch(() => false);
+          if (clicked) {
+            console.log(`[ProgramNav] ✓ Clicked into program ${programRef}`);
+            await page.waitForLoadState('networkidle').catch(() => {});
+            await humanPause(700, 1000);
+            break;
+          }
+        }
+
+        // 2) Fallback: enumerate anchors; click the one whose href contains the programRef
+        if (!clicked) {
+          const links = await page.locator('a[href*="/program"]').all();
+          console.log(`[ProgramNav] Found ${links.length} programish links; scanning for /programs/${programRef}`);
+          for (const a of links) {
+            const href = (await a.getAttribute('href').catch(() => '')) || '';
+            if (href.includes(`/programs/${programRef}`) || href.includes(`/program/${programRef}`)) {
+              console.log(`[ProgramNav] Fallback click: ${href}`);
+              clicked = await a.click({ timeout: 5000 }).then(() => true).catch(() => false);
+              if (clicked) {
+                await page.waitForLoadState('networkidle').catch(() => {});
+                await humanPause(700, 1000);
+                break;
+              }
+            }
+          }
+        }
+
+        // 3) If we're inside a program page, click Register if present
         if (clicked) {
-          await page.waitForLoadState('networkidle').catch(() => {});
-          await humanPause(600, 900);
-          return;
+          const registerClicked = await page
+            .locator('a:has-text("Register"), button:has-text("Register"), a[href*="/register"]')
+            .first()
+            .click({ timeout: 5000 })
+            .then(() => true)
+            .catch(() => false);
+          if (registerClicked) {
+            console.log(`[ProgramNav] ✓ Clicked Register`);
+            await page.waitForLoadState('networkidle').catch(() => {});
+            await humanPause(500, 900);
+            return;
+          }
+        } else {
+          console.log(`[ProgramNav] ⚠ Could not find program ${programRef} on listing page`);
         }
       }
     } catch (err: any) {
