@@ -26,6 +26,7 @@ import { OpenTimePicker } from '@/components/OpenTimePicker';
 import { CredentialPicker } from '@/components/CredentialPicker';
 import PrerequisitesPanel from '@/components/PrereqsPanel';
 import ProgramQuestionsPanel, { ProgramQuestion } from '@/components/ProgramQuestionsPanel';
+import CompletionPanel from '@/components/CompletionPanel';
 import { ConsentModal } from '@/components/ConsentModal';
 import { SavePaymentMethod } from '@/components/SavePaymentMethod';
 import { FieldGroup } from '@/components/FieldGroup';
@@ -122,7 +123,7 @@ const PlanBuilder = () => {
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [prerequisiteChecks, setPrerequisiteChecks] = useState<PrerequisiteCheck[]>([]);
   const [programQuestions, setProgramQuestions] = useState<ProgramQuestion[]>([]);
-  const [activeStep, setActiveStep] = useState<'prereqs' | 'program'>('prereqs');
+  const [activeStep, setActiveStep] = useState<'prereqs' | 'program' | 'completed'>('prereqs');
   const [hasPaymentMethod, setHasPaymentMethod] = useState(false);
   const [checkingPayment, setCheckingPayment] = useState(false);
   const [friendlyProgramTitle, setFriendlyProgramTitle] = useState<string | null>(null);
@@ -1590,7 +1591,7 @@ const PlanBuilder = () => {
                             }
                           }}
                         />
-                      ) : (
+                      ) : activeStep === 'program' ? (
                         <ProgramQuestionsPanel
                           key="program"
                           questions={programQuestions}
@@ -1607,6 +1608,9 @@ const PlanBuilder = () => {
                             toastLogger('program_questions', 'Answers saved successfully', 'success', { 
                               answerCount: Object.keys(answers).length 
                             });
+
+                            // Move to completion screen
+                            setActiveStep('completed');
                           }}
                           onBack={() => {
                             setActiveStep('prereqs');
@@ -1616,6 +1620,13 @@ const PlanBuilder = () => {
                             });
                           }}
                           isSubmitting={false}
+                        />
+                      ) : (
+                        <CompletionPanel
+                          key="completed"
+                          onFinish={() => {
+                            navigate('/');
+                          }}
                         />
                       )}
                     </AnimatePresence>
