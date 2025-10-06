@@ -37,3 +37,65 @@ Future contributors should extend the `lib/login.ts` and `lib/formHelpers.ts` mo
 - Add support for new providers.
 - Integrate VC-based authentication once providers are ready.
 - Expand Antibot detection and debugging capabilities.
+
+## Discovery Learning Maintenance
+
+The discovery learning system includes automatic maintenance to keep data fresh and efficient. A cron job runs the `maintenance-discovery` edge function to:
+
+1. **Refresh best hints** - Updates the discovery hints cache (currently a no-op)
+2. **Prune old runs** - Deletes discovery runs older than 90 days (keeps last 200 per provider/program/stage)
+3. **Decay stale confidence** - Reduces confidence by 10% for hints not used in 45 days
+
+### Setting up the Cron Job
+
+To schedule the maintenance function to run daily at 2 AM UTC, execute this SQL in your Supabase SQL editor:
+
+```sql
+-- Enable required extensions (if not already enabled)
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+CREATE EXTENSION IF NOT EXISTS pg_net;
+
+-- Schedule daily maintenance at 2 AM UTC
+SELECT cron.schedule(
+  'discovery-maintenance-daily',
+  '0 2 * * *', -- Every day at 2 AM UTC
+  $$
+  SELECT
+    net.http_post(
+      url:='https://YOUR_PROJECT_REF.supabase.co/functions/v1/maintenance-discovery',
+      headers:='{"Content-Type": "application/json", "Authorization": "Bearer YOUR_ANON_KEY"}'::jsonb,
+      body:='{}'::jsonb
+    ) as request_id;
+  $$
+);
+
+-- View scheduled jobs
+SELECT * FROM cron.job;
+
+-- To unschedule (if needed)
+-- SELECT cron.unschedule('discovery-maintenance-daily');
+```
+
+**Important**: Replace `YOUR_PROJECT_REF` with your Supabase project reference and `YOUR_ANON_KEY` with your project's anon key.
+
+### Manual Execution
+
+You can also trigger maintenance manually via HTTP:
+
+```bash
+curl -X POST 'https://YOUR_PROJECT_REF.supabase.co/functions/v1/maintenance-discovery' \
+  -H 'Authorization: Bearer YOUR_ANON_KEY' \
+  -H 'Content-Type: application/json'
+```
+
+The function returns a summary:
+
+```json
+{
+  "timestamp": "2025-10-06T02:00:00.000Z",
+  "hintsRefreshed": true,
+  "runsDeleted": 42,
+  "hintConfidenceDecayed": 7,
+  "errors": []
+}
+```
