@@ -332,9 +332,9 @@ Deno.serve(async (req) => {
         }
         
         // Persist program discovery
-        if (result?.questions && result.questions.length > 0) {
+        if (result?.program_questions && result.program_questions.length > 0) {
           const programRunId = crypto.randomUUID();
-          const errorsJson = JSON.stringify(result.questions);
+          const errorsJson = JSON.stringify(result.program_questions);
           const meta = {
             formWatchOpensAt: result?.formWatchOpensAt ?? null,
             formWatchClosesAt: result?.formWatchClosesAt ?? null,

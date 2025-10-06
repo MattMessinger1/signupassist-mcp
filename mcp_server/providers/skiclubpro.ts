@@ -59,7 +59,7 @@ export interface FieldSchema {
   }>;
   prerequisite_status?: 'complete' | 'required' | 'unknown';
   prerequisite_message?: string;
-  questions?: Array<{
+  program_questions?: Array<{
     id: string;
     label: string;
     type: string;
@@ -285,7 +285,7 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           program_ref: args.program_ref,
           prerequisite_checks: discoveryResult.prerequisite_checks,
           prerequisite_status: discoveryResult.prerequisite_status,
-          questions: discoveryResult.program_questions,
+          program_questions: discoveryResult.program_questions,
           metadata: {
             url: baseUrl,
             field_count: discoveryResult.program_questions.length,
