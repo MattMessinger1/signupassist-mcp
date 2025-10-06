@@ -255,11 +255,33 @@ async function navigateToProgramForm(
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
       await humanPause(300, 600);
       
-      // Check if we're on a registration form
-      const hasForm = await page.$('form, [role="form"]');
-      if (hasForm) {
-        console.log(`[UnifiedDiscovery] Found program form at: ${path}`);
+      // Check for a registration form (stricter so /programs search forms don't false-positive)
+      const hasRegistrationForm = await page.$([
+        'form[action*="register"]',
+        'form[action*="registration"]',
+        'form[id*="register"]',
+        'form[id*="registration"]',
+        '[role="form"][action*="register"]',
+        '.webform-submission-form',
+        '[id*=registration]'
+      ].join(', '));
+      if (hasRegistrationForm) {
+        console.log(`[UnifiedDiscovery] Found registration form at: ${path}`);
         return;
+      }
+      
+      // If we're on the generic programs list, try to click into the specific program/register
+      if (path === '/programs') {
+        // Try direct register button first
+        const clicked =
+          await page.locator('a:has-text("Register"), button:has-text("Register")').first().click({ timeout: 2500 }).then(() => true).catch(() => false) ||
+          await page.locator(`a[href*="/register/${programRef}"], a[href*="/programs/${programRef}/register"]`).first().click({ timeout: 2500 }).then(() => true).catch(() => false) ||
+          await page.locator(`a[href*="/programs/${programRef}"]`).first().click({ timeout: 2500 }).then(() => true).catch(() => false);
+        if (clicked) {
+          await page.waitForLoadState('networkidle').catch(() => {});
+          await humanPause(600, 900);
+          return;
+        }
       }
     } catch (err: any) {
       console.warn(`Could not navigate to ${path}:`, err.message);
@@ -319,8 +341,8 @@ async function discoverProgramFieldsMultiStep(
       };
     }
     
-    // Collect all visible fields with broad selector
-    const selector = 'input, select, textarea, [contenteditable="true"], [name], [id], [data-drupal-selector]';
+    // Collect all visible *form* fields only (no generic [name]/[id])
+    const selector = 'input, select, textarea, [contenteditable="true"], button[type="submit"]';
     const elements = await page.locator(selector).all();
     
     let newFieldsThisStep = 0;
@@ -329,9 +351,20 @@ async function discoverProgramFieldsMultiStep(
       const isVisible = await el.isVisible().catch(() => false);
       if (!isVisible) continue;
       
+      // Identify tag/type to exclude non-controls and non-submit buttons
+      const tagName = await el.evaluate((node) => node.tagName.toLowerCase()).catch(() => '');
+      const type = await el.getAttribute('type').catch(() => 'text');
+      
+      // Allow inputs, selects, textareas, submit buttons, or contenteditable nodes only
+      if (!['input', 'select', 'textarea', 'button'].includes(tagName)) {
+        const isContentEditable = (await el.getAttribute('contenteditable').catch(() => '')) === 'true';
+        if (!isContentEditable) continue;
+      }
+      if (tagName === 'button' && type !== 'submit') continue;
+      if (tagName === 'input' && type === 'hidden') continue;
+      
       const name = await el.getAttribute('name').catch(() => '');
       const id = await el.getAttribute('id').catch(() => '');
-      const type = await el.getAttribute('type').catch(() => 'text');
       const ariaLabel = await el.getAttribute('aria-label').catch(() => '');
       const placeholder = await el.getAttribute('placeholder').catch(() => '');
       
@@ -344,6 +377,10 @@ async function discoverProgramFieldsMultiStep(
       
       const rawKey = name || id || ariaLabel || labelText;
       if (!rawKey) continue;
+      
+      // Filter obvious layout/navigation keys that occasionally sneak in
+      const layoutKeywords = ['sidebar', 'menu', 'block', 'wrapper', 'container', 'collapse', 'dashboard', 'nav'];
+      if (layoutKeywords.some(kw => rawKey.toLowerCase().includes(kw))) continue;
       
       const fieldKey = normalizeFieldKey(rawKey);
       
