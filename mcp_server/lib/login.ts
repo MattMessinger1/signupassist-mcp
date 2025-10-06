@@ -129,6 +129,39 @@ export async function loginWithCredentials(
   
   console.log(`DEBUG Using timeout: ${timeout}ms for login selectors`);
 
+  // Apply antibot stealth measures if enabled
+  const antibotEnabled = process.env.ANTIBOT_ENABLED === 'true';
+  if (antibotEnabled) {
+    console.log('[Antibot] Applying stealth measures to existing page context');
+    const context = page.context();
+    
+    // Apply stealth script to hide webdriver
+    await context.addInitScript(() => {
+      // Remove navigator.webdriver
+      Object.defineProperty(navigator, 'webdriver', {
+        get: () => false,
+      });
+      
+      // Add chrome object
+      (window as any).chrome = {
+        runtime: {},
+      };
+      
+      // Override permissions
+      const originalQuery = window.navigator.permissions.query;
+      window.navigator.permissions.query = (parameters: any) => {
+        if (parameters.name === 'notifications') {
+          return Promise.resolve({ state: 'denied' } as PermissionStatus);
+        }
+        return originalQuery(parameters);
+      };
+    });
+    
+    console.log('[Antibot] Stealth measures applied successfully');
+  } else {
+    console.log('[Antibot] ANTIBOT_ENABLED=false, skipping stealth measures');
+  }
+
   console.log("DEBUG Navigating to login page:", config.loginUrl);
   
   // Navigate explicitly to Drupal login with destination - wait for network idle for JS-heavy pages
