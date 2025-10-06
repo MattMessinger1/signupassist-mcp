@@ -124,10 +124,10 @@ async function ensureLoggedIn(
   const loginResult = await performSkiClubProLogin(session, creds, orgRef, {
     force_login: false,
     toolName: auditParams?.tool_name || 'unknown',
-    mandateId: auditParams?.mandate_id,
-    planId: auditParams?.plan_id,
-    planExecutionId: auditParams?.plan_execution_id,
-    sessionToken: auditParams?.session_token
+    mandate_id: auditParams?.mandate_id,
+    plan_id: auditParams?.plan_id,
+    plan_execution_id: auditParams?.plan_execution_id,
+    session_token: auditParams?.session_token
   });
   
   if (loginResult.login_status === 'failed') {
