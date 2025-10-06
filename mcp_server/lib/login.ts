@@ -9,6 +9,7 @@ export interface ProviderLoginConfig {
     submit: string | string[];
   };
   postLoginCheck: string | string[]; // CSS or text locator
+  timeout?: number; // Optional timeout in ms (default: 30000)
 }
 
 // Fallback selector arrays for progressive detection
@@ -122,15 +123,20 @@ export async function loginWithCredentials(
   creds: { email: string; password: string }
 ) {
   const startTime = Date.now();
+  const timeout = config.timeout || 30000;
+  
+  console.log(`DEBUG Using timeout: ${timeout}ms for login selectors`);
 
   console.log("DEBUG Navigating to login page:", config.loginUrl);
   
   // Navigate explicitly to Drupal login with destination - wait for network idle for JS-heavy pages
-  await page.goto(config.loginUrl, { waitUntil: 'networkidle', timeout: 30000 });
+  await page.goto(config.loginUrl, { waitUntil: 'networkidle', timeout });
   await page.waitForLoadState('networkidle');
   
-  // Extra wait for dynamic content
-  await humanPause(1000, 2000);
+  console.log(`DEBUG Page load state: ${page.url()}`);
+  
+  // Extra wait for dynamic content - increased for heavy JS pages
+  await humanPause(3000, 5000);
 
   // Quick check if already logged in
   if (await isLoggedIn(page)) {
@@ -178,9 +184,11 @@ export async function loginWithCredentials(
   const passSel = passSelectors.join(', ');
   const submitSel = submitSelectors.join(', ');
 
-  // Wait for form fields
-  await page.waitForSelector(emailSel, { timeout: 15000 });
-  await page.waitForSelector(passSel, { timeout: 15000 });
+  // Wait for form fields with config timeout
+  console.log(`DEBUG Waiting for email selector with timeout: ${timeout}ms`);
+  await page.waitForSelector(emailSel, { timeout });
+  console.log(`DEBUG Waiting for password selector with timeout: ${timeout}ms`);
+  await page.waitForSelector(passSel, { timeout });
   console.log("DEBUG Form fields detected");
 
   // Detect honeypot fields (but don't interact)

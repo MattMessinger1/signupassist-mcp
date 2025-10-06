@@ -136,7 +136,8 @@ async function ensureLoggedIn(
       const loginConfig = {
         loginUrl: `${baseUrl}/user/login?destination=/dashboard`,
         selectors: skiClubProConfig.selectors,
-        postLoginCheck: skiClubProConfig.postLoginCheck
+        postLoginCheck: skiClubProConfig.postLoginCheck,
+        timeout: skiClubProConfig.timeout
       };
       
       // Retry full login with credentials
@@ -160,7 +161,8 @@ async function ensureLoggedIn(
   const loginConfig = {
     loginUrl: `${baseUrl}/user/login?destination=/dashboard`,
     selectors: skiClubProConfig.selectors,
-    postLoginCheck: skiClubProConfig.postLoginCheck
+    postLoginCheck: skiClubProConfig.postLoginCheck,
+    timeout: skiClubProConfig.timeout
   };
   
   // Use the new robust login helper with credentials
