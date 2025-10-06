@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -24,6 +25,7 @@ import { ChildSelect } from '@/components/ChildSelect';
 import { OpenTimePicker } from '@/components/OpenTimePicker';
 import { CredentialPicker } from '@/components/CredentialPicker';
 import PrerequisitesPanel from '@/components/PrereqsPanel';
+import ProgramQuestionsPanel, { ProgramQuestion } from '@/components/ProgramQuestionsPanel';
 import { ConsentModal } from '@/components/ConsentModal';
 import { SavePaymentMethod } from '@/components/SavePaymentMethod';
 import { FieldGroup } from '@/components/FieldGroup';
@@ -49,7 +51,7 @@ const planBuilderSchema = z.object({
   credentialId: z.string().min(1, 'Login credentials are required'),
   maxAmountCents: z.number().min(0, 'Payment limit must be positive'),
   contactPhone: z.string().min(10, 'Please enter a valid mobile number'),
-  answers: z.record(z.string(), z.string()).optional(),
+  answers: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
 });
 
 type PlanBuilderForm = z.infer<typeof planBuilderSchema>;
@@ -119,6 +121,8 @@ const PlanBuilder = () => {
   const [showConsent, setShowConsent] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [prerequisiteChecks, setPrerequisiteChecks] = useState<PrerequisiteCheck[]>([]);
+  const [programQuestions, setProgramQuestions] = useState<ProgramQuestion[]>([]);
+  const [activeStep, setActiveStep] = useState<'prereqs' | 'program'>('prereqs');
   const [hasPaymentMethod, setHasPaymentMethod] = useState(false);
   const [checkingPayment, setCheckingPayment] = useState(false);
   const [friendlyProgramTitle, setFriendlyProgramTitle] = useState<string | null>(null);
@@ -596,22 +600,29 @@ const PlanBuilder = () => {
       const branchCount = data.branches?.length || 0;
       const commonQuestions = data.common_questions?.length || 0;
       
-      // Update prerequisite checks from response
+      // Update prerequisite checks and program questions from response
       if (data.prerequisiteChecks) {
         setPrerequisiteChecks(data.prerequisiteChecks);
         console.log('[PlanBuilder] Updated prerequisite checks:', data.prerequisiteChecks);
       }
       
+      if (data.program_questions) {
+        setProgramQuestions(data.program_questions);
+        console.log('[PlanBuilder] Updated program questions:', data.program_questions);
+      }
+      
       toastLogger('field_discovery', `Discovered ${branchCount} branches and ${commonQuestions} common questions`, 'success', {
         branches: branchCount,
         commonQuestions,
-        prerequisiteChecks: data.prerequisiteChecks?.length || 0
+        prerequisiteChecks: data.prerequisiteChecks?.length || 0,
+        programQuestions: data.program_questions?.length || 0
       });
 
       console.log('[PlanBuilder] ✅ Schema discovered successfully:', {
         branches: data.branches?.length ?? 0,
         commonQuestions: data.common_questions?.length ?? 0,
-        prerequisiteChecks: data.prerequisiteChecks?.length ?? 0
+        prerequisiteChecks: data.prerequisiteChecks?.length ?? 0,
+        programQuestions: data.program_questions?.length ?? 0
       });
       
       setDiscoveredSchema(data);
@@ -1436,6 +1447,8 @@ const PlanBuilder = () => {
                             setDiscoveredSchema(null);
                             setSelectedBranch('');
                             setPrerequisiteChecks([]);
+                            setProgramQuestions([]);
+                            setActiveStep('prereqs');
                           }}
                           selectedProgram={field.value}
                           credentialId={form.watch('credentialId')}
@@ -1510,61 +1523,102 @@ const PlanBuilder = () => {
                       </Button>
                     </div>
                   ) : (
-                    <PrerequisitesPanel
-                      checks={prerequisiteChecks}
-                      onRecheck={handleRecheckPrereqs}
-                      onContinue={async () => {
-                        const childId = form.watch('childId');
-                        const programRef = form.watch('programRef');
-                        const openTime = form.watch('opensAt');
-                        
-                        // Validate all required fields before auto-discovery
-                        if (!childId || !programRef) {
-                          toast({
-                            title: 'Missing Information',
-                            description: 'Please select both a child and program',
-                            variant: 'destructive',
-                          });
-                          return;
-                        }
+                    <AnimatePresence mode="wait">
+                      {activeStep === 'prereqs' ? (
+                        <PrerequisitesPanel
+                          key="prereqs"
+                          checks={prerequisiteChecks}
+                          onRecheck={handleRecheckPrereqs}
+                          onContinue={async () => {
+                            const childId = form.watch('childId');
+                            const programRef = form.watch('programRef');
+                            const openTime = form.watch('opensAt');
+                            
+                            // Validate all required fields
+                            if (!childId || !programRef) {
+                              toast({
+                                title: 'Missing Information',
+                                description: 'Please select both a child and program',
+                                variant: 'destructive',
+                              });
+                              return;
+                            }
 
-                        if (!openTime) {
-                          toast({
-                            title: 'Missing Registration Time',
-                            description: 'Please set when registration opens (Step 4)',
-                            variant: 'destructive',
-                          });
-                          return;
-                        }
+                            if (!openTime) {
+                              toast({
+                                title: 'Missing Registration Time',
+                                description: 'Please set when registration opens (Step 4)',
+                                variant: 'destructive',
+                              });
+                              return;
+                            }
 
-                        // Get child name
-                        const { data: childData, error: childError } = await supabase
-                          .from('children')
-                          .select('name')
-                          .eq('id', childId)
-                          .maybeSingle();
-                        
-                        if (childError || !childData) {
-                          toast({
-                            title: 'Error',
-                            description: 'Could not load child information',
-                            variant: 'destructive',
-                          });
-                          return;
-                        }
+                            // Get child name
+                            const { data: childData, error: childError } = await supabase
+                              .from('children')
+                              .select('name')
+                              .eq('id', childId)
+                              .maybeSingle();
+                            
+                            if (childError || !childData) {
+                              toast({
+                                title: 'Error',
+                                description: 'Could not load child information',
+                                variant: 'destructive',
+                              });
+                              return;
+                            }
 
-                        setSelectedChildName(childData.name);
-                        
-                        // Show loading toast for auto-discovery
-                        toast({
-                          title: 'Securing Your Spot...',
-                          description: 'Applying smart defaults for program questions. This may take 5-10 seconds.',
-                        });
+                            setSelectedChildName(childData.name);
+                            
+                            // Move to program questions if available, otherwise proceed to discovery
+                            if (programQuestions.length > 0) {
+                              setActiveStep('program');
+                              toast({
+                                title: 'Prerequisites Verified',
+                                description: 'Please answer the program-specific questions below.',
+                              });
+                            } else {
+                              // Show loading toast for auto-discovery
+                              toast({
+                                title: 'Securing Your Spot...',
+                                description: 'Applying smart defaults for program questions. This may take 5-10 seconds.',
+                              });
 
-                        // Auto-discover fields and apply defaults
-                        await discoverFields(programRef);
-                      }}
-                    />
+                              // Auto-discover fields and apply defaults
+                              await discoverFields(programRef);
+                            }
+                          }}
+                        />
+                      ) : (
+                        <ProgramQuestionsPanel
+                          key="program"
+                          questions={programQuestions}
+                          initialAnswers={form.watch('answers') || {}}
+                          onSubmit={(answers) => {
+                            console.log('[PlanBuilder] Program questions submitted:', answers);
+                            form.setValue('answers', answers);
+                            
+                            toast({
+                              title: 'Answers Saved',
+                              description: 'Your program-specific answers have been recorded.',
+                            });
+                            
+                            toastLogger('program_questions', 'Answers saved successfully', 'success', { 
+                              answerCount: Object.keys(answers).length 
+                            });
+                          }}
+                          onBack={() => {
+                            setActiveStep('prereqs');
+                            toast({
+                              title: 'Returned to Prerequisites',
+                              description: 'You can review or recheck prerequisites.',
+                            });
+                          }}
+                          isSubmitting={false}
+                        />
+                      )}
+                    </AnimatePresence>
                   )}
                 </CardContent>
               </Card>

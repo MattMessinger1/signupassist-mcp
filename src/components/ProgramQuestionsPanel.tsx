@@ -30,6 +30,7 @@ export interface ProgramQuestionsPanelProps {
   questions: ProgramQuestion[];
   initialAnswers?: Record<string, string | boolean>;
   onSubmit?: (answers: Record<string, string | boolean>) => void;
+  onBack?: () => void;
   isSubmitting?: boolean;
 }
 
@@ -37,6 +38,7 @@ export default function ProgramQuestionsPanel({
   questions,
   initialAnswers = {},
   onSubmit,
+  onBack,
   isSubmitting = false,
 }: ProgramQuestionsPanelProps) {
   // Build dynamic Zod schema based on questions
@@ -321,7 +323,18 @@ export default function ProgramQuestionsPanel({
             ))}
           </div>
 
-          <div className="flex justify-end pt-4 border-t">
+          <div className="flex gap-3 justify-end pt-4 border-t">
+            {onBack && (
+              <Button
+                type="button"
+                variant="outline"
+                size="lg"
+                onClick={onBack}
+                disabled={isSubmitting}
+              >
+                Back to Prerequisites
+              </Button>
+            )}
             <Button
               type="submit"
               size="lg"
