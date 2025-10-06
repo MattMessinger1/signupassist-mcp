@@ -610,22 +610,8 @@ export type Database = {
         Returns: undefined
       }
       get_best_hints: {
-        Args: {
-          p_program_key: string
-          p_provider_slug: string
-          p_stage: string
-        }
-        Returns: {
-          confidence: number
-          form_fingerprint: string
-          hints: Json
-          id: string
-          program_key: string
-          provider_slug: string
-          samples_count: number
-          stage: string
-          updated_at: string
-        }[]
+        Args: { p_program: string; p_provider: string; p_stage: string }
+        Returns: Json
       }
       insert_execution_log: {
         Args: {
@@ -649,8 +635,25 @@ export type Database = {
         Args: { latest: number; prev: number; samples: number }
         Returns: number
       }
+      refresh_best_hints: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       sanitize_error_text: {
         Args: { txt: string }
+        Returns: string
+      }
+      upsert_discovery_run: {
+        Args: {
+          p_errors: Json
+          p_fingerprint: string
+          p_meta: Json
+          p_program: string
+          p_provider: string
+          p_run_conf: number
+          p_run_id: string
+          p_stage: string
+        }
         Returns: string
       }
     }
