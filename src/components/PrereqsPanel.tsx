@@ -1,13 +1,21 @@
 import { motion, AnimatePresence } from 'framer-motion';
+import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { CheckCircle2, XCircle, Loader2, AlertTriangle, Wrench } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, AlertTriangle, Wrench, ChevronDown, ChevronUp } from 'lucide-react';
 
 export interface PrereqsPanelProps {
   checks: { id: string; label: string; status: 'pass' | 'fail' | 'unknown'; message: string }[];
+  metadata?: {
+    prerequisitesLoops?: number;
+    programLoops?: number;
+    urlsVisited?: string[];
+    stops?: { reason: string; evidence?: any };
+    fieldsFound?: number;
+  };
   onRecheck?: () => void;
   onContinue?: () => void;
 }
@@ -51,11 +59,15 @@ const StatusBadge = ({ status }: { status: 'pass' | 'fail' | 'unknown' }) => {
 
 export default function PrereqsPanel({ 
   checks = [], 
+  metadata,
   onRecheck,
   onContinue
 }: PrereqsPanelProps) {
+  const [showDetails, setShowDetails] = useState(false);
+  
   // Debug logging
   console.log('[PrereqsPanel] Rendering with checks:', checks);
+  console.log('[PrereqsPanel] Metadata:', metadata);
   
   const allPassed = checks.length > 0 && checks.every(c => c.status === 'pass');
   const hasFailed = checks.some(c => c.status === 'fail');
@@ -173,6 +185,76 @@ export default function PrereqsPanel({
                   </div>
                 </motion.div>
               ))}
+            </AnimatePresence>
+          </div>
+        )}
+        
+        {/* Discovery Details Toggle */}
+        {metadata && hasChecks && (
+          <div className="mt-6 pt-4 border-t">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowDetails(!showDetails)}
+              className="w-full justify-between text-muted-foreground hover:text-foreground"
+            >
+              <span className="text-xs font-medium">Discovery Details</span>
+              {showDetails ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </Button>
+            
+            <AnimatePresence>
+              {showDetails && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="mt-3 space-y-2 text-xs text-muted-foreground"
+                >
+                  {metadata.prerequisitesLoops !== undefined && (
+                    <div className="flex justify-between">
+                      <span>Prerequisite Loops:</span>
+                      <span className="font-mono">{metadata.prerequisitesLoops}</span>
+                    </div>
+                  )}
+                  {metadata.programLoops !== undefined && (
+                    <div className="flex justify-between">
+                      <span>Program Loops:</span>
+                      <span className="font-mono">{metadata.programLoops}</span>
+                    </div>
+                  )}
+                  {metadata.fieldsFound !== undefined && (
+                    <div className="flex justify-between">
+                      <span>Fields Found:</span>
+                      <span className="font-mono">{metadata.fieldsFound}</span>
+                    </div>
+                  )}
+                  {metadata.urlsVisited && metadata.urlsVisited.length > 0 && (
+                    <div>
+                      <div className="font-medium mb-1">URLs Visited:</div>
+                      <ul className="space-y-1 pl-3">
+                        {metadata.urlsVisited.map((url, i) => (
+                          <li key={i} className="font-mono text-[10px] truncate" title={url}>
+                            {url}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {metadata.stops && (
+                    <div className="flex justify-between">
+                      <span>Stop Reason:</span>
+                      <Badge variant="outline" className="text-[10px] font-mono">
+                        {metadata.stops.reason}
+                      </Badge>
+                    </div>
+                  )}
+                </motion.div>
+              )}
             </AnimatePresence>
           </div>
         )}

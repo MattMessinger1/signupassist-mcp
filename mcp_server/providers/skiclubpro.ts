@@ -276,7 +276,14 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         console.log('DEBUG: Unified discovery completed:', {
           prerequisite_checks: discoveryResult.prerequisite_checks?.length || 0,
           prerequisite_status: discoveryResult.prerequisite_status,
-          program_questions_count: discoveryResult.program_questions.length
+          program_questions_count: discoveryResult.program_questions.length,
+          metadata: {
+            prerequisitesLoops: discoveryResult.metadata?.prerequisitesLoops,
+            programLoops: discoveryResult.metadata?.programLoops,
+            urlsVisited: discoveryResult.metadata?.urlsVisited?.length,
+            stops: discoveryResult.metadata?.stops?.reason,
+            fieldsFound: discoveryResult.metadata?.fieldsFound
+          }
         });
         
         // Return unified result

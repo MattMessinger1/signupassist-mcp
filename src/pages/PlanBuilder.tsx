@@ -1617,6 +1617,7 @@ const PlanBuilder = () => {
                           <PrerequisitesPanel
                             key={`prereqs-${prerequisiteChecks.length}-${Date.now()}`}
                             checks={prerequisiteChecks}
+                            metadata={discoveryMetadata}
                             onRecheck={handleRecheckPrereqs}
                             onContinue={async () => {
                             const childId = form.watch('childId');
