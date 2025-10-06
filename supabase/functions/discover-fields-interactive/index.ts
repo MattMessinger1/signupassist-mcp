@@ -1,7 +1,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { SignJWT, importJWK } from 'https://esm.sh/jose@5.2.4';
-import { createHash } from "https://deno.land/std@0.203.0/hash/mod.ts";
 import { invokeMCPTool } from '../_shared/mcpClient.ts';
+import { generateFormFingerprint } from '../_shared/fingerprint.ts';
 import { toIsoStringSafe } from '../_shared/utils.ts';
 import { logStructuredError, sanitizeError } from '../_shared/errors.ts';
 import { verifyDecryption, sanitizeCredentialsForLog, CredentialError } from '../_shared/account-credentials.ts';
@@ -252,10 +252,8 @@ Deno.serve(async (req) => {
     console.log(`Issued mandate ${mandate_id} for interactive field discovery`);
     console.log("mandate id returned:", mandateData?.id, "error:", mandateError);
 
-    // Compute a stable fingerprint for this form URL
-    const formFingerprint = createHash("sha256")
-      .update(`${program_ref}|${credential_id}`)
-      .toString();
+    // Compute a stable fingerprint for this form URL using Web Crypto API
+    const formFingerprint = await generateFormFingerprint(`${program_ref}|${credential_id}`);
 
     console.log("formFingerprint:", formFingerprint);
 
