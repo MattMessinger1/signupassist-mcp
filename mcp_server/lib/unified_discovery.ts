@@ -200,8 +200,6 @@ async function discoverPrerequisites(
     // Update overall status
     if (checkStatus === 'fail') {
       overallStatus = 'required';
-    } else if (checkStatus === 'unknown' && overallStatus === 'complete') {
-      overallStatus = 'unknown';
     }
   }
   
