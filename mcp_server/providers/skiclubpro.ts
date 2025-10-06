@@ -251,46 +251,37 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         
         console.log('DEBUG: Field discovery completed:', fieldSchema);
         
-        // ✅ Run prerequisite checks while we're logged in
-        console.log('DEBUG: Running prerequisite checks...');
-        const prerequisiteChecks = [];
+        // ✅ Run prerequisite checks using registry system
+        console.log('DEBUG: Running prerequisite checks via registry...');
+        const { runChecks } = await import('../prereqs/registry.js');
+        const { registerAllProviders } = await import('../prereqs/providers.js');
         
-        try {
-          const page = session.page;
-          
-          // Check account status
-          const accountCheck = await checkAccount(page);
-          prerequisiteChecks.push({
-            check: 'account_status',
-            status: accountCheck.ok ? 'pass' : (accountCheck.ok === null ? 'unknown' : 'fail'),
-            message: accountCheck.summary
-          });
-          
-          // Check membership
-          const membershipCheck = await checkMembership(page, baseUrl);
-          prerequisiteChecks.push({
-            check: 'membership_current',
-            status: membershipCheck.ok ? 'pass' : (membershipCheck.ok === null ? 'unknown' : 'fail'),
-            message: membershipCheck.summary
-          });
-          
-          // Check payment method
-          const paymentCheck = await checkPayment(page, baseUrl);
-          prerequisiteChecks.push({
-            check: 'payment_method_on_file',
-            status: paymentCheck.ok ? 'pass' : (paymentCheck.ok === null ? 'unknown' : 'fail'),
-            message: paymentCheck.summary
-          });
-          
-          console.log('DEBUG: Prerequisite checks completed:', prerequisiteChecks);
-        } catch (error) {
-          console.error('Prerequisite checks failed:', error);
-          prerequisiteChecks.push({
-            check: 'prerequisites',
-            status: 'unknown',
-            message: 'Unable to complete prerequisite checks'
-          });
-        }
+        // Register all provider checkers
+        registerAllProviders();
+        
+        // Build context for checkers
+        const ctx = {
+          orgRef,
+          programRef: args.program_ref,
+          userId: args.user_id,
+          page: session.page,
+          baseUrl
+        };
+        
+        // Run all applicable checks for this provider
+        const results = await runChecks('skiclubpro', ctx);
+        
+        // Map registry results to frontend format
+        const prerequisiteChecks = results.map(r => ({
+          check: r.id,
+          status: r.outcome,
+          message: r.explain,
+          blocking: r.blocking,
+          confidence: r.confidence,
+          remediation: r.remediation
+        }));
+        
+        console.log('DEBUG: Prerequisite checks completed:', prerequisiteChecks);
         
         // Return field schema with prerequisite checks
         return {

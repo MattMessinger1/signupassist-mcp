@@ -579,6 +579,17 @@ const PlanBuilder = () => {
         return;
       }
 
+      // Update prerequisite checks and program questions from response FIRST
+      if (data.prerequisiteChecks) {
+        setPrerequisiteChecks(data.prerequisiteChecks);
+        console.log('[PlanBuilder] Updated prerequisite checks:', data.prerequisiteChecks);
+      }
+      
+      if (data.program_questions) {
+        setProgramQuestions(data.program_questions);
+        console.log('[PlanBuilder] Updated program questions:', data.program_questions);
+      }
+
       // Validate schema has required structure
       if (!data || (!data.branches && !data.common_questions)) {
         console.warn('[PlanBuilder] ⚠️ Empty schema received - no questions for this program');
@@ -601,17 +612,6 @@ const PlanBuilder = () => {
 
       const branchCount = data.branches?.length || 0;
       const commonQuestions = data.common_questions?.length || 0;
-      
-      // Update prerequisite checks and program questions from response
-      if (data.prerequisiteChecks) {
-        setPrerequisiteChecks(data.prerequisiteChecks);
-        console.log('[PlanBuilder] Updated prerequisite checks:', data.prerequisiteChecks);
-      }
-      
-      if (data.program_questions) {
-        setProgramQuestions(data.program_questions);
-        console.log('[PlanBuilder] Updated program questions:', data.program_questions);
-      }
       
       toastLogger('field_discovery', `Discovered ${branchCount} branches and ${commonQuestions} common questions`, 'success', {
         branches: branchCount,
