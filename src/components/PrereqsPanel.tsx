@@ -3,7 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Card } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { CheckCircle2, XCircle, Loader2, AlertTriangle } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { CheckCircle2, XCircle, Loader2, AlertTriangle, Wrench } from 'lucide-react';
 
 export interface PrereqsPanelProps {
   checks: { id: string; label: string; status: 'pass' | 'fail' | 'unknown'; message: string }[];
@@ -28,6 +29,24 @@ const StatusIcon = ({ status }: { status: 'pass' | 'fail' | 'unknown' }) => {
     case 'unknown':
       return <Loader2 className="h-5 w-5 text-muted-foreground animate-spin flex-shrink-0" aria-hidden="true" />;
   }
+};
+
+const StatusBadge = ({ status }: { status: 'pass' | 'fail' | 'unknown' }) => {
+  const variants = {
+    pass: { icon: CheckCircle2, label: 'Pass', className: 'bg-green-100 text-green-800 border-green-200 dark:bg-green-950 dark:text-green-200 dark:border-green-800' },
+    fail: { icon: XCircle, label: 'Required', className: 'bg-red-100 text-red-800 border-red-200 dark:bg-red-950 dark:text-red-200 dark:border-red-800' },
+    unknown: { icon: Loader2, label: 'Checking', className: 'bg-muted text-muted-foreground border-muted-foreground/20' }
+  };
+  
+  const variant = variants[status];
+  const Icon = variant.icon;
+  
+  return (
+    <Badge variant="outline" className={`${variant.className} flex items-center gap-1.5 px-2.5 py-0.5`}>
+      <Icon className={`h-3 w-3 ${status === 'unknown' ? 'animate-spin' : ''}`} />
+      <span className="text-xs font-medium">{variant.label}</span>
+    </Badge>
+  );
 };
 
 export default function PrereqsPanel({ 
@@ -123,33 +142,31 @@ export default function PrereqsPanel({
                 >
                   {index > 0 && <Separator className="my-3" />}
                   <div
-                    className={`flex items-start gap-3 p-3 rounded-lg transition-colors ${
+                    className={`flex items-start gap-4 p-4 rounded-lg transition-colors ${
                       prereq.status === 'pass' 
-                        ? 'hover:bg-green-50/50 dark:hover:bg-green-950/10' 
+                        ? 'bg-green-50/30 dark:bg-green-950/10' 
                         : prereq.status === 'fail'
-                        ? 'hover:bg-red-50/50 dark:hover:bg-red-950/10'
-                        : 'hover:bg-muted/30'
+                        ? 'bg-red-50/30 dark:bg-red-950/10'
+                        : 'bg-muted/20'
                     }`}
                   >
                     <StatusIcon status={prereq.status} />
-                    <div className="flex-1 space-y-1 min-w-0">
-                      <p className="font-medium text-sm">
-                        {prereq.label}
-                      </p>
+                    <div className="flex-1 space-y-2 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="font-semibold text-sm">
+                          {prereq.label}
+                        </p>
+                        <StatusBadge status={prereq.status} />
+                      </div>
                       {prereq.message && (
-                        <p className={`text-sm ${
-                          prereq.status === 'pass' 
-                            ? 'text-green-700 dark:text-green-300' 
-                            : prereq.status === 'fail'
-                            ? 'text-red-700 dark:text-red-300'
-                            : 'text-muted-foreground'
-                        }`}>
+                        <p className="text-sm text-muted-foreground">
                           {prereq.message}
                         </p>
                       )}
                     </div>
                     {prereq.status === 'fail' && (
-                      <Button variant="outline" size="sm" className="flex-shrink-0">
+                      <Button variant="outline" size="sm" className="flex-shrink-0 gap-2">
+                        <Wrench className="h-3.5 w-3.5" />
                         Fix
                       </Button>
                     )}

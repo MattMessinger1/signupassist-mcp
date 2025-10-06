@@ -42,6 +42,7 @@ import MandateSummary from '@/components/MandateSummary';
 import { prompts, fmt } from '@/lib/prompts';
 import { useToastLogger } from '@/lib/logging/useToastLogger';
 import { chooseDefaultAnswer } from '@/lib/smartDefaults';
+import { DiscoveryCoverage } from '@/components/DiscoveryCoverage';
 
 const stripePromise = loadStripe('pk_test_51RujoPAaGNDlVi1koVlBSBBXy2yfwz7vuMBciJxkawKBKaqwR4xw07wEFUAMa73ADIUqzwB5GwbPM3YnPYu5vo4X00rAdiwPkx');
 
@@ -159,6 +160,7 @@ const PlanBuilder = () => {
     stage: 'idle' | 'checking_mandates' | 'discovering_fields' | 'submitting_form' | 'complete' | 'error';
     message?: string;
   }>({ inProgress: false, stage: 'idle' });
+  const [discoveryMetadata, setDiscoveryMetadata] = useState<any>(null);
 
   // Safe derived variables with null checks and defaults
   const currentBranch = discoveredSchema?.branches?.find(b => b.choice === selectedBranch) ?? null;
@@ -615,6 +617,12 @@ const PlanBuilder = () => {
       if (data.program_questions) {
         setProgramQuestions(data.program_questions);
         console.log('[PlanBuilder] Updated program questions:', data.program_questions);
+      }
+      
+      // Store discovery metadata for coverage display
+      if (data.metadata) {
+        setDiscoveryMetadata(data.metadata);
+        console.log('[PlanBuilder] Discovery metadata:', data.metadata);
       }
 
       // Validate schema has required structure
@@ -1603,13 +1611,14 @@ const PlanBuilder = () => {
                       </Button>
                     </div>
                   ) : (
-                    <AnimatePresence mode="wait">
-                      {activeStep === 'prereqs' ? (
-                        <PrerequisitesPanel
-                          key={`prereqs-${prerequisiteChecks.length}-${Date.now()}`}
-                          checks={prerequisiteChecks}
-                          onRecheck={handleRecheckPrereqs}
-                          onContinue={async () => {
+                    <div className="space-y-4">
+                      <AnimatePresence mode="wait">
+                        {activeStep === 'prereqs' ? (
+                          <PrerequisitesPanel
+                            key={`prereqs-${prerequisiteChecks.length}-${Date.now()}`}
+                            checks={prerequisiteChecks}
+                            onRecheck={handleRecheckPrereqs}
+                            onContinue={async () => {
                             const childId = form.watch('childId');
                             const programRef = form.watch('programRef');
                             const openTime = form.watch('opensAt');
@@ -1670,7 +1679,7 @@ const PlanBuilder = () => {
                             }
                           }}
                         />
-                      ) : activeStep === 'program' ? (
+                        ) : activeStep === 'program' ? (
                         <ProgramQuestionsPanel
                           key="program"
                           questions={programQuestions}
@@ -1708,7 +1717,13 @@ const PlanBuilder = () => {
                           }}
                         />
                       )}
-                    </AnimatePresence>
+                      </AnimatePresence>
+                      
+                      {/* Discovery Coverage Details */}
+                      {discoveryMetadata && (
+                        <DiscoveryCoverage metadata={discoveryMetadata} />
+                      )}
+                    </div>
                   )}
                 </CardContent>
               </Card>

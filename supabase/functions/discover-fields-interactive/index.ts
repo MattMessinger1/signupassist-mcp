@@ -372,10 +372,19 @@ Deno.serve(async (req) => {
         // Phase 2.5: Include prerequisite checks
         prerequisite_checks: result?.prerequisite_checks || [],
         prerequisite_status: result?.prerequisite_status || 'unknown',
+        program_questions: result?.program_questions || [],
         // ✅ Normalize all date fields to ISO strings
         formWatchOpensAt: toIsoStringSafe(result?.formWatchOpensAt),
         formWatchClosesAt: toIsoStringSafe(result?.formWatchClosesAt),
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        // Prompt 4: Add coverage metadata
+        metadata: {
+          programLoops: result?.metadata?.programLoops ?? 0,
+          prerequisitesLoops: result?.metadata?.prerequisitesLoops ?? 0,
+          urlsVisited: result?.metadata?.urlsVisited ?? [],
+          stops: result?.metadata?.stops,
+          fieldsFound: result?.metadata?.fieldsFound ?? 0
+        }
       };
 
       console.log('Normalized response:', response);

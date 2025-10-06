@@ -10,6 +10,7 @@ import { Page } from 'playwright';
 import { discoverFieldsSerially, SerialDiscoveryResult, DiscoveredField } from './serial_field_discovery.js';
 import { humanPause } from './humanize.js';
 import { getPrerequisitePaths, PrerequisitePath } from '../config/prerequisite_paths.js';
+import { isPaymentButton, pageIndicatesPayment, capturePaymentEvidence, PaymentStopEvidence } from './guardrails.js';
 
 export interface PrerequisiteCheckResult {
   id: string;           // 'membership', 'waiver', etc.
@@ -28,6 +29,12 @@ export interface UnifiedDiscoveryResult {
     programConfidence: number;
     prerequisitesLoops: number;
     programLoops: number;
+    urlsVisited: string[];
+    stops?: {
+      reason: 'payment_detected' | 'success' | 'max_iterations' | 'no_new_errors';
+      evidence?: PaymentStopEvidence;
+    };
+    fieldsFound: number;
   };
 }
 
@@ -64,12 +71,13 @@ export async function discoverAll(
   console.log(`[UnifiedDiscovery] Prerequisites status: ${prereqResult.overallStatus}`);
   console.log(`[UnifiedDiscovery] Prerequisites checks: ${prereqResult.checks.length}`);
   
-  // STAGE 2: Program Fields Discovery (existing logic)
+  // STAGE 2: Program Fields Discovery with multi-step walking
   console.log('[UnifiedDiscovery] Stage 2: Program Questions');
   await navigateToProgramForm(page, programRef, orgRef);
-  const programResult = await discoverFieldsSerially(page, programRef, warmHintsProgram);
+  const programResult = await discoverProgramFieldsMultiStep(page, programRef, warmHintsProgram);
   
   console.log(`[UnifiedDiscovery] Program questions found: ${programResult.fields.length}`);
+  console.log(`[UnifiedDiscovery] URLs visited: ${programResult.urlsVisited.length}`);
   
   return {
     prerequisite_checks: prereqResult.checks,
@@ -79,7 +87,10 @@ export async function discoverAll(
       prerequisitesConfidence: prereqResult.confidence,
       programConfidence: programResult.confidence,
       prerequisitesLoops: prereqResult.loopCount,
-      programLoops: programResult.loopCount
+      programLoops: programResult.loopCount,
+      urlsVisited: programResult.urlsVisited,
+      stops: programResult.stops,
+      fieldsFound: programResult.fields.length
     }
   };
 }
@@ -250,4 +261,225 @@ async function navigateToProgramForm(
   }
   
   console.warn('[UnifiedDiscovery] Could not find program registration form');
+}
+
+/**
+ * Multi-step program field discovery with payment guardrails
+ */
+async function discoverProgramFieldsMultiStep(
+  page: Page,
+  programRef: string,
+  warmHints: Record<string, any>
+): Promise<{
+  fields: DiscoveredField[];
+  loopCount: number;
+  confidence: number;
+  urlsVisited: string[];
+  stops?: { reason: string; evidence?: PaymentStopEvidence };
+}> {
+  const urlsVisited: string[] = [page.url()];
+  const allFields = new Map<string, DiscoveredField & { seenAtSteps: number[] }>();
+  let loopCount = 0;
+  let noNewErrorsCount = 0;
+  const MAX_ITERATIONS = 10;
+  
+  console.log('[ProgramMultiStep] Starting multi-step discovery...');
+  
+  for (let i = 0; i < MAX_ITERATIONS; i++) {
+    loopCount++;
+    console.log(`[ProgramMultiStep] Iteration ${i + 1}/${MAX_ITERATIONS}`);
+    
+    // Wait for network idle + settle time
+    await page.waitForLoadState('networkidle').catch(() => {});
+    await humanPause(1200, 1400);
+    
+    // Check payment page guard (post-navigation)
+    if (await pageIndicatesPayment(page)) {
+      console.log('[ProgramMultiStep] 🛑 Payment page detected - stopping');
+      const evidence = await capturePaymentEvidence(page, 'payment_page');
+      return {
+        fields: Array.from(allFields.values()).map(f => {
+          const { seenAtSteps, ...field } = f;
+          return field;
+        }),
+        loopCount,
+        confidence: 0.7,
+        urlsVisited,
+        stops: { reason: 'payment_detected', evidence }
+      };
+    }
+    
+    // Collect all visible inputs
+    const selector = 'input:visible, select:visible, textarea:visible, [contenteditable="true"]:visible, [name]:visible, [id]:visible, [data-drupal-selector]:visible';
+    const elements = await page.locator(selector).all();
+    
+    let newFieldsThisStep = 0;
+    for (const el of elements) {
+      const name = await el.getAttribute('name').catch(() => '');
+      const id = await el.getAttribute('id').catch(() => '');
+      const type = await el.getAttribute('type').catch(() => 'text');
+      
+      const rawKey = name || id;
+      if (!rawKey) continue;
+      
+      const fieldKey = normalizeFieldKey(rawKey);
+      
+      if (!allFields.has(fieldKey)) {
+        newFieldsThisStep++;
+        
+        const label = await el.getAttribute('aria-label').catch(() => '') ||
+                     await el.getAttribute('placeholder').catch(() => '') ||
+                     humanizeFieldKey(fieldKey);
+        
+        allFields.set(fieldKey, {
+          id: fieldKey,
+          type: inferFieldType(type),
+          label,
+          required: await el.getAttribute('required').catch(() => null) !== null,
+          seenAtSteps: [i + 1]
+        });
+      } else {
+        // Field seen again, track step
+        const existing = allFields.get(fieldKey)!;
+        if (!existing.seenAtSteps.includes(i + 1)) {
+          existing.seenAtSteps.push(i + 1);
+        }
+      }
+    }
+    
+    console.log(`[ProgramMultiStep] Found ${newFieldsThisStep} new fields (total: ${allFields.size})`);
+    
+    // Track no-new-errors iterations
+    if (newFieldsThisStep === 0) {
+      noNewErrorsCount++;
+    } else {
+      noNewErrorsCount = 0;
+    }
+    
+    // Stop if no new fields for 2 iterations
+    if (noNewErrorsCount >= 2) {
+      console.log('[ProgramMultiStep] No new fields for 2 iterations - stopping');
+      return {
+        fields: Array.from(allFields.values()).map(f => {
+          const { seenAtSteps, ...field } = f;
+          return field;
+        }),
+        loopCount,
+        confidence: 0.85,
+        urlsVisited,
+        stops: { reason: 'no_new_errors' }
+      };
+    }
+    
+    // Check for success indicators
+    const bodyText = await page.textContent('body').catch(() => '');
+    if (/thank\s*you|success|confirmation|complete/i.test(bodyText)) {
+      console.log('[ProgramMultiStep] Success indicators detected - stopping');
+      return {
+        fields: Array.from(allFields.values()).map(f => {
+          const { seenAtSteps, ...field } = f;
+          return field;
+        }),
+        loopCount,
+        confidence: 0.9,
+        urlsVisited,
+        stops: { reason: 'success' }
+      };
+    }
+    
+    // Find Next/Continue/Confirm button
+    const nextCandidates = await page.locator('button, input[type="submit"], a').all();
+    let clickedNext = false;
+    
+    for (const candidate of nextCandidates) {
+      const text = await candidate.textContent().catch(() => '');
+      const lowerText = (text || '').toLowerCase();
+      
+      // Match Next/Continue/Confirm but NOT payment buttons
+      if (/(next|continue|confirm|proceed|submit)/.test(lowerText)) {
+        // Pre-click payment guard
+        if (await isPaymentButton(candidate)) {
+          console.log('[ProgramMultiStep] 🛑 Payment button detected - stopping');
+          const buttonText = text || '';
+          const evidence = await capturePaymentEvidence(page, 'payment_button', buttonText);
+          return {
+            fields: Array.from(allFields.values()).map(f => {
+              const { seenAtSteps, ...field } = f;
+              return field;
+            }),
+            loopCount,
+            confidence: 0.7,
+            urlsVisited,
+            stops: { reason: 'payment_detected', evidence }
+          };
+        }
+        
+        // Safe to click
+        console.log(`[ProgramMultiStep] Clicking: "${text}"`);
+        await candidate.click().catch(() => {});
+        clickedNext = true;
+        await humanPause(500, 800);
+        
+        // Track new URL if changed
+        const newUrl = page.url();
+        if (!urlsVisited.includes(newUrl)) {
+          urlsVisited.push(newUrl);
+        }
+        
+        break;
+      }
+    }
+    
+    // If we didn't click anything, we're done
+    if (!clickedNext) {
+      console.log('[ProgramMultiStep] No next button found - stopping');
+      return {
+        fields: Array.from(allFields.values()).map(f => {
+          const { seenAtSteps, ...field } = f;
+          return field;
+        }),
+        loopCount,
+        confidence: 0.8,
+        urlsVisited,
+        stops: { reason: 'no_new_errors' }
+      };
+    }
+  }
+  
+  // Max iterations reached
+  console.log('[ProgramMultiStep] Max iterations reached');
+  return {
+    fields: Array.from(allFields.values()).map(f => {
+      const { seenAtSteps, ...field } = f;
+      return field;
+    }),
+    loopCount,
+    confidence: 0.75,
+    urlsVisited,
+    stops: { reason: 'max_iterations' }
+  };
+}
+
+// Helper functions
+function normalizeFieldKey(key: string): string {
+  return key
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '');
+}
+
+function humanizeFieldKey(key: string): string {
+  return key
+    .split('_')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+function inferFieldType(type: string): 'select' | 'radio' | 'checkbox' | 'text' | 'date' | 'textarea' {
+  if (type === 'select') return 'select';
+  if (type === 'radio') return 'radio';
+  if (type === 'checkbox') return 'checkbox';
+  if (type === 'date') return 'date';
+  if (type === 'textarea') return 'textarea';
+  return 'text';
 }
