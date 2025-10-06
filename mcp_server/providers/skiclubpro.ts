@@ -54,7 +54,7 @@ export interface FieldSchema {
     label: string;
     type: string;
     required: boolean;
-    options?: string[];
+    options?: Array<{ value: string; label: string }>;
     category?: string;
   }>;
   prerequisite_status?: 'complete' | 'required' | 'unknown';
@@ -64,7 +64,7 @@ export interface FieldSchema {
     label: string;
     type: string;
     required: boolean;
-    options?: string[];
+    options?: Array<{ value: string; label: string }>;
     category?: string;
   }>;
   categories?: Record<string, any[]>;
