@@ -285,6 +285,12 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
             session_token: args.session_token
           }
         );
+        
+        // ✅ CRITICAL: Check login status before proceeding
+        if (loginResult.login_status === 'failed') {
+          throw new Error('Login failed - cannot proceed with field discovery. User is not authenticated.');
+        }
+        
         console.log('DEBUG: Login successful, starting field discovery');
         
         // ✅ Discover program fields (credentials not needed since we're already logged in)
