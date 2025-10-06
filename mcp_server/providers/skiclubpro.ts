@@ -118,75 +118,24 @@ async function ensureLoggedIn(
 
   console.log('DEBUG: Using credentials from cred-get:', creds.email);
   
-  // Generate session key for caching
-  const sessionKey = generateSessionKey(userId, credential_id, orgRef);
-  
-  // Try to restore cached session first
-  const restored = await restoreSessionState(page, sessionKey);
-  if (restored) {
-    console.log('DEBUG: Session restored from cache, skipping login attempt');
-    await page.goto(`${baseUrl}/dashboard`, { waitUntil: 'domcontentloaded' });
-    
-    const currentUrl = await page.url();
-    if (currentUrl.includes('/user/login')) {
-      console.log('DEBUG: Cached session invalid (still on login page), clearing cookies and retrying fresh login');
-      
-      // Clear cookies + storage
-      await page.context().clearCookies();
-      try { 
-        await page.context().clearPermissions(); 
-      } catch (_) {
-        // clearPermissions may not be available in all contexts
-      }
-      
-      // Build dynamic config with resolved base URL
-      const loginConfig = {
-        loginUrl: `${baseUrl}/user/login?destination=/dashboard`,
-        selectors: skiClubProConfig.selectors,
-        postLoginCheck: skiClubProConfig.postLoginCheck,
-        timeout: skiClubProConfig.timeout
-      };
-      
-      // Retry full login with credentials
-      const proof = await loginWithCredentials(page, loginConfig, creds, session.browser);
-      const retryUrl = await page.url();
-      if (retryUrl.includes('/user/login')) {
-        throw new Error('Login failed after clearing session — still on login page');
-      }
-      
-      await saveSessionState(page, sessionKey);
-      return { ...proof, login_status: 'success' };
-    } else {
-      console.log('DEBUG: ✓ Cached session is valid');
-      return { cached: true, email: creds.email, login_status: 'success' };
-    }
-  }
-  
   console.log('DEBUG: Attempting login to SkiClubPro at:', baseUrl);
   
-  // Build dynamic config with resolved base URL
-  const loginConfig = {
-    loginUrl: `${baseUrl}/user/login?destination=/dashboard`,
-    selectors: skiClubProConfig.selectors,
-    postLoginCheck: skiClubProConfig.postLoginCheck,
-    timeout: skiClubProConfig.timeout
-  };
+  // Use the proven performSkiClubProLogin that handles Antibot correctly
+  const loginResult = await performSkiClubProLogin(session, creds, orgRef, {
+    force_login: false,
+    toolName: auditParams?.tool_name || 'unknown',
+    mandateId: auditParams?.mandate_id,
+    planId: auditParams?.plan_id,
+    planExecutionId: auditParams?.plan_execution_id,
+    sessionToken: auditParams?.session_token
+  });
   
-  // Use the new robust login helper with credentials
-  const proof = await loginWithCredentials(page, loginConfig, creds, session.browser);
-  
-  // Verify that we are not still on the login page
-  const currentUrl = await page.url();
-  if (currentUrl.includes('/user/login')) {
-    console.log('DEBUG: Login failed - still on login page');
-    return { ...proof, login_status: 'failed' };
+  if (loginResult.login_status === 'failed') {
+    throw new Error('Login failed - performSkiClubProLogin verification failed');
   }
   
-  // Save session state after successful login
-  await saveSessionState(page, sessionKey);
-  
   console.log('DEBUG: Logged in as', creds.email);
-  return { ...proof, login_status: 'success' };
+  return { email: creds.email, login_status: 'success' };
 }
 
 /**
