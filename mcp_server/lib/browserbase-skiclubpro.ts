@@ -8,6 +8,7 @@ import Browserbase from '@browserbasehq/sdk';
 import { captureScreenshotEvidence } from './evidence.js';
 import { SKICLUBPRO_CONFIGS } from '../config/skiclubpro_selectors.js';
 import { fillInput } from './browserbase.js';
+import { createStealthContext } from './antibot.js';
 
 const browserbaseApiKey = process.env.BROWSERBASE_API_KEY!;
 
@@ -27,13 +28,25 @@ export async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
       throw new Error('BROWSERBASE_API_KEY environment variable is required');
     }
 
-    // Create Browserbase session
+    // Create Browserbase session with optional antibot profile
     const bb = new Browserbase({ apiKey: browserbaseApiKey });
-    const session = await bb.sessions.create({ projectId: process.env.BROWSERBASE_PROJECT_ID! });
+    const createOptions: any = { 
+      projectId: process.env.BROWSERBASE_PROJECT_ID!
+    };
+    
+    // Add antibot profile if enabled
+    if (process.env.ANTIBOT_ENABLED === 'true') {
+      createOptions.antibotProfile = 'enhanced';
+      console.log('[Browserbase-SCP] Creating session with antibotProfile: enhanced');
+    }
+    
+    const session = await bb.sessions.create(createOptions);
 
     // Connect Playwright to Browserbase
     const browser = await chromium.connectOverCDP(session.connectUrl);
-    const context = browser.contexts()[0] || await browser.newContext();
+    
+    // Create stealth context (handles ANTIBOT_ENABLED internally)
+    const context = await createStealthContext(browser);
     const page = await context.newPage();
 
     return {

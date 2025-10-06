@@ -1,5 +1,6 @@
-import { Page } from 'playwright';
+import { Browser, Page } from 'playwright';
 import { sleep, humanPause, jitter } from './humanize.js';
+import { createStealthContext } from './antibot.js';
 
 export interface ProviderLoginConfig {
   loginUrl: string;
@@ -120,7 +121,8 @@ async function isLoggedIn(page: Page): Promise<boolean> {
 export async function loginWithCredentials(
   page: Page, 
   config: ProviderLoginConfig, 
-  creds: { email: string; password: string }
+  creds: { email: string; password: string },
+  browser?: Browser
 ) {
   const startTime = Date.now();
   const timeout = config.timeout || 30000;
@@ -135,8 +137,8 @@ export async function loginWithCredentials(
   
   console.log(`DEBUG Page load state: ${page.url()}`);
   
-  // Extra wait for dynamic content - increased for heavy JS pages
-  await humanPause(3000, 5000);
+  // Extra wait for JS initialization - wait 1200ms after networkidle
+  await page.waitForTimeout(1200);
 
   // Quick check if already logged in
   if (await isLoggedIn(page)) {
@@ -184,12 +186,27 @@ export async function loginWithCredentials(
   const passSel = passSelectors.join(', ');
   const submitSel = submitSelectors.join(', ');
 
-  // Wait for form fields with config timeout
+  // Wait for form fields with config timeout and one-time reload retry
   console.log(`DEBUG Waiting for email selector with timeout: ${timeout}ms`);
-  await page.waitForSelector(emailSel, { timeout });
-  console.log(`DEBUG Waiting for password selector with timeout: ${timeout}ms`);
-  await page.waitForSelector(passSel, { timeout });
-  console.log("DEBUG Form fields detected");
+  try {
+    await page.waitForSelector(emailSel, { timeout });
+    console.log(`DEBUG Waiting for password selector with timeout: ${timeout}ms`);
+    await page.waitForSelector(passSel, { timeout });
+    console.log("DEBUG Form fields detected");
+  } catch (selectorError) {
+    console.log("DEBUG Form fields not found, attempting one-time reload retry...");
+    
+    // One-time reload retry
+    await page.reload({ waitUntil: 'networkidle', timeout });
+    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(1200);
+    
+    console.log(`DEBUG Retry: Waiting for email selector with timeout: ${timeout}ms`);
+    await page.waitForSelector(emailSel, { timeout });
+    console.log(`DEBUG Retry: Waiting for password selector with timeout: ${timeout}ms`);
+    await page.waitForSelector(passSel, { timeout });
+    console.log("DEBUG Form fields detected after reload");
+  }
 
   // Detect honeypot fields (but don't interact)
   await detectHoneypots(page);
@@ -384,7 +401,7 @@ export async function loginWithCredentials(
       }));
     }
   } catch (error) {
-    // Enhanced diagnostics on failure
+    // Enhanced diagnostics on failure with screenshot
     console.log("DEBUG ✗ Login failed - gathering diagnostics...");
     
     const url = page.url();
@@ -401,9 +418,17 @@ export async function loginWithCredentials(
       console.log(`DEBUG Found ${antibotElements.length} Antibot-related elements`);
     }
     
-    // Capture HTML snippet
+    // Capture debug screenshot
+    try {
+      await page.screenshot({ path: 'debug_login.png', fullPage: false });
+      console.log("DEBUG Screenshot saved to debug_login.png");
+    } catch (screenshotError) {
+      console.log("DEBUG Could not capture screenshot:", screenshotError);
+    }
+    
+    // Capture HTML snippet (first 1200 chars)
     const html = await page.content();
-    console.log("DEBUG Page HTML (first 800 chars):", html.slice(0, 800));
+    console.log("DEBUG Page HTML (first 1200 chars):", html.slice(0, 1200));
     console.log(`DEBUG Login failed after ${Date.now() - startTime}ms`);
     
     throw error;

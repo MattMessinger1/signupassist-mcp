@@ -36,6 +36,7 @@ import { loginWithCredentials, ProviderLoginConfig } from './login.js';
 import { annotatePrice } from './pricing/annotatePrice.js';
 import { chooseDefaultAnswer } from './pricing/chooseAnswer.js';
 import { computeTotalCents } from './pricing/computeTotal.js';
+import { createStealthContext } from './antibot.js';
 import type { DiscoveredField } from '../types/pricing.js';
 
 const browserbaseApiKey = process.env.BROWSERBASE_API_KEY!;
@@ -62,26 +63,25 @@ export async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
       throw new Error('BROWSERBASE_API_KEY environment variable is required');
     }
 
-    // Create Browserbase session
+    // Create Browserbase session with optional antibot profile
     const bb = new Browserbase({ apiKey: browserbaseApiKey });
-    const session = await bb.sessions.create({ projectId: process.env.BROWSERBASE_PROJECT_ID! });
+    const createOptions: any = { 
+      projectId: process.env.BROWSERBASE_PROJECT_ID!
+    };
+    
+    // Add antibot profile if enabled
+    if (process.env.ANTIBOT_ENABLED === 'true') {
+      createOptions.antibotProfile = 'enhanced';
+      console.log('[Browserbase] Creating session with antibotProfile: enhanced');
+    }
+    
+    const session = await bb.sessions.create(createOptions);
 
     // Connect Playwright to Browserbase
     const browser = await chromium.connectOverCDP(session.connectUrl);
     
-    // Load session state if available (for persistent login)
-    const contextOptions: any = {};
-    try {
-      const fs = await import('fs');
-      if (fs.existsSync('session.json')) {
-        contextOptions.storageState = 'session.json';
-        console.log('[Session] Loading cached session state');
-      }
-    } catch (err) {
-      console.log('[Session] No cached session found, starting fresh');
-    }
-    
-    const context = browser.contexts()[0] || await browser.newContext(contextOptions);
+    // Create stealth context (handles ANTIBOT_ENABLED internally)
+    const context = await createStealthContext(browser);
     const page = await context.newPage();
 
     return {
