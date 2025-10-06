@@ -1506,9 +1506,6 @@ const PlanBuilder = () => {
                       // Auto-discover fields and apply defaults
                       await discoverFields(programRef);
                     }}
-                    onChildSelected={(childName) => {
-                      setSelectedChildName(childName);
-                    }}
                   />
                 </CardContent>
               </Card>

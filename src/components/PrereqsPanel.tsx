@@ -1,136 +1,137 @@
-import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Progress } from '@/components/ui/progress';
 import { Card } from '@/components/ui/card';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Label } from '@/components/ui/label';
-import { CheckCircle2, Circle, AlertCircle } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 
 interface Props {
   orgRef: string;
   credentialId: string;
-  onChildSelected?: (childName: string) => void;
+  prerequisiteChecks?: PrerequisiteCheck[];
+  onRecheck?: () => void;
   onReadyToContinue?: () => void;
 }
 
-interface ManualPrereq {
-  id: string;
-  label: string;
-  description: string;
-  checked: boolean;
+interface PrerequisiteCheck {
+  check: string;
+  status: 'pass' | 'fail' | 'unknown';
+  message?: string;
 }
 
-export default function PrerequisitesPanel({ onReadyToContinue }: Props) {
-  const [prereqs, setPrereqs] = useState<ManualPrereq[]>([
-    {
-      id: 'account',
-      label: 'Account Active',
-      description: 'Your account is active and in good standing',
-      checked: false
-    },
-    {
-      id: 'membership',
-      label: 'Membership Current',
-      description: 'Your membership is current and valid',
-      checked: false
-    },
-    {
-      id: 'payment',
-      label: 'Payment Method',
-      description: 'Valid payment method is on file',
-      checked: false
-    },
-    {
-      id: 'waiver',
-      label: 'Waiver Signed',
-      description: 'Required waiver/consent forms are signed',
-      checked: false
-    },
-    {
-      id: 'child',
-      label: 'Child Information',
-      description: 'Child profile is complete and up to date',
-      checked: false
-    }
-  ]);
+const StatusIcon = ({ status }: { status: 'pass' | 'fail' | 'unknown' }) => {
+  switch (status) {
+    case 'pass':
+      return <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />;
+    case 'fail':
+      return <XCircle className="h-5 w-5 text-red-600 flex-shrink-0" />;
+    case 'unknown':
+      return <Loader2 className="h-5 w-5 text-muted-foreground animate-spin flex-shrink-0" />;
+  }
+};
 
-  const handleToggle = (id: string) => {
-    setPrereqs(prev => prev.map(p => 
-      p.id === id ? { ...p, checked: !p.checked } : p
-    ));
-  };
-
-  const allChecked = prereqs.every(p => p.checked);
-  const checkedCount = prereqs.filter(p => p.checked).length;
-  const progress = (checkedCount / prereqs.length) * 100;
+export default function PrerequisitesPanel({ 
+  prerequisiteChecks = [], 
+  onRecheck,
+  onReadyToContinue 
+}: Props) {
+  const allPassed = prerequisiteChecks.length > 0 && prerequisiteChecks.every(p => p.status === 'pass');
+  const hasFailed = prerequisiteChecks.some(p => p.status === 'fail');
+  const isChecking = prerequisiteChecks.some(p => p.status === 'unknown');
 
   const handleContinue = () => {
-    if (allChecked && onReadyToContinue) {
+    if (allPassed && onReadyToContinue) {
       onReadyToContinue();
     }
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-2xl mx-auto">
       <div>
-        <h2 className="text-2xl font-bold mb-2">Prerequisites Check</h2>
+        <h2 className="text-2xl font-bold mb-2">Account Prerequisites</h2>
         <p className="text-muted-foreground">
-          Please confirm the following prerequisites before continuing with registration.
+          System verified your account automatically
         </p>
       </div>
 
-      <Progress value={progress} className="h-2" />
-
-      <Card className="p-6 space-y-4">
-        {prereqs.map((prereq) => (
-          <div key={prereq.id} className="flex items-start space-x-3 p-3 rounded-lg hover:bg-accent/50 transition-colors">
-            <Checkbox
-              id={prereq.id}
-              checked={prereq.checked}
-              onCheckedChange={() => handleToggle(prereq.id)}
-              className="mt-1"
-            />
-            <div className="flex-1 space-y-1">
-              <Label
-                htmlFor={prereq.id}
-                className="text-base font-medium cursor-pointer flex items-center gap-2"
-              >
-                {prereq.checked ? (
-                  <CheckCircle2 className="h-5 w-5 text-green-600" />
-                ) : (
-                  <Circle className="h-5 w-5 text-muted-foreground" />
-                )}
-                {prereq.label}
-              </Label>
-              <p className="text-sm text-muted-foreground">{prereq.description}</p>
-            </div>
+      <Card className="p-6">
+        {prerequisiteChecks.length === 0 ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3" />
+            <p>Loading prerequisites...</p>
           </div>
-        ))}
+        ) : (
+          <div className="space-y-3">
+            {prerequisiteChecks.map((prereq, index) => (
+              <div
+                key={index}
+                className={`flex items-start gap-3 p-4 rounded-lg border transition-all animate-fade-in ${
+                  prereq.status === 'pass' 
+                    ? 'bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-900' 
+                    : prereq.status === 'fail'
+                    ? 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900'
+                    : 'bg-muted/30 border-border'
+                }`}
+              >
+                <StatusIcon status={prereq.status} />
+                <div className="flex-1 space-y-1 min-w-0">
+                  <p className="font-medium text-sm">
+                    {prereq.check}
+                  </p>
+                  {prereq.message && (
+                    <p className={`text-sm ${
+                      prereq.status === 'pass' 
+                        ? 'text-green-700 dark:text-green-300' 
+                        : prereq.status === 'fail'
+                        ? 'text-red-700 dark:text-red-300'
+                        : 'text-muted-foreground'
+                    }`}>
+                      {prereq.message}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
 
-      {allChecked && (
-        <Alert className="border-green-600 bg-green-50 dark:bg-green-950">
+      {allPassed && (
+        <Alert className="border-green-600 bg-green-50 dark:bg-green-950/20 animate-fade-in">
           <CheckCircle2 className="h-4 w-4 text-green-600" />
           <AlertDescription className="text-green-900 dark:text-green-100">
-            All prerequisites confirmed! You can now continue with registration.
+            All prerequisites met – You can continue
           </AlertDescription>
         </Alert>
       )}
 
-      {!allChecked && checkedCount > 0 && (
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            {prereqs.length - checkedCount} prerequisite{prereqs.length - checkedCount !== 1 ? 's' : ''} remaining
+      {hasFailed && (
+        <Alert className="border-red-600 bg-red-50 dark:bg-red-950/20 animate-fade-in">
+          <XCircle className="h-4 w-4 text-red-600" />
+          <AlertDescription className="text-red-900 dark:text-red-100">
+            Action required – Please resolve failed checks before continuing
           </AlertDescription>
         </Alert>
       )}
 
-      <div className="flex justify-end">
+      <div className="flex gap-3 justify-end sticky bottom-0 bg-background pt-4 border-t">
+        {onRecheck && (
+          <Button
+            variant="outline"
+            onClick={onRecheck}
+            disabled={isChecking}
+          >
+            {isChecking ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Checking...
+              </>
+            ) : (
+              'Recheck Prerequisites'
+            )}
+          </Button>
+        )}
         <Button
           onClick={handleContinue}
-          disabled={!allChecked}
+          disabled={!allPassed}
           size="lg"
         >
           Continue to Registration
