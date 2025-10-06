@@ -32,7 +32,9 @@ export async function createStealthContext(
   const userAgent = opts.userAgent || 
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
   
-  const context = browser.contexts()[0] || await browser.newContext({
+  // CRITICAL: Always create a NEW context when antibot is enabled
+  // Do NOT reuse browser.contexts()[0] which is the default CDP context
+  const context = await browser.newContext({
     userAgent,
     viewport: { width: 1920, height: 1080 },
     locale: 'en-US',
