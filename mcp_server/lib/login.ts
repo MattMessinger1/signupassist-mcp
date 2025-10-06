@@ -332,21 +332,35 @@ export async function loginWithCredentials(
       let url = page.url();
       const hasCookie = await hasDrupalSessCookie(page);
       
-      // CRITICAL: Verify that we've actually navigated away from the login page
-      // Don't trust cookie existence alone - ensure navigation has occurred
-      if (url.includes('/user/login')) {
-        console.log('DEBUG ⚠ Login accepted but still on login page - waiting for navigation...');
+      // CRITICAL: Handle Antibot blocking JavaScript redirects
+      // If session exists but we're still on login page, manually navigate
+      if (url.includes('/user/login') && hasCookie) {
+        console.log('DEBUG ⚠ Session created but redirect blocked - forcing manual navigation...');
+        
+        // Extract destination from URL params or default to /dashboard
+        const urlObj = new URL(url);
+        const destination = urlObj.searchParams.get('destination') || '/dashboard';
+        const targetUrl = `${urlObj.origin}${destination}`;
+        
+        console.log(`DEBUG Manually navigating to: ${targetUrl}`);
         
         try {
-          // Wait for navigation away from login page (max 10 seconds)
-          await page.waitForURL(pageUrl => !pageUrl.toString().includes('/user/login'), { 
-            timeout: 10000 
+          await page.goto(targetUrl, { 
+            waitUntil: 'networkidle',
+            timeout: 15000 
           });
+          
           url = page.url();
-          console.log('DEBUG ✓ Navigation completed to:', url);
+          
+          // Verify we're no longer on login page
+          if (url.includes('/user/login')) {
+            throw new Error('Manual navigation failed - still on login page');
+          }
+          
+          console.log('DEBUG ✓ Manual navigation successful to:', url);
         } catch (e) {
-          console.log('DEBUG ✗ No navigation after 10s - login likely failed');
-          throw new Error('Login form accepted credentials but did not redirect to dashboard');
+          console.log('DEBUG ✗ Manual navigation failed:', e);
+          throw new Error('Login succeeded but unable to navigate to dashboard');
         }
       }
       
