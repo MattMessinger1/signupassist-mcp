@@ -70,7 +70,13 @@ export default function PrereqsPanel({
   const BannerIcon = banner.icon;
 
   return (
-    <div className="space-y-6 max-w-2xl mx-auto">
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      transition={{ duration: 0.3 }}
+      className="space-y-6 max-w-2xl mx-auto"
+    >
       <div>
         <h2 className="text-2xl font-bold mb-2">Account Prerequisites</h2>
         <p className="text-muted-foreground">
@@ -152,13 +158,14 @@ export default function PrereqsPanel({
         )}
       </Card>
 
-      <div className="flex gap-3 justify-end sticky bottom-0 bg-background pt-4 border-t">
+      <div className="flex gap-3 justify-end pt-4 border-t">
         {onRecheck && (
           <Button
             variant="outline"
             onClick={onRecheck}
             disabled={isChecking}
             aria-label="Recheck prerequisites"
+            className="min-w-[120px]"
           >
             {isChecking ? (
               <>
@@ -174,11 +181,12 @@ export default function PrereqsPanel({
           onClick={onContinue}
           disabled={!allPassed}
           size="lg"
-          aria-label="Continue to registration"
+          aria-label="Continue to program questions"
+          className="min-w-[200px]"
         >
           Continue
         </Button>
       </div>
-    </div>
+    </motion.div>
   );
 }

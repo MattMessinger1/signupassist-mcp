@@ -27,6 +27,7 @@ import { CredentialPicker } from '@/components/CredentialPicker';
 import PrerequisitesPanel from '@/components/PrereqsPanel';
 import ProgramQuestionsPanel, { ProgramQuestion } from '@/components/ProgramQuestionsPanel';
 import CompletionPanel from '@/components/CompletionPanel';
+import StepIndicator from '@/components/StepIndicator';
 import { ConsentModal } from '@/components/ConsentModal';
 import { SavePaymentMethod } from '@/components/SavePaymentMethod';
 import { FieldGroup } from '@/components/FieldGroup';
@@ -1497,6 +1498,20 @@ const PlanBuilder = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
+                  {/* Step Indicator */}
+                  {prerequisiteChecks.length > 0 && (
+                    <div className="mb-6">
+                      <StepIndicator
+                        currentStep={
+                          activeStep === 'prereqs' ? 1 : 
+                          activeStep === 'program' ? 2 : 
+                          3
+                        }
+                        totalSteps={3}
+                        stepLabels={['Prerequisites', 'Program Questions', 'Complete']}
+                      />
+                    </div>
+                  )}
                   {prerequisiteChecks.length === 0 ? (
                     <div className="space-y-4">
                       <Alert>

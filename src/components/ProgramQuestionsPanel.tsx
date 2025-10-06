@@ -323,7 +323,7 @@ export default function ProgramQuestionsPanel({
             ))}
           </div>
 
-          <div className="flex gap-3 justify-end pt-4 border-t">
+          <div className="flex flex-col-reverse sm:flex-row gap-3 justify-end pt-4 border-t">
             {onBack && (
               <Button
                 type="button"
@@ -331,6 +331,8 @@ export default function ProgramQuestionsPanel({
                 size="lg"
                 onClick={onBack}
                 disabled={isSubmitting}
+                aria-label="Return to prerequisites"
+                className="w-full sm:w-auto min-w-[160px]"
               >
                 Back to Prerequisites
               </Button>
@@ -339,7 +341,8 @@ export default function ProgramQuestionsPanel({
               type="submit"
               size="lg"
               disabled={!isValid || isSubmitting}
-              className="min-w-[200px]"
+              aria-label="Save program answers"
+              className="w-full sm:w-auto min-w-[200px]"
             >
               {isSubmitting ? 'Saving...' : 'Save Answers'}
             </Button>
