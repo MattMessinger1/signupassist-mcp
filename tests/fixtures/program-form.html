@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Program Registration Form - Test Fixture</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 20px;
+    }
+    .form-group {
+      margin-bottom: 20px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    input.invalid, select.invalid {
+      border-color: #d32f2f;
+    }
+    .error {
+      color: #d32f2f;
+      font-size: 0.875rem;
+      margin-top: 4px;
+      display: none;
+    }
+    .error.visible {
+      display: block;
+    }
+    button {
+      background-color: #1976d2;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 1rem;
+    }
+    button:hover {
+      background-color: #1565c0;
+    }
+    .success-panel {
+      display: none;
+      background-color: #e8f5e9;
+      border: 1px solid #4caf50;
+      padding: 20px;
+      border-radius: 4px;
+      margin-top: 20px;
+    }
+    .success-panel.visible {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <h1>Program Registration</h1>
+  <form id="program-form" novalidate>
+    <div class="form-group">
+      <label for="child-name">Child's Name *</label>
+      <input 
+        type="text" 
+        id="child-name" 
+        name="childName" 
+        required
+        aria-describedby="child-name-error"
+      >
+      <span id="child-name-error" class="error" role="alert">Child's name is required</span>
+    </div>
+
+    <div class="form-group">
+      <label for="child-dob">Child's Date of Birth *</label>
+      <input 
+        type="date" 
+        id="child-dob" 
+        name="childDob" 
+        required
+        aria-describedby="child-dob-error"
+      >
+      <span id="child-dob-error" class="error" role="alert">Date of birth is required</span>
+    </div>
+
+    <div class="form-group">
+      <label for="skill-level">Skill Level *</label>
+      <select 
+        id="skill-level" 
+        name="skillLevel" 
+        required
+        aria-describedby="skill-level-error"
+      >
+        <option value="">-- Please select --</option>
+        <option value="beginner">Beginner</option>
+        <option value="intermediate">Intermediate</option>
+        <option value="advanced">Advanced</option>
+      </select>
+      <span id="skill-level-error" class="error" role="alert">Please select a skill level</span>
+    </div>
+
+    <div class="form-group">
+      <label for="parent-email">Parent/Guardian Email *</label>
+      <input 
+        type="email" 
+        id="parent-email" 
+        name="parentEmail" 
+        required
+        aria-describedby="parent-email-error"
+      >
+      <span id="parent-email-error" class="error" role="alert">Valid email address is required</span>
+    </div>
+
+    <div class="form-group">
+      <label for="special-needs">Special Needs or Accommodations</label>
+      <textarea 
+        id="special-needs" 
+        name="specialNeeds" 
+        rows="3"
+        aria-describedby="special-needs-help"
+      ></textarea>
+      <span id="special-needs-help" style="font-size: 0.875rem; color: #666;">
+        Optional: Please describe any special needs or accommodations
+      </span>
+    </div>
+
+    <button type="submit" id="submit-btn">Submit Registration</button>
+  </form>
+
+  <div id="success-panel" class="success-panel">
+    <h2>Registration Confirmed!</h2>
+    <p>Thank you for registering. You will receive a confirmation email shortly.</p>
+    <p><strong>Confirmation Number:</strong> <span id="confirmation-number">REG-2025-001234</span></p>
+  </div>
+
+  <script>
+    const form = document.getElementById('program-form');
+    const successPanel = document.getElementById('success-panel');
+    let submitCount = 0;
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      submitCount++;
+
+      // Clear previous errors
+      document.querySelectorAll('.error').forEach(el => el.classList.remove('visible'));
+      document.querySelectorAll('input, select').forEach(el => el.classList.remove('invalid'));
+
+      // Validate required fields
+      let hasErrors = false;
+      const requiredFields = [
+        { id: 'child-name', errorId: 'child-name-error' },
+        { id: 'child-dob', errorId: 'child-dob-error' },
+        { id: 'skill-level', errorId: 'skill-level-error' },
+        { id: 'parent-email', errorId: 'parent-email-error' },
+      ];
+
+      requiredFields.forEach(({ id, errorId }) => {
+        const field = document.getElementById(id);
+        const error = document.getElementById(errorId);
+        
+        if (!field.value || field.value === '') {
+          field.classList.add('invalid');
+          field.setAttribute('aria-invalid', 'true');
+          error.classList.add('visible');
+          hasErrors = true;
+        } else {
+          field.setAttribute('aria-invalid', 'false');
+        }
+      });
+
+      // Email validation
+      const emailField = document.getElementById('parent-email');
+      const emailError = document.getElementById('parent-email-error');
+      if (emailField.value && !emailField.value.includes('@')) {
+        emailField.classList.add('invalid');
+        emailField.setAttribute('aria-invalid', 'true');
+        emailError.textContent = 'Please enter a valid email address';
+        emailError.classList.add('visible');
+        hasErrors = true;
+      }
+
+      // If no errors, show success panel
+      if (!hasErrors) {
+        form.style.display = 'none';
+        successPanel.classList.add('visible');
+      }
+    });
+
+    // Expose for testing
+    window.getSubmitCount = () => submitCount;
+    window.hasErrors = () => document.querySelectorAll('.error.visible').length > 0;
+    window.getVisibleErrors = () => {
+      const errors = [];
+      document.querySelectorAll('.error.visible').forEach(el => {
+        errors.push({
+          id: el.id,
+          message: el.textContent,
+        });
+      });
+      return errors;
+    };
+  </script>
+</body>
+</html>
