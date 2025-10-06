@@ -1542,7 +1542,7 @@ const PlanBuilder = () => {
                     <AnimatePresence mode="wait">
                       {activeStep === 'prereqs' ? (
                         <PrerequisitesPanel
-                          key="prereqs"
+                          key={`prereqs-${prerequisiteChecks.length}-${Date.now()}`}
                           checks={prerequisiteChecks}
                           onRecheck={handleRecheckPrereqs}
                           onContinue={async () => {

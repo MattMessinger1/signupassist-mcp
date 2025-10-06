@@ -35,6 +35,9 @@ export default function PrereqsPanel({
   onRecheck,
   onContinue
 }: PrereqsPanelProps) {
+  // Debug logging
+  console.log('[PrereqsPanel] Rendering with checks:', checks);
+  
   const allPassed = checks.length > 0 && checks.every(c => c.status === 'pass');
   const hasFailed = checks.some(c => c.status === 'fail');
   const isChecking = checks.some(c => c.status === 'unknown');
