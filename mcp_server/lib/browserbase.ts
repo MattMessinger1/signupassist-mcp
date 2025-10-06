@@ -369,12 +369,14 @@ export async function discoverProgramRequiredFields(
     
     // CRITICAL FIX: Sanitize org_ref to match correct domain
     // Map 'blackhawk-ski-club' → 'blackhawk' (strip '-ski-club' suffix)
-    const sanitizedOrg = orgRef.endsWith('-ski-club') 
-      ? orgRef.replace('-ski-club', '') 
-      : orgRef.replace(/[^a-z0-9-]/gi, '');
+    // Map org_ref to correct domain (e.g., 'blackhawk-ski-club' → 'blackhawk.skiclubpro.team')
+    const baseDomain = (orgRef === 'blackhawk-ski-club') 
+      ? 'blackhawk.skiclubpro.team' 
+      : `${orgRef.replace(/[^a-z0-9-]/g, '').toLowerCase()}.skiclubpro.team`;
     
-    const registrationUrl = `https://${sanitizedOrg}.skiclubpro.team/registration/${actualProgramId}/options`;
+    const registrationUrl = `https://${baseDomain}/registration/${actualProgramId}/options`;
     
+    console.log('[Field Discovery] Using unified domain:', baseDomain);
     console.log('[Field Discovery] Navigating to:', registrationUrl);
     
     // Navigate to registration page
@@ -971,9 +973,14 @@ export async function scrapeSkiClubProPrograms(
   const { page } = session;
 
   try {
-    // Build base URL using org-specific subdomain
-    const baseUrl = `https://${orgRef}.skiclubpro.team`;
+    // Map org_ref to correct domain (e.g., 'blackhawk-ski-club' → 'blackhawk.skiclubpro.team')
+    const baseDomain = (orgRef === 'blackhawk-ski-club') 
+      ? 'blackhawk.skiclubpro.team' 
+      : `${orgRef.replace(/[^a-z0-9-]/g, '').toLowerCase()}.skiclubpro.team`;
     
+    const baseUrl = `https://${baseDomain}`;
+    
+    console.log(`[Scraper] Using unified domain: ${baseDomain}, baseUrl: ${baseUrl}`);
     console.log(`[Scraper] Navigating to programs for org: ${orgRef}`);
 
     // Try to navigate via left-nav (mirrors worker's openProgramsFromSidebar)

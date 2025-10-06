@@ -52,6 +52,7 @@ export async function discoverAll(
   page: Page,
   programRef: string,
   orgRef: string,
+  baseDomain: string,  // Unified domain (e.g., 'blackhawk.skiclubpro.team')
   provider: string,
   warmHintsPrereqs: Record<string, any> = {},
   warmHintsProgram: Record<string, any> = {}
@@ -64,6 +65,7 @@ export async function discoverAll(
   const prereqResult = await discoverPrerequisites(
     page,
     orgRef,
+    baseDomain,
     provider,
     warmHintsPrereqs
   );
@@ -73,7 +75,7 @@ export async function discoverAll(
   
   // STAGE 2: Program Fields Discovery with multi-step walking
   console.log('[UnifiedDiscovery] Stage 2: Program Questions');
-  await navigateToProgramForm(page, programRef, orgRef);
+  await navigateToProgramForm(page, programRef, baseDomain);
   const programResult = await discoverProgramFieldsMultiStep(page, programRef, warmHintsProgram);
   
   console.log(`[UnifiedDiscovery] Program questions found: ${programResult.fields.length}`);
@@ -104,6 +106,7 @@ export async function discoverAll(
 async function discoverPrerequisites(
   page: Page,
   orgRef: string,
+  baseDomain: string,  // Unified domain
   provider: string,
   warmHints: Record<string, any>
 ): Promise<PrerequisiteDiscoveryResult> {
@@ -112,8 +115,9 @@ async function discoverPrerequisites(
   const checks: PrerequisiteCheckResult[] = [];
   let overallStatus: 'complete' | 'required' | 'unknown' = 'complete'; // Start optimistic
   let totalLoops = 0;
-  const baseUrl = `https://${orgRef.replace('-ski-club', '')}.skiclubpro.team`;
+  const baseUrl = `https://${baseDomain}`;
   
+  console.log(`[PrereqDiscovery] Using unified domain: ${baseDomain}, baseUrl: ${baseUrl}`);
   console.log(`[PrereqDiscovery] Checking ${prerequisitePaths.length} prerequisite paths for provider: ${provider}`);
   
   for (const prereqPath of prerequisitePaths) {
@@ -230,9 +234,11 @@ async function discoverPrerequisites(
 async function navigateToProgramForm(
   page: Page,
   programRef: string,
-  orgRef: string
+  baseDomain: string  // Unified domain
 ): Promise<void> {
-  const baseUrl = `https://${orgRef.replace('-ski-club', '')}.skiclubpro.team`;
+  const baseUrl = `https://${baseDomain}`;
+  
+  console.log(`[ProgramNav] Using unified domain: ${baseDomain}, url: ${baseUrl}`);
   
   // Try common program registration paths
   const programPaths = [
