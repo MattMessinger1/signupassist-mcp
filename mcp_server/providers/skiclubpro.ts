@@ -80,11 +80,18 @@ function resolveBaseUrl(args: any): string {
     }
   }
   
-  // Normalize: lowercase, strip non-alphanumeric except hyphens
-  const normalized = orgRef.toLowerCase().replace(/[^a-z0-9-]/g, '');
-  const baseUrl = `https://${normalized}.skiclubpro.team`;
+  // CRITICAL FIX: Map 'blackhawk-ski-club' to 'blackhawk' for correct domain
+  // The actual domain is blackhawk.skiclubpro.team NOT blackhawk-ski-club.skiclubpro.team
+  let domainSlug = orgRef.toLowerCase().replace(/[^a-z0-9-]/g, '');
   
-  console.log(`DEBUG: Resolved base URL: ${baseUrl} (from org_ref: ${orgRef})`);
+  // Strip '-ski-club' suffix if present
+  if (domainSlug.endsWith('-ski-club')) {
+    domainSlug = domainSlug.replace('-ski-club', '');
+  }
+  
+  const baseUrl = `https://${domainSlug}.skiclubpro.team`;
+  
+  console.log(`DEBUG: Corrected base URL: ${baseUrl} (from org_ref: ${orgRef})`);
   return baseUrl;
 }
 
