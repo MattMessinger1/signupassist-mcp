@@ -329,9 +329,28 @@ export async function loginWithCredentials(
     console.log(`DEBUG Form response took ${responseTime}ms`);
 
     if (success) {
-      const url = page.url();
-      const title = await page.title();
+      let url = page.url();
       const hasCookie = await hasDrupalSessCookie(page);
+      
+      // CRITICAL: Verify that we've actually navigated away from the login page
+      // Don't trust cookie existence alone - ensure navigation has occurred
+      if (url.includes('/user/login')) {
+        console.log('DEBUG ⚠ Login accepted but still on login page - waiting for navigation...');
+        
+        try {
+          // Wait for navigation away from login page (max 10 seconds)
+          await page.waitForURL(pageUrl => !pageUrl.includes('/user/login'), { 
+            timeout: 10000 
+          });
+          url = page.url();
+          console.log('DEBUG ✓ Navigation completed to:', url);
+        } catch (e) {
+          console.log('DEBUG ✗ No navigation after 10s - login likely failed');
+          throw new Error('Login form accepted credentials but did not redirect to dashboard');
+        }
+      }
+      
+      const title = await page.title();
       const duration_ms = Date.now() - startTime;
       
       console.log("DEBUG ✓ Login successful - authenticated session verified");
