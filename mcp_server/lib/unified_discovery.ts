@@ -275,7 +275,7 @@ async function discoverProgramFieldsMultiStep(
   loopCount: number;
   confidence: number;
   urlsVisited: string[];
-  stops?: { reason: string; evidence?: PaymentStopEvidence };
+  stops?: { reason: 'payment_detected' | 'success' | 'max_iterations' | 'no_new_errors'; evidence?: PaymentStopEvidence };
 }> {
   const urlsVisited: string[] = [page.url()];
   const allFields = new Map<string, DiscoveredField & { seenAtSteps: number[] }>();
