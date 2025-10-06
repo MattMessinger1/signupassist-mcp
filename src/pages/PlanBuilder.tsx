@@ -596,14 +596,22 @@ const PlanBuilder = () => {
       const branchCount = data.branches?.length || 0;
       const commonQuestions = data.common_questions?.length || 0;
       
+      // Update prerequisite checks from response
+      if (data.prerequisiteChecks) {
+        setPrerequisiteChecks(data.prerequisiteChecks);
+        console.log('[PlanBuilder] Updated prerequisite checks:', data.prerequisiteChecks);
+      }
+      
       toastLogger('field_discovery', `Discovered ${branchCount} branches and ${commonQuestions} common questions`, 'success', {
         branches: branchCount,
-        commonQuestions
+        commonQuestions,
+        prerequisiteChecks: data.prerequisiteChecks?.length || 0
       });
 
       console.log('[PlanBuilder] ✅ Schema discovered successfully:', {
         branches: data.branches?.length ?? 0,
-        commonQuestions: data.common_questions?.length ?? 0
+        commonQuestions: data.common_questions?.length ?? 0,
+        prerequisiteChecks: data.prerequisiteChecks?.length ?? 0
       });
       
       setDiscoveredSchema(data);
@@ -632,6 +640,28 @@ const PlanBuilder = () => {
     } finally {
       setIsDiscovering(false);
     }
+  };
+
+  const handleRecheckPrereqs = async () => {
+    const programRef = form.watch('programRef');
+    if (!programRef) {
+      toast({
+        title: 'Missing Program',
+        description: 'Please select a program first',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    toastLogger('prereqs', 'Rechecking prerequisites…', 'info');
+    
+    // Reset checks to unknown state while rechecking
+    setPrerequisiteChecks(prev => 
+      prev.map(check => ({ ...check, status: 'unknown' as const, message: 'Checking...' }))
+    );
+    
+    // Re-run discovery to get fresh prerequisite checks
+    await discoverFields(programRef);
   };
 
   const startSignupJob = async (planId: string) => {
@@ -1447,65 +1477,95 @@ const PlanBuilder = () => {
                     {allRequirementsMet && <CheckCircle className="h-5 w-5 text-green-600" />}
                   </div>
                   <CardDescription>
-                    Verify your account meets all requirements
+                    {prerequisiteChecks.length === 0 
+                      ? 'Click "Check Prerequisites" to verify your account' 
+                      : 'System verification complete'}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <PrerequisitesPanel
-                    checks={prerequisiteChecks}
-                    onContinue={async () => {
-                      const childId = form.watch('childId');
-                      const programRef = form.watch('programRef');
-                      const openTime = form.watch('opensAt');
-                      
-                      // Validate all required fields before auto-discovery
-                      if (!childId || !programRef) {
+                  {prerequisiteChecks.length === 0 ? (
+                    <div className="space-y-4">
+                      <Alert>
+                        <Shield className="h-4 w-4" />
+                        <AlertDescription>
+                          Before proceeding, we'll verify your account status, membership, and payment method.
+                        </AlertDescription>
+                      </Alert>
+                      <Button
+                        onClick={handleRecheckPrereqs}
+                        disabled={isDiscovering}
+                        className="w-full"
+                      >
+                        {isDiscovering ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Checking Prerequisites...
+                          </>
+                        ) : (
+                          <>
+                            <Shield className="h-4 w-4" />
+                            Check Prerequisites
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  ) : (
+                    <PrerequisitesPanel
+                      checks={prerequisiteChecks}
+                      onRecheck={handleRecheckPrereqs}
+                      onContinue={async () => {
+                        const childId = form.watch('childId');
+                        const programRef = form.watch('programRef');
+                        const openTime = form.watch('opensAt');
+                        
+                        // Validate all required fields before auto-discovery
+                        if (!childId || !programRef) {
+                          toast({
+                            title: 'Missing Information',
+                            description: 'Please select both a child and program',
+                            variant: 'destructive',
+                          });
+                          return;
+                        }
+
+                        if (!openTime) {
+                          toast({
+                            title: 'Missing Registration Time',
+                            description: 'Please set when registration opens (Step 4)',
+                            variant: 'destructive',
+                          });
+                          return;
+                        }
+
+                        // Get child name
+                        const { data: childData, error: childError } = await supabase
+                          .from('children')
+                          .select('name')
+                          .eq('id', childId)
+                          .maybeSingle();
+                        
+                        if (childError || !childData) {
+                          toast({
+                            title: 'Error',
+                            description: 'Could not load child information',
+                            variant: 'destructive',
+                          });
+                          return;
+                        }
+
+                        setSelectedChildName(childData.name);
+                        
+                        // Show loading toast for auto-discovery
                         toast({
-                          title: 'Missing Information',
-                          description: 'Please select both a child and program',
-                          variant: 'destructive',
+                          title: 'Securing Your Spot...',
+                          description: 'Applying smart defaults for program questions. This may take 5-10 seconds.',
                         });
-                        return;
-                      }
 
-                      if (!openTime) {
-                        toast({
-                          title: 'Missing Registration Time',
-                          description: 'Please set when registration opens (Step 4)',
-                          variant: 'destructive',
-                        });
-                        return;
-                      }
-
-                      // Get child name
-                      const { data: childData, error: childError } = await supabase
-                        .from('children')
-                        .select('name')
-                        .eq('id', childId)
-                        .maybeSingle();
-                      
-                      if (childError || !childData) {
-                        toast({
-                          title: 'Error',
-                          description: 'Could not load child information',
-                          variant: 'destructive',
-                        });
-                        return;
-                      }
-
-                      setSelectedChildName(childData.name);
-                      setPrerequisiteChecks([{ check: 'all', status: 'pass', message: 'Manual prerequisites confirmed' }]);
-                      
-                      // Show loading toast for auto-discovery
-                      toast({
-                        title: 'Securing Your Spot...',
-                        description: 'Applying smart defaults for program questions. This may take 5-10 seconds.',
-                      });
-
-                      // Auto-discover fields and apply defaults
-                      await discoverFields(programRef);
-                    }}
-                  />
+                        // Auto-discover fields and apply defaults
+                        await discoverFields(programRef);
+                      }}
+                    />
+                  )}
                 </CardContent>
               </Card>
             )}
