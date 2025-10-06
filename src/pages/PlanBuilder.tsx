@@ -123,6 +123,8 @@ const PlanBuilder = () => {
   const [showConsent, setShowConsent] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [prerequisiteChecks, setPrerequisiteChecks] = useState<PrerequisiteCheck[]>([]);
+  const [prerequisiteStatus, setPrerequisiteStatus] = useState<'complete' | 'required' | 'unknown'>('unknown');
+  const [prerequisiteFields, setPrerequisiteFields] = useState<EnhancedDiscoveredField[]>([]);
   const [programQuestions, setProgramQuestions] = useState<ProgramQuestion[]>([]);
   const [activeStep, setActiveStep] = useState<'prereqs' | 'program' | 'completed'>('prereqs');
   const [hasPaymentMethod, setHasPaymentMethod] = useState(false);
@@ -579,7 +581,18 @@ const PlanBuilder = () => {
         return;
       }
 
-      // Update prerequisite checks and program questions from response FIRST
+      // Phase 2.5: Extract prerequisite status and fields from unified discovery
+      if (data.prerequisite_status) {
+        setPrerequisiteStatus(data.prerequisite_status);
+        console.log('[PlanBuilder] Prerequisite status:', data.prerequisite_status);
+      }
+      
+      if (data.prerequisites) {
+        setPrerequisiteFields(data.prerequisites);
+        console.log('[PlanBuilder] Prerequisite fields:', data.prerequisites.length);
+      }
+      
+      // Update prerequisite checks and program questions from response
       if (data.prerequisiteChecks) {
         setPrerequisiteChecks(data.prerequisiteChecks);
         console.log('[PlanBuilder] Updated prerequisite checks:', data.prerequisiteChecks);
@@ -1512,7 +1525,44 @@ const PlanBuilder = () => {
                       />
                     </div>
                   )}
-                  {prerequisiteChecks.length === 0 ? (
+                  {/* Phase 2.5: Green Light / Yellow Light UI */}
+                  {prerequisiteStatus === 'complete' && prerequisiteFields.length === 0 ? (
+                    <Card className="border-green-200 bg-green-50">
+                      <CardHeader>
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="h-5 w-5 text-green-600" />
+                          <CardTitle className="text-green-900">Prerequisites Complete</CardTitle>
+                        </div>
+                        <CardDescription className="text-green-700">
+                          All prerequisites are met. You can proceed directly to program registration!
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <Button
+                          onClick={() => setActiveStep('program')}
+                          className="w-full"
+                        >
+                          Continue to Program Questions
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  ) : prerequisiteStatus === 'required' && prerequisiteFields.length > 0 ? (
+                    <Card className="border-yellow-200 bg-yellow-50">
+                      <CardHeader>
+                        <CardTitle className="text-yellow-900">Before You Begin</CardTitle>
+                        <CardDescription className="text-yellow-700">
+                          Please complete these prerequisites:
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <PrerequisitesPanel
+                          checks={prerequisiteChecks}
+                          onRecheck={handleRecheckPrereqs}
+                          onContinue={() => setActiveStep('program')}
+                        />
+                      </CardContent>
+                    </Card>
+                  ) : prerequisiteChecks.length === 0 ? (
                     <div className="space-y-4">
                       <Alert>
                         <Shield className="h-4 w-4" />

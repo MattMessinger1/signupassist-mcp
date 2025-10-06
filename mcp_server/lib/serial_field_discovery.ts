@@ -258,11 +258,22 @@ async function trySubmit(page: Page): Promise<boolean> {
     '.form-actions button:visible'
   ];
   
+  // GUARDRAIL: Skip payment buttons (Phase 2.5 safety feature)
+  const paymentPatterns = ['Pay', 'Checkout', 'Purchase', 'Buy', 'Complete Payment', 'Charge'];
+  
   for (const selector of submitSelectors) {
     try {
       const btn = await page.$(selector);
       if (btn) {
         const isDisabled = await btn.evaluate((el: any) => el.disabled);
+        const text = await btn.textContent() || '';
+        
+        // Skip if payment-related button
+        if (paymentPatterns.some(p => text.includes(p))) {
+          console.log(`[SerialDiscovery] Skipping payment button: "${text}"`);
+          continue;
+        }
+        
         if (!isDisabled) {
           console.log(`[SerialDiscovery] Clicking submit: ${selector}`);
           await btn.click();

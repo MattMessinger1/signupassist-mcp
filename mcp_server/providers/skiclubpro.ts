@@ -43,11 +43,23 @@ export interface DiscoverRequiredFieldsArgs {
   plan_id?: string;
   user_id?: string;
   session_token?: string;
+  warm_hints_prereqs?: Record<string, any>;
+  warm_hints_program?: Record<string, any>;
 }
 
 export interface FieldSchema {
   program_ref: string;
-  questions: Array<{
+  prerequisites?: Array<{
+    id: string;
+    label: string;
+    type: string;
+    required: boolean;
+    options?: string[];
+    category?: string;
+  }>;
+  prerequisite_status?: 'complete' | 'required' | 'unknown';
+  prerequisite_message?: string;
+  questions?: Array<{
     id: string;
     label: string;
     type: string;
@@ -240,56 +252,47 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           throw new Error('Login failed - cannot proceed with field discovery. User is not authenticated.');
         }
         
-        console.log('DEBUG: Login successful, starting field discovery');
+        console.log('DEBUG: Login successful, starting unified field discovery');
         
-        // ✅ Discover program fields using serial discovery loop
-        // warm hints will be loaded by Edge Function via get_best_hints RPC
-        const fieldSchema = await discoverProgramRequiredFields(
-          session,
+        // ✅ Use unified discovery for both prerequisites and program fields
+        const { discoverAll } = await import('../lib/unified_discovery.js');
+        
+        const warmHintsPrereqs = args.warm_hints_prereqs || {};
+        const warmHintsProgram = args.warm_hints_program || {};
+        
+        console.log('DEBUG: Invoking unified discovery with warm hints:', {
+          prereqs: Object.keys(warmHintsPrereqs).length,
+          program: Object.keys(warmHintsProgram).length
+        });
+        
+        const discoveryResult = await discoverAll(
+          session.page,
           args.program_ref,
           orgRef,
-          undefined, // credentials (not needed, already logged in)
-          {} // warmHints (empty for now, Edge Function will load them)
+          warmHintsPrereqs,
+          warmHintsProgram
         );
         
-        console.log('DEBUG: Field discovery completed:', fieldSchema);
+        console.log('DEBUG: Unified discovery completed:', {
+          prerequisite_status: discoveryResult.prerequisite_status,
+          prerequisites_count: discoveryResult.prerequisites.length,
+          program_questions_count: discoveryResult.program_questions.length
+        });
         
-        // ✅ Run prerequisite checks using registry system
-        console.log('DEBUG: Running prerequisite checks via registry...');
-        const { runChecks } = await import('../prereqs/registry.js');
-        const { registerAllProviders } = await import('../prereqs/providers.js');
-        
-        // Register all provider checkers
-        registerAllProviders();
-        
-        // Build context for checkers
-        const ctx = {
-          orgRef,
-          programRef: args.program_ref,
-          userId: args.user_id,
-          page: session.page,
-          baseUrl
-        };
-        
-        // Run all applicable checks for this provider
-        const results = await runChecks('skiclubpro', ctx);
-        
-        // Map registry results to frontend format
-        const prerequisiteChecks = results.map(r => ({
-          check: r.id,
-          status: r.outcome,
-          message: r.explain,
-          blocking: r.blocking,
-          confidence: r.confidence,
-          remediation: r.remediation
-        }));
-        
-        console.log('DEBUG: Prerequisite checks completed:', prerequisiteChecks);
-        
-        // Return field schema with prerequisite checks
+        // Return unified result
         return {
-          ...fieldSchema,
-          prerequisiteChecks
+          program_ref: args.program_ref,
+          prerequisites: discoveryResult.prerequisites,
+          prerequisite_status: discoveryResult.prerequisite_status,
+          prerequisite_message: discoveryResult.prerequisite_message,
+          questions: discoveryResult.program_questions,
+          metadata: {
+            url: baseUrl,
+            field_count: discoveryResult.program_questions.length,
+            categories: [],
+            discovered_at: new Date().toISOString(),
+            ...discoveryResult.metadata
+          }
         };
         
       } catch (error) {

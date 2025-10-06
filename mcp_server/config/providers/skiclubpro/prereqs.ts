@@ -1,3 +1,18 @@
+/**
+ * DEPRECATED - Pure Serial Loop Discovery (Phase 2.5)
+ * 
+ * These semantic checkers are replaced by the unified serial discovery loop
+ * implemented in mcp_server/lib/unified_discovery.ts
+ * 
+ * The new implementation uses pure serial loops with stage-specific guardrails:
+ * - Prerequisites: Detects green light (complete) vs yellow light (required)
+ * - Program Fields: Uses existing serial discovery loop
+ * 
+ * These checkers are kept here temporarily for reference and potential rollback.
+ * 
+ * TODO: Remove after 2 weeks of stable serial discovery in production (after 2025-10-20)
+ */
+
 // mcp_server/config/providers/skiclubpro/prereqs.ts
 import type { Checker, Ctx, Result } from '../../../prereqs/types.js';
 import { gotoAny, bodyText } from '../../../prereqs/helpers.js';

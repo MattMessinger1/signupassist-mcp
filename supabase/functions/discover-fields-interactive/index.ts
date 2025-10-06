@@ -257,18 +257,34 @@ Deno.serve(async (req) => {
 
     console.log("formFingerprint:", formFingerprint);
 
-    // Try warming from existing discovery hints
-    let warmHints = {};
+    // Load warm hints for BOTH prerequisites and program stages (Phase 2.5)
+    let warmHintsPrereqs = {};
+    let warmHintsProgram = {};
+    
     try {
-      const { data: hintData } = await supabase.rpc("get_best_hints", {
+      // Load prerequisites hints
+      const { data: prereqHints } = await supabase.rpc("get_best_hints", {
+        p_provider: "skiclubpro",
+        p_program: `${program_ref}_prereqs`,
+        p_stage: "prerequisites",
+      });
+      warmHintsPrereqs = prereqHints?.hints ?? {};
+      console.log("Loaded warmHintsPrereqs keys:", Object.keys(warmHintsPrereqs));
+    } catch (err) {
+      console.warn("No prerequisite warm hints available:", err.message);
+    }
+    
+    try {
+      // Load program hints
+      const { data: programHints } = await supabase.rpc("get_best_hints", {
         p_provider: "skiclubpro",
         p_program: program_ref,
         p_stage: "program",
       });
-      warmHints = hintData?.hints ?? {};
-      console.log("Loaded warmHints keys:", Object.keys(warmHints));
+      warmHintsProgram = programHints?.hints ?? {};
+      console.log("Loaded warmHintsProgram keys:", Object.keys(warmHintsProgram));
     } catch (err) {
-      console.warn("No warm hints available or RPC missing:", err.message);
+      console.warn("No program warm hints available:", err.message);
     }
 
     // Call the MCP provider tool for field discovery directly
@@ -283,40 +299,64 @@ Deno.serve(async (req) => {
         program_ref,
         mandate_id,
         credential_id,
-        user_jwt: userJwt,  // ✅ Forward user JWT for credential access
-        warm_hints: warmHints  // 🧩 Pass warm hints to MCP tool for faster discovery
+        user_jwt: userJwt,
+        warm_hints_prereqs: warmHintsPrereqs,  // 🧩 Pass prerequisite hints
+        warm_hints_program: warmHintsProgram   // 🧩 Pass program hints
       }, {
         mandate_id,
-        skipAudit: true   // ✅ no audit for discovery
+        skipAudit: true
       });
 
       console.log('Field discovery completed:', result);
 
-      // Persist the discovery run for learning
+      // Persist BOTH discovery runs for learning (Phase 2.5)
       try {
-        const errorsJson = JSON.stringify(result?.errors ?? []);
-        const meta = {
-          formWatchOpensAt: result?.formWatchOpensAt ?? null,
-          formWatchClosesAt: result?.formWatchClosesAt ?? null,
-          loopCount: result?.loopCount ?? null,
-          usedWarmHints: Object.keys(warmHints).length > 0,
-        };
-        const runConfidence = result?.branches ? 0.9 : 0.6; // simple heuristic
-        const runId = crypto.randomUUID();
+        // Persist prerequisites discovery if fields were found
+        if (result?.prerequisites && result.prerequisites.length > 0) {
+          const prereqRunId = crypto.randomUUID();
+          await supabase.rpc("upsert_discovery_run", {
+            p_provider: "skiclubpro",
+            p_program: `${program_ref}_prereqs`,
+            p_fingerprint: formFingerprint,
+            p_stage: "prerequisites",
+            p_errors: JSON.stringify(result.prerequisites),
+            p_meta: JSON.stringify({
+              status: result.prerequisite_status,
+              message: result.prerequisite_message,
+              loopCount: result.metadata?.prerequisitesLoops ?? 0
+            }),
+            p_run_conf: result.metadata?.prerequisitesConfidence ?? 0.8,
+            p_run_id: prereqRunId,
+          });
+          console.log("Persisted prerequisite discovery run:", prereqRunId);
+        }
+        
+        // Persist program discovery
+        if (result?.questions && result.questions.length > 0) {
+          const programRunId = crypto.randomUUID();
+          const errorsJson = JSON.stringify(result.questions);
+          const meta = {
+            formWatchOpensAt: result?.formWatchOpensAt ?? null,
+            formWatchClosesAt: result?.formWatchClosesAt ?? null,
+            loopCount: result.metadata?.programLoops ?? null,
+            usedWarmHints: Object.keys(warmHintsProgram).length > 0,
+          };
+          const runConfidence = result?.branches ? 0.9 : 0.6;
 
-        await supabase.rpc("upsert_discovery_run", {
-          p_provider: "skiclubpro",
-          p_program: program_ref,
-          p_fingerprint: formFingerprint,
-          p_stage: "program",
-          p_errors: errorsJson,
-          p_meta: JSON.stringify(meta),
-          p_run_conf: runConfidence,
-          p_run_id: runId,
-        });
-        console.log("Persisted discovery run:", runId, "confidence:", runConfidence);
+          await supabase.rpc("upsert_discovery_run", {
+            p_provider: "skiclubpro",
+            p_program: program_ref,
+            p_fingerprint: formFingerprint,
+            p_stage: "program",
+            p_errors: errorsJson,
+            p_meta: JSON.stringify(meta),
+            p_run_conf: runConfidence,
+            p_run_id: programRunId,
+          });
+          console.log("Persisted program discovery run:", programRunId);
+        }
       } catch (err) {
-        console.error("Failed to persist discovery run:", err);
+        console.error("Failed to persist discovery runs:", err);
       }
 
       // Normalize MCP response to match frontend expectations
@@ -329,6 +369,10 @@ Deno.serve(async (req) => {
       const response = {
         success: !!discoveredSchema,
         ...discoveredSchema,
+        // Phase 2.5: Include prerequisite status and fields
+        prerequisites: result?.prerequisites || [],
+        prerequisite_status: result?.prerequisite_status || 'unknown',
+        prerequisite_message: result?.prerequisite_message,
         prerequisiteChecks: result?.prerequisiteChecks || [],
         // ✅ Normalize all date fields to ISO strings
         formWatchOpensAt: toIsoStringSafe(result?.formWatchOpensAt),
