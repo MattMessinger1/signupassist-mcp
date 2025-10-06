@@ -125,9 +125,12 @@ export async function loginWithCredentials(
 
   console.log("DEBUG Navigating to login page:", config.loginUrl);
   
-  // Navigate explicitly to Drupal login with destination
-  await page.goto(config.loginUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-  await page.waitForLoadState('domcontentloaded');
+  // Navigate explicitly to Drupal login with destination - wait for network idle for JS-heavy pages
+  await page.goto(config.loginUrl, { waitUntil: 'networkidle', timeout: 30000 });
+  await page.waitForLoadState('networkidle');
+  
+  // Extra wait for dynamic content
+  await humanPause(1000, 2000);
 
   // Quick check if already logged in
   if (await isLoggedIn(page)) {
