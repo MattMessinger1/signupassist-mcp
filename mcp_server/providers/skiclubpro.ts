@@ -242,11 +242,14 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         
         console.log('DEBUG: Login successful, starting field discovery');
         
-        // ✅ Discover program fields (credentials not needed since we're already logged in)
+        // ✅ Discover program fields using serial discovery loop
+        // warm hints will be loaded by Edge Function via get_best_hints RPC
         const fieldSchema = await discoverProgramRequiredFields(
           session,
           args.program_ref,
-          orgRef
+          orgRef,
+          undefined, // credentials (not needed, already logged in)
+          {} // warmHints (empty for now, Edge Function will load them)
         );
         
         console.log('DEBUG: Field discovery completed:', fieldSchema);

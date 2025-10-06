@@ -37,6 +37,7 @@ import { annotatePrice } from './pricing/annotatePrice.js';
 import { chooseDefaultAnswer } from './pricing/chooseAnswer.js';
 import { computeTotalCents } from './pricing/computeTotal.js';
 import { createStealthContext } from './antibot.js';
+import { discoverFieldsSerially } from './serial_field_discovery.js';
 import type { DiscoveredField } from '../types/pricing.js';
 
 const browserbaseApiKey = process.env.BROWSERBASE_API_KEY!;
@@ -335,18 +336,20 @@ export async function performSkiClubProLogin(
 }
 
 /**
- * Discover required fields for a program with comprehensive field extraction
+ * Discover required fields for a program using serial discovery loop
+ * Replaces static CSS scraping with iterative autofill→submit→collect-errors approach
  */
 export async function discoverProgramRequiredFields(
   session: BrowserbaseSession, 
   programRef: string,
   orgRef: string = 'blackhawk-ski-club',
-  credentials?: { email: string; password: string }
+  credentials?: { email: string; password: string },
+  warmHints: Record<string, any> = {}
 ): Promise<any> {
   let screenshotCount = 0;
   
   try {
-    console.log(`[Field Discovery] Starting for program: ${programRef}, org: ${orgRef}`);
+    console.log(`[Field Discovery] Starting serial discovery for program: ${programRef}, org: ${orgRef}`);
     
     const config = getSkiClubProConfig(orgRef);
     const actualProgramId = getProgramId(programRef, orgRef);
@@ -372,7 +375,7 @@ export async function discoverProgramRequiredFields(
     
     const registrationUrl = `https://${sanitizedOrg}.skiclubpro.team/registration/${actualProgramId}/options`;
     
-    console.log('[Field Discovery] DEBUG Corrected registration URL:', registrationUrl);
+    console.log('[Field Discovery] Navigating to:', registrationUrl);
     
     // Navigate to registration page
     await session.page.goto(registrationUrl, { 
@@ -383,21 +386,6 @@ export async function discoverProgramRequiredFields(
     // Log current URL to detect redirects (e.g., back to login)
     const currentUrl = session.page.url();
     console.log('[Field Discovery] Current URL after navigation:', currentUrl);
-    
-    // Capture diagnostics (HTML snippet and screenshot)
-    try {
-      const html = await session.page.content();
-      console.log('[Field Discovery] Page HTML snippet (first 2000 chars):', html.substring(0, 2000));
-      console.log('[Field Discovery] Page HTML snippet (chars 2000-4000):', html.substring(2000, 4000));
-      
-      await session.page.screenshot({ 
-        path: `discovery-debug-${Date.now()}.png`, 
-        fullPage: true 
-      });
-      console.log('[Field Discovery] Debug screenshot captured');
-    } catch (diagErr) {
-      console.warn('[Field Discovery] Could not capture diagnostics:', diagErr.message);
-    }
     
     // Check if we were redirected to login page
     if (currentUrl.includes('/user/login')) {
@@ -445,130 +433,19 @@ export async function discoverProgramRequiredFields(
     // Allow time for dynamic fields to load via JavaScript
     await session.page.waitForTimeout(2000);
     
-    console.log('[Field Discovery] ✓ Registration form loaded');
+    console.log('[Field Discovery] ✓ Registration form loaded, starting serial discovery loop');
     
-    // Comprehensive field extraction with categorization
-    console.log('[Field Discovery] Extracting fields...');
-    
-    const fields: any[] = await session.page.$$eval(
-      'form input, form select, form textarea',
-      (elements: any[]) => {
-        const fieldMap = new Map();
-        
-        elements.forEach((el: any) => {
-          // Skip hidden fields, submit buttons, and system fields
-          if (el.type === 'hidden' || el.type === 'submit' || el.type === 'button') {
-            return;
-          }
-
-          const tag = el.tagName.toLowerCase();
-          const type = el.getAttribute('type') || tag;
-          const name = el.getAttribute('name') || '';
-          const id = el.getAttribute('id') || '';
-
-          // Get label text from various sources
-          let label = '';
-          
-          // Try to find associated label
-          const labelElement = el.closest('label') || 
-                             (id ? document.querySelector(`label[for="${id}"]`) : null);
-          
-          if (labelElement) {
-            label = labelElement.innerText || labelElement.textContent || '';
-          }
-          
-          // Fallback to other sources
-          if (!label) {
-            label = el.getAttribute('placeholder') || 
-                    el.getAttribute('aria-label') || 
-                    el.getAttribute('title') || 
-                    name || 
-                    id || 
-                    '';
-          }
-
-          label = label.trim();
-          
-          if (!label) return; // Skip fields without labels
-
-          // Normalize to field_id
-          const field_id = label.toLowerCase()
-            .replace(/[^a-z0-9]+/g, '_')
-            .replace(/^_+|_+$/g, '');
-
-          if (!field_id) return;
-
-          // Categorize based on label content
-          let category = 'general';
-          const lowerLabel = label.toLowerCase();
-          
-          if (/volunteer/i.test(lowerLabel)) {
-            category = 'volunteering';
-          } else if (/emergency|contact.*case/i.test(lowerLabel)) {
-            category = 'emergency';
-          } else if (/waiver|consent|liability|agree|acknowledge/i.test(lowerLabel)) {
-            category = 'waiver';
-          } else if (/medical|allerg|condition|medication|health/i.test(lowerLabel)) {
-            category = 'medical';
-          }
-
-          // Handle radio/checkbox groups
-          if (type === 'radio' || type === 'checkbox') {
-            const groupKey = `${field_id}_${category}`;
-            
-            if (!fieldMap.has(groupKey)) {
-              fieldMap.set(groupKey, {
-                id: field_id,
-                label: label.replace(/\s*\(.*?\)\s*$/, ''), // Remove trailing options
-                type: type,
-                required: el.hasAttribute('required'),
-                category: category,
-                options: []
-              });
-            }
-            
-            // Add option value
-            const optionValue = el.getAttribute('value') || label;
-            const field = fieldMap.get(groupKey);
-            if (!field.options.includes(optionValue)) {
-              field.options.push(optionValue);
-            }
-          } else {
-            // Regular input, select, textarea
-            const fieldData: any = {
-              id: field_id,
-              label: label,
-              type: type,
-              required: el.hasAttribute('required'),
-              category: category
-            };
-
-            // Extract options for select elements
-            if (tag === 'select') {
-              const options = Array.from(el.querySelectorAll('option'))
-                .map((opt: any) => ({
-                  value: opt.value || opt.textContent?.trim() || '',
-                  label: opt.textContent?.trim() || ''
-                }))
-                .filter((o: any) => o.label && o.label !== 'Select...' && o.label !== '- Select -');
-              
-              if (options.length > 0) {
-                fieldData.options = options;
-              }
-            }
-
-            fieldMap.set(field_id, fieldData);
-          }
-        });
-
-        return Array.from(fieldMap.values());
-      }
+    // ✅ NEW: Run serial discovery loop instead of static scraping
+    const discoveryResult = await discoverFieldsSerially(
+      session.page,
+      programRef,
+      warmHints
     );
     
-    console.log(`[Field Discovery] ✓ Extracted ${fields.length} fields`);
-
-    // ✅ PHASE 1: Annotate fields with price information
-    const annotatedFields = fields.map(field => {
+    console.log(`[Field Discovery] Serial discovery complete: ${discoveryResult.fields.length} fields found in ${discoveryResult.loopCount} loops`);
+    
+    // ✅ Annotate discovered fields with price information
+    const annotatedFields = discoveryResult.fields.map(field => {
       const annotated = annotatePrice(field as DiscoveredField);
       if (annotated.isPriceBearing) {
         console.log(`[Price Detection] ${field.label}: price-bearing field detected`);
@@ -598,10 +475,19 @@ export async function discoverProgramRequiredFields(
       console.log('[Field Discovery] ✗ Screenshot failed:', error.message);
     }
 
-    // Return clean schema ready for Plan Builder
+    // Return clean schema with discovery metadata
     return {
       program_ref: programRef,
-      questions: annotatedFields
+      questions: annotatedFields,
+      metadata: {
+        url: session.page.url(),
+        field_count: annotatedFields.length,
+        discovered_at: new Date().toISOString(),
+        discovery_method: 'serial_loop',
+        loop_count: discoveryResult.loopCount,
+        confidence: discoveryResult.confidence,
+        ...discoveryResult.metadata
+      }
     };
     
   } catch (error) {
