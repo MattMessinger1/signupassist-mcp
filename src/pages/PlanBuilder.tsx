@@ -1452,9 +1452,8 @@ const PlanBuilder = () => {
                 </CardHeader>
                 <CardContent>
                   <PrerequisitesPanel
-                    orgRef="blackhawk-ski-club"
-                    credentialId={form.watch('credentialId')}
-                    onReadyToContinue={async () => {
+                    checks={prerequisiteChecks}
+                    onContinue={async () => {
                       const childId = form.watch('childId');
                       const programRef = form.watch('programRef');
                       const openTime = form.watch('opensAt');
