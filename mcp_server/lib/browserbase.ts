@@ -63,19 +63,11 @@ export async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
       throw new Error('BROWSERBASE_API_KEY environment variable is required');
     }
 
-    // Create Browserbase session with optional antibot profile
+    // Create Browserbase session
     const bb = new Browserbase({ apiKey: browserbaseApiKey });
-    const createOptions: any = { 
+    const session = await bb.sessions.create({
       projectId: process.env.BROWSERBASE_PROJECT_ID!
-    };
-    
-    // Add antibot profile if enabled
-    if (process.env.ANTIBOT_ENABLED === 'true') {
-      createOptions.antibotProfile = 'enhanced';
-      console.log('[Browserbase] Creating session with antibotProfile: enhanced');
-    }
-    
-    const session = await bb.sessions.create(createOptions);
+    });
 
     // Connect Playwright to Browserbase
     const browser = await chromium.connectOverCDP(session.connectUrl);
