@@ -364,10 +364,15 @@ export async function discoverProgramRequiredFields(
       }
     }
     
-    // Construct the registration URL using full org_ref
-    const registrationUrl = `https://${orgRef}.skiclubpro.team/registration/${actualProgramId}/options`;
+    // CRITICAL FIX: Sanitize org_ref to match correct domain
+    // Map 'blackhawk-ski-club' → 'blackhawk' (strip '-ski-club' suffix)
+    const sanitizedOrg = orgRef.endsWith('-ski-club') 
+      ? orgRef.replace('-ski-club', '') 
+      : orgRef.replace(/[^a-z0-9-]/gi, '');
     
-    console.log('[Field Discovery] Navigating to:', registrationUrl);
+    const registrationUrl = `https://${sanitizedOrg}.skiclubpro.team/registration/${actualProgramId}/options`;
+    
+    console.log('[Field Discovery] DEBUG Corrected registration URL:', registrationUrl);
     
     // Navigate to registration page
     await session.page.goto(registrationUrl, { 
