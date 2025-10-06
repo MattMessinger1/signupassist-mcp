@@ -285,7 +285,8 @@ Deno.serve(async (req) => {
         program_ref,
         mandate_id,
         credential_id,
-        user_jwt: userJwt  // ✅ Forward user JWT for credential access
+        user_jwt: userJwt,  // ✅ Forward user JWT for credential access
+        warm_hints: warmHints  // 🧩 Pass warm hints to MCP tool for faster discovery
       }, {
         mandate_id,
         skipAudit: true   // ✅ no audit for discovery
