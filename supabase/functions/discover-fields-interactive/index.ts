@@ -311,19 +311,19 @@ Deno.serve(async (req) => {
 
       // Persist BOTH discovery runs for learning (Phase 2.5)
       try {
-        // Persist prerequisites discovery if fields were found
-        if (result?.prerequisites && result.prerequisites.length > 0) {
+        // Persist prerequisites discovery if checks were performed
+        if (result?.prerequisite_checks && result.prerequisite_checks.length > 0) {
           const prereqRunId = crypto.randomUUID();
           await supabase.rpc("upsert_discovery_run", {
             p_provider: "skiclubpro",
             p_program: `${program_ref}_prereqs`,
             p_fingerprint: formFingerprint,
             p_stage: "prerequisites",
-            p_errors: JSON.stringify(result.prerequisites),
+            p_errors: JSON.stringify(result.prerequisite_checks),
             p_meta: JSON.stringify({
               status: result.prerequisite_status,
-              message: result.prerequisite_message,
-              loopCount: result.metadata?.prerequisitesLoops ?? 0
+              loopCount: result.metadata?.prerequisitesLoops ?? 0,
+              checks: result.prerequisite_checks.map((c: any) => ({ id: c.id, status: c.status }))
             }),
             p_run_conf: result.metadata?.prerequisitesConfidence ?? 0.8,
             p_run_id: prereqRunId,
@@ -363,17 +363,15 @@ Deno.serve(async (req) => {
       const discoveredSchema = result?.branches ? {
         program_ref,
         branches: result.branches,
-        common_questions: result.prerequisites || result.common_questions || []
+        common_questions: result.common_questions || []
       } : null;
 
       const response = {
         success: !!discoveredSchema,
         ...discoveredSchema,
-        // Phase 2.5: Include prerequisite status and fields
-        prerequisites: result?.prerequisites || [],
+        // Phase 2.5: Include prerequisite checks
+        prerequisite_checks: result?.prerequisite_checks || [],
         prerequisite_status: result?.prerequisite_status || 'unknown',
-        prerequisite_message: result?.prerequisite_message,
-        prerequisiteChecks: result?.prerequisiteChecks || [],
         // ✅ Normalize all date fields to ISO strings
         formWatchOpensAt: toIsoStringSafe(result?.formWatchOpensAt),
         formWatchClosesAt: toIsoStringSafe(result?.formWatchClosesAt),

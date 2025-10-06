@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { CheckCircle2, XCircle, Loader2, AlertTriangle } from 'lucide-react';
 
 export interface PrereqsPanelProps {
-  checks: { check: string; status: 'pass' | 'fail' | 'unknown'; message?: string }[];
+  checks: { id: string; label: string; status: 'pass' | 'fail' | 'unknown'; message: string }[];
   onRecheck?: () => void;
   onContinue?: () => void;
 }
@@ -116,7 +116,7 @@ export default function PrereqsPanel({
             <AnimatePresence>
               {checks.map((prereq, index) => (
                 <motion.div
-                  key={prereq.check}
+                  key={prereq.id}
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: index * 0.05 }}
@@ -134,7 +134,7 @@ export default function PrereqsPanel({
                     <StatusIcon status={prereq.status} />
                     <div className="flex-1 space-y-1 min-w-0">
                       <p className="font-medium text-sm">
-                        {humanizeLabel(prereq.check)}
+                        {prereq.label}
                       </p>
                       {prereq.message && (
                         <p className={`text-sm ${

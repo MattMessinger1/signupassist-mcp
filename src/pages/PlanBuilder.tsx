@@ -89,9 +89,18 @@ interface Child {
 }
 
 interface PrerequisiteCheck {
-  check: string;
+  id: string;
+  label: string;
   status: 'pass' | 'fail' | 'unknown';
-  message?: string;
+  message: string;
+  fields?: Array<{
+    id: string;
+    label: string;
+    type: string;
+    required: boolean;
+    options?: string[];
+    category?: string;
+  }>;
 }
 
 const PlanBuilder = () => {
@@ -581,21 +590,26 @@ const PlanBuilder = () => {
         return;
       }
 
-      // Phase 2.5: Extract prerequisite status and fields from unified discovery
+      // Phase 2.5: Extract prerequisite status and checks from unified discovery
       if (data.prerequisite_status) {
         setPrerequisiteStatus(data.prerequisite_status);
         console.log('[PlanBuilder] Prerequisite status:', data.prerequisite_status);
       }
       
-      if (data.prerequisites) {
-        setPrerequisiteFields(data.prerequisites);
-        console.log('[PlanBuilder] Prerequisite fields:', data.prerequisites.length);
-      }
-      
-      // Update prerequisite checks and program questions from response
-      if (data.prerequisiteChecks) {
-        setPrerequisiteChecks(data.prerequisiteChecks);
-        console.log('[PlanBuilder] Updated prerequisite checks:', data.prerequisiteChecks);
+      // Update prerequisite checks and extract any fields that need completion
+      if (data.prerequisite_checks) {
+        setPrerequisiteChecks(data.prerequisite_checks);
+        console.log('[PlanBuilder] Updated prerequisite checks:', data.prerequisite_checks);
+        
+        // Extract all fields from failed prerequisite checks
+        const fieldsFromChecks = data.prerequisite_checks
+          .filter((check: PrerequisiteCheck) => check.status === 'fail' && check.fields)
+          .flatMap((check: PrerequisiteCheck) => check.fields || []);
+        
+        if (fieldsFromChecks.length > 0) {
+          setPrerequisiteFields(fieldsFromChecks);
+          console.log('[PlanBuilder] Extracted prerequisite fields from checks:', fieldsFromChecks.length);
+        }
       }
       
       if (data.program_questions) {
@@ -629,14 +643,14 @@ const PlanBuilder = () => {
       toastLogger('field_discovery', `Discovered ${branchCount} branches and ${commonQuestions} common questions`, 'success', {
         branches: branchCount,
         commonQuestions,
-        prerequisiteChecks: data.prerequisiteChecks?.length || 0,
+        prerequisiteChecks: data.prerequisite_checks?.length || 0,
         programQuestions: data.program_questions?.length || 0
       });
 
       console.log('[PlanBuilder] ✅ Schema discovered successfully:', {
         branches: data.branches?.length ?? 0,
         commonQuestions: data.common_questions?.length ?? 0,
-        prerequisiteChecks: data.prerequisiteChecks?.length ?? 0,
+        prerequisiteChecks: data.prerequisite_checks?.length ?? 0,
         programQuestions: data.program_questions?.length ?? 0
       });
       

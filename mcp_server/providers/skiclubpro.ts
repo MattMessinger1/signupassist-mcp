@@ -269,22 +269,22 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           session.page,
           args.program_ref,
           orgRef,
+          'skiclubpro',  // Provider parameter for prerequisite path lookup
           warmHintsPrereqs,
           warmHintsProgram
         );
         
         console.log('DEBUG: Unified discovery completed:', {
+          prerequisite_checks: discoveryResult.prerequisite_checks?.length || 0,
           prerequisite_status: discoveryResult.prerequisite_status,
-          prerequisites_count: discoveryResult.prerequisites.length,
           program_questions_count: discoveryResult.program_questions.length
         });
         
         // Return unified result
         return {
           program_ref: args.program_ref,
-          prerequisites: discoveryResult.prerequisites,
+          prerequisite_checks: discoveryResult.prerequisite_checks,
           prerequisite_status: discoveryResult.prerequisite_status,
-          prerequisite_message: discoveryResult.prerequisite_message,
           questions: discoveryResult.program_questions,
           metadata: {
             url: baseUrl,
