@@ -339,7 +339,7 @@ export async function loginWithCredentials(
         
         try {
           // Wait for navigation away from login page (max 10 seconds)
-          await page.waitForURL(pageUrl => !pageUrl.includes('/user/login'), { 
+          await page.waitForURL(pageUrl => !pageUrl.toString().includes('/user/login'), { 
             timeout: 10000 
           });
           url = page.url();
