@@ -293,10 +293,14 @@ async function discoverProgramFieldsMultiStep(
   
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     loopCount++;
-    console.log(`[ProgramMultiStep] Iteration ${i + 1}/${MAX_ITERATIONS}`);
+    const prevUrl = page.url();
+    console.log(`[ProgramMultiStep] Iteration ${i + 1}/${MAX_ITERATIONS}, URL: ${prevUrl}`);
     
-    // Wait for network idle + settle time
-    await page.waitForLoadState('networkidle').catch(() => {});
+    // Wait for network idle + settle time for dynamic JS rendering
+    await Promise.race([
+      page.waitForLoadState('networkidle').catch(() => {}),
+      page.waitForTimeout(2000)
+    ]);
     await humanPause(1200, 1400);
     
     // Check payment page guard (post-navigation)
@@ -315,17 +319,30 @@ async function discoverProgramFieldsMultiStep(
       };
     }
     
-    // Collect all visible inputs
-    const selector = 'input:visible, select:visible, textarea:visible, [contenteditable="true"]:visible, [name]:visible, [id]:visible, [data-drupal-selector]:visible';
+    // Collect all visible fields with broad selector
+    const selector = 'input, select, textarea, [contenteditable="true"], [name], [id], [data-drupal-selector]';
     const elements = await page.locator(selector).all();
     
     let newFieldsThisStep = 0;
     for (const el of elements) {
+      // Skip if not visible
+      const isVisible = await el.isVisible().catch(() => false);
+      if (!isVisible) continue;
+      
       const name = await el.getAttribute('name').catch(() => '');
       const id = await el.getAttribute('id').catch(() => '');
       const type = await el.getAttribute('type').catch(() => 'text');
+      const ariaLabel = await el.getAttribute('aria-label').catch(() => '');
+      const placeholder = await el.getAttribute('placeholder').catch(() => '');
       
-      const rawKey = name || id;
+      // Try to get label by ID
+      let labelText = '';
+      if (id) {
+        const label = await page.locator(`label[for="${id}"]`).first().textContent().catch(() => '');
+        labelText = label || '';
+      }
+      
+      const rawKey = name || id || ariaLabel || labelText;
       if (!rawKey) continue;
       
       const fieldKey = normalizeFieldKey(rawKey);
@@ -333,9 +350,7 @@ async function discoverProgramFieldsMultiStep(
       if (!allFields.has(fieldKey)) {
         newFieldsThisStep++;
         
-        const label = await el.getAttribute('aria-label').catch(() => '') ||
-                     await el.getAttribute('placeholder').catch(() => '') ||
-                     humanizeFieldKey(fieldKey);
+        const label = labelText || ariaLabel || placeholder || humanizeFieldKey(fieldKey);
         
         allFields.set(fieldKey, {
           id: fieldKey,
@@ -344,6 +359,8 @@ async function discoverProgramFieldsMultiStep(
           required: await el.getAttribute('required').catch(() => null) !== null,
           seenAtSteps: [i + 1]
         });
+        
+        console.log(`[ProgramMultiStep] New field: ${fieldKey} (${label})`);
       } else {
         // Field seen again, track step
         const existing = allFields.get(fieldKey)!;
@@ -393,16 +410,29 @@ async function discoverProgramFieldsMultiStep(
       };
     }
     
-    // Find Next/Continue/Confirm button
-    const nextCandidates = await page.locator('button, input[type="submit"], a').all();
+    // Find Next/Continue/Confirm button with broad candidates
+    const nextCandidates = [
+      'button[type="submit"]:visible',
+      'button:has-text("Next"):visible',
+      'button:has-text("Continue"):visible',
+      'a:has-text("Next"):visible',
+      'button:has-text("Confirm"):visible',
+      'button:has-text("Proceed"):visible',
+      'button:has-text("Register"):visible',
+      'button:has-text("Submit"):visible'
+    ];
+    
     let clickedNext = false;
     
-    for (const candidate of nextCandidates) {
-      const text = await candidate.textContent().catch(() => '');
-      const lowerText = (text || '').toLowerCase();
+    for (const selector of nextCandidates) {
+      const candidates = await page.locator(selector).all();
       
-      // Match Next/Continue/Confirm but NOT payment buttons
-      if (/(next|continue|confirm|proceed|submit)/.test(lowerText)) {
+      for (const candidate of candidates) {
+        const isVisible = await candidate.isVisible().catch(() => false);
+        if (!isVisible) continue;
+        
+        const text = await candidate.textContent().catch(() => '');
+        
         // Pre-click payment guard
         if (await isPaymentButton(candidate)) {
           console.log('[ProgramMultiStep] 🛑 Payment button detected - stopping');
@@ -421,19 +451,45 @@ async function discoverProgramFieldsMultiStep(
         }
         
         // Safe to click
-        console.log(`[ProgramMultiStep] Clicking: "${text}"`);
+        console.log(`[ProgramMultiStep] Clicking: "${text}" (selector: ${selector})`);
         await candidate.click().catch(() => {});
         clickedNext = true;
         await humanPause(500, 800);
+        
+        // Wait for navigation/rendering with Promise.race
+        await Promise.race([
+          page.waitForURL(u => u !== prevUrl, { timeout: 8000 }).catch(() => {}),
+          page.waitForLoadState('networkidle').catch(() => {}),
+          page.waitForTimeout(1200)
+        ]);
         
         // Track new URL if changed
         const newUrl = page.url();
         if (!urlsVisited.includes(newUrl)) {
           urlsVisited.push(newUrl);
+          console.log('[ProgramMultiStep] Navigated to new URL:', newUrl);
+        }
+        
+        // Post-click payment guard
+        if (await pageIndicatesPayment(page)) {
+          console.log('[ProgramMultiStep] 🛑 Payment page detected after click - stopping');
+          const evidence = await capturePaymentEvidence(page, 'payment_page');
+          return {
+            fields: Array.from(allFields.values()).map(f => {
+              const { seenAtSteps, ...field } = f;
+              return field;
+            }),
+            loopCount,
+            confidence: 0.7,
+            urlsVisited,
+            stops: { reason: 'payment_detected', evidence }
+          };
         }
         
         break;
       }
+      
+      if (clickedNext) break;
     }
     
     // If we didn't click anything, we're done

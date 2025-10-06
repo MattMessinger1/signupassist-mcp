@@ -26,10 +26,12 @@ export async function isPaymentButton(locator: Locator): Promise<boolean> {
       /buy\s*now/i,
       /submit\s*payment/i,
       /confirm\s*purchase/i,
-      /finalize/i
+      /finalize/i,
+      /add\s*to\s*cart/i
     ];
     
     if (paymentTextPatterns.some(rx => rx.test(lowerText))) {
+      console.log('[Guardrails] Payment button detected by text:', lowerText);
       return true;
     }
     
