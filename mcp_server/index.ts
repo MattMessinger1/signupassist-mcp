@@ -150,6 +150,11 @@ class SignupAssistMCPServer {
               }
 
               const { tool, args } = parsedBody;
+              const runId = req.headers['x-run-id'] || crypto.randomUUID();
+              const stage = args?.stage || 'program'; // Default to program for backwards compatibility
+              const prefix = stage === 'prereq' ? '[Prereq]' : '[Program]';
+              
+              console.log(`${prefix} run=${runId} start tool=${tool} plan=${args?.plan_id || 'none'}`);
               
               if (!tool) {
                 res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -168,7 +173,17 @@ class SignupAssistMCPServer {
               }
 
               const toolInstance = this.tools.get(tool);
-              const result = await toolInstance.handler(args || {});
+              
+              // Add stage and run_id to args for logging
+              const enrichedArgs = {
+                ...args,
+                _stage: stage,
+                _run_id: runId,
+              };
+              
+              const result = await toolInstance.handler(enrichedArgs);
+              
+              console.log(`${prefix} run=${runId} done success=${!!result.success} fields=${result.program_questions?.length || 0}`);
               
               res.writeHead(200, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify(result));

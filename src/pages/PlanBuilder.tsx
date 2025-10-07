@@ -45,6 +45,7 @@ import { prompts, fmt } from '@/lib/prompts';
 import { useToastLogger } from '@/lib/logging/useToastLogger';
 import { chooseDefaultAnswer } from '@/lib/smartDefaults';
 import { DiscoveryCoverage } from '@/components/DiscoveryCoverage';
+import { mcpDiscover } from '@/lib/mcp';
 
 const stripePromise = loadStripe('pk_test_51RujoPAaGNDlVi1koVlBSBBXy2yfwz7vuMBciJxkawKBKaqwR4xw07wEFUAMa73ADIUqzwB5GwbPM3YnPYu5vo4X00rAdiwPkx');
 
@@ -483,6 +484,135 @@ const PlanBuilder = () => {
     return answers;
   };
 
+  // Prerequisite Discovery - Stage: "prereq"
+  const handleCheckPrereqs = async () => {
+    const programRef = form.watch('programRef');
+    const credentialId = form.watch('credentialId');
+    
+    if (!programRef || !credentialId) {
+      toast({
+        title: 'Missing Information',
+        description: 'Please select a program and credentials first',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    // Reset program data to prevent showing old results during prereq check
+    setProgramQuestions([]);
+    setDiscoveredSchema(null);
+    setIsDiscovering(true);
+
+    try {
+      toastLogger('prereq_check', 'Checking prerequisites...', 'info', { programRef });
+      
+      const { data, run_id } = await mcpDiscover({
+        stage: "prereq",
+        program_ref: programRef,
+        credential_id: credentialId,
+        base_url: "https://blackhawk.skiclubpro.team",
+      });
+
+      console.log('[PlanBuilder] Prereq check result (run_id:', run_id, '):', data);
+
+      if (data?.prerequisite_status) {
+        setPrerequisiteStatus(data.prerequisite_status);
+        
+        if (data.prerequisite_status === 'complete') {
+          toast({
+            title: 'Prerequisites Complete',
+            description: 'All prerequisites are satisfied. Click "Continue to Program Questions" below.',
+          });
+        } else {
+          toast({
+            title: 'Prerequisites Required',
+            description: 'Please complete the missing prerequisites before continuing.',
+            variant: 'destructive',
+          });
+        }
+      }
+
+      if (data?.prerequisite_checks) {
+        setPrerequisiteChecks(data.prerequisite_checks);
+      }
+    } catch (error) {
+      console.error('[PlanBuilder] Prereq check error:', error);
+      toast({
+        title: 'Prerequisite Check Failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDiscovering(false);
+    }
+  };
+
+  // Program Discovery - Stage: "program"
+  const handleProgramDiscovery = async () => {
+    const programRef = form.watch('programRef');
+    const credentialId = form.watch('credentialId');
+    
+    if (!programRef || !credentialId) {
+      toast({
+        title: 'Missing Information',
+        description: 'Please select a program and credentials first',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsDiscovering(true);
+
+    try {
+      toastLogger('program_discovery', 'Discovering program fields...', 'info', { programRef });
+      
+      const { data, run_id } = await mcpDiscover({
+        stage: "program",
+        program_ref: programRef,
+        credential_id: credentialId,
+        base_url: "https://blackhawk.skiclubpro.team",
+        program_id: 309,
+        child_name: selectedChildName || '',
+      });
+
+      console.log('[PlanBuilder] Program discovery result (run_id:', run_id, '):', data);
+
+      if (data?.success) {
+        setProgramQuestions(data.program_questions || []);
+        setDiscoveredSchema({
+          program_ref: programRef,
+          branches: [],
+          common_questions: [],
+          discoveryCompleted: true
+        });
+        
+        if (data.metadata) {
+          setDiscoveryMetadata(data.metadata);
+        }
+
+        toast({
+          title: 'Program Fields Discovered',
+          description: `Found ${data.program_questions?.length || 0} questions. Review and answer below.`,
+        });
+      } else {
+        toast({
+          title: 'Discovery Failed',
+          description: data?.error || 'Could not discover program fields',
+          variant: 'destructive',
+        });
+      }
+    } catch (error) {
+      console.error('[PlanBuilder] Program discovery error:', error);
+      toast({
+        title: 'Program Discovery Failed',
+        description: error instanceof Error ? error.message : 'Unknown error',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDiscovering(false);
+    }
+  };
+
   const discoverFields = async (programRef: string) => {
     if (!user || !session) {
       toast({
@@ -725,16 +855,6 @@ const PlanBuilder = () => {
   };
 
   const handleRecheckProgramQuestions = async () => {
-    const programRef = form.watch('programRef');
-    if (!programRef) {
-      toast({
-        title: 'Missing Program',
-        description: 'Please select a program first',
-        variant: 'destructive',
-      });
-      return;
-    }
-
     toastLogger('program_questions', 'Rechecking program questions…', 'info');
     
     toast({
@@ -742,8 +862,8 @@ const PlanBuilder = () => {
       description: 'Re-discovering program fields. This may take 5-10 seconds.',
     });
     
-    // Re-run discovery to get fresh program questions
-    await discoverFields(programRef);
+    // Use new stage-specific function
+    await handleProgramDiscovery();
   };
 
   const startSignupJob = async (planId: string) => {
