@@ -1,24 +1,101 @@
-import type { DiscoveredField } from './htmlToJsonSchema.js';
+import { DiscoveredField } from "./htmlToJsonSchema.js";
 
-export interface ProgramQuestion {
+export type ProgramQuestion = {
   id: string;
   label: string;
-  type: "text" | "number" | "date" | "select" | "radio" | "checkbox" | "textarea";
+  type: "text"|"number"|"date"|"select"|"radio"|"checkbox"|"textarea";
   required: boolean;
   options?: string[];
   description?: string;
   dependsOn?: string;
   showWhen?: any;
+};
+
+function normText(s?: string) {
+  return (s || "").trim().replace(/\s+/g, " ");
+}
+
+function dedupe<T>(arr: T[]) { return Array.from(new Set(arr)); }
+
+function stripPlaceholders(arr: string[]) {
+  return arr.filter(o =>
+    o &&
+    !/^(-\s*)?select\s*-?$/i.test(o) &&
+    !/^choose|pick/i.test(o) &&
+    o !== "_none"
+  );
+}
+
+function stripTrailingPrice(arr: string[]) {
+  // Remove trailing " ($25.00)" etc.
+  return arr.map(o => o.replace(/\s*\(\$\s*\d+(?:\.\d{2})?\)\s*$/,"").trim());
+}
+
+function normalizeOptions(opts: any): string[] | undefined {
+  if (!opts) return undefined;
+  let out: string[] = [];
+
+  if (Array.isArray(opts)) {
+    out = opts.map((o: any) =>
+      typeof o === "string" ? normText(o)
+        : typeof o === "object" ? normText(o.label || o.text || o.value)
+        : ""
+    ).filter(Boolean);
+  } else if (typeof opts === "object") {
+    out = Object.values(opts).map(v => normText(String(v)));
+  }
+
+  out = stripPlaceholders(out);
+  out = stripTrailingPrice(out);
+  out = dedupe(out);
+
+  return out.length ? out : undefined;
+}
+
+function inferType(f: any): ProgramQuestion["type"] {
+  const t = (f.type || f.inputType || f.widget || f.control || f.tagName || "").toLowerCase();
+  if (t.includes("select") || (Array.isArray(f.options) && f.options.length)) return "select";
+  if (t.includes("radio")) return "radio";
+  if (t.includes("checkbox")) return "checkbox";
+  if (t.includes("textarea")) return "textarea";
+  if (t.includes("number")) return "number";
+  if (t.includes("date")) return "date";
+  return "text";
+}
+
+function shouldSkip(f: DiscoveredField): boolean {
+  const id = (f.id || "").toLowerCase();
+  const label = (f.label || "").toLowerCase();
+  // Filter out honeypots, hidden participant controls, coupon/captcha, etc.
+  if (id.startsWith("anon_")) return true;
+  if (/participant/.test(id) || /participant/.test(label)) return true;
+  if (/captcha|coupon|discount|code/.test(id + " " + label)) return true;
+  if ((f as any).hidden === true || (f as any).visible === false) return true;
+  return false;
 }
 
 export function mapFieldsToProgramQuestions(fields: DiscoveredField[]): ProgramQuestion[] {
-  return fields.map(f => ({
-    id: f.id,
-    label: f.label || f.id,
-    type: (f.type as any) ?? "text",
-    required: !!f.required,
-    options: f.options?.map(o => o.value),
-    dependsOn: f.visibleWhen?.dependsOn,
-    showWhen: f.visibleWhen?.value,
-  }));
+  return fields
+    .filter(f => !shouldSkip(f))
+    .map(f => {
+      const type = inferType(f);
+      const options = normalizeOptions((f as any).options);
+      return {
+        id: f.id,
+        label: f.label ? normText(f.label) : f.id,
+        type,
+        required: !!f.required,
+        options,
+        description: (f as any).description,
+        dependsOn: (f as any).visibleWhen?.dependsOn,
+        showWhen: (f as any).visibleWhen?.value,
+      };
+    })
+    // Only keep real questions: select/radio/checkbox/textarea/date/number or
+    // text fields that are explicitly required with no prefilled value.
+    .filter(q =>
+      q.type !== "text"
+        ? true
+        : q.required === true
+    );
 }
