@@ -122,6 +122,7 @@ interface RequestBody {
   program_ref: string;
   credential_id: string;
   child_name?: string;
+  mode?: 'full' | 'prerequisites_only';
 }
 
 Deno.serve(async (req) => {
@@ -165,7 +166,7 @@ Deno.serve(async (req) => {
     console.log("auth user id:", user.id);
 
     const body: RequestBody = await req.json();
-    const { program_ref, credential_id, child_name } = body;
+    const { program_ref, credential_id, child_name, mode } = body;
 
     // Validate required fields
     if (!program_ref || !credential_id) {
@@ -408,6 +409,7 @@ Deno.serve(async (req) => {
         mandate_id,
         credential_id,
         user_jwt: userJwt,
+        mode: mode || 'full',                  // 🔑 Pass mode parameter
         warm_hints_prereqs: warmHintsPrereqs,  // 🧩 Pass prerequisite hints
         warm_hints_program: warmHintsProgram,  // 🧩 Pass program hints
         child_name: child_name || ''           // 🧩 Pass selected child name

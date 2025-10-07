@@ -896,16 +896,8 @@ const PlanBuilder = () => {
   };
 
   const handleRecheckPrereqs = async () => {
-    const programRef = form.watch('programRef');
-    if (!programRef) {
-      toast({
-        title: 'Missing Program',
-        description: 'Please select a program first',
-        variant: 'destructive',
-      });
-      return;
-    }
-    await discoverFields(programRef);
+    // Use prerequisites-only discovery instead of full discovery
+    await handleCheckPrerequisitesOnly();
   };
 
   const handleRecheckProgramQuestions = async () => {
