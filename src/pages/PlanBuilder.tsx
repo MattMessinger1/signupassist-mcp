@@ -965,18 +965,16 @@ const PlanBuilder = () => {
             clearInterval(pollInterval);
             setIsDiscovering(false);
 
-            const result = jobData.result || {};
-            
-            // Extract prerequisite checks
-            if (result.prerequisite_checks) {
-              setPrerequisiteChecks(result.prerequisite_checks);
-              setPrerequisiteStatus(result.prerequisite_status || 'unknown');
+            // Access data directly from jobData, not jobData.result
+            if (jobData.prerequisite_checks) {
+              setPrerequisiteChecks(jobData.prerequisite_checks);
+              setPrerequisiteStatus(jobData.metadata?.prerequisite_status || 'unknown');
               
-              console.log('[PlanBuilder] Prerequisites checked:', result.prerequisite_checks);
+              console.log('[PlanBuilder] Prerequisites checked:', jobData.prerequisite_checks);
               
               toast({
                 title: 'Prerequisites Checked',
-                description: `Verified ${result.prerequisite_checks.length} requirements`,
+                description: `Verified ${jobData.prerequisite_checks.length} requirements`,
               });
             } else {
               toast({
