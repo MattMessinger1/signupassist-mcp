@@ -63,7 +63,7 @@ export async function harvestVisibleFields(page: Page, stepId = "step1"): Promis
           required: !!el.required,
           options,
           x: { selector, step_id: stepId, label_confidence: label ? "high" : "low" }
-        };
+        } as DiscoveredField;
       })
   );
 
