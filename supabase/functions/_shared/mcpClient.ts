@@ -47,51 +47,67 @@ export async function invokeMCPTool(
       args: requestArgs
     }, null, 2));
 
-    const response = await fetch(`${mcpServerUrl}/tools/call`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        tool,
-        args: requestArgs
-      })
-    });
+    // Set timeout for long-running MCP operations (2 minutes)
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 seconds
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`MCP server returned ${response.status}:`, errorText);
-      throw new Error(`MCP Server Error: ${response.status} - ${errorText}`);
-    }
+    try {
+      const response = await fetch(`${mcpServerUrl}/tools/call`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tool,
+          args: requestArgs
+        }),
+        signal: controller.signal
+      });
 
-    const result = await response.json();
+      clearTimeout(timeoutId);
 
-    // Log audit trail if not skipped and we have required IDs
-    if (!skipAudit && (mandate_id || plan_execution_id)) {
-      let safePlanExecutionId = plan_execution_id;
-      
-      if (!safePlanExecutionId || safePlanExecutionId === "") {
-        console.log("DEBUG replacing empty or falsy plan_execution_id with null before audit");
-        safePlanExecutionId = null;
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`MCP server returned ${response.status}:`, errorText);
+        throw new Error(`MCP Server Error: ${response.status} - ${errorText}`);
       }
 
-      await logMCPAudit({
-        tool,
-        args,
-        result,
-        mandate_id,
-        plan_execution_id: safePlanExecutionId
-      });
-    } else if (skipAudit) {
-      console.log("DEBUG skipAudit=true — audit logging intentionally skipped for tool:", tool);
-    }
+      const result = await response.json();
 
-    return result;
+      // Log audit trail if not skipped and we have required IDs
+      if (!skipAudit && (mandate_id || plan_execution_id)) {
+        let safePlanExecutionId = plan_execution_id;
+        
+        if (!safePlanExecutionId || safePlanExecutionId === "") {
+          console.log("DEBUG replacing empty or falsy plan_execution_id with null before audit");
+          safePlanExecutionId = null;
+        }
+
+        await logMCPAudit({
+          tool,
+          args,
+          result,
+          mandate_id,
+          plan_execution_id: safePlanExecutionId
+        });
+      } else if (skipAudit) {
+        console.log("DEBUG skipAudit=true — audit logging intentionally skipped for tool:", tool);
+      }
+
+      return result;
+    } catch (error) {
+      clearTimeout(timeoutId);
+      
+      if (error.name === 'AbortError') {
+        throw new Error('MCP server request timed out after 2 minutes. The discovery process is taking too long.');
+      }
+      throw error;
+    }
 
   } catch (error) {
     console.error(`MCP tool ${tool} failed:`, error);
     
-    // Log failed audit trail
+    // Log failed audit trail if not skipped and we have required IDs
     if (!skipAudit && (mandate_id || plan_execution_id)) {
       let safePlanExecutionId = plan_execution_id;
       if (!safePlanExecutionId) {
