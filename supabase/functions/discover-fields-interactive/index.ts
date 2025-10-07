@@ -455,8 +455,10 @@ Deno.serve(async (req) => {
       // Map program_questions to PlanBuilder-compatible format using robust mapper
       const programQuestions = mapFieldsToProgramQuestions(result?.program_questions || []);
 
+      console.log(`[Discovery] Mapped ${result?.program_questions?.length || 0} raw fields → ${programQuestions.length} program questions`);
+
       const response = {
-        success: !!discoveredSchema,
+        success: !!(discoveredSchema || programQuestions.length > 0), // Success if we have branches OR program questions
         ...discoveredSchema,
         // Phase 2.5: Include prerequisite checks
         prerequisite_checks: result?.prerequisite_checks || [],

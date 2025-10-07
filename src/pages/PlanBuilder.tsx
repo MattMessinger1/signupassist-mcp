@@ -13,6 +13,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -1921,8 +1923,89 @@ const PlanBuilder = () => {
                         </div>
                       )}
 
-                      {/* Render fields grouped by category */}
-                      {Object.entries(fieldsByCategory).length > 0 ? (
+                      {/* Render program questions if available */}
+                      {programQuestions.length > 0 ? (
+                        <div className="space-y-6">
+                          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                            <p className="text-xs text-blue-800">
+                              <strong>Tip:</strong> Fill out all required fields marked with an asterisk (*).
+                              Your answers will be automatically provided during registration.
+                            </p>
+                          </div>
+                          
+                          {programQuestions.map((question) => (
+                            <FormField
+                              key={question.id}
+                              control={form.control}
+                              name={`answers.${question.id}`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>
+                                    {question.label}
+                                    {question.required && <span className="text-red-500 ml-1">*</span>}
+                                  </FormLabel>
+                                  <FormControl>
+                                    {question.type === 'select' ? (
+                                      <Select
+                                        value={field.value as string}
+                                        onValueChange={field.onChange}
+                                      >
+                                        <SelectTrigger>
+                                          <SelectValue placeholder={`Select ${question.label}`} />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {question.options?.map((option) => (
+                                            <SelectItem key={option} value={option}>
+                                              {option}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    ) : question.type === 'checkbox' ? (
+                                      <div className="space-y-2">
+                                        {question.options?.map((option) => {
+                                          const currentValue = field.value;
+                                          const isArray = Array.isArray(currentValue);
+                                          const checked = isArray && currentValue.includes(option);
+                                          
+                                          return (
+                                            <div key={option} className="flex items-center space-x-2">
+                                              <Checkbox
+                                                id={`${question.id}-${option}`}
+                                                checked={checked}
+                                                onCheckedChange={(isChecked) => {
+                                                  const current = isArray ? currentValue : [];
+                                                  if (isChecked) {
+                                                    field.onChange([...current, option]);
+                                                  } else {
+                                                    field.onChange(current.filter((v: string) => v !== option));
+                                                  }
+                                                }}
+                                              />
+                                              <Label htmlFor={`${question.id}-${option}`}>{option}</Label>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    ) : (
+                                      <Input
+                                        value={typeof field.value === 'string' ? field.value : ''}
+                                        onChange={field.onChange}
+                                        type="text"
+                                        placeholder={`Enter ${question.label}`}
+                                      />
+                                    )}
+                                  </FormControl>
+                                  {question.description && (
+                                    <FormDescription>{question.description}</FormDescription>
+                                  )}
+                                  <FormMessage />
+                                </FormItem>
+                              )}
+                            />
+                          ))}
+                        </div>
+                      ) : Object.entries(fieldsByCategory).length > 0 ? (
                         <div className="space-y-6">
                           <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                             <p className="text-xs text-blue-800">
