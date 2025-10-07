@@ -547,7 +547,7 @@ const PlanBuilder = () => {
     }
   };
 
-  // Program Discovery - Stage: "program"
+  // Program Discovery - Stage: "program" with async polling
   const handleProgramDiscovery = async () => {
     const programRef = form.watch('programRef');
     const credentialId = form.watch('credentialId');
@@ -564,54 +564,114 @@ const PlanBuilder = () => {
     setIsDiscovering(true);
 
     try {
-      toastLogger('program_discovery', 'Discovering program fields...', 'info', { programRef });
+      toastLogger('program_discovery', 'Starting discovery job...', 'info', { programRef });
       
-      const { data, error } = await supabase.functions.invoke('discover-fields-interactive', {
+      // Start the discovery job
+      const { data: jobData, error: jobError } = await supabase.functions.invoke('discover-fields-interactive', {
         body: {
           program_ref: programRef,
           credential_id: credentialId,
           child_name: selectedChildName || '',
-          // No 'mode' parameter = defaults to full discovery (prerequisites + program)
         }
       });
 
-      if (error) throw error;
+      if (jobError) throw jobError;
 
-      console.log('[PlanBuilder] Program discovery result:', data);
+      const jobId = jobData?.job_id;
+      if (!jobId) throw new Error('No job ID returned');
 
-      if (data?.success) {
-        setProgramQuestions(data.program_questions || []);
-        setDiscoveredSchema({
-          program_ref: programRef,
-          branches: [],
-          common_questions: [],
-          discoveryCompleted: true
-        });
-        
-        if (data.metadata) {
-          setDiscoveryMetadata(data.metadata);
-        }
-
-        toast({
-          title: 'Program Fields Discovered',
-          description: `Found ${data.program_questions?.length || 0} questions. Review and answer below.`,
-        });
-      } else {
-        toast({
-          title: 'Discovery Failed',
-          description: data?.error || 'Could not discover program fields',
-          variant: 'destructive',
-        });
-      }
-    } catch (error) {
-      console.error('[PlanBuilder] Program discovery error:', error);
+      console.log('[PlanBuilder] Discovery job started:', jobId);
+      
       toast({
-        title: 'Program Discovery Failed',
-        description: error instanceof Error ? error.message : 'Unknown error',
+        title: 'Discovery Started',
+        description: 'Checking prerequisites and discovering program questions...',
+      });
+
+      // Poll for job completion
+      const pollInterval = setInterval(async () => {
+        try {
+          const { data: job, error: checkError } = await supabase.functions.invoke('check-discovery-job', {
+            body: { job_id: jobId }
+          });
+
+          if (checkError) {
+            console.error('[PlanBuilder] Error checking job status:', checkError);
+            return;
+          }
+
+          console.log('[PlanBuilder] Job status:', job?.status);
+
+          if (job?.status === 'completed') {
+            clearInterval(pollInterval);
+            setIsDiscovering(false);
+
+            // Update UI with results
+            if (job.prerequisite_checks) {
+              setPrerequisiteChecks(job.prerequisite_checks);
+              setPrerequisiteStatus(job.metadata?.prerequisite_status || 'unknown');
+            }
+
+            if (job.program_questions && job.program_questions.length > 0) {
+              setProgramQuestions(job.program_questions);
+              setDiscoveredSchema(job.discovered_schema || {
+                program_ref: programRef,
+                branches: [],
+                common_questions: job.program_questions,
+                discoveryCompleted: true
+              });
+
+              toast({
+                title: 'Discovery Complete!',
+                description: `Found ${job.program_questions.length} program questions.`,
+              });
+            } else {
+              toast({
+                title: 'Discovery Complete',
+                description: 'No program questions found.',
+                variant: 'destructive',
+              });
+            }
+          } else if (job?.status === 'failed') {
+            clearInterval(pollInterval);
+            setIsDiscovering(false);
+
+            toast({
+              title: 'Discovery Failed',
+              description: job.error_message || 'Unknown error occurred',
+              variant: 'destructive',
+            });
+          } else if (job?.status === 'running') {
+            toast({
+              title: 'Discovery In Progress',
+              description: 'Still discovering fields...',
+            });
+          }
+        } catch (pollError) {
+          console.error('[PlanBuilder] Polling error:', pollError);
+        }
+      }, 3000); // Poll every 3 seconds
+
+      // Safety timeout: stop polling after 5 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        if (isDiscovering) {
+          setIsDiscovering(false);
+          toast({
+            title: 'Discovery Timeout',
+            description: 'Discovery is taking longer than expected. Please try again.',
+            variant: 'destructive',
+          });
+        }
+      }, 300000); // 5 minutes
+
+    } catch (error) {
+      console.error('[PlanBuilder] Discovery error:', error);
+      setIsDiscovering(false);
+      toast({
+        title: 'Discovery Failed',
+        description: error instanceof Error ? error.message : 'Could not discover program fields',
         variant: 'destructive',
       });
-    } finally {
-      setIsDiscovering(false);
     }
   };
 

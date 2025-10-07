@@ -224,6 +224,71 @@ export type Database = {
         }
         Relationships: []
       }
+      discovery_jobs: {
+        Row: {
+          child_name: string | null
+          completed_at: string | null
+          created_at: string | null
+          credential_id: string
+          discovered_schema: Json | null
+          error_message: string | null
+          id: string
+          mandate_id: string | null
+          metadata: Json | null
+          mode: string | null
+          prerequisite_checks: Json | null
+          program_questions: Json | null
+          program_ref: string
+          started_at: string | null
+          status: string
+          user_id: string
+        }
+        Insert: {
+          child_name?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          credential_id: string
+          discovered_schema?: Json | null
+          error_message?: string | null
+          id?: string
+          mandate_id?: string | null
+          metadata?: Json | null
+          mode?: string | null
+          prerequisite_checks?: Json | null
+          program_questions?: Json | null
+          program_ref: string
+          started_at?: string | null
+          status?: string
+          user_id: string
+        }
+        Update: {
+          child_name?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          credential_id?: string
+          discovered_schema?: Json | null
+          error_message?: string | null
+          id?: string
+          mandate_id?: string | null
+          metadata?: Json | null
+          mode?: string | null
+          prerequisite_checks?: Json | null
+          program_questions?: Json | null
+          program_ref?: string
+          started_at?: string | null
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "discovery_jobs_mandate_id_fkey"
+            columns: ["mandate_id"]
+            isOneToOne: false
+            referencedRelation: "mandates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       discovery_runs: {
         Row: {
           created_at: string

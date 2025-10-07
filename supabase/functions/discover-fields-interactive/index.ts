@@ -2,34 +2,50 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 import { SignJWT, importJWK } from 'https://esm.sh/jose@5.2.4';
 import { invokeMCPTool } from '../_shared/mcpClient.ts';
 import { generateFormFingerprint } from '../_shared/fingerprint.ts';
-import { toIsoStringSafe } from '../_shared/utils.ts';
 import { logStructuredError, sanitizeError } from '../_shared/errors.ts';
 import { verifyDecryption, sanitizeCredentialsForLog, CredentialError } from '../_shared/account-credentials.ts';
 
-// Inline mapping utilities (cannot import from mcp_server in edge functions)
+// Mapping utilities
+function mapValues<T, U>(obj: { [key: string]: T }, fn: (val: T, key: string) => U): { [key: string]: U } {
+  const newObj: { [key: string]: U } = {};
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      newObj[key] = fn(obj[key], key);
+    }
+  }
+  return newObj;
+}
+
+function remap<T>(obj: { [key: string]: T }, keyMap: { [key: string]: string }): { [key: string]: T } {
+  return mapValues(keyMap, (newKey, oldKey) => obj[oldKey]);
+}
+
+function filterNulls<T>(obj: { [key: string]: T | null | undefined }): { [key: string]: T } {
+  const newObj: { [key: string]: T } = {};
+  for (const key in obj) {
+    if (obj.hasOwnProperty(key)) {
+      const val = obj[key];
+      if (val != null) {
+        newObj[key] = val;
+      }
+    }
+  }
+  return newObj;
+}
+
 function normText(s?: string) {
   return (s || "").trim().replace(/\s+/g, " ");
 }
 
 function cleanLabel(raw: string): string {
   if (!raw) return "";
-
   let label = raw.trim();
-
-  // Remove common prefixes
   label = label.replace(/^(nordic\s*kids|program\s*\d+|registration)\s*/i, "");
-
-  // Remove leading/trailing punctuation and filler tokens
-  label = label.replace(/^[:\-\s]+|[:\-\s]+$/g, "");
+  label = label.replace(/^[:-\s]+|[:-\s]+$/g, "");
   label = label.replace(/\s{2,}/g, " ");
-
-  // Replace " - " with ": " for nicer UI labels
   label = label.replace(/\s*-\s*/g, ": ");
-
-  // Capitalize first letter of each word except small words
   label = label.replace(/\b([a-z])/g, (m) => m.toUpperCase());
   label = label.replace(/\b(Of|And|For|To|In|On|At|With|A|An|The)\b/g, (m) => m.toLowerCase());
-
   return label.trim();
 }
 
@@ -45,13 +61,12 @@ function stripPlaceholders(arr: string[]) {
 }
 
 function stripTrailingPrice(arr: string[]) {
-  return arr.map(o => o.replace(/\s*\(\$\s*\d+(?:\.\d{2})?\)\s*$/,"").trim());
+  return arr.map(o => o.replace(/\s*(\$\s*\d+(?:\.\d{2})?)\s*$/,"").trim());
 }
 
 function normalizeOptions(opts: any): string[] | undefined {
   if (!opts) return undefined;
   let out: string[] = [];
-
   if (Array.isArray(opts)) {
     out = opts.map((o: any) =>
       typeof o === "string" ? normText(o)
@@ -61,12 +76,10 @@ function normalizeOptions(opts: any): string[] | undefined {
   } else if (typeof opts === "object") {
     out = Object.values(opts).map(v => normText(String(v)));
   }
-
   out = stripPlaceholders(out);
   out = stripTrailingPrice(out);
-  out = out.map(o => cleanLabel(o)); // Clean option labels
+  out = out.map(o => cleanLabel(o));
   out = dedupe(out);
-
   return out.length ? out : undefined;
 }
 
@@ -99,7 +112,7 @@ function mapFieldsToProgramQuestions(fields: any[]): any[] {
       const options = normalizeOptions(f.options);
       return {
         id: f.id,
-        label: cleanLabel(f.label || f.id), // Use cleanLabel for better formatting
+        label: cleanLabel(f.label || f.id),
         type,
         required: !!f.required,
         options,
@@ -125,155 +138,39 @@ interface RequestBody {
   mode?: 'full' | 'prerequisites_only';
 }
 
-Deno.serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+// Background discovery function
+async function runDiscoveryInBackground(jobId: string, requestBody: RequestBody, authHeader: string) {
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+  );
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-    );
+    // Update job status to running
+    await supabase
+      .from('discovery_jobs')
+      .update({ status: 'running', started_at: new Date().toISOString() })
+      .eq('id', jobId);
 
-    // Check authentication
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Authentication Required: Please log in to discover program fields' }),
-        { 
-          status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
+    console.log(`[Job ${jobId}] Starting background discovery...`);
 
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace('Bearer ', '')
-    );
+    const { data: { user } } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
+    if (!user) throw new Error('User not found');
 
-    if (authError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Session Expired: Please log in again to continue' }),
-        { 
-          status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
+    const { program_ref, credential_id, child_name, mode } = requestBody;
 
-    console.log("auth user id:", user.id);
+    // Load and decrypt credentials
+    const { data: credentialData, error: credError } = await supabase.functions.invoke('cred-get', {
+      headers: { Authorization: authHeader },
+      body: { id: credential_id }
+    });
 
-    const body: RequestBody = await req.json();
-    const { program_ref, credential_id, child_name, mode } = body;
+    if (credError || !credentialData) throw new Error('Credential decryption failed');
+    verifyDecryption(credentialData);
 
-    // Validate required fields
-    if (!program_ref || !credential_id) {
-      console.error('Missing required fields:', { program_ref, credential_id });
-      return new Response(
-        JSON.stringify({ 
-          error: 'Missing program_ref or credential_id',
-          received: { program_ref, credential_id }
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    console.log(`Interactive field discovery for program ${program_ref}, credential ${credential_id}`);
-    console.log('Payload received:', { program_ref, credential_id });
-
-    // Load and decrypt the credential - wrap in try/catch for proper error handling
-    let credentialData;
-    try {
-      const { data, error: credError } = await supabase.functions.invoke('cred-get', {
-        headers: {
-          Authorization: authHeader
-        },
-        body: { id: credential_id }
-      });
-
-      if (credError || !data) {
-        throw new Error(credError?.message || 'Credential decryption failed');
-      }
-
-      credentialData = data;
-      console.log('Credential successfully decrypted');
-
-      // Verify decryption produced valid credentials
-      try {
-        verifyDecryption(credentialData);
-        console.log('Credential validation passed:', sanitizeCredentialsForLog(credentialData));
-        
-        // Log successful validation
-        await logStructuredError(supabase, {
-          stage: 'token_validation',
-          error: 'success',
-          credential_id,
-          program_ref,
-          validationResult: 'passed'
-        });
-        
-      } catch (validationError) {
-        const isCredError = validationError instanceof CredentialError;
-        const sanitizedError = sanitizeError(validationError);
-        
-        console.error('Token validation failed:', sanitizedError);
-        console.error('Credential format:', sanitizeCredentialsForLog(credentialData));
-        
-        // Log validation failure
-        await logStructuredError(supabase, {
-          stage: 'token_validation',
-          error: sanitizedError,
-          credential_id,
-          program_ref,
-          credentialFormat: sanitizeCredentialsForLog(credentialData)
-        });
-        
-        return new Response(
-          JSON.stringify({ 
-            error_code: 'TOKEN_VALIDATION_FAILED',
-            error: 'Token validation failed',
-            message: isCredError ? sanitizedError : 'Decrypted credentials are invalid. Please re-save your credentials.'
-          }),
-          { 
-            status: 400, 
-            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-          }
-        );
-      }
-
-    } catch (credError) {
-      const sanitizedError = sanitizeError(credError);
-      console.error('Credential decryption failed:', sanitizedError);
-
-      // Log structured error
-      await logStructuredError(supabase, {
-        stage: 'credential_decryption',
-        error: sanitizedError,
-        credential_id,
-        program_ref
-      });
-
-      return new Response(
-        JSON.stringify({ 
-          error_code: 'CREDENTIAL_DECRYPTION_FAILED',
-          error: 'Credential decryption failed',
-          message: 'Unable to decrypt credentials. Please verify your credentials are properly saved.'
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    // Generate mandate with JWS
+    // Generate mandate
     const mandate_id = crypto.randomUUID();
-    const validUntil = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const validUntil = new Date(Date.now() + 24 * 60 * 60 * 1000);
     const validFrom = new Date();
     
     const mandatePayload = {
@@ -288,270 +185,238 @@ Deno.serve(async (req) => {
       credential_type: 'jws' as const,
     };
 
-    console.log('Creating temporary mandate for field discovery:', mandatePayload);
-    console.log("mandate payload keys:", Object.keys(mandatePayload));
-
-    // Generate JWS token
     const signingKey = Deno.env.get('MANDATE_SIGNING_KEY');
-    if (!signingKey) {
-      throw new Error('MANDATE_SIGNING_KEY environment variable is required');
-    }
+    if (!signingKey) throw new Error('MANDATE_SIGNING_KEY not set');
 
-    // Decode the base64 signing key using Buffer-compatible method  
     const keyBytes = Uint8Array.from(atob(signingKey), c => c.charCodeAt(0));
-    
-    // Create JWK using consistent base64url encoding that matches MCP server
     const jwk = {
       kty: 'oct',
       k: btoa(String.fromCharCode(...keyBytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, ''),
     };
-
     const secret = await importJWK(jwk, 'HS256');
 
-    console.log("DEBUG validFrom:", validFrom.toISOString());
-    console.log("DEBUG validUntil:", validUntil.toISOString());
-
-    // Create and sign JWT with Date objects for proper time handling
     const jws = await new SignJWT(mandatePayload)
       .setProtectedHeader({ alg: 'HS256' })
       .setIssuedAt()
-      .setNotBefore(validFrom)        // Pass Date instead of seconds
+      .setNotBefore(validFrom)
       .setIssuer('signupassist-platform')
       .setAudience('signupassist-mcp')
-      .setExpirationTime(validUntil)  // Pass Date instead of seconds
+      .setExpirationTime(validUntil)
       .sign(secret);
 
-    // Insert mandate directly into database
-    const supabaseService = createClient(
+    await supabase.from('mandates').insert({
+      id: mandate_id,
+      user_id: user.id,
+      provider: 'skiclubpro',
+      scope: ['scp:read:listings'],
+      program_ref,
+      max_amount_cents: 0,
+      valid_from: mandatePayload.valid_from,
+      valid_until: mandatePayload.valid_until,
+      credential_type: 'jws',
+      jws_compact: jws,
+      status: 'active'
+    });
+
+    // Get warm hints
+    const formFingerprint = await generateFormFingerprint(`${program_ref}|${credential_id}`);
+    
+    const { data: prereqHints } = await supabase.rpc("get_best_hints", {
+      p_provider: "skiclubpro",
+      p_program: `${program_ref}_prereqs`,
+      p_stage: "prerequisites",
+    });
+    const warmHintsPrereqs = prereqHints?.hints ?? {};
+
+    const { data: programHints } = await supabase.rpc("get_best_hints", {
+      p_provider: "skiclubpro",
+      p_program: program_ref,
+      p_stage: "program",
+    });
+    const warmHintsProgram = programHints?.hints ?? {};
+
+    // Call MCP discovery
+    const userJwt = authHeader.replace('Bearer ', '');
+    const result = await invokeMCPTool("scp.discover_required_fields", {
+      program_ref,
+      mandate_id,
+      credential_id,
+      user_jwt: userJwt,
+      mode: mode || 'full',
+      warm_hints_prereqs: warmHintsPrereqs,
+      warm_hints_program: warmHintsProgram,
+      child_name: child_name || ''
+    }, {
+      mandate_id,
+      skipAudit: true
+    });
+
+    console.log(`[Job ${jobId}] Discovery completed:`, result);
+
+    // Persist discovery runs
+    if (result?.prerequisite_checks && result.prerequisite_checks.length > 0) {
+      await supabase.rpc("upsert_discovery_run", {
+        p_provider: "skiclubpro",
+        p_program: `${program_ref}_prereqs`,
+        p_fingerprint: formFingerprint,
+        p_stage: "prerequisites",
+        p_errors: JSON.stringify(result.prerequisite_checks),
+        p_meta: JSON.stringify({
+          status: result.prerequisite_status,
+          loopCount: result.metadata?.prerequisitesLoops ?? 0,
+          checks: result.prerequisite_checks.map((c: any) => ({ id: c.id, status: c.status }))
+        }),
+        p_run_conf: result.metadata?.prerequisitesConfidence ?? 0.8,
+        p_run_id: crypto.randomUUID(),
+      });
+    }
+    
+    if (result?.program_questions && result.program_questions.length > 0) {
+      await supabase.rpc("upsert_discovery_run", {
+        p_provider: "skiclubpro",
+        p_program: program_ref,
+        p_fingerprint: formFingerprint,
+        p_stage: "program",
+        p_errors: JSON.stringify(result.program_questions),
+        p_meta: JSON.stringify({
+          formWatchOpensAt: result?.formWatchOpensAt ?? null,
+          formWatchClosesAt: result?.formWatchClosesAt ?? null,
+          loopCount: result.metadata?.programLoops ?? null,
+          usedWarmHints: Object.keys(warmHintsProgram).length > 0,
+        }),
+        p_run_conf: result?.branches ? 0.9 : 0.6,
+        p_run_id: crypto.randomUUID(),
+      });
+    }
+
+    // Map and store results
+    const programQuestions = mapFieldsToProgramQuestions(result?.program_questions || []);
+    const discoveredSchema = programQuestions.length > 0 ? {
+      program_ref,
+      branches: [],
+      common_questions: programQuestions,
+      discoveryCompleted: true
+    } : null;
+
+    // Update job as completed
+    await supabase
+      .from('discovery_jobs')
+      .update({
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        prerequisite_checks: result?.prerequisite_checks || null,
+        program_questions: programQuestions || null,
+        discovered_schema: discoveredSchema,
+        metadata: {
+          prerequisite_status: result?.prerequisite_status,
+          metadata: result?.metadata
+        }
+      })
+      .eq('id', jobId);
+
+    console.log(`[Job ${jobId}] Successfully completed and saved`);
+
+  } catch (error) {
+    console.error(`[Job ${jobId}] Failed:`, error);
+    
+    await supabase
+      .from('discovery_jobs')
+      .update({
+        status: 'failed',
+        completed_at: new Date().toISOString(),
+        error_message: error instanceof Error ? error.message : 'Unknown error'
+      })
+      .eq('id', jobId);
+  }
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { headers: corsHeaders });
+  }
+
+  try {
+    const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
 
-    const { data: mandateData, error: mandateError } = await supabaseService
-      .from('mandates')
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Authentication Required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { data: { user }, error: authError } = await supabase.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    );
+
+    if (authError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Session Expired' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const body: RequestBody = await req.json();
+    const { program_ref, credential_id, child_name, mode } = body;
+
+    if (!program_ref || !credential_id) {
+      return new Response(
+        JSON.stringify({ error: 'Missing program_ref or credential_id' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Create discovery job record
+    const { data: job, error: jobError } = await supabase
+      .from('discovery_jobs')
       .insert({
-        id: mandate_id,
         user_id: user.id,
-        provider: 'skiclubpro',
-        scope: ['scp:read:listings'],  // Use singular 'scope' to match DB column
         program_ref,
-        max_amount_cents: 0,
-        valid_from: mandatePayload.valid_from,
-        valid_until: mandatePayload.valid_until,
-        credential_type: 'jws',
-        jws_compact: jws,
-        status: 'active'
+        credential_id,
+        child_name: child_name || null,
+        mode: mode || 'full',
+        status: 'pending'
       })
       .select()
       .single();
 
-    if (mandateError || !mandateData) {
-      console.error('Failed to insert mandate:', mandateError);
+    if (jobError || !job) {
+      console.error('Failed to create discovery job:', jobError);
       return new Response(
-        JSON.stringify({ 
-          error: 'Failed to create mandate',
-          details: mandateError?.message || 'Unknown error'
-        }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-    console.log(`Issued mandate ${mandate_id} for interactive field discovery`);
-    console.log("mandate id returned:", mandateData?.id, "error:", mandateError);
-
-    // Compute a stable fingerprint for this form URL using Web Crypto API
-    const formFingerprint = await generateFormFingerprint(`${program_ref}|${credential_id}`);
-
-    console.log("formFingerprint:", formFingerprint);
-
-    // Load warm hints for BOTH prerequisites and program stages (Phase 2.5)
-    let warmHintsPrereqs = {};
-    let warmHintsProgram = {};
-    
-    try {
-      // Load prerequisites hints
-      const { data: prereqHints } = await supabase.rpc("get_best_hints", {
-        p_provider: "skiclubpro",
-        p_program: `${program_ref}_prereqs`,
-        p_stage: "prerequisites",
-      });
-      warmHintsPrereqs = prereqHints?.hints ?? {};
-      console.log("Loaded warmHintsPrereqs keys:", Object.keys(warmHintsPrereqs));
-    } catch (err) {
-      console.warn("No prerequisite warm hints available:", err.message);
-    }
-    
-    try {
-      // Load program hints
-      const { data: programHints } = await supabase.rpc("get_best_hints", {
-        p_provider: "skiclubpro",
-        p_program: program_ref,
-        p_stage: "program",
-      });
-      warmHintsProgram = programHints?.hints ?? {};
-      console.log("Loaded warmHintsProgram keys:", Object.keys(warmHintsProgram));
-    } catch (err) {
-      console.warn("No program warm hints available:", err.message);
-    }
-
-    // Call the MCP provider tool for field discovery directly
-    const userJwt = authHeader.replace('Bearer ', '');
-    console.log("invoking MCP with mandate_id:", mandate_id, "credential_id:", credential_id);
-    console.log("DEBUG interactive discovery: skipAudit=true, omitting plan_execution_id");
-    
-    const stageStart = Date.now();
-    
-    try {
-      const result = await invokeMCPTool("scp.discover_required_fields", {
-        program_ref,
-        mandate_id,
-        credential_id,
-        user_jwt: userJwt,
-        mode: mode || 'full',                  // 🔑 Pass mode parameter
-        warm_hints_prereqs: warmHintsPrereqs,  // 🧩 Pass prerequisite hints
-        warm_hints_program: warmHintsProgram,  // 🧩 Pass program hints
-        child_name: child_name || ''           // 🧩 Pass selected child name
-      }, {
-        mandate_id,
-        skipAudit: true
-      });
-
-      console.log('Field discovery completed:', result);
-
-      // Persist BOTH discovery runs for learning (Phase 2.5)
-      try {
-        // Persist prerequisites discovery if checks were performed
-        if (result?.prerequisite_checks && result.prerequisite_checks.length > 0) {
-          const prereqRunId = crypto.randomUUID();
-          await supabase.rpc("upsert_discovery_run", {
-            p_provider: "skiclubpro",
-            p_program: `${program_ref}_prereqs`,
-            p_fingerprint: formFingerprint,
-            p_stage: "prerequisites",
-            p_errors: JSON.stringify(result.prerequisite_checks),
-            p_meta: JSON.stringify({
-              status: result.prerequisite_status,
-              loopCount: result.metadata?.prerequisitesLoops ?? 0,
-              checks: result.prerequisite_checks.map((c: any) => ({ id: c.id, status: c.status }))
-            }),
-            p_run_conf: result.metadata?.prerequisitesConfidence ?? 0.8,
-            p_run_id: prereqRunId,
-          });
-          console.log("Persisted prerequisite discovery run:", prereqRunId);
-        }
-        
-        // Persist program discovery
-        if (result?.program_questions && result.program_questions.length > 0) {
-          const programRunId = crypto.randomUUID();
-          const errorsJson = JSON.stringify(result.program_questions);
-          const meta = {
-            formWatchOpensAt: result?.formWatchOpensAt ?? null,
-            formWatchClosesAt: result?.formWatchClosesAt ?? null,
-            loopCount: result.metadata?.programLoops ?? null,
-            usedWarmHints: Object.keys(warmHintsProgram).length > 0,
-          };
-          const runConfidence = result?.branches ? 0.9 : 0.6;
-
-          await supabase.rpc("upsert_discovery_run", {
-            p_provider: "skiclubpro",
-            p_program: program_ref,
-            p_fingerprint: formFingerprint,
-            p_stage: "program",
-            p_errors: errorsJson,
-            p_meta: JSON.stringify(meta),
-            p_run_conf: runConfidence,
-            p_run_id: programRunId,
-          });
-          console.log("Persisted program discovery run:", programRunId);
-        }
-      } catch (err) {
-        console.error("Failed to persist discovery runs:", err);
-      }
-
-      // Map program_questions to PlanBuilder-compatible format using robust mapper
-      const programQuestions = mapFieldsToProgramQuestions(result?.program_questions || []);
-
-      console.log(`[Discovery] Mapped ${result?.program_questions?.length || 0} raw fields → ${programQuestions.length} program questions`);
-      console.log(`[Discovery] Cleaned labels → ${programQuestions.map(q => q.label).join(", ")}`);
-
-      // Create discoveredSchema with correct structure
-      const discoveredSchema = programQuestions.length > 0 ? {
-        program_ref,
-        branches: [],  // No branching for now
-        common_questions: programQuestions,  // Use mapped questions
-        discoveryCompleted: true
-      } : null;
-
-      const response = {
-        success: mode === 'prerequisites_only' 
-          ? !!(result?.prerequisite_checks && result.prerequisite_checks.length > 0)
-          : !!(discoveredSchema || programQuestions.length > 0),
-        program_ref,
-        branches: discoveredSchema?.branches || [],
-        common_questions: discoveredSchema?.common_questions || [],
-        prerequisite_checks: result?.prerequisite_checks || [],
-        prerequisite_status: result?.prerequisite_status || 'unknown',
-        program_questions: programQuestions,
-        // ✅ Normalize all date fields to ISO strings
-        formWatchOpensAt: toIsoStringSafe(result?.formWatchOpensAt),
-        formWatchClosesAt: toIsoStringSafe(result?.formWatchClosesAt),
-        timestamp: new Date().toISOString(),
-        // Prompt 4: Add coverage metadata
-        metadata: {
-          programLoops: result?.metadata?.programLoops ?? 0,
-          prerequisitesLoops: result?.metadata?.prerequisitesLoops ?? 0,
-          urlsVisited: result?.metadata?.urlsVisited ?? [],
-          stops: result?.metadata?.stops,
-          fieldsFound: result?.metadata?.fieldsFound ?? 0
-        }
-      };
-
-      console.log('Normalized response:', response);
-
-      const elapsedMs = Date.now() - stageStart;
-      console.log(`Discovery elapsed ${elapsedMs} ms`);
-
-      return new Response(JSON.stringify(response), { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      });
-
-    } catch (err) {
-      console.error("MCP call failed:", err);
-      const error = err as any;
-      
-      // Extract diagnostics if available
-      const errorResponse: any = {
-        error: `Field Discovery Failed: ${error?.message || "Unable to discover form fields for this program"}`
-      };
-      
-      if (error?.diagnostics) {
-        errorResponse.diagnostics = error.diagnostics;
-      }
-      
-      return new Response(
-        JSON.stringify(errorResponse),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
+        JSON.stringify({ error: 'Failed to create discovery job' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
+    console.log(`Created discovery job: ${job.id}`);
 
-  } catch (error) {
-    console.error('Error in discover-fields-interactive function:', error);
-    
+    // Start background processing
+    EdgeRuntime.waitUntil(
+      runDiscoveryInBackground(job.id, body, authHeader)
+    );
+
+    // Return job ID immediately
     return new Response(
       JSON.stringify({ 
-        error: `Field Discovery Error: ${error instanceof Error ? error.message : 'Unable to process field discovery request'}`
+        job_id: job.id,
+        status: 'pending',
+        message: 'Discovery job started. Poll for results.'
       }),
       { 
-        status: 400, 
+        status: 202, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
+    );
+
+  } catch (error) {
+    console.error('Unexpected error:', error);
+    return new Response(
+      JSON.stringify({ error: 'Internal server error' }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
