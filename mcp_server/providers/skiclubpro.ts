@@ -279,21 +279,23 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           console.log(`${P} Prerequisites complete: ${prereqResult.overallStatus} (${prereqResult.loopCount} loops)`);
           console.log(`${P} run=${runId} done status=${prereqResult.overallStatus}`);
           
-          // Return prerequisites-only result
+          // Return prerequisites-only result matching FieldSchema
           return {
             program_ref: args.program_ref,
-            success: true,
-            stage: 'prereq',
-            prerequisite_checks: prereqResult.checks,
             prerequisite_status: prereqResult.overallStatus,
             program_questions: [],
             metadata: {
+              url: baseUrl,
+              field_count: 0,
+              categories: [],
+              discovered_at: new Date().toISOString(),
+              // Additional metadata (not required by FieldSchema but useful)
               prerequisitesConfidence: prereqResult.confidence,
               prerequisitesLoops: prereqResult.loopCount,
               run: runId,
               stage: 'prereq'
             }
-          };
+          } as FieldSchema;
           
         } catch (error) {
           console.error(`${P} Prerequisite stage failed:`, error);
@@ -398,25 +400,26 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         console.log(`${P} Program fields found: ${programResult.fields.length} (${programResult.loopCount} loops)`);
         console.log(`${P} run=${runId} url=${programSession.page.url()} fields=${programResult.fields.length}`);
         
-        // Return program-only result (carry forward last known prereq status as "complete")
+        // Return program-only result matching FieldSchema
         return {
           program_ref: args.program_ref,
-          success: true,
-          stage: 'program',
-          prerequisite_checks: [],
           prerequisite_status: 'complete',
           program_questions: programResult.fields,
           metadata: {
+            url: programSession.page.url(),
+            field_count: programResult.fields.length,
+            categories: [],
+            discovered_at: new Date().toISOString(),
+            // Additional metadata (not required by FieldSchema but useful)
             programConfidence: programResult.confidence,
             programLoops: programResult.loopCount,
             urlsVisited: programResult.urlsVisited,
             stops: programResult.stops,
             fieldsFound: programResult.fields.length,
             run: runId,
-            stage: 'program',
-            url: programSession.page.url()
+            stage: 'program'
           }
-        };
+        } as FieldSchema;
         
       } catch (error) {
         console.error(`${P} Program discovery failed:`, error);
