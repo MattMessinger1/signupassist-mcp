@@ -260,6 +260,7 @@ async function discoverPrerequisites(
 
 /**
  * Navigate to program registration form
+ * For SkiClubPro, try /registration listing with scrolling first
  */
 async function navigateToProgramForm(
   page: Page,
@@ -270,7 +271,70 @@ async function navigateToProgramForm(
   
   console.log(`[ProgramNav] Using unified domain: ${baseDomain}, url: ${baseUrl}`);
   
-  // Try common program registration paths
+  // For SkiClubPro, try /registration listing first (with scrolling to load all programs)
+  if (baseDomain.includes('skiclubpro')) {
+    try {
+      const registrationUrl = `${baseUrl}/registration`;
+      console.log(`[ProgramNav] Opening /registration listing: ${registrationUrl}`);
+      await page.goto(registrationUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await humanPause(500, 800);
+      
+      // Scroll to load all rows/cards (many sites lazy-load)
+      console.log('[ProgramNav] Scrolling to load all programs...');
+      await page.evaluate(async () => {
+        for (let i = 0; i < 10; i++) {
+          window.scrollBy(0, window.innerHeight);
+          await new Promise(r => setTimeout(r, 500));
+        }
+      });
+      await humanPause(500, 800);
+      
+      // Try finding program by ID in href first
+      let link = page.locator(`a[href*="/registration/${programRef}/"], a[href*="/registration/${programRef}"]`).first();
+      let linkCount = await link.count();
+      
+      // If not found by ID, try by program name (for program 309 = "Wednesday Nordic Kids")
+      if (!linkCount) {
+        console.log(`[ProgramNav] Program ${programRef} not found by ID, trying by text...`);
+        const programNames: Record<string, string> = {
+          '309': 'Wednesday Nordic Kids'
+        };
+        
+        if (programNames[programRef]) {
+          link = page.locator(`a:has-text("${programNames[programRef]}")`).first();
+          linkCount = await link.count();
+        }
+      }
+      
+      if (linkCount > 0) {
+        console.log(`[ProgramNav] Found program ${programRef} on /registration listing — clicking link...`);
+        await link.click({ timeout: 10000 });
+        await page.waitForLoadState('domcontentloaded').catch(() => {});
+        await humanPause(800, 1200);
+        
+        // Check if we landed on registration form
+        const hasForm = await page.$([
+          'form[action*="register"]',
+          'form[id*="register"]',
+          'form[action*="registration"]',
+          'form[id*="registration"]',
+          '.webform-submission-form',
+          '[id*="registration"]'
+        ].join(', '));
+        
+        if (hasForm) {
+          console.log(`[ProgramNav] ✓ Successfully navigated to program ${programRef} registration form`);
+          return;
+        }
+      } else {
+        console.warn(`[ProgramNav] Could not find program ${programRef} on /registration listing`);
+      }
+    } catch (err: any) {
+      console.warn(`[ProgramNav] /registration navigation failed:`, err.message);
+    }
+  }
+  
+  // Fallback: Try common program registration paths
   const programPaths = [
     `/programs/${programRef}/register`,
     `/register/${programRef}`,
