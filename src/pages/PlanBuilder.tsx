@@ -700,15 +700,28 @@ const PlanBuilder = () => {
       });
       return;
     }
+    await discoverFields(programRef);
+  };
 
-    toastLogger('prereqs', 'Rechecking prerequisites…', 'info');
+  const handleRecheckProgramQuestions = async () => {
+    const programRef = form.watch('programRef');
+    if (!programRef) {
+      toast({
+        title: 'Missing Program',
+        description: 'Please select a program first',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    toastLogger('program_questions', 'Rechecking program questions…', 'info');
     
-    // Reset checks to unknown state while rechecking
-    setPrerequisiteChecks(prev => 
-      prev.map(check => ({ ...check, status: 'unknown' as const, message: 'Checking...' }))
-    );
+    toast({
+      title: 'Refreshing Questions',
+      description: 'Re-discovering program fields. This may take 5-10 seconds.',
+    });
     
-    // Re-run discovery to get fresh prerequisite checks
+    // Re-run discovery to get fresh program questions
     await discoverFields(programRef);
   };
 
@@ -1708,7 +1721,9 @@ const PlanBuilder = () => {
                               description: 'You can review or recheck prerequisites.',
                             });
                           }}
+                          onRecheck={handleRecheckProgramQuestions}
                           isSubmitting={false}
+                          isRechecking={isDiscovering}
                         />
                       ) : (
                         <CompletionPanel

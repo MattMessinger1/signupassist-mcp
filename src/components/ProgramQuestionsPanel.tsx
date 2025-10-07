@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Label } from '@/components/ui/label';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { CalendarIcon, AlertCircle } from 'lucide-react';
+import { CalendarIcon, AlertCircle, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 
@@ -31,7 +31,9 @@ export interface ProgramQuestionsPanelProps {
   initialAnswers?: Record<string, string | boolean>;
   onSubmit?: (answers: Record<string, string | boolean>) => void;
   onBack?: () => void;
+  onRecheck?: () => void;
   isSubmitting?: boolean;
+  isRechecking?: boolean;
 }
 
 export default function ProgramQuestionsPanel({
@@ -39,7 +41,9 @@ export default function ProgramQuestionsPanel({
   initialAnswers = {},
   onSubmit,
   onBack,
+  onRecheck,
   isSubmitting = false,
+  isRechecking = false,
 }: ProgramQuestionsPanelProps) {
   // Build dynamic Zod schema based on questions
   const schema = useMemo(() => {
@@ -323,24 +327,49 @@ export default function ProgramQuestionsPanel({
             ))}
           </div>
 
-          <div className="flex flex-col-reverse sm:flex-row gap-3 justify-end pt-4 border-t">
-            {onBack && (
-              <Button
-                type="button"
-                variant="outline"
-                size="lg"
-                onClick={onBack}
-                disabled={isSubmitting}
-                aria-label="Return to prerequisites"
-                className="w-full sm:w-auto min-w-[160px]"
-              >
-                Back to Prerequisites
-              </Button>
-            )}
+          <div className="flex flex-col-reverse sm:flex-row gap-3 justify-between pt-4 border-t">
+            <div className="flex gap-3">
+              {onBack && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  onClick={onBack}
+                  disabled={isSubmitting || isRechecking}
+                  aria-label="Return to prerequisites"
+                  className="w-full sm:w-auto min-w-[160px]"
+                >
+                  Back to Prerequisites
+                </Button>
+              )}
+              {onRecheck && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="lg"
+                  onClick={onRecheck}
+                  disabled={isSubmitting || isRechecking}
+                  aria-label="Recheck program questions"
+                  className="w-full sm:w-auto min-w-[140px]"
+                >
+                  {isRechecking ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      Rechecking...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Recheck
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
             <Button
               type="submit"
               size="lg"
-              disabled={!isValid || isSubmitting}
+              disabled={!isValid || isSubmitting || isRechecking}
               aria-label="Save program answers"
               className="w-full sm:w-auto min-w-[200px]"
             >
