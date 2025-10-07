@@ -98,6 +98,7 @@ const corsHeaders = {
 interface RequestBody {
   program_ref: string;
   credential_id: string;
+  child_name?: string;
 }
 
 Deno.serve(async (req) => {
@@ -141,7 +142,7 @@ Deno.serve(async (req) => {
     console.log("auth user id:", user.id);
 
     const body: RequestBody = await req.json();
-    const { program_ref, credential_id } = body;
+    const { program_ref, credential_id, child_name } = body;
 
     // Validate required fields
     if (!program_ref || !credential_id) {
@@ -385,7 +386,8 @@ Deno.serve(async (req) => {
         credential_id,
         user_jwt: userJwt,
         warm_hints_prereqs: warmHintsPrereqs,  // 🧩 Pass prerequisite hints
-        warm_hints_program: warmHintsProgram   // 🧩 Pass program hints
+        warm_hints_program: warmHintsProgram,  // 🧩 Pass program hints
+        child_name: child_name || ''           // 🧩 Pass selected child name
       }, {
         mandate_id,
         skipAudit: true

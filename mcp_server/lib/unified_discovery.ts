@@ -56,7 +56,8 @@ export async function discoverAll(
   baseDomain: string,  // Unified domain (e.g., 'blackhawk.skiclubpro.team')
   provider: string,
   warmHintsPrereqs: Record<string, any> = {},
-  warmHintsProgram: Record<string, any> = {}
+  warmHintsProgram: Record<string, any> = {},
+  childName: string = ''  // Selected child name from PlanBuilder
 ): Promise<UnifiedDiscoveryResult> {
   
   console.log('[UnifiedDiscovery] Starting two-stage discovery...');
@@ -68,22 +69,47 @@ export async function discoverAll(
     // Navigate to program registration form
     await navigateToProgramForm(page, programRef, baseDomain);
     
-    // Auto-advance past child-selection step if present
+    // Select child from dropdown
     const childSelect = page.locator('select#edit-participant, select[name*="child"], select[name*="participant"]').first();
     if (await childSelect.count()) {
-      console.log("[Test] Child selector found - auto-selecting first child...");
+      const logMessage = childName 
+        ? `[Program] Selecting child: ${childName}` 
+        : "[Program] Selecting child: (auto) first child";
+      console.log(logMessage);
+      
       try {
-        // Get all options and pick first non-placeholder
+        // Get all options
         const options = await childSelect.locator("option").evaluateAll(els =>
           els.map(e => ({ value: (e as any).value, text: ((e as any).textContent||"").trim() }))
         );
-        const firstReal = options.find(o => o.value && o.value !== "_none" && o.value !== "");
-        if (firstReal) {
-          await childSelect.selectOption(firstReal.value);
+        
+        // Try to match by name (case-insensitive partial match)
+        let selectedOption = null;
+        if (childName) {
+          const match = options.find(o => 
+            o.text.toLowerCase().includes(childName.toLowerCase()) &&
+            o.value && o.value !== "_none" && o.value !== ""
+          );
+          if (match) {
+            selectedOption = match;
+            console.log(`[Program] Matched child option: "${match.text}" (value: ${match.value})`);
+          } else {
+            console.log(`[Program] No match found for "${childName}", falling back to first child`);
+          }
+        }
+        
+        // Fall back to first non-placeholder option
+        if (!selectedOption) {
+          selectedOption = options.find(o => o.value && o.value !== "_none" && o.value !== "");
+        }
+        
+        if (selectedOption) {
+          await childSelect.selectOption(selectedOption.value);
         } else {
           await childSelect.selectOption({ index: 1 });
         }
-      } catch {
+      } catch (err) {
+        console.error("[Program] Child selection error:", err);
         await childSelect.selectOption({ index: 1 });
       }
 

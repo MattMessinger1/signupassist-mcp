@@ -43,6 +43,7 @@ export interface DiscoverRequiredFieldsArgs {
   plan_id?: string;
   user_id?: string;
   session_token?: string;
+  child_name?: string;
   warm_hints_prereqs?: Record<string, any>;
   warm_hints_program?: Record<string, any>;
 }
@@ -270,7 +271,8 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           baseDomain,  // Pass baseDomain instead of provider string
           'skiclubpro',  // Provider parameter for prerequisite path lookup
           warmHintsPrereqs,
-          warmHintsProgram
+          warmHintsProgram,
+          args.child_name || ''  // Pass selected child name
         );
         
         console.log('DEBUG: Unified discovery completed:', {

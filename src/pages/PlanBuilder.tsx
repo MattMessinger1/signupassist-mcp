@@ -550,7 +550,8 @@ const PlanBuilder = () => {
       const payload = {
         program_ref: programRef,
         credential_id: credentialId,
-        plan_execution_id: null
+        plan_execution_id: null,
+        child_name: selectedChildName || '' // Pass selected child name to discovery
       };
       
       console.log('[PlanBuilder] Discovery payload:', payload);
