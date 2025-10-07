@@ -44,9 +44,12 @@ export interface DiscoverRequiredFieldsArgs {
   user_id?: string;
   session_token?: string;
   child_name?: string;
+  child_id?: string;
   warm_hints_prereqs?: Record<string, any>;
   warm_hints_program?: Record<string, any>;
   mode?: 'full' | 'prerequisites_only';
+  _stage?: 'prereq' | 'program';
+  _run_id?: string;
 }
 
 export interface FieldSchema {
@@ -278,6 +281,7 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           
           // Return prerequisites-only result
           return {
+            program_ref: args.program_ref,
             success: true,
             stage: 'prereq',
             prerequisite_checks: prereqResult.checks,
@@ -396,6 +400,7 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         
         // Return program-only result (carry forward last known prereq status as "complete")
         return {
+          program_ref: args.program_ref,
           success: true,
           stage: 'program',
           prerequisite_checks: [],
@@ -439,27 +444,6 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           await ensureLoggedOut(programSession);
           await closeBrowserbaseSession(programSession);
           console.log(`${P} Closed program session`);
-        }
-      }
-      
-      console.log('[Discover] Discovery complete:', {
-        prerequisite_checks: discoveryResult.prerequisite_checks?.length || 0,
-        prerequisite_status: discoveryResult.prerequisite_status,
-        program_questions_count: discoveryResult.program_questions.length
-      });
-      
-      // Return unified result
-      return {
-        program_ref: args.program_ref,
-        prerequisite_checks: discoveryResult.prerequisite_checks,
-        prerequisite_status: discoveryResult.prerequisite_status,
-        program_questions: discoveryResult.program_questions,
-        metadata: {
-          url: baseUrl,
-          field_count: discoveryResult.program_questions.length,
-          categories: [],
-          discovered_at: new Date().toISOString(),
-          ...discoveryResult.metadata
         }
       }
     },
