@@ -20,7 +20,10 @@ export async function mcpDiscover(body: Record<string, any>) {
       },
       body: JSON.stringify({
         tool: "scp.discover_required_fields",
-        args: body,
+        args: {
+          ...body,
+          mode: body.mode || 'full', // Support prerequisites_only mode
+        },
       }),
     });
     

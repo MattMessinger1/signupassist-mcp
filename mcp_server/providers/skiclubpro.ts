@@ -46,6 +46,7 @@ export interface DiscoverRequiredFieldsArgs {
   child_name?: string;
   warm_hints_prereqs?: Record<string, any>;
   warm_hints_program?: Record<string, any>;
+  mode?: 'full' | 'prerequisites_only';
 }
 
 export interface FieldSchema {
@@ -224,8 +225,9 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
       
       const warmHintsPrereqs = args.warm_hints_prereqs || {};
       const warmHintsProgram = args.warm_hints_program || {};
+      const mode = args.mode || 'full';
       
-      // STAGE 1: Prerequisites in dedicated session
+      // STAGE 1: Prerequisites in dedicated session (ALWAYS RUN)
       let prereqSession = null;
       let prereqResult = null;
       
@@ -285,83 +287,94 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         }
       }
       
-      // STAGE 2: Program discovery in NEW dedicated session
+      // STAGE 2: Program discovery in NEW dedicated session (CONDITIONAL)
       let programSession = null;
       let programResult = null;
       
-      try {
-        console.log('[Discover] Launching program session...');
-        programSession = await launchBrowserbaseSession();
-        
-        // Fresh login for program discovery
-        const programLogin = await ensureLoggedIn(
-          programSession,
-          args.credential_id,
-          args.user_jwt,
-          baseUrl,
-          userId,
-          orgRef,
-          { 
-            tool_name: 'scp.discover_required_fields (program)', 
-            mandate_id: args.mandate_id,
-            plan_id: args.plan_id,
-            plan_execution_id: args.plan_execution_id,
-            session_token: args.session_token
-          }
-        );
-        
-        if (programLogin.login_status === 'failed') {
-          throw new Error('Login failed for program discovery - cannot proceed.');
-        }
-        
-        // Import program discovery functions
-        const { navigateToProgramForm, discoverProgramFieldsMultiStep } = 
-          await import('../lib/unified_discovery.js');
-        
-        // Navigate to program form
-        await navigateToProgramForm(
-          programSession.page,
-          args.program_ref,
-          baseDomain
-        );
-        
-        // Discover program fields
-        programResult = await discoverProgramFieldsMultiStep(
-          programSession.page,
-          args.program_ref,
-          warmHintsProgram
-        );
-        
-        console.log(`[Discover] Program fields found: ${programResult.fields.length} (${programResult.loopCount} loops)`);
-        
-      } catch (error) {
-        console.error('SkiClubPro field discovery failed:', error);
-        
-        // Try to parse structured error for better diagnostics
-        let errorMessage = error.message;
-        let diagnostics = null;
-        
+      if (mode === 'full') {
         try {
-          const parsed = JSON.parse(error.message);
-          errorMessage = parsed.message;
-          diagnostics = parsed.diagnostics;
-        } catch {
-          // Not JSON, use as-is
+          console.log('[Discover] Launching program session...');
+          programSession = await launchBrowserbaseSession();
+          
+          // Fresh login for program discovery
+          const programLogin = await ensureLoggedIn(
+            programSession,
+            args.credential_id,
+            args.user_jwt,
+            baseUrl,
+            userId,
+            orgRef,
+            { 
+              tool_name: 'scp.discover_required_fields (program)', 
+              mandate_id: args.mandate_id,
+              plan_id: args.plan_id,
+              plan_execution_id: args.plan_execution_id,
+              session_token: args.session_token
+            }
+          );
+          
+          if (programLogin.login_status === 'failed') {
+            throw new Error('Login failed for program discovery - cannot proceed.');
+          }
+          
+          // Import program discovery functions
+          const { navigateToProgramForm, discoverProgramFieldsMultiStep } = 
+            await import('../lib/unified_discovery.js');
+          
+          // Navigate to program form
+          await navigateToProgramForm(
+            programSession.page,
+            args.program_ref,
+            baseDomain
+          );
+          
+          // Discover program fields
+          programResult = await discoverProgramFieldsMultiStep(
+            programSession.page,
+            args.program_ref,
+            warmHintsProgram
+          );
+          
+          console.log(`[Discover] Program fields found: ${programResult.fields.length} (${programResult.loopCount} loops)`);
+          
+        } catch (error) {
+          console.error('SkiClubPro field discovery failed:', error);
+          
+          // Try to parse structured error for better diagnostics
+          let errorMessage = error.message;
+          let diagnostics = null;
+          
+          try {
+            const parsed = JSON.parse(error.message);
+            errorMessage = parsed.message;
+            diagnostics = parsed.diagnostics;
+          } catch {
+            // Not JSON, use as-is
+          }
+          
+          const finalError: any = new Error(errorMessage);
+          if (diagnostics) {
+            finalError.diagnostics = diagnostics;
+          }
+          
+          throw finalError;
+        } finally {
+          // Always close program session
+          if (programSession) {
+            await ensureLoggedOut(programSession);
+            await closeBrowserbaseSession(programSession);
+            console.log('[Discover] Closed program session');
+          }
         }
-        
-        const finalError: any = new Error(errorMessage);
-        if (diagnostics) {
-          finalError.diagnostics = diagnostics;
-        }
-        
-        throw finalError;
-      } finally {
-        // Always close program session
-        if (programSession) {
-          await ensureLoggedOut(programSession);
-          await closeBrowserbaseSession(programSession);
-          console.log('[Discover] Closed program session');
-        }
+      } else {
+        console.log('[Discover] Skipping program discovery (prerequisites-only mode)');
+        programResult = { 
+          fields: [], 
+          confidence: 0, 
+          loopCount: 0, 
+          urlsVisited: [], 
+          stops: null 
+        };
       }
       
       // Merge results from both stages

@@ -748,17 +748,21 @@ const PlanBuilder = () => {
         }
       }
       
-      if (data.program_questions) {
+      if (data.program_questions && data.program_questions.length > 0) {
         setProgramQuestions(data.program_questions);
         console.log('[PlanBuilder] Updated program questions:', data.program_questions.length, 'questions');
         
-        // Mark that discovery has run successfully
+        // Mark that discovery has run successfully - use data from response
         setDiscoveredSchema({
-          program_ref: form.getValues('programRef'),
-          branches: [],
-          common_questions: [],
-          // Add flag to indicate discovery completed
+          program_ref: data.program_ref || form.getValues('programRef'),
+          branches: data.branches || [],
+          common_questions: data.common_questions || data.program_questions,
           discoveryCompleted: true
+        });
+        
+        toast({
+          title: 'Fields Discovered',
+          description: `Found ${data.program_questions.length} program questions`,
         });
       }
       
@@ -835,6 +839,56 @@ const PlanBuilder = () => {
         title: prompts.discovery.errors.failed,
         description: err.message || err.context || JSON.stringify(err),
         variant: "destructive",
+      });
+    } finally {
+      setIsDiscovering(false);
+    }
+  };
+
+  const handleCheckPrerequisitesOnly = async () => {
+    const programRef = form.watch('programRef');
+    const credentialId = form.watch('credentialId');
+    
+    if (!programRef || !credentialId) {
+      toast({
+        title: 'Missing Information',
+        description: 'Please select a program and credentials first',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsDiscovering(true);
+    
+    try {
+      const { data, run_id } = await mcpDiscover({
+        program_ref: programRef,
+        mandate_id: null,
+        credential_id: credentialId,
+        user_jwt: session?.access_token,
+        mode: 'prerequisites_only',
+        warm_hints_prereqs: {},
+        warm_hints_program: {},
+        child_name: selectedChildName || ''
+      });
+      
+      if (data?.prerequisite_checks) {
+        setPrerequisiteChecks(data.prerequisite_checks);
+        setPrerequisiteStatus(data.prerequisite_status || 'unknown');
+        
+        console.log('[PlanBuilder] Prerequisites checked:', data.prerequisite_checks);
+        
+        toast({
+          title: 'Prerequisites Checked',
+          description: `Verified ${data.prerequisite_checks.length} requirements`,
+        });
+      }
+    } catch (error) {
+      console.error('[PlanBuilder] Error checking prerequisites:', error);
+      toast({
+        title: 'Check Failed',
+        description: 'Unable to verify prerequisites',
+        variant: 'destructive',
       });
     } finally {
       setIsDiscovering(false);
@@ -1744,11 +1798,11 @@ const PlanBuilder = () => {
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
-                        <PrerequisitesPanel
-                          checks={prerequisiteChecks}
-                          onRecheck={handleRecheckPrereqs}
-                          onContinue={() => setActiveStep('program')}
-                        />
+                      <PrerequisitesPanel
+                        checks={prerequisiteChecks}
+                        onRecheck={handleCheckPrerequisitesOnly}
+                        onContinue={() => setActiveStep('program')}
+                      />
                       </CardContent>
                     </Card>
                   ) : prerequisiteChecks.length === 0 ? (
@@ -1781,12 +1835,12 @@ const PlanBuilder = () => {
                     <div className="space-y-4">
                       <AnimatePresence mode="wait">
                         {activeStep === 'prereqs' ? (
-                          <PrerequisitesPanel
-                            key={`prereqs-${prerequisiteChecks.length}-${Date.now()}`}
-                            checks={prerequisiteChecks}
-                            metadata={discoveryMetadata}
-                            onRecheck={handleRecheckPrereqs}
-                            onContinue={async () => {
+                        <PrerequisitesPanel
+                          key={`prereqs-${prerequisiteChecks.length}-${Date.now()}`}
+                          checks={prerequisiteChecks}
+                          metadata={discoveryMetadata}
+                          onRecheck={handleCheckPrerequisitesOnly}
+                          onContinue={async () => {
                             const childId = form.watch('childId');
                             const programRef = form.watch('programRef');
                             const openTime = form.watch('opensAt');

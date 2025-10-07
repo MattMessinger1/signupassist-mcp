@@ -468,27 +468,28 @@ Deno.serve(async (req) => {
         console.error("Failed to persist discovery runs:", err);
       }
 
-      // Normalize MCP response to match frontend expectations
-      const discoveredSchema = result?.branches ? {
-        program_ref,
-        branches: result.branches,
-        common_questions: result.common_questions || []
-      } : null;
-
       // Map program_questions to PlanBuilder-compatible format using robust mapper
       const programQuestions = mapFieldsToProgramQuestions(result?.program_questions || []);
 
       console.log(`[Discovery] Mapped ${result?.program_questions?.length || 0} raw fields → ${programQuestions.length} program questions`);
       console.log(`[Discovery] Cleaned labels → ${programQuestions.map(q => q.label).join(", ")}`);
 
+      // Create discoveredSchema with correct structure
+      const discoveredSchema = programQuestions.length > 0 ? {
+        program_ref,
+        branches: [],  // No branching for now
+        common_questions: programQuestions,  // Use mapped questions
+        discoveryCompleted: true
+      } : null;
+
       const response = {
-        success: !!(discoveredSchema || programQuestions.length > 0), // Success if we have branches OR program questions
-        ...discoveredSchema,
-        // Phase 2.5: Include prerequisite checks
+        success: !!(discoveredSchema || programQuestions.length > 0),
+        program_ref,
+        branches: discoveredSchema?.branches || [],
+        common_questions: discoveredSchema?.common_questions || [],
         prerequisite_checks: result?.prerequisite_checks || [],
         prerequisite_status: result?.prerequisite_status || 'unknown',
         program_questions: programQuestions,
-        discoveredSchema: result?.program_questions || [],
         // ✅ Normalize all date fields to ISO strings
         formWatchOpensAt: toIsoStringSafe(result?.formWatchOpensAt),
         formWatchClosesAt: toIsoStringSafe(result?.formWatchClosesAt),
