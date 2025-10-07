@@ -1592,10 +1592,23 @@ const PlanBuilder = () => {
                       </CardHeader>
                       <CardContent>
                         <Button
-                          onClick={() => setActiveStep('program')}
+                          onClick={async () => {
+                            const programRef = form.getValues('programRef');
+                            if (programRef) {
+                              await discoverFields(programRef);
+                            }
+                          }}
+                          disabled={isDiscovering}
                           className="w-full"
                         >
-                          Continue to Program Questions
+                          {isDiscovering ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Discovering...
+                            </>
+                          ) : (
+                            'Continue to Program Questions'
+                          )}
                         </Button>
                       </CardContent>
                     </Card>
@@ -1849,9 +1862,19 @@ const PlanBuilder = () => {
                           onClick={retryDiscovery}
                           variant="outline"
                           size="sm"
+                          disabled={isDiscovering}
                         >
-                          <RefreshCw className="mr-2 h-4 w-4" />
-                          Recheck
+                          {isDiscovering ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Rechecking...
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw className="mr-2 h-4 w-4" />
+                              Recheck
+                            </>
+                          )}
                         </Button>
                         <Button
                           type="button"
@@ -1930,9 +1953,19 @@ const PlanBuilder = () => {
                             variant="outline"
                             size="sm"
                             className="mt-3"
+                            disabled={isDiscovering}
                           >
-                            <RefreshCw className="mr-2 h-4 w-4" />
-                            Retry Discovery
+                            {isDiscovering ? (
+                              <>
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                Discovering...
+                              </>
+                            ) : (
+                              <>
+                                <RefreshCw className="mr-2 h-4 w-4" />
+                                Retry Discovery
+                              </>
+                            )}
                           </Button>
                         </div>
                       ) : null}
