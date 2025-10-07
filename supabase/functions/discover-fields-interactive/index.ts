@@ -5,6 +5,7 @@ import { generateFormFingerprint } from '../_shared/fingerprint.ts';
 import { toIsoStringSafe } from '../_shared/utils.ts';
 import { logStructuredError, sanitizeError } from '../_shared/errors.ts';
 import { verifyDecryption, sanitizeCredentialsForLog, CredentialError } from '../_shared/account-credentials.ts';
+import { mapFieldsToProgramQuestions } from '../../../mcp_server/agent/mapToProgramQuestions.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -366,16 +367,8 @@ Deno.serve(async (req) => {
         common_questions: result.common_questions || []
       } : null;
 
-      // Map program_questions to PlanBuilder-compatible format
-      const programQuestions = (result?.program_questions || []).map((f: any) => ({
-        id: f.id,
-        label: f.label || f.id,
-        type: f.type ?? "text",
-        required: !!f.required,
-        options: f.options?.map((o: any) => o.value),
-        dependsOn: f.visibleWhen?.dependsOn,
-        showWhen: f.visibleWhen?.value,
-      }));
+      // Map program_questions to PlanBuilder-compatible format using robust mapper
+      const programQuestions = mapFieldsToProgramQuestions(result?.program_questions || []);
 
       const response = {
         success: !!discoveredSchema,
