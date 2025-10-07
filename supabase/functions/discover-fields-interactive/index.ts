@@ -370,7 +370,34 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Create discovery job record
+    // Check for existing pending/running job for this user+program
+    const { data: existingJob } = await supabase
+      .from('discovery_jobs')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('program_ref', program_ref)
+      .in('status', ['pending', 'running'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    // If there's already a job running/pending, return that job ID
+    if (existingJob) {
+      console.log(`Returning existing job ${existingJob.id} (status: ${existingJob.status})`);
+      return new Response(
+        JSON.stringify({ 
+          job_id: existingJob.id,
+          status: existingJob.status,
+          message: 'Discovery already in progress. Returning existing job.'
+        }),
+        { 
+          status: 202, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Create new discovery job record
     const { data: job, error: jobError } = await supabase
       .from('discovery_jobs')
       .insert({
