@@ -923,7 +923,8 @@ const PlanBuilder = () => {
     setIsDiscovering(true);
     
     try {
-      const { data, error } = await supabase.functions.invoke('discover-fields-interactive', {
+      // Start the discovery job
+      const { data: initialData, error: initialError } = await supabase.functions.invoke('discover-fields-interactive', {
         body: {
           program_ref: programRef,
           credential_id: credentialId,
@@ -932,28 +933,93 @@ const PlanBuilder = () => {
         }
       });
 
-      if (error) throw error;
+      if (initialError) throw initialError;
       
-      if (data?.prerequisite_checks) {
-        setPrerequisiteChecks(data.prerequisite_checks);
-        setPrerequisiteStatus(data.prerequisite_status || 'unknown');
-        
-        console.log('[PlanBuilder] Prerequisites checked:', data.prerequisite_checks);
-        
-        toast({
-          title: 'Prerequisites Checked',
-          description: `Verified ${data.prerequisite_checks.length} requirements`,
-        });
+      const jobId = initialData?.job_id;
+      if (!jobId) {
+        throw new Error('No job ID returned from discovery');
       }
+
+      console.log('[PlanBuilder] Prerequisites discovery job started:', jobId);
+      
+      toast({
+        title: 'Checking Prerequisites',
+        description: 'Verifying requirements... This may take 30-40 seconds.',
+      });
+
+      // Poll for job completion
+      const pollInterval = setInterval(async () => {
+        try {
+          const { data: jobData, error: pollError } = await supabase.functions.invoke('check-discovery-job', {
+            body: { job_id: jobId }
+          });
+
+          if (pollError) {
+            console.error('[PlanBuilder] Poll error:', pollError);
+            return;
+          }
+
+          console.log('[PlanBuilder] Job status:', jobData?.status);
+
+          if (jobData?.status === 'completed') {
+            clearInterval(pollInterval);
+            setIsDiscovering(false);
+
+            const result = jobData.result || {};
+            
+            // Extract prerequisite checks
+            if (result.prerequisite_checks) {
+              setPrerequisiteChecks(result.prerequisite_checks);
+              setPrerequisiteStatus(result.prerequisite_status || 'unknown');
+              
+              console.log('[PlanBuilder] Prerequisites checked:', result.prerequisite_checks);
+              
+              toast({
+                title: 'Prerequisites Checked',
+                description: `Verified ${result.prerequisite_checks.length} requirements`,
+              });
+            } else {
+              toast({
+                title: 'Prerequisites Checked',
+                description: 'No prerequisites required for this program',
+              });
+            }
+          } else if (jobData?.status === 'failed') {
+            clearInterval(pollInterval);
+            setIsDiscovering(false);
+            
+            toast({
+              title: 'Check Failed',
+              description: jobData.error || 'Unable to verify prerequisites',
+              variant: 'destructive',
+            });
+          }
+        } catch (pollError) {
+          console.error('[PlanBuilder] Polling error:', pollError);
+        }
+      }, 3000); // Poll every 3 seconds
+
+      // Safety timeout: stop polling after 5 minutes
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        if (isDiscovering) {
+          setIsDiscovering(false);
+          toast({
+            title: 'Check Timeout',
+            description: 'Prerequisite check is taking longer than expected. Please try again.',
+            variant: 'destructive',
+          });
+        }
+      }, 300000); // 5 minutes
+
     } catch (error) {
       console.error('[PlanBuilder] Error checking prerequisites:', error);
+      setIsDiscovering(false);
       toast({
         title: 'Check Failed',
-        description: 'Unable to verify prerequisites',
+        description: error instanceof Error ? error.message : 'Unable to verify prerequisites',
         variant: 'destructive',
       });
-    } finally {
-      setIsDiscovering(false);
     }
   };
 
