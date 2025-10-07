@@ -11,6 +11,28 @@ function normText(s?: string) {
   return (s || "").trim().replace(/\s+/g, " ");
 }
 
+function cleanLabel(raw: string): string {
+  if (!raw) return "";
+
+  let label = raw.trim();
+
+  // Remove common prefixes
+  label = label.replace(/^(nordic\s*kids|program\s*\d+|registration)\s*/i, "");
+
+  // Remove leading/trailing punctuation and filler tokens
+  label = label.replace(/^[:\-\s]+|[:\-\s]+$/g, "");
+  label = label.replace(/\s{2,}/g, " ");
+
+  // Replace " - " with ": " for nicer UI labels
+  label = label.replace(/\s*-\s*/g, ": ");
+
+  // Capitalize first letter of each word except small words
+  label = label.replace(/\b([a-z])/g, (m) => m.toUpperCase());
+  label = label.replace(/\b(Of|And|For|To|In|On|At|With|A|An|The)\b/g, (m) => m.toLowerCase());
+
+  return label.trim();
+}
+
 function dedupe<T>(arr: T[]) { return Array.from(new Set(arr)); }
 
 function stripPlaceholders(arr: string[]) {
@@ -42,6 +64,7 @@ function normalizeOptions(opts: any): string[] | undefined {
 
   out = stripPlaceholders(out);
   out = stripTrailingPrice(out);
+  out = out.map(o => cleanLabel(o)); // Clean option labels
   out = dedupe(out);
 
   return out.length ? out : undefined;
@@ -76,7 +99,7 @@ function mapFieldsToProgramQuestions(fields: any[]): any[] {
       const options = normalizeOptions(f.options);
       return {
         id: f.id,
-        label: f.label ? normText(f.label) : f.id,
+        label: cleanLabel(f.label || f.id), // Use cleanLabel for better formatting
         type,
         required: !!f.required,
         options,
@@ -456,6 +479,7 @@ Deno.serve(async (req) => {
       const programQuestions = mapFieldsToProgramQuestions(result?.program_questions || []);
 
       console.log(`[Discovery] Mapped ${result?.program_questions?.length || 0} raw fields → ${programQuestions.length} program questions`);
+      console.log(`[Discovery] Cleaned labels → ${programQuestions.map(q => q.label).join(", ")}`);
 
       const response = {
         success: !!(discoveredSchema || programQuestions.length > 0), // Success if we have branches OR program questions
