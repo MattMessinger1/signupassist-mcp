@@ -18,5 +18,4 @@ additional_redirect_urls = ["http://localhost:3000"]
 
 [functions.discover-fields-interactive]
 verify_jwt = true
-timeout_ms = 180000  # 3 minutes for full discovery
 
