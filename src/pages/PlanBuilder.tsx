@@ -921,6 +921,7 @@ const PlanBuilder = () => {
     }
 
     setIsDiscovering(true);
+    console.log('[DEBUG] Starting prerequisite check - Program:', programRef, 'Credential:', credentialId);
     
     try {
       // Start the discovery job
@@ -933,6 +934,8 @@ const PlanBuilder = () => {
         }
       });
 
+      console.log('[DEBUG] Initial discovery response:', { data: initialData, error: initialError });
+
       if (initialError) throw initialError;
       
       const jobId = initialData?.job_id;
@@ -940,6 +943,7 @@ const PlanBuilder = () => {
         throw new Error('No job ID returned from discovery');
       }
 
+      console.log('[DEBUG] Job ID obtained:', jobId);
       console.log('[PlanBuilder] Prerequisites discovery job started:', jobId);
       
       toast({
@@ -954,6 +958,14 @@ const PlanBuilder = () => {
             body: { job_id: jobId }
           });
 
+          console.log('[DEBUG] Poll response:', {
+            status: jobData?.status,
+            hasPrereqChecks: !!jobData?.prerequisite_checks,
+            prereqChecksLength: jobData?.prerequisite_checks?.length,
+            prereqStatus: jobData?.metadata?.prerequisite_status,
+            fullData: jobData
+          });
+
           if (pollError) {
             console.error('[PlanBuilder] Poll error:', pollError);
             return;
@@ -962,11 +974,18 @@ const PlanBuilder = () => {
           console.log('[PlanBuilder] Job status:', jobData?.status);
 
           if (jobData?.status === 'completed') {
+            console.log('[DEBUG] Job completed! Checking for prerequisite_checks...');
+            console.log('[DEBUG] jobData.prerequisite_checks exists?', !!jobData.prerequisite_checks);
+            console.log('[DEBUG] jobData.prerequisite_checks value:', jobData.prerequisite_checks);
+            
             clearInterval(pollInterval);
             setIsDiscovering(false);
 
             // Access data directly from jobData, not jobData.result
             if (jobData.prerequisite_checks) {
+              console.log('[DEBUG] Setting prerequisite_checks to state:', jobData.prerequisite_checks);
+              console.log('[DEBUG] Setting prerequisite_status to state:', jobData.metadata?.prerequisite_status);
+              
               setPrerequisiteChecks(jobData.prerequisite_checks);
               setPrerequisiteStatus(jobData.metadata?.prerequisite_status || 'unknown');
               
@@ -977,12 +996,14 @@ const PlanBuilder = () => {
                 description: `Verified ${jobData.prerequisite_checks.length} requirements`,
               });
             } else {
+              console.log('[DEBUG] No prerequisite_checks found in jobData');
               toast({
                 title: 'Prerequisites Checked',
                 description: 'No prerequisites required for this program',
               });
             }
           } else if (jobData?.status === 'failed') {
+            console.log('[DEBUG] Job failed:', jobData.error);
             clearInterval(pollInterval);
             setIsDiscovering(false);
             
@@ -991,6 +1012,8 @@ const PlanBuilder = () => {
               description: jobData.error || 'Unable to verify prerequisites',
               variant: 'destructive',
             });
+          } else {
+            console.log('[DEBUG] Job still running... status:', jobData?.status);
           }
         } catch (pollError) {
           console.error('[PlanBuilder] Polling error:', pollError);
