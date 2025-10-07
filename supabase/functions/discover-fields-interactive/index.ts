@@ -305,16 +305,25 @@ async function runDiscoveryInBackground(jobId: string, requestBody: RequestBody,
     } : null;
 
     // Update job as completed - save in BOTH top-level columns AND result.{} for compatibility
+    const prerequisiteChecks = result?.prerequisite_checks || null;
+    const metadataObj = {
+      prerequisite_status: result?.prerequisite_status,
+      stage: result?.stage || stage,
+      ...(result?.metadata || {})
+    };
+    
     const jobPayload = {
       status: 'completed',
       completed_at: new Date().toISOString(),
-      prerequisite_checks: result?.prerequisite_checks || null,
+      prerequisite_checks: prerequisiteChecks,
       program_questions: programQuestions || null,
       discovered_schema: discoveredSchema,
-      metadata: {
-        prerequisite_status: result?.prerequisite_status,
-        stage: result?.stage || stage,
-        ...(result?.metadata || {})
+      metadata: metadataObj,
+      result: {
+        prerequisite_checks: prerequisiteChecks,
+        program_questions: programQuestions || null,
+        discovered_schema: discoveredSchema,
+        metadata: metadataObj
       }
     };
     
@@ -328,12 +337,17 @@ async function runDiscoveryInBackground(jobId: string, requestBody: RequestBody,
   } catch (error) {
     console.error(`[Job ${jobId}] Failed:`, error);
     
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     await supabase
       .from('discovery_jobs')
       .update({
         status: 'failed',
         completed_at: new Date().toISOString(),
-        error_message: error instanceof Error ? error.message : 'Unknown error'
+        error_message: errorMessage,
+        result: {
+          error: errorMessage,
+          metadata: { stage }
+        }
       })
       .eq('id', jobId);
   }
