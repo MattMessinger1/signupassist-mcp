@@ -551,6 +551,7 @@ const PlanBuilder = () => {
   const handleProgramDiscovery = async () => {
     const programRef = form.watch('programRef');
     const credentialId = form.watch('credentialId');
+    const childId = form.watch('childId');
     
     if (!programRef || !credentialId) {
       toast({
@@ -561,111 +562,115 @@ const PlanBuilder = () => {
       return;
     }
 
+    // Clear stale state
+    setProgramQuestions([]);
+    setDiscoveredSchema(null);
+
     setIsDiscovering(true);
 
     try {
-      toastLogger('program_discovery', 'Starting discovery job...', 'info', { programRef });
+      toastLogger('program_discovery', 'Starting program discovery...', 'info', { programRef });
       
-      // Start the discovery job
-      const { data: jobData, error: jobError } = await supabase.functions.invoke('discover-fields-interactive', {
+      // Start the discovery job with stage: "program"
+      const { data: start, error: startError } = await supabase.functions.invoke('discover-fields-interactive', {
         body: {
+          stage: 'program',
+          plan_id: undefined,
+          base_url: `https://blackhawk.skiclubpro.com`,
+          program_id: 309, // Hardcoded for now, could be dynamic
           program_ref: programRef,
           credential_id: credentialId,
           child_name: selectedChildName || '',
+          child_id: childId,
+          run_mode: 'background'
         }
       });
 
-      if (jobError) throw jobError;
+      if (startError) throw startError;
 
-      const jobId = jobData?.job_id;
+      const jobId = start?.job_id;
       if (!jobId) throw new Error('No job ID returned');
 
-      console.log('[PlanBuilder] Discovery job started:', jobId);
+      console.log('[Program] Discovery job started:', jobId);
       
       toast({
         title: 'Discovery Started',
-        description: 'Checking prerequisites and discovering program questions...',
+        description: 'Discovering program questions... This may take 5-10 seconds.',
       });
 
       // Poll for job completion
-      const pollInterval = setInterval(async () => {
+      const startedAt = Date.now();
+      const MAX_MS = 5 * 60 * 1000;
+
+      const poll = async () => {
         try {
           const { data: job, error: checkError } = await supabase.functions.invoke('check-discovery-job', {
             body: { job_id: jobId }
           });
 
           if (checkError) {
-            console.error('[PlanBuilder] Error checking job status:', checkError);
+            console.error('[Program] Error checking job status:', checkError);
             return;
           }
 
-          console.log('[PlanBuilder] Job status:', job?.status);
+          const done = job?.status === 'completed' || job?.status === 'failed';
 
-          if (job?.status === 'completed') {
-            clearInterval(pollInterval);
+          // Prefer top-level columns, but remain compatible with older `result` shape
+          const blob = job || job?.result || {};
+
+          console.log('[Program] Poll response:', {
+            status: job?.status,
+            done,
+            questions: blob.program_questions?.length,
+            schema: !!blob.discovered_schema
+          });
+
+          if (done) {
             setIsDiscovering(false);
 
-            // Update UI with results
-            if (job.prerequisite_checks) {
-              setPrerequisiteChecks(job.prerequisite_checks);
-              setPrerequisiteStatus(job.metadata?.prerequisite_status || 'unknown');
-            }
-
-            if (job.program_questions && job.program_questions.length > 0) {
-              setProgramQuestions(job.program_questions);
-              setDiscoveredSchema(job.discovered_schema || {
+            if (job?.status === 'completed') {
+              setProgramQuestions(blob.program_questions || []);
+              setDiscoveredSchema(blob.discovered_schema || {
                 program_ref: programRef,
                 branches: [],
-                common_questions: job.program_questions,
+                common_questions: blob.program_questions || [],
                 discoveryCompleted: true
               });
 
               toast({
                 title: 'Discovery Complete!',
-                description: `Found ${job.program_questions.length} program questions.`,
+                description: `Found ${blob.program_questions?.length || 0} program questions.`,
               });
             } else {
               toast({
-                title: 'Discovery Complete',
-                description: 'No program questions found.',
+                title: 'Discovery Failed',
+                description: blob.error || job?.error_message || 'Unknown error occurred',
                 variant: 'destructive',
               });
             }
-          } else if (job?.status === 'failed') {
-            clearInterval(pollInterval);
-            setIsDiscovering(false);
+            return;
+          }
 
+          if (Date.now() - startedAt > MAX_MS) {
+            setIsDiscovering(false);
             toast({
-              title: 'Discovery Failed',
-              description: job.error_message || 'Unknown error occurred',
+              title: 'Discovery Timeout',
+              description: 'Discovery is taking longer than expected. Please try again.',
               variant: 'destructive',
             });
-          } else if (job?.status === 'running') {
-            toast({
-              title: 'Discovery In Progress',
-              description: 'Still discovering fields...',
-            });
+            return;
           }
-        } catch (pollError) {
-          console.error('[PlanBuilder] Polling error:', pollError);
-        }
-      }, 3000); // Poll every 3 seconds
 
-      // Safety timeout: stop polling after 5 minutes
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        if (isDiscovering) {
-          setIsDiscovering(false);
-          toast({
-            title: 'Discovery Timeout',
-            description: 'Discovery is taking longer than expected. Please try again.',
-            variant: 'destructive',
-          });
+          setTimeout(poll, 3000);
+        } catch (pollError) {
+          console.error('[Program] Polling error:', pollError);
         }
-      }, 300000); // 5 minutes
+      };
+
+      poll();
 
     } catch (error) {
-      console.error('[PlanBuilder] Discovery error:', error);
+      console.error('[Program] Discovery error:', error);
       setIsDiscovering(false);
       toast({
         title: 'Discovery Failed',
@@ -921,30 +926,29 @@ const PlanBuilder = () => {
     }
 
     setIsDiscovering(true);
-    console.log('[DEBUG] Starting prerequisite check - Program:', programRef, 'Credential:', credentialId);
+    console.log('[Prereq] Starting prerequisite check - Program:', programRef, 'Credential:', credentialId);
     
     try {
-      // Start the discovery job
-      const { data: initialData, error: initialError } = await supabase.functions.invoke('discover-fields-interactive', {
+      // Start the discovery job with stage: "prereq"
+      const { data: start, error: startError } = await supabase.functions.invoke('discover-fields-interactive', {
         body: {
+          stage: 'prereq',
+          plan_id: undefined, // Will be created during discovery
+          base_url: `https://blackhawk.skiclubpro.com`,
           program_ref: programRef,
           credential_id: credentialId,
-          child_name: selectedChildName || '',
-          mode: 'prerequisites_only'
+          run_mode: 'background'
         }
       });
 
-      console.log('[DEBUG] Initial discovery response:', { data: initialData, error: initialError });
-
-      if (initialError) throw initialError;
+      if (startError) throw startError;
       
-      const jobId = initialData?.job_id;
+      const jobId = start?.job_id;
       if (!jobId) {
         throw new Error('No job ID returned from discovery');
       }
 
-      console.log('[DEBUG] Job ID obtained:', jobId);
-      console.log('[PlanBuilder] Prerequisites discovery job started:', jobId);
+      console.log('[Prereq] Job ID obtained:', jobId);
       
       toast({
         title: 'Checking Prerequisites',
@@ -952,89 +956,84 @@ const PlanBuilder = () => {
       });
 
       // Poll for job completion
-      const pollInterval = setInterval(async () => {
+      const startedAt = Date.now();
+      const MAX_MS = 5 * 60 * 1000;
+
+      const poll = async () => {
         try {
-          const { data: jobData, error: pollError } = await supabase.functions.invoke('check-discovery-job', {
+          const { data: job, error: pollError } = await supabase.functions.invoke('check-discovery-job', {
             body: { job_id: jobId }
           });
 
-          console.log('[DEBUG] Poll response:', {
-            status: jobData?.status,
-            hasPrereqChecks: !!jobData?.prerequisite_checks,
-            prereqChecksLength: jobData?.prerequisite_checks?.length,
-            prereqStatus: jobData?.metadata?.prerequisite_status,
-            fullData: jobData
-          });
-
           if (pollError) {
-            console.error('[PlanBuilder] Poll error:', pollError);
+            console.error('[Prereq] Poll error:', pollError);
             return;
           }
 
-          console.log('[PlanBuilder] Job status:', jobData?.status);
+          const done = job?.status === 'completed' || job?.status === 'failed';
 
-          if (jobData?.status === 'completed') {
-            console.log('[DEBUG] Job completed! Checking for prerequisite_checks...');
-            console.log('[DEBUG] jobData.prerequisite_checks exists?', !!jobData.prerequisite_checks);
-            console.log('[DEBUG] jobData.prerequisite_checks value:', jobData.prerequisite_checks);
-            
-            clearInterval(pollInterval);
+          // Prefer top-level columns, but remain compatible with older `result` shape
+          const blob = job || job?.result || {};
+
+          console.log('[Prereq] Poll response:', {
+            status: job?.status,
+            done,
+            checks: blob.prerequisite_checks?.length,
+            status_field: blob.metadata?.prerequisite_status
+          });
+
+          if (done) {
             setIsDiscovering(false);
 
-            // Access data directly from jobData, not jobData.result
-            if (jobData.prerequisite_checks) {
-              console.log('[DEBUG] Setting prerequisite_checks to state:', jobData.prerequisite_checks);
-              console.log('[DEBUG] Setting prerequisite_status to state:', jobData.metadata?.prerequisite_status);
-              
-              setPrerequisiteChecks(jobData.prerequisite_checks);
-              setPrerequisiteStatus(jobData.metadata?.prerequisite_status || 'unknown');
-              
-              console.log('[PlanBuilder] Prerequisites checked:', jobData.prerequisite_checks);
+            if (job?.status === 'completed') {
+              const checks = blob.prerequisite_checks || [];
+              const status = blob.metadata?.prerequisite_status || 'unknown';
+
+              setPrerequisiteChecks(checks);
+              setPrerequisiteStatus(status);
+
+              // ALWAYS update prerequisiteFields to clear stale state
+              const fieldsFromChecks = checks
+                .filter((c: any) => c.status === 'fail' && c.fields)
+                .flatMap((c: any) => c.fields || []);
+              setPrerequisiteFields(fieldsFromChecks);
+
+              console.log('[Prereq] Prerequisites checked:', checks);
               
               toast({
                 title: 'Prerequisites Checked',
-                description: `Verified ${jobData.prerequisite_checks.length} requirements`,
+                description: `Verified ${checks.length} requirements`,
               });
             } else {
-              console.log('[DEBUG] No prerequisite_checks found in jobData');
               toast({
-                title: 'Prerequisites Checked',
-                description: 'No prerequisites required for this program',
+                title: 'Check Failed',
+                description: blob.error || job?.error_message || 'Unable to verify prerequisites',
+                variant: 'destructive',
               });
             }
-          } else if (jobData?.status === 'failed') {
-            console.log('[DEBUG] Job failed:', jobData.error);
-            clearInterval(pollInterval);
+            return; // stop polling
+          }
+
+          if (Date.now() - startedAt > MAX_MS) {
             setIsDiscovering(false);
-            
             toast({
-              title: 'Check Failed',
-              description: jobData.error || 'Unable to verify prerequisites',
+              title: 'Check Timeout',
+              description: 'Prerequisite check is taking longer than expected. Please try again.',
               variant: 'destructive',
             });
-          } else {
-            console.log('[DEBUG] Job still running... status:', jobData?.status);
+            return;
           }
-        } catch (pollError) {
-          console.error('[PlanBuilder] Polling error:', pollError);
-        }
-      }, 3000); // Poll every 3 seconds
 
-      // Safety timeout: stop polling after 5 minutes
-      setTimeout(() => {
-        clearInterval(pollInterval);
-        if (isDiscovering) {
-          setIsDiscovering(false);
-          toast({
-            title: 'Check Timeout',
-            description: 'Prerequisite check is taking longer than expected. Please try again.',
-            variant: 'destructive',
-          });
+          setTimeout(poll, 3000);
+        } catch (pollError) {
+          console.error('[Prereq] Polling error:', pollError);
         }
-      }, 300000); // 5 minutes
+      };
+
+      poll();
 
     } catch (error) {
-      console.error('[PlanBuilder] Error checking prerequisites:', error);
+      console.error('[Prereq] Error checking prerequisites:', error);
       setIsDiscovering(false);
       toast({
         title: 'Check Failed',
