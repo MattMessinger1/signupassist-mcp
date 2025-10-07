@@ -225,87 +225,32 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
       
       const warmHintsPrereqs = args.warm_hints_prereqs || {};
       const warmHintsProgram = args.warm_hints_program || {};
-      const mode = args.mode || 'full';
       
-      // STAGE 1: Prerequisites in dedicated session (ALWAYS RUN)
-      let prereqSession = null;
-      let prereqResult = null;
+      // Use _stage parameter (set by HTTP handler) or fall back to mode
+      const stage = args._stage || args.mode || 'program';
+      const runId = args._run_id || crypto.randomUUID();
+      const P = stage === 'prereq' ? '[Prereq]' : '[Program]';
       
-      try {
-        console.log('[Discover] Launching prerequisite session...');
-        prereqSession = await launchBrowserbaseSession();
-        
-        // Login for prerequisites
-        const prereqLogin = await ensureLoggedIn(
-          prereqSession, 
-          args.credential_id, 
-          args.user_jwt, 
-          baseUrl, 
-          userId, 
-          orgRef,
-          { 
-            tool_name: 'scp.discover_required_fields (prereqs)', 
-            mandate_id: args.mandate_id,
-            plan_id: args.plan_id,
-            plan_execution_id: args.plan_execution_id,
-            session_token: args.session_token
-          }
-        );
-        
-        if (prereqLogin.login_status === 'failed') {
-          throw new Error('Login failed for prerequisites - cannot proceed with discovery.');
-        }
-        
-        // Import prerequisite discovery
-        const { discoverPrerequisites } = await import('../lib/unified_discovery.js');
-        
-        prereqResult = await discoverPrerequisites(
-          prereqSession.page,
-          orgRef,
-          baseDomain,
-          'skiclubpro',
-          warmHintsPrereqs
-        );
-        
-        console.log(`[Discover] Prerequisites complete: ${prereqResult.overallStatus} (${prereqResult.loopCount} loops)`);
-        
-      } catch (error) {
-        console.error('[Discover] Prerequisite stage failed:', error);
-        // Continue to program discovery even if prereqs fail
-        prereqResult = {
-          checks: [],
-          overallStatus: 'unknown' as const,
-          confidence: 0,
-          loopCount: 0
-        };
-      } finally {
-        // Always close prerequisite session
-        if (prereqSession) {
-          await ensureLoggedOut(prereqSession);
-          await closeBrowserbaseSession(prereqSession);
-          console.log('[Discover] Closed prerequisite session');
-        }
-      }
+      console.log(`${P} run=${runId} start plan=${args.plan_id} base=${baseUrl} program=${args.program_ref}`);
       
-      // STAGE 2: Program discovery in NEW dedicated session (CONDITIONAL)
-      let programSession = null;
-      let programResult = null;
-      
-      if (mode === 'full') {
+      // STAGE: PREREQUISITES ONLY
+      if (stage === 'prereq' || stage === 'prerequisites_only') {
+        let prereqSession = null;
+        
         try {
-          console.log('[Discover] Launching program session...');
-          programSession = await launchBrowserbaseSession();
+          console.log(`${P} Launching prerequisite-only session...`);
+          prereqSession = await launchBrowserbaseSession();
           
-          // Fresh login for program discovery
-          const programLogin = await ensureLoggedIn(
-            programSession,
-            args.credential_id,
-            args.user_jwt,
-            baseUrl,
-            userId,
+          // Login for prerequisites
+          const prereqLogin = await ensureLoggedIn(
+            prereqSession, 
+            args.credential_id, 
+            args.user_jwt, 
+            baseUrl, 
+            userId, 
             orgRef,
             { 
-              tool_name: 'scp.discover_required_fields (program)', 
+              tool_name: 'scp.discover_required_fields (prereqs)', 
               mandate_id: args.mandate_id,
               plan_id: args.plan_id,
               plan_execution_id: args.plan_execution_id,
@@ -313,85 +258,189 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
             }
           );
           
-          if (programLogin.login_status === 'failed') {
-            throw new Error('Login failed for program discovery - cannot proceed.');
+          if (prereqLogin.login_status === 'failed') {
+            throw new Error('Login failed for prerequisites - cannot proceed with discovery.');
           }
           
-          // Import program discovery functions
-          const { navigateToProgramForm, discoverProgramFieldsMultiStep } = 
-            await import('../lib/unified_discovery.js');
+          // Import prerequisite discovery
+          const { discoverPrerequisites } = await import('../lib/unified_discovery.js');
           
-          // Navigate to program form
-          await navigateToProgramForm(
-            programSession.page,
-            args.program_ref,
-            baseDomain
+          const prereqResult = await discoverPrerequisites(
+            prereqSession.page,
+            orgRef,
+            baseDomain,
+            'skiclubpro',
+            warmHintsPrereqs
           );
           
-          // Discover program fields
-          programResult = await discoverProgramFieldsMultiStep(
-            programSession.page,
-            args.program_ref,
-            warmHintsProgram
-          );
+          console.log(`${P} Prerequisites complete: ${prereqResult.overallStatus} (${prereqResult.loopCount} loops)`);
+          console.log(`${P} run=${runId} done status=${prereqResult.overallStatus}`);
           
-          console.log(`[Discover] Program fields found: ${programResult.fields.length} (${programResult.loopCount} loops)`);
+          // Return prerequisites-only result
+          return {
+            success: true,
+            stage: 'prereq',
+            prerequisite_checks: prereqResult.checks,
+            prerequisite_status: prereqResult.overallStatus,
+            program_questions: [],
+            metadata: {
+              prerequisitesConfidence: prereqResult.confidence,
+              prerequisitesLoops: prereqResult.loopCount,
+              run: runId,
+              stage: 'prereq'
+            }
+          };
           
         } catch (error) {
-          console.error('SkiClubPro field discovery failed:', error);
-          
-          // Try to parse structured error for better diagnostics
-          let errorMessage = error.message;
-          let diagnostics = null;
-          
-          try {
-            const parsed = JSON.parse(error.message);
-            errorMessage = parsed.message;
-            diagnostics = parsed.diagnostics;
-          } catch {
-            // Not JSON, use as-is
-          }
-          
-          const finalError: any = new Error(errorMessage);
-          if (diagnostics) {
-            finalError.diagnostics = diagnostics;
-          }
-          
-          throw finalError;
+          console.error(`${P} Prerequisite stage failed:`, error);
+          throw error;
         } finally {
-          // Always close program session
-          if (programSession) {
-            await ensureLoggedOut(programSession);
-            await closeBrowserbaseSession(programSession);
-            console.log('[Discover] Closed program session');
+          if (prereqSession) {
+            await ensureLoggedOut(prereqSession);
+            await closeBrowserbaseSession(prereqSession);
+            console.log(`${P} Closed prerequisite session`);
           }
         }
-      } else {
-        console.log('[Discover] Skipping program discovery (prerequisites-only mode)');
-        programResult = { 
-          fields: [], 
-          confidence: 0, 
-          loopCount: 0, 
-          urlsVisited: [], 
-          stops: null 
-        };
       }
       
-      // Merge results from both stages
-      const discoveryResult = {
-        prerequisite_checks: prereqResult.checks,
-        prerequisite_status: prereqResult.overallStatus,
-        program_questions: programResult.fields,
-        metadata: {
-          prerequisitesConfidence: prereqResult.confidence,
-          programConfidence: programResult.confidence,
-          prerequisitesLoops: prereqResult.loopCount,
-          programLoops: programResult.loopCount,
-          urlsVisited: programResult.urlsVisited,
-          stops: programResult.stops,
-          fieldsFound: programResult.fields.length
+      // STAGE: PROGRAM QUESTIONS ONLY (full flow with child selection)
+      let programSession = null;
+      
+      try {
+        console.log(`${P} Launching program-only session...`);
+        programSession = await launchBrowserbaseSession();
+        
+        // Login for program discovery
+        const programLogin = await ensureLoggedIn(
+          programSession,
+          args.credential_id,
+          args.user_jwt,
+          baseUrl,
+          userId,
+          orgRef,
+          { 
+            tool_name: 'scp.discover_required_fields (program)', 
+            mandate_id: args.mandate_id,
+            plan_id: args.plan_id,
+            plan_execution_id: args.plan_execution_id,
+            session_token: args.session_token
+          }
+        );
+        
+        if (programLogin.login_status === 'failed') {
+          throw new Error('Login failed for program discovery - cannot proceed.');
         }
-      };
+        
+        // Import program discovery functions
+        const { navigateToProgramForm, discoverProgramFieldsMultiStep } = 
+          await import('../lib/unified_discovery.js');
+        
+        // Navigate to program form (/registration/{program_id})
+        await navigateToProgramForm(
+          programSession.page,
+          args.program_ref,
+          baseDomain
+        );
+        
+        // If child_name or child_id provided, select child and click Next
+        if (args.child_name || args.child_id) {
+          console.log(`${P} Selecting child: ${args.child_name || args.child_id}`);
+          
+          const page = programSession.page;
+          
+          // Wait for child selection elements
+          await page.waitForSelector('select[name*="child"], input[type="radio"][name*="child"], button:has-text("Next")', { timeout: 10000 });
+          
+          // Try to find and select child by ID or name
+          if (args.child_id) {
+            const childOption = await page.$(`option[value="${args.child_id}"]`);
+            if (childOption) {
+              await page.selectOption('select[name*="child"]', args.child_id);
+              console.log(`${P} Selected child by ID: ${args.child_id}`);
+            }
+          } else if (args.child_name) {
+            // Try selecting by visible text
+            const selectElement = await page.$('select[name*="child"]');
+            if (selectElement) {
+              const options = await page.$$eval('select[name*="child"] option', (opts, name) => {
+                return opts.find(opt => opt.textContent?.includes(name));
+              }, args.child_name);
+              
+              if (options) {
+                await page.selectOption('select[name*="child"]', { label: args.child_name });
+                console.log(`${P} Selected child by name: ${args.child_name}`);
+              }
+            }
+          }
+          
+          // Click Next button to proceed to options page
+          const nextButton = await page.$('button:has-text("Next"), input[type="submit"][value*="Next"]');
+          if (nextButton) {
+            await Promise.all([
+              page.waitForNavigation({ waitUntil: 'networkidle', timeout: 15000 }),
+              nextButton.click()
+            ]);
+            console.log(`${P} Clicked Next, now on: ${page.url()}`);
+          }
+        }
+        
+        // Discover program fields (should now be on /registration/{program_id}/options or similar)
+        const programResult = await discoverProgramFieldsMultiStep(
+          programSession.page,
+          args.program_ref,
+          warmHintsProgram
+        );
+        
+        console.log(`${P} Program fields found: ${programResult.fields.length} (${programResult.loopCount} loops)`);
+        console.log(`${P} run=${runId} url=${programSession.page.url()} fields=${programResult.fields.length}`);
+        
+        // Return program-only result (carry forward last known prereq status as "complete")
+        return {
+          success: true,
+          stage: 'program',
+          prerequisite_checks: [],
+          prerequisite_status: 'complete',
+          program_questions: programResult.fields,
+          metadata: {
+            programConfidence: programResult.confidence,
+            programLoops: programResult.loopCount,
+            urlsVisited: programResult.urlsVisited,
+            stops: programResult.stops,
+            fieldsFound: programResult.fields.length,
+            run: runId,
+            stage: 'program',
+            url: programSession.page.url()
+          }
+        };
+        
+      } catch (error) {
+        console.error(`${P} Program discovery failed:`, error);
+        
+        // Try to parse structured error for better diagnostics
+        let errorMessage = error.message;
+        let diagnostics = null;
+        
+        try {
+          const parsed = JSON.parse(error.message);
+          errorMessage = parsed.message;
+          diagnostics = parsed.diagnostics;
+        } catch {
+          // Not JSON, use as-is
+        }
+        
+        const finalError: any = new Error(errorMessage);
+        if (diagnostics) {
+          finalError.diagnostics = diagnostics;
+        }
+        
+        throw finalError;
+      } finally {
+        if (programSession) {
+          await ensureLoggedOut(programSession);
+          await closeBrowserbaseSession(programSession);
+          console.log(`${P} Closed program session`);
+        }
+      }
       
       console.log('[Discover] Discovery complete:', {
         prerequisite_checks: discoveryResult.prerequisite_checks?.length || 0,

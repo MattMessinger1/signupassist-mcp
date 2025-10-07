@@ -235,17 +235,23 @@ async function runDiscoveryInBackground(jobId: string, requestBody: RequestBody,
     });
     const warmHintsProgram = programHints?.hints ?? {};
 
-    // Call MCP discovery
+    // Call MCP discovery with explicit stage parameter
     const userJwt = authHeader.replace('Bearer ', '');
+    
+    // Map mode to stage: 'prerequisites_only' -> 'prereq', 'full' -> 'program'
+    const stage = mode === 'prerequisites_only' ? 'prereq' : 'program';
+    
     const result = await invokeMCPTool("scp.discover_required_fields", {
       program_ref,
       mandate_id,
       credential_id,
       user_jwt: userJwt,
-      mode: mode || 'full',
+      stage: stage,  // Use stage instead of mode
+      mode: mode || 'full',  // Keep mode for backward compatibility
       warm_hints_prereqs: warmHintsPrereqs,
       warm_hints_program: warmHintsProgram,
-      child_name: child_name || ''
+      child_name: child_name || '',
+      child_id: child_id || ''
     }, {
       mandate_id,
       skipAudit: true
@@ -298,20 +304,23 @@ async function runDiscoveryInBackground(jobId: string, requestBody: RequestBody,
       discoveryCompleted: true
     } : null;
 
-    // Update job as completed
+    // Update job as completed - save in BOTH top-level columns AND result.{} for compatibility
+    const jobPayload = {
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+      prerequisite_checks: result?.prerequisite_checks || null,
+      program_questions: programQuestions || null,
+      discovered_schema: discoveredSchema,
+      metadata: {
+        prerequisite_status: result?.prerequisite_status,
+        stage: result?.stage || stage,
+        ...(result?.metadata || {})
+      }
+    };
+    
     await supabase
       .from('discovery_jobs')
-      .update({
-        status: 'completed',
-        completed_at: new Date().toISOString(),
-        prerequisite_checks: result?.prerequisite_checks || null,
-        program_questions: programQuestions || null,
-        discovered_schema: discoveredSchema,
-        metadata: {
-          prerequisite_status: result?.prerequisite_status,
-          metadata: result?.metadata
-        }
-      })
+      .update(jobPayload)
       .eq('id', jobId);
 
     console.log(`[Job ${jobId}] Successfully completed and saved`);
