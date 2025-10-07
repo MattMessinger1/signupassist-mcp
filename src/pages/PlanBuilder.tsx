@@ -81,6 +81,7 @@ interface DiscoveredSchema {
   program_ref: string;
   branches: Branch[];
   common_questions?: EnhancedDiscoveredField[];
+  discoveryCompleted?: boolean; // Track if discovery has run
 }
 
 interface Child {
@@ -616,25 +617,41 @@ const PlanBuilder = () => {
       
       if (data.program_questions) {
         setProgramQuestions(data.program_questions);
-        console.log('[PlanBuilder] Updated program questions:', data.program_questions);
+        console.log('[PlanBuilder] Updated program questions:', data.program_questions.length, 'questions');
+        
+        // Mark that discovery has run successfully
+        setDiscoveredSchema({
+          program_ref: form.getValues('programRef'),
+          branches: [],
+          common_questions: [],
+          // Add flag to indicate discovery completed
+          discoveryCompleted: true
+        });
       }
       
       // Store discovery metadata for coverage display
       if (data.metadata) {
         setDiscoveryMetadata(data.metadata);
         console.log('[PlanBuilder] Discovery metadata:', data.metadata);
+        
+        // Log field count for debugging
+        toastLogger('field_discovery', `Discovery complete: ${data.metadata.fieldsFound || 0} fields found`, 'info');
       }
 
-      // Validate schema has required structure
-      if (!data || (!data.branches && !data.common_questions)) {
+      // Validate schema has required structure (check both old and new formats)
+      if (!data || (!data.branches && !data.common_questions && !data.program_questions)) {
         console.warn('[PlanBuilder] ⚠️ Empty schema received - no questions for this program');
         
         // Empty schema is valid - it means no extra questions
         setDiscoveredSchema({
           program_ref: form.getValues('programRef'),
           branches: [],
-          common_questions: []
+          common_questions: [],
+          discoveryCompleted: true
         });
+        
+        // Set empty program questions
+        setProgramQuestions([]);
         
         toastLogger('field_discovery', 'No additional questions required for this program', 'info');
         
@@ -647,19 +664,20 @@ const PlanBuilder = () => {
 
       const branchCount = data.branches?.length || 0;
       const commonQuestions = data.common_questions?.length || 0;
+      const programQuestionCount = data.program_questions?.length || 0;
       
-      toastLogger('field_discovery', `Discovered ${branchCount} branches and ${commonQuestions} common questions`, 'success', {
+      toastLogger('field_discovery', `Discovered ${branchCount} branches, ${commonQuestions} common questions, ${programQuestionCount} program questions`, 'success', {
         branches: branchCount,
         commonQuestions,
-        prerequisiteChecks: data.prerequisite_checks?.length || 0,
-        programQuestions: data.program_questions?.length || 0
+        programQuestions: programQuestionCount,
+        prerequisiteChecks: data.prerequisite_checks?.length || 0
       });
 
       console.log('[PlanBuilder] ✅ Schema discovered successfully:', {
-        branches: data.branches?.length ?? 0,
-        commonQuestions: data.common_questions?.length ?? 0,
-        prerequisiteChecks: data.prerequisite_checks?.length ?? 0,
-        programQuestions: data.program_questions?.length ?? 0
+        branches: branchCount,
+        commonQuestions,
+        programQuestions: programQuestionCount,
+        prerequisiteChecks: data.prerequisite_checks?.length || 0
       });
       
       setDiscoveredSchema(data);
@@ -1784,19 +1802,21 @@ const PlanBuilder = () => {
                       <Badge variant="outline" className="text-xs">Step 5</Badge>
                       <CardTitle>Program Questions</CardTitle>
                     </div>
-                    {(discoveredSchema.branches?.length || discoveredSchema.common_questions?.length) && (
+                    {discoveredSchema.discoveryCompleted && programQuestions.length > 0 && (
                       <CheckCircle className="h-5 w-5 text-green-600" />
                     )}
                   </div>
                   <CardDescription>
-                    {(discoveredSchema.branches?.length || discoveredSchema.common_questions?.length) 
-                      ? 'Answer program-specific questions below'
-                      : 'No additional questions required for this program'}
+                    {discoveredSchema.discoveryCompleted 
+                      ? programQuestions.length > 0
+                        ? `${programQuestions.length} question${programQuestions.length === 1 ? '' : 's'} to answer`
+                        : 'No additional questions required for this program'
+                      : 'Click "Continue to Program Questions" to discover fields'}
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {/* Handle case where no questions were found */}
-                  {!discoveredSchema.branches?.length && !discoveredSchema.common_questions?.length ? (
+                  {/* Handle case where discovery ran and no questions were found */}
+                  {discoveredSchema.discoveryCompleted && programQuestions.length === 0 ? (
                     <div className="space-y-4">
                       <div className="p-6 bg-green-50 border border-green-200 rounded-lg">
                         <div className="flex items-start gap-3">
