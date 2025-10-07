@@ -485,7 +485,9 @@ Deno.serve(async (req) => {
       } : null;
 
       const response = {
-        success: !!(discoveredSchema || programQuestions.length > 0),
+        success: mode === 'prerequisites_only' 
+          ? !!(result?.prerequisite_checks && result.prerequisite_checks.length > 0)
+          : !!(discoveredSchema || programQuestions.length > 0),
         program_ref,
         branches: discoveredSchema?.branches || [],
         common_questions: discoveredSchema?.common_questions || [],
