@@ -566,16 +566,18 @@ const PlanBuilder = () => {
     try {
       toastLogger('program_discovery', 'Discovering program fields...', 'info', { programRef });
       
-      const { data, run_id } = await mcpDiscover({
-        stage: "program",
-        program_ref: programRef,
-        credential_id: credentialId,
-        base_url: "https://blackhawk.skiclubpro.team",
-        program_id: 309,
-        child_name: selectedChildName || '',
+      const { data, error } = await supabase.functions.invoke('discover-fields-interactive', {
+        body: {
+          program_ref: programRef,
+          credential_id: credentialId,
+          child_name: selectedChildName || '',
+          // No 'mode' parameter = defaults to full discovery (prerequisites + program)
+        }
       });
 
-      console.log('[PlanBuilder] Program discovery result (run_id:', run_id, '):', data);
+      if (error) throw error;
+
+      console.log('[PlanBuilder] Program discovery result:', data);
 
       if (data?.success) {
         setProgramQuestions(data.program_questions || []);
