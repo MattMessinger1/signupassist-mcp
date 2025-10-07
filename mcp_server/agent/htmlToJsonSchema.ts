@@ -35,17 +35,15 @@ const ERROR_LOCATORS = [
   ".error, .errors, .error-message, .invalid-feedback, .form-item--error-message, .webform-submission-errors"
 ];
 
-function visible(el: Element) {
-  const cs = window.getComputedStyle(el as HTMLElement);
-  const r = (el as HTMLElement).getBoundingClientRect();
-  return cs.display !== "none" && cs.visibility !== "hidden" && r.width > 0 && r.height > 0;
-}
-
 export async function harvestVisibleFields(page: Page, stepId = "step1"): Promise<DiscoveredField[]> {
   const controls = await page.$$eval("input, select, textarea", (elements) =>
     (elements as HTMLElement[])
-      .filter(visible)
-      .filter((el: any) => !["hidden","submit","button","image","file"].includes(el.type))
+      .filter((el: any) => {
+        const cs = window.getComputedStyle(el);
+        const r = el.getBoundingClientRect();
+        return cs.display !== "none" && cs.visibility !== "hidden" && r.width > 0 && r.height > 0;
+      })
+      .filter((el: any) => !["hidden", "submit", "button", "image", "file"].includes(el.type))
       .map((el: any) => {
         const id = el.name || el.id || `anon_${Math.random().toString(36).slice(2)}`;
         const isSelect = el.tagName === "SELECT";
@@ -64,11 +62,12 @@ export async function harvestVisibleFields(page: Page, stepId = "step1"): Promis
           type,
           required: !!el.required,
           options,
-          x: { selector, step_id: stepId, label_confidence: label ? "high":"low" }
-        } as DiscoveredField;
+          x: { selector, step_id: stepId, label_confidence: label ? "high" : "low" }
+        };
       })
   );
 
+  // dedupe by id
   const map = new Map<string, DiscoveredField>();
   for (const f of controls) if (!map.has(f.id)) map.set(f.id, f);
   return Array.from(map.values());
