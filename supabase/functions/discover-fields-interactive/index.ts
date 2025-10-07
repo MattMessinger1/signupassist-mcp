@@ -135,7 +135,12 @@ interface RequestBody {
   program_ref: string;
   credential_id: string;
   child_name?: string;
+  child_id?: string;
   mode?: 'full' | 'prerequisites_only';
+  stage?: 'prereq' | 'program';
+  base_url?: string;
+  plan_id?: string;
+  run_mode?: string;
 }
 
 // Background discovery function
@@ -144,6 +149,22 @@ async function runDiscoveryInBackground(jobId: string, requestBody: RequestBody,
     Deno.env.get('SUPABASE_URL') ?? '',
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
   );
+
+  // Extract stage outside try block so it's accessible in catch
+  const { 
+    program_ref, 
+    credential_id, 
+    child_name, 
+    child_id,
+    mode, 
+    stage: requestStage,
+    base_url,
+    plan_id,
+    run_mode
+  } = requestBody;
+  
+  // Map mode to stage: 'prerequisites_only' -> 'prereq', 'full' -> 'program'
+  const stage = requestStage || (mode === 'prerequisites_only' ? 'prereq' : 'program');
 
   try {
     // Update job status to running
@@ -156,8 +177,6 @@ async function runDiscoveryInBackground(jobId: string, requestBody: RequestBody,
 
     const { data: { user } } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
     if (!user) throw new Error('User not found');
-
-    const { program_ref, credential_id, child_name, mode } = requestBody;
 
     // Load and decrypt credentials
     const { data: credentialData, error: credError } = await supabase.functions.invoke('cred-get', {
@@ -238,16 +257,13 @@ async function runDiscoveryInBackground(jobId: string, requestBody: RequestBody,
     // Call MCP discovery with explicit stage parameter
     const userJwt = authHeader.replace('Bearer ', '');
     
-    // Map mode to stage: 'prerequisites_only' -> 'prereq', 'full' -> 'program'
-    const stage = mode === 'prerequisites_only' ? 'prereq' : 'program';
-    
     const result = await invokeMCPTool("scp.discover_required_fields", {
       program_ref,
       mandate_id,
       credential_id,
       user_jwt: userJwt,
-      stage: stage,  // Use stage instead of mode
-      mode: mode || 'full',  // Keep mode for backward compatibility
+      stage: stage,
+      mode: mode || 'full',
       warm_hints_prereqs: warmHintsPrereqs,
       warm_hints_program: warmHintsProgram,
       child_name: child_name || '',

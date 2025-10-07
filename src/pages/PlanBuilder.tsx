@@ -933,10 +933,12 @@ const PlanBuilder = () => {
       const { data: start, error: startError } = await supabase.functions.invoke('discover-fields-interactive', {
         body: {
           stage: 'prereq',
-          plan_id: undefined, // Will be created during discovery
+          plan_id: undefined,
           base_url: `https://blackhawk.skiclubpro.com`,
           program_ref: programRef,
           credential_id: credentialId,
+          child_id: selectedChildId || undefined,
+          child_name: selectedChildName || undefined,
           run_mode: 'background'
         }
       });
