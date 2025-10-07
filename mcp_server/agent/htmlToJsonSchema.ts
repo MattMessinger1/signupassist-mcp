@@ -36,38 +36,44 @@ const ERROR_LOCATORS = [
 ];
 
 export async function harvestVisibleFields(page: Page, stepId = "step1"): Promise<DiscoveredField[]> {
-  const controls = await page.$$eval("input, select, textarea", (elements) =>
-    (elements as HTMLElement[])
-      .filter((el: any) => {
-        const cs = window.getComputedStyle(el);
-        const r = el.getBoundingClientRect();
-        return cs.display !== "none" && cs.visibility !== "hidden" && r.width > 0 && r.height > 0;
-      })
-      .filter((el: any) => !["hidden", "submit", "button", "image", "file"].includes(el.type))
-      .map((el: any) => {
-        const id = el.name || el.id || `anon_${Math.random().toString(36).slice(2)}`;
-        const isSelect = el.tagName === "SELECT";
-        const isTextArea = el.tagName === "TEXTAREA";
-        const type = isSelect ? "select" : isTextArea ? "textarea" : (el.type || "text");
-        const explicit = document.querySelector(`label[for='${el.id}']`);
-        const implicit = el.closest("label");
-        const label = (explicit?.textContent || implicit?.textContent || el.ariaLabel || el.placeholder || "").trim();
-        const options = isSelect
-          ? Array.from((el as HTMLSelectElement).options).map(o => ({ value: o.value, label: o.textContent || o.value }))
-          : undefined;
-        const selector = el.id ? `#${el.id}` : el.name ? `[name="${el.name}"]` : undefined;
-        return {
-          id,
-          label,
-          type,
-          required: !!el.required,
-          options,
-          x: { selector, step_id: stepId, label_confidence: label ? "high" : "low" }
-        } as DiscoveredField;
-      })
+  const controls = await page.$$eval(
+    "input, select, textarea",
+    (elements, stepIdArg) => {
+      return (elements as HTMLElement[])
+        .filter((el: any) => {
+          const cs = window.getComputedStyle(el);
+          const r = el.getBoundingClientRect();
+          return cs.display !== "none" && cs.visibility !== "hidden" && r.width > 0 && r.height > 0;
+        })
+        .filter((el: any) => !["hidden", "submit", "button", "image", "file"].includes(el.type))
+        .map((el: any) => {
+          const id = el.name || el.id || `anon_${Math.random().toString(36).slice(2)}`;
+          const isSelect = el.tagName === "SELECT";
+          const isTextArea = el.tagName === "TEXTAREA";
+          const type = isSelect ? "select" : isTextArea ? "textarea" : (el.type || "text");
+          const explicit = document.querySelector(`label[for='${el.id}']`);
+          const implicit = el.closest("label");
+          const label = (explicit?.textContent || implicit?.textContent || el.ariaLabel || el.placeholder || "").trim();
+          const options = isSelect
+            ? Array.from((el as HTMLSelectElement).options).map(o => ({
+                value: o.value,
+                label: o.textContent || o.value
+              }))
+            : undefined;
+          const selector = el.id ? `#${el.id}` : el.name ? `[name="${el.name}"]` : undefined;
+          return {
+            id,
+            label,
+            type,
+            required: !!el.required,
+            options,
+            x: { selector, step_id: stepIdArg, label_confidence: label ? "high" : "low" }
+          };
+        });
+    },
+    stepId // ✅  pass stepId into the browser context
   );
 
-  // dedupe by id
   const map = new Map<string, DiscoveredField>();
   for (const f of controls) if (!map.has(f.id)) map.set(f.id, f);
   return Array.from(map.values());
