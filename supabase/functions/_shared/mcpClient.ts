@@ -47,9 +47,9 @@ export async function invokeMCPTool(
       args: requestArgs
     }, null, 2));
 
-    // Set timeout for long-running MCP operations (2 minutes)
+    // Set timeout for long-running MCP operations (5 minutes for discovery)
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 seconds
+    const timeoutId = setTimeout(() => controller.abort(), 300000); // 300 seconds (5 minutes)
 
     try {
       const response = await fetch(`${mcpServerUrl}/tools/call`, {
@@ -99,7 +99,7 @@ export async function invokeMCPTool(
       clearTimeout(timeoutId);
       
       if (error.name === 'AbortError') {
-        throw new Error('MCP server request timed out after 2 minutes. The discovery process is taking too long.');
+        throw new Error('MCP server request timed out after 5 minutes. The discovery process is taking too long.');
       }
       throw error;
     }
