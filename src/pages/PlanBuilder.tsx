@@ -861,16 +861,16 @@ const PlanBuilder = () => {
     setIsDiscovering(true);
     
     try {
-      const { data, run_id } = await mcpDiscover({
-        program_ref: programRef,
-        mandate_id: null,
-        credential_id: credentialId,
-        user_jwt: session?.access_token,
-        mode: 'prerequisites_only',
-        warm_hints_prereqs: {},
-        warm_hints_program: {},
-        child_name: selectedChildName || ''
+      const { data, error } = await supabase.functions.invoke('discover-fields-interactive', {
+        body: {
+          program_ref: programRef,
+          credential_id: credentialId,
+          child_name: selectedChildName || '',
+          mode: 'prerequisites_only'
+        }
       });
+
+      if (error) throw error;
       
       if (data?.prerequisite_checks) {
         setPrerequisiteChecks(data.prerequisite_checks);
