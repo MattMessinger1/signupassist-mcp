@@ -5,7 +5,90 @@ import { generateFormFingerprint } from '../_shared/fingerprint.ts';
 import { toIsoStringSafe } from '../_shared/utils.ts';
 import { logStructuredError, sanitizeError } from '../_shared/errors.ts';
 import { verifyDecryption, sanitizeCredentialsForLog, CredentialError } from '../_shared/account-credentials.ts';
-import { mapFieldsToProgramQuestions } from '../../../mcp_server/agent/mapToProgramQuestions.ts';
+
+// Inline mapping utilities (cannot import from mcp_server in edge functions)
+function normText(s?: string) {
+  return (s || "").trim().replace(/\s+/g, " ");
+}
+
+function dedupe<T>(arr: T[]) { return Array.from(new Set(arr)); }
+
+function stripPlaceholders(arr: string[]) {
+  return arr.filter(o =>
+    o &&
+    !/^(-\s*)?select\s*-?$/i.test(o) &&
+    !/^choose|pick/i.test(o) &&
+    o !== "_none"
+  );
+}
+
+function stripTrailingPrice(arr: string[]) {
+  return arr.map(o => o.replace(/\s*\(\$\s*\d+(?:\.\d{2})?\)\s*$/,"").trim());
+}
+
+function normalizeOptions(opts: any): string[] | undefined {
+  if (!opts) return undefined;
+  let out: string[] = [];
+
+  if (Array.isArray(opts)) {
+    out = opts.map((o: any) =>
+      typeof o === "string" ? normText(o)
+        : typeof o === "object" ? normText(o.label || o.text || o.value)
+        : ""
+    ).filter(Boolean);
+  } else if (typeof opts === "object") {
+    out = Object.values(opts).map(v => normText(String(v)));
+  }
+
+  out = stripPlaceholders(out);
+  out = stripTrailingPrice(out);
+  out = dedupe(out);
+
+  return out.length ? out : undefined;
+}
+
+function inferType(f: any): "text"|"number"|"date"|"select"|"radio"|"checkbox"|"textarea" {
+  const t = (f.type || f.inputType || f.widget || f.control || f.tagName || "").toLowerCase();
+  if (t.includes("select") || (Array.isArray(f.options) && f.options.length)) return "select";
+  if (t.includes("radio")) return "radio";
+  if (t.includes("checkbox")) return "checkbox";
+  if (t.includes("textarea")) return "textarea";
+  if (t.includes("number")) return "number";
+  if (t.includes("date")) return "date";
+  return "text";
+}
+
+function shouldSkip(f: any): boolean {
+  const id = (f.id || "").toLowerCase();
+  const label = (f.label || "").toLowerCase();
+  if (id.startsWith("anon_")) return true;
+  if (/participant/.test(id) || /participant/.test(label)) return true;
+  if (/captcha|coupon|discount|code/.test(id + " " + label)) return true;
+  if (f.hidden === true || f.visible === false) return true;
+  return false;
+}
+
+function mapFieldsToProgramQuestions(fields: any[]): any[] {
+  return fields
+    .filter(f => !shouldSkip(f))
+    .map(f => {
+      const type = inferType(f);
+      const options = normalizeOptions(f.options);
+      return {
+        id: f.id,
+        label: f.label ? normText(f.label) : f.id,
+        type,
+        required: !!f.required,
+        options,
+        description: f.description,
+        dependsOn: f.visibleWhen?.dependsOn,
+        showWhen: f.visibleWhen?.value,
+      };
+    })
+    .filter(q =>
+      q.type !== "text" ? true : q.required === true
+    );
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
