@@ -11,6 +11,7 @@ import { discoverFieldsSerially, SerialDiscoveryResult, DiscoveredField } from '
 import { humanPause } from './humanize.js';
 import { getPrerequisitePaths, PrerequisitePath } from '../config/prerequisite_paths.js';
 import { isPaymentButton, pageIndicatesPayment, capturePaymentEvidence, PaymentStopEvidence } from './guardrails.js';
+import { extractSingleStep } from '../agent/htmlToJsonSchema.js';
 
 export interface PrerequisiteCheckResult {
   id: string;           // 'membership', 'waiver', etc.
@@ -59,6 +60,35 @@ export async function discoverAll(
 ): Promise<UnifiedDiscoveryResult> {
   
   console.log('[UnifiedDiscovery] Starting two-stage discovery...');
+  
+  // Temporary thin-slice: Blackhawk Ski Club / Program 309
+  if (provider === "skiclubpro" && programRef === "309") {
+    console.log("[Test] Running thin-slice single-step extractor…");
+    
+    await navigateToProgramForm(page, programRef, baseDomain);
+    const schema = await extractSingleStep(page, "start");
+
+    return {
+      prerequisite_checks: [],
+      prerequisite_status: "complete",
+      program_questions: Object.keys(schema.properties).map((id) => ({
+        id,
+        label: schema.properties[id].title,
+        type: schema.properties[id].type,
+        required: schema.required.includes(id),
+        options: schema.properties[id].enum ?? []
+      })) as DiscoveredField[],
+      metadata: {
+        prerequisitesConfidence: 1.0,
+        programConfidence: 1.0,
+        prerequisitesLoops: 0,
+        programLoops: 1,
+        urlsVisited: [page.url()],
+        fieldsFound: Object.keys(schema.properties).length
+      }
+    };
+  }
+  
   console.log('[UnifiedDiscovery] Stage 1: Prerequisites');
   
   // STAGE 1: Prerequisites Discovery with custom guardrails
