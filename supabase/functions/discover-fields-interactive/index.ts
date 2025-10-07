@@ -366,13 +366,25 @@ Deno.serve(async (req) => {
         common_questions: result.common_questions || []
       } : null;
 
+      // Map program_questions to PlanBuilder-compatible format
+      const programQuestions = (result?.program_questions || []).map((f: any) => ({
+        id: f.id,
+        label: f.label || f.id,
+        type: f.type ?? "text",
+        required: !!f.required,
+        options: f.options?.map((o: any) => o.value),
+        dependsOn: f.visibleWhen?.dependsOn,
+        showWhen: f.visibleWhen?.value,
+      }));
+
       const response = {
         success: !!discoveredSchema,
         ...discoveredSchema,
         // Phase 2.5: Include prerequisite checks
         prerequisite_checks: result?.prerequisite_checks || [],
         prerequisite_status: result?.prerequisite_status || 'unknown',
-        program_questions: result?.program_questions || [],
+        program_questions: programQuestions,
+        discoveredSchema: result?.program_questions || [],
         // ✅ Normalize all date fields to ISO strings
         formWatchOpensAt: toIsoStringSafe(result?.formWatchOpensAt),
         formWatchClosesAt: toIsoStringSafe(result?.formWatchClosesAt),
