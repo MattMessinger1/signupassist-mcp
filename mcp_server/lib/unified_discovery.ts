@@ -106,7 +106,7 @@ export async function discoverAll(
  * - YELLOW LIGHT: Form fields discovered via serial loop
  * - SAFETY: Never click payment buttons
  */
-async function discoverPrerequisites(
+export async function discoverPrerequisites(
   page: Page,
   orgRef: string,
   baseDomain: string,  // Unified domain
@@ -235,7 +235,7 @@ async function discoverPrerequisites(
  * Navigate to program registration form
  * For SkiClubPro, try /registration listing with scrolling first
  */
-async function navigateToProgramForm(
+export async function navigateToProgramForm(
   page: Page,
   programRef: string,
   baseDomain: string  // Unified domain
@@ -409,7 +409,7 @@ async function navigateToProgramForm(
 /**
  * Multi-step program field discovery with payment guardrails
  */
-async function discoverProgramFieldsMultiStep(
+export async function discoverProgramFieldsMultiStep(
   page: Page,
   programRef: string,
   warmHints: Record<string, any>

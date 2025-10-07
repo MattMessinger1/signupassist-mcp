@@ -213,32 +213,36 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
     },
     args,
     async () => {
-      let session = null;
+      // Resolve base URL and domain from org_ref or program_ref
+      const { baseUrl, baseDomain } = resolveBaseUrl(args);
+      
+      // Extract org_ref for field discovery
+      const orgRef = args?.org_ref || 'blackhawk-ski-club';
+      
+      // Extract user_id from JWT for session caching
+      const userId = args.user_jwt ? JSON.parse(atob(args.user_jwt.split('.')[1])).sub : 'anonymous';
+      
+      const warmHintsPrereqs = args.warm_hints_prereqs || {};
+      const warmHintsProgram = args.warm_hints_program || {};
+      
+      // STAGE 1: Prerequisites in dedicated session
+      let prereqSession = null;
+      let prereqResult = null;
       
       try {
-        // Resolve base URL and domain from org_ref or program_ref
-        const { baseUrl, baseDomain } = resolveBaseUrl(args);
+        console.log('[Discover] Launching prerequisite session...');
+        prereqSession = await launchBrowserbaseSession();
         
-        // Extract org_ref for field discovery
-        const orgRef = args?.org_ref || 'blackhawk-ski-club';
-        
-        // Extract user_id from JWT for session caching
-        const userId = args.user_jwt ? JSON.parse(atob(args.user_jwt.split('.')[1])).sub : 'anonymous';
-        
-        // Launch browser session (always fresh - no session reuse)
-        session = await launchBrowserbaseSession();
-        console.log('[Discover] Launched fresh Browserbase session');
-        
-        // ✅ Login first with dynamic base URL and optional session caching
-        const loginResult = await ensureLoggedIn(
-          session, 
+        // Login for prerequisites
+        const prereqLogin = await ensureLoggedIn(
+          prereqSession, 
           args.credential_id, 
           args.user_jwt, 
           baseUrl, 
           userId, 
           orgRef,
           { 
-            tool_name: 'scp.discover_required_fields', 
+            tool_name: 'scp.discover_required_fields (prereqs)', 
             mandate_id: args.mandate_id,
             plan_id: args.plan_id,
             plan_execution_id: args.plan_execution_id,
@@ -246,62 +250,89 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           }
         );
         
-        // ✅ CRITICAL: Check login status before proceeding
-        if (loginResult.login_status === 'failed') {
-          throw new Error('Login failed - cannot proceed with field discovery. User is not authenticated.');
+        if (prereqLogin.login_status === 'failed') {
+          throw new Error('Login failed for prerequisites - cannot proceed with discovery.');
         }
         
-        console.log('DEBUG: Login successful, starting unified field discovery');
+        // Import prerequisite discovery
+        const { discoverPrerequisites } = await import('../lib/unified_discovery.js');
         
-        // ✅ Use unified discovery for both prerequisites and program fields
-        const { discoverAll } = await import('../lib/unified_discovery.js');
-        
-        const warmHintsPrereqs = args.warm_hints_prereqs || {};
-        const warmHintsProgram = args.warm_hints_program || {};
-        
-        console.log('DEBUG: Invoking unified discovery with warm hints:', {
-          prereqs: Object.keys(warmHintsPrereqs).length,
-          program: Object.keys(warmHintsProgram).length
-        });
-        
-        const discoveryResult = await discoverAll(
-          session.page,
-          args.program_ref,
+        prereqResult = await discoverPrerequisites(
+          prereqSession.page,
           orgRef,
-          baseDomain,  // Pass baseDomain instead of provider string
-          'skiclubpro',  // Provider parameter for prerequisite path lookup
-          warmHintsPrereqs,
-          warmHintsProgram,
-          args.child_name || ''  // Pass selected child name
+          baseDomain,
+          'skiclubpro',
+          warmHintsPrereqs
         );
         
-        console.log('DEBUG: Unified discovery completed:', {
-          prerequisite_checks: discoveryResult.prerequisite_checks?.length || 0,
-          prerequisite_status: discoveryResult.prerequisite_status,
-          program_questions_count: discoveryResult.program_questions.length,
-          metadata: {
-            prerequisitesLoops: discoveryResult.metadata?.prerequisitesLoops,
-            programLoops: discoveryResult.metadata?.programLoops,
-            urlsVisited: discoveryResult.metadata?.urlsVisited?.length,
-            stops: discoveryResult.metadata?.stops?.reason,
-            fieldsFound: discoveryResult.metadata?.fieldsFound
-          }
-        });
+        console.log(`[Discover] Prerequisites complete: ${prereqResult.overallStatus} (${prereqResult.loopCount} loops)`);
         
-        // Return unified result
-        return {
-          program_ref: args.program_ref,
-          prerequisite_checks: discoveryResult.prerequisite_checks,
-          prerequisite_status: discoveryResult.prerequisite_status,
-          program_questions: discoveryResult.program_questions,
-          metadata: {
-            url: baseUrl,
-            field_count: discoveryResult.program_questions.length,
-            categories: [],
-            discovered_at: new Date().toISOString(),
-            ...discoveryResult.metadata
-          }
+      } catch (error) {
+        console.error('[Discover] Prerequisite stage failed:', error);
+        // Continue to program discovery even if prereqs fail
+        prereqResult = {
+          checks: [],
+          overallStatus: 'unknown' as const,
+          confidence: 0,
+          loopCount: 0
         };
+      } finally {
+        // Always close prerequisite session
+        if (prereqSession) {
+          await ensureLoggedOut(prereqSession);
+          await closeBrowserbaseSession(prereqSession);
+          console.log('[Discover] Closed prerequisite session');
+        }
+      }
+      
+      // STAGE 2: Program discovery in NEW dedicated session
+      let programSession = null;
+      let programResult = null;
+      
+      try {
+        console.log('[Discover] Launching program session...');
+        programSession = await launchBrowserbaseSession();
+        
+        // Fresh login for program discovery
+        const programLogin = await ensureLoggedIn(
+          programSession,
+          args.credential_id,
+          args.user_jwt,
+          baseUrl,
+          userId,
+          orgRef,
+          { 
+            tool_name: 'scp.discover_required_fields (program)', 
+            mandate_id: args.mandate_id,
+            plan_id: args.plan_id,
+            plan_execution_id: args.plan_execution_id,
+            session_token: args.session_token
+          }
+        );
+        
+        if (programLogin.login_status === 'failed') {
+          throw new Error('Login failed for program discovery - cannot proceed.');
+        }
+        
+        // Import program discovery functions
+        const { navigateToProgramForm, discoverProgramFieldsMultiStep } = 
+          await import('../lib/unified_discovery.js');
+        
+        // Navigate to program form
+        await navigateToProgramForm(
+          programSession.page,
+          args.program_ref,
+          baseDomain
+        );
+        
+        // Discover program fields
+        programResult = await discoverProgramFieldsMultiStep(
+          programSession.page,
+          args.program_ref,
+          warmHintsProgram
+        );
+        
+        console.log(`[Discover] Program fields found: ${programResult.fields.length} (${programResult.loopCount} loops)`);
         
       } catch (error) {
         console.error('SkiClubPro field discovery failed:', error);
@@ -325,11 +356,48 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         
         throw finalError;
       } finally {
-        // ✅ Always close session (no reuse)
-        if (session) {
-          await ensureLoggedOut(session);
-          await closeBrowserbaseSession(session);
-          console.log('[Discover] Closed Browserbase session');
+        // Always close program session
+        if (programSession) {
+          await ensureLoggedOut(programSession);
+          await closeBrowserbaseSession(programSession);
+          console.log('[Discover] Closed program session');
+        }
+      }
+      
+      // Merge results from both stages
+      const discoveryResult = {
+        prerequisite_checks: prereqResult.checks,
+        prerequisite_status: prereqResult.overallStatus,
+        program_questions: programResult.fields,
+        metadata: {
+          prerequisitesConfidence: prereqResult.confidence,
+          programConfidence: programResult.confidence,
+          prerequisitesLoops: prereqResult.loopCount,
+          programLoops: programResult.loopCount,
+          urlsVisited: programResult.urlsVisited,
+          stops: programResult.stops,
+          fieldsFound: programResult.fields.length
+        }
+      };
+      
+      console.log('[Discover] Discovery complete:', {
+        prerequisite_checks: discoveryResult.prerequisite_checks?.length || 0,
+        prerequisite_status: discoveryResult.prerequisite_status,
+        program_questions_count: discoveryResult.program_questions.length
+      });
+      
+      // Return unified result
+      return {
+        program_ref: args.program_ref,
+        prerequisite_checks: discoveryResult.prerequisite_checks,
+        prerequisite_status: discoveryResult.prerequisite_status,
+        program_questions: discoveryResult.program_questions,
+        metadata: {
+          url: baseUrl,
+          field_count: discoveryResult.program_questions.length,
+          categories: [],
+          discovered_at: new Date().toISOString(),
+          ...discoveryResult.metadata
         }
       }
     },
