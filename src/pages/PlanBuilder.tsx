@@ -1862,7 +1862,7 @@ const PlanBuilder = () => {
                           initialAnswers={form.watch('answers') || {}}
                           onSubmit={(answers) => {
                             console.log('[PlanBuilder] Program questions submitted:', answers);
-                            form.setValue('answers', answers);
+                            form.setValue('answers', answers as any);
                             
                             toast({
                               title: 'Answers Saved',
@@ -2110,8 +2110,8 @@ const PlanBuilder = () => {
                                         </SelectTrigger>
                                         <SelectContent>
                                           {question.options?.map((option) => (
-                                            <SelectItem key={option} value={option}>
-                                              {option}
+                                            <SelectItem key={option.value} value={option.value}>
+                                              {option.label}
                                             </SelectItem>
                                           ))}
                                         </SelectContent>
@@ -2121,23 +2121,23 @@ const PlanBuilder = () => {
                                         {question.options?.map((option) => {
                                           const currentValue = field.value;
                                           const isArray = Array.isArray(currentValue);
-                                          const checked = isArray && currentValue.includes(option);
+                                          const checked = isArray && currentValue.includes(option.value);
                                           
                                           return (
-                                            <div key={option} className="flex items-center space-x-2">
+                                            <div key={option.value} className="flex items-center space-x-2">
                                               <Checkbox
-                                                id={`${question.id}-${option}`}
+                                                id={`${question.id}-${option.value}`}
                                                 checked={checked}
                                                 onCheckedChange={(isChecked) => {
                                                   const current = isArray ? currentValue : [];
                                                   if (isChecked) {
-                                                    field.onChange([...current, option]);
+                                                    field.onChange([...current, option.value]);
                                                   } else {
-                                                    field.onChange(current.filter((v: string) => v !== option));
+                                                    field.onChange(current.filter((v: string) => v !== option.value));
                                                   }
                                                 }}
                                               />
-                                              <Label htmlFor={`${question.id}-${option}`}>{option}</Label>
+                                              <Label htmlFor={`${question.id}-${option.value}`}>{option.label}</Label>
                                             </div>
                                           );
                                         })}

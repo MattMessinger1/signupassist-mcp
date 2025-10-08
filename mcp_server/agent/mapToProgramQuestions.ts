@@ -5,7 +5,7 @@ export type ProgramQuestion = {
   label: string;
   type: "text"|"number"|"date"|"select"|"radio"|"checkbox"|"textarea";
   required: boolean;
-  options?: string[];
+  options?: Array<{ value: string; label: string }>;
   description?: string;
   dependsOn?: string;
   showWhen?: any;
@@ -31,23 +31,50 @@ function stripTrailingPrice(arr: string[]) {
   return arr.map(o => o.replace(/\s*\(\$\s*\d+(?:\.\d{2})?\)\s*$/,"").trim());
 }
 
-function normalizeOptions(opts: any): string[] | undefined {
+function normalizeOptions(opts: any): Array<{ value: string; label: string }> | undefined {
   if (!opts) return undefined;
-  let out: string[] = [];
+  let out: Array<{ value: string; label: string }> = [];
 
   if (Array.isArray(opts)) {
-    out = opts.map((o: any) =>
-      typeof o === "string" ? normText(o)
-        : typeof o === "object" ? normText(o.label || o.text || o.value)
-        : ""
-    ).filter(Boolean);
+    out = opts.map((o: any) => {
+      if (typeof o === "string") {
+        return { value: o, label: normText(o) };
+      } else if (typeof o === "object" && (o.value || o.label)) {
+        return {
+          value: o.value || o.label || o.text,
+          label: normText(o.label || o.text || o.value)
+        };
+      }
+      return null;
+    }).filter(Boolean) as Array<{ value: string; label: string }>;
   } else if (typeof opts === "object") {
-    out = Object.values(opts).map(v => normText(String(v)));
+    out = Object.entries(opts).map(([key, val]) => ({
+      value: key,
+      label: normText(String(val))
+    }));
   }
 
-  out = stripPlaceholders(out);
-  out = stripTrailingPrice(out);
-  out = dedupe(out);
+  // Filter placeholders
+  out = out.filter(o => 
+    o.label &&
+    !/^(-\s*)?select\s*-?$/i.test(o.label) &&
+    !/^choose|pick/i.test(o.label) &&
+    o.value !== "_none"
+  );
+
+  // Strip trailing prices from labels
+  out = out.map(o => ({
+    ...o,
+    label: o.label.replace(/\s*\(\$\s*\d+(?:\.\d{2})?\)\s*$/, "").trim()
+  }));
+
+  // Dedupe by value
+  const seen = new Set<string>();
+  out = out.filter(o => {
+    if (seen.has(o.value)) return false;
+    seen.add(o.value);
+    return true;
+  });
 
   return out.length ? out : undefined;
 }

@@ -85,7 +85,12 @@ export const mockProgramQuestions: ProgramQuestion[] = [
     id: 'skill_level',
     label: 'Skill Level',
     type: 'select',
-    options: ['Beginner', 'Intermediate', 'Advanced', 'Expert'],
+    options: [
+      { value: 'beginner', label: 'Beginner' },
+      { value: 'intermediate', label: 'Intermediate' },
+      { value: 'advanced', label: 'Advanced' },
+      { value: 'expert', label: 'Expert' }
+    ],
     required: true,
     description: 'Select your current skiing/snowboarding skill level',
   },
@@ -93,14 +98,22 @@ export const mockProgramQuestions: ProgramQuestion[] = [
     id: 'equipment_rental',
     label: 'Equipment Rental',
     type: 'radio',
-    options: ['Own Equipment', 'Full Rental (Skis/Board + Boots)', 'Boots Only'],
+    options: [
+      { value: 'own', label: 'Own Equipment' },
+      { value: 'full_rental', label: 'Full Rental (Skis/Board + Boots)' },
+      { value: 'boots_only', label: 'Boots Only' }
+    ],
     required: true,
   },
   {
     id: 'lesson_preference',
     label: 'Lesson Preference',
     type: 'select',
-    options: ['Group Lesson', 'Private Lesson', 'No Lesson'],
+    options: [
+      { value: 'group', label: 'Group Lesson' },
+      { value: 'private', label: 'Private Lesson' },
+      { value: 'none', label: 'No Lesson' }
+    ],
     required: false,
   },
   {
@@ -148,7 +161,11 @@ export const mockProgramQuestionsMinimal: ProgramQuestion[] = [
     id: 'skill_level',
     label: 'Skill Level',
     type: 'select',
-    options: ['Beginner', 'Intermediate', 'Advanced'],
+    options: [
+      { value: 'beginner', label: 'Beginner' },
+      { value: 'intermediate', label: 'Intermediate' },
+      { value: 'advanced', label: 'Advanced' }
+    ],
     required: true,
   },
   {
@@ -164,9 +181,9 @@ export const mockProgramQuestionsMinimal: ProgramQuestion[] = [
  * Sample answers for mock questions
  */
 export const mockProgramAnswers = {
-  skill_level: 'Intermediate',
-  equipment_rental: 'Own Equipment',
-  lesson_preference: 'Group Lesson',
+  skill_level: 'intermediate',
+  equipment_rental: 'own',
+  lesson_preference: 'group',
   emergency_contact: 'Jane Smith',
   emergency_phone: '555-123-4567',
   medical_conditions: 'None',

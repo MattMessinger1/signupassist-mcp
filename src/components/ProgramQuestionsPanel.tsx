@@ -21,15 +21,15 @@ export interface ProgramQuestion {
   id: string;
   label: string;
   type: 'text' | 'select' | 'checkbox' | 'radio' | 'textarea' | 'date';
-  options?: string[];
+  options?: Array<{ value: string; label: string }>;
   required?: boolean;
   description?: string;
 }
 
 export interface ProgramQuestionsPanelProps {
   questions: ProgramQuestion[];
-  initialAnswers?: Record<string, string | boolean>;
-  onSubmit?: (answers: Record<string, string | boolean>) => void;
+  initialAnswers?: Record<string, string | boolean | string[]>;
+  onSubmit?: (answers: Record<string, string | boolean | string[]>) => void;
   onBack?: () => void;
   onRecheck?: () => void;
   isSubmitting?: boolean;
@@ -73,7 +73,8 @@ export default function ProgramQuestionsPanel({
         case 'select':
         case 'radio':
           if (question.options && question.options.length > 0) {
-            fieldSchema = z.enum(question.options as [string, ...string[]]);
+            const values = question.options.map(o => o.value) as [string, ...string[]];
+            fieldSchema = z.enum(values);
             if (!question.required) {
               fieldSchema = fieldSchema.optional();
             }
@@ -83,13 +84,25 @@ export default function ProgramQuestionsPanel({
           break;
 
         case 'checkbox':
-          fieldSchema = z.boolean();
-          if (question.required) {
-            fieldSchema = fieldSchema.refine((val) => val === true, {
-              message: `${question.label} must be checked`,
-            });
+          // Multi-select checkbox group
+          if (question.options && question.options.length > 0) {
+            let arrSchema = z.array(z.string());
+            if (question.required) {
+              arrSchema = arrSchema.min(1, `At least one ${question.label} must be selected`);
+            } else {
+              arrSchema = arrSchema.optional() as any;
+            }
+            fieldSchema = arrSchema;
           } else {
-            fieldSchema = fieldSchema.optional();
+            // Single checkbox
+            fieldSchema = z.boolean();
+            if (question.required) {
+              fieldSchema = fieldSchema.refine((val) => val === true, {
+                message: `${question.label} must be checked`,
+              });
+            } else {
+              fieldSchema = fieldSchema.optional();
+            }
           }
           break;
 
@@ -226,8 +239,8 @@ export default function ProgramQuestionsPanel({
                     </SelectTrigger>
                     <SelectContent className="bg-background z-50">
                       {question.options.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option}
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -246,13 +259,13 @@ export default function ProgramQuestionsPanel({
                     )}
                   >
                     {question.options.map((option) => (
-                      <div key={option} className="flex items-center space-x-2">
-                        <RadioGroupItem value={option} id={`${question.id}-${option}`} />
+                      <div key={option.value} className="flex items-center space-x-2">
+                        <RadioGroupItem value={option.value} id={`${question.id}-${option.value}`} />
                         <Label
-                          htmlFor={`${question.id}-${option}`}
+                          htmlFor={`${question.id}-${option.value}`}
                           className="font-normal cursor-pointer"
                         >
-                          {option}
+                          {option.label}
                         </Label>
                       </div>
                     ))}
@@ -272,24 +285,32 @@ export default function ProgramQuestionsPanel({
                             : 'border-border'
                         )}
                       >
-                        {question.options.map((option) => (
-                          <div key={option} className="flex items-center space-x-2">
-                            <Checkbox
-                              id={`${question.id}-${option}`}
-                              checked={(watch(question.id) as any)?.[option] || false}
-                              onCheckedChange={(checked) => {
-                                const current = (watch(question.id) as any) || {};
-                                setValue(question.id, { ...current, [option]: checked });
-                              }}
-                            />
-                            <Label
-                              htmlFor={`${question.id}-${option}`}
-                              className="font-normal cursor-pointer"
-                            >
-                              {option}
-                            </Label>
-                          </div>
-                        ))}
+                        {question.options.map((option) => {
+                          const watchValue = watch(question.id);
+                          const currentValues = Array.isArray(watchValue) ? watchValue : [];
+                          return (
+                            <div key={option.value} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={`${question.id}-${option.value}`}
+                                checked={currentValues.includes(option.value)}
+                                onCheckedChange={(checked) => {
+                                  const current = currentValues;
+                                  if (checked) {
+                                    setValue(question.id, [...current, option.value] as any);
+                                  } else {
+                                    setValue(question.id, current.filter(v => v !== option.value) as any);
+                                  }
+                                }}
+                              />
+                              <Label
+                                htmlFor={`${question.id}-${option.value}`}
+                                className="font-normal cursor-pointer"
+                              >
+                                {option.label}
+                              </Label>
+                            </div>
+                          );
+                        })}
                       </div>
                     ) : (
                       // Single checkbox (e.g., "I agree")
