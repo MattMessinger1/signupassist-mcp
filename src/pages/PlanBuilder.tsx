@@ -46,6 +46,7 @@ import { useToastLogger } from '@/lib/logging/useToastLogger';
 import { chooseDefaultAnswer } from '@/lib/smartDefaults';
 import { DiscoveryCoverage } from '@/components/DiscoveryCoverage';
 import { mcpDiscover } from '@/lib/mcp';
+import { PlanExecutionStatus } from '@/components/PlanExecutionStatus';
 
 const stripePromise = loadStripe('pk_test_51RujoPAaGNDlVi1koVlBSBBXy2yfwz7vuMBciJxkawKBKaqwR4xw07wEFUAMa73ADIUqzwB5GwbPM3YnPYu5vo4X00rAdiwPkx');
 
@@ -2393,7 +2394,7 @@ const PlanBuilder = () => {
             )}
 
             {/* Step 11: Mandate Summary & Finalize */}
-            {discoveredSchema && opensAt && hasPaymentMethod && allRequirementsMet && form.watch('maxAmountCents') > 0 && form.watch('contactPhone') && showMandateSummary && (
+            {discoveredSchema && opensAt && hasPaymentMethod && allRequirementsMet && form.watch('maxAmountCents') > 0 && form.watch('contactPhone') && showMandateSummary && !showConfirmation && (
               <MandateSummary
                 orgRef="blackhawk-ski-club"
                 programTitle={friendlyProgramTitle || form.watch('programRef')}
@@ -2413,6 +2414,18 @@ const PlanBuilder = () => {
                   setShowConfirmation(true);
                   setShowMandateSummary(false);
                 }}
+              />
+            )}
+
+            {/* Step 12: Plan Created - Show Execution Status */}
+            {showConfirmation && createdPlan && (
+              <PlanExecutionStatus
+                planId={createdPlan.plan_id}
+                mandateId={createdPlan.mandate_id}
+                programTitle={friendlyProgramTitle || form.watch('programRef')}
+                childName={selectedChildName}
+                opensAt={opensAt instanceof Date ? opensAt.toISOString() : new Date(opensAt).toISOString()}
+                maxAmountCents={form.watch('maxAmountCents')}
               />
             )}
 
@@ -2448,7 +2461,7 @@ const PlanBuilder = () => {
             )}
 
             {/* Action Buttons */}
-            {!showMandateSummary && discoveredSchema && opensAt && hasPaymentMethod && form.watch('maxAmountCents') > 0 && form.watch('contactPhone') && (
+            {!showMandateSummary && !showConfirmation && discoveredSchema && opensAt && hasPaymentMethod && form.watch('maxAmountCents') > 0 && form.watch('contactPhone') && (
               <div className="flex gap-4">
                 <Button
                   type="button"
@@ -2470,7 +2483,7 @@ const PlanBuilder = () => {
               </div>
             )}
             
-            {showMandateSummary && (
+            {showMandateSummary && !showConfirmation && (
               <div className="flex gap-4">
                 <Button
                   type="button"
