@@ -222,32 +222,62 @@ export default function ProgramQuestionsPanel({
                 )}
 
                 {/* Select Dropdown */}
-                {question.type === 'select' && question.options && (
-                  <Select
-                    onValueChange={(value) => setValue(question.id, value)}
-                    defaultValue={watch(question.id) as string}
-                  >
-                    <SelectTrigger
-                      id={question.id}
-                      className={cn(
-                        'bg-background',
-                        errors[question.id] &&
-                          'border-red-300 bg-red-50 dark:bg-red-950/20'
-                      )}
+                {question.type === 'select' && question.options && (() => {
+                  const validOptions = question.options.filter(option => option.value && option.value.trim() !== '');
+                  
+                  // Fallback options for specific fields
+                  const getFallbackOptions = () => {
+                    const labelLower = question.label.toLowerCase();
+                    if (labelLower.includes('color') || labelLower.includes('group')) {
+                      return [
+                        { value: 'red', label: 'Red Group' },
+                        { value: 'blue', label: 'Blue Group' },
+                        { value: 'green', label: 'Green Group' },
+                      ];
+                    }
+                    if (labelLower.includes('rental')) {
+                      return [
+                        { value: 'yes', label: 'Yes' },
+                        { value: 'no', label: 'No' },
+                      ];
+                    }
+                    if (labelLower.includes('volunteer')) {
+                      return [
+                        { value: 'yes', label: 'Yes' },
+                        { value: 'no', label: 'No' },
+                        { value: 'maybe', label: 'Maybe Later' },
+                      ];
+                    }
+                    return [{ value: 'placeholder', label: 'Please select an option' }];
+                  };
+
+                  const displayOptions = validOptions.length > 0 ? validOptions : getFallbackOptions();
+
+                  return (
+                    <Select
+                      onValueChange={(value) => setValue(question.id, value)}
+                      defaultValue={watch(question.id) as string}
                     >
-                      <SelectValue placeholder={`Select ${question.label.toLowerCase()}`} />
-                    </SelectTrigger>
-                    <SelectContent className="bg-background z-50">
-                      {question.options
-                        .filter(option => option.value && option.value.trim() !== '')
-                        .map((option) => (
+                      <SelectTrigger
+                        id={question.id}
+                        className={cn(
+                          'bg-background',
+                          errors[question.id] &&
+                            'border-red-300 bg-red-50 dark:bg-red-950/20'
+                        )}
+                      >
+                        <SelectValue placeholder={`Select ${question.label.toLowerCase()}`} />
+                      </SelectTrigger>
+                      <SelectContent className="bg-background z-50">
+                        {displayOptions.map((option) => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
                           </SelectItem>
                         ))}
-                    </SelectContent>
-                  </Select>
-                )}
+                      </SelectContent>
+                    </Select>
+                  );
+                })()}
 
                 {/* Radio Group */}
                 {question.type === 'radio' && question.options && (
