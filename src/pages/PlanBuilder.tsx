@@ -1938,7 +1938,29 @@ const PlanBuilder = () => {
             )}
 
             {/* Step 5: Registration Form Fields */}
-            {discoveredSchema && (
+            {/* Show loading state while discovery is running */}
+            {programDiscoveryRunning && (
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">Step 5</Badge>
+                    <CardTitle>Discovering Program Questions</CardTitle>
+                  </div>
+                  <CardDescription>
+                    Please wait while we discover the registration form fields...
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center py-8 text-muted-foreground">
+                    <Loader2 className="animate-spin inline mr-2 h-5 w-5" />
+                    Discovering program questions… This may take 15-30 seconds.
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Show results after discovery completes */}
+            {discoveredSchema && !programDiscoveryRunning && (
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
