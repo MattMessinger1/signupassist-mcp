@@ -468,7 +468,7 @@ export async function discoverProgramFieldsMultiStep(
       const quickFields = Object.entries(quickSchema.properties).map(([id, prop]: [string, any]) => ({
         id,
         label: prop.title || id,
-        type: inferFieldType(prop.type),
+        type: inferFieldType(prop),
         required: quickSchema.required.includes(id),
         options: prop.enum ? prop.enum.map((v: string, idx: number) => ({
           value: v,
@@ -741,11 +741,21 @@ function humanizeFieldKey(key: string): string {
     .join(' ');
 }
 
-function inferFieldType(type: string): 'select' | 'radio' | 'checkbox' | 'text' | 'date' | 'textarea' {
-  if (type === 'select') return 'select';
-  if (type === 'radio') return 'radio';
-  if (type === 'checkbox') return 'checkbox';
-  if (type === 'date') return 'date';
-  if (type === 'textarea') return 'textarea';
+function inferFieldType(prop: any): 'select' | 'radio' | 'checkbox' | 'text' | 'date' | 'textarea' | 'number' {
+  const type = prop.type || 'string';
+  
+  // JSON Schema uses type:"string" + enum for selects/radios
+  if (prop.enum && prop.enum.length > 0) {
+    // Check if it's radio or select based on metadata
+    const metadata = prop['x-metadata'];
+    if (metadata?.selector?.includes('[type="radio"]')) return 'radio';
+    return 'select';  // Default to select for enum fields
+  }
+  
+  if (type === 'boolean' || prop.type === 'checkbox') return 'checkbox';
+  if (type === 'number') return 'number';
+  if (prop['x-metadata']?.selector?.includes('textarea')) return 'textarea';
+  if (prop['x-metadata']?.selector?.includes('[type="date"]')) return 'date';
+  
   return 'text';
 }
