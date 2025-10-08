@@ -515,25 +515,28 @@ const PlanBuilder = () => {
 
       console.log('[PlanBuilder] Prereq check result (run_id:', run_id, '):', data);
 
-      if (data?.prerequisite_status) {
-        setPrerequisiteStatus(data.prerequisite_status);
-        
-        if (data.prerequisite_status === 'complete') {
-          toast({
-            title: 'Prerequisites Complete',
-            description: 'All prerequisites are satisfied. Click "Continue to Program Questions" below.',
-          });
-        } else {
-          toast({
-            title: 'Prerequisites Required',
-            description: 'Please complete the missing prerequisites before continuing.',
-            variant: 'destructive',
-          });
-        }
-      }
+      const blob = data || {};
+      const prereqChecks = blob.prerequisite_checks || [];
+      const prereqStatus = blob.metadata?.prerequisite_status || blob.prerequisite_status || "unknown";
+      
+      setPrerequisiteChecks(prereqChecks);
+      setPrerequisiteStatus(prereqStatus);
+      
+      const failedFields = prereqChecks.filter((c: any) => c.status === "fail" && c.fields)
+                                       .flatMap((c: any) => c.fields);
+      setPrerequisiteFields(failedFields);
 
-      if (data?.prerequisite_checks) {
-        setPrerequisiteChecks(data.prerequisite_checks);
+      if (prereqStatus === 'complete') {
+        toast({
+          title: 'Prerequisites Complete',
+          description: 'All prerequisites are satisfied. Click "Continue to Program Questions" below.',
+        });
+      } else {
+        toast({
+          title: 'Prerequisites Required',
+          description: 'Please complete the missing prerequisites before continuing.',
+          variant: 'destructive',
+        });
       }
     } catch (error) {
       console.error('[PlanBuilder] Prereq check error:', error);
@@ -615,36 +618,38 @@ const PlanBuilder = () => {
 
           const done = job?.status === 'completed' || job?.status === 'failed';
 
-          // Prefer top-level columns, but remain compatible with older `result` shape
-          const blob = job || job?.result || {};
+          // Extract results from job
+          const blob = job || {};
+          const programQs = blob.program_questions || [];
+          const schema = blob.discovered_schema || [];
 
           console.log('[Program] Poll response:', {
             status: job?.status,
             done,
-            questions: blob.program_questions?.length,
-            schema: !!blob.discovered_schema
+            questions: programQs.length,
+            schema: !!schema
           });
 
           if (done) {
             setIsDiscovering(false);
 
             if (job?.status === 'completed') {
-              setProgramQuestions(blob.program_questions || []);
-              setDiscoveredSchema(blob.discovered_schema || {
+              setProgramQuestions(programQs);
+              setDiscoveredSchema(schema || {
                 program_ref: programRef,
                 branches: [],
-                common_questions: blob.program_questions || [],
+                common_questions: programQs,
                 discoveryCompleted: true
               });
 
               toast({
                 title: 'Discovery Complete!',
-                description: `Found ${blob.program_questions?.length || 0} program questions.`,
+                description: `Found ${programQs.length || 0} program questions.`,
               });
             } else {
               toast({
                 title: 'Discovery Failed',
-                description: blob.error || job?.error_message || 'Unknown error occurred',
+                description: job?.error_message || 'Unknown error occurred',
                 variant: 'destructive',
               });
             }

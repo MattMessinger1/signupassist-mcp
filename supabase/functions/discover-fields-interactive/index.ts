@@ -273,99 +273,40 @@ async function runDiscoveryInBackground(jobId: string, requestBody: RequestBody,
       skipAudit: true
     });
 
-    console.log(`[Job ${jobId}] Discovery completed:`, result);
+    // Normalize both prereq and program results
+    const prereqChecks = result?.prerequisite_checks || [];
+    const prereqStatus = result?.prerequisite_status || "unknown";
+    const programQuestions = result?.program_questions || [];
+    const discoveredSchema = result?.discoveredSchema || [];
 
-    // Persist discovery runs
-    if (result?.prerequisite_checks && result.prerequisite_checks.length > 0) {
-      await supabase.rpc("upsert_discovery_run", {
-        p_provider: "skiclubpro",
-        p_program: `${program_ref}_prereqs`,
-        p_fingerprint: formFingerprint,
-        p_stage: "prerequisites",
-        p_errors: JSON.stringify(result.prerequisite_checks),
-        p_meta: JSON.stringify({
-          status: result.prerequisite_status,
-          loopCount: result.metadata?.prerequisitesLoops ?? 0,
-          checks: result.prerequisite_checks.map((c: any) => ({ id: c.id, status: c.status }))
-        }),
-        p_run_conf: result.metadata?.prerequisitesConfidence ?? 0.8,
-        p_run_id: crypto.randomUUID(),
-      });
-    }
-    
-    if (result?.program_questions && result.program_questions.length > 0) {
-      await supabase.rpc("upsert_discovery_run", {
-        p_provider: "skiclubpro",
-        p_program: program_ref,
-        p_fingerprint: formFingerprint,
-        p_stage: "program",
-        p_errors: JSON.stringify(result.program_questions),
-        p_meta: JSON.stringify({
-          formWatchOpensAt: result?.formWatchOpensAt ?? null,
-          formWatchClosesAt: result?.formWatchClosesAt ?? null,
-          loopCount: result.metadata?.programLoops ?? null,
-          usedWarmHints: Object.keys(warmHintsProgram).length > 0,
-        }),
-        p_run_conf: result?.branches ? 0.9 : 0.6,
-        p_run_id: crypto.randomUUID(),
-      });
-    }
+    console.log(`[Job ${jobId}] Discovery result normalized:`, {
+      prereqChecks: prereqChecks.length,
+      prereqStatus,
+      programQuestions: programQuestions.length,
+      discoveredSchema: discoveredSchema.length
+    });
 
-    // Map and store results
-    const programQuestions = mapFieldsToProgramQuestions(result?.program_questions || []);
-    const discoveredSchema = programQuestions.length > 0 ? {
-      program_ref,
-      branches: [],
-      common_questions: programQuestions,
-      discoveryCompleted: true
-    } : null;
-
-    // Update job as completed - save in BOTH top-level columns AND result.{} for compatibility
-    const prerequisiteChecks = result?.prerequisite_checks || null;
-    const metadataObj = {
-      prerequisite_status: result?.prerequisite_status,
-      stage: result?.stage || stage,
-      ...(result?.metadata || {})
-    };
-    
-    const jobPayload = {
-      status: 'completed',
-      completed_at: new Date().toISOString(),
-      prerequisite_checks: prerequisiteChecks,
-      program_questions: programQuestions || null,
+    // ✅ mark job completed
+    await supabase.from("discovery_jobs").update({
+      status: "completed",
+      prerequisite_checks: prereqChecks,
+      program_questions: programQuestions,
       discovered_schema: discoveredSchema,
-      metadata: metadataObj,
-      result: {
-        prerequisite_checks: prerequisiteChecks,
-        program_questions: programQuestions || null,
-        discovered_schema: discoveredSchema,
-        metadata: metadataObj
-      }
-    };
-    
-    await supabase
-      .from('discovery_jobs')
-      .update(jobPayload)
-      .eq('id', jobId);
+      metadata: { prerequisite_status: prereqStatus, stage },
+      completed_at: new Date().toISOString(),
+    }).eq("id", jobId);
 
-    console.log(`[Job ${jobId}] Successfully completed and saved`);
+    console.log(`[Job ${jobId}] ✅ Discovery completed (stage=${stage})`);
 
   } catch (error) {
-    console.error(`[Job ${jobId}] Failed:`, error);
-    
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    await supabase
-      .from('discovery_jobs')
-      .update({
-        status: 'failed',
-        completed_at: new Date().toISOString(),
-        error_message: errorMessage,
-        result: {
-          error: errorMessage,
-          metadata: { stage }
-        }
-      })
-      .eq('id', jobId);
+    const message = String(error?.message || error);
+    console.error(`[Job ${jobId}] ❌ Discovery failed:`, message);
+    await supabase.from("discovery_jobs").update({
+      status: "failed",
+      error_message: message,
+      metadata: { stage },
+      completed_at: new Date().toISOString(),
+    }).eq("id", jobId);
   }
 }
 
