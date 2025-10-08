@@ -348,45 +348,54 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           baseDomain
         );
         
-        // If child_name or child_id provided, select child and click Next
+        // If child_name or child_id provided, try to select child (if selector exists)
         if (args.child_name || args.child_id) {
-          console.log(`${P} Selecting child: ${args.child_name || args.child_id}`);
+          console.log(`${P} Checking for child selection step: ${args.child_name || args.child_id}`);
           
           const page = programSession.page;
           
-          // Wait for child selection elements
-          await page.waitForSelector('select[name*="child"], input[type="radio"][name*="child"], button:has-text("Next")', { timeout: 10000 });
+          // Check if child selection elements exist (with short timeout - may already be past this step)
+          const childSelectorExists = await page.waitForSelector(
+            'select[name*="child"], input[type="radio"][name*="child"]', 
+            { timeout: 3000 }
+          ).then(() => true).catch(() => false);
           
-          // Try to find and select child by ID or name
-          if (args.child_id) {
-            const childOption = await page.$(`option[value="${args.child_id}"]`);
-            if (childOption) {
-              await page.selectOption('select[name*="child"]', args.child_id);
-              console.log(`${P} Selected child by ID: ${args.child_id}`);
-            }
-          } else if (args.child_name) {
-            // Try selecting by visible text
-            const selectElement = await page.$('select[name*="child"]');
-            if (selectElement) {
-              const options = await page.$$eval('select[name*="child"] option', (opts, name) => {
-                return opts.find(opt => opt.textContent?.includes(name));
-              }, args.child_name);
-              
-              if (options) {
-                await page.selectOption('select[name*="child"]', { label: args.child_name });
-                console.log(`${P} Selected child by name: ${args.child_name}`);
+          if (childSelectorExists) {
+            console.log(`${P} Child selector found - selecting child`);
+            
+            // Try to find and select child by ID or name
+            if (args.child_id) {
+              const childOption = await page.$(`option[value="${args.child_id}"]`);
+              if (childOption) {
+                await page.selectOption('select[name*="child"]', args.child_id);
+                console.log(`${P} Selected child by ID: ${args.child_id}`);
+              }
+            } else if (args.child_name) {
+              // Try selecting by visible text
+              const selectElement = await page.$('select[name*="child"]');
+              if (selectElement) {
+                const options = await page.$$eval('select[name*="child"] option', (opts, name) => {
+                  return opts.find(opt => opt.textContent?.includes(name));
+                }, args.child_name);
+                
+                if (options) {
+                  await page.selectOption('select[name*="child"]', { label: args.child_name });
+                  console.log(`${P} Selected child by name: ${args.child_name}`);
+                }
               }
             }
-          }
-          
-          // Click Next button to proceed to options page
-          const nextButton = await page.$('button:has-text("Next"), input[type="submit"][value*="Next"]');
-          if (nextButton) {
-            await Promise.all([
-              page.waitForNavigation({ waitUntil: 'networkidle', timeout: 15000 }),
-              nextButton.click()
-            ]);
-            console.log(`${P} Clicked Next, now on: ${page.url()}`);
+            
+            // Click Next button to proceed to options page
+            const nextButton = await page.$('button:has-text("Next"), input[type="submit"][value*="Next"]');
+            if (nextButton) {
+              await Promise.all([
+                page.waitForNavigation({ waitUntil: 'networkidle', timeout: 15000 }),
+                nextButton.click()
+              ]);
+              console.log(`${P} Clicked Next, now on: ${page.url()}`);
+            }
+          } else {
+            console.log(`${P} No child selector found - already on program questions page: ${page.url()}`);
           }
         }
         
