@@ -365,11 +365,12 @@ export async function navigateToProgramForm(
 
         // 2) Fallback: enumerate anchors; click the one whose href contains the programRef
         if (!clicked) {
-          const links = await page.locator('a[href*="/program"]').all();
-          console.log(`[ProgramNav] Found ${links.length} programish links; scanning for /programs/${programRef}`);
+          // SkiClubPro uses /registration/{id} format, not /program or /programs
+          const links = await page.locator('a[href*="/registration/"]').all();
+          console.log(`[ProgramNav] Found ${links.length} registration links; scanning for /registration/${programRef}`);
           for (const a of links) {
             const href = (await a.getAttribute('href').catch(() => '')) || '';
-            if (href.includes(`/programs/${programRef}`) || href.includes(`/program/${programRef}`)) {
+            if (href.includes(`/registration/${programRef}`) || href.match(new RegExp(`/registration/${programRef}(?:/|$)`))) {
               console.log(`[ProgramNav] Fallback click: ${href}`);
               clicked = await a.click({ timeout: 5000 }).then(() => true).catch(() => false);
               if (clicked) {
