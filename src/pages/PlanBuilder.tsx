@@ -662,6 +662,7 @@ const PlanBuilder = () => {
 
           if (done) {
             setIsDiscovering(false);
+            setProgramDiscoveryRunning(false);
 
             // Auto-retry if job was stale
             if (job?.status === "failed" && job?.error_message?.includes("stale")) {
@@ -682,20 +683,20 @@ const PlanBuilder = () => {
                 common_questions: programQs,
                 discoveryCompleted: true
               });
-              setProgramDiscoveryRunning(false);
 
               toast({
                 title: 'Program Discovery Complete',
                 description: `${programQs.length} questions discovered`,
               });
             } else {
+              // Status is 'failed' - show error and stop polling
               toast({
                 title: 'Discovery Failed',
                 description: job?.error_message || 'Unknown error occurred',
                 variant: 'destructive',
               });
             }
-            return;
+            return; // CRITICAL: Stop polling for both completed AND failed
           }
 
           if (Date.now() - startedAt > MAX_MS) {
