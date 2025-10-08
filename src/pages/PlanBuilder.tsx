@@ -513,7 +513,7 @@ const PlanBuilder = () => {
         base_url: "https://blackhawk.skiclubpro.team",
       });
 
-      console.log('[PlanBuilder] Prereq check result (run_id:', run_id, '):', data);
+      console.log('[prereq] Poll response:', data);
 
       // Auto-retry if job was stale
       if (data?.status === "failed" && data?.error_message?.includes("stale")) {
@@ -526,28 +526,43 @@ const PlanBuilder = () => {
         return;
       }
 
-      const blob = data || {};
+      const blob = data || data?.result || {};
       const prereqChecks = blob.prerequisite_checks || [];
-      const prereqStatus = blob.metadata?.prerequisite_status || blob.prerequisite_status || "unknown";
+      const prereqStatus = blob.metadata?.prerequisite_status || "unknown";
       
-      setPrerequisiteChecks(prereqChecks);
-      setPrerequisiteStatus(prereqStatus);
-      
-      const failedFields = prereqChecks.filter((c: any) => c.status === "fail" && c.fields)
-                                       .flatMap((c: any) => c.fields);
-      setPrerequisiteFields(failedFields);
+      if (data?.status === "completed") {
+        setPrerequisiteChecks(prereqChecks);
+        setPrerequisiteStatus(prereqStatus);
+        
+        const failedFields = prereqChecks.filter((c: any) => c.status === "fail" && c.fields)
+                                         .flatMap((c: any) => c.fields);
+        setPrerequisiteFields(failedFields);
 
-      if (prereqStatus === 'complete') {
         toast({
           title: 'Prerequisites Complete',
-          description: 'All prerequisites are satisfied. Click "Continue to Program Questions" below.',
+          description: `${prereqChecks.length} checks evaluated`,
         });
       } else {
-        toast({
-          title: 'Prerequisites Required',
-          description: 'Please complete the missing prerequisites before continuing.',
-          variant: 'destructive',
-        });
+        // Fallback for legacy response format
+        setPrerequisiteChecks(prereqChecks);
+        setPrerequisiteStatus(prereqStatus);
+        
+        const failedFields = prereqChecks.filter((c: any) => c.status === "fail" && c.fields)
+                                         .flatMap((c: any) => c.fields);
+        setPrerequisiteFields(failedFields);
+
+        if (prereqStatus === 'complete') {
+          toast({
+            title: 'Prerequisites Complete',
+            description: 'All prerequisites are satisfied. Click "Continue to Program Questions" below.',
+          });
+        } else {
+          toast({
+            title: 'Prerequisites Required',
+            description: 'Please complete the missing prerequisites before continuing.',
+            variant: 'destructive',
+          });
+        }
       }
     } catch (error) {
       console.error('[PlanBuilder] Prereq check error:', error);
@@ -615,30 +630,32 @@ const PlanBuilder = () => {
       // Poll for job completion
       const startedAt = Date.now();
       const MAX_MS = 5 * 60 * 1000;
+      let pollCount = 0;
 
       const poll = async () => {
         try {
+          pollCount++;
           const { data: job, error: checkError } = await supabase.functions.invoke('check-discovery-job', {
             body: { job_id: jobId }
           });
 
           if (checkError) {
-            console.error('[Program] Error checking job status:', checkError);
+            console.error('[program] Error checking job status:', checkError);
             return;
+          }
+
+          console.log('[program] Poll response:', job);
+
+          // Safety guard: log if still running
+          if (job?.status === "running" && pollCount % 5 === 0) {
+            console.log(`[program] still running... (poll ${pollCount})`);
           }
 
           const done = job?.status === 'completed' || job?.status === 'failed';
 
-          const blob = job || {};
+          const blob = job || job?.result || {};
           const programQs = blob.program_questions || [];
           const schema = blob.discovered_schema || [];
-
-          console.log('[Program] Poll response:', {
-            status: job?.status,
-            done,
-            questions: programQs.length,
-            schema: !!schema
-          });
 
           if (done) {
             setIsDiscovering(false);
@@ -664,8 +681,8 @@ const PlanBuilder = () => {
               });
 
               toast({
-                title: 'Discovery Complete!',
-                description: `Found ${programQs.length || 0} program questions.`,
+                title: 'Program Discovery Complete',
+                description: `${programQs.length} questions discovered`,
               });
             } else {
               toast({
@@ -689,7 +706,7 @@ const PlanBuilder = () => {
 
           setTimeout(poll, 3000);
         } catch (pollError) {
-          console.error('[Program] Polling error:', pollError);
+          console.error('[program] Polling error:', pollError);
         }
       };
 
@@ -1966,11 +1983,12 @@ const PlanBuilder = () => {
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
-                      <PrerequisitesPanel
-                        checks={prerequisiteChecks}
-                        onRecheck={handleCheckPrerequisitesOnly}
-                        onContinue={() => setActiveStep('program')}
-                      />
+                       <PrerequisitesPanel
+                         key={prerequisiteChecks.length}
+                         checks={prerequisiteChecks}
+                         onRecheck={handleCheckPrerequisitesOnly}
+                         onContinue={() => setActiveStep('program')}
+                       />
                       </CardContent>
                     </Card>
                   ) : prerequisiteChecks.length === 0 ? (
@@ -2071,7 +2089,7 @@ const PlanBuilder = () => {
                         />
                         ) : activeStep === 'program' ? (
                         <ProgramQuestionsPanel
-                          key="program"
+                          key={programQuestions.length}
                           questions={programQuestions}
                           initialAnswers={form.watch('answers') || {}}
                           onSubmit={(answers) => {
