@@ -143,6 +143,32 @@ interface RequestBody {
   run_mode?: string;
 }
 
+// Auto-expire stale jobs that have been running for > 2 minutes
+async function markStaleJobsAsFailed(supabase: any, userId: string) {
+  const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
+  const { data: staleJobs } = await supabase
+    .from("discovery_jobs")
+    .select("id, status, created_at")
+    .eq("user_id", userId)
+    .eq("status", "running")
+    .lt("created_at", twoMinutesAgo);
+
+  if (!staleJobs?.length) return;
+
+  for (const job of staleJobs) {
+    await supabase
+      .from("discovery_jobs")
+      .update({
+        status: "failed",
+        error_message: "Auto-expired after 2 min (stale job cleanup)",
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", job.id);
+    console.log(`[Cleanup] Marked stale job ${job.id} as failed`);
+  }
+}
+
+
 // Background discovery function
 async function runDiscoveryInBackground(jobId: string, requestBody: RequestBody, authHeader: string) {
   const supabase = createClient(
@@ -349,6 +375,9 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+    // Clean up any stale jobs before checking for existing jobs
+    await markStaleJobsAsFailed(supabase, user.id);
 
     // Check for existing pending/running job for this user+program
     const { data: existingJob } = await supabase

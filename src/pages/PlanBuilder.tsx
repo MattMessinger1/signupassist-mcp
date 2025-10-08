@@ -515,6 +515,17 @@ const PlanBuilder = () => {
 
       console.log('[PlanBuilder] Prereq check result (run_id:', run_id, '):', data);
 
+      // Auto-retry if job was stale
+      if (data?.status === "failed" && data?.error_message?.includes("stale")) {
+        toast({
+          title: "Previous run expired",
+          description: "Starting a fresh discovery...",
+        });
+        // Retry automatically
+        setTimeout(() => handleCheckPrereqs(), 500);
+        return;
+      }
+
       const blob = data || {};
       const prereqChecks = blob.prerequisite_checks || [];
       const prereqStatus = blob.metadata?.prerequisite_status || blob.prerequisite_status || "unknown";
@@ -618,7 +629,6 @@ const PlanBuilder = () => {
 
           const done = job?.status === 'completed' || job?.status === 'failed';
 
-          // Extract results from job
           const blob = job || {};
           const programQs = blob.program_questions || [];
           const schema = blob.discovered_schema || [];
@@ -632,6 +642,17 @@ const PlanBuilder = () => {
 
           if (done) {
             setIsDiscovering(false);
+
+            // Auto-retry if job was stale
+            if (job?.status === "failed" && job?.error_message?.includes("stale")) {
+              toast({
+                title: "Previous run expired",
+                description: "Starting a fresh discovery...",
+              });
+              // Retry automatically
+              setTimeout(() => handleProgramDiscovery(), 500);
+              return;
+            }
 
             if (job?.status === 'completed') {
               setProgramQuestions(programQs);
