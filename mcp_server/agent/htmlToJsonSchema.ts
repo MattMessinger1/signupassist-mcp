@@ -3,9 +3,9 @@ import crypto from "crypto";
 
 export interface DiscoveredField {
   id: string; // stable key from name|id
-  label: string;
+  label?: string;
   type: "text"|"number"|"date"|"select"|"radio"|"checkbox"|"textarea"|string;
-  required: boolean;
+  required?: boolean;
   options?: { value: string; label: string }[];
   x?: { selector?: string; step_id?: string; group?: string; label_confidence?: "high"|"low" };
   visibleWhen?: { dependsOn: string; value: any };
