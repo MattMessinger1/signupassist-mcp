@@ -428,22 +428,22 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Created discovery job: ${job.id}`);
+    console.log(`[Job ${job.id}] ⏳ Starting synchronous discovery…`);
+    
+    // Run discovery synchronously and wait for completion
+    await runDiscoveryInBackground(job.id, body, authHeader);
 
-    // Start background processing
-    EdgeRuntime.waitUntil(
-      runDiscoveryInBackground(job.id, body, authHeader)
-    );
+    console.log(`[Job ${job.id}] ✅ Synchronous discovery finished, returning results`);
 
-    // Return job ID immediately
+    // Return completed job
     return new Response(
       JSON.stringify({ 
         job_id: job.id,
-        status: 'pending',
-        message: 'Discovery job started. Poll for results.'
+        status: 'completed',
+        message: 'Discovery job finished successfully.'
       }),
       { 
-        status: 202, 
+        status: 200, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
