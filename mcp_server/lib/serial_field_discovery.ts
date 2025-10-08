@@ -22,9 +22,9 @@ export interface FieldError {
 
 export interface DiscoveredField {
   id: string;
-  label: string;
+  label?: string;
   type: string;
-  required: boolean;
+  required?: boolean;
   message?: string;
   selector?: string;
   category?: string;
