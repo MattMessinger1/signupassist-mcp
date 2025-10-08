@@ -9,7 +9,7 @@ export interface PriceOption {
 
 export interface DiscoveredField {
   id: string;
-  type: 'select' | 'radio' | 'checkbox' | 'text' | 'date' | 'textarea';
+  type: 'select' | 'radio' | 'checkbox' | 'text' | 'date' | 'textarea' | 'number';
   label?: string;
   required?: boolean;
   options?: { value: string; label: string }[];
