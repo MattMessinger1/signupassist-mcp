@@ -140,6 +140,7 @@ const PlanBuilder = () => {
   const [prerequisiteStatus, setPrerequisiteStatus] = useState<'complete' | 'required' | 'unknown'>('unknown');
   const [prerequisiteFields, setPrerequisiteFields] = useState<EnhancedDiscoveredField[]>([]);
   const [programQuestions, setProgramQuestions] = useState<ProgramQuestion[]>([]);
+  const [programDiscoveryRunning, setProgramDiscoveryRunning] = useState(false);
   const [activeStep, setActiveStep] = useState<'prereqs' | 'program' | 'completed'>('prereqs');
   const [hasPaymentMethod, setHasPaymentMethod] = useState(false);
   const [checkingPayment, setCheckingPayment] = useState(false);
@@ -592,6 +593,7 @@ const PlanBuilder = () => {
     }
 
     // Clear stale state
+    setProgramDiscoveryRunning(true);
     setProgramQuestions([]);
     setDiscoveredSchema(null);
 
@@ -679,6 +681,7 @@ const PlanBuilder = () => {
                 common_questions: programQs,
                 discoveryCompleted: true
               });
+              setProgramDiscoveryRunning(false);
 
               toast({
                 title: 'Program Discovery Complete',
@@ -704,7 +707,7 @@ const PlanBuilder = () => {
             return;
           }
 
-          setTimeout(poll, 3000);
+          setTimeout(poll, 1500);
         } catch (pollError) {
           console.error('[program] Polling error:', pollError);
         }
@@ -2284,7 +2287,12 @@ const PlanBuilder = () => {
                       )}
 
                       {/* Render program questions if available */}
-                      {programQuestions.length > 0 ? (
+                      {programDiscoveryRunning ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <Loader2 className="animate-spin inline mr-2 h-6 w-6" />
+                          <p className="mt-2">Discovering program questions…</p>
+                        </div>
+                      ) : programQuestions.length > 0 ? (
                         <div className="space-y-6">
                           <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
                             <p className="text-xs text-blue-800">
@@ -2385,34 +2393,16 @@ const PlanBuilder = () => {
                             />
                           ))}
                         </div>
-                      ) : selectedBranch ? (
-                        <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                          <p className="text-sm text-amber-800">
-                            No additional fields found for the selected option. This may indicate the program 
-                            doesn't require extra information, or the form structure wasn't recognized.
-                          </p>
-                          <Button
-                            type="button"
-                            onClick={retryDiscovery}
-                            variant="outline"
-                            size="sm"
-                            className="mt-3"
-                            disabled={isDiscovering}
-                          >
-                            {isDiscovering ? (
-                              <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Discovering...
-                              </>
-                            ) : (
-                              <>
-                                <RefreshCw className="mr-2 h-4 w-4" />
-                                Retry Discovery
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      ) : null}
+                      ) : (
+                        <Card className="bg-green-50 border-green-200">
+                          <CardHeader>
+                            <CardTitle>No Additional Questions Required</CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <p>Good news! This program doesn't require any additional information beyond what we've already collected.</p>
+                          </CardContent>
+                        </Card>
+                      )}
                     </>
                   )}
                 </CardContent>
