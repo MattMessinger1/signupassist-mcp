@@ -78,15 +78,20 @@ export function FieldRenderer<T extends FieldValues>({
                         <SelectValue placeholder={field.placeholder || `Select ${field.label.toLowerCase()}...`} />
                       </SelectTrigger>
                       <SelectContent>
-                        {field.options?.map((option) => {
-                          const optValue = typeof option === 'string' ? option : option.value;
-                          const optLabel = typeof option === 'string' ? option : (option.label || option.value);
-                          return (
-                            <SelectItem key={optValue} value={optValue}>
-                              {optLabel}
-                            </SelectItem>
-                          );
-                        })}
+                        {field.options
+                          ?.filter((option) => {
+                            const optValue = typeof option === 'string' ? option : option.value;
+                            return optValue && optValue.trim() !== '';
+                          })
+                          .map((option) => {
+                            const optValue = typeof option === 'string' ? option : option.value;
+                            const optLabel = typeof option === 'string' ? option : (option.label || option.value);
+                            return (
+                              <SelectItem key={optValue} value={optValue}>
+                                {optLabel}
+                              </SelectItem>
+                            );
+                          })}
                       </SelectContent>
                     </Select>
                   );

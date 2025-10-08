@@ -54,9 +54,11 @@ function normalizeOptions(opts: any): Array<{ value: string; label: string }> | 
     }));
   }
 
-  // Filter placeholders
+  // Filter placeholders and empty values
   out = out.filter(o => 
     o.label &&
+    o.value &&
+    o.value.trim() !== '' &&
     !/^(-\s*)?select\s*-?$/i.test(o.label) &&
     !/^choose|pick/i.test(o.label) &&
     o.value !== "_none"
