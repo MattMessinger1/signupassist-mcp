@@ -656,9 +656,9 @@ const PlanBuilder = () => {
 
           const done = job?.status === 'completed' || job?.status === 'failed';
 
-          const blob = job || job?.result || {};
-          const programQs = blob.program_questions || [];
-          const schema = blob.discovered_schema || [];
+          // The job object directly contains program_questions and discovered_schema
+          const programQs = job?.program_questions || [];
+          const schema = job?.discovered_schema || [];
 
           if (done) {
             setIsDiscovering(false);
