@@ -459,6 +459,7 @@ export async function discoverProgramFieldsMultiStep(
     
     // === FAST EXTRACTION ATTEMPT (PRIMARY PATH) ===
     let newFieldsThisStep = 0;
+    let fieldsFoundThisStep = 0; // Track total fields found (including duplicates)
     
     try {
       console.log(`[ProgramMultiStep] Trying fast extraction (htmlToJsonSchema)...`);
@@ -474,6 +475,8 @@ export async function discoverProgramFieldsMultiStep(
         })) : undefined
       }));
       
+      fieldsFoundThisStep = quickFields.length;
+      
       if (quickFields.length > 0) {
         console.log(`[ProgramMultiStep] ✅ Fast extraction found ${quickFields.length} fields`);
         
@@ -486,20 +489,22 @@ export async function discoverProgramFieldsMultiStep(
           if (existing) {
             existing.seenAtSteps.push(i + 1);
           } else {
-            allFields.set(field.id, { ...field, seenAtSteps: [i + 1] });
+            allFields.set(field.id, { ...field, seenAtSteps: [i + 1], label: field.label || field.id });
             newFieldsThisStep++;
           }
         }
+        
+        console.log(`[ProgramMultiStep] Found ${newFieldsThisStep} new fields (total: ${allFields.size})`);
       } else {
-        console.log('[ProgramMultiStep] Fast extraction found no fields, falling back to serial discovery');
+        console.log('[ProgramMultiStep] Fast extraction found no fields');
       }
     } catch (err) {
-      console.log('[ProgramMultiStep] Fast extraction failed, falling back to serial discovery:', err);
+      console.log('[ProgramMultiStep] Fast extraction failed:', err);
     }
     
     // === SERIAL DISCOVERY (FALLBACK PATH) ===
-    // Only run serial discovery if fast extraction didn't find fields
-    if (newFieldsThisStep === 0) {
+    // Only run if fast extraction found NOTHING (not just no new fields)
+    if (fieldsFoundThisStep === 0) {
       console.log('[ProgramMultiStep] Running serial field discovery (fallback)...');
       
       // Collect all visible *form* fields only (no generic [name]/[id])
@@ -577,8 +582,8 @@ export async function discoverProgramFieldsMultiStep(
       noNewErrorsCount = 0;
     }
     
-    // Stop if no new fields for 2 iterations
-    if (noNewErrorsCount >= 2) {
+    // Early exit: no new fields for 2 iterations
+    if (newFieldsThisStep === 0 && i > 0 && noNewErrorsCount >= 2) {
       console.log('[ProgramMultiStep] No new fields for 2 iterations - stopping');
       return {
         fields: Array.from(allFields.values()).map(f => {

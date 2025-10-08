@@ -259,30 +259,64 @@ export default function ProgramQuestionsPanel({
                   </RadioGroup>
                 )}
 
-                {/* Checkbox */}
+                {/* Checkbox or Checkbox Group */}
                 {question.type === 'checkbox' && (
-                  <div
-                    className={cn(
-                      'flex items-start space-x-2 p-3 rounded-lg border',
-                      errors[question.id]
-                        ? 'border-red-300 bg-red-50 dark:bg-red-950/20'
-                        : 'border-border'
+                  <>
+                    {question.options && question.options.length > 0 ? (
+                      // Multi-select checkbox group
+                      <div
+                        className={cn(
+                          'space-y-2 p-3 rounded-lg border',
+                          errors[question.id]
+                            ? 'border-red-300 bg-red-50 dark:bg-red-950/20'
+                            : 'border-border'
+                        )}
+                      >
+                        {question.options.map((option) => (
+                          <div key={option} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`${question.id}-${option}`}
+                              checked={(watch(question.id) as any)?.[option] || false}
+                              onCheckedChange={(checked) => {
+                                const current = (watch(question.id) as any) || {};
+                                setValue(question.id, { ...current, [option]: checked });
+                              }}
+                            />
+                            <Label
+                              htmlFor={`${question.id}-${option}`}
+                              className="font-normal cursor-pointer"
+                            >
+                              {option}
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      // Single checkbox (e.g., "I agree")
+                      <div
+                        className={cn(
+                          'flex items-start space-x-2 p-3 rounded-lg border',
+                          errors[question.id]
+                            ? 'border-red-300 bg-red-50 dark:bg-red-950/20'
+                            : 'border-border'
+                        )}
+                      >
+                        <Checkbox
+                          id={question.id}
+                          checked={watch(question.id) as boolean}
+                          onCheckedChange={(checked) =>
+                            setValue(question.id, checked as boolean)
+                          }
+                        />
+                        <Label
+                          htmlFor={question.id}
+                          className="font-normal cursor-pointer leading-tight"
+                        >
+                          I agree to {question.label.toLowerCase()}
+                        </Label>
+                      </div>
                     )}
-                  >
-                    <Checkbox
-                      id={question.id}
-                      checked={watch(question.id) as boolean}
-                      onCheckedChange={(checked) =>
-                        setValue(question.id, checked as boolean)
-                      }
-                    />
-                    <Label
-                      htmlFor={question.id}
-                      className="font-normal cursor-pointer leading-tight"
-                    >
-                      I agree to {question.label.toLowerCase()}
-                    </Label>
-                  </div>
+                  </>
                 )}
 
                 {/* Date Picker */}

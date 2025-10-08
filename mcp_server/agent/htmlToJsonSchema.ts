@@ -71,12 +71,82 @@ export async function harvestVisibleFields(page: Page, stepId = "step1"): Promis
           };
         });
     },
-    stepId // ✅  pass stepId into the browser context
+    stepId
   );
 
-  const map = new Map<string, DiscoveredField>();
-  for (const f of controls) if (!map.has(f.id)) map.set(f.id, f);
-  return Array.from(map.values());
+  // Group checkboxes and radio buttons by name attribute
+  const groupedFields = new Map<string, DiscoveredField>();
+  const checkboxGroups = new Map<string, any[]>();
+  const radioGroups = new Map<string, any[]>();
+  
+  for (const field of controls) {
+    if (field.type === 'checkbox' && field.id.includes('_')) {
+      // Extract base name (e.g., "scpoptionset_12" from "scpoptionset_12_0")
+      const baseName = field.id.replace(/_\d+$/, '');
+      if (!checkboxGroups.has(baseName)) {
+        checkboxGroups.set(baseName, []);
+      }
+      checkboxGroups.get(baseName)!.push(field);
+    } else if (field.type === 'radio' && field.id.includes('_')) {
+      const baseName = field.id.replace(/_\d+$/, '');
+      if (!radioGroups.has(baseName)) {
+        radioGroups.set(baseName, []);
+      }
+      radioGroups.get(baseName)!.push(field);
+    } else {
+      groupedFields.set(field.id, field);
+    }
+  }
+  
+  // Add grouped checkboxes as single multi-select fields
+  for (const [baseName, items] of checkboxGroups.entries()) {
+    if (items.length > 1) {
+      // Create grouped checkbox field
+      groupedFields.set(baseName, {
+        id: baseName,
+        label: items[0].label?.replace(/^\s+|\s+$/g, '').split('\n')[0] || baseName,
+        type: 'checkbox',
+        required: items.some(i => i.required),
+        options: items.map(i => ({
+          value: i.id,
+          label: (i.label || '').replace(/^\s+|\s+$/g, '').trim()
+        })),
+        x: { 
+          selector: items[0].x?.selector, 
+          step_id: stepId, 
+          label_confidence: 'high' as const 
+        }
+      });
+    } else {
+      // Single checkbox, add as-is
+      groupedFields.set(items[0].id, items[0]);
+    }
+  }
+  
+  // Add grouped radio buttons as single select fields
+  for (const [baseName, items] of radioGroups.entries()) {
+    if (items.length > 1) {
+      groupedFields.set(baseName, {
+        id: baseName,
+        label: items[0].label?.replace(/^\s+|\s+$/g, '').split('\n')[0] || baseName,
+        type: 'radio',
+        required: items.some(i => i.required),
+        options: items.map(i => ({
+          value: i.id,
+          label: (i.label || '').replace(/^\s+|\s+$/g, '').trim()
+        })),
+        x: { 
+          selector: items[0].x?.selector, 
+          step_id: stepId, 
+          label_confidence: 'high' as const 
+        }
+      });
+    } else {
+      groupedFields.set(items[0].id, items[0]);
+    }
+  }
+  
+  return Array.from(groupedFields.values());
 }
 
 async function clickNextOrSubmit(page: Page) {
