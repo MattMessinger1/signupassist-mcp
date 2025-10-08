@@ -464,7 +464,7 @@ const PlanBuilder = () => {
       return;
     }
     console.log('[PlanBuilder] Retrying field discovery for:', programRef);
-    await discoverFields(programRef);
+    await handleProgramDiscovery();
   };
 
   // Auto-apply smart defaults to discovered fields
@@ -726,237 +726,7 @@ const PlanBuilder = () => {
     }
   };
 
-  const discoverFields = async (programRef: string) => {
-    if (!user || !session) {
-      toast({
-        title: prompts.errors.authRequired,
-        description: prompts.errors.notAuthenticated,
-        variant: 'destructive',
-      });
-      navigate('/auth');
-      return;
-    }
-
-    // Check session validity before making API call
-    if (!isSessionValid()) {
-      toast({
-        title: prompts.errors.authRequired,
-        description: prompts.errors.sessionExpired,
-        variant: 'destructive',
-      });
-      navigate('/auth');
-      return;
-    }
-
-    const credentialId = form.getValues('credentialId');
-    if (!credentialId) {
-      toast({
-        title: prompts.errors.required('Credentials'),
-        description: 'Please select login credentials first.',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    // Validate programRef format
-    console.log('[PlanBuilder] discoverFields called with programRef:', programRef);
-    if (programRef && programRef.includes(' ')) {
-      console.error('[PlanBuilder] ERROR: programRef appears to be a title instead of text_ref:', programRef);
-      toast({
-        title: prompts.discovery.errors.invalidRef,
-        description: prompts.errors.invalidProgramRef,
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    // Cancel any existing request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
-    abortControllerRef.current = new AbortController();
-
-    setIsDiscovering(true);
-    const timeoutId = setTimeout(() => {
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        toast({
-          title: prompts.discovery.errors.timeout,
-          description: prompts.errors.timeout,
-          variant: 'destructive',
-        });
-      }
-    }, 30000); // 30 second timeout
-
-    try {
-      toastLogger('field_discovery', 'Starting field discovery...', 'info', { programRef });
-      console.log('[PlanBuilder] Calling discover-fields with validated programRef:', programRef);
-      
-      const payload = {
-        program_ref: programRef,
-        credential_id: credentialId,
-        plan_execution_id: null,
-        child_name: selectedChildName || '' // Pass selected child name to discovery
-      };
-      
-      console.log('[PlanBuilder] Discovery payload:', payload);
-      
-      const { data, error } = await supabase.functions.invoke('discover-fields-interactive', {
-        body: payload
-      });
-
-      clearTimeout(timeoutId);
-
-      if (error || data?.error) {
-        const message = error?.message || data?.error || "Field discovery failed";
-        
-        toastLogger('field_discovery', message, 'error', { diagnostics: data?.diagnostics });
-        
-        // Show detailed diagnostics if available
-        if (data?.diagnostics) {
-          console.error('[PlanBuilder] Field discovery diagnostics:', data.diagnostics);
-          toast({
-            title: "Field Discovery Failed",
-            description: (
-              <div className="space-y-2">
-                <p>{message}</p>
-                <details className="mt-2">
-                  <summary className="cursor-pointer text-sm font-medium hover:underline">
-                    Show Details
-                  </summary>
-                  <pre className="mt-2 text-xs bg-muted p-2 rounded overflow-auto max-h-40">
-                    {JSON.stringify(data.diagnostics, null, 2)}
-                  </pre>
-                </details>
-              </div>
-            ),
-            variant: "destructive",
-          });
-        }
-        
-        // Keep schema null to show error UI
-        console.warn('[PlanBuilder] ⚠️ No schema discovered, keeping discoveredSchema as null');
-        return;
-      }
-
-      // Phase 2.5: Extract prerequisite status and checks from unified discovery
-      if (data.prerequisite_status) {
-        setPrerequisiteStatus(data.prerequisite_status);
-        console.log('[PlanBuilder] Prerequisite status:', data.prerequisite_status);
-      }
-      
-      // Update prerequisite checks and extract any fields that need completion
-      if (data.prerequisite_checks) {
-        setPrerequisiteChecks(data.prerequisite_checks);
-        console.log('[PlanBuilder] Updated prerequisite checks:', data.prerequisite_checks);
-        
-        // Extract all fields from failed prerequisite checks
-        const fieldsFromChecks = data.prerequisite_checks
-          .filter((check: PrerequisiteCheck) => check.status === 'fail' && check.fields)
-          .flatMap((check: PrerequisiteCheck) => check.fields || []);
-        
-        if (fieldsFromChecks.length > 0) {
-          setPrerequisiteFields(fieldsFromChecks);
-          console.log('[PlanBuilder] Extracted prerequisite fields from checks:', fieldsFromChecks.length);
-        }
-      }
-      
-      if (data.program_questions && data.program_questions.length > 0) {
-        setProgramQuestions(data.program_questions);
-        console.log('[PlanBuilder] Updated program questions:', data.program_questions.length, 'questions');
-        
-        // Mark that discovery has run successfully - use data from response
-        setDiscoveredSchema({
-          program_ref: data.program_ref || form.getValues('programRef'),
-          branches: data.branches || [],
-          common_questions: data.common_questions || data.program_questions,
-          discoveryCompleted: true
-        });
-        
-        toast({
-          title: 'Fields Discovered',
-          description: `Found ${data.program_questions.length} program questions`,
-        });
-      }
-      
-      // Store discovery metadata for coverage display
-      if (data.metadata) {
-        setDiscoveryMetadata(data.metadata);
-        console.log('[PlanBuilder] Discovery metadata:', data.metadata);
-        
-        // Log field count for debugging
-        toastLogger('field_discovery', `Discovery complete: ${data.metadata.fieldsFound || 0} fields found`, 'info');
-      }
-
-      // Validate schema has required structure (check both old and new formats)
-      if (!data || (!data.branches && !data.common_questions && !data.program_questions)) {
-        console.warn('[PlanBuilder] ⚠️ Empty schema received - no questions for this program');
-        
-        // Empty schema is valid - it means no extra questions
-        setDiscoveredSchema({
-          program_ref: form.getValues('programRef'),
-          branches: [],
-          common_questions: [],
-          discoveryCompleted: true
-        });
-        
-        // Set empty program questions
-        setProgramQuestions([]);
-        
-        toastLogger('field_discovery', 'No additional questions required for this program', 'info');
-        
-        toast({
-          title: prompts.discovery.success.noQuestions,
-          description: "This program doesn't require any extra information. You can proceed to the next step.",
-        });
-        return;
-      }
-
-      const branchCount = data.branches?.length || 0;
-      const commonQuestions = data.common_questions?.length || 0;
-      const programQuestionCount = data.program_questions?.length || 0;
-      
-      toastLogger('field_discovery', `Discovered ${branchCount} branches, ${commonQuestions} common questions, ${programQuestionCount} program questions`, 'success', {
-        branches: branchCount,
-        commonQuestions,
-        programQuestions: programQuestionCount,
-        prerequisiteChecks: data.prerequisite_checks?.length || 0
-      });
-
-      console.log('[PlanBuilder] ✅ Schema discovered successfully:', {
-        branches: branchCount,
-        commonQuestions,
-        programQuestions: programQuestionCount,
-        prerequisiteChecks: data.prerequisite_checks?.length || 0
-      });
-      
-      setDiscoveredSchema(data);
-      
-      // Auto-apply smart defaults
-      const autoAnswers = autoApplySmartDefaults(data);
-      form.setValue('answers', autoAnswers);
-      
-      console.log('[PlanBuilder] Auto-applied smart defaults:', autoAnswers);
-      
-      toast({
-        title: 'Spot Secured!',
-        description: `Smart defaults applied for ${selectedChildName}. Review answers below or proceed to complete registration.`,
-      });
-    } catch (error) {
-      console.error('[PlanBuilder] Error discovering fields:', error);
-      const err = error as any;
-      
-      toastLogger('field_discovery', err.message || 'Field discovery failed', 'error', { error: err });
-      
-      toast({
-        title: prompts.discovery.errors.failed,
-        description: err.message || err.context || JSON.stringify(err),
-        variant: "destructive",
-      });
-    } finally {
-      setIsDiscovering(false);
-    }
-  };
+  // Old synchronous discovery function removed - now using handleProgramDiscovery exclusively
 
   const handleCheckPrerequisitesOnly = async () => {
     const programRef = form.watch('programRef');
@@ -1957,16 +1727,11 @@ const PlanBuilder = () => {
                       </CardHeader>
                       <CardContent>
                         <Button
-                          onClick={async () => {
-                            const programRef = form.getValues('programRef');
-                            if (programRef) {
-                              await discoverFields(programRef);
-                            }
-                          }}
-                          disabled={isDiscovering}
+                          onClick={handleProgramDiscovery}
+                          disabled={isDiscovering || programDiscoveryRunning}
                           className="w-full"
                         >
-                          {isDiscovering ? (
+                          {isDiscovering || programDiscoveryRunning ? (
                             <>
                               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                               Discovering...
@@ -2081,12 +1846,12 @@ const PlanBuilder = () => {
                             } else {
                               // Show loading toast for auto-discovery
                               toast({
-                                title: 'Securing Your Spot...',
-                                description: 'Applying smart defaults for program questions. This may take 5-10 seconds.',
+                                title: 'Discovering Program Questions...',
+                                description: 'This may take 5-10 seconds.',
                               });
 
-                              // Auto-discover fields and apply defaults
-                              await discoverFields(programRef);
+                              // Use MCP background job for discovery
+                              await handleProgramDiscovery();
                             }
                           }}
                         />
