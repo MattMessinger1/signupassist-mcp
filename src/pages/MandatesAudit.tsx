@@ -14,6 +14,10 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { CreateTestMandate } from '@/components/CreateTestMandate';
+import { JWSInspector } from '@/components/JWSInspector';
+import { MockAuditGenerator } from '@/components/MockAuditGenerator';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface Mandate {
   id: string;
@@ -146,9 +150,17 @@ export default function MandatesAudit() {
           <div>
             <h1 className="text-3xl font-bold mb-2">Mandate Audit Trail</h1>
             <p className="text-muted-foreground">
-              View all mandates and their authorization history
+              View and test mandates and their authorization history
             </p>
           </div>
+
+          <Tabs defaultValue="mandates" className="w-full">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="mandates">Mandates</TabsTrigger>
+              <TabsTrigger value="testing">Testing Tools</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="mandates" className="space-y-4 mt-6">
 
           {error && (
             <Alert variant="destructive">
@@ -292,6 +304,19 @@ export default function MandatesAudit() {
               ))}
             </div>
           )}
+            </TabsContent>
+
+            <TabsContent value="testing" className="space-y-4 mt-6">
+              <div className="grid grid-cols-1 gap-6">
+                <CreateTestMandate onMandateCreated={fetchMandatesAndAudits} />
+                <JWSInspector />
+                <MockAuditGenerator 
+                  mandates={mandates} 
+                  onEventCreated={fetchMandatesAndAudits}
+                />
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
       </main>
     </div>
