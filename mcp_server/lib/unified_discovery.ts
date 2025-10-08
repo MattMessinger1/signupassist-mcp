@@ -12,6 +12,7 @@ import { humanPause } from './humanize.js';
 import { getPrerequisitePaths, PrerequisitePath } from '../config/prerequisite_paths.js';
 import { isPaymentButton, pageIndicatesPayment, capturePaymentEvidence, PaymentStopEvidence } from './guardrails.js';
 import { extractSingleStep } from '../agent/htmlToJsonSchema.js';
+import { annotatePrice } from './pricing/annotatePrice.js';
 
 export interface PrerequisiteCheckResult {
   id: string;           // 'membership', 'waiver', etc.
@@ -456,71 +457,116 @@ export async function discoverProgramFieldsMultiStep(
       };
     }
     
-    // Collect all visible *form* fields only (no generic [name]/[id])
-    const selector = 'input, select, textarea, [contenteditable="true"], button[type="submit"]';
-    const elements = await page.locator(selector).all();
-    
+    // === FAST EXTRACTION ATTEMPT (PRIMARY PATH) ===
     let newFieldsThisStep = 0;
-    for (const el of elements) {
-      // Skip if not visible
-      const isVisible = await el.isVisible().catch(() => false);
-      if (!isVisible) continue;
+    
+    try {
+      console.log(`[ProgramMultiStep] Trying fast extraction (htmlToJsonSchema)...`);
+      const quickSchema = await extractSingleStep(page, `step${i + 1}`);
+      const quickFields = Object.entries(quickSchema.properties).map(([id, prop]: [string, any]) => ({
+        id,
+        label: prop.title || id,
+        type: inferFieldType(prop.type),
+        required: quickSchema.required.includes(id),
+        options: prop.enum ? prop.enum.map((v: string, idx: number) => ({
+          value: v,
+          label: prop['x-enumNames']?.[idx] || v
+        })) : undefined
+      }));
       
-      // Identify tag/type to exclude non-controls and non-submit buttons
-      const tagName = await el.evaluate((node) => node.tagName.toLowerCase()).catch(() => '');
-      const type = await el.getAttribute('type').catch(() => 'text');
-      
-      // Allow inputs, selects, textareas, submit buttons, or contenteditable nodes only
-      if (!['input', 'select', 'textarea', 'button'].includes(tagName)) {
-        const isContentEditable = (await el.getAttribute('contenteditable').catch(() => '')) === 'true';
-        if (!isContentEditable) continue;
-      }
-      if (tagName === 'button' && type !== 'submit') continue;
-      if (tagName === 'input' && type === 'hidden') continue;
-      
-      const name = await el.getAttribute('name').catch(() => '');
-      const id = await el.getAttribute('id').catch(() => '');
-      const ariaLabel = await el.getAttribute('aria-label').catch(() => '');
-      const placeholder = await el.getAttribute('placeholder').catch(() => '');
-      
-      // Try to get label by ID
-      let labelText = '';
-      if (id) {
-        const label = await page.locator(`label[for="${id}"]`).first().textContent().catch(() => '');
-        labelText = label || '';
-      }
-      
-      const rawKey = name || id || ariaLabel || labelText;
-      if (!rawKey) continue;
-      
-      // Filter obvious layout/navigation keys that occasionally sneak in
-      const layoutKeywords = ['sidebar', 'menu', 'block', 'wrapper', 'container', 'collapse', 'dashboard', 'nav'];
-      if (layoutKeywords.some(kw => rawKey.toLowerCase().includes(kw))) continue;
-      
-      const fieldKey = normalizeFieldKey(rawKey);
-      
-      if (!allFields.has(fieldKey)) {
-        newFieldsThisStep++;
+      if (quickFields.length > 0) {
+        console.log(`[ProgramMultiStep] ✅ Fast extraction found ${quickFields.length} fields`);
         
-        const label = labelText || ariaLabel || placeholder || humanizeFieldKey(fieldKey);
+        // Annotate price-bearing fields
+        const annotatedFields = quickFields.map(f => annotatePrice(f));
         
-        allFields.set(fieldKey, {
-          id: fieldKey,
-          type: inferFieldType(type),
-          label,
-          required: await el.getAttribute('required').catch(() => null) !== null,
-          seenAtSteps: [i + 1]
-        });
-        
-        console.log(`[ProgramMultiStep] New field: ${fieldKey} (${label})`);
+        // Merge into allFields map
+        for (const field of annotatedFields) {
+          const existing = allFields.get(field.id);
+          if (existing) {
+            existing.seenAtSteps.push(i + 1);
+          } else {
+            allFields.set(field.id, { ...field, seenAtSteps: [i + 1] });
+            newFieldsThisStep++;
+          }
+        }
       } else {
-        // Field seen again, track step
-        const existing = allFields.get(fieldKey)!;
-        if (!existing.seenAtSteps.includes(i + 1)) {
-          existing.seenAtSteps.push(i + 1);
+        console.log('[ProgramMultiStep] Fast extraction found no fields, falling back to serial discovery');
+      }
+    } catch (err) {
+      console.log('[ProgramMultiStep] Fast extraction failed, falling back to serial discovery:', err);
+    }
+    
+    // === SERIAL DISCOVERY (FALLBACK PATH) ===
+    // Only run serial discovery if fast extraction didn't find fields
+    if (newFieldsThisStep === 0) {
+      console.log('[ProgramMultiStep] Running serial field discovery (fallback)...');
+      
+      // Collect all visible *form* fields only (no generic [name]/[id])
+      const selector = 'input, select, textarea, [contenteditable="true"], button[type="submit"]';
+      const elements = await page.locator(selector).all();
+      
+      for (const el of elements) {
+        // Skip if not visible
+        const isVisible = await el.isVisible().catch(() => false);
+        if (!isVisible) continue;
+        
+        // Identify tag/type to exclude non-controls and non-submit buttons
+        const tagName = await el.evaluate((node) => node.tagName.toLowerCase()).catch(() => '');
+        const type = await el.getAttribute('type').catch(() => 'text');
+        
+        // Allow inputs, selects, textareas, submit buttons, or contenteditable nodes only
+        if (!['input', 'select', 'textarea', 'button'].includes(tagName)) {
+          const isContentEditable = (await el.getAttribute('contenteditable').catch(() => '')) === 'true';
+          if (!isContentEditable) continue;
+        }
+        if (tagName === 'button' && type !== 'submit') continue;
+        if (tagName === 'input' && type === 'hidden') continue;
+        
+        const name = await el.getAttribute('name').catch(() => '');
+        const id = await el.getAttribute('id').catch(() => '');
+        const ariaLabel = await el.getAttribute('aria-label').catch(() => '');
+        const placeholder = await el.getAttribute('placeholder').catch(() => '');
+        
+        // Try to get label by ID
+        let labelText = '';
+        if (id) {
+          const label = await page.locator(`label[for="${id}"]`).first().textContent().catch(() => '');
+          labelText = label || '';
+        }
+        
+        const rawKey = name || id || ariaLabel || labelText;
+        if (!rawKey) continue;
+        
+        // Filter obvious layout/navigation keys that occasionally sneak in
+        const layoutKeywords = ['sidebar', 'menu', 'block', 'wrapper', 'container', 'collapse', 'dashboard', 'nav'];
+        if (layoutKeywords.some(kw => rawKey.toLowerCase().includes(kw))) continue;
+        
+        const fieldKey = normalizeFieldKey(rawKey);
+        
+        if (!allFields.has(fieldKey)) {
+          newFieldsThisStep++;
+          
+          const label = labelText || ariaLabel || placeholder || humanizeFieldKey(fieldKey);
+          
+          allFields.set(fieldKey, {
+            id: fieldKey,
+            type: inferFieldType(type),
+            label,
+            required: await el.getAttribute('required').catch(() => null) !== null,
+            seenAtSteps: [i + 1]
+          });
+          
+          console.log(`[ProgramMultiStep] New field: ${fieldKey} (${label})`);
+        } else {
+          // Field seen again, track step
+          const existing = allFields.get(fieldKey)!;
+          if (!existing.seenAtSteps.includes(i + 1)) {
+            existing.seenAtSteps.push(i + 1);
+          }
         }
       }
-    }
+    } // End of serial discovery fallback
     
     console.log(`[ProgramMultiStep] Found ${newFieldsThisStep} new fields (total: ${allFields.size})`);
     
