@@ -78,11 +78,15 @@ export function FieldRenderer<T extends FieldValues>({
                         <SelectValue placeholder={field.placeholder || `Select ${field.label.toLowerCase()}...`} />
                       </SelectTrigger>
                       <SelectContent>
-                        {field.options?.map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {option}
-                          </SelectItem>
-                        ))}
+                        {field.options?.map((option) => {
+                          const optValue = typeof option === 'string' ? option : option.value;
+                          const optLabel = typeof option === 'string' ? option : (option.label || option.value);
+                          return (
+                            <SelectItem key={optValue} value={optValue}>
+                              {optLabel}
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                   );
@@ -90,35 +94,43 @@ export function FieldRenderer<T extends FieldValues>({
                 case 'multi-select':
                   return (
                     <div className="space-y-2">
-                      {field.options?.map((option) => (
-                        <div key={option} className="flex items-center space-x-2">
-                          <Checkbox
-                            id={`${field.id}-${option}`}
-                            checked={formField.value?.includes(option) || false}
-                            onCheckedChange={(checked) => {
-                              const currentValue = formField.value || [];
-                              if (checked) {
-                                formField.onChange([...currentValue, option]);
-                              } else {
-                                formField.onChange(currentValue.filter((v: string) => v !== option));
-                              }
-                            }}
-                          />
-                          <Label htmlFor={`${field.id}-${option}`}>{option}</Label>
-                        </div>
-                      ))}
+                      {field.options?.map((option) => {
+                        const optValue = typeof option === 'string' ? option : option.value;
+                        const optLabel = typeof option === 'string' ? option : (option.label || option.value);
+                        return (
+                          <div key={optValue} className="flex items-center space-x-2">
+                            <Checkbox
+                              id={`${field.id}-${optValue}`}
+                              checked={formField.value?.includes(optValue) || false}
+                              onCheckedChange={(checked) => {
+                                const currentValue = formField.value || [];
+                                if (checked) {
+                                  formField.onChange([...currentValue, optValue]);
+                                } else {
+                                  formField.onChange(currentValue.filter((v: string) => v !== optValue));
+                                }
+                              }}
+                            />
+                            <Label htmlFor={`${field.id}-${optValue}`}>{optLabel}</Label>
+                          </div>
+                        );
+                      })}
                     </div>
                   );
 
                 case 'radio':
                   return (
                     <RadioGroup value={formField.value} onValueChange={formField.onChange}>
-                      {field.options?.map((option) => (
-                        <div key={option} className="flex items-center space-x-2">
-                          <RadioGroupItem value={option} id={`${field.id}-${option}`} />
-                          <Label htmlFor={`${field.id}-${option}`}>{option}</Label>
-                        </div>
-                      ))}
+                      {field.options?.map((option) => {
+                        const optValue = typeof option === 'string' ? option : option.value;
+                        const optLabel = typeof option === 'string' ? option : (option.label || option.value);
+                        return (
+                          <div key={optValue} className="flex items-center space-x-2">
+                            <RadioGroupItem value={optValue} id={`${field.id}-${optValue}`} />
+                            <Label htmlFor={`${field.id}-${optValue}`}>{optLabel}</Label>
+                          </div>
+                        );
+                      })}
                     </RadioGroup>
                   );
 
