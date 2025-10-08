@@ -80,15 +80,26 @@ export async function harvestVisibleFields(page: Page, stepId = "step1"): Promis
   const radioGroups = new Map<string, any[]>();
   
   for (const field of controls) {
-    if (field.type === 'checkbox' && field.id.includes('_')) {
-      // Extract base name (e.g., "scpoptionset_12" from "scpoptionset_12_0")
-      const baseName = field.id.replace(/_\d+$/, '');
+    let baseName: string | null = null;
+    
+    // Check for array notation: "scpoptionset_12[1]" → "scpoptionset_12"
+    const arrayMatch = field.id.match(/^(.+?)\[\d+\]$/);
+    if (arrayMatch) {
+      baseName = arrayMatch[1];
+    } else {
+      // Check for hyphen or underscore pattern: "edit-scpoptionset-12-1" → "edit-scpoptionset-12"
+      const numericMatch = field.id.match(/^(.+?)[-_]\d+$/);
+      if (numericMatch) {
+        baseName = numericMatch[1];
+      }
+    }
+    
+    if (field.type === 'checkbox' && baseName) {
       if (!checkboxGroups.has(baseName)) {
         checkboxGroups.set(baseName, []);
       }
       checkboxGroups.get(baseName)!.push(field);
-    } else if (field.type === 'radio' && field.id.includes('_')) {
-      const baseName = field.id.replace(/_\d+$/, '');
+    } else if (field.type === 'radio' && baseName) {
       if (!radioGroups.has(baseName)) {
         radioGroups.set(baseName, []);
       }
