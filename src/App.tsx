@@ -11,6 +11,7 @@ import Credentials from "./pages/Credentials";
 import LoginTest from "./pages/LoginTest";
 import RegistrationDashboard from "./pages/RegistrationDashboard";
 import DiscoveryRuns from "./pages/DiscoveryRuns";
+import MandatesAudit from "./pages/MandatesAudit";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,6 +30,7 @@ const App = () => (
             <Route path="/plan-builder" element={<PlanBuilderWithStripe />} />
             <Route path="/credentials" element={<Credentials />} />
             <Route path="/discovery-runs" element={<DiscoveryRuns />} />
+            <Route path="/mandates" element={<MandatesAudit />} />
             <Route path="/login-test" element={<LoginTest />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

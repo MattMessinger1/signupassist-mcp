@@ -1,0 +1,299 @@
+import { useEffect, useState } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
+import { supabase } from '@/integrations/supabase/client';
+import { Header } from '@/components/Header';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Loader2, Shield, FileText, AlertCircle } from 'lucide-react';
+import { format } from 'date-fns';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+
+interface Mandate {
+  id: string;
+  provider: string;
+  program_ref: string | null;
+  scope: string[];
+  max_amount_cents: number | null;
+  valid_from: string;
+  valid_until: string;
+  status: string;
+  created_at: string;
+  jws_compact: string;
+}
+
+interface AuditEvent {
+  id: string;
+  event_type: string;
+  tool: string | null;
+  decision: string | null;
+  created_at: string;
+  started_at: string;
+  finished_at: string | null;
+  details: any;
+  result: string | null;
+}
+
+export default function MandatesAudit() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const [mandates, setMandates] = useState<Mandate[]>([]);
+  const [auditEvents, setAuditEvents] = useState<Record<string, AuditEvent[]>>({});
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
+
+    fetchMandatesAndAudits();
+  }, [user, navigate]);
+
+  const fetchMandatesAndAudits = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Fetch mandates
+      const { data: mandatesData, error: mandatesError } = await supabase
+        .from('mandates')
+        .select('*')
+        .eq('user_id', user!.id)
+        .order('created_at', { ascending: false });
+
+      if (mandatesError) throw mandatesError;
+
+      setMandates(mandatesData || []);
+
+      // Fetch audit events for all mandates
+      const mandateIds = mandatesData?.map(m => m.id) || [];
+      if (mandateIds.length > 0) {
+        const { data: eventsData, error: eventsError } = await supabase
+          .from('audit_events')
+          .select('*')
+          .in('mandate_id', mandateIds)
+          .order('created_at', { ascending: false });
+
+        if (eventsError) throw eventsError;
+
+        // Group events by mandate_id
+        const grouped = (eventsData || []).reduce((acc, event) => {
+          if (!event.mandate_id) return acc;
+          if (!acc[event.mandate_id]) acc[event.mandate_id] = [];
+          acc[event.mandate_id].push(event);
+          return acc;
+        }, {} as Record<string, AuditEvent[]>);
+
+        setAuditEvents(grouped);
+      }
+    } catch (err) {
+      console.error('Error fetching mandates:', err);
+      setError(err instanceof Error ? err.message : 'Failed to fetch mandates');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'active':
+        return 'default';
+      case 'expired':
+        return 'secondary';
+      case 'revoked':
+        return 'destructive';
+      default:
+        return 'outline';
+    }
+  };
+
+  const getDecisionColor = (decision: string | null) => {
+    switch (decision?.toLowerCase()) {
+      case 'allowed':
+        return 'default';
+      case 'denied':
+        return 'destructive';
+      default:
+        return 'secondary';
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <div className="flex-1 flex items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col bg-background">
+      <Header />
+      
+      <main className="flex-1 container mx-auto px-4 py-8">
+        <div className="max-w-6xl mx-auto space-y-6">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Mandate Audit Trail</h1>
+            <p className="text-muted-foreground">
+              View all mandates and their authorization history
+            </p>
+          </div>
+
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+
+          {mandates.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <Shield className="h-12 w-12 text-muted-foreground mb-4" />
+                <p className="text-lg font-medium mb-2">No mandates found</p>
+                <p className="text-sm text-muted-foreground">
+                  Mandates will appear here once you create a plan
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="space-y-4">
+              {mandates.map((mandate) => (
+                <Card key={mandate.id}>
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <CardTitle className="flex items-center gap-2">
+                          <Shield className="h-5 w-5" />
+                          {mandate.provider} Mandate
+                        </CardTitle>
+                        <CardDescription>
+                          {mandate.program_ref && `Program: ${mandate.program_ref}`}
+                        </CardDescription>
+                      </div>
+                      <Badge variant={getStatusColor(mandate.status)}>
+                        {mandate.status}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-muted-foreground">Valid From:</span>
+                        <p className="font-medium">
+                          {format(new Date(mandate.valid_from), 'PPp')}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Valid Until:</span>
+                        <p className="font-medium">
+                          {format(new Date(mandate.valid_until), 'PPp')}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Max Amount:</span>
+                        <p className="font-medium">
+                          ${((mandate.max_amount_cents || 0) / 100).toFixed(2)}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground">Scopes:</span>
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {mandate.scope.map((s) => (
+                            <Badge key={s} variant="outline" className="text-xs">
+                              {s}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <Accordion type="single" collapsible className="w-full">
+                      <AccordionItem value="jws">
+                        <AccordionTrigger className="text-sm">
+                          <div className="flex items-center gap-2">
+                            <FileText className="h-4 w-4" />
+                            View JWS Token
+                          </div>
+                        </AccordionTrigger>
+                        <AccordionContent>
+                          <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">
+                            {mandate.jws_compact}
+                          </pre>
+                        </AccordionContent>
+                      </AccordionItem>
+
+                      {auditEvents[mandate.id]?.length > 0 && (
+                        <AccordionItem value="audit">
+                          <AccordionTrigger className="text-sm">
+                            <div className="flex items-center gap-2">
+                              <FileText className="h-4 w-4" />
+                              Audit Events ({auditEvents[mandate.id].length})
+                            </div>
+                          </AccordionTrigger>
+                          <AccordionContent>
+                            <div className="space-y-2">
+                              {auditEvents[mandate.id].map((event) => (
+                                <div
+                                  key={event.id}
+                                  className="border rounded p-3 space-y-2"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-medium text-sm">
+                                        {event.event_type}
+                                      </span>
+                                      {event.tool && (
+                                        <Badge variant="outline" className="text-xs">
+                                          {event.tool}
+                                        </Badge>
+                                      )}
+                                    </div>
+                                    {event.decision && (
+                                      <Badge
+                                        variant={getDecisionColor(event.decision)}
+                                        className="text-xs"
+                                      >
+                                        {event.decision}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">
+                                    {format(new Date(event.created_at), 'PPp')}
+                                  </div>
+                                  {event.result && (
+                                    <div className="text-xs">
+                                      <span className="text-muted-foreground">Result:</span>
+                                      <pre className="mt-1 bg-muted p-2 rounded overflow-x-auto">
+                                        {event.result}
+                                      </pre>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </AccordionContent>
+                        </AccordionItem>
+                      )}
+                    </Accordion>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+}

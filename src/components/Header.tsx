@@ -27,6 +27,9 @@ export function Header() {
             <Button variant="ghost" onClick={() => navigate('/discovery-runs')}>
               Discovery Runs
             </Button>
+            <Button variant="ghost" onClick={() => navigate('/mandates')}>
+              Mandates
+            </Button>
           </nav>
         </div>
 
