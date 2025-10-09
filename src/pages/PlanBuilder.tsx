@@ -1300,7 +1300,8 @@ const PlanBuilder = () => {
     );
   }
 
-  const allRequirementsMet = prerequisiteChecks.length > 0 && prerequisiteChecks.every(r => r.status === 'pass') && !!selectedChildName;
+  // Prerequisites met: either no checks needed OR all checks passed
+  const allRequirementsMet = (prerequisiteChecks.length === 0 || prerequisiteChecks.every(r => r.status === 'pass')) && !!selectedChildName;
   
   console.log('[PlanBuilder] Rendering main form');
   
