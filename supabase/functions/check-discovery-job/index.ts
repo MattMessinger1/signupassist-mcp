@@ -60,6 +60,23 @@ Deno.serve(async (req) => {
       );
     }
 
+    // ✅ Defensive normalization for completed jobs
+    if (job.status === 'completed') {
+      const prereqChecks = job.prerequisite_checks || [];
+      const currentStatus = job.metadata?.prerequisite_status;
+      
+      // If stage was 'prereq' and no checks found, force status to 'complete'
+      if (job.mode === 'prerequisites_only' || job.metadata?.stage === 'prereq') {
+        if (prereqChecks.length === 0) {
+          job.metadata = {
+            ...job.metadata,
+            prerequisite_status: 'complete'
+          };
+          console.log(`[check-discovery-job] Normalized prerequisite_status → complete (0 checks found)`);
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify(job),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -301,15 +301,22 @@ async function runDiscoveryInBackground(jobId: string, requestBody: RequestBody,
 
     // Normalize both prereq and program results
     const prereqChecks = result?.prerequisite_checks || [];
-    const prereqStatus = result?.prerequisite_status || "unknown";
+    let prereqStatus = result?.prerequisite_status || "unknown";
     const programQuestions = result?.program_questions || [];
     const discoveredSchema = result?.discoveredSchema || [];
+
+    // ✅ FIX: If stage is 'prereq' and we got 0 checks, treat as complete
+    if (stage === 'prereq' && prereqChecks.length === 0) {
+      prereqStatus = "complete";
+      console.log(`[Job ${jobId}] 🎯 0 prerequisite fields found → marking complete`);
+    }
 
     console.log(`[Job ${jobId}] Discovery result normalized:`, {
       prereqChecks: prereqChecks.length,
       prereqStatus,
       programQuestions: programQuestions.length,
-      discoveredSchema: discoveredSchema.length
+      discoveredSchema: discoveredSchema.length,
+      stage
     });
 
     // ✅ mark job completed
