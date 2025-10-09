@@ -24,6 +24,8 @@ export interface ProgramQuestion {
   options?: Array<{ value: string; label: string }>;
   required?: boolean;
   description?: string;
+  isPriceBearing?: boolean;
+  priceOptions?: Array<{ value: string; label: string; costCents: number | null }>;
 }
 
 export interface ProgramQuestionsPanelProps {

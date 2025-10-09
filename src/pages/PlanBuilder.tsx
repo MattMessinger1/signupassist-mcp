@@ -2093,7 +2093,9 @@ const PlanBuilder = () => {
                                 label: q.label,
                                 type: q.type,
                                 required: q.required,
-                                options: q.options,
+                                options: q.options as EnhancedDiscoveredField['options'],
+                                isPriceBearing: q.isPriceBearing,
+                                priceOptions: q.priceOptions,
                               };
                               
                               const autoAnswer = chooseDefaultAnswer(field);
