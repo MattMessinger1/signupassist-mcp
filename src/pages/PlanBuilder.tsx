@@ -128,7 +128,7 @@ const PlanBuilder = () => {
 
   const { user, session, loading: authLoading, isSessionValid } = useAuth();
   console.log('[PlanBuilder] Auth state:', { hasUser: !!user, hasSession: !!session, authLoading });
-  const [discoveredSchema, setDiscoveredSchema] = useState<DiscoveredSchema | null>(null);
+  // V1: Removed discoveredSchema, programQuestions, programDiscoveryRunning - no program discovery in v1
   const abortControllerRef = useRef<AbortController | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string>('');
   const [isDiscovering, setIsDiscovering] = useState(false);
@@ -141,8 +141,6 @@ const PlanBuilder = () => {
   const [prerequisiteChecks, setPrerequisiteChecks] = useState<PrerequisiteCheck[]>([]);
   const [prerequisiteStatus, setPrerequisiteStatus] = useState<'complete' | 'required' | 'unknown'>('unknown');
   const [prerequisiteFields, setPrerequisiteFields] = useState<EnhancedDiscoveredField[]>([]);
-  const [programQuestions, setProgramQuestions] = useState<ProgramQuestion[]>([]);
-  const [programDiscoveryRunning, setProgramDiscoveryRunning] = useState(false);
   const [activeStep, setActiveStep] = useState<'prereqs' | 'program' | 'completed'>('prereqs');
   const [hasPaymentMethod, setHasPaymentMethod] = useState(false);
   const [checkingPayment, setCheckingPayment] = useState(false);
@@ -170,8 +168,7 @@ const PlanBuilder = () => {
   const [discoveryMetadata, setDiscoveryMetadata] = useState<any>(null);
 
   // Safe derived variables with null checks and defaults
-  const currentBranch = discoveredSchema?.branches?.find(b => b.choice === selectedBranch) ?? null;
-  const fieldsToShow = currentBranch?.questions ?? discoveredSchema?.common_questions ?? [];
+  // V1: No program discovery, so no fieldsToShow
   const selectedChildId = form.watch('childId') ?? '';
   const opensAt = form.watch('opensAt') ?? null;
 
@@ -179,13 +176,6 @@ const PlanBuilder = () => {
   const formWatchOpensAt = form.watch('opensAt');
   console.log('[PlanBuilder] Render state:', {
     authState: { hasUser: !!user, hasSession: !!session, authLoading },
-    discoveredSchema: discoveredSchema ? {
-      isNull: false,
-      hasBranches: !!discoveredSchema.branches,
-      branchCount: discoveredSchema.branches?.length ?? 0,
-      hasCommonQuestions: !!discoveredSchema.common_questions,
-      commonQuestionsCount: discoveredSchema.common_questions?.length ?? 0,
-    } : { isNull: true },
     formState: {
       childId: form.watch('childId'),
       programRef: form.watch('programRef'),
@@ -197,29 +187,6 @@ const PlanBuilder = () => {
     },
     prerequisiteChecks: prerequisiteChecks.length,
     selectedChildId,
-    currentBranch: !!currentBranch,
-    fieldsToShow: fieldsToShow.length
-  });
-
-  const allFields = [
-    ...(discoveredSchema?.common_questions || []),
-    ...(currentBranch?.questions || [])
-  ];
-  
-  // Group fields by category with safe access
-  const fieldsByCategory = allFields.reduce((acc, field) => {
-    const category = field?.category || 'program_selection';
-    if (!acc[category]) acc[category] = [];
-    acc[category].push(field);
-    return acc;
-  }, {} as Record<string, EnhancedDiscoveredField[]>);
-
-  // Apply smart defaults when fields are discovered
-  useSmartDefaults({
-    fields: allFields,
-    childId: selectedChildId,
-    setValue: form.setValue,
-    watch: form.watch,
   });
 
   // Cleanup abort controller on unmount
@@ -456,24 +423,6 @@ const PlanBuilder = () => {
 
   // V1: No manual retry needed - program questions handled at execution time
 
-  // Auto-apply smart defaults to discovered fields
-  const autoApplySmartDefaults = (schema: DiscoveredSchema) => {
-    const answers: Record<string, string> = {};
-    const allFields = [
-      ...(schema.common_questions || []),
-      ...(schema.branches?.flatMap(b => b.questions) || [])
-    ];
-
-    allFields.forEach((field: any) => {
-      const defaultValue = chooseDefaultAnswer(field);
-      if (defaultValue) {
-        answers[field.id] = defaultValue;
-      }
-    });
-
-    return answers;
-  };
-
   // Prerequisite Discovery - Stage: "prereq"
   const handleCheckPrereqs = async () => {
     const programRef = form.watch('programRef');
@@ -487,10 +436,6 @@ const PlanBuilder = () => {
       });
       return;
     }
-
-    // Reset program data to prevent showing old results during prereq check
-    setProgramQuestions([]);
-    setDiscoveredSchema(null);
     setIsDiscovering(true);
 
     try {
@@ -1227,64 +1172,7 @@ const PlanBuilder = () => {
             </CardContent>
           </Card>
 
-          {/* Auto-Applied Answers Summary */}
-          {discoveredSchema && form.getValues('answers') && Object.keys(form.getValues('answers') || {}).length > 0 && (
-            <Card className="border-green-200 bg-green-50 dark:bg-green-950">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-green-900 dark:text-green-100">
-                  <CheckCircle className="h-5 w-5" />
-                  Smart Defaults Applied
-                </CardTitle>
-                <CardDescription className="text-green-700 dark:text-green-300">
-                  These answers were automatically selected to secure your spot quickly
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
-                  {Object.entries(form.getValues('answers') || {}).map(([fieldId, value]) => {
-                    const allFields = [
-                      ...(discoveredSchema.common_questions || []),
-                      ...(discoveredSchema.branches?.flatMap(b => b.questions) || [])
-                    ];
-                    const field = allFields.find((f: any) => f.id === fieldId);
-                    const fieldLabel = field?.label || fieldId;
-                    
-                    // Display value - try to find option label or use raw value
-                    let displayValue = value as string;
-                    const fieldOptions = (field as any)?.options;
-                    if (fieldOptions && Array.isArray(fieldOptions) && fieldOptions.length > 0) {
-                      // Check if options are objects with value/label or just strings
-                      const firstOpt = fieldOptions[0];
-                      if (typeof firstOpt === 'object' && firstOpt.value && firstOpt.label) {
-                        const option = fieldOptions.find((opt: any) => opt.value === value);
-                        displayValue = option?.label || value as string;
-                        
-                        // Check if it's a price-bearing field and show cost
-                        const priceInfo = (field as any)?.priceOptions?.find((opt: any) => opt.value === value);
-                        if (priceInfo?.costCents !== undefined && priceInfo?.costCents !== null) {
-                          displayValue += ` (${priceInfo.costCents === 0 ? 'Free' : `$${(priceInfo.costCents / 100).toFixed(2)}`})`;
-                        }
-                      }
-                    }
-                    
-                    return (
-                      <div key={fieldId} className="flex justify-between items-start p-2 rounded bg-white/50 dark:bg-black/20">
-                        <span className="text-sm font-medium text-green-900 dark:text-green-100">{fieldLabel}:</span>
-                        <span className="text-sm text-green-700 dark:text-green-300 text-right max-w-[60%]">
-                          {displayValue}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-                <Alert className="mt-4 border-green-300 bg-green-100 dark:bg-green-900">
-                  <AlertDescription className="text-xs text-green-800 dark:text-green-200">
-                    <strong>Note:</strong> You can update these answers later by contacting the program directly after your spot is secured.
-                  </AlertDescription>
-                </Alert>
-              </CardContent>
-            </Card>
-          )}
+          {/* V1: Auto-applied answers summary removed - no program discovery */}
 
           <div className="space-y-4">
             {/* MVP Test Button */}
@@ -1366,7 +1254,6 @@ const PlanBuilder = () => {
                   setShowConfirmation(false);
                   setCreatedPlan(null);
                   form.reset();
-                  setDiscoveredSchema(null);
                   setPrerequisiteChecks([]);
                 }}
                 className="flex-1"
@@ -1478,10 +1365,8 @@ const PlanBuilder = () => {
                           onProgramSelect={({ ref, title }) => {
                             field.onChange(ref);
                             setFriendlyProgramTitle(title);
-                            setDiscoveredSchema(null);
                             setSelectedBranch('');
                             setPrerequisiteChecks([]);
-                            setProgramQuestions([]);
                             setActiveStep('prereqs');
                           }}
                           selectedProgram={field.value}
@@ -1606,14 +1491,12 @@ const PlanBuilder = () => {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      <AnimatePresence mode="wait">
-                        {activeStep === 'prereqs' ? (
-                        <PrerequisitesPanel
-                          key={`prereqs-${prerequisiteChecks.length}-${Date.now()}`}
-                          checks={prerequisiteChecks}
-                          metadata={discoveryMetadata}
-                          onRecheck={handleCheckPrerequisitesOnly}
-                          onContinue={async () => {
+                      <PrerequisitesPanel
+                        key={`prereqs-${prerequisiteChecks.length}-${Date.now()}`}
+                        checks={prerequisiteChecks}
+                        metadata={discoveryMetadata}
+                        onRecheck={handleCheckPrerequisitesOnly}
+                        onContinue={async () => {
                             const childId = form.watch('childId');
                             const programRef = form.watch('programRef');
                             const openTime = form.watch('opensAt');
@@ -1655,64 +1538,13 @@ const PlanBuilder = () => {
 
                             setSelectedChildName(childData.name);
                             
-                            // Move to program questions if available, otherwise proceed to discovery
-                            if (programQuestions.length > 0) {
-                              setActiveStep('program');
-                              toast({
-                                title: 'Prerequisites Verified',
-                                description: 'Please answer the program-specific questions below.',
-                              });
-                            } else {
-                              // V1: Skip discovery - just show completion
-                              toast({
-                                title: 'Ready to Continue',
-                                description: 'Program questions will be handled automatically.',
-                              });
-                              setActiveStep('completed');
-                            }
-                          }}
-                        />
-                        ) : activeStep === 'program' ? (
-                        <ProgramQuestionsPanel
-                          key={programQuestions.length}
-                          questions={programQuestions}
-                          initialAnswers={form.watch('answers') || {}}
-                          onSubmit={(answers) => {
-                            console.log('[PlanBuilder] Program questions submitted:', answers);
-                            form.setValue('answers', answers as any);
-                            
+                            // V1: No program questions step - prerequisites complete
                             toast({
-                              title: 'Answers Saved',
-                              description: 'Your program-specific answers have been recorded.',
+                              title: 'Prerequisites Complete',
+                              description: 'Program questions will be handled automatically during registration.',
                             });
-                            
-                            toastLogger('program_questions', 'Answers saved successfully', 'success', { 
-                              answerCount: Object.keys(answers).length 
-                            });
-
-                            // Move to completion screen
-                            setActiveStep('completed');
-                          }}
-                          onBack={() => {
-                            setActiveStep('prereqs');
-                            toast({
-                              title: 'Returned to Prerequisites',
-                              description: 'You can review or recheck prerequisites.',
-                            });
-                          }}
-                          onRecheck={() => {}} // V1: No recheck needed
-                          isSubmitting={false}
-                          isRechecking={false}
-                        />
-                      ) : (
-                        <CompletionPanel
-                          key="completed"
-                          onFinish={() => {
-                            navigate('/');
                           }}
                         />
-                      )}
-                      </AnimatePresence>
                       
                       {/* Discovery Coverage Details */}
                       {discoveryMetadata && (
@@ -1754,229 +1586,13 @@ const PlanBuilder = () => {
               </Card>
             )}
 
-            {/* Step 5: Registration Form Fields */}
-            {/* Show loading state while discovery is running */}
-            {programDiscoveryRunning && (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs">Step 5</Badge>
-                    <CardTitle>Discovering Program Questions</CardTitle>
-                  </div>
-                  <CardDescription>
-                    Please wait while we discover the registration form fields...
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Loader2 className="animate-spin inline mr-2 h-5 w-5" />
-                    Discovering program questions… This may take 15-30 seconds.
-                  </div>
-                </CardContent>
-              </Card>
+            {/* V1: Program Questions Disclaimer - Show immediately after prerequisites pass */}
+            {allRequirementsMet && !isDiscovering && (
+              <ProgramQuestionsAutoAnswered questions={[]} />
             )}
 
-            {/* Show results after discovery completes */}
-            {discoveredSchema && !programDiscoveryRunning && (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">Step 5</Badge>
-                      <CardTitle>Program Questions</CardTitle>
-                    </div>
-                    {discoveredSchema.discoveryCompleted && programQuestions.length > 0 && (
-                      <CheckCircle className="h-5 w-5 text-green-600" />
-                    )}
-                  </div>
-                  <CardDescription>
-                    {discoveredSchema.discoveryCompleted 
-                      ? programQuestions.length > 0
-                        ? `${programQuestions.length} question${programQuestions.length === 1 ? '' : 's'} to answer`
-                        : 'No additional questions required for this program'
-                      : 'Click "Continue to Program Questions" to discover fields'}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  {/* Handle case where discovery ran and no questions were found */}
-                  {discoveredSchema.discoveryCompleted && programQuestions.length === 0 ? (
-                    <div className="space-y-4">
-                      <div className="p-6 bg-green-50 border border-green-200 rounded-lg">
-                        <div className="flex items-start gap-3">
-                          <div className="bg-green-100 p-2 rounded-full">
-                            <CheckCircle className="h-5 w-5 text-green-700" />
-                          </div>
-                          <div className="flex-1">
-                            <h3 className="text-base font-semibold text-green-900 mb-2">
-                              No Additional Questions Required
-                            </h3>
-                            <p className="text-sm text-green-800 mb-3">
-                              Good news! This program doesn't require any additional information beyond what we've already collected.
-                              You can proceed directly to setting up your registration timing.
-                            </p>
-                            <div className="text-xs text-green-700 bg-green-100 p-3 rounded border border-green-200">
-                              <p className="font-medium mb-1">What we checked:</p>
-                              <ul className="list-disc list-inside space-y-1">
-                                <li>Registration form fields</li>
-                                <li>Program-specific options</li>
-                                <li>Additional preferences</li>
-                              </ul>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      
-                      <div className="flex gap-3">
-                        <Button
-                          type="button"
-                          onClick={() => window.open(`https://blackhawk-ski-club.skiclubpro.team/program/${form.getValues('programRef')}`, '_blank')}
-                          variant="outline"
-                          size="sm"
-                        >
-                          View Program Page
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Branch Selection */}
-                      {discoveredSchema.branches && discoveredSchema.branches.length > 1 && (
-                        <div className="space-y-2">
-                          <label className="text-sm font-medium">Program Options</label>
-                          <p className="text-xs text-muted-foreground mb-2">
-                            This program has multiple sessions or tracks. Select the one you want to register for:
-                          </p>
-                          <Select value={selectedBranch} onValueChange={setSelectedBranch}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select a program option" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {discoveredSchema.branches.map((branch, index) => (
-                                <SelectItem key={index} value={branch.choice}>
-                                  {branch.choice}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-
-                      {/* Auto-select if only one branch */}
-                      {discoveredSchema.branches && discoveredSchema.branches.length === 1 && !selectedBranch && (
-                        <div className="hidden">
-                          {(() => {
-                            setSelectedBranch(discoveredSchema.branches[0].choice);
-                            return null;
-                          })()}
-                        </div>
-                      )}
-
-                      {/* Render program questions if available */}
-                      {programDiscoveryRunning ? (
-                        <div className="text-center py-8 text-muted-foreground">
-                          <Loader2 className="animate-spin inline mr-2 h-6 w-6" />
-                          <p className="mt-2">Discovering program questions…</p>
-                        </div>
-                      ) : programQuestions.length > 0 ? (
-                        <div className="space-y-6">
-                          {/* V1 Auto-Answer Bypass */}
-                          <ProgramQuestionsAutoAnswered 
-                            questions={programQuestions.map(q => {
-                              // Get auto-selected answer for each question
-                              const field: EnhancedDiscoveredField = {
-                                id: q.id,
-                                label: q.label,
-                                type: q.type,
-                                required: q.required,
-                                options: q.options as EnhancedDiscoveredField['options'],
-                                isPriceBearing: q.isPriceBearing,
-                                priceOptions: q.priceOptions,
-                              };
-                              
-                              const autoAnswer = chooseDefaultAnswer(field);
-                              
-                              // Auto-populate form with selected answer
-                              if (autoAnswer && !form.getValues(`answers.${q.id}`)) {
-                                form.setValue(`answers.${q.id}`, autoAnswer);
-                              }
-                              
-                              // Determine reason for selection
-                              let reason = 'First valid option selected';
-                              if (q.options) {
-                                const selectedOpt = q.options.find(opt => 
-                                  (typeof opt === 'string' ? opt : opt.value) === autoAnswer
-                                );
-                                const label = typeof selectedOpt === 'string' 
-                                  ? selectedOpt 
-                                  : selectedOpt?.label || '';
-                                
-                                if (/\$0|free|no charge/i.test(label)) {
-                                  reason = 'Free option selected to minimize cost';
-                                } else if (/none|no thanks|skip/i.test(label)) {
-                                  reason = 'Optional add-on skipped';
-                                } else if (/basic|standard/i.test(label)) {
-                                  reason = 'Basic/standard option selected';
-                                } else if (label.match(/\$\d+/)) {
-                                  reason = 'Lowest cost option selected';
-                                }
-                              }
-                              
-                              return {
-                                label: q.label,
-                                answer: autoAnswer || '(Unable to auto-select)',
-                                reason,
-                              };
-                            })}
-                          />
-                          
-                          {/* Hidden debug info - remove after testing */}
-                          <div className="text-xs text-muted-foreground">
-                            <details>
-                              <summary className="cursor-pointer">Debug: View auto-populated answers</summary>
-                              <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto">
-                                {JSON.stringify(form.getValues('answers'), null, 2)}
-                              </pre>
-                            </details>
-                          </div>
-                        </div>
-                      ) : Object.entries(fieldsByCategory).length > 0 ? (
-                        <div className="space-y-6">
-                          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                            <p className="text-xs text-blue-800">
-                              <strong>Tip:</strong> Fill out all required fields marked with an asterisk (*).
-                              Your answers will be automatically provided during registration.
-                            </p>
-                          </div>
-                          
-                          {Object.entries(fieldsByCategory).map(([category, fields]) => (
-                            <FieldGroup
-                              key={category}
-                              title={category.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                              category={category}
-                              fields={fields}
-                              control={form.control}
-                              watch={form.watch}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <Card className="bg-green-50 border-green-200">
-                          <CardHeader>
-                            <CardTitle>No Additional Questions Required</CardTitle>
-                          </CardHeader>
-                          <CardContent>
-                            <p>Good news! This program doesn't require any additional information beyond what we've already collected.</p>
-                          </CardContent>
-                        </Card>
-                      )}
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Step 4: Registration Timing - Show BEFORE discovery */}
-            {allRequirementsMet && !discoveredSchema && !isDiscovering && (
+            {/* Step 4: Registration Timing */}
+            {allRequirementsMet && !isDiscovering && (
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -2014,8 +1630,8 @@ const PlanBuilder = () => {
               </Card>
             )}
 
-            {/* Step 6: Payment Limit */}
-            {discoveredSchema && opensAt && !showMandateSummary && (
+            {/* Step 5: Payment Limit */}
+            {opensAt && !showMandateSummary && (
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -2076,36 +1692,8 @@ const PlanBuilder = () => {
               </Card>
             )}
 
-            {/* Step 8: How We'll Handle Extra Questions */}
-            {discoveredSchema && opensAt && form.watch('maxAmountCents') > 0 && !showMandateSummary && (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs">Step 8</Badge>
-                    <CardTitle>{prompts.ui.defaults.headline}</CardTitle>
-                  </div>
-                  <CardDescription>
-                    {prompts.ui.defaults.explainer}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="space-y-3">
-                    <h4 className="text-sm font-semibold">Rules we'll follow:</h4>
-                    <ul className="space-y-2">
-                      {prompts.ui.defaults.rules.map((rule, idx) => (
-                        <li key={idx} className="flex items-start gap-3 text-sm">
-                          <CheckCircle className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                          <span className="text-muted-foreground">{rule}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Step 9: Contact Information */}
-            {discoveredSchema && opensAt && form.watch('maxAmountCents') > 0 && !showMandateSummary && (
+            {/* Step 6: Contact Information */}
+            {opensAt && form.watch('maxAmountCents') > 0 && !showMandateSummary && (
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -2141,8 +1729,8 @@ const PlanBuilder = () => {
               </Card>
             )}
 
-            {/* Step 10: Payment Method */}
-            {discoveredSchema && opensAt && form.watch('maxAmountCents') > 0 && form.watch('contactPhone') && !showMandateSummary && (
+            {/* Step 7: Payment Method */}
+            {opensAt && form.watch('maxAmountCents') > 0 && form.watch('contactPhone') && !showMandateSummary && (
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
@@ -2171,8 +1759,8 @@ const PlanBuilder = () => {
               </Card>
             )}
 
-            {/* Step 11: Mandate Summary & Finalize */}
-            {discoveredSchema && opensAt && hasPaymentMethod && allRequirementsMet && form.watch('maxAmountCents') > 0 && form.watch('contactPhone') && showMandateSummary && !showConfirmation && (
+            {/* Step 8: Mandate Summary & Finalize */}
+            {opensAt && hasPaymentMethod && allRequirementsMet && form.watch('maxAmountCents') > 0 && form.watch('contactPhone') && showMandateSummary && !showConfirmation && (
               <MandateSummary
                 orgRef="blackhawk-ski-club"
                 programTitle={friendlyProgramTitle || form.watch('programRef')}
@@ -2195,7 +1783,7 @@ const PlanBuilder = () => {
               />
             )}
 
-            {/* Step 12: Plan Created - Show Execution Status */}
+            {/* Step 9: Plan Created - Show Execution Status */}
             {showConfirmation && createdPlan && (
               <PlanExecutionStatus
                 planId={createdPlan.plan_id}
@@ -2207,39 +1795,10 @@ const PlanBuilder = () => {
               />
             )}
 
-            {/* Plan Preview */}
-            {discoveredSchema && allFields.length > 0 && opensAt && hasPaymentMethod && (
-              <PlanPreview
-                programRef={friendlyProgramTitle || form.watch('programRef')}
-                childName="Selected Child"
-                opensAt={(() => {
-                  try {
-                    let dateValue: Date;
-                    if (opensAt instanceof Date && !isNaN(opensAt.getTime())) {
-                      dateValue = opensAt;
-                    } else if (typeof opensAt === 'string') {
-                      dateValue = new Date(opensAt);
-                      if (isNaN(dateValue.getTime())) {
-                        throw new Error('Invalid date string');
-                      }
-                    } else {
-                      throw new Error('Invalid date format');
-                    }
-                    return dateValue;
-                  } catch (error) {
-                    console.error('[PlanBuilder] Error parsing opensAt:', error);
-                    return new Date();
-                  }
-                })()}
-                selectedBranch={selectedBranch}
-                answers={form.watch('answers') || {}}
-                discoveredFields={allFields}
-                credentialAlias="Login Credentials"
-              />
-            )}
+            {/* V1: Plan Preview removed - no discovered fields */}
 
             {/* Action Buttons */}
-            {!showMandateSummary && !showConfirmation && discoveredSchema && opensAt && hasPaymentMethod && form.watch('maxAmountCents') > 0 && form.watch('contactPhone') && (
+            {!showMandateSummary && !showConfirmation && opensAt && hasPaymentMethod && form.watch('maxAmountCents') > 0 && form.watch('contactPhone') && (
               <div className="flex gap-4">
                 <Button
                   type="button"
