@@ -229,6 +229,25 @@ const PlanBuilder = () => {
     }
   }, [user]);
 
+  // Auto-scroll to Step 4 when prerequisites complete
+  useEffect(() => {
+    const allRequirementsMet = prerequisiteChecks.length > 0 && prerequisiteChecks.every(r => r.status === 'pass') && !!selectedChildName;
+    
+    if (allRequirementsMet && !isDiscovering && step4Ref.current && !shouldHighlightStep4) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => {
+        step4Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setShouldHighlightStep4(true);
+        
+        // Remove highlight after 3 seconds
+        const highlightTimer = setTimeout(() => setShouldHighlightStep4(false), 3000);
+        return () => clearTimeout(highlightTimer);
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [prerequisiteChecks, selectedChildName, isDiscovering, shouldHighlightStep4]);
+
   // Realtime subscription for plan executions and execution logs
   // This enables automatic UI updates when backend processes complete
   // - Plan executions: tracks overall registration status
@@ -1282,22 +1301,6 @@ const PlanBuilder = () => {
   }
 
   const allRequirementsMet = prerequisiteChecks.length > 0 && prerequisiteChecks.every(r => r.status === 'pass') && !!selectedChildName;
-  
-  // Auto-scroll to Step 4 when prerequisites complete
-  useEffect(() => {
-    if (allRequirementsMet && !isDiscovering && step4Ref.current) {
-      // Small delay to ensure DOM is ready
-      const timer = setTimeout(() => {
-        step4Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        setShouldHighlightStep4(true);
-        
-        // Remove highlight after 3 seconds
-        setTimeout(() => setShouldHighlightStep4(false), 3000);
-      }, 300);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [allRequirementsMet, isDiscovering]);
   
   console.log('[PlanBuilder] Rendering main form');
   
