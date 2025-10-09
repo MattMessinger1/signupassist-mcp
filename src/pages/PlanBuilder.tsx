@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -148,6 +148,11 @@ const PlanBuilder = () => {
   const [checkingPayment, setCheckingPayment] = useState(false);
   const [friendlyProgramTitle, setFriendlyProgramTitle] = useState<string | null>(null);
   const [selectedChildName, setSelectedChildName] = useState<string>('');
+  
+  // Compute allRequirementsMet once to avoid re-calculation in multiple places
+  const allRequirementsMet = useMemo(() => {
+    return (prerequisiteChecks.length === 0 || prerequisiteChecks.every(r => r.status === 'pass')) && !!selectedChildName;
+  }, [prerequisiteChecks, selectedChildName]);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [detectedPriceCents, setDetectedPriceCents] = useState<number | null>(null);
   const [caps, setCaps] = useState<{ max_provider_charge_cents: number | null; service_fee_cents: number | null }>({
@@ -251,27 +256,29 @@ const PlanBuilder = () => {
     };
     
     fetchChildName();
-  }, [prerequisiteStatus, form.watch('childId'), selectedChildName]);
+  }, [prerequisiteStatus, selectedChildName]);
 
   // Auto-scroll to Step 4 when prerequisites complete
   useEffect(() => {
-    const allRequirementsMet = (prerequisiteChecks.length === 0 || prerequisiteChecks.every(r => r.status === 'pass')) && !!selectedChildName;
-    
     if (allRequirementsMet && !isDiscovering && step4Ref.current && !shouldHighlightStep4) {
       // Small delay to ensure DOM is ready
-      const timer = setTimeout(() => {
+      const scrollTimer = setTimeout(() => {
         if (step4Ref.current) {
           step4Ref.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
           setShouldHighlightStep4(true);
-          
-          // Remove highlight after 3 seconds
-          setTimeout(() => setShouldHighlightStep4(false), 3000);
         }
       }, 500);
       
-      return () => clearTimeout(timer);
+      const highlightTimer = setTimeout(() => {
+        setShouldHighlightStep4(false);
+      }, 3500); // 500ms scroll delay + 3000ms highlight
+      
+      return () => {
+        clearTimeout(scrollTimer);
+        clearTimeout(highlightTimer);
+      };
     }
-  }, [prerequisiteChecks, selectedChildName, isDiscovering, shouldHighlightStep4]);
+  }, [allRequirementsMet, isDiscovering, shouldHighlightStep4]);
 
   // Realtime subscription for plan executions and execution logs
   // This enables automatic UI updates when backend processes complete
@@ -1325,8 +1332,7 @@ const PlanBuilder = () => {
     );
   }
 
-  // Prerequisites met: either no checks needed OR all checks passed
-  const allRequirementsMet = (prerequisiteChecks.length === 0 || prerequisiteChecks.every(r => r.status === 'pass')) && !!selectedChildName;
+  // Prerequisites met: calculated once via useMemo above
   
   console.log('[PlanBuilder] Rendering main form');
   
