@@ -1790,10 +1790,11 @@ const PlanBuilder = () => {
                 </CardHeader>
                 <CardContent>
                   <SavePaymentMethod 
-                    onPaymentMethodSaved={() => {
-                      setHasPaymentMethod(true);
-                      // Payment method will be automatically verified by useEffect
-                    }}
+                onPaymentMethodSaved={() => {
+                  console.log('[PlanBuilder] Payment method saved, triggering verification...');
+                  // Trigger immediate verification without optimistic update
+                  checkPaymentMethod();
+                }}
                     hasPaymentMethod={hasPaymentMethod}
                   />
                 </CardContent>

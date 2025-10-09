@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
@@ -73,7 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     navigate('/auth');
   };
 
-  const isSessionValid = (): boolean => {
+  const isSessionValid = useCallback((): boolean => {
     if (!session) return false;
     
     const expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
@@ -92,7 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     
     return true;
-  };
+  }, [session]);
 
   return (
     <AuthContext.Provider value={{ user, session, loading, signOut, isSessionValid }}>
