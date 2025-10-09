@@ -11,11 +11,14 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, CheckCircle2, XCircle, Clock, PlayCircle, AlertCircle, Calendar } from 'lucide-react';
+import { Loader2, CheckCircle2, XCircle, Clock, PlayCircle, AlertCircle, Calendar, CreditCard } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { OpenTimePicker } from '@/components/OpenTimePicker';
+import { PrereqsChecklist } from '@/components/PrereqsChecklist';
+import { ProgramQuestionsSummary } from '@/components/ProgramQuestionsSummary';
+import { FeeBreakdownCard } from '@/components/FeeBreakdownCard';
 
 interface Child {
   id: string;
@@ -55,7 +58,6 @@ interface PlanConfig {
     volunteer: string;
   };
   maxProviderChargeCents: number;
-  serviceFeeCents: number;
   notes: string;
 }
 
@@ -78,8 +80,8 @@ export default function FlowTester() {
     programRef: 'blackhawk/2024-2025/youth-ski',
     childId: '',
     credentialId: '',
-    maxAmountCents: 50000,
-    scopes: ['scp:login', 'scp:enroll', 'scp:write:register', 'scp:pay', 'signupassist:fee'],
+    maxAmountCents: 44000, // $400 program + $40 buffer
+    scopes: ['scp:login', 'scp:enroll', 'scp:write:register', 'scp:pay'],
     validUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
   });
   
@@ -91,7 +93,6 @@ export default function FlowTester() {
       volunteer: 'Instructor',
     },
     maxProviderChargeCents: 40000,
-    serviceFeeCents: 10000,
     notes: 'Flow test execution',
   });
   
@@ -99,11 +100,12 @@ export default function FlowTester() {
   const [running, setRunning] = useState(false);
   const [mandateId, setMandateId] = useState<string | null>(null);
   const [planId, setPlanId] = useState<string | null>(null);
+  const [planExecutionId, setPlanExecutionId] = useState<string | null>(null);
   const [steps, setSteps] = useState<FlowStep[]>([
     { id: 'mandate', label: 'Create Authorization (Mandate)', status: 'pending' },
     { id: 'plan', label: 'Create Execution Plan', status: 'pending' },
     { id: 'execute', label: 'Execute Registration (Mock)', status: 'pending' },
-    { id: 'payment', label: 'Simulate Payment (No Charge)', status: 'pending' },
+    { id: 'stripe', label: 'Charge Success Fee ($20)', status: 'pending' },
   ]);
 
   // Fetch children and credentials
@@ -199,6 +201,7 @@ export default function FlowTester() {
 
       // Step 2: Create plan
       updateStep('plan', { status: 'running' });
+      const contingencyBufferCents = Math.min(Math.round(planConfig.maxProviderChargeCents * 0.10), 5000);
       const { data: planData, error: planError } = await supabase.functions.invoke('create-plan', {
         body: {
           mandate_id: createdMandateId,
@@ -207,8 +210,7 @@ export default function FlowTester() {
           child_id: mandateConfig.childId,
           opens_at: planConfig.opensAt.toISOString(),
           answers: planConfig.answers,
-          max_provider_charge_cents: planConfig.maxProviderChargeCents,
-          service_fee_cents: planConfig.serviceFeeCents,
+          max_provider_charge_cents: planConfig.maxProviderChargeCents + contingencyBufferCents,
           notes: planConfig.notes,
         }
       });
@@ -223,26 +225,43 @@ export default function FlowTester() {
       // Step 3: Execute plan (mock)
       updateStep('execute', { status: 'running' });
       try {
-        await supabase.functions.invoke('run-plan', {
+        const { data: executionData } = await supabase.functions.invoke('run-plan', {
           body: {
             plan_id: createdPlanId,
             action: 'register',
             mock: true,
           }
         });
+        const execId = executionData?.plan_execution_id || executionData?.id;
+        setPlanExecutionId(execId);
         updateStep('execute', { status: 'success', result: 'Registration simulated successfully' });
       } catch (error) {
         // Expected in test mode
         updateStep('execute', { status: 'success', result: 'Registration simulated (mock mode)' });
       }
 
-      // Step 4: Simulate payment
-      updateStep('payment', { status: 'running' });
-      const totalCents = planConfig.maxProviderChargeCents + planConfig.serviceFeeCents;
-      updateStep('payment', { 
-        status: 'success', 
-        result: `Payment simulated: $${(totalCents / 100).toFixed(2)} (no charge)` 
-      });
+      // Step 4: Charge success fee via Stripe
+      updateStep('stripe', { status: 'running' });
+      try {
+        const { data: chargeData, error: chargeError } = await supabase.functions.invoke('stripe-charge-success', {
+          body: {
+            plan_execution_id: planExecutionId || createdPlanId,
+            user_id: user.id,
+          }
+        });
+
+        if (chargeError) throw chargeError;
+        
+        updateStep('stripe', { 
+          status: 'success', 
+          result: `Success fee charged: $20.00 (Charge ID: ${chargeData?.charge_id})` 
+        });
+      } catch (error) {
+        updateStep('stripe', { 
+          status: 'error', 
+          error: error instanceof Error ? error.message : 'Failed to charge success fee' 
+        });
+      }
 
       toast({ 
         title: 'Flow Test Complete',
@@ -271,6 +290,7 @@ export default function FlowTester() {
     setSteps(prev => prev.map(s => ({ ...s, status: 'pending' as const, result: undefined, error: undefined })));
     setMandateId(null);
     setPlanId(null);
+    setPlanExecutionId(null);
   };
 
   const getStepIcon = (status: FlowStep['status']) => {
@@ -282,8 +302,9 @@ export default function FlowTester() {
     }
   };
 
-  const totalCostCents = planConfig.maxProviderChargeCents + planConfig.serviceFeeCents;
-  const isValidConfig = mandateConfig.childId && mandateConfig.credentialId && totalCostCents <= mandateConfig.maxAmountCents;
+  const contingencyBufferCents = Math.min(Math.round(planConfig.maxProviderChargeCents * 0.10), 5000);
+  const maxAuthorizationCents = planConfig.maxProviderChargeCents + contingencyBufferCents;
+  const isValidConfig = mandateConfig.childId && mandateConfig.credentialId && maxAuthorizationCents <= mandateConfig.maxAmountCents;
   const hasWarnings = planConfig.opensAt < new Date(Date.now() + 60 * 1000);
 
   if (!user) {
@@ -317,6 +338,12 @@ export default function FlowTester() {
 
           {phase === 'config' ? (
             <>
+              {/* Prerequisites */}
+              <PrereqsChecklist />
+
+              {/* Program Questions */}
+              <ProgramQuestionsSummary />
+
               {/* Authorization Section */}
               <Card>
                 <CardHeader>
@@ -456,115 +483,22 @@ export default function FlowTester() {
                   
                   <Separator />
                   
-                  <Collapsible>
-                    <CollapsibleTrigger className="flex items-center gap-2 font-medium">
-                      <Calendar className="h-4 w-4" />
-                      Program Answers
-                      <Badge variant="secondary" className="ml-auto">Optional</Badge>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent className="pt-4 space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <div>
-                          <Label htmlFor="color-group">Color Group</Label>
-                          <Select 
-                            value={planConfig.answers.color_group}
-                            onValueChange={(value) => setPlanConfig(prev => ({ 
-                              ...prev, 
-                              answers: { ...prev.answers, color_group: value } 
-                            }))}
-                          >
-                            <SelectTrigger id="color-group">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Red">Red</SelectItem>
-                              <SelectItem value="Blue">Blue</SelectItem>
-                              <SelectItem value="Green">Green</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        
-                        <div>
-                          <Label htmlFor="rentals">Rentals</Label>
-                          <Select 
-                            value={planConfig.answers.rentals}
-                            onValueChange={(value) => setPlanConfig(prev => ({ 
-                              ...prev, 
-                              answers: { ...prev.answers, rentals: value } 
-                            }))}
-                          >
-                            <SelectTrigger id="rentals">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="None">None</SelectItem>
-                              <SelectItem value="Skis">Skis</SelectItem>
-                              <SelectItem value="Snowboard">Snowboard</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        
-                        <div>
-                          <Label htmlFor="volunteer">Volunteer</Label>
-                          <Select 
-                            value={planConfig.answers.volunteer}
-                            onValueChange={(value) => setPlanConfig(prev => ({ 
-                              ...prev, 
-                              answers: { ...prev.answers, volunteer: value } 
-                            }))}
-                          >
-                            <SelectTrigger id="volunteer">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="Instructor">Instructor</SelectItem>
-                              <SelectItem value="Chaperone">Chaperone</SelectItem>
-                              <SelectItem value="None">None</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    </CollapsibleContent>
-                  </Collapsible>
-                  
-                  <Separator />
-                  
-                  <div className="space-y-4">
-                    <Label>Payment Caps</Label>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="max-provider">Max Provider Charge</Label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                          <Input
-                            id="max-provider"
-                            type="number"
-                            className="pl-7"
-                            value={(planConfig.maxProviderChargeCents / 100).toFixed(2)}
-                            onChange={(e) => setPlanConfig(prev => ({ 
-                              ...prev, 
-                              maxProviderChargeCents: Math.round(parseFloat(e.target.value || '0') * 100) 
-                            }))}
-                          />
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <Label htmlFor="service-fee">Service Fee</Label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                          <Input
-                            id="service-fee"
-                            type="number"
-                            className="pl-7"
-                            value={(planConfig.serviceFeeCents / 100).toFixed(2)}
-                            onChange={(e) => setPlanConfig(prev => ({ 
-                              ...prev, 
-                              serviceFeeCents: Math.round(parseFloat(e.target.value || '0') * 100) 
-                            }))}
-                          />
-                        </div>
-                      </div>
+                  <div>
+                    <Label htmlFor="max-provider">Program Cost (Estimated)</Label>
+                    <div className="relative mt-2">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                      <Input
+                        id="max-provider"
+                        type="number"
+                        className="pl-7"
+                        value={(planConfig.maxProviderChargeCents / 100).toFixed(2)}
+                        onChange={(e) => {
+                          const newProviderCharge = Math.round(parseFloat(e.target.value || '0') * 100);
+                          const newBuffer = Math.min(Math.round(newProviderCharge * 0.10), 5000);
+                          setPlanConfig(prev => ({ ...prev, maxProviderChargeCents: newProviderCharge }));
+                          setMandateConfig(prev => ({ ...prev, maxAmountCents: newProviderCharge + newBuffer }));
+                        }}
+                      />
                     </div>
                   </div>
                   
@@ -580,11 +514,14 @@ export default function FlowTester() {
                 </CardContent>
               </Card>
 
+              {/* Fee Breakdown */}
+              <FeeBreakdownCard maxProviderChargeCents={planConfig.maxProviderChargeCents} />
+
               {/* Summary Panel */}
               <Card className="border-primary/20">
                 <CardHeader>
                   <CardTitle>Configuration Summary</CardTitle>
-                  <CardDescription>Review your configuration before starting the test</CardDescription>
+                  <CardDescription>Review your configuration before approving</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
@@ -602,38 +539,13 @@ export default function FlowTester() {
                         Opens at: {planConfig.opensAt.toLocaleString()}
                       </div>
                     </div>
-                    
-                    <div>
-                      <div className="font-medium mb-1">Cost Breakdown</div>
-                      <div className="text-muted-foreground">
-                        Provider: ${(planConfig.maxProviderChargeCents / 100).toFixed(2)}<br />
-                        Service Fee: ${(planConfig.serviceFeeCents / 100).toFixed(2)}<br />
-                        <strong>Total: ${(totalCostCents / 100).toFixed(2)}</strong>
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <div className="font-medium mb-1">Authorization Cap</div>
-                      <div className="text-muted-foreground">
-                        Max Amount: ${(mandateConfig.maxAmountCents / 100).toFixed(2)}<br />
-                        {totalCostCents <= mandateConfig.maxAmountCents ? (
-                          <span className="text-green-600 flex items-center gap-1">
-                            <CheckCircle2 className="h-3 w-3" /> Within limits
-                          </span>
-                        ) : (
-                          <span className="text-red-600 flex items-center gap-1">
-                            <XCircle className="h-3 w-3" /> Exceeds authorization
-                          </span>
-                        )}
-                      </div>
-                    </div>
                   </div>
                   
                   {hasWarnings && (
                     <Alert>
                       <AlertCircle className="h-4 w-4" />
                       <AlertDescription>
-                        Registration opens in less than 1 minute. This is fine for testing, but ensure the system can process it in time.
+                        Registration opens in less than 1 minute. Ensure the system can process it in time.
                       </AlertDescription>
                     </Alert>
                   )}
@@ -642,7 +554,7 @@ export default function FlowTester() {
                     <Alert variant="destructive">
                       <AlertCircle className="h-4 w-4" />
                       <AlertDescription>
-                        Configuration incomplete. Please select a child and credentials, and ensure total cost doesn't exceed authorization cap.
+                        Configuration incomplete. Please select a child and credentials.
                       </AlertDescription>
                     </Alert>
                   )}
@@ -654,8 +566,8 @@ export default function FlowTester() {
                       className="w-full gap-2"
                       size="lg"
                     >
-                      <PlayCircle className="h-5 w-5" />
-                      Start Flow Test
+                      <CreditCard className="h-5 w-5" />
+                      Approve Mandate & Schedule Signup
                     </Button>
                   </div>
                 </CardContent>
