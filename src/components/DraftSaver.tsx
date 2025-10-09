@@ -136,7 +136,11 @@ export function DraftSaver<T>({ formData, watch, setValue, draftKey, triggerRelo
                 isNull: value === null,
                 isUndefined: value === undefined
               });
-              setValue(key as any, value as any);
+              setValue(key as any, value as any, {
+                shouldValidate: true,
+                shouldDirty: true,
+                shouldTouch: true
+              });
             }
           });
           

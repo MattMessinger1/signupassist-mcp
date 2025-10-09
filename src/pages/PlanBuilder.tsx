@@ -195,7 +195,9 @@ const PlanBuilder = () => {
 
   // Debug logging for step unlock state
   console.log('[PlanBuilder] Step unlock state:', {
-    opensAt: !!opensAt,
+    opensAt: opensAt,
+    opensAtType: typeof opensAt,
+    opensAtIsDate: opensAt instanceof Date,
     maxAmountCents,
     contactPhone,
     hasPaymentMethod,
