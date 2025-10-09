@@ -1556,36 +1556,6 @@ const PlanBuilder = () => {
               </Card>
             )}
 
-            {/* Loading state for auto-discovery - only show during discovery */}
-            {allRequirementsMet && opensAt && isDiscovering && (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs">Step 5</Badge>
-                    <CardTitle>Securing Your Spot</CardTitle>
-                  </div>
-                  <CardDescription>
-                    Applying smart defaults to reserve your spot quickly
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="p-6 bg-blue-50 border border-blue-200 rounded-lg">
-                    <div className="flex flex-col items-center gap-3 text-center">
-                      <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium text-blue-900">
-                          Loading program questions and applying defaults...
-                        </p>
-                        <p className="text-xs text-blue-700">
-                          We're using smart defaults to secure your spot. You can review and update answers after registration.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
             {/* V1: Program Questions Disclaimer - Show immediately after prerequisites pass */}
             {allRequirementsMet && !isDiscovering && (
               <ProgramQuestionsAutoAnswered questions={[]} />
