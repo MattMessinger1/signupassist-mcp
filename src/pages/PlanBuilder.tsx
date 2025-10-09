@@ -62,6 +62,7 @@ const planBuilderSchema = z.object({
   maxAmountCents: z.number().min(0, 'Payment limit must be positive'),
   contactPhone: z.string().min(10, 'Please enter a valid mobile number'),
   answers: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
+  prereqComplete: z.boolean().optional(),
 });
 
 type PlanBuilderForm = z.infer<typeof planBuilderSchema>;
@@ -124,6 +125,7 @@ const PlanBuilder = () => {
       answers: {},
       maxAmountCents: 0,
       contactPhone: '',
+      prereqComplete: false,
     },
   });
 
@@ -149,8 +151,8 @@ const PlanBuilder = () => {
   
   // Compute allRequirementsMet once to avoid re-calculation in multiple places
   const allRequirementsMet = useMemo(() => {
-    return (prerequisiteChecks.length === 0 || prerequisiteChecks.every(r => r.status === 'pass')) && !!selectedChildName;
-  }, [prerequisiteChecks, selectedChildName]);
+    return prerequisiteChecks.length === 0 || prerequisiteChecks.every(r => r.status === 'pass');
+  }, [prerequisiteChecks]);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [detectedPriceCents, setDetectedPriceCents] = useState<number | null>(null);
   const [caps, setCaps] = useState<{ max_provider_charge_cents: number | null; service_fee_cents: number | null }>({
@@ -189,6 +191,7 @@ const PlanBuilder = () => {
   const opensAt = form.watch('opensAt') ?? null;
   const maxAmountCents = form.watch('maxAmountCents') ?? 0;
   const contactPhone = form.watch('contactPhone') ?? '';
+  const prereqComplete = form.watch('prereqComplete') ?? false;
 
   // Debug logging for step unlock state
   console.log('[PlanBuilder] Step unlock state:', {
@@ -695,6 +698,13 @@ const PlanBuilder = () => {
                 .filter((c: any) => c.status === 'fail' && c.fields)
                 .flatMap((c: any) => c.fields || []);
               setPrerequisiteFields(fieldsFromChecks);
+
+              // ✅ Mark prerequisites complete if all checks pass
+              const allChecksPassed = checks.length === 0 || checks.every((c: any) => c.status === 'pass');
+              if (allChecksPassed) {
+                form.setValue('prereqComplete', true);
+                console.log('[Prereq] Marking prerequisites complete');
+              }
 
               console.log('[Prereq] Prerequisites checked:', checks);
               
@@ -1678,60 +1688,63 @@ const PlanBuilder = () => {
 
             {/* Step 4: Registration Timing - Always visible, locked if prerequisites not met */}
             <div ref={step4Ref}>
-              {!allRequirementsMet || isDiscovering ? (
-                <LockedStepPreview
-                  stepNumber={4}
-                  title="Registration Timing"
-                  description="When should automated registration begin?"
-                  prerequisite="completing account prerequisites"
-                  onScrollToPrerequisite={() => step3Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
-                />
-              ) : (
-                <>
-                  {shouldHighlightStep === 4 && (
-                    <Alert className="mb-4 border-primary bg-primary/5">
-                      <AlertDescription className="text-primary font-medium text-center">
-                        👇 Continue below to set registration time and complete your plan
-                      </AlertDescription>
-                    </Alert>
-                  )}
-                  <Card className={shouldHighlightStep === 4 ? "border-primary shadow-lg transition-all" : ""}>
-                    <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs">Step 4</Badge>
-                          <CardTitle>{prompts.ui.titles.openTime}</CardTitle>
+              {(() => {
+                const canShowStep4 = allRequirementsMet || prereqComplete;
+                return !canShowStep4 || isDiscovering ? (
+                  <LockedStepPreview
+                    stepNumber={4}
+                    title="Registration Timing"
+                    description="When should automated registration begin?"
+                    prerequisite="completing account prerequisites"
+                    onScrollToPrerequisite={() => step3Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                  />
+                ) : (
+                  <>
+                    {shouldHighlightStep === 4 && (
+                      <Alert className="mb-4 border-primary bg-primary/5">
+                        <AlertDescription className="text-primary font-medium text-center">
+                          👇 Continue below to set registration time and complete your plan
+                        </AlertDescription>
+                      </Alert>
+                    )}
+                    <Card className={shouldHighlightStep === 4 ? "border-primary shadow-lg transition-all" : ""}>
+                      <CardHeader>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs">Step 4</Badge>
+                            <CardTitle>{prompts.ui.titles.openTime}</CardTitle>
+                          </div>
+                          {opensAt && <CheckCircle className="h-5 w-5 text-green-600" />}
                         </div>
-                        {opensAt && <CheckCircle className="h-5 w-5 text-green-600" />}
-                      </div>
-                      <CardDescription>
-                        When should automated registration begin?
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <FormField
-                        control={form.control}
-                        name="opensAt"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Registration Opens At</FormLabel>
-                            <FormControl>
-                              <OpenTimePicker
-                                value={field.value}
-                                onChange={field.onChange}
-                              />
-                            </FormControl>
-                            <FormDescription>
-                              Set the exact date and time when registration opens
-                            </FormDescription>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </CardContent>
-                  </Card>
-                </>
-              )}
+                        <CardDescription>
+                          When should automated registration begin?
+                        </CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        <FormField
+                          control={form.control}
+                          name="opensAt"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Registration Opens At</FormLabel>
+                              <FormControl>
+                                <OpenTimePicker
+                                  value={field.value}
+                                  onChange={field.onChange}
+                                />
+                              </FormControl>
+                              <FormDescription>
+                                Set the exact date and time when registration opens
+                              </FormDescription>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </CardContent>
+                    </Card>
+                  </>
+                );
+              })()}
             </div>
 
             {/* Step 5: Payment Limit - Always visible, locked if opensAt not set */}
