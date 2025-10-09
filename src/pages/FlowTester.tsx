@@ -306,10 +306,19 @@ export default function FlowTester() {
   const contingencyBufferCents = Math.min(Math.round(planConfig.maxProviderChargeCents * 0.10), 5000);
   const maxAuthorizationCents = planConfig.maxProviderChargeCents + contingencyBufferCents;
   const isValidConfig = mandateConfig.childId && mandateConfig.credentialId && maxAuthorizationCents <= mandateConfig.maxAmountCents;
-  const hasWarnings = planConfig.opensAt < new Date(Date.now() + 60 * 1000);
+  
+  // Calculate warning threshold once to prevent constant re-renders
+  const [warningThreshold] = useState(Date.now() + 60 * 1000);
+  const hasWarnings = planConfig.opensAt.getTime() < warningThreshold;
+
+  // Redirect to auth in useEffect to avoid scroll issues
+  useEffect(() => {
+    if (!user) {
+      navigate('/auth');
+    }
+  }, [user, navigate]);
 
   if (!user) {
-    navigate('/auth');
     return null;
   }
 
