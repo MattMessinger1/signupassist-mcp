@@ -706,7 +706,14 @@ const PlanBuilder = () => {
 
             if (job?.status === 'completed') {
               const checks = blob.prerequisite_checks || [];
-              const status = blob.metadata?.prerequisite_status || 'unknown';
+              let status = blob.metadata?.prerequisite_status || 'unknown';
+
+              // ✅ Client-side defensive override: If all checks passed, force status='complete'
+              const allChecksPassed = checks.length === 0 || checks.every((c: any) => c.status === 'pass');
+              if (allChecksPassed && status !== 'complete') {
+                console.log('[Prereq] 🛡️ Defensive override: All checks passed, forcing status=complete');
+                status = 'complete';
+              }
 
               setPrerequisiteChecks(checks);
               setPrerequisiteStatus(status);
@@ -718,7 +725,6 @@ const PlanBuilder = () => {
               setPrerequisiteFields(fieldsFromChecks);
 
               // ✅ Mark prerequisites complete if all checks pass
-              const allChecksPassed = checks.length === 0 || checks.every((c: any) => c.status === 'pass');
               if (allChecksPassed) {
                 form.setValue('prereqComplete', true);
                 console.log('[Prereq] Marking prerequisites complete');
