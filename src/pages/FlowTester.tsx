@@ -18,6 +18,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { OpenTimePicker } from '@/components/OpenTimePicker';
 import { PrereqsChecklist } from '@/components/PrereqsChecklist';
 import { ProgramQuestionsSummary } from '@/components/ProgramQuestionsSummary';
+import { ProgramQuestionsAutoAnswered } from '@/components/ProgramQuestionsAutoAnswered';
 import { FeeBreakdownCard } from '@/components/FeeBreakdownCard';
 
 interface Child {

@@ -28,6 +28,7 @@ import { OpenTimePicker } from '@/components/OpenTimePicker';
 import { CredentialPicker } from '@/components/CredentialPicker';
 import PrerequisitesPanel from '@/components/PrereqsPanel';
 import ProgramQuestionsPanel, { ProgramQuestion } from '@/components/ProgramQuestionsPanel';
+import { ProgramQuestionsAutoAnswered } from '@/components/ProgramQuestionsAutoAnswered';
 import CompletionPanel from '@/components/CompletionPanel';
 import StepIndicator from '@/components/StepIndicator';
 import { ConsentModal } from '@/components/ConsentModal';
@@ -2083,84 +2084,63 @@ const PlanBuilder = () => {
                         </div>
                       ) : programQuestions.length > 0 ? (
                         <div className="space-y-6">
-                          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                            <p className="text-xs text-blue-800">
-                              <strong>Tip:</strong> Fill out all required fields marked with an asterisk (*).
-                              Your answers will be automatically provided during registration.
-                            </p>
-                          </div>
+                          {/* V1 Auto-Answer Bypass */}
+                          <ProgramQuestionsAutoAnswered 
+                            questions={programQuestions.map(q => {
+                              // Get auto-selected answer for each question
+                              const field: EnhancedDiscoveredField = {
+                                id: q.id,
+                                label: q.label,
+                                type: q.type,
+                                required: q.required,
+                                options: q.options,
+                              };
+                              
+                              const autoAnswer = chooseDefaultAnswer(field);
+                              
+                              // Auto-populate form with selected answer
+                              if (autoAnswer && !form.getValues(`answers.${q.id}`)) {
+                                form.setValue(`answers.${q.id}`, autoAnswer);
+                              }
+                              
+                              // Determine reason for selection
+                              let reason = 'First valid option selected';
+                              if (q.options) {
+                                const selectedOpt = q.options.find(opt => 
+                                  (typeof opt === 'string' ? opt : opt.value) === autoAnswer
+                                );
+                                const label = typeof selectedOpt === 'string' 
+                                  ? selectedOpt 
+                                  : selectedOpt?.label || '';
+                                
+                                if (/\$0|free|no charge/i.test(label)) {
+                                  reason = 'Free option selected to minimize cost';
+                                } else if (/none|no thanks|skip/i.test(label)) {
+                                  reason = 'Optional add-on skipped';
+                                } else if (/basic|standard/i.test(label)) {
+                                  reason = 'Basic/standard option selected';
+                                } else if (label.match(/\$\d+/)) {
+                                  reason = 'Lowest cost option selected';
+                                }
+                              }
+                              
+                              return {
+                                label: q.label,
+                                answer: autoAnswer || '(Unable to auto-select)',
+                                reason,
+                              };
+                            })}
+                          />
                           
-                          {programQuestions.map((question) => (
-                            <FormField
-                              key={question.id}
-                              control={form.control}
-                              name={`answers.${question.id}`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>
-                                    {question.label}
-                                    {question.required && <span className="text-red-500 ml-1">*</span>}
-                                  </FormLabel>
-                                  <FormControl>
-                                    {question.type === 'select' ? (
-                                      <Select
-                                        value={field.value as string}
-                                        onValueChange={field.onChange}
-                                      >
-                                        <SelectTrigger>
-                                          <SelectValue placeholder={`Select ${question.label}`} />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {question.options?.map((option) => (
-                                            <SelectItem key={option.value} value={option.value}>
-                                              {option.label}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                    ) : question.type === 'checkbox' ? (
-                                      <div className="space-y-2">
-                                        {question.options?.map((option) => {
-                                          const currentValue = field.value;
-                                          const isArray = Array.isArray(currentValue);
-                                          const checked = isArray && currentValue.includes(option.value);
-                                          
-                                          return (
-                                            <div key={option.value} className="flex items-center space-x-2">
-                                              <Checkbox
-                                                id={`${question.id}-${option.value}`}
-                                                checked={checked}
-                                                onCheckedChange={(isChecked) => {
-                                                  const current = isArray ? currentValue : [];
-                                                  if (isChecked) {
-                                                    field.onChange([...current, option.value]);
-                                                  } else {
-                                                    field.onChange(current.filter((v: string) => v !== option.value));
-                                                  }
-                                                }}
-                                              />
-                                              <Label htmlFor={`${question.id}-${option.value}`}>{option.label}</Label>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    ) : (
-                                      <Input
-                                        value={typeof field.value === 'string' ? field.value : ''}
-                                        onChange={field.onChange}
-                                        type="text"
-                                        placeholder={`Enter ${question.label}`}
-                                      />
-                                    )}
-                                  </FormControl>
-                                  {question.description && (
-                                    <FormDescription>{question.description}</FormDescription>
-                                  )}
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          ))}
+                          {/* Hidden debug info - remove after testing */}
+                          <div className="text-xs text-muted-foreground">
+                            <details>
+                              <summary className="cursor-pointer">Debug: View auto-populated answers</summary>
+                              <pre className="mt-2 p-2 bg-muted rounded text-xs overflow-auto">
+                                {JSON.stringify(form.getValues('answers'), null, 2)}
+                              </pre>
+                            </details>
+                          </div>
                         </div>
                       ) : Object.entries(fieldsByCategory).length > 0 ? (
                         <div className="space-y-6">

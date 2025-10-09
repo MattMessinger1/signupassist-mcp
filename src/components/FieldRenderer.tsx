@@ -71,30 +71,46 @@ export function FieldRenderer<T extends FieldValues>({
           <FormControl>
             {(() => {
               switch (field.type) {
-                case 'select':
+                case 'select': {
+                  // Defensive filtering to prevent empty string values
+                  const validOptions = field.options
+                    ?.filter((option) => {
+                      const optValue = typeof option === 'string' ? option : option.value;
+                      const isValid = optValue && optValue.trim() !== '';
+                      if (!isValid) {
+                        console.warn(`[FieldRenderer] Filtered out empty option in field: ${field.id}`);
+                      }
+                      return isValid;
+                    }) || [];
+
+                  if (validOptions.length === 0) {
+                    console.error(`[FieldRenderer] No valid options for select field: ${field.id}`, field.options);
+                    return (
+                      <div className="text-sm text-destructive p-2 border border-destructive rounded">
+                        No valid options available for this field
+                      </div>
+                    );
+                  }
+
                   return (
                     <Select value={formField.value} onValueChange={formField.onChange}>
                       <SelectTrigger>
                         <SelectValue placeholder={field.placeholder || `Select ${field.label.toLowerCase()}...`} />
                       </SelectTrigger>
                       <SelectContent>
-                        {field.options
-                          ?.filter((option) => {
-                            const optValue = typeof option === 'string' ? option : option.value;
-                            return optValue && optValue.trim() !== '';
-                          })
-                          .map((option) => {
-                            const optValue = typeof option === 'string' ? option : option.value;
-                            const optLabel = typeof option === 'string' ? option : (option.label || option.value);
-                            return (
-                              <SelectItem key={optValue} value={optValue}>
-                                {optLabel}
-                              </SelectItem>
-                            );
-                          })}
+                        {validOptions.map((option) => {
+                          const optValue = typeof option === 'string' ? option : option.value;
+                          const optLabel = typeof option === 'string' ? option : (option.label || option.value);
+                          return (
+                            <SelectItem key={optValue} value={optValue}>
+                              {optLabel}
+                            </SelectItem>
+                          );
+                        })}
                       </SelectContent>
                     </Select>
                   );
+                }
 
                 case 'multi-select':
                   return (
