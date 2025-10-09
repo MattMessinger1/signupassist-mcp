@@ -209,6 +209,30 @@ const PlanBuilder = () => {
     };
   }, []);
 
+  // Define checkPaymentMethod early so it can be used in useEffects below
+  const checkPaymentMethod = useCallback(async () => {
+    if (!user) return;
+    
+    setCheckingPayment(true);
+    try {
+      const { data, error } = await supabase
+        .from('user_billing')
+        .select('default_payment_method_id')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+        throw error;
+      }
+
+      setHasPaymentMethod(!!data?.default_payment_method_id);
+    } catch (error) {
+      console.error('Error checking payment method:', error);
+    } finally {
+      setCheckingPayment(false);
+    }
+  }, [user]);
+
   // Redirect to auth if not authenticated or session invalid
   useEffect(() => {
     // Add a small delay to prevent redirects during session refresh
@@ -237,7 +261,7 @@ const PlanBuilder = () => {
     if (user) {
       checkPaymentMethod();
     }
-  }, [user]);
+  }, [user, checkPaymentMethod]);
 
   // Auto-fetch child name when prerequisites complete
   useEffect(() => {
@@ -450,28 +474,7 @@ const PlanBuilder = () => {
     };
   }, [createdPlan?.plan_id, toast]);
 
-  const checkPaymentMethod = useCallback(async () => {
-    if (!user) return;
-    
-    setCheckingPayment(true);
-    try {
-      const { data, error } = await supabase
-        .from('user_billing')
-        .select('default_payment_method_id')
-        .eq('user_id', user.id)
-        .single();
-
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-        throw error;
-      }
-
-      setHasPaymentMethod(!!data?.default_payment_method_id);
-    } catch (error) {
-      console.error('Error checking payment method:', error);
-    } finally {
-      setCheckingPayment(false);
-    }
-  }, [user]);
+  // Moved up - this function is now defined earlier in the component
 
   // Helper function for showing function errors
   const showFunctionError = (error: any, action: string) => {
