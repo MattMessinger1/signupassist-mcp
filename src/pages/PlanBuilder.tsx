@@ -113,7 +113,6 @@ interface PrerequisiteCheck {
 }
 
 const PlanBuilder = () => {
-  console.log('[PlanBuilder] Component mounting/rendering');
   const navigate = useNavigate();
   const { toast } = useToast();
   const toastLogger = useToastLogger();
@@ -129,7 +128,6 @@ const PlanBuilder = () => {
   });
 
   const { user, session, loading: authLoading, isSessionValid } = useAuth();
-  console.log('[PlanBuilder] Auth state:', { hasUser: !!user, hasSession: !!session, authLoading });
   // V1: Removed discoveredSchema, programQuestions, programDiscoveryRunning - no program discovery in v1
   const abortControllerRef = useRef<AbortController | null>(null);
   const [selectedBranch, setSelectedBranch] = useState<string>('');
@@ -188,23 +186,8 @@ const PlanBuilder = () => {
   // V1: No program discovery, so no fieldsToShow
   const selectedChildId = form.watch('childId') ?? '';
   const opensAt = form.watch('opensAt') ?? null;
-
-  // Debug logging for troubleshooting
-  const formWatchOpensAt = form.watch('opensAt');
-  console.log('[PlanBuilder] Render state:', {
-    authState: { hasUser: !!user, hasSession: !!session, authLoading },
-    formState: {
-      childId: form.watch('childId'),
-      programRef: form.watch('programRef'),
-      credentialId: form.watch('credentialId'),
-      opensAt: formWatchOpensAt,
-      opensAtType: typeof formWatchOpensAt,
-      opensAtIsDate: formWatchOpensAt instanceof Date,
-      opensAtValid: formWatchOpensAt instanceof Date && !isNaN(formWatchOpensAt.getTime()),
-    },
-    prerequisiteChecks: prerequisiteChecks.length,
-    selectedChildId,
-  });
+  const maxAmountCents = form.watch('maxAmountCents') ?? 0;
+  const contactPhone = form.watch('contactPhone') ?? '';
 
   // Cleanup abort controller on unmount
   useEffect(() => {
@@ -213,6 +196,11 @@ const PlanBuilder = () => {
         abortControllerRef.current.abort();
       }
     };
+  }, []);
+
+  // Scroll to top on mount to ensure users start at Step 1
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
   }, []);
 
   // Define checkPaymentMethod early so it can be used in useEffects below
@@ -309,32 +297,31 @@ const PlanBuilder = () => {
     }
   }, [shouldHighlightStep]);
 
-  // Auto-scroll when steps unlock
-  useEffect(() => {
-    if (allRequirementsMet && !isDiscovering) {
-      scrollToStep(4, step4Ref);
-    }
-  }, [allRequirementsMet, isDiscovering, scrollToStep]);
+  // Auto-scroll when steps unlock - DISABLED to prevent page jumpiness
+  // TODO: Re-enable with one-time scroll logic if desired
+  // useEffect(() => {
+  //   if (allRequirementsMet && !isDiscovering) {
+  //     scrollToStep(4, step4Ref);
+  //   }
+  // }, [allRequirementsMet, isDiscovering, scrollToStep]);
 
-  useEffect(() => {
-    if (opensAt) {
-      scrollToStep(5, step5Ref);
-    }
-  }, [opensAt, scrollToStep]);
+  // useEffect(() => {
+  //   if (opensAt) {
+  //     scrollToStep(5, step5Ref);
+  //   }
+  // }, [opensAt, scrollToStep]);
 
-  useEffect(() => {
-    const maxAmount = form.watch('maxAmountCents');
-    if (maxAmount > 0) {
-      scrollToStep(6, step6Ref);
-    }
-  }, [form.watch('maxAmountCents'), scrollToStep]);
+  // useEffect(() => {
+  //   if (maxAmountCents > 0) {
+  //     scrollToStep(6, step6Ref);
+  //   }
+  // }, [maxAmountCents, scrollToStep]);
 
-  useEffect(() => {
-    const contactPhone = form.watch('contactPhone');
-    if (contactPhone && contactPhone.length >= 10) {
-      scrollToStep(7, step7Ref);
-    }
-  }, [form.watch('contactPhone'), scrollToStep]);
+  // useEffect(() => {
+  //   if (contactPhone && contactPhone.length >= 10) {
+  //     scrollToStep(7, step7Ref);
+  //   }
+  // }, [contactPhone, scrollToStep]);
 
   // Realtime subscription for plan executions and execution logs
   // This enables automatic UI updates when backend processes complete
@@ -1091,7 +1078,6 @@ const PlanBuilder = () => {
 
   // EARLY RETURNS AFTER ALL HOOKS
   if (authLoading) {
-    console.log('[PlanBuilder] Rendering loading state');
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center space-y-4">
@@ -1103,7 +1089,6 @@ const PlanBuilder = () => {
   }
 
   if (!user || !session) {
-    console.log('[PlanBuilder] No auth - redirecting to /auth');
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <Card className="w-full max-w-md">
@@ -1125,8 +1110,6 @@ const PlanBuilder = () => {
 
   // Show confirmation screen after successful plan creation
   if (showConfirmation && createdPlan) {
-    console.log('[PlanBuilder] Rendering confirmation screen');
-    
     // Status icon and color based on execution status
     const getStatusDisplay = () => {
       switch (executionStatus.status) {
@@ -1368,8 +1351,6 @@ const PlanBuilder = () => {
   }
 
   // Prerequisites met: calculated once via useMemo above
-  
-  console.log('[PlanBuilder] Rendering main form');
   
   return (
     <div className="min-h-screen bg-background">
