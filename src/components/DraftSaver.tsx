@@ -44,28 +44,55 @@ export function DraftSaver<T>({ formData, watch, setValue, draftKey, triggerRelo
 
   const saveDraft = () => {
     try {
-      localStorage.setItem(`plan_draft_${draftKey}`, JSON.stringify({
+      const draftData = {
         data: formData,
         timestamp: new Date().toISOString(),
-      }));
+      };
+      
+      console.log('[DraftSaver] 💾 SAVING draft:', {
+        opensAt: (formData as any).opensAt,
+        opensAtType: typeof (formData as any).opensAt,
+        maxAmountCents: (formData as any).maxAmountCents,
+        contactPhone: (formData as any).contactPhone,
+        prereqComplete: (formData as any).prereqComplete,
+      });
+      
+      localStorage.setItem(`plan_draft_${draftKey}`, JSON.stringify(draftData));
       setLastSaved(new Date());
       setHasUnsavedChanges(false);
+      
+      console.log('[DraftSaver] ✅ Save complete');
     } catch (error) {
-      console.error('Failed to save draft:', error);
+      console.error('[DraftSaver] ❌ Failed to save draft:', error);
     }
   };
 
   const loadDraft = () => {
     try {
       const savedDraft = localStorage.getItem(`plan_draft_${draftKey}`);
+      
+      console.log('[DraftSaver] 🔍 RELOAD TRIGGERED:', {
+        triggerReload,
+        hasDraft: !!savedDraft,
+        timestamp: new Date().toISOString()
+      });
+      
       if (savedDraft) {
         const { data, timestamp } = JSON.parse(savedDraft);
         const savedDate = new Date(timestamp);
         
-        // Debug logging to verify reload
-        console.log('[DraftSaver] Loading draft:', {
+        // 📊 Log EVERYTHING from localStorage
+        console.log('[DraftSaver] 📦 Raw data from localStorage:', {
+          opensAt: data.opensAt,
+          opensAtType: typeof data.opensAt,
+          opensAtIsDate: data.opensAt instanceof Date,
           maxAmountCents: data.maxAmountCents,
+          maxAmountCentsType: typeof data.maxAmountCents,
           contactPhone: data.contactPhone,
+          contactPhoneType: typeof data.contactPhone,
+          prereqComplete: data.prereqComplete,
+          prereqCompleteType: typeof data.prereqComplete,
+          allKeys: Object.keys(data),
           savedDate
         });
         
@@ -74,26 +101,61 @@ export function DraftSaver<T>({ formData, watch, setValue, draftKey, triggerRelo
         weekAgo.setDate(weekAgo.getDate() - 7);
         
         if (savedDate > weekAgo) {
-          // Set form values from draft
+          console.log('[DraftSaver] ✅ Draft is recent, loading values...');
+          
+          // Set form values from draft with proper type conversion
           Object.entries(data).forEach(([key, value]) => {
             if (key === 'answers' && typeof value === 'object' && value !== null) {
+              console.log('[DraftSaver] 📝 Loading nested answers:', Object.keys(value as Record<string, any>));
               Object.entries(value as Record<string, any>).forEach(([answerKey, answerValue]) => {
                 setValue(`answers.${answerKey}` as any, answerValue as any);
               });
+            } else if (key === 'opensAt' && typeof value === 'string') {
+              // 🔧 FIX: Convert ISO string back to Date object
+              try {
+                const dateValue = new Date(value);
+                if (!isNaN(dateValue.getTime())) {
+                  console.log('[DraftSaver] 📅 Converting opensAt:', {
+                    from: value,
+                    fromType: typeof value,
+                    to: dateValue,
+                    toType: typeof dateValue,
+                    isValidDate: !isNaN(dateValue.getTime())
+                  });
+                  setValue('opensAt' as any, dateValue as any);
+                } else {
+                  console.error('[DraftSaver] ❌ Invalid date string:', value);
+                }
+              } catch (error) {
+                console.error('[DraftSaver] ❌ Failed to parse date:', error);
+              }
             } else {
+              console.log(`[DraftSaver] 📝 Loading ${key}:`, {
+                value,
+                type: typeof value,
+                isNull: value === null,
+                isUndefined: value === undefined
+              });
               setValue(key as any, value as any);
             }
           });
           
           setLastSaved(savedDate);
+          
+          console.log('[DraftSaver] ✅ RELOAD COMPLETE - All values set');
+          
           toast({
             title: 'Draft Loaded',
             description: `Restored your progress from ${savedDate.toLocaleDateString()}`,
           });
+        } else {
+          console.log('[DraftSaver] ⏰ Draft is too old, ignoring');
         }
+      } else {
+        console.log('[DraftSaver] 📭 No draft found in localStorage');
       }
     } catch (error) {
-      console.error('Failed to load draft:', error);
+      console.error('[DraftSaver] ❌ Failed to load draft:', error);
     }
   };
 

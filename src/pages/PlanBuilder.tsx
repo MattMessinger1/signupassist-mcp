@@ -207,6 +207,22 @@ const PlanBuilder = () => {
     selectedChildName,
   });
 
+  // ✅ ADD THIS: Log form state changes after reload
+  useEffect(() => {
+    console.log('[PlanBuilder] 🔄 Form state changed:', {
+      opensAt,
+      opensAtType: typeof opensAt,
+      opensAtIsDate: opensAt instanceof Date,
+      opensAtIsValid: opensAt && !isNaN(new Date(opensAt).getTime()),
+      maxAmountCents,
+      contactPhone,
+      prereqComplete,
+      hasPaymentMethod,
+      showMandateSummary,
+      reloadTrigger,
+    });
+  }, [opensAt, maxAmountCents, contactPhone, prereqComplete, hasPaymentMethod, showMandateSummary, reloadTrigger]);
+
   // Cleanup abort controller on unmount
   useEffect(() => {
     return () => {
@@ -1898,13 +1914,41 @@ const PlanBuilder = () => {
                   <CardContent>
                     <SavePaymentMethod 
                       onPaymentMethodSaved={async () => {
-                        console.log('[PlanBuilder] Payment method saved, unlocking UI...');
+                        console.log('[PlanBuilder] 💳 ========== PAYMENT METHOD SAVED ==========');
+                        console.log('[PlanBuilder] 📊 State BEFORE reload:', {
+                          opensAt: form.getValues('opensAt'),
+                          opensAtType: typeof form.getValues('opensAt'),
+                          maxAmountCents: form.getValues('maxAmountCents'),
+                          contactPhone: form.getValues('contactPhone'),
+                          prereqComplete: form.getValues('prereqComplete'),
+                          hasPaymentMethod,
+                        });
+                        
                         // Optimistic unlock - UI updates immediately
                         setHasPaymentMethod(true);
+                        
                         // Verify with DB for page refreshes
                         await checkPaymentMethod();
-                        // Force DraftSaver to reload persisted values
-                        setReloadTrigger(Date.now());
+                        
+                        console.log('[PlanBuilder] 🔄 Triggering DraftSaver reload...');
+                        const reloadTimestamp = Date.now();
+                        setReloadTrigger(reloadTimestamp);
+                        
+                        console.log('[PlanBuilder] ⏰ Reload triggered with timestamp:', reloadTimestamp);
+                        
+                        // Wait a tick for reload to complete
+                        setTimeout(() => {
+                          console.log('[PlanBuilder] 📊 State AFTER reload:', {
+                            opensAt: form.getValues('opensAt'),
+                            opensAtType: typeof form.getValues('opensAt'),
+                            opensAtIsDate: form.getValues('opensAt') instanceof Date,
+                            maxAmountCents: form.getValues('maxAmountCents'),
+                            contactPhone: form.getValues('contactPhone'),
+                            prereqComplete: form.getValues('prereqComplete'),
+                            hasPaymentMethod,
+                          });
+                          console.log('[PlanBuilder] ========================================');
+                        }, 100);
                       }}
                       hasPaymentMethod={hasPaymentMethod}
                     />
@@ -1998,7 +2042,8 @@ const PlanBuilder = () => {
             credentialId: form.watch('credentialId'),
             answers: form.watch('answers'),
             maxAmountCents: form.watch('maxAmountCents'),
-            contactPhone: form.watch('contactPhone')
+            contactPhone: form.watch('contactPhone'),
+            prereqComplete: form.watch('prereqComplete'),
           }}
           watch={form.watch}
           setValue={form.setValue}
