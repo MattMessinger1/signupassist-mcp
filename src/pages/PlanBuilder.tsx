@@ -189,6 +189,20 @@ const PlanBuilder = () => {
   const maxAmountCents = form.watch('maxAmountCents') ?? 0;
   const contactPhone = form.watch('contactPhone') ?? '';
 
+  // Debug logging for step unlock state
+  console.log('[PlanBuilder] Step unlock state:', {
+    opensAt: !!opensAt,
+    maxAmountCents,
+    contactPhone,
+    hasPaymentMethod,
+    step6Unlocked: opensAt && maxAmountCents > 0,
+    step7Unlocked: opensAt && maxAmountCents > 0 && !!contactPhone,
+    mandateButtonVisible: opensAt && hasPaymentMethod && maxAmountCents > 0 && !!contactPhone,
+    mandateButtonEnabled: allRequirementsMet,
+    allRequirementsMet,
+    selectedChildName,
+  });
+
   // Cleanup abort controller on unmount
   useEffect(() => {
     return () => {
@@ -1736,7 +1750,7 @@ const PlanBuilder = () => {
                           {prompts.ui.titles.limit}
                         </CardTitle>
                       </div>
-                      {form.watch('maxAmountCents') > 0 && <CheckCircle className="h-5 w-5 text-green-600" />}
+                      {maxAmountCents > 0 && <CheckCircle className="h-5 w-5 text-green-600" />}
                     </div>
                     <CardDescription>
                       {prompts.ui.limit.helper}
@@ -1789,7 +1803,7 @@ const PlanBuilder = () => {
 
             {/* Step 6: Contact Information - Always visible, locked if payment limit not set */}
             <div ref={step6Ref}>
-              {!opensAt || form.watch('maxAmountCents') === 0 || showMandateSummary ? (
+              {!opensAt || maxAmountCents <= 0 || showMandateSummary ? (
                 <LockedStepPreview
                   stepNumber={6}
                   title="Contact Information"
@@ -1805,7 +1819,7 @@ const PlanBuilder = () => {
                         <Badge variant="outline" className="text-xs">Step 6</Badge>
                         <CardTitle>{prompts.ui.titles.contact}</CardTitle>
                       </div>
-                      {form.watch('contactPhone') && <CheckCircle className="h-5 w-5 text-green-600" />}
+                      {contactPhone && <CheckCircle className="h-5 w-5 text-green-600" />}
                     </div>
                     <CardDescription>
                       {prompts.ui.contact.helper}
@@ -1836,7 +1850,7 @@ const PlanBuilder = () => {
 
             {/* Step 7: Payment Method - Always visible, locked if contact info not provided */}
             <div ref={step7Ref}>
-              {!opensAt || form.watch('maxAmountCents') === 0 || !form.watch('contactPhone') || showMandateSummary ? (
+              {!opensAt || maxAmountCents <= 0 || !contactPhone || showMandateSummary ? (
                 <LockedStepPreview
                   stepNumber={7}
                   title="Payment Method"
@@ -1877,7 +1891,7 @@ const PlanBuilder = () => {
             </div>
 
             {/* Step 8: Mandate Summary & Finalize */}
-            {opensAt && hasPaymentMethod && allRequirementsMet && form.watch('maxAmountCents') > 0 && form.watch('contactPhone') && showMandateSummary && !showConfirmation && (
+            {opensAt && hasPaymentMethod && allRequirementsMet && maxAmountCents > 0 && contactPhone && showMandateSummary && !showConfirmation && (
               <MandateSummary
                 orgRef="blackhawk-ski-club"
                 programTitle={friendlyProgramTitle || form.watch('programRef')}
@@ -1915,7 +1929,7 @@ const PlanBuilder = () => {
             {/* V1: Plan Preview removed - no discovered fields */}
 
             {/* Action Buttons */}
-            {!showMandateSummary && !showConfirmation && opensAt && hasPaymentMethod && form.watch('maxAmountCents') > 0 && form.watch('contactPhone') && (
+            {!showMandateSummary && !showConfirmation && opensAt && hasPaymentMethod && maxAmountCents > 0 && contactPhone && (
               <div className="flex gap-4">
                 <Button
                   type="button"
