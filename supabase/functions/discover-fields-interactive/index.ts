@@ -428,37 +428,20 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`[Job ${job.id}] ⏳ Starting synchronous discovery…`);
+    console.log(`[Job ${job.id}] ⏳ Starting background discovery…`);
     
-    // Run discovery synchronously and wait for completion
-    await runDiscoveryInBackground(job.id, body, authHeader);
+    // Run discovery in background (don't await - return immediately)
+    runDiscoveryInBackground(job.id, body, authHeader);
 
-    console.log(`[Job ${job.id}] ✅ Synchronous discovery finished, fetching actual status...`);
-
-    // Fetch the actual final status from the database
-    const { data: finalJob } = await supabase
-      .from('discovery_jobs')
-      .select('status, error_message')
-      .eq('id', job.id)
-      .single();
-
-    const actualStatus = finalJob?.status || 'failed';
-    const isSuccess = actualStatus === 'completed';
-
-    console.log(`[Job ${job.id}] Final status: ${actualStatus}`);
-
-    // Return the ACTUAL status from the database
+    // Return immediately with job ID so client can poll for status
     return new Response(
       JSON.stringify({ 
         job_id: job.id,
-        status: actualStatus,
-        message: isSuccess 
-          ? 'Discovery job finished successfully.'
-          : (finalJob?.error_message || 'Discovery job failed'),
-        error_message: finalJob?.error_message
+        status: 'pending',
+        message: 'Discovery job started. Poll for status using check-discovery-job.'
       }),
       { 
-        status: isSuccess ? 200 : 500, 
+        status: 202, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
