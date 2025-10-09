@@ -48,6 +48,8 @@ import { chooseDefaultAnswer } from '@/lib/smartDefaults';
 import { DiscoveryCoverage } from '@/components/DiscoveryCoverage';
 import { mcpDiscover } from '@/lib/mcp';
 import { PlanExecutionStatus } from '@/components/PlanExecutionStatus';
+import { LockedStepPreview } from '@/components/LockedStepPreview';
+import { ProgressIndicator } from '@/components/ProgressIndicator';
 
 const stripePromise = loadStripe('pk_test_51RujoPAaGNDlVi1koVlBSBBXy2yfwz7vuMBciJxkawKBKaqwR4xw07wEFUAMa73ADIUqzwB5GwbPM3YnPYu5vo4X00rAdiwPkx');
 
@@ -166,6 +168,10 @@ const PlanBuilder = () => {
     message?: string;
   }>({ inProgress: false, stage: 'idle' });
   const [discoveryMetadata, setDiscoveryMetadata] = useState<any>(null);
+  
+  // Refs for auto-scroll functionality
+  const step4Ref = useRef<HTMLDivElement>(null);
+  const [shouldHighlightStep4, setShouldHighlightStep4] = useState(false);
 
   // Safe derived variables with null checks and defaults
   // V1: No program discovery, so no fieldsToShow
@@ -1277,6 +1283,22 @@ const PlanBuilder = () => {
 
   const allRequirementsMet = prerequisiteChecks.length > 0 && prerequisiteChecks.every(r => r.status === 'pass') && !!selectedChildName;
   
+  // Auto-scroll to Step 4 when prerequisites complete
+  useEffect(() => {
+    if (allRequirementsMet && !isDiscovering && step4Ref.current) {
+      // Small delay to ensure DOM is ready
+      const timer = setTimeout(() => {
+        step4Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        setShouldHighlightStep4(true);
+        
+        // Remove highlight after 3 seconds
+        setTimeout(() => setShouldHighlightStep4(false), 3000);
+      }, 300);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [allRequirementsMet, isDiscovering]);
+  
   console.log('[PlanBuilder] Rendering main form');
   
   return (
@@ -1298,6 +1320,23 @@ const PlanBuilder = () => {
             If not, please purchase membership before creating this plan.
           </AlertDescription>
         </Alert>
+
+        {/* Progress Indicator */}
+        {allRequirementsMet && (
+          <ProgressIndicator
+            currentStep={opensAt ? 4 : 3}
+            totalSteps={7}
+            stepLabels={[
+              'Login Credentials',
+              'Program Selection',
+              'Account Prerequisites',
+              'Registration Timing',
+              'Payment Limit',
+              'Contact Information',
+              'Payment Method'
+            ]}
+          />
+        )}
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
@@ -1563,19 +1602,27 @@ const PlanBuilder = () => {
 
             {/* Step 4: Registration Timing */}
             {allRequirementsMet && !isDiscovering && (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">Step 4</Badge>
-                      <CardTitle>{prompts.ui.titles.openTime}</CardTitle>
+              <div ref={step4Ref}>
+                {shouldHighlightStep4 && (
+                  <Alert className="mb-4 border-primary bg-primary/5 animate-pulse">
+                    <AlertDescription className="text-primary font-medium text-center">
+                      👇 Continue below to set registration time and complete your plan
+                    </AlertDescription>
+                  </Alert>
+                )}
+                <Card className={shouldHighlightStep4 ? "border-primary shadow-lg transition-all" : ""}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">Step 4</Badge>
+                        <CardTitle>{prompts.ui.titles.openTime}</CardTitle>
+                      </div>
+                      {opensAt && <CheckCircle className="h-5 w-5 text-green-600" />}
                     </div>
-                    {opensAt && <CheckCircle className="h-5 w-5 text-green-600" />}
-                  </div>
-                  <CardDescription>
-                    When should automated registration begin?
-                  </CardDescription>
-                </CardHeader>
+                    <CardDescription>
+                      When should automated registration begin?
+                    </CardDescription>
+                  </CardHeader>
                 <CardContent>
                   <FormField
                     control={form.control}
@@ -1598,6 +1645,31 @@ const PlanBuilder = () => {
                   />
                 </CardContent>
               </Card>
+              </div>
+            )}
+            
+            {/* Locked Step Previews - Show roadmap when Step 4 not completed */}
+            {allRequirementsMet && !isDiscovering && !opensAt && (
+              <div className="space-y-4">
+                <LockedStepPreview
+                  stepNumber={5}
+                  title="Payment Limit"
+                  description="Set maximum charge authorization"
+                  prerequisite="setting registration time"
+                />
+                <LockedStepPreview
+                  stepNumber={6}
+                  title="Contact Information"
+                  description="Mobile number for notifications"
+                  prerequisite="setting payment limit"
+                />
+                <LockedStepPreview
+                  stepNumber={7}
+                  title="Payment Method"
+                  description="Secure payment authorization"
+                  prerequisite="providing contact info"
+                />
+              </div>
             )}
 
             {/* Step 5: Payment Limit */}
