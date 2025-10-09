@@ -454,20 +454,7 @@ const PlanBuilder = () => {
     });
   };
 
-  // Retry handler for field discovery
-  const retryDiscovery = async () => {
-    const programRef = form.getValues('programRef');
-    if (!programRef) {
-      toast({
-        title: 'Program Required',
-        description: 'Please select a program first.',
-        variant: 'destructive',
-      });
-      return;
-    }
-    console.log('[PlanBuilder] Retrying field discovery for:', programRef);
-    await handleProgramDiscovery();
-  };
+  // V1: No manual retry needed - program questions handled at execution time
 
   // Auto-apply smart defaults to discovered fields
   const autoApplySmartDefaults = (schema: DiscoveredSchema) => {
@@ -579,157 +566,8 @@ const PlanBuilder = () => {
     }
   };
 
-  // Program Discovery - Stage: "program" with async polling
-  const handleProgramDiscovery = async () => {
-    const programRef = form.watch('programRef');
-    const credentialId = form.watch('credentialId');
-    const childId = form.watch('childId');
-    
-    if (!programRef || !credentialId) {
-      toast({
-        title: 'Missing Information',
-        description: 'Please select a program and credentials first',
-        variant: 'destructive',
-      });
-      return;
-    }
-
-    // Clear stale state
-    setProgramDiscoveryRunning(true);
-    setProgramQuestions([]);
-    setDiscoveredSchema(null);
-
-    setIsDiscovering(true);
-
-    try {
-      toastLogger('program_discovery', 'Starting program discovery...', 'info', { programRef });
-      
-      // Start the discovery job with stage: "program"
-      const { data: start, error: startError } = await supabase.functions.invoke('discover-fields-interactive', {
-        body: {
-          stage: 'program',
-          plan_id: undefined,
-          base_url: `https://blackhawk.skiclubpro.com`,
-          program_id: 309, // Hardcoded for now, could be dynamic
-          program_ref: programRef,
-          credential_id: credentialId,
-          child_name: selectedChildName || '',
-          child_id: childId,
-          run_mode: 'background'
-        }
-      });
-
-      if (startError) throw startError;
-
-      const jobId = start?.job_id;
-      if (!jobId) throw new Error('No job ID returned');
-
-      console.log('[Program] Discovery job started:', jobId);
-      
-      toast({
-        title: 'Discovery Started',
-        description: 'Discovering program questions... This may take 5-10 seconds.',
-      });
-
-      // Poll for job completion
-      const startedAt = Date.now();
-      const MAX_MS = 5 * 60 * 1000;
-      let pollCount = 0;
-
-      const poll = async () => {
-        try {
-          pollCount++;
-          const { data: job, error: checkError } = await supabase.functions.invoke('check-discovery-job', {
-            body: { job_id: jobId }
-          });
-
-          if (checkError) {
-            console.error('[program] Error checking job status:', checkError);
-            return;
-          }
-
-          console.log('[program] Poll response:', job);
-
-          // Safety guard: log if still running
-          if (job?.status === "running" && pollCount % 5 === 0) {
-            console.log(`[program] still running... (poll ${pollCount})`);
-          }
-
-          const done = job?.status === 'completed' || job?.status === 'failed';
-
-          // The job object directly contains program_questions and discovered_schema
-          const programQs = job?.program_questions || [];
-          const schema = job?.discovered_schema || [];
-
-          if (done) {
-            setIsDiscovering(false);
-            setProgramDiscoveryRunning(false);
-
-            // Auto-retry if job was stale
-            if (job?.status === "failed" && job?.error_message?.includes("stale")) {
-              toast({
-                title: "Previous run expired",
-                description: "Starting a fresh discovery...",
-              });
-              // Retry automatically
-              setTimeout(() => handleProgramDiscovery(), 500);
-              return;
-            }
-
-            if (job?.status === 'completed') {
-              setProgramQuestions(programQs);
-              setDiscoveredSchema(schema || {
-                program_ref: programRef,
-                branches: [],
-                common_questions: programQs,
-                discoveryCompleted: true
-              });
-
-              toast({
-                title: 'Program Discovery Complete',
-                description: `${programQs.length} questions discovered`,
-              });
-            } else {
-              // Status is 'failed' - show error and stop polling
-              toast({
-                title: 'Discovery Failed',
-                description: job?.error_message || 'Unknown error occurred',
-                variant: 'destructive',
-              });
-            }
-            return; // CRITICAL: Stop polling for both completed AND failed
-          }
-
-          if (Date.now() - startedAt > MAX_MS) {
-            setIsDiscovering(false);
-            toast({
-              title: 'Discovery Timeout',
-              description: 'Discovery is taking longer than expected. Please try again.',
-              variant: 'destructive',
-            });
-            return;
-          }
-
-          setTimeout(poll, 1500);
-        } catch (pollError) {
-          console.error('[program] Polling error:', pollError);
-        }
-      };
-
-      poll();
-
-    } catch (error) {
-      console.error('[Program] Discovery error:', error);
-      setIsDiscovering(false);
-      toast({
-        title: 'Discovery Failed',
-        description: error instanceof Error ? error.message : 'Could not discover program fields',
-        variant: 'destructive',
-      });
-    }
-  };
-
-  // Old synchronous discovery function removed - now using handleProgramDiscovery exclusively
+  // V1: Program questions are handled automatically at execution time
+  // Discovery logic removed - no need to discover questions in UI
 
   const handleCheckPrerequisitesOnly = async () => {
     const programRef = form.watch('programRef');
@@ -869,17 +707,7 @@ const PlanBuilder = () => {
     await handleCheckPrerequisitesOnly();
   };
 
-  const handleRecheckProgramQuestions = async () => {
-    toastLogger('program_questions', 'Rechecking program questions…', 'info');
-    
-    toast({
-      title: 'Refreshing Questions',
-      description: 'Re-discovering program fields. This may take 5-10 seconds.',
-    });
-    
-    // Use new stage-specific function
-    await handleProgramDiscovery();
-  };
+  // V1: No recheck needed - program questions handled at execution time
 
   const startSignupJob = async (planId: string) => {
     if (!user || !session) {
@@ -1728,21 +1556,9 @@ const PlanBuilder = () => {
                           All prerequisites are met. You can proceed directly to program registration!
                         </CardDescription>
                       </CardHeader>
-                      <CardContent>
-                        <Button
-                          onClick={handleProgramDiscovery}
-                          disabled={isDiscovering || programDiscoveryRunning}
-                          className="w-full"
-                        >
-                          {isDiscovering || programDiscoveryRunning ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Discovering...
-                            </>
-                          ) : (
-                            'Continue to Program Questions'
-                          )}
-                        </Button>
+                      <CardContent className="space-y-4">
+                        {/* V1: Show disclaimer card immediately after prerequisites pass */}
+                        <ProgramQuestionsAutoAnswered questions={[]} />
                       </CardContent>
                     </Card>
                   ) : prerequisiteStatus === 'required' && prerequisiteFields.length > 0 ? (
@@ -1847,14 +1663,12 @@ const PlanBuilder = () => {
                                 description: 'Please answer the program-specific questions below.',
                               });
                             } else {
-                              // Show loading toast for auto-discovery
+                              // V1: Skip discovery - just show completion
                               toast({
-                                title: 'Discovering Program Questions...',
-                                description: 'This may take 5-10 seconds.',
+                                title: 'Ready to Continue',
+                                description: 'Program questions will be handled automatically.',
                               });
-
-                              // Use MCP background job for discovery
-                              await handleProgramDiscovery();
+                              setActiveStep('completed');
                             }
                           }}
                         />
@@ -1886,9 +1700,9 @@ const PlanBuilder = () => {
                               description: 'You can review or recheck prerequisites.',
                             });
                           }}
-                          onRecheck={handleRecheckProgramQuestions}
+                          onRecheck={() => {}} // V1: No recheck needed
                           isSubmitting={false}
-                          isRechecking={isDiscovering}
+                          isRechecking={false}
                         />
                       ) : (
                         <CompletionPanel
@@ -2013,25 +1827,6 @@ const PlanBuilder = () => {
                       </div>
                       
                       <div className="flex gap-3">
-                        <Button
-                          type="button"
-                          onClick={retryDiscovery}
-                          variant="outline"
-                          size="sm"
-                          disabled={isDiscovering}
-                        >
-                          {isDiscovering ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Rechecking...
-                            </>
-                          ) : (
-                            <>
-                              <RefreshCw className="mr-2 h-4 w-4" />
-                              Recheck
-                            </>
-                          )}
-                        </Button>
                         <Button
                           type="button"
                           onClick={() => window.open(`https://blackhawk-ski-club.skiclubpro.team/program/${form.getValues('programRef')}`, '_blank')}

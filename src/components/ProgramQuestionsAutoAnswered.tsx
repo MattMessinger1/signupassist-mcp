@@ -24,14 +24,15 @@ export function ProgramQuestionsAutoAnswered({ questions }: ProgramQuestionsAuto
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
           <CheckCircle className="h-5 w-5 text-success" />
-          Program Questions Auto-Answered
+          Program Questions Will Be Handled Automatically
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <Alert className="bg-background/50">
           <Info className="h-4 w-4" />
           <AlertDescription className="space-y-2">
-            <p className="font-medium">We detected additional program questions that will be answered automatically using these rules:</p>
+            <p className="font-medium">This program may have additional questions during registration.</p>
+            <p className="text-sm">We will automatically answer them using these rules:</p>
             <ul className="space-y-1 text-sm">
               <li className="flex items-start gap-2">
                 <CheckCircle className="h-4 w-4 text-success mt-0.5 flex-shrink-0" />
@@ -47,16 +48,17 @@ export function ProgramQuestionsAutoAnswered({ questions }: ProgramQuestionsAuto
               </li>
             </ul>
             <p className="text-sm text-muted-foreground mt-3">
-              If any required questions cannot be auto-answered, you'll be notified before signup.
+              If any required questions cannot be auto-answered, the registration will pause and notify you.
             </p>
           </AlertDescription>
         </Alert>
 
+        {/* Only show actual questions if discovery was run (future v2 feature) */}
         {questions.length > 0 && (
           <Collapsible open={isOpen} onOpenChange={setIsOpen}>
             <CollapsibleTrigger asChild>
               <Button variant="outline" className="w-full justify-between">
-                <span>View Auto-Selected Answers ({questions.length})</span>
+                <span>View Detected Questions ({questions.length})</span>
                 {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
               </Button>
             </CollapsibleTrigger>
