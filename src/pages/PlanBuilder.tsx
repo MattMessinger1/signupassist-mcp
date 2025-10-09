@@ -1973,7 +1973,9 @@ const PlanBuilder = () => {
             childId: form.watch('childId'),
             opensAt: form.watch('opensAt'),
             credentialId: form.watch('credentialId'),
-            answers: form.watch('answers')
+            answers: form.watch('answers'),
+            maxAmountCents: form.watch('maxAmountCents'),
+            contactPhone: form.watch('contactPhone')
           }}
           watch={form.watch}
           setValue={form.setValue}
