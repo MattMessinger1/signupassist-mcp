@@ -4,7 +4,8 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent } from '@/components/ui/card';
-import { prompts, fmt } from '@/lib/prompts';
+import { toZonedTime, fromZonedTime } from 'date-fns-tz';
+import { format } from 'date-fns';
 
 interface OpenTimePickerProps {
   value?: Date;
@@ -25,8 +26,9 @@ export function OpenTimePicker({ value, onChange }: OpenTimePickerProps) {
   useEffect(() => {
     if (value && timezone) {
       // Convert UTC date to local time in the selected timezone
-      const localTime = new Date(value.getTime() - (value.getTimezoneOffset() * 60000));
-      setLocalDateTime(localTime.toISOString().slice(0, 16));
+      const zonedTime = toZonedTime(value, timezone);
+      const formatted = format(zonedTime, "yyyy-MM-dd'T'HH:mm");
+      setLocalDateTime(formatted);
     }
   }, [value, timezone]);
 
@@ -34,13 +36,9 @@ export function OpenTimePicker({ value, onChange }: OpenTimePickerProps) {
     setLocalDateTime(newDateTime);
     
     if (newDateTime && timezone) {
-      // Create a date object from the local datetime
+      // Parse the local datetime string and convert to UTC
       const localDate = new Date(newDateTime);
-      
-      // Convert to UTC using the selected timezone
-      // This is a simplified conversion - for production, consider using a library like date-fns-tz
-      const utcDate = new Date(localDate.getTime() + (localDate.getTimezoneOffset() * 60000));
-      
+      const utcDate = fromZonedTime(localDate, timezone);
       onChange(utcDate);
     }
   };
@@ -51,7 +49,7 @@ export function OpenTimePicker({ value, onChange }: OpenTimePickerProps) {
     if (localDateTime) {
       // Recalculate UTC time with new timezone
       const localDate = new Date(localDateTime);
-      const utcDate = new Date(localDate.getTime() + (localDate.getTimezoneOffset() * 60000));
+      const utcDate = fromZonedTime(localDate, newTimezone);
       onChange(utcDate);
     }
   };
@@ -78,9 +76,9 @@ export function OpenTimePicker({ value, onChange }: OpenTimePickerProps) {
       <CardContent className="pt-6 space-y-4">
         <div className="flex items-center space-x-2 mb-2">
           <Clock className="h-4 w-4" />
-          <span className="font-medium">{prompts.ui.titles.openTime}</span>
+          <span className="font-medium">When does registration open?</span>
         </div>
-        <p className="text-xs text-muted-foreground mb-4">{prompts.ui.openTime.helper}</p>
+        <p className="text-xs text-muted-foreground mb-4">We'll attempt signup at this exact time</p>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -114,13 +112,14 @@ export function OpenTimePicker({ value, onChange }: OpenTimePickerProps) {
           </div>
         </div>
         
-        {value && localDateTime && (
-          <div className="text-sm space-y-1">
+        {value && localDateTime && timezone && (
+          <div className="text-sm space-y-1 bg-muted/50 p-3 rounded-lg">
+            <div className="font-medium">Preview:</div>
             <div className="text-muted-foreground">
-              {prompts.ui.openTime.preview(
-                fmt.dateTimeLocal(new Date(localDateTime)),
-                value.toISOString().replace('T', ' ').slice(0, 19)
-              )}
+              Local: {format(toZonedTime(value, timezone), 'PPpp')} ({timezone})
+            </div>
+            <div className="text-muted-foreground">
+              UTC: {format(value, 'PPpp')} (stored)
             </div>
           </div>
         )}
