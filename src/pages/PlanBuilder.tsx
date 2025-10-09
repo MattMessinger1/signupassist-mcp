@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -211,21 +211,26 @@ const PlanBuilder = () => {
 
   // Redirect to auth if not authenticated or session invalid
   useEffect(() => {
-    if (!authLoading) {
-      if (!user || !session) {
-        console.warn('[PlanBuilder] No user/session, redirecting to auth');
-        navigate('/auth');
-      } else if (!isSessionValid()) {
-        console.warn('[PlanBuilder] Session invalid, redirecting to auth');
-        toast({
-          title: 'Session Expired',
-          description: 'Your session has expired. Please log in again.',
-          variant: 'destructive',
-        });
-        navigate('/auth');
+    // Add a small delay to prevent redirects during session refresh
+    const validationTimer = setTimeout(() => {
+      if (!authLoading) {
+        if (!user) {
+          console.warn('[PlanBuilder] No user, redirecting to auth');
+          navigate('/auth');
+        } else if (!isSessionValid()) {
+          console.warn('[PlanBuilder] Session invalid, redirecting to auth');
+          toast({
+            title: 'Session Expired',
+            description: 'Your session has expired. Please log in again.',
+            variant: 'destructive',
+          });
+          navigate('/auth');
+        }
       }
-    }
-  }, [user, session, authLoading, navigate, isSessionValid, toast]);
+    }, 500); // 500ms debounce to allow session refresh to complete
+
+    return () => clearTimeout(validationTimer);
+  }, [user, authLoading, navigate, isSessionValid, toast]);
 
   // Check for payment method
   useEffect(() => {
@@ -445,7 +450,7 @@ const PlanBuilder = () => {
     };
   }, [createdPlan?.plan_id, toast]);
 
-  const checkPaymentMethod = async () => {
+  const checkPaymentMethod = useCallback(async () => {
     if (!user) return;
     
     setCheckingPayment(true);
@@ -466,7 +471,7 @@ const PlanBuilder = () => {
     } finally {
       setCheckingPayment(false);
     }
-  };
+  }, [user]);
 
   // Helper function for showing function errors
   const showFunctionError = (error: any, action: string) => {
@@ -1784,7 +1789,7 @@ const PlanBuilder = () => {
                   <SavePaymentMethod 
                     onPaymentMethodSaved={() => {
                       setHasPaymentMethod(true);
-                      checkPaymentMethod();
+                      // Payment method will be automatically verified by useEffect
                     }}
                     hasPaymentMethod={hasPaymentMethod}
                   />

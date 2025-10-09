@@ -79,10 +79,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
     const now = Date.now();
     
-    // Session expires in less than 5 minutes
-    if (expiresAt - now < 5 * 60 * 1000) {
-      console.warn('[AuthContext] Session expiring soon');
+    // Only invalidate if session has ALREADY expired, not if expiring soon
+    // This prevents false positives during session refresh
+    if (expiresAt <= now) {
+      console.warn('[AuthContext] Session has expired');
       return false;
+    }
+    
+    // Warn if expiring soon (< 5 min) but don't invalidate yet
+    if (expiresAt - now < 5 * 60 * 1000) {
+      console.warn('[AuthContext] Session expiring soon, but still valid');
     }
     
     return true;
