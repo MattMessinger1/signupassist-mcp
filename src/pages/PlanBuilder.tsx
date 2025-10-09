@@ -174,9 +174,15 @@ const PlanBuilder = () => {
   }>({ inProgress: false, stage: 'idle' });
   const [discoveryMetadata, setDiscoveryMetadata] = useState<any>(null);
   
-  // Refs for auto-scroll functionality
+  // Refs for auto-scroll functionality - one for each step
+  const step1Ref = useRef<HTMLDivElement>(null);
+  const step2Ref = useRef<HTMLDivElement>(null);
+  const step3Ref = useRef<HTMLDivElement>(null);
   const step4Ref = useRef<HTMLDivElement>(null);
-  const [shouldHighlightStep4, setShouldHighlightStep4] = useState(false);
+  const step5Ref = useRef<HTMLDivElement>(null);
+  const step6Ref = useRef<HTMLDivElement>(null);
+  const step7Ref = useRef<HTMLDivElement>(null);
+  const [shouldHighlightStep, setShouldHighlightStep] = useState<number | null>(null);
 
   // Safe derived variables with null checks and defaults
   // V1: No program discovery, so no fieldsToShow
@@ -287,27 +293,48 @@ const PlanBuilder = () => {
     fetchChildName();
   }, [prerequisiteStatus, selectedChildName]);
 
-  // Auto-scroll to Step 4 when prerequisites complete
-  useEffect(() => {
-    if (allRequirementsMet && !isDiscovering && step4Ref.current && !shouldHighlightStep4) {
-      // Small delay to ensure DOM is ready
-      const scrollTimer = setTimeout(() => {
-        if (step4Ref.current) {
-          step4Ref.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          setShouldHighlightStep4(true);
+  // Auto-scroll to next unlocked step
+  const scrollToStep = useCallback((stepNumber: number, ref: React.RefObject<HTMLDivElement>) => {
+    if (ref.current && shouldHighlightStep !== stepNumber) {
+      setTimeout(() => {
+        if (ref.current) {
+          ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          setShouldHighlightStep(stepNumber);
+          
+          setTimeout(() => {
+            setShouldHighlightStep(null);
+          }, 3000);
         }
-      }, 500);
-      
-      const highlightTimer = setTimeout(() => {
-        setShouldHighlightStep4(false);
-      }, 3500); // 500ms scroll delay + 3000ms highlight
-      
-      return () => {
-        clearTimeout(scrollTimer);
-        clearTimeout(highlightTimer);
-      };
+      }, 300);
     }
-  }, [allRequirementsMet, isDiscovering, shouldHighlightStep4]);
+  }, [shouldHighlightStep]);
+
+  // Auto-scroll when steps unlock
+  useEffect(() => {
+    if (allRequirementsMet && !isDiscovering) {
+      scrollToStep(4, step4Ref);
+    }
+  }, [allRequirementsMet, isDiscovering, scrollToStep]);
+
+  useEffect(() => {
+    if (opensAt) {
+      scrollToStep(5, step5Ref);
+    }
+  }, [opensAt, scrollToStep]);
+
+  useEffect(() => {
+    const maxAmount = form.watch('maxAmountCents');
+    if (maxAmount > 0) {
+      scrollToStep(6, step6Ref);
+    }
+  }, [form.watch('maxAmountCents'), scrollToStep]);
+
+  useEffect(() => {
+    const contactPhone = form.watch('contactPhone');
+    if (contactPhone && contactPhone.length >= 10) {
+      scrollToStep(7, step7Ref);
+    }
+  }, [form.watch('contactPhone'), scrollToStep]);
 
   // Realtime subscription for plan executions and execution logs
   // This enables automatic UI updates when backend processes complete
@@ -1364,124 +1391,172 @@ const PlanBuilder = () => {
           </AlertDescription>
         </Alert>
 
-        {/* Progress Indicator */}
-        {allRequirementsMet && (
-          <ProgressIndicator
-            currentStep={opensAt ? 4 : 3}
-            totalSteps={7}
-            stepLabels={[
-              'Login Credentials',
-              'Program Selection',
-              'Account Prerequisites',
-              'Registration Timing',
-              'Payment Limit',
-              'Contact Information',
-              'Payment Method'
-            ]}
-          />
-        )}
+        {/* Progress Indicator - Always visible */}
+        <ProgressIndicator
+          currentStep={
+            hasPaymentMethod && form.watch('contactPhone') && form.watch('maxAmountCents') > 0 && opensAt ? 7 :
+            form.watch('contactPhone') && form.watch('maxAmountCents') > 0 && opensAt ? 6 :
+            form.watch('maxAmountCents') > 0 && opensAt ? 5 :
+            opensAt ? 4 :
+            allRequirementsMet ? 3 :
+            form.watch('programRef') && form.watch('childId') && form.watch('credentialId') ? 2 :
+            form.watch('credentialId') ? 1 :
+            0
+          }
+          totalSteps={7}
+          stepLabels={[
+            'Login',
+            'Program',
+            'Prerequisites',
+            'Timing',
+            'Limit',
+            'Contact',
+            'Payment'
+          ]}
+          completedSteps={[
+            ...(form.watch('credentialId') ? [1] : []),
+            ...(form.watch('programRef') && form.watch('childId') ? [2] : []),
+            ...(allRequirementsMet ? [3] : []),
+            ...(opensAt ? [4] : []),
+            ...(form.watch('maxAmountCents') > 0 ? [5] : []),
+            ...(form.watch('contactPhone') && form.watch('contactPhone').length >= 10 ? [6] : []),
+            ...(hasPaymentMethod ? [7] : []),
+          ]}
+          lockedSteps={[
+            ...(!form.watch('credentialId') ? [2] : []),
+            ...(!form.watch('programRef') || !form.watch('childId') || !form.watch('credentialId') ? [3] : []),
+            ...(!allRequirementsMet ? [4] : []),
+            ...(!opensAt ? [5, 6, 7] : []),
+            ...(!form.watch('maxAmountCents') || form.watch('maxAmountCents') === 0 ? [6, 7] : []),
+            ...(!form.watch('contactPhone') || form.watch('contactPhone').length < 10 ? [7] : []),
+          ]}
+        />
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            {/* Step 1: Login Credentials */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs">Step 1</Badge>
-                    <CardTitle className="flex items-center gap-2">
-                      <Shield className="h-5 w-5" />
-                      {prompts.ui.titles.signin('Blackhawk')}
-                    </CardTitle>
+            {/* Step 1: Login Credentials - Always visible */}
+            <div ref={step1Ref}>
+              <Card className={shouldHighlightStep === 1 ? "border-primary shadow-lg transition-all" : ""}>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-xs">Step 1</Badge>
+                      <CardTitle className="flex items-center gap-2">
+                        <Shield className="h-5 w-5" />
+                        {prompts.ui.titles.signin('Blackhawk')}
+                      </CardTitle>
+                    </div>
+                    {form.watch('credentialId') && <CheckCircle className="h-5 w-5 text-green-600" />}
                   </div>
-                  {form.watch('credentialId') && <CheckCircle className="h-5 w-5 text-green-600" />}
-                </div>
-                <CardDescription>
-                  Select credentials for automated login
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <FormField
-                  control={form.control}
-                  name="credentialId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Stored Credentials</FormLabel>
-                      <FormControl>
-                        <CredentialPicker
-                          value={field.value}
-                          onChange={field.onChange}
-                          provider="skiclubpro"
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </CardContent>
-            </Card>
+                  <CardDescription>
+                    Select credentials for automated login
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <FormField
+                    control={form.control}
+                    name="credentialId"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Stored Credentials</FormLabel>
+                        <FormControl>
+                          <CredentialPicker
+                            value={field.value}
+                            onChange={field.onChange}
+                            provider="skiclubpro"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </CardContent>
+              </Card>
+            </div>
 
-            {/* Step 2: Program & Child Selection */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs">Step 2</Badge>
-                    <CardTitle>Program & Child</CardTitle>
-                  </div>
-                  {form.watch('programRef') && form.watch('childId') && <CheckCircle className="h-5 w-5 text-green-600" />}
-                </div>
-                <CardDescription>
-                  Choose the program and child to register
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="programRef"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Program Selection</FormLabel>
-                      <FormControl>
-                        <ProgramBrowser
-                          onProgramSelect={({ ref, title }) => {
-                            field.onChange(ref);
-                            setFriendlyProgramTitle(title);
-                            setSelectedBranch('');
-                            setPrerequisiteChecks([]);
-                            setActiveStep('prereqs');
-                          }}
-                          selectedProgram={field.value}
-                          credentialId={form.watch('credentialId')}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+            {/* Step 2: Program & Child Selection - Always visible, locked if no credentials */}
+            <div ref={step2Ref}>
+              {!form.watch('credentialId') ? (
+                <LockedStepPreview
+                  stepNumber={2}
+                  title="Program & Child"
+                  description="Choose the program and child to register"
+                  prerequisite="selecting login credentials"
+                  onScrollToPrerequisite={() => step1Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                 />
+              ) : (
+                <Card className={shouldHighlightStep === 2 ? "border-primary shadow-lg transition-all" : ""}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">Step 2</Badge>
+                        <CardTitle>Program & Child</CardTitle>
+                      </div>
+                      {form.watch('programRef') && form.watch('childId') && <CheckCircle className="h-5 w-5 text-green-600" />}
+                    </div>
+                    <CardDescription>
+                      Choose the program and child to register
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <FormField
+                      control={form.control}
+                      name="programRef"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Program Selection</FormLabel>
+                          <FormControl>
+                            <ProgramBrowser
+                              onProgramSelect={({ ref, title }) => {
+                                field.onChange(ref);
+                                setFriendlyProgramTitle(title);
+                                setSelectedBranch('');
+                                setPrerequisiteChecks([]);
+                                setActiveStep('prereqs');
+                              }}
+                              selectedProgram={field.value}
+                              credentialId={form.watch('credentialId')}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
 
-                <FormField
-                  control={form.control}
-                  name="childId"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Child</FormLabel>
-                      <FormControl>
-                        <ChildSelect
-                          value={field.value}
-                          onChange={field.onChange}
-                        />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                    <FormField
+                      control={form.control}
+                      name="childId"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Child</FormLabel>
+                          <FormControl>
+                            <ChildSelect
+                              value={field.value}
+                              onChange={field.onChange}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            {/* Step 3: Prerequisites Check - Always visible, locked if Step 2 incomplete */}
+            <div ref={step3Ref}>
+              {!form.watch('programRef') || !form.watch('childId') || !form.watch('credentialId') ? (
+                <LockedStepPreview
+                  stepNumber={3}
+                  title="Account Prerequisites"
+                  description="Verify your account status and membership"
+                  prerequisite="selecting a program and child"
+                  icon={<Shield className="h-4 w-4" />}
+                  onScrollToPrerequisite={() => step2Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                 />
-              </CardContent>
-            </Card>
-
-            {/* Step 3: Prerequisites Check */}
-            {form.watch('programRef') && form.watch('childId') && form.watch('credentialId') && (
-              <Card>
+              ) : (
+                <Card className={shouldHighlightStep === 3 ? "border-primary shadow-lg transition-all" : ""}>
                 <CardHeader>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
@@ -1592,214 +1667,233 @@ const PlanBuilder = () => {
                   )}
                 </CardContent>
               </Card>
-            )}
+              )}
+            </div>
 
             {/* V1: Program Questions Disclaimer - Show immediately after prerequisites pass */}
             {allRequirementsMet && !isDiscovering && (
               <ProgramQuestionsAutoAnswered questions={[]} />
             )}
 
-            {/* Step 4: Registration Timing */}
-            {allRequirementsMet && !isDiscovering && (
-              <div ref={step4Ref}>
-                {shouldHighlightStep4 && (
-                  <Alert className="mb-4 border-primary bg-primary/5">
-                    <AlertDescription className="text-primary font-medium text-center">
-                      👇 Continue below to set registration time and complete your plan
-                    </AlertDescription>
-                  </Alert>
-                )}
-                <Card className={shouldHighlightStep4 ? "border-primary shadow-lg transition-all" : ""}>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">Step 4</Badge>
-                        <CardTitle>{prompts.ui.titles.openTime}</CardTitle>
+            {/* Step 4: Registration Timing - Always visible, locked if prerequisites not met */}
+            <div ref={step4Ref}>
+              {!allRequirementsMet || isDiscovering ? (
+                <LockedStepPreview
+                  stepNumber={4}
+                  title="Registration Timing"
+                  description="When should automated registration begin?"
+                  prerequisite="completing account prerequisites"
+                  onScrollToPrerequisite={() => step3Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                />
+              ) : (
+                <>
+                  {shouldHighlightStep === 4 && (
+                    <Alert className="mb-4 border-primary bg-primary/5">
+                      <AlertDescription className="text-primary font-medium text-center">
+                        👇 Continue below to set registration time and complete your plan
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  <Card className={shouldHighlightStep === 4 ? "border-primary shadow-lg transition-all" : ""}>
+                    <CardHeader>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-xs">Step 4</Badge>
+                          <CardTitle>{prompts.ui.titles.openTime}</CardTitle>
+                        </div>
+                        {opensAt && <CheckCircle className="h-5 w-5 text-green-600" />}
                       </div>
-                      {opensAt && <CheckCircle className="h-5 w-5 text-green-600" />}
-                    </div>
-                    <CardDescription>
-                      When should automated registration begin?
-                    </CardDescription>
-                  </CardHeader>
-                <CardContent>
-                  <FormField
-                    control={form.control}
-                    name="opensAt"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Registration Opens At</FormLabel>
-                        <FormControl>
-                          <OpenTimePicker
-                            value={field.value}
-                            onChange={field.onChange}
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          Set the exact date and time when registration opens
-                        </FormDescription>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </CardContent>
-              </Card>
-              </div>
-            )}
-            
-            {/* Locked Step Previews - Show roadmap when Step 4 not completed */}
-            {allRequirementsMet && !isDiscovering && !opensAt && (
-              <div className="space-y-4">
+                      <CardDescription>
+                        When should automated registration begin?
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <FormField
+                        control={form.control}
+                        name="opensAt"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Registration Opens At</FormLabel>
+                            <FormControl>
+                              <OpenTimePicker
+                                value={field.value}
+                                onChange={field.onChange}
+                              />
+                            </FormControl>
+                            <FormDescription>
+                              Set the exact date and time when registration opens
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    </CardContent>
+                  </Card>
+                </>
+              )}
+            </div>
+
+            {/* Step 5: Payment Limit - Always visible, locked if opensAt not set */}
+            <div ref={step5Ref}>
+              {!opensAt || showMandateSummary ? (
                 <LockedStepPreview
                   stepNumber={5}
                   title="Payment Limit"
                   description="Set maximum charge authorization"
                   prerequisite="setting registration time"
+                  icon={<DollarSign className="h-4 w-4" />}
+                  onScrollToPrerequisite={() => step4Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                 />
+              ) : (
+                <Card className={shouldHighlightStep === 5 ? "border-primary shadow-lg transition-all" : ""}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">Step 5</Badge>
+                        <CardTitle className="flex items-center gap-2">
+                          <DollarSign className="h-5 w-5" />
+                          {prompts.ui.titles.limit}
+                        </CardTitle>
+                      </div>
+                      {form.watch('maxAmountCents') > 0 && <CheckCircle className="h-5 w-5 text-green-600" />}
+                    </div>
+                    <CardDescription>
+                      {prompts.ui.limit.helper}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <FormField
+                      control={form.control}
+                      name="maxAmountCents"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{prompts.ui.limit.label}</FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                              <Input
+                                type="number"
+                                placeholder="175.00"
+                                className="pl-7"
+                                value={field.value ? (field.value / 100).toFixed(2) : ''}
+                                onChange={(e) => {
+                                  const dollars = parseFloat(e.target.value) || 0;
+                                  field.onChange(Math.round(dollars * 100));
+                                }}
+                              />
+                            </div>
+                          </FormControl>
+                          {detectedPriceCents && (
+                            <div className="text-sm space-y-1 p-3 bg-muted rounded-lg">
+                              <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground">Detected program cost:</span>
+                                <span className="font-medium">{fmt.money(detectedPriceCents)}</span>
+                              </div>
+                              {field.value > 0 && (
+                                <div className="flex items-center justify-between">
+                                  <span className="text-muted-foreground">Your cap:</span>
+                                  <span className="font-medium">{fmt.money(field.value)}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            {/* Step 6: Contact Information - Always visible, locked if payment limit not set */}
+            <div ref={step6Ref}>
+              {!opensAt || form.watch('maxAmountCents') === 0 || showMandateSummary ? (
                 <LockedStepPreview
                   stepNumber={6}
                   title="Contact Information"
                   description="Mobile number for notifications"
                   prerequisite="setting payment limit"
+                  onScrollToPrerequisite={() => step5Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                 />
+              ) : (
+                <Card className={shouldHighlightStep === 6 ? "border-primary shadow-lg transition-all" : ""}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">Step 6</Badge>
+                        <CardTitle>{prompts.ui.titles.contact}</CardTitle>
+                      </div>
+                      {form.watch('contactPhone') && <CheckCircle className="h-5 w-5 text-green-600" />}
+                    </div>
+                    <CardDescription>
+                      {prompts.ui.contact.helper}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <FormField
+                      control={form.control}
+                      name="contactPhone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>{prompts.ui.contact.label}</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="tel"
+                              placeholder={prompts.ui.contact.ph}
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            {/* Step 7: Payment Method - Always visible, locked if contact info not provided */}
+            <div ref={step7Ref}>
+              {!opensAt || form.watch('maxAmountCents') === 0 || !form.watch('contactPhone') || showMandateSummary ? (
                 <LockedStepPreview
                   stepNumber={7}
                   title="Payment Method"
-                  description="Secure payment authorization"
-                  prerequisite="providing contact info"
+                  description="Secure payment authorization for the $20 success fee"
+                  prerequisite="providing contact information"
+                  icon={<DollarSign className="h-4 w-4" />}
+                  onScrollToPrerequisite={() => step6Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                 />
-              </div>
-            )}
-
-            {/* Step 5: Payment Limit */}
-            {opensAt && !showMandateSummary && (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">Step 6</Badge>
-                      <CardTitle className="flex items-center gap-2">
-                        <DollarSign className="h-5 w-5" />
-                        {prompts.ui.titles.limit}
-                      </CardTitle>
+              ) : (
+                <Card className={shouldHighlightStep === 7 ? "border-primary shadow-lg transition-all" : ""}>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">Step 7</Badge>
+                        <CardTitle className="flex items-center gap-2">
+                          <DollarSign className="h-5 w-5" />
+                          Payment Method
+                        </CardTitle>
+                      </div>
+                      {hasPaymentMethod && <CheckCircle className="h-5 w-5 text-green-600" />}
                     </div>
-                    {form.watch('maxAmountCents') > 0 && <CheckCircle className="h-5 w-5 text-green-600" />}
-                  </div>
-                  <CardDescription>
-                    {prompts.ui.limit.helper}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="maxAmountCents"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{prompts.ui.limit.label}</FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
-                            <Input
-                              type="number"
-                              placeholder="175.00"
-                              className="pl-7"
-                              value={field.value ? (field.value / 100).toFixed(2) : ''}
-                              onChange={(e) => {
-                                const dollars = parseFloat(e.target.value) || 0;
-                                field.onChange(Math.round(dollars * 100));
-                              }}
-                            />
-                          </div>
-                        </FormControl>
-                        {detectedPriceCents && (
-                          <div className="text-sm space-y-1 p-3 bg-muted rounded-lg">
-                            <div className="flex items-center justify-between">
-                              <span className="text-muted-foreground">Detected program cost:</span>
-                              <span className="font-medium">{fmt.money(detectedPriceCents)}</span>
-                            </div>
-                            {field.value > 0 && (
-                              <div className="flex items-center justify-between">
-                                <span className="text-muted-foreground">Your cap:</span>
-                                <span className="font-medium">{fmt.money(field.value)}</span>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Step 6: Contact Information */}
-            {opensAt && form.watch('maxAmountCents') > 0 && !showMandateSummary && (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">Step 9</Badge>
-                      <CardTitle>{prompts.ui.titles.contact}</CardTitle>
-                    </div>
-                    {form.watch('contactPhone') && <CheckCircle className="h-5 w-5 text-green-600" />}
-                  </div>
-                  <CardDescription>
-                    {prompts.ui.contact.helper}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <FormField
-                    control={form.control}
-                    name="contactPhone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{prompts.ui.contact.label}</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="tel"
-                            placeholder={prompts.ui.contact.ph}
-                            {...field}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Step 7: Payment Method */}
-            {opensAt && form.watch('maxAmountCents') > 0 && form.watch('contactPhone') && !showMandateSummary && (
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">Step 10</Badge>
-                      <CardTitle className="flex items-center gap-2">
-                        <DollarSign className="h-5 w-5" />
-                        Payment Method
-                      </CardTitle>
-                    </div>
-                    {hasPaymentMethod && <CheckCircle className="h-5 w-5 text-green-600" />}
-                  </div>
-                  <CardDescription>
-                    Set up payment for the $20 success fee
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <SavePaymentMethod 
-                onPaymentMethodSaved={() => {
-                  console.log('[PlanBuilder] Payment method saved, triggering verification...');
-                  // Trigger immediate verification without optimistic update
-                  checkPaymentMethod();
-                }}
-                    hasPaymentMethod={hasPaymentMethod}
-                  />
-                </CardContent>
-              </Card>
-            )}
+                    <CardDescription>
+                      Set up payment for the $20 success fee
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <SavePaymentMethod 
+                      onPaymentMethodSaved={() => {
+                        console.log('[PlanBuilder] Payment method saved, triggering verification...');
+                        // Trigger immediate verification without optimistic update
+                        checkPaymentMethod();
+                      }}
+                      hasPaymentMethod={hasPaymentMethod}
+                    />
+                  </CardContent>
+                </Card>
+              )}
+            </div>
 
             {/* Step 8: Mandate Summary & Finalize */}
             {opensAt && hasPaymentMethod && allRequirementsMet && form.watch('maxAmountCents') > 0 && form.watch('contactPhone') && showMandateSummary && !showConfirmation && (
