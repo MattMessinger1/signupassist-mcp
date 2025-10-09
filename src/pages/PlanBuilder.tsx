@@ -229,9 +229,33 @@ const PlanBuilder = () => {
     }
   }, [user]);
 
+  // Auto-fetch child name when prerequisites complete
+  useEffect(() => {
+    const fetchChildName = async () => {
+      const childId = form.watch('childId');
+      if (prerequisiteStatus === 'complete' && childId && !selectedChildName) {
+        const { data: childData, error } = await supabase
+          .from('children')
+          .select('name')
+          .eq('id', childId)
+          .maybeSingle();
+        
+        if (!error && childData) {
+          setSelectedChildName(childData.name);
+          toast({
+            title: 'Prerequisites Complete',
+            description: 'Program questions will be handled automatically during registration.',
+          });
+        }
+      }
+    };
+    
+    fetchChildName();
+  }, [prerequisiteStatus, form.watch('childId'), selectedChildName]);
+
   // Auto-scroll to Step 4 when prerequisites complete
   useEffect(() => {
-    const allRequirementsMet = prerequisiteChecks.length > 0 && prerequisiteChecks.every(r => r.status === 'pass') && !!selectedChildName;
+    const allRequirementsMet = (prerequisiteChecks.length === 0 || prerequisiteChecks.every(r => r.status === 'pass')) && !!selectedChildName;
     
     if (allRequirementsMet && !isDiscovering && step4Ref.current && !shouldHighlightStep4) {
       // Small delay to ensure DOM is ready
@@ -1472,8 +1496,16 @@ const PlanBuilder = () => {
                       />
                     </div>
                   )}
+                  {/* Loading state while fetching child name */}
+                  {prerequisiteStatus === 'complete' && !selectedChildName && (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Preparing next steps...
+                    </div>
+                  )}
+                  
                   {/* Phase 2.5: Green Light / Yellow Light UI */}
-                  {prerequisiteStatus === 'complete' && prerequisiteFields.length === 0 ? (
+                  {prerequisiteStatus === 'complete' && prerequisiteFields.length === 0 && selectedChildName ? (
                     <Card className="border-green-200 bg-green-50">
                       <CardHeader>
                         <div className="flex items-center gap-2">
@@ -1481,13 +1513,9 @@ const PlanBuilder = () => {
                           <CardTitle className="text-green-900">Prerequisites Complete</CardTitle>
                         </div>
                         <CardDescription className="text-green-700">
-                          All prerequisites are met. You can proceed directly to program registration!
+                          All prerequisites are met. Continue below to complete your registration plan!
                         </CardDescription>
                       </CardHeader>
-                      <CardContent className="space-y-4">
-                        {/* V1: Show disclaimer card immediately after prerequisites pass */}
-                        <ProgramQuestionsAutoAnswered questions={[]} />
-                      </CardContent>
                     </Card>
                   ) : prerequisiteStatus === 'required' && prerequisiteFields.length > 0 ? (
                     <Card className="border-yellow-200 bg-yellow-50">
@@ -1539,55 +1567,7 @@ const PlanBuilder = () => {
                         checks={prerequisiteChecks}
                         metadata={discoveryMetadata}
                         onRecheck={handleCheckPrerequisitesOnly}
-                        onContinue={async () => {
-                            const childId = form.watch('childId');
-                            const programRef = form.watch('programRef');
-                            const openTime = form.watch('opensAt');
-                            
-                            // Validate all required fields
-                            if (!childId || !programRef) {
-                              toast({
-                                title: 'Missing Information',
-                                description: 'Please select both a child and program',
-                                variant: 'destructive',
-                              });
-                              return;
-                            }
-
-                            if (!openTime) {
-                              toast({
-                                title: 'Missing Registration Time',
-                                description: 'Please set when registration opens (Step 4)',
-                                variant: 'destructive',
-                              });
-                              return;
-                            }
-
-                            // Get child name
-                            const { data: childData, error: childError } = await supabase
-                              .from('children')
-                              .select('name')
-                              .eq('id', childId)
-                              .maybeSingle();
-                            
-                            if (childError || !childData) {
-                              toast({
-                                title: 'Error',
-                                description: 'Could not load child information',
-                                variant: 'destructive',
-                              });
-                              return;
-                            }
-
-                            setSelectedChildName(childData.name);
-                            
-                            // V1: No program questions step - prerequisites complete
-                            toast({
-                              title: 'Prerequisites Complete',
-                              description: 'Program questions will be handled automatically during registration.',
-                            });
-                          }}
-                        />
+                      />
                       
                       {/* Discovery Coverage Details */}
                       {discoveryMetadata && (
