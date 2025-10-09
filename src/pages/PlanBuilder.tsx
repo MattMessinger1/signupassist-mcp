@@ -260,13 +260,14 @@ const PlanBuilder = () => {
     if (allRequirementsMet && !isDiscovering && step4Ref.current && !shouldHighlightStep4) {
       // Small delay to ensure DOM is ready
       const timer = setTimeout(() => {
-        step4Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        setShouldHighlightStep4(true);
-        
-        // Remove highlight after 3 seconds
-        const highlightTimer = setTimeout(() => setShouldHighlightStep4(false), 3000);
-        return () => clearTimeout(highlightTimer);
-      }, 300);
+        if (step4Ref.current) {
+          step4Ref.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          setShouldHighlightStep4(true);
+          
+          // Remove highlight after 3 seconds
+          setTimeout(() => setShouldHighlightStep4(false), 3000);
+        }
+      }, 500);
       
       return () => clearTimeout(timer);
     }
@@ -1563,7 +1564,7 @@ const PlanBuilder = () => {
                   ) : (
                     <div className="space-y-4">
                       <PrerequisitesPanel
-                        key={`prereqs-${prerequisiteChecks.length}-${Date.now()}`}
+                        key={`prereqs-${prerequisiteChecks.length}`}
                         checks={prerequisiteChecks}
                         metadata={discoveryMetadata}
                         onRecheck={handleCheckPrerequisitesOnly}
@@ -1588,7 +1589,7 @@ const PlanBuilder = () => {
             {allRequirementsMet && !isDiscovering && (
               <div ref={step4Ref}>
                 {shouldHighlightStep4 && (
-                  <Alert className="mb-4 border-primary bg-primary/5 animate-pulse">
+                  <Alert className="mb-4 border-primary bg-primary/5">
                     <AlertDescription className="text-primary font-medium text-center">
                       👇 Continue below to set registration time and complete your plan
                     </AlertDescription>
