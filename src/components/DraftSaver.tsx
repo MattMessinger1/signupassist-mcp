@@ -10,9 +10,10 @@ interface DraftSaverProps<T> {
   watch: UseFormWatch<T>;
   setValue: UseFormSetValue<T>;
   draftKey: string;
+  triggerReload?: number;
 }
 
-export function DraftSaver<T>({ formData, watch, setValue, draftKey }: DraftSaverProps<T>) {
+export function DraftSaver<T>({ formData, watch, setValue, draftKey, triggerReload }: DraftSaverProps<T>) {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const { toast } = useToast();
@@ -36,10 +37,10 @@ export function DraftSaver<T>({ formData, watch, setValue, draftKey }: DraftSave
     return () => clearInterval(interval);
   }, [hasUnsavedChanges, formData]);
 
-  // Load draft on mount
+  // Load draft on mount AND when triggerReload changes
   useEffect(() => {
     loadDraft();
-  }, []);
+  }, [triggerReload]);
 
   const saveDraft = () => {
     try {
@@ -60,6 +61,13 @@ export function DraftSaver<T>({ formData, watch, setValue, draftKey }: DraftSave
       if (savedDraft) {
         const { data, timestamp } = JSON.parse(savedDraft);
         const savedDate = new Date(timestamp);
+        
+        // Debug logging to verify reload
+        console.log('[DraftSaver] Loading draft:', {
+          maxAmountCents: data.maxAmountCents,
+          contactPhone: data.contactPhone,
+          savedDate
+        });
         
         // Only load if saved within last 7 days
         const weekAgo = new Date();

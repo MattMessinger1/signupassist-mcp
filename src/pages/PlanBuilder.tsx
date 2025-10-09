@@ -171,6 +171,7 @@ const PlanBuilder = () => {
     message?: string;
   }>({ inProgress: false, stage: 'idle' });
   const [discoveryMetadata, setDiscoveryMetadata] = useState<any>(null);
+  const [reloadTrigger, setReloadTrigger] = useState<number>(0);
   
   // Refs for auto-scroll functionality - one for each step
   const step1Ref = useRef<HTMLDivElement>(null);
@@ -223,13 +224,13 @@ const PlanBuilder = () => {
     
     setCheckingPayment(true);
     try {
-      const { data, error } = await supabase
-        .from('user_billing')
-        .select('default_payment_method_id')
-        .eq('user_id', user.id)
-        .single();
+    const { data, error } = await supabase
+      .from('user_billing')
+      .select('default_payment_method_id')
+      .eq('user_id', user.id)
+      .maybeSingle();
 
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
+      if (error) {
         throw error;
       }
 
@@ -1652,6 +1653,11 @@ const PlanBuilder = () => {
                         checks={prerequisiteChecks}
                         metadata={discoveryMetadata}
                         onRecheck={handleCheckPrerequisitesOnly}
+                        onContinue={() => {
+                          step4Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                          setShouldHighlightStep(4);
+                          setTimeout(() => setShouldHighlightStep(null), 3000);
+                        }}
                       />
                       
                       {/* Discovery Coverage Details */}
@@ -1767,13 +1773,13 @@ const PlanBuilder = () => {
                             <div className="relative">
                               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
                               <Input
-                                type="number"
-                                placeholder="175.00"
+                                inputMode="decimal"
+                                placeholder="$0.00"
                                 className="pl-7"
-                                value={field.value ? (field.value / 100).toFixed(2) : ''}
+                                value={Number.isFinite(field.value / 100) ? String(field.value / 100) : ''}
                                 onChange={(e) => {
-                                  const dollars = parseFloat(e.target.value) || 0;
-                                  field.onChange(Math.round(dollars * 100));
+                                  const val = Number(e.target.value.replace(/[^\d.]/g, '')) || 0;
+                                  field.onChange(Math.round(val * 100));
                                 }}
                               />
                             </div>
@@ -1878,10 +1884,14 @@ const PlanBuilder = () => {
                   </CardHeader>
                   <CardContent>
                     <SavePaymentMethod 
-                      onPaymentMethodSaved={() => {
-                        console.log('[PlanBuilder] Payment method saved, triggering verification...');
-                        // Trigger immediate verification without optimistic update
-                        checkPaymentMethod();
+                      onPaymentMethodSaved={async () => {
+                        console.log('[PlanBuilder] Payment method saved, unlocking UI...');
+                        // Optimistic unlock - UI updates immediately
+                        setHasPaymentMethod(true);
+                        // Verify with DB for page refreshes
+                        await checkPaymentMethod();
+                        // Force DraftSaver to reload persisted values
+                        setReloadTrigger(Date.now());
                       }}
                       hasPaymentMethod={hasPaymentMethod}
                     />
@@ -1980,6 +1990,7 @@ const PlanBuilder = () => {
           watch={form.watch}
           setValue={form.setValue}
           draftKey="plan-builder"
+          triggerReload={reloadTrigger}
         />
 
         {/* Consent Modal */}
