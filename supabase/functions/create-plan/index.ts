@@ -12,6 +12,8 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const reqId = crypto.randomUUID();
+
   try {
     // Create Supabase client for auth
     const supabase = createClient(
@@ -39,6 +41,10 @@ Deno.serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
+    // Parse and log incoming body BEFORE destructuring
+    const body = await req.json();
+    console.log('[create-plan]', reqId, 'incoming body:', JSON.stringify(body, null, 2));
+
     const { 
       program_ref, 
       child_id, 
@@ -50,11 +56,18 @@ Deno.serve(async (req) => {
       service_fee_cents,
       notes,
       reminders
-    } = await req.json();
+    } = body;
     
-    // Validate required fields
-    if (!program_ref || !child_id || !opens_at || !mandate_id) {
-      throw new Error('Missing required fields: program_ref, child_id, opens_at, mandate_id');
+    // Validate required fields with detailed logging
+    const missing: string[] = [];
+    if (!program_ref) missing.push('program_ref');
+    if (!child_id) missing.push('child_id');
+    if (!opens_at) missing.push('opens_at');
+    if (!mandate_id) missing.push('mandate_id');
+    
+    if (missing.length > 0) {
+      console.error('[create-plan]', reqId, 'missing fields:', missing, 'body was:', body);
+      throw new Error(`Missing required fields: ${missing.join(', ')}`);
     }
 
     // Validate opens_at is in the future
@@ -146,10 +159,11 @@ Deno.serve(async (req) => {
     );
 
   } catch (error) {
-    console.error('Error in create-plan function:', error);
+    console.error('[create-plan]', reqId, 'error:', error);
     return new Response(
       JSON.stringify({ 
-        error: `Plan Creation Failed: ${error instanceof Error ? error.message : 'Unable to create registration plan'}`
+        error: `Plan Creation Failed: ${error instanceof Error ? error.message : 'Unable to create registration plan'}`,
+        reqId
       }),
       {
         status: 400,
