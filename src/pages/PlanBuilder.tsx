@@ -263,6 +263,44 @@ const PlanBuilder = () => {
     }
   }, [user]);
 
+  const handlePaymentMethodSaved = useCallback(async () => {
+    console.log('[PlanBuilder] 💳 ========== PAYMENT METHOD SAVED ==========');
+    console.log('[PlanBuilder] 📊 State BEFORE reload:', {
+      opensAt: form.getValues('opensAt'),
+      opensAtType: typeof form.getValues('opensAt'),
+      maxAmountCents: form.getValues('maxAmountCents'),
+      contactPhone: form.getValues('contactPhone'),
+      prereqComplete: form.getValues('prereqComplete'),
+      hasPaymentMethod,
+    });
+    
+    // Optimistic unlock - UI updates immediately
+    setHasPaymentMethod(true);
+    
+    // Verify with DB for page refreshes
+    await checkPaymentMethod();
+    
+    console.log('[PlanBuilder] 🔄 Triggering DraftSaver reload...');
+    const reloadTimestamp = Date.now();
+    setReloadTrigger(reloadTimestamp);
+    
+    console.log('[PlanBuilder] ⏰ Reload triggered with timestamp:', reloadTimestamp);
+    
+    // Wait a tick for reload to complete
+    setTimeout(() => {
+      console.log('[PlanBuilder] 📊 State AFTER reload:', {
+        opensAt: form.getValues('opensAt'),
+        opensAtType: typeof form.getValues('opensAt'),
+        opensAtIsDate: form.getValues('opensAt') instanceof Date,
+        maxAmountCents: form.getValues('maxAmountCents'),
+        contactPhone: form.getValues('contactPhone'),
+        prereqComplete: form.getValues('prereqComplete'),
+        hasPaymentMethod,
+      });
+      console.log('[PlanBuilder] ========================================');
+    }, 100);
+  }, [checkPaymentMethod, form, hasPaymentMethod, setReloadTrigger]);
+
   // Redirect to auth if not authenticated or session invalid
   useEffect(() => {
     // Add a small delay to prevent redirects during session refresh
@@ -1945,43 +1983,7 @@ const PlanBuilder = () => {
                   </CardHeader>
                   <CardContent>
                     <SavePaymentMethod 
-                      onPaymentMethodSaved={async () => {
-                        console.log('[PlanBuilder] 💳 ========== PAYMENT METHOD SAVED ==========');
-                        console.log('[PlanBuilder] 📊 State BEFORE reload:', {
-                          opensAt: form.getValues('opensAt'),
-                          opensAtType: typeof form.getValues('opensAt'),
-                          maxAmountCents: form.getValues('maxAmountCents'),
-                          contactPhone: form.getValues('contactPhone'),
-                          prereqComplete: form.getValues('prereqComplete'),
-                          hasPaymentMethod,
-                        });
-                        
-                        // Optimistic unlock - UI updates immediately
-                        setHasPaymentMethod(true);
-                        
-                        // Verify with DB for page refreshes
-                        await checkPaymentMethod();
-                        
-                        console.log('[PlanBuilder] 🔄 Triggering DraftSaver reload...');
-                        const reloadTimestamp = Date.now();
-                        setReloadTrigger(reloadTimestamp);
-                        
-                        console.log('[PlanBuilder] ⏰ Reload triggered with timestamp:', reloadTimestamp);
-                        
-                        // Wait a tick for reload to complete
-                        setTimeout(() => {
-                          console.log('[PlanBuilder] 📊 State AFTER reload:', {
-                            opensAt: form.getValues('opensAt'),
-                            opensAtType: typeof form.getValues('opensAt'),
-                            opensAtIsDate: form.getValues('opensAt') instanceof Date,
-                            maxAmountCents: form.getValues('maxAmountCents'),
-                            contactPhone: form.getValues('contactPhone'),
-                            prereqComplete: form.getValues('prereqComplete'),
-                            hasPaymentMethod,
-                          });
-                          console.log('[PlanBuilder] ========================================');
-                        }, 100);
-                      }}
+                      onPaymentMethodSaved={handlePaymentMethodSaved}
                       hasPaymentMethod={hasPaymentMethod}
                     />
                   </CardContent>
