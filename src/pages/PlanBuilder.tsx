@@ -271,7 +271,6 @@ const PlanBuilder = () => {
       maxAmountCents: form.getValues('maxAmountCents'),
       contactPhone: form.getValues('contactPhone'),
       prereqComplete: form.getValues('prereqComplete'),
-      hasPaymentMethod,
     });
     
     // Optimistic unlock - UI updates immediately
@@ -295,11 +294,11 @@ const PlanBuilder = () => {
         maxAmountCents: form.getValues('maxAmountCents'),
         contactPhone: form.getValues('contactPhone'),
         prereqComplete: form.getValues('prereqComplete'),
-        hasPaymentMethod,
       });
       console.log('[PlanBuilder] ========================================');
     }, 100);
-  }, [checkPaymentMethod, form, hasPaymentMethod, setReloadTrigger]);
+  }, [checkPaymentMethod, form]);
+
 
   // Redirect to auth if not authenticated or session invalid
   useEffect(() => {
