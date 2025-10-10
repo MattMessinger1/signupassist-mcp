@@ -19,3 +19,6 @@ export const supabase = createClient<Database>(
     },
   } as any
 );
+
+// 👇 Critical: route Edge Function calls to Supabase, not the app origin
+(supabase as any).functions.url = `${SUPABASE_URL}/functions/v1`;
