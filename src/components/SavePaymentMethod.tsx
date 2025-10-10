@@ -57,38 +57,33 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
 
       console.log('[SavePaymentMethod] Payment method created:', paymentMethod.id);
 
-      // Get or create Stripe customer (RLS will filter to authenticated user automatically)
-      const { data: billingData, error: billingError } = await supabase
+      // Get current user for user_id
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("User not authenticated");
+
+      // Get or create Stripe customer
+      const { data: billingData } = await supabase
         .from('user_billing')
         .select('stripe_customer_id')
         .limit(1)
         .maybeSingle();
 
-      console.log('[SavePaymentMethod] Retrieved customer ID:', billingData?.stripe_customer_id || 'none - will create');
-
       let customerId = billingData?.stripe_customer_id;
-
-      // If no customer exists, create one via our new edge function
+      
       if (!customerId) {
-        console.log('[SavePaymentMethod] No customer found, creating one...');
+        console.log('[SavePaymentMethod] Creating new Stripe customer...');
         const { data: customerData, error: customerError } = await supabase.functions.invoke('create-stripe-customer');
-        
-        if (customerError) {
-          throw new Error(`Failed to create customer: ${customerError.message}`);
-        }
-        
+        if (customerError) throw new Error(`Failed to create customer: ${customerError.message}`);
         customerId = customerData?.customer_id;
-        if (!customerId) {
-          throw new Error("Failed to get customer ID from customer creation");
-        }
+        if (!customerId) throw new Error("Customer creation returned no ID");
       }
 
       console.log('[SavePaymentMethod] Using customer ID:', customerId);
 
-      // Save payment method via our edge function
-      console.log('[SavePaymentMethod] Calling save-payment-method edge function...');
+      // ✅ Fixed: include user_id in body
       const { data: saveData, error: saveError } = await supabase.functions.invoke('save-payment-method', {
         body: {
+          user_id: user.id,
           payment_method_id: paymentMethod.id,
           customer_id: customerId,
         },
@@ -119,7 +114,7 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
       console.log('[SavePaymentMethod] Callback completed');
 
     } catch (error) {
-      console.error('Error saving payment method:', error);
+      console.error('[SavePaymentMethod] ❌ Error saving payment method:', error);
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to save payment method",
