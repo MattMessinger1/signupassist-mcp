@@ -2100,6 +2100,7 @@ const PlanBuilder = () => {
                 programTitle={friendlyProgramTitle || form.watch('programRef')}
                 programRef={form.watch('programRef')}
                 credentialId={form.watch('credentialId')}
+                childId={form.watch('childId')}
                 childName={selectedChildName}
                 answers={form.watch('answers') || {}}
                 detectedPriceCents={detectedPriceCents}

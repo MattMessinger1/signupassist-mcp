@@ -20,7 +20,8 @@ interface Props {
   programTitle: string;
   programRef: string;
   credentialId: string;
-  childName: string;
+  childId: string;                   // Child database ID
+  childName: string;                 // Child name for display
   answers: Record<string, unknown>;
   detectedPriceCents: number | null;
   caps: Caps;
@@ -32,7 +33,7 @@ interface Props {
 }
 
 export default function MandateSummary({
-  orgRef, programTitle, programRef, credentialId, childName, answers,
+  orgRef, programTitle, programRef, credentialId, childId, childName, answers,
   detectedPriceCents, caps, openTimeISO, preferredSlot, onCreated,
   mandateConsents, onMandateConsentsChange
 }: Props) {
@@ -124,33 +125,12 @@ export default function MandateSummary({
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('No active session');
 
-      // 1) Create plan with full payload (store answers + caps + reminders in meta)
-      const { data: planRes, error: planErr } = await supabase.functions.invoke('create-plan', {
-        body: {
-          provider_slug: 'skiclubpro',
-          org: orgRef,
-          base_url: `https://${orgRef}.skiclubpro.team`,
-          program_ref: programRef,
-          program_title: programTitle,
-          child_name: childName,
-          open_time: openTimeISO,
-          preferred: preferredSlot,
-          credential_id: credentialId,
-          answers,
-          max_provider_charge_cents: caps.max_provider_charge_cents,
-          service_fee_cents: caps.service_fee_cents,
-          notes,
-          reminders
-        }
-      });
-      if (planErr) throw planErr;
-      const planId = planRes?.plan?.id;
-      if (!planId) throw new Error('create-plan did not return plan.id');
-
-      // 2) Issue one mandate with scopes + embed caps in details if supported
+      // 1) Create mandate FIRST
       const { data: mandRes, error: mandErr } = await supabase.functions.invoke('mandate-issue', {
         body: {
-          plan_id: planId,
+          provider: 'skiclubpro',
+          program_ref: programRef,
+          child_id: childId,
           scopes: scopeList.map(s => s.key),
           caps: {
             max_provider_charge_cents: caps.max_provider_charge_cents,
@@ -161,6 +141,25 @@ export default function MandateSummary({
       if (mandErr) throw mandErr;
       const mandateId = mandRes?.mandate?.id || mandRes?.mandate_id;
       if (!mandateId) throw new Error('mandate-issue did not return mandate_id');
+
+      // 2) Create plan with mandate_id and correct field names
+      const { data: planRes, error: planErr } = await supabase.functions.invoke('create-plan', {
+        body: {
+          program_ref: programRef,
+          child_id: childId,
+          opens_at: openTimeISO,
+          mandate_id: mandateId,
+          provider: 'skiclubpro',
+          answers,
+          max_provider_charge_cents: caps.max_provider_charge_cents,
+          service_fee_cents: caps.service_fee_cents,
+          notes,
+          reminders
+        }
+      });
+      if (planErr) throw planErr;
+      const planId = planRes?.plan?.id || planRes?.plan_id;
+      if (!planId) throw new Error('create-plan did not return plan_id');
 
       toast({ title: 'Plan created', description: "Mandate signed. We'll handle registration at the right time." });
       onCreated(planId, mandateId);
