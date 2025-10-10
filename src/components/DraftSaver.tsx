@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { UseFormWatch, UseFormSetValue } from 'react-hook-form';
 import { Save, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,14 @@ export function DraftSaver<T>({ formData, watch, setValue, draftKey, triggerRelo
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const { toast } = useToast();
+  
+  // Use ref to capture latest formData without triggering interval recreation
+  const formDataRef = useRef(formData);
+  
+  // Update ref whenever formData changes
+  useEffect(() => {
+    formDataRef.current = formData;
+  }, [formData]);
 
   // Watch for form changes
   useEffect(() => {
@@ -35,7 +43,7 @@ export function DraftSaver<T>({ formData, watch, setValue, draftKey, triggerRelo
     }, 30000);
 
     return () => clearInterval(interval);
-  }, [hasUnsavedChanges, formData]);
+  }, [hasUnsavedChanges]);
 
   // Load draft on mount AND when triggerReload changes
   useEffect(() => {
@@ -44,17 +52,18 @@ export function DraftSaver<T>({ formData, watch, setValue, draftKey, triggerRelo
 
   const saveDraft = () => {
     try {
+      const currentFormData = formDataRef.current;
       const draftData = {
-        data: formData,
+        data: currentFormData,
         timestamp: new Date().toISOString(),
       };
       
       console.log('[DraftSaver] 💾 SAVING draft:', {
-        opensAt: (formData as any).opensAt,
-        opensAtType: typeof (formData as any).opensAt,
-        maxAmountCents: (formData as any).maxAmountCents,
-        contactPhone: (formData as any).contactPhone,
-        prereqComplete: (formData as any).prereqComplete,
+        opensAt: (currentFormData as any).opensAt,
+        opensAtType: typeof (currentFormData as any).opensAt,
+        maxAmountCents: (currentFormData as any).maxAmountCents,
+        contactPhone: (currentFormData as any).contactPhone,
+        prereqComplete: (currentFormData as any).prereqComplete,
       });
       
       localStorage.setItem(`plan_draft_${draftKey}`, JSON.stringify(draftData));
