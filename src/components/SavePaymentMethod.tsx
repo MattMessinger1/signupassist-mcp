@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -19,6 +19,14 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
   const elements = useElements();
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    console.log('[SavePaymentMethod] Component mounted', {
+      hasStripe: !!stripe,
+      hasElements: !!elements,
+      hasPaymentMethod
+    });
+  }, [stripe, elements, hasPaymentMethod]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();

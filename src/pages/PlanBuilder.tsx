@@ -1893,7 +1893,22 @@ const PlanBuilder = () => {
 
             {/* Step 7: Payment Method - Always visible, locked if contact info not provided */}
             <div ref={step7Ref}>
-              {!opensAt || maxAmountCents <= 0 || !contactPhone || showMandateSummary ? (
+              {(() => {
+                const unlockConditions = {
+                  opensAt,
+                  opensAtTruthy: !!opensAt,
+                  opensAtType: typeof opensAt,
+                  opensAtValue: opensAt?.toString(),
+                  maxAmountCents,
+                  maxAmountPositive: maxAmountCents > 0,
+                  contactPhone,
+                  contactPhoneTruthy: !!contactPhone,
+                  showMandateSummary,
+                  shouldShowLocked: !opensAt || maxAmountCents <= 0 || !contactPhone || showMandateSummary
+                };
+                console.log('[Step7 Payment Method] Unlock conditions:', unlockConditions);
+                return unlockConditions.shouldShowLocked;
+              })() ? (
                 <LockedStepPreview
                   stepNumber={7}
                   title="Payment Method"
