@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -54,7 +54,7 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
     );
   }
 
-  const handleSubmit = async (event: React.FormEvent) => {
+  const handleSubmit = useCallback(async (event: React.FormEvent) => {
     event.preventDefault();
     
     console.log('[SavePaymentMethod] 🖱️ SUBMIT BUTTON CLICKED', {
@@ -126,7 +126,6 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
         customer_id: customerId,
       });
 
-      // ✅ Fixed: include user_id in body
       const { data: saveData, error: saveError } = await supabase.functions.invoke('save-payment-method', {
         body: {
           user_id: user.id,
@@ -169,7 +168,7 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [stripe, elements, toast, onPaymentMethodSaved]);
 
   if (hasPaymentMethod) {
     return (
