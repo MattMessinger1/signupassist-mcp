@@ -143,19 +143,22 @@ export default function MandateSummary({
       if (!mandateId) throw new Error('mandate-issue did not return mandate_id');
 
       // 2) Create plan with mandate_id and correct field names
+      const planBody = {
+        program_ref: programRef,
+        child_id: childId,
+        opens_at: openTimeISO,
+        mandate_id: mandateId,
+        provider: 'skiclubpro',
+        answers,
+        max_provider_charge_cents: caps.max_provider_charge_cents,
+        service_fee_cents: caps.service_fee_cents,
+        notes,
+        reminders
+      };
+      console.log('[MandateSummary] Calling create-plan with:', planBody);
+      
       const { data: planRes, error: planErr } = await supabase.functions.invoke('create-plan', {
-        body: {
-          program_ref: programRef,
-          child_id: childId,
-          opens_at: openTimeISO,
-          mandate_id: mandateId,
-          provider: 'skiclubpro',
-          answers,
-          max_provider_charge_cents: caps.max_provider_charge_cents,
-          service_fee_cents: caps.service_fee_cents,
-          notes,
-          reminders
-        }
+        body: planBody
       });
       if (planErr) throw planErr;
       const planId = planRes?.plan?.id || planRes?.plan_id;
