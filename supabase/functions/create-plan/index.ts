@@ -15,6 +15,10 @@ Deno.serve(async (req) => {
   const reqId = crypto.randomUUID();
 
   try {
+    // Parse and log incoming body FIRST (before auth to see what we received)
+    const body = await req.json();
+    console.log('[create-plan]', reqId, 'incoming body:', JSON.stringify(body, null, 2));
+
     // Create Supabase client for auth
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
@@ -40,10 +44,6 @@ Deno.serve(async (req) => {
     if (authError || !user) {
       throw new Error('Unauthorized');
     }
-
-    // Parse and log incoming body BEFORE destructuring
-    const body = await req.json();
-    console.log('[create-plan]', reqId, 'incoming body:', JSON.stringify(body, null, 2));
 
     const { 
       program_ref, 
