@@ -267,24 +267,40 @@ const PlanBuilder = () => {
 
   // Compute if "Sign & Create Plan" button should be enabled (inside MandateSummary)
   const canCreatePlan = useMemo(() => {
+    const childNameVal = form.watch('childId');
+    const programRefVal = form.watch('programRef');
+    const credentialIdVal = form.watch('credentialId');
+    
     const ok =
       !!hasPaymentMethod &&
       !!opensAtTruthy &&
       (Number(maxAmountCentsVal) || 0) > 0 &&
       !!contactPhoneValid &&
-      !!allMandateChecked;
+      !!allMandateChecked &&
+      !!childNameVal &&
+      !!programRefVal &&
+      !!credentialIdVal &&
+      !!opensAtVal;
 
     return ok;
-  }, [hasPaymentMethod, opensAtTruthy, maxAmountCentsVal, contactPhoneValid, allMandateChecked]);
+  }, [hasPaymentMethod, opensAtTruthy, maxAmountCentsVal, contactPhoneValid, allMandateChecked, form]);
 
   // Debug logging for "Sign & Create Plan" button
   useEffect(() => {
+    const childNameVal = form.watch('childId');
+    const programRefVal = form.watch('programRef');
+    const credentialIdVal = form.watch('credentialId');
+    
     const reasons: string[] = [];
     if (!hasPaymentMethod) reasons.push('no payment method');
     if (!opensAtTruthy) reasons.push('opensAt invalid');
     if (!maxAmountCentsVal || Number(maxAmountCentsVal) <= 0) reasons.push('maxAmountCents <= 0');
     if (!contactPhoneValid) reasons.push('invalid phone');
     if (!allMandateChecked) reasons.push('mandate checkboxes not all checked');
+    if (!childNameVal) reasons.push('childId missing');
+    if (!programRefVal) reasons.push('programRef missing');
+    if (!credentialIdVal) reasons.push('credentialId missing');
+    if (!opensAtVal) reasons.push('opensAtVal missing');
 
     console.log('[MandateButton] gate', {
       hasPaymentMethod,
@@ -292,10 +308,14 @@ const PlanBuilder = () => {
       maxAmountCents: maxAmountCentsVal,
       contactPhoneValid,
       allMandateChecked,
+      childId: childNameVal,
+      programRef: programRefVal,
+      credentialId: credentialIdVal,
+      opensAtVal: opensAtVal,
       enabled: reasons.length === 0,
       reasons,
     });
-  }, [hasPaymentMethod, opensAtTruthy, maxAmountCentsVal, contactPhoneValid, allMandateChecked]);
+  }, [hasPaymentMethod, opensAtTruthy, maxAmountCentsVal, contactPhoneValid, allMandateChecked, form, opensAtVal]);
 
   // Debug logging for step unlock state
   console.log('[PlanBuilder] Step unlock state:', {
