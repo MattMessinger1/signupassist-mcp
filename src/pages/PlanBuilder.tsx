@@ -360,21 +360,21 @@ const PlanBuilder = () => {
     fetchChildName();
   }, [prerequisiteStatus, selectedChildName]);
 
-  // Auto-scroll to next unlocked step
-  const scrollToStep = useCallback((stepNumber: number, ref: React.RefObject<HTMLDivElement>) => {
-    if (ref.current && shouldHighlightStep !== stepNumber) {
-      setTimeout(() => {
-        if (ref.current) {
-          ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          setShouldHighlightStep(stepNumber);
-          
-          setTimeout(() => {
-            setShouldHighlightStep(null);
-          }, 3000);
-        }
-      }, 300);
-    }
-  }, [shouldHighlightStep]);
+  // DISABLED: Auto-scroll interferes with form submission
+  // const scrollToStep = useCallback((stepNumber: number, ref: React.RefObject<HTMLDivElement>) => {
+  //   if (ref.current && shouldHighlightStep !== stepNumber) {
+  //     setTimeout(() => {
+  //       if (ref.current) {
+  //         ref.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  //         setShouldHighlightStep(stepNumber);
+  //         
+  //         setTimeout(() => {
+  //           setShouldHighlightStep(null);
+  //         }, 3000);
+  //       }
+  //     }, 300);
+  //   }
+  // }, [shouldHighlightStep]);
 
   // Auto-scroll when steps unlock - DISABLED to prevent page jumpiness
   // TODO: Re-enable with one-time scroll logic if desired
@@ -1555,7 +1555,6 @@ const PlanBuilder = () => {
                   title="Program & Child"
                   description="Choose the program and child to register"
                   prerequisite="selecting login credentials"
-                  onScrollToPrerequisite={() => step1Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                 />
               ) : (
                 <Card className={shouldHighlightStep === 2 ? "border-primary shadow-lg transition-all" : ""}>
@@ -1626,7 +1625,6 @@ const PlanBuilder = () => {
                   description="Verify your account status and membership"
                   prerequisite="selecting a program and child"
                   icon={<Shield className="h-4 w-4" />}
-                  onScrollToPrerequisite={() => step2Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                 />
               ) : (
                 <Card className={shouldHighlightStep === 3 ? "border-primary shadow-lg transition-all" : ""}>
@@ -1763,7 +1761,6 @@ const PlanBuilder = () => {
                     title="Registration Timing"
                     description="When should automated registration begin?"
                     prerequisite="completing account prerequisites"
-                    onScrollToPrerequisite={() => step3Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                   />
                 ) : (
                   <>
@@ -1823,7 +1820,6 @@ const PlanBuilder = () => {
                   description="Set maximum charge authorization"
                   prerequisite="setting registration time"
                   icon={<DollarSign className="h-4 w-4" />}
-                  onScrollToPrerequisite={() => step4Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                 />
               ) : (
                 <Card className={shouldHighlightStep === 5 ? "border-primary shadow-lg transition-all" : ""}>
@@ -1895,7 +1891,6 @@ const PlanBuilder = () => {
                   title="Contact Information"
                   description="Mobile number for notifications"
                   prerequisite="setting payment limit"
-                  onScrollToPrerequisite={() => step5Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                 />
               ) : (
                 <Card className={shouldHighlightStep === 6 ? "border-primary shadow-lg transition-all" : ""}>
@@ -1964,7 +1959,6 @@ const PlanBuilder = () => {
                   description="Secure payment authorization for the $20 success fee"
                   prerequisite="providing contact information"
                   icon={<DollarSign className="h-4 w-4" />}
-                  onScrollToPrerequisite={() => step6Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                 />
               ) : (
                 <div key="payment-method-step">

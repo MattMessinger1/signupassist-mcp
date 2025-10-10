@@ -153,21 +153,21 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
       console.log('[SavePaymentMethod] Callback completed');
       
       // Restore scroll position on success
-      const scrollY = document.body.style.top;
+      const savedScrollY = document.body.style.top;
       document.body.style.position = '';
       document.body.style.top = '';
       document.body.style.overflow = '';
       document.body.style.width = '';
-      window.scrollTo(0, parseInt(scrollY || '0') * -1);
+      window.scrollTo(0, parseInt(savedScrollY.replace('-', '').replace('px', '') || '0'));
 
     } catch (error) {
       // Restore scroll position on error
-      const scrollY = document.body.style.top;
+      const savedScrollY = document.body.style.top;
       document.body.style.position = '';
       document.body.style.top = '';
       document.body.style.overflow = '';
       document.body.style.width = '';
-      window.scrollTo(0, parseInt(scrollY || '0') * -1);
+      window.scrollTo(0, parseInt(savedScrollY.replace('-', '').replace('px', '') || '0'));
       console.error('[SavePaymentMethod] ❌ Error saving payment method:', error);
       toast({
         title: "Error",
