@@ -1961,32 +1961,12 @@ const PlanBuilder = () => {
                   onScrollToPrerequisite={() => step6Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                 />
               ) : (
-                <Card 
-                  key="payment-method-step"
-                  className={shouldHighlightStep === 7 ? "border-primary shadow-lg transition-all" : ""}
-                >
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">Step 7</Badge>
-                        <CardTitle className="flex items-center gap-2">
-                          <DollarSign className="h-5 w-5" />
-                          Payment Method
-                        </CardTitle>
-                      </div>
-                      {hasPaymentMethod && <CheckCircle className="h-5 w-5 text-green-600" />}
-                    </div>
-                    <CardDescription>
-                      Set up payment for the $20 success fee
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <SavePaymentMethod 
-                      onPaymentMethodSaved={handlePaymentMethodSaved}
-                      hasPaymentMethod={hasPaymentMethod}
-                    />
-                  </CardContent>
-                </Card>
+                <div key="payment-method-step">
+                  <SavePaymentMethod 
+                    onPaymentMethodSaved={handlePaymentMethodSaved}
+                    hasPaymentMethod={hasPaymentMethod}
+                  />
+                </div>
               )}
             </div>
 
