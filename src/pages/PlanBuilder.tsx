@@ -246,6 +246,14 @@ const PlanBuilder = () => {
   const contactPhoneValid = isValidPhone(contactPhoneVal);
   const allMandateChecked = Array.isArray(mandateFlags) && mandateFlags.length === 6 && mandateFlags.every(Boolean);
 
+  // Values Step 8 needs (normalized) - defined after opensAtVal to avoid redeclaration
+  const normalizedChildId = selectedChildId || '';
+  const normalizedProgramRef = (form.watch('programRef') as string) || '';
+  const normalizedCredentialId = (form.watch('credentialId') as string) || '';
+  const normalizedOpenTimeISO = opensAtTruthy && opensAtVal instanceof Date
+    ? opensAtVal.toISOString()
+    : '';
+
   // Compute if "Create Mandate" button should show (independent of prerequisites)
   const canShowMandateButton = useMemo(() => {
     const isValid = 
@@ -2097,10 +2105,10 @@ const PlanBuilder = () => {
             {canShowMandateButton && showMandateSummary && !showConfirmation && (
               <MandateSummary
                 orgRef="blackhawk-ski-club"
-                programTitle={friendlyProgramTitle || form.watch('programRef')}
-                programRef={form.watch('programRef')}
-                credentialId={form.watch('credentialId')}
-                childId={form.watch('childId')}
+                programTitle={friendlyProgramTitle || normalizedProgramRef}
+                programRef={normalizedProgramRef}
+                credentialId={normalizedCredentialId}
+                childId={normalizedChildId}
                 childName={selectedChildName}
                 answers={form.watch('answers') || {}}
                 detectedPriceCents={detectedPriceCents}
@@ -2108,7 +2116,7 @@ const PlanBuilder = () => {
                   max_provider_charge_cents: form.watch('maxAmountCents'),
                   service_fee_cents: caps.service_fee_cents
                 }}
-                openTimeISO={opensAt instanceof Date ? opensAt.toISOString() : new Date(opensAt).toISOString()}
+                openTimeISO={normalizedOpenTimeISO}
                 preferredSlot={selectedBranch || 'Standard Registration'}
                 onCreated={(planId, mandateId) => {
                   setCreatedPlan({ plan_id: planId, mandate_id: mandateId });
