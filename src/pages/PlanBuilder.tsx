@@ -63,6 +63,14 @@ const planBuilderSchema = z.object({
   contactPhone: z.string().min(10, 'Please enter a valid mobile number'),
   answers: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
   prereqComplete: z.boolean().optional(),
+  mandate: z.object({
+    login: z.boolean().optional(),
+    fill: z.boolean().optional(),
+    questions: z.boolean().optional(),
+    payUpTo: z.boolean().optional(),
+    pause: z.boolean().optional(),
+    audit: z.boolean().optional(),
+  }).optional(),
 });
 
 type PlanBuilderForm = z.infer<typeof planBuilderSchema>;
@@ -126,6 +134,7 @@ const PlanBuilder = () => {
       maxAmountCents: 0,
       contactPhone: '',
       prereqComplete: false,
+      mandate: { login: false, fill: false, questions: false, payUpTo: false, pause: false, audit: false },
     },
   });
 
@@ -204,6 +213,13 @@ const PlanBuilder = () => {
   const step7Ref = useRef<HTMLDivElement>(null);
   const [shouldHighlightStep, setShouldHighlightStep] = useState<number | null>(null);
 
+  // Phone validation utility
+  const isValidPhone = useCallback((value?: string) => {
+    if (!value) return false;
+    const digits = value.replace(/\D/g, '');
+    return digits.length >= 10 && digits.length <= 15;
+  }, []);
+
   // Safe derived variables with null checks and defaults
   // V1: No program discovery, so no fieldsToShow
   const selectedChildId = form.watch('childId') ?? '';
@@ -211,6 +227,75 @@ const PlanBuilder = () => {
   const maxAmountCents = form.watch('maxAmountCents') ?? 0;
   const contactPhone = form.watch('contactPhone') ?? '';
   // prereqComplete is watched earlier (line 153) for allRequirementsMet reactivity
+
+  // Watch mandate consent checkboxes
+  const mandateFlags = form.watch([
+    'mandate.login',
+    'mandate.fill',
+    'mandate.questions',
+    'mandate.payUpTo',
+    'mandate.pause',
+    'mandate.audit',
+  ] as const) as boolean[] | undefined;
+
+  const opensAtVal = form.watch('opensAt');
+  const maxAmountCentsVal = form.watch('maxAmountCents');
+  const contactPhoneVal = form.watch('contactPhone');
+
+  const opensAtTruthy = opensAtVal instanceof Date && !Number.isNaN(opensAtVal.getTime());
+  const contactPhoneValid = isValidPhone(contactPhoneVal);
+  const allMandateChecked = Array.isArray(mandateFlags) && mandateFlags.length === 6 && mandateFlags.every(Boolean);
+
+  // Compute if "Create Mandate" button should show (independent of prerequisites)
+  const canShowMandateButton = useMemo(() => {
+    const isValid = 
+      !!hasPaymentMethod &&
+      opensAtTruthy &&
+      (maxAmountCents || 0) > 0 &&
+      (contactPhone || '').length >= 10;
+    
+    console.log('[PlanBuilder] canShowMandateButton:', {
+      hasPaymentMethod,
+      opensAtValid: opensAtTruthy,
+      maxAmountCents,
+      contactPhoneLength: (contactPhone || '').length,
+      result: isValid
+    });
+    
+    return isValid;
+  }, [hasPaymentMethod, opensAtTruthy, maxAmountCents, contactPhone]);
+
+  // Compute if "Sign & Create Plan" button should be enabled (inside MandateSummary)
+  const canCreatePlan = useMemo(() => {
+    const ok =
+      !!hasPaymentMethod &&
+      !!opensAtTruthy &&
+      (Number(maxAmountCentsVal) || 0) > 0 &&
+      !!contactPhoneValid &&
+      !!allMandateChecked;
+
+    return ok;
+  }, [hasPaymentMethod, opensAtTruthy, maxAmountCentsVal, contactPhoneValid, allMandateChecked]);
+
+  // Debug logging for "Sign & Create Plan" button
+  useEffect(() => {
+    const reasons: string[] = [];
+    if (!hasPaymentMethod) reasons.push('no payment method');
+    if (!opensAtTruthy) reasons.push('opensAt invalid');
+    if (!maxAmountCentsVal || Number(maxAmountCentsVal) <= 0) reasons.push('maxAmountCents <= 0');
+    if (!contactPhoneValid) reasons.push('invalid phone');
+    if (!allMandateChecked) reasons.push('mandate checkboxes not all checked');
+
+    console.log('[MandateButton] gate', {
+      hasPaymentMethod,
+      opensAtTruthy,
+      maxAmountCents: maxAmountCentsVal,
+      contactPhoneValid,
+      allMandateChecked,
+      enabled: reasons.length === 0,
+      reasons,
+    });
+  }, [hasPaymentMethod, opensAtTruthy, maxAmountCentsVal, contactPhoneValid, allMandateChecked]);
 
   // Debug logging for step unlock state
   console.log('[PlanBuilder] Step unlock state:', {
@@ -1993,7 +2078,7 @@ const PlanBuilder = () => {
             </div>
 
             {/* Step 8: Mandate Summary & Finalize */}
-            {opensAt && hasPaymentMethod && allRequirementsMet && maxAmountCents > 0 && contactPhone && showMandateSummary && !showConfirmation && (
+            {canShowMandateButton && showMandateSummary && !showConfirmation && (
               <MandateSummary
                 orgRef="blackhawk-ski-club"
                 programTitle={friendlyProgramTitle || form.watch('programRef')}
@@ -2013,6 +2098,15 @@ const PlanBuilder = () => {
                   setShowConfirmation(true);
                   setShowMandateSummary(false);
                 }}
+                mandateConsents={mandateFlags}
+                onMandateConsentsChange={(newConsents) => {
+                  form.setValue('mandate.login', newConsents[0] || false);
+                  form.setValue('mandate.fill', newConsents[1] || false);
+                  form.setValue('mandate.questions', newConsents[2] || false);
+                  form.setValue('mandate.payUpTo', newConsents[3] || false);
+                  form.setValue('mandate.pause', newConsents[4] || false);
+                  form.setValue('mandate.audit', newConsents[5] || false);
+                }}
               />
             )}
 
@@ -2031,7 +2125,7 @@ const PlanBuilder = () => {
             {/* V1: Plan Preview removed - no discovered fields */}
 
             {/* Action Buttons */}
-            {!showMandateSummary && !showConfirmation && opensAt && hasPaymentMethod && maxAmountCents > 0 && contactPhone && (
+            {!showMandateSummary && !showConfirmation && canShowMandateButton && (
               <div className="flex gap-4">
                 <Button
                   type="button"
@@ -2044,7 +2138,7 @@ const PlanBuilder = () => {
                 
                 <Button
                   type="button"
-                  disabled={!allRequirementsMet}
+                  disabled={!canShowMandateButton}
                   className="flex-1"
                   onClick={() => setShowMandateSummary(true)}
                 >
