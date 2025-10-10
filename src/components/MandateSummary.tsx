@@ -9,6 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { invokeWithDiag } from '@/lib/invokeWithDiag';
 import { Loader2, Info, ChevronDown, ChevronUp } from 'lucide-react';
 import ReminderPreferences, { ReminderPrefs } from './ReminderPreferences';
 import { prompts, fmt } from '@/lib/prompts';
@@ -120,54 +121,93 @@ export default function MandateSummary({
       toast({ title: 'Missing consent or fields', description: 'Please review and accept the terms above.', variant: 'destructive' });
       return;
     }
+    
     setSubmitting(true);
     try {
+      // Basic guardrails
+      if (!programRef) throw new Error('programRef missing');
+      if (!childId) throw new Error('childId missing');
+      if (!openTimeISO) throw new Error('openTimeISO missing');
+      if (!credentialId) throw new Error('credentialId missing');
+
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('No active session');
 
       // 1) Create mandate FIRST
-      const { data: mandRes, error: mandErr } = await supabase.functions.invoke('mandate-issue', {
-        body: {
-          provider: 'skiclubpro',
-          program_ref: programRef,
-          child_id: childId,
-          scopes: scopeList.map(s => s.key),
-          caps: {
-            max_provider_charge_cents: caps.max_provider_charge_cents,
-            service_fee_cents: caps.service_fee_cents
-          }
+      const mandatePayload = {
+        provider: 'skiclubpro',
+        program_ref: programRef,
+        child_id: childId,
+        scopes: scopeList.map(s => s.key),
+        caps: {
+          max_provider_charge_cents: caps.max_provider_charge_cents,
+          service_fee_cents: caps.service_fee_cents
         }
-      });
-      if (mandErr) throw mandErr;
-      const mandateId = mandRes?.mandate?.id || mandRes?.mandate_id;
-      if (!mandateId) throw new Error('mandate-issue did not return mandate_id');
+      };
 
-      // 2) Create plan with mandate_id and correct field names
-      const planBody = {
+      console.log('[MandateSummary] mandate-issue payload:', mandatePayload);
+      const mandResult = await invokeWithDiag('mandate-issue', mandatePayload);
+      
+      if (!mandResult.ok) {
+        toast({
+          title: 'Could not create mandate',
+          description: `HTTP ${mandResult.status}: ${mandResult.json?.error || mandResult.text}`,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      // Support either { mandate_id } or { mandate: { id } } from the function
+      const mandateId = mandResult.json?.mandate_id || mandResult.json?.mandate?.id || mandResult.json?.id;
+      if (!mandateId) {
+        console.error('[MandateSummary] mandate-issue response:', mandResult.json);
+        throw new Error('mandate-issue returned no mandate_id');
+      }
+
+      // 2) Create plan with mandate_id
+      const planPayload = {
+        provider: 'skiclubpro',
         program_ref: programRef,
         child_id: childId,
         opens_at: openTimeISO,
         mandate_id: mandateId,
-        provider: 'skiclubpro',
         answers,
         max_provider_charge_cents: caps.max_provider_charge_cents,
         service_fee_cents: caps.service_fee_cents,
         notes,
         reminders
       };
-      console.log('[MandateSummary] Calling create-plan with:', planBody);
-      
-      const { data: planRes, error: planErr } = await supabase.functions.invoke('create-plan', {
-        body: planBody
-      });
-      if (planErr) throw planErr;
-      const planId = planRes?.plan?.id || planRes?.plan_id;
-      if (!planId) throw new Error('create-plan did not return plan_id');
 
-      toast({ title: 'Plan created', description: "Mandate signed. We'll handle registration at the right time." });
+      console.log('[MandateSummary] create-plan payload:', planPayload);
+      const planResult = await invokeWithDiag('create-plan', planPayload);
+      
+      if (!planResult.ok) {
+        toast({
+          title: 'Could not create plan',
+          description: `HTTP ${planResult.status}: ${planResult.json?.error || planResult.text}`,
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const planId = planResult.json?.plan_id || planResult.json?.plan?.id || planResult.json?.id;
+      if (!planId) {
+        console.error('[MandateSummary] create-plan response:', planResult.json);
+        throw new Error('create-plan did not return plan_id');
+      }
+
+      toast({ 
+        title: 'Plan created', 
+        description: "Mandate signed. We'll handle registration at the right time." 
+      });
       onCreated(planId, mandateId);
     } catch (e: any) {
-      toast({ title: 'Could not create plan', description: e?.message || 'Unknown error', variant: 'destructive' });
+      console.error('[MandateSummary] fatal error:', e);
+      toast({ 
+        title: 'Could not create plan', 
+        description: e?.message || 'Unknown error', 
+        variant: 'destructive' 
+      });
     } finally {
       setSubmitting(false);
     }
