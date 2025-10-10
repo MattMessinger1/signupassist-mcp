@@ -246,13 +246,14 @@ const PlanBuilder = () => {
   const contactPhoneValid = isValidPhone(contactPhoneVal);
   const allMandateChecked = Array.isArray(mandateFlags) && mandateFlags.length === 6 && mandateFlags.every(Boolean);
 
-  // Values Step 8 needs (normalized) - defined after opensAtVal to avoid redeclaration
-  const normalizedChildId = selectedChildId || '';
-  const normalizedProgramRef = (form.watch('programRef') as string) || '';
-  const normalizedCredentialId = (form.watch('credentialId') as string) || '';
-  const normalizedOpenTimeISO = opensAtTruthy && opensAtVal instanceof Date
-    ? opensAtVal.toISOString()
-    : '';
+  // --- values MandateSummary and create-plan need ---
+  const childId = form.watch('childId') || selectedChildId || '';
+  const programRef = (form.watch('programRef') as string) || '';
+  const credentialId = (form.watch('credentialId') as string) || '';
+  const openTimeISO =
+    opensAtVal instanceof Date && !Number.isNaN(opensAtVal.getTime())
+      ? opensAtVal.toISOString()
+      : '';
 
   // Compute if "Create Mandate" button should show (independent of prerequisites)
   const canShowMandateButton = useMemo(() => {
@@ -2104,19 +2105,19 @@ const PlanBuilder = () => {
             {/* Step 8: Mandate Summary & Finalize */}
             {canShowMandateButton && showMandateSummary && !showConfirmation && (
               <MandateSummary
-                orgRef="blackhawk-ski-club"
-                programTitle={friendlyProgramTitle || normalizedProgramRef}
-                programRef={normalizedProgramRef}
-                credentialId={normalizedCredentialId}
-                childId={normalizedChildId}
+                childId={childId}
                 childName={selectedChildName}
+                programRef={programRef}
+                credentialId={credentialId}
+                openTimeISO={openTimeISO}
+                orgRef="blackhawk-ski-club"
+                programTitle={friendlyProgramTitle || programRef}
                 answers={form.watch('answers') || {}}
                 detectedPriceCents={detectedPriceCents}
                 caps={{
                   max_provider_charge_cents: form.watch('maxAmountCents'),
                   service_fee_cents: caps.service_fee_cents
                 }}
-                openTimeISO={normalizedOpenTimeISO}
                 preferredSlot={selectedBranch || 'Standard Registration'}
                 onCreated={(planId, mandateId) => {
                   setCreatedPlan({ plan_id: planId, mandate_id: mandateId });
