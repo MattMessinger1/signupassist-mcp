@@ -40,6 +40,20 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
     });
   }, [stripe, elements, hasPaymentMethod]);
 
+  // Wait for Stripe to load before rendering the form
+  if (!stripe || !elements) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Loading Payment Form...
+          </CardTitle>
+        </CardHeader>
+      </Card>
+    );
+  }
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     
