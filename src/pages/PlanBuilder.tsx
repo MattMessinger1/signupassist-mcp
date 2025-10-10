@@ -1964,8 +1964,9 @@ const PlanBuilder = () => {
                   maxAmountPositive: maxAmountCents > 0,
                   contactPhone,
                   contactPhoneTruthy: !!contactPhone,
-                  showMandateSummary,
-                  shouldShowLocked
+                  showMandateSummary, // <-- Added this critical value!
+                  shouldShowLocked,
+                  REASON: !opensAt ? 'no opensAt' : maxAmountCents <= 0 ? 'maxAmount <= 0' : !contactPhone ? 'no contactPhone' : showMandateSummary ? 'showMandateSummary is TRUE' : 'none - should be unlocked'
                 });
                 
                 console.log('[Step7] 🎯 Rendering:', shouldShowLocked ? 'LockedStepPreview' : 'SavePaymentMethod Card');
