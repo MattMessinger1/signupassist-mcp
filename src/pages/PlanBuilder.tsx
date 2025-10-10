@@ -209,9 +209,9 @@ const PlanBuilder = () => {
     selectedChildName,
   });
 
-  // ✅ ADD THIS: Log form state changes after reload
+  // Debug logging - only runs on mount to avoid re-render loops
   useEffect(() => {
-    console.log('[PlanBuilder] 🔄 Form state changed:', {
+    console.log('[PlanBuilder] 🔄 Initial form state:', {
       opensAt,
       opensAtType: typeof opensAt,
       opensAtIsDate: opensAt instanceof Date,
@@ -221,9 +221,8 @@ const PlanBuilder = () => {
       prereqComplete,
       hasPaymentMethod,
       showMandateSummary,
-      reloadTrigger,
     });
-  }, [opensAt, maxAmountCents, contactPhone, prereqComplete, hasPaymentMethod, showMandateSummary, reloadTrigger]);
+  }, []); // Only run once on mount
 
   // Cleanup abort controller on unmount
   useEffect(() => {
