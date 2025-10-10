@@ -44,6 +44,13 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
     event.preventDefault();
     event.stopPropagation();
     
+    // Lock scroll position during submission to prevent page jump
+    const scrollY = window.scrollY;
+    document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = '100%';
+    
     console.log('[SavePaymentMethod] 🖱️ SUBMIT BUTTON CLICKED', {
       timestamp: new Date().toISOString(),
       hasStripe: !!stripe,
@@ -144,8 +151,23 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
       console.log('[SavePaymentMethod] Calling onPaymentMethodSaved callback');
       onPaymentMethodSaved?.();
       console.log('[SavePaymentMethod] Callback completed');
+      
+      // Restore scroll position on success
+      const scrollY = document.body.style.top;
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.overflow = '';
+      document.body.style.width = '';
+      window.scrollTo(0, parseInt(scrollY || '0') * -1);
 
     } catch (error) {
+      // Restore scroll position on error
+      const scrollY = document.body.style.top;
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.overflow = '';
+      document.body.style.width = '';
+      window.scrollTo(0, parseInt(scrollY || '0') * -1);
       console.error('[SavePaymentMethod] ❌ Error saving payment method:', error);
       toast({
         title: "Error",
@@ -199,7 +221,7 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
           <div className="p-4 border rounded-md">
             <CardElement
               options={{
