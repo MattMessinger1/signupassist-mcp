@@ -32,10 +32,10 @@ serve(async (req) => {
     }
     logStep("Stripe secret key verified");
 
-    // Initialize Supabase client
+    // Initialize Supabase client with service role key for DB writes
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_ANON_KEY") ?? ""
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
     // Authenticate user
@@ -85,21 +85,26 @@ serve(async (req) => {
     });
     logStep("Payment method set as default");
 
-    // Update user_billing table with the default payment method
-    const { error: updateError } = await supabaseClient
+    // CRITICAL: Upsert user_billing table with the default payment method
+    const { error: upsertError } = await supabaseClient
       .from('user_billing')
       .upsert({
         user_id: user.id,
         stripe_customer_id: customer_id,
         default_payment_method_id: payment_method_id,
         updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'user_id'
       });
 
-    if (updateError) {
-      logStep("Error updating user_billing", { error: updateError.message });
-      throw new Error(`Failed to update user billing: ${updateError.message}`);
+    if (upsertError) {
+      logStep("Error upserting user_billing", { error: upsertError.message });
+      throw new Error(`Failed to update user billing: ${upsertError.message}`);
     }
-    logStep("User billing updated successfully");
+    logStep("User billing upserted successfully", { 
+      user_id: user.id, 
+      default_payment_method_id: payment_method_id 
+    });
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },

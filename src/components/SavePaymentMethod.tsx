@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback } from 'react';
 import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,12 +13,9 @@ interface SavePaymentMethodProps {
 
 export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
   onPaymentMethodSaved,
-  hasPaymentMethod = false
+  hasPaymentMethod = false,
 }) => {
-  console.log('[SavePaymentMethod] 🚀 COMPONENT RENDER STARTED', {
-    hasPaymentMethod,
-    timestamp: new Date().toISOString()
-  });
+  console.log('[SavePaymentMethod] 🚀 COMPONENT RENDER STARTED', { hasPaymentMethod, timestamp: new Date().toISOString() });
 
   const stripe = useStripe();
   const elements = useElements();
@@ -26,172 +23,146 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
   const { toast } = useToast();
 
   console.log('[SavePaymentMethod] 🔌 Stripe Context:', {
-    stripe: stripe ? 'LOADED' : 'NULL',
-    elements: elements ? 'LOADED' : 'NULL',
+    stripe: stripe ? 'LOADED' : 'MISSING',
+    elements: elements ? 'LOADED' : 'MISSING',
     stripeType: typeof stripe,
-    elementsType: typeof elements
+    elementsType: typeof elements,
+    functionsUrl: (supabase as any)?.functions?.url ?? 'UNKNOWN',
   });
 
-  useEffect(() => {
-    console.log('[SavePaymentMethod] ✅ Component mounted (useEffect)', {
-      hasStripe: !!stripe,
-      hasElements: !!elements,
-      hasPaymentMethod
-    });
-  }, [stripe, elements, hasPaymentMethod]);
-
-  const handleSubmit = useCallback(async (event: React.FormEvent) => {
-    event.preventDefault();
-    event.stopPropagation();
-    
-    // Lock scroll position during submission to prevent page jump
-    const scrollY = window.scrollY;
-    document.body.style.overflow = 'hidden';
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.width = '100%';
-    
-    console.log('[SavePaymentMethod] 🖱️ SUBMIT BUTTON CLICKED', {
-      timestamp: new Date().toISOString(),
-      hasStripe: !!stripe,
-      hasElements: !!elements
-    });
-
-    if (!stripe || !elements) {
-      toast({
-        title: "Error",
-        description: "Stripe has not loaded yet. Please try again.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    setLoading(true);
-    console.log('[SavePaymentMethod] Starting payment method save process');
-
-    try {
-      const cardElement = elements.getElement(CardElement);
-      if (!cardElement) {
-        throw new Error("Card element not found");
-      }
-
-      // Create payment method
-      const { error: createError, paymentMethod } = await stripe.createPaymentMethod({
-        type: 'card',
-        card: cardElement,
+  const handleSaveClick = useCallback(
+    async () => {
+      console.log('[SavePaymentMethod] 🖱️ SAVE CLICKED', {
+        timestamp: new Date().toISOString(),
+        hasStripe: !!stripe,
+        hasElements: !!elements,
       });
 
-      if (createError) {
-        throw new Error(createError.message);
+      if (!stripe || !elements) {
+        console.error('[SavePaymentMethod] ❌ Stripe not ready');
+        toast({
+          title: 'Error',
+          description: 'Stripe has not loaded yet. Please try again.',
+          variant: 'destructive',
+        });
+        return;
       }
 
-      if (!paymentMethod) {
-        throw new Error("Failed to create payment method");
-      }
+      setLoading(true);
+      console.log('[SavePaymentMethod] Starting payment method save process');
 
-      console.log('[SavePaymentMethod] Payment method created:', paymentMethod.id);
+      try {
+        const cardElement = elements.getElement(CardElement);
+        if (!cardElement) {
+          throw new Error('Card element not found');
+        }
 
-      // Get current user for user_id
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("User not authenticated");
+        console.log('[SavePaymentMethod] Creating payment method...');
+        const { error: createError, paymentMethod } = await stripe.createPaymentMethod({
+          type: 'card',
+          card: cardElement,
+        });
 
-      // Get or create Stripe customer
-      const { data: billingData } = await supabase
-        .from('user_billing')
-        .select('stripe_customer_id')
-        .limit(1)
-        .maybeSingle();
+        if (createError) {
+          throw new Error(createError.message);
+        }
+        if (!paymentMethod) {
+          throw new Error('Failed to create payment method');
+        }
 
-      let customerId = (billingData as any)?.stripe_customer_id;
-      
-      if (!customerId) {
-        console.log('[SavePaymentMethod] Creating new Stripe customer...');
-        const { data: customerData, error: customerError } = await supabase.functions.invoke('create-stripe-customer');
-        if (customerError) throw new Error(`Failed to create customer: ${customerError.message}`);
-        customerId = customerData?.customer_id;
-        if (!customerId) throw new Error("Customer creation returned no ID");
-      }
+        console.log('[SavePaymentMethod] ✅ Payment method created:', paymentMethod.id);
 
-      console.log('[SavePaymentMethod] Using customer ID:', customerId);
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        
+        if (!user) {
+          throw new Error('User not authenticated');
+        }
 
-      console.log('[SavePaymentMethod] 📡 About to invoke save-payment-method Edge Function', {
-        user_id: user.id,
-        payment_method_id: paymentMethod.id,
-        customer_id: customerId,
-      });
+        console.log('[SavePaymentMethod] User authenticated:', user.id);
 
-      const { data: saveData, error: saveError } = await supabase.functions.invoke('save-payment-method', {
-        body: {
+        // Get/create customer
+        const { data: billingData } = await supabase
+          .from('user_billing')
+          .select('stripe_customer_id')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        let customerId = billingData?.stripe_customer_id;
+
+        if (!customerId) {
+          console.log('[SavePaymentMethod] Creating new Stripe customer...');
+          const { data: customerData, error: customerError } = await supabase.functions.invoke('create-stripe-customer');
+          
+          if (customerError) {
+            throw new Error(`Failed to create customer: ${customerError.message}`);
+          }
+          
+          customerId = customerData?.customer_id;
+          
+          if (!customerId) {
+            throw new Error('Customer creation returned no ID');
+          }
+          
+          console.log('[SavePaymentMethod] ✅ Stripe customer created:', customerId);
+        } else {
+          console.log('[SavePaymentMethod] Using existing customer ID:', customerId);
+        }
+
+        // Save payment method via Edge Function
+        console.log('[SavePaymentMethod] 📡 Invoking save-payment-method Edge Function...', {
+          url: (supabase as any)?.functions?.url,
           user_id: user.id,
           payment_method_id: paymentMethod.id,
           customer_id: customerId,
-        },
-      });
+        });
 
-      console.log('[SavePaymentMethod] 📡 Edge Function response:', { saveData, saveError });
+        const { data: saveData, error: saveError } = await supabase.functions.invoke('save-payment-method', {
+          body: {
+            payment_method_id: paymentMethod.id,
+            customer_id: customerId,
+          },
+        });
 
-      if (saveError) {
-        throw new Error(`Failed to save payment method: ${saveError.message}`);
+        console.log('[SavePaymentMethod] 📡 Edge Function response:', { saveData, saveError });
+
+        if (saveError) {
+          throw new Error(saveError.message);
+        }
+        
+        if (saveData?.error) {
+          throw new Error(saveData.error);
+        }
+
+        console.log('[SavePaymentMethod] ✅ Payment method saved successfully');
+
+        toast({ 
+          title: 'Success', 
+          description: 'Payment method saved successfully!' 
+        });
+
+        cardElement.clear();
+        console.log('[SavePaymentMethod] Card element cleared');
+
+        // Inform parent
+        console.log('[SavePaymentMethod] Calling onPaymentMethodSaved callback');
+        onPaymentMethodSaved?.();
+        console.log('[SavePaymentMethod] Callback completed');
+
+      } catch (error) {
+        console.error('[SavePaymentMethod] ❌ Error saving payment method:', error);
+        toast({
+          title: 'Error',
+          description: error instanceof Error ? error.message : 'Failed to save payment method',
+          variant: 'destructive',
+        });
+      } finally {
+        setLoading(false);
       }
-
-      if (saveData?.error) {
-        throw new Error(saveData.error);
-      }
-      console.log('[SavePaymentMethod] Payment method saved successfully');
-
-      toast({
-        title: "Success",
-        description: "Payment method saved successfully!",
-      });
-
-      // Clear the card element
-      cardElement.clear();
-
-      // Call the callback if provided
-      console.log('[SavePaymentMethod] Calling onPaymentMethodSaved callback');
-      onPaymentMethodSaved?.();
-      console.log('[SavePaymentMethod] Callback completed');
-      
-      // Restore scroll position on success
-      const savedScrollY = document.body.style.top;
-      document.body.style.position = '';
-      document.body.style.top = '';
-      document.body.style.overflow = '';
-      document.body.style.width = '';
-      window.scrollTo(0, parseInt(savedScrollY.replace('-', '').replace('px', '') || '0'));
-
-    } catch (error) {
-      // Restore scroll position on error
-      const savedScrollY = document.body.style.top;
-      document.body.style.position = '';
-      document.body.style.top = '';
-      document.body.style.overflow = '';
-      document.body.style.width = '';
-      window.scrollTo(0, parseInt(savedScrollY.replace('-', '').replace('px', '') || '0'));
-      console.error('[SavePaymentMethod] ❌ Error saving payment method:', error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to save payment method",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [stripe, elements, toast, onPaymentMethodSaved]);
-
-  // Wait for Stripe to load before rendering the form
-  if (!stripe || !elements) {
-    return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Loader2 className="h-5 w-5 animate-spin" />
-            Loading Payment Form...
-          </CardTitle>
-        </CardHeader>
-      </Card>
-    );
-  }
+    },
+    [stripe, elements, toast, onPaymentMethodSaved]
+  );
 
   if (hasPaymentMethod) {
     return (
@@ -201,9 +172,7 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
             <CheckCircle className="h-5 w-5 text-green-600" />
             Payment Method Configured
           </CardTitle>
-          <CardDescription>
-            Your default payment method is set up and ready to use.
-          </CardDescription>
+          <CardDescription>Your default payment method is ready.</CardDescription>
         </CardHeader>
       </Card>
     );
@@ -213,15 +182,12 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <CreditCard className="h-5 w-5" />
-          Add Payment Method
+          <CreditCard className="h-5 w-5" /> Add Payment Method
         </CardTitle>
-        <CardDescription>
-          Add a payment method to enable plan execution billing.
-        </CardDescription>
+        <CardDescription>Add a card to enable billing for automated registration.</CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+        <div className="space-y-4">
           <div className="p-4 border rounded-md">
             <CardElement
               options={{
@@ -229,24 +195,22 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
                   base: {
                     fontSize: '16px',
                     color: '#424770',
-                    '::placeholder': {
-                      color: '#aab7c4',
-                    },
+                    '::placeholder': { color: '#aab7c4' },
                   },
                 },
               }}
             />
           </div>
-          
           <Button 
-            type="submit" 
-            disabled={!stripe || loading}
+            type="button" 
+            onClick={handleSaveClick} 
+            disabled={!stripe || loading} 
             className="w-full"
           >
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Save Payment Method
           </Button>
-        </form>
+        </div>
       </CardContent>
     </Card>
   );
