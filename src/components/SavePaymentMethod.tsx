@@ -25,6 +25,13 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
+  console.log('[SavePaymentMethod] 🔌 Stripe Context:', {
+    stripe: stripe ? 'LOADED' : 'NULL',
+    elements: elements ? 'LOADED' : 'NULL',
+    stripeType: typeof stripe,
+    elementsType: typeof elements
+  });
+
   useEffect(() => {
     console.log('[SavePaymentMethod] ✅ Component mounted (useEffect)', {
       hasStripe: !!stripe,
@@ -35,6 +42,12 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    
+    console.log('[SavePaymentMethod] 🖱️ SUBMIT BUTTON CLICKED', {
+      timestamp: new Date().toISOString(),
+      hasStripe: !!stripe,
+      hasElements: !!elements
+    });
 
     if (!stripe || !elements) {
       toast({
@@ -93,6 +106,12 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
 
       console.log('[SavePaymentMethod] Using customer ID:', customerId);
 
+      console.log('[SavePaymentMethod] 📡 About to invoke save-payment-method Edge Function', {
+        user_id: user.id,
+        payment_method_id: paymentMethod.id,
+        customer_id: customerId,
+      });
+
       // ✅ Fixed: include user_id in body
       const { data: saveData, error: saveError } = await supabase.functions.invoke('save-payment-method', {
         body: {
@@ -102,6 +121,8 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
         },
       });
 
+      console.log('[SavePaymentMethod] 📡 Edge Function response:', { saveData, saveError });
+
       if (saveError) {
         throw new Error(`Failed to save payment method: ${saveError.message}`);
       }
@@ -109,8 +130,6 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
       if (saveData?.error) {
         throw new Error(saveData.error);
       }
-
-      console.log('[SavePaymentMethod] Edge function response:', saveData);
       console.log('[SavePaymentMethod] Payment method saved successfully');
 
       toast({
