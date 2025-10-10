@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -38,6 +38,13 @@ export default function MandateSummary({
 }: Props) {
   const { toast } = useToast();
   const [internalConsents, setInternalConsents] = useState<boolean[]>([false, false, false, false, false, false]);
+  
+  // Sync parent consents to internal state when provided
+  useEffect(() => {
+    if (Array.isArray(mandateConsents) && mandateConsents.length === 6) {
+      setInternalConsents(mandateConsents);
+    }
+  }, [mandateConsents]);
   
   // Use external consents if provided, otherwise use internal state
   const consents = mandateConsents || internalConsents;
@@ -84,10 +91,28 @@ export default function MandateSummary({
     [caps.max_provider_charge_cents, orgRef]
   );
 
-  const valid = useMemo(
-    () => consents.every(c => c) && !!childName && !!programRef && !!credentialId && !!openTimeISO,
-    [consents, childName, programRef, credentialId, openTimeISO]
-  );
+  const valid = useMemo(() => {
+    const reasons: string[] = [];
+    const allConsents = Array.isArray(consents) && consents.length === 6 && consents.every(Boolean);
+    if (!allConsents) reasons.push('consents incomplete');
+    if (!childName) reasons.push('childName missing');
+    if (!programRef) reasons.push('programRef missing');
+    if (!credentialId) reasons.push('credentialId missing');
+    if (!openTimeISO) reasons.push('openTimeISO missing');
+
+    const enabled = reasons.length === 0;
+    console.log('[MandateSummary] valid gate', {
+      consents,
+      allConsents,
+      childName: !!childName,
+      programRef: !!programRef,
+      credentialId: !!credentialId,
+      openTimeISO: !!openTimeISO,
+      enabled,
+      reasons,
+    });
+    return enabled;
+  }, [consents, childName, programRef, credentialId, openTimeISO]);
 
   const createPlanAndMandate = async () => {
     if (!valid) {

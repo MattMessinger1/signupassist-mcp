@@ -2118,7 +2118,7 @@ const PlanBuilder = () => {
                   setShowConfirmation(true);
                   setShowMandateSummary(false);
                 }}
-                mandateConsents={mandateFlags ? [...mandateFlags] : undefined}
+                mandateConsents={mandateFlags?.map(v => v === true)}
                 onMandateConsentsChange={(newConsents) => {
                   form.setValue('mandate.login', newConsents[0] || false);
                   form.setValue('mandate.fill', newConsents[1] || false);
