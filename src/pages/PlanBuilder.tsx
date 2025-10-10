@@ -151,8 +151,14 @@ const PlanBuilder = () => {
   
   // Compute allRequirementsMet once to avoid re-calculation in multiple places
   const allRequirementsMet = useMemo(() => {
+    // If form explicitly marks prereqs complete (set later at line 201), honor that
+    const prereqCompleteValue = form.watch('prereqComplete') ?? false;
+    if (prereqCompleteValue === true) {
+      return true;
+    }
+    // Otherwise check the prerequisiteChecks array
     return prerequisiteChecks.length === 0 || prerequisiteChecks.every(r => r.status === 'pass');
-  }, [prerequisiteChecks]);
+  }, [prerequisiteChecks, form]);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [detectedPriceCents, setDetectedPriceCents] = useState<number | null>(null);
   const [caps, setCaps] = useState<{ max_provider_charge_cents: number | null; service_fee_cents: number | null }>({
