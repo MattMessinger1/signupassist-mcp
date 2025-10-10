@@ -149,21 +149,29 @@ const PlanBuilder = () => {
   const [friendlyProgramTitle, setFriendlyProgramTitle] = useState<string | null>(null);
   const [selectedChildName, setSelectedChildName] = useState<string>('');
   
+  // Watch prereqComplete outside useMemo for proper reactivity
+  const prereqComplete = form.watch('prereqComplete');
+  
   // Compute allRequirementsMet once to avoid re-calculation in multiple places
   const allRequirementsMet = useMemo(() => {
-    // If form explicitly marks prereqs complete (set later at line 201), honor that
-    const prereqCompleteValue = form.watch('prereqComplete') ?? false;
     console.log('[PlanBuilder] allRequirementsMet check:', {
-      prereqCompleteValue,
+      prereqComplete,
       prerequisiteChecks,
-      checksPassing: prerequisiteChecks.every(r => r.status === 'pass')
+      checksLength: prerequisiteChecks.length,
+      checksPassing: prerequisiteChecks.length > 0 ? prerequisiteChecks.every(r => r.status === 'pass') : 'N/A'
     });
-    if (prereqCompleteValue === true) {
+    
+    // If form explicitly marks prereqs complete, honor that
+    if (prereqComplete === true) {
+      console.log('[PlanBuilder] ✅ Prerequisites marked complete via form field');
       return true;
     }
+    
     // Otherwise check the prerequisiteChecks array
-    return prerequisiteChecks.length === 0 || prerequisiteChecks.every(r => r.status === 'pass');
-  }, [prerequisiteChecks, form]);
+    const result = prerequisiteChecks.length === 0 || prerequisiteChecks.every(r => r.status === 'pass');
+    console.log('[PlanBuilder] Prerequisites check result:', result);
+    return result;
+  }, [prerequisiteChecks, prereqComplete]);
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const [detectedPriceCents, setDetectedPriceCents] = useState<number | null>(null);
   const [caps, setCaps] = useState<{ max_provider_charge_cents: number | null; service_fee_cents: number | null }>({
@@ -202,7 +210,7 @@ const PlanBuilder = () => {
   const opensAt = form.watch('opensAt') ?? null;
   const maxAmountCents = form.watch('maxAmountCents') ?? 0;
   const contactPhone = form.watch('contactPhone') ?? '';
-  const prereqComplete = form.watch('prereqComplete') ?? false;
+  // prereqComplete is watched earlier (line 153) for allRequirementsMet reactivity
 
   // Debug logging for step unlock state
   console.log('[PlanBuilder] Step unlock state:', {
