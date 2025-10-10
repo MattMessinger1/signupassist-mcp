@@ -66,14 +66,14 @@ export function PaymentMethodSetup({ onPaymentMethodSaved, hasPaymentMethod }: P
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) throw new Error('User not authenticated');
 
-        const { error: updateError } = await supabase
+        const { error: updateError } = (await supabase
           .from('user_billing')
           .update({
             default_payment_method_id: typeof setupIntent.payment_method === 'string' 
               ? setupIntent.payment_method 
               : setupIntent.payment_method?.id
           })
-          .eq('user_id', user.id);
+          .eq('user_id', user.id)) as any;
 
         if (updateError) throw updateError;
 

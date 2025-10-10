@@ -53,32 +53,32 @@ export function PlanExecutionStatus({
       setLoading(true);
       
       // Get plan execution
-      const { data: execData, error: execError } = await supabase
+      const { data: execData, error: execError } = (await supabase
         .from('plan_executions')
         .select('*')
         .eq('plan_id', planId)
         .order('started_at', { ascending: false })
         .limit(1)
-        .maybeSingle();
+        .maybeSingle()) as any;
 
       if (execError) {
         console.error('Error fetching execution:', execError);
       } else if (execData) {
-        setExecution(execData);
+        setExecution(execData as any);
       }
 
       // Get execution logs
-      const { data: logsData, error: logsError } = await supabase
+      const { data: logsData, error: logsError } = (await supabase
         .from('execution_logs')
         .select('*')
         .eq('plan_id', planId)
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(10)) as any;
 
       if (logsError) {
         console.error('Error fetching logs:', logsError);
       } else {
-        setLogs(logsData || []);
+        setLogs((logsData || []) as any);
       }
 
       setLoading(false);

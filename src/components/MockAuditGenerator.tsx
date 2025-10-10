@@ -52,10 +52,9 @@ export function MockAuditGenerator({ mandates, onEventCreated }: MockAuditGenera
     try {
       const mandate = mandates.find(m => m.id === selectedMandate);
       
-      const { error } = await supabase
+      const { error } = (await supabase
         .from('audit_events')
         .insert({
-          user_id: user.id,
           mandate_id: selectedMandate,
           event_type: eventType,
           tool,
@@ -73,7 +72,7 @@ export function MockAuditGenerator({ mandates, onEventCreated }: MockAuditGenera
             message: `Mock ${eventType} event`,
             timestamp: new Date().toISOString()
           })
-        });
+        })) as any;
 
       if (error) throw error;
 

@@ -68,7 +68,7 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
         .limit(1)
         .maybeSingle();
 
-      let customerId = billingData?.stripe_customer_id;
+      let customerId = (billingData as any)?.stripe_customer_id;
       
       if (!customerId) {
         console.log('[SavePaymentMethod] Creating new Stripe customer...');

@@ -97,11 +97,11 @@ export function useSmartDefaults<T>({ fields, childId, setValue, watch }: SmartD
     const applySmartDefaults = async () => {
       try {
         // Get child information
-        const { data: child } = await supabase
+        const { data: child } = (await supabase
           .from('children')
           .select('*')
           .eq('id', childId)
-          .single();
+          .maybeSingle()) as any;
 
         if (!child) return;
 
@@ -113,10 +113,10 @@ export function useSmartDefaults<T>({ fields, childId, setValue, watch }: SmartD
           if (currentValue) return;
 
           // Date fields - try to populate with child's DOB if field suggests it
-          if (field.type === 'date' && child.dob) {
+          if (field.type === 'date' && (child as any)?.dob) {
             const fieldLower = field.label.toLowerCase();
             if (fieldLower.includes('birth') || fieldLower.includes('dob') || fieldLower.includes('date of birth')) {
-              setValue(`answers.${field.id}` as any, child.dob as any);
+              setValue(`answers.${field.id}` as any, (child as any).dob as any);
             }
           }
 
@@ -124,7 +124,7 @@ export function useSmartDefaults<T>({ fields, childId, setValue, watch }: SmartD
           if (field.type === 'text') {
             const fieldLower = field.label.toLowerCase();
             if (fieldLower.includes('name') && fieldLower.includes('child')) {
-              setValue(`answers.${field.id}` as any, child.name as any);
+              setValue(`answers.${field.id}` as any, (child as any)?.name as any);
             }
           }
 

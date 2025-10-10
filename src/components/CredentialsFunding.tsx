@@ -195,7 +195,7 @@ export default function CredentialsFunding() {
       .from('user_billing')
       .select('default_payment_method_id')
       .eq('user_id', userId)
-      .single()) as any;
+      .maybeSingle()) as any;
 
     const billingData = data as any;
     if (billingData?.default_payment_method_id) {

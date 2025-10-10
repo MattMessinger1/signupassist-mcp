@@ -15,8 +15,4 @@ export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABL
     persistSession: true,
     autoRefreshToken: true,
   },
-  // 👇 Route all Edge Function calls directly to Supabase, not the app origin
-  functions: {
-    url: `${SUPABASE_URL}/functions/v1`,
-  },
-});
+} as any);
