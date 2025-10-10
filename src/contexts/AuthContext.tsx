@@ -25,10 +25,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       (event, session) => {
         console.log('[AuthContext] Auth state changed:', event, !!session);
         
-        // Handle session expiry
-        if (event === 'SIGNED_OUT' || event === 'TOKEN_REFRESHED') {
-          setSession(session);
-          setUser(session?.user ?? null);
+        // Only update state if values actually changed to prevent unnecessary re-renders
+        if (event === 'SIGNED_OUT') {
+          setSession(null);
+          setUser(null);
+        } else if (event === 'TOKEN_REFRESHED' || event === 'SIGNED_IN') {
+          // Only update if session actually changed
+          setSession(prevSession => {
+            const isSameSession = prevSession?.access_token === session?.access_token;
+            return isSameSession ? prevSession : session;
+          });
+          setUser(prevUser => {
+            const isSameUser = prevUser?.id === session?.user?.id;
+            return isSameUser ? prevUser : (session?.user ?? null);
+          });
         } else if (session) {
           setSession(session);
           setUser(session.user);
