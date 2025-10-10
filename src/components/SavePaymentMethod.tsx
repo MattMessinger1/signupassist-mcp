@@ -42,6 +42,7 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
 
   const handleSubmit = useCallback(async (event: React.FormEvent) => {
     event.preventDefault();
+    event.stopPropagation();
     
     console.log('[SavePaymentMethod] 🖱️ SUBMIT BUTTON CLICKED', {
       timestamp: new Date().toISOString(),

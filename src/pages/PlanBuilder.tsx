@@ -233,10 +233,17 @@ const PlanBuilder = () => {
     };
   }, []);
 
-  // Scroll to top on mount to ensure users start at Step 1
+  // Debug: Track what's causing re-renders
   useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'instant' });
-  }, []);
+    console.log('[PlanBuilder] 🔄 RENDER TRIGGER:', {
+      timestamp: new Date().toISOString(),
+      authLoading,
+      hasPaymentMethod,
+      reloadTrigger,
+      user: !!user,
+      session: !!session,
+    });
+  });
 
   // Define checkPaymentMethod early so it can be used in useEffects below
   const checkPaymentMethod = useCallback(async () => {
