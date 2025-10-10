@@ -84,7 +84,10 @@ export default function MandateSummary({
     [caps.max_provider_charge_cents, orgRef]
   );
 
-  const valid = consents.every(c => c) && !!childName && !!programRef && !!credentialId && !!openTimeISO;
+  const valid = useMemo(
+    () => consents.every(c => c) && !!childName && !!programRef && !!credentialId && !!openTimeISO,
+    [consents, childName, programRef, credentialId, openTimeISO]
+  );
 
   const createPlanAndMandate = async () => {
     if (!valid) {
