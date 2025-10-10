@@ -460,11 +460,11 @@ const PlanBuilder = () => {
     }
   }, [user, checkPaymentMethod]);
 
-  // Auto-fetch child name when prerequisites complete
+  // Auto-fetch child name when childId changes
   useEffect(() => {
     const fetchChildName = async () => {
       const childId = form.watch('childId');
-      if (prerequisiteStatus === 'complete' && childId && !selectedChildName) {
+      if (childId && !selectedChildName) {
         const { data: childData, error } = await supabase
           .from('children')
           .select('name')
@@ -473,16 +473,12 @@ const PlanBuilder = () => {
         
         if (!error && childData) {
           setSelectedChildName(childData.name);
-          toast({
-            title: 'Prerequisites Complete',
-            description: 'Program questions will be handled automatically during registration.',
-          });
         }
       }
     };
     
     fetchChildName();
-  }, [prerequisiteStatus, selectedChildName]);
+  }, [form.watch('childId'), selectedChildName]);
 
   // DISABLED: Auto-scroll interferes with form submission
   // const scrollToStep = useCallback((stepNumber: number, ref: React.RefObject<HTMLDivElement>) => {
