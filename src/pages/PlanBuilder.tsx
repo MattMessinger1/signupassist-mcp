@@ -63,6 +63,14 @@ const planBuilderSchema = z.object({
   contactPhone: z.string().min(10, 'Please enter a valid mobile number'),
   answers: z.record(z.string(), z.union([z.string(), z.boolean()])).optional(),
   prereqComplete: z.boolean().optional(),
+  mandate: z.object({
+    login: z.boolean().optional(),
+    fill: z.boolean().optional(),
+    questions: z.boolean().optional(),
+    payUpTo: z.boolean().optional(),
+    pause: z.boolean().optional(),
+    audit: z.boolean().optional(),
+  }).optional(),
 });
 
 type PlanBuilderForm = z.infer<typeof planBuilderSchema>;
@@ -126,6 +134,14 @@ const PlanBuilder = () => {
       maxAmountCents: 0,
       contactPhone: '',
       prereqComplete: false,
+      mandate: {
+        login: false,
+        fill: false,
+        questions: false,
+        payUpTo: false,
+        pause: false,
+        audit: false,
+      },
     },
   });
 
@@ -204,6 +220,13 @@ const PlanBuilder = () => {
   const step7Ref = useRef<HTMLDivElement>(null);
   const [shouldHighlightStep, setShouldHighlightStep] = useState<number | null>(null);
 
+  // Utility: basic E.164-ish phone validity (10..15 digits after stripping)
+  const isValidPhone = useCallback((value?: string) => {
+    if (!value) return false;
+    const digits = value.replace(/\D/g, '');
+    return digits.length >= 10 && digits.length <= 15;
+  }, []);
+
   // Safe derived variables with null checks and defaults
   // V1: No program discovery, so no fieldsToShow
   const selectedChildId = form.watch('childId') ?? '';
@@ -211,6 +234,51 @@ const PlanBuilder = () => {
   const maxAmountCents = form.watch('maxAmountCents') ?? 0;
   const contactPhone = form.watch('contactPhone') ?? '';
   // prereqComplete is watched earlier (line 153) for allRequirementsMet reactivity
+
+  // --- Step 8 (Mandate) watches ---
+  const mandateFlags = form.watch([
+    'mandate.login',
+    'mandate.fill',
+    'mandate.questions',
+    'mandate.payUpTo',
+    'mandate.pause',
+    'mandate.audit',
+  ] as const) as boolean[] | undefined;
+
+  const opensAtTruthy = opensAt instanceof Date && !Number.isNaN(opensAt.getTime());
+  const contactPhoneValid = isValidPhone(contactPhone);
+  const allMandateChecked = Array.isArray(mandateFlags) && mandateFlags.length === 6 && mandateFlags.every(Boolean);
+
+  const canCreatePlan = useMemo(() => {
+    const ok =
+      !!hasPaymentMethod &&
+      !!opensAtTruthy &&
+      (Number(maxAmountCents) || 0) > 0 &&
+      !!contactPhoneValid &&
+      !!allMandateChecked;
+
+    return ok;
+  }, [hasPaymentMethod, opensAtTruthy, maxAmountCents, contactPhoneValid, allMandateChecked]);
+
+  useEffect(() => {
+    const reasons: string[] = [];
+    if (!hasPaymentMethod) reasons.push('no payment method');
+    if (!opensAtTruthy) reasons.push('opensAt invalid');
+    if (!maxAmountCents || Number(maxAmountCents) <= 0) reasons.push('maxAmountCents <= 0');
+    if (!contactPhoneValid) reasons.push('invalid phone');
+    if (!allMandateChecked) reasons.push('mandate checkboxes not all checked');
+
+    console.log('[MandateButton] gate', {
+      hasPaymentMethod,
+      opensAtTruthy,
+      maxAmountCents,
+      contactPhoneValid,
+      allMandateChecked,
+      mandateFlags,
+      enabled: reasons.length === 0,
+      reasons,
+    });
+  }, [hasPaymentMethod, opensAtTruthy, maxAmountCents, contactPhoneValid, allMandateChecked, mandateFlags]);
 
   // Debug logging for step unlock state
   console.log('[PlanBuilder] Step unlock state:', {
@@ -2008,6 +2076,16 @@ const PlanBuilder = () => {
                 }}
                 openTimeISO={opensAt instanceof Date ? opensAt.toISOString() : new Date(opensAt).toISOString()}
                 preferredSlot={selectedBranch || 'Standard Registration'}
+                mandateConsents={mandateFlags as boolean[]}
+                onMandateConsentsChange={(consents) => {
+                  // Update all six mandate fields in the form
+                  form.setValue('mandate.login', consents[0] || false);
+                  form.setValue('mandate.fill', consents[1] || false);
+                  form.setValue('mandate.questions', consents[2] || false);
+                  form.setValue('mandate.payUpTo', consents[3] || false);
+                  form.setValue('mandate.pause', consents[4] || false);
+                  form.setValue('mandate.audit', consents[5] || false);
+                }}
                 onCreated={(planId, mandateId) => {
                   setCreatedPlan({ plan_id: planId, mandate_id: mandateId });
                   setShowConfirmation(true);
@@ -2044,7 +2122,7 @@ const PlanBuilder = () => {
                 
                 <Button
                   type="button"
-                  disabled={!allRequirementsMet}
+                  disabled={!canCreatePlan}
                   className="flex-1"
                   onClick={() => setShowMandateSummary(true)}
                 >

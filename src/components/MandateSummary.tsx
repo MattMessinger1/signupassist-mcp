@@ -27,16 +27,30 @@ interface Props {
   openTimeISO: string;               // ISO datetime when registration opens
   preferredSlot: string;             // human-friendly slot description
   onCreated: (planId: string, mandateId: string) => void;
+  mandateConsents?: boolean[];       // Optional external consent state
+  onMandateConsentsChange?: (consents: boolean[]) => void; // Optional callback for consent updates
 }
 
 export default function MandateSummary({
   orgRef, programTitle, programRef, credentialId, childName, answers,
-  detectedPriceCents, caps, openTimeISO, preferredSlot, onCreated
+  detectedPriceCents, caps, openTimeISO, preferredSlot, onCreated,
+  mandateConsents: externalConsents,
+  onMandateConsentsChange
 }: Props) {
   const { toast } = useToast();
-  const [consents, setConsents] = useState<boolean[]>([false, false, false, false, false, false]);
+  const [internalConsents, setInternalConsents] = useState<boolean[]>([false, false, false, false, false, false]);
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // Use external consents if provided, otherwise use internal state
+  const consents = externalConsents ?? internalConsents;
+  const setConsents = (newConsents: boolean[]) => {
+    if (onMandateConsentsChange) {
+      onMandateConsentsChange(newConsents);
+    } else {
+      setInternalConsents(newConsents);
+    }
+  };
   const [showMandateJSON, setShowMandateJSON] = useState(false);
   const [reminders, setReminders] = useState<ReminderPrefs>({
     channels: { email: true, sms: false },
