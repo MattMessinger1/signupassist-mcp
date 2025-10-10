@@ -15,13 +15,18 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
   onPaymentMethodSaved,
   hasPaymentMethod = false
 }) => {
+  console.log('[SavePaymentMethod] 🚀 COMPONENT RENDER STARTED', {
+    hasPaymentMethod,
+    timestamp: new Date().toISOString()
+  });
+
   const stripe = useStripe();
   const elements = useElements();
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
-    console.log('[SavePaymentMethod] Component mounted', {
+    console.log('[SavePaymentMethod] ✅ Component mounted (useEffect)', {
       hasStripe: !!stripe,
       hasElements: !!elements,
       hasPaymentMethod

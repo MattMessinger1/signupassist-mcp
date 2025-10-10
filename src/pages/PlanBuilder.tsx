@@ -1894,7 +1894,11 @@ const PlanBuilder = () => {
             {/* Step 7: Payment Method - Always visible, locked if contact info not provided */}
             <div ref={step7Ref}>
               {(() => {
-                const unlockConditions = {
+                console.log('[Step7] 🔍 About to evaluate unlock conditions...');
+                
+                const shouldShowLocked = !opensAt || maxAmountCents <= 0 || !contactPhone || showMandateSummary;
+                
+                console.log('[Step7 Payment Method] Unlock conditions:', {
                   opensAt,
                   opensAtTruthy: !!opensAt,
                   opensAtType: typeof opensAt,
@@ -1904,10 +1908,12 @@ const PlanBuilder = () => {
                   contactPhone,
                   contactPhoneTruthy: !!contactPhone,
                   showMandateSummary,
-                  shouldShowLocked: !opensAt || maxAmountCents <= 0 || !contactPhone || showMandateSummary
-                };
-                console.log('[Step7 Payment Method] Unlock conditions:', unlockConditions);
-                return unlockConditions.shouldShowLocked;
+                  shouldShowLocked
+                });
+                
+                console.log('[Step7] 🎯 Rendering:', shouldShowLocked ? 'LockedStepPreview' : 'SavePaymentMethod Card');
+                
+                return shouldShowLocked;
               })() ? (
                 <LockedStepPreview
                   stepNumber={7}
@@ -1918,7 +1924,10 @@ const PlanBuilder = () => {
                   onScrollToPrerequisite={() => step6Ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
                 />
               ) : (
-                <Card className={shouldHighlightStep === 7 ? "border-primary shadow-lg transition-all" : ""}>
+                <Card 
+                  key="payment-method-step"
+                  className={shouldHighlightStep === 7 ? "border-primary shadow-lg transition-all" : ""}
+                >
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
