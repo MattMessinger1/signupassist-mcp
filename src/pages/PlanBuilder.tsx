@@ -153,6 +153,11 @@ const PlanBuilder = () => {
   const allRequirementsMet = useMemo(() => {
     // If form explicitly marks prereqs complete (set later at line 201), honor that
     const prereqCompleteValue = form.watch('prereqComplete') ?? false;
+    console.log('[PlanBuilder] allRequirementsMet check:', {
+      prereqCompleteValue,
+      prerequisiteChecks,
+      checksPassing: prerequisiteChecks.every(r => r.status === 'pass')
+    });
     if (prereqCompleteValue === true) {
       return true;
     }
