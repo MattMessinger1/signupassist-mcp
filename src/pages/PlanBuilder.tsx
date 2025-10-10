@@ -1953,7 +1953,9 @@ const PlanBuilder = () => {
               {(() => {
                 console.log('[Step7] 🔍 About to evaluate unlock conditions...');
                 
-                const shouldShowLocked = !opensAt || maxAmountCents <= 0 || !contactPhone || showMandateSummary;
+                // Step 7 should be unlocked when all basic requirements are met
+                // Don't lock it when showMandateSummary is true - we want to show the saved payment method
+                const shouldShowLocked = !opensAt || maxAmountCents <= 0 || !contactPhone;
                 
                 console.log('[Step7 Payment Method] Unlock conditions:', {
                   opensAt,
@@ -1964,9 +1966,9 @@ const PlanBuilder = () => {
                   maxAmountPositive: maxAmountCents > 0,
                   contactPhone,
                   contactPhoneTruthy: !!contactPhone,
-                  showMandateSummary, // <-- Added this critical value!
+                  showMandateSummary,
                   shouldShowLocked,
-                  REASON: !opensAt ? 'no opensAt' : maxAmountCents <= 0 ? 'maxAmount <= 0' : !contactPhone ? 'no contactPhone' : showMandateSummary ? 'showMandateSummary is TRUE' : 'none - should be unlocked'
+                  REASON: !opensAt ? 'no opensAt' : maxAmountCents <= 0 ? 'maxAmount <= 0' : !contactPhone ? 'no contactPhone' : 'none - UNLOCKED'
                 });
                 
                 console.log('[Step7] 🎯 Rendering:', shouldShowLocked ? 'LockedStepPreview' : 'SavePaymentMethod Card');
