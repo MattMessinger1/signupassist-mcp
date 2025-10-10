@@ -54,7 +54,7 @@ export function ChildSelect({ value, onChange }: ChildSelectProps) {
         }
         throw error;
       }
-      setChildren(data || []);
+      setChildren((data as unknown as Child[]) || []);
     } catch (error) {
       console.error('Error loading children:', error);
       toast({
@@ -89,15 +89,13 @@ export function ChildSelect({ value, onChange }: ChildSelectProps) {
         return;
       }
 
-      const childData = {
-        user_id: user.id,
-        name: newChild.name.trim(),
-        dob: newChild.dob || null,
-      };
-
       const { data, error } = await supabase
         .from('children')
-        .insert([childData])
+        .insert({
+          user_id: user.id,
+          name: newChild.name.trim(),
+          dob: newChild.dob || null,
+        } as any)
         .select()
         .single();
 
@@ -116,14 +114,17 @@ export function ChildSelect({ value, onChange }: ChildSelectProps) {
       // Reload children list to ensure consistency
       await loadChildren();
       
-      // Set the new child as selected
-      onChange(data.id);
-      setNewChild({ name: '', dob: '' });
-      setShowAddForm(false);
+      if (data) {
+        const childData = data as unknown as Child;
+        // Set the new child as selected
+        onChange(childData.id);
+        setNewChild({ name: '', dob: '' });
+        setShowAddForm(false);
 
-      toast({
-        description: prompts.ui.child.toastSelected(data.name),
-      });
+        toast({
+          description: prompts.ui.child.toastSelected(childData.name),
+        });
+      }
     } catch (error) {
       console.error('Error adding child:', error);
       toast({

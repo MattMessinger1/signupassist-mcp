@@ -72,12 +72,15 @@ function StripePaymentSetup({ onComplete }: { onComplete: (success: boolean) => 
       
       if (setupIntent.status === 'succeeded') {
         // Update user_billing with the payment method ID
+        const userId = (await supabase.auth.getUser()).data.user?.id;
+        if (!userId) throw new Error('User not found');
+        
         const { error: updateError } = await supabase
           .from('user_billing')
           .upsert({
-            user_id: (await supabase.auth.getUser()).data.user!.id,
+            user_id: userId,
             default_payment_method_id: setupIntent.payment_method as string,
-          });
+          } as any);
           
         if (updateError) throw updateError;
         
@@ -170,30 +173,32 @@ export default function CredentialsFunding() {
   }, []);
 
   const loadStoredCredentials = async (userId: string) => {
-    const { data, error } = await supabase
+    const { data, error } = (await supabase
       .from('stored_credentials')
       .select('id, alias, provider, created_at')
       .eq('provider', 'skiclubpro')
       .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })) as any;
 
     if (!error && data) {
-      setStoredCredentials(data);
-      if (data.length > 0 && !selectedCredential) {
-        setSelectedCredential(data[0].alias);
+      const credentials = data as unknown as StoredCredential[];
+      setStoredCredentials(credentials);
+      if (credentials.length > 0 && !selectedCredential) {
+        setSelectedCredential(credentials[0].alias);
         setCheckStatus(prev => ({ ...prev, credentials: true }));
       }
     }
   };
 
   const checkSuccessFeePM = async (userId: string) => {
-    const { data } = await supabase
+    const { data } = (await supabase
       .from('user_billing')
       .select('default_payment_method_id')
       .eq('user_id', userId)
-      .single();
+      .single()) as any;
 
-    if (data?.default_payment_method_id) {
+    const billingData = data as any;
+    if (billingData?.default_payment_method_id) {
       setCheckStatus(prev => ({ ...prev, successFee: true }));
     }
   };
