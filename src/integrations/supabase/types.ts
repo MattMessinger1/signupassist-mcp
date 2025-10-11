@@ -533,6 +533,7 @@ export type Database = {
           mandate_id: string | null
           meta: Json | null
           opens_at: string
+          plan_execution_id: string | null
           program_ref: string
           provider: string
           status: string
@@ -546,6 +547,7 @@ export type Database = {
           mandate_id?: string | null
           meta?: Json | null
           opens_at: string
+          plan_execution_id?: string | null
           program_ref: string
           provider: string
           status?: string
@@ -559,6 +561,7 @@ export type Database = {
           mandate_id?: string | null
           meta?: Json | null
           opens_at?: string
+          plan_execution_id?: string | null
           program_ref?: string
           provider?: string
           status?: string
