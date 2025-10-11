@@ -28,7 +28,7 @@ interface Props {
   caps: Caps;
   openTimeISO: string;               // ISO datetime when registration opens
   preferredSlot: string;             // human-friendly slot description
-  onCreated: (planId: string, mandateId: string) => void;
+  onCreated: (planId: string, mandateId: string, opensAt: string) => void;
   mandateConsents?: boolean[];       // External consent state from parent form
   onMandateConsentsChange?: (consents: boolean[]) => void; // Callback to update parent form
 }
@@ -211,7 +211,7 @@ export default function MandateSummary({
       
       const planId = plan.data?.plan_id || plan.data?.id;
       if (planId) {
-        onCreated(planId, mandateId);
+        onCreated(planId, mandateId, openTimeISO);
       }
     } catch (err: any) {
       console.error('[MandateSummary] fatal', err);

@@ -2126,8 +2126,8 @@ const PlanBuilder = () => {
                   service_fee_cents: caps.service_fee_cents
                 }}
                 preferredSlot={selectedBranch || 'Standard Registration'}
-                onCreated={(planId, mandateId) => {
-                  setCreatedPlan({ plan_id: planId, mandate_id: mandateId });
+                onCreated={(planId, mandateId, opensAt) => {
+                  setCreatedPlan({ plan_id: planId, mandate_id: mandateId, opens_at: opensAt });
                   setShowConfirmation(true);
                   setShowMandateSummary(false);
                 }}
