@@ -678,6 +678,13 @@ export type Database = {
         Args: { p_program: string; p_provider: string; p_stage: string }
         Returns: Json
       }
+      get_table_columns: {
+        Args: { p_schema_name: string; p_table_name: string }
+        Returns: {
+          column_name: string
+          data_type: string
+        }[]
+      }
       insert_execution_log: {
         Args: {
           p_attempt?: number
