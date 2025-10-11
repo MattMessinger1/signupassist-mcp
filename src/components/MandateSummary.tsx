@@ -148,14 +148,14 @@ export default function MandateSummary({
         .select('id')
         .eq('user_id', user.id)
         .eq('provider', 'skiclubpro')
-        .limit(1);
-
+        .maybeSingle(); // safe but still strict
+      console.log('[MandateSummary] credential lookup result', creds);
       if (credErr) {
         console.error('[MandateSummary] credential lookup failed', credErr);
-        throw new Error('Could not look up stored credential');
+        throw new Error('Credential lookup failed');
       }
-      const dynamicCredentialId = creds?.[0]?.id;
-      if (!dynamicCredentialId) throw new Error('No stored credential found for this user/provider');
+      if (!creds) throw new Error('No stored credential found for this user/provider');
+      const credentialId = creds.id;
 
       // Construct payload with dynamic credential id
       const nowISO = new Date().toISOString();
@@ -176,7 +176,7 @@ export default function MandateSummary({
         max_amount_cents: maxAmountCents,
         valid_from: nowISO,
         valid_until: oneMonthLaterISO,
-        credential_id: dynamicCredentialId,
+        credential_id: credentialId,
         caps: {
           max_provider_charge_cents: maxAmountCents,
           service_fee_cents: 2000,
