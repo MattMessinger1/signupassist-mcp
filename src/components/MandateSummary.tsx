@@ -183,7 +183,8 @@ export default function MandateSummary({
         },
       };
       console.log('[MandateSummary] mandate-issue payload', mandatePayload);
-      const mand = await supabase.functions.invoke('mandate-issue', { body: mandatePayload });
+      console.log('[Frontend] Calling mandate-issue-v2 with payload', mandatePayload);
+      const mand = await supabase.functions.invoke('mandate-issue-v2', { body: mandatePayload });
       if (mand.error) throw new Error(mand.error.message || 'mandate-issue failed');
 
       console.log('[MandateSummary] ✅ mandate-issue returned', mand.data);
