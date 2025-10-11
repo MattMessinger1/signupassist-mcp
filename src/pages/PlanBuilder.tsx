@@ -1046,13 +1046,17 @@ const PlanBuilder = () => {
       toastLogger('mvp_test', 'Fields discovered, submitting registration...', 'info');
 
       // Call schedule-from-readiness edge function
+      const payload = {
+        plan_id: createdPlan.plan_id,
+        credential_id: credentialId,
+        user_jwt: currentSession.access_token
+      };
+      console.log('[Frontend] calling schedule-from-readiness with payload', payload);
       const { data, error } = await supabase.functions.invoke('schedule-from-readiness', {
-        body: {
-          plan_id: createdPlan.plan_id,
-          credential_id: credentialId,
-          user_jwt: currentSession.access_token
-        }
+        body: payload
       });
+      if (error) console.error('[Frontend] schedule-from-readiness error', error);
+      else console.log('[Frontend] schedule-from-readiness response', data);
 
       if (error || data?.error) {
         const errorMsg = error?.message || data?.error || 'MVP test failed';
