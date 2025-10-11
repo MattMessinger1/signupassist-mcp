@@ -128,7 +128,7 @@ Deno.serve(async (req) => {
 
     try {
       // Check stored payment method
-      const paymentStatus = await invokeMCPTool('scp.check_stored_payment_method', { 
+      const paymentStatus = await invokeMCPTool('scp.check_payment_method', { 
         credential_data: credentialData 
       }, { skipAudit: true });
       
