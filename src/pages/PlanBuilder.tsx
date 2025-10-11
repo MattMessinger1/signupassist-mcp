@@ -194,7 +194,7 @@ const PlanBuilder = () => {
     result?: string;
     verified?: boolean;
   }>({ status: 'idle' });
-  const [loginStatus, setLoginStatus] = useState<'checking' | 'authenticated' | 'action_needed'>('checking');
+  const [loginStatus, setLoginStatus] = useState<'checking' | 'authenticated' | 'action_needed'>('action_needed');
   const [mvpTestProgress, setMvpTestProgress] = useState<{
     inProgress: boolean;
     stage: 'idle' | 'checking_mandates' | 'discovering_fields' | 'submitting_form' | 'complete' | 'error';
