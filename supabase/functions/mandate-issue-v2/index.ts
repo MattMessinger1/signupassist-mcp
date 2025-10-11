@@ -96,8 +96,8 @@ Deno.serve(async (req) => {
         provider,
         scope: normalizedScope,
         jws_compact: jws_compact || jws,
-        status: 'active',
-        details: caps ? { caps } : null
+        status: 'active'
+        // removed nonexistent 'details' field (no such column in mandates)
       }])
       .select()
       .maybeSingle();
