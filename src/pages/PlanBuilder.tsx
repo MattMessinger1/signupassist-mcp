@@ -202,7 +202,7 @@ const PlanBuilder = () => {
   }>({ inProgress: false, stage: 'idle' });
   const [discoveryMetadata, setDiscoveryMetadata] = useState<any>(null);
   const [reloadTrigger, setReloadTrigger] = useState<number>(0);
-  const [loginCheckTimeout, setLoginCheckTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [loginCheckTimeout, setLoginCheckTimeout] = useState<number | null>(null);
   
   // Refs for auto-scroll functionality - one for each step
   const step1Ref = useRef<HTMLDivElement>(null);
@@ -311,7 +311,7 @@ const PlanBuilder = () => {
           description: 'Login verification is taking longer than expected. Please check the logs.',
           variant: 'default'
         });
-      }, 45000); // 45 seconds
+      }, 45000) as unknown as number; // 45 seconds
       
       setLoginCheckTimeout(timeout);
       
