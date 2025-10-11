@@ -47,14 +47,18 @@ Deno.serve(async (req) => {
 
     console.log('[mandate-issue-v2] Searching stored_credentials', { credential_id, user_id: user.id, provider });
 
-    // ✅ Safe lookup
-    const { data: credential, error: credError } = await supabase
+    console.log('[mandate-issue-v2] Checking stored_credentials with:', { credential_id, user_id: user.id, provider });
+
+    const { data: results, error: credError } = await supabase
       .from('stored_credentials')
       .select('*')
-      .eq('id', credential_id)
-      .eq('user_id', user.id)
-      .eq('provider', provider)
-      .maybeSingle();
+      .filter('id', 'eq', credential_id.toString())
+      .filter('user_id', 'eq', user.id.toString())
+      .filter('provider', 'eq', provider.toString());
+
+    console.log('[mandate-issue-v2] Query results:', results);
+
+    const credential = Array.isArray(results) && results.length > 0 ? results[0] : null;
 
     if (credError) throw new Error(`Credential lookup failed: ${credError.message}`);
     if (!credential) throw new Error(`No credential found with id=${credential_id}, user_id=${user.id}, provider=${provider}`);
