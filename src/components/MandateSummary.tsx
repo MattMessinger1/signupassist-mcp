@@ -139,9 +139,29 @@ export default function MandateSummary({
         openTimeISO,
       });
       
+      // 🔍 Dynamically look up stored credential for this user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      const { data: creds, error: credErr } = await supabase
+        .from('stored_credentials')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('provider', 'skiclubpro')
+        .limit(1);
+
+      if (credErr) {
+        console.error('[MandateSummary] credential lookup failed', credErr);
+        throw new Error('Could not look up stored credential');
+      }
+      const dynamicCredentialId = creds?.[0]?.id;
+      if (!dynamicCredentialId) throw new Error('No stored credential found for this user/provider');
+
+      // Construct payload with dynamic credential id
       const nowISO = new Date().toISOString();
       const oneMonthLaterISO = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
       const maxAmountCents = caps.max_provider_charge_cents ?? 0;
+
       const mandatePayload = {
         provider: 'skiclubpro',
         program_ref: programRef,
@@ -156,13 +176,12 @@ export default function MandateSummary({
         max_amount_cents: maxAmountCents,
         valid_from: nowISO,
         valid_until: oneMonthLaterISO,
-        credential_id: credentialId,
+        credential_id: dynamicCredentialId,
         caps: {
           max_provider_charge_cents: maxAmountCents,
           service_fee_cents: 2000,
         },
       };
-      
       console.log('[MandateSummary] mandate-issue payload', mandatePayload);
       const mand = await supabase.functions.invoke('mandate-issue', { body: mandatePayload });
       if (mand.error) throw new Error(mand.error.message || 'mandate-issue failed');
