@@ -4,6 +4,7 @@ import { Save, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { RegistrationFormData } from '@/types/forms';
 
 interface DraftSaverProps<T> {
   formData: T;
@@ -58,12 +59,13 @@ export function DraftSaver<T>({ formData, watch, setValue, draftKey, triggerRelo
         timestamp: new Date().toISOString(),
       };
       
+      const formDataTyped = currentFormData as Partial<RegistrationFormData>;
       console.log('[DraftSaver] 💾 SAVING draft:', {
-        opensAt: (currentFormData as any).opensAt,
-        opensAtType: typeof (currentFormData as any).opensAt,
-        maxAmountCents: (currentFormData as any).maxAmountCents,
-        contactPhone: (currentFormData as any).contactPhone,
-        prereqComplete: (currentFormData as any).prereqComplete,
+        opensAt: formDataTyped.opensAt,
+        opensAtType: typeof formDataTyped.opensAt,
+        maxAmountCents: formDataTyped.maxAmountCents,
+        contactPhone: formDataTyped.contactPhone,
+        prereqComplete: formDataTyped.prereqComplete,
       });
       
       localStorage.setItem(`plan_draft_${draftKey}`, JSON.stringify(draftData));
@@ -115,8 +117,8 @@ export function DraftSaver<T>({ formData, watch, setValue, draftKey, triggerRelo
           // Set form values from draft with proper type conversion
           Object.entries(data).forEach(([key, value]) => {
             if (key === 'answers' && typeof value === 'object' && value !== null) {
-              console.log('[DraftSaver] 📝 Loading nested answers:', Object.keys(value as Record<string, any>));
-              Object.entries(value as Record<string, any>).forEach(([answerKey, answerValue]) => {
+              console.log('[DraftSaver] 📝 Loading nested answers:', Object.keys(value));
+              Object.entries(value).forEach(([answerKey, answerValue]) => {
                 setValue(`answers.${answerKey}` as any, answerValue as any);
               });
             } else if (key === 'opensAt' && typeof value === 'string') {

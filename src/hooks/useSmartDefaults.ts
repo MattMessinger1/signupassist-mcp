@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { UseFormSetValue, UseFormWatch } from 'react-hook-form';
 import { supabase } from '@/integrations/supabase/client';
 import { EnhancedDiscoveredField } from '@/components/FieldRenderer';
+import { RegistrationFormData } from '@/types/forms';
 
 interface PriceOption {
   value: string;
@@ -14,11 +15,11 @@ interface FieldWithPrice extends EnhancedDiscoveredField {
   priceOptions?: PriceOption[];
 }
 
-interface SmartDefaultsProps<T> {
+interface SmartDefaultsProps {
   fields: EnhancedDiscoveredField[];
   childId: string;
-  setValue: UseFormSetValue<T>;
-  watch: UseFormWatch<T>;
+  setValue: UseFormSetValue<RegistrationFormData>;
+  watch: UseFormWatch<RegistrationFormData>;
 }
 
 // Helper to detect price signals in option labels
@@ -90,7 +91,7 @@ function chooseSmartDefault(field: FieldWithPrice): string | undefined {
   return typeof opts[0] === 'string' ? opts[0] : (opts[0] as { value: string })?.value;
 }
 
-export function useSmartDefaults<T>({ fields, childId, setValue, watch }: SmartDefaultsProps<T>) {
+export function useSmartDefaults({ fields, childId, setValue, watch }: SmartDefaultsProps) {
   useEffect(() => {
     if (!childId || !fields.length) return;
 

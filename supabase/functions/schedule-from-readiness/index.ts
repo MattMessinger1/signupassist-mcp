@@ -72,19 +72,22 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check prerequisites
+    // Extract provider from plan
+    const provider = plan.provider || 'skiclubpro';
+
+    // Check prerequisites with correct parameters
     const { data: prereqResult, error: prereqError } = await supabase.functions.invoke('check-prerequisites', {
       headers: {
         Authorization: `Bearer ${user_jwt}`
       },
       body: {
-        org_ref: 'blackhawk-ski-club',
         credential_id,
-        user_jwt
+        provider,                    // ✅ Pass provider
+        child_id: plan.child_id      // ✅ Pass child_id if available
       }
     });
 
-    if (prereqError || !prereqResult?.data) {
+    if (prereqError || !prereqResult) {
       console.error(`[Edge] Prerequisites check failed:`, prereqError);
       return new Response(
         JSON.stringify({ 
@@ -99,10 +102,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Check if prerequisites passed
-    const requirements = prereqResult.data.requirements || [];
-    const hasBlockingFailures = requirements.some(
-      (req: any) => req.blocking && req.outcome === 'fail'
+    // Access correct response structure
+    const checks = prereqResult.checks || [];
+    const hasBlockingFailures = checks.some(
+      (check: any) => check.status === 'fail'
     );
 
     if (hasBlockingFailures) {
@@ -110,7 +113,7 @@ Deno.serve(async (req) => {
       return new Response(
         JSON.stringify({ 
           status: 'prerequisites_failed',
-          requirements,
+          checks,
           execution_id: executionId
         }),
         { 

@@ -16,6 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { CalendarIcon, AlertCircle, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { ProgramAnswer } from '@/types/forms';
 
 export interface ProgramQuestion {
   id: string;
@@ -30,8 +31,8 @@ export interface ProgramQuestion {
 
 export interface ProgramQuestionsPanelProps {
   questions: ProgramQuestion[];
-  initialAnswers?: Record<string, string | boolean | string[]>;
-  onSubmit?: (answers: Record<string, string | boolean | string[]>) => void;
+  initialAnswers?: ProgramAnswer;
+  onSubmit?: (answers: ProgramAnswer) => void;
   onBack?: () => void;
   onRecheck?: () => void;
   isSubmitting?: boolean;
@@ -144,7 +145,7 @@ export default function ProgramQuestionsPanel({
     });
   }, [initialAnswers, setValue]);
 
-  const onFormSubmit = (data: any) => {
+  const onFormSubmit = (data: ProgramAnswer) => {
     if (onSubmit) {
       onSubmit(data);
     }
