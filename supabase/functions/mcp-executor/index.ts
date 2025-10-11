@@ -62,16 +62,19 @@ async function executeMCPTool(toolName: string, args: any, planExecutionId: stri
     throw new Error(`No handler found for MCP tool: ${toolName}`);
   }
 
-  // Create audit record
+  // Create audit record in audit_events table
   const { data: auditRecord, error: auditError } = await supabase
-    .from('mcp_tool_calls')
+    .from('audit_events')
     .insert({
+      event_type: 'mcp_tool_call',
+      provider: 'skiclubpro',
+      tool: toolName,
       plan_execution_id: planExecutionId,
       mandate_id: mandateId,
-      tool: toolName,
       args_json: args,
       args_hash: generateHash(JSON.stringify(args)),
-      decision: 'approved' // Since mandate is pre-approved
+      decision: 'allowed', // Since mandate is pre-approved
+      started_at: new Date().toISOString()
     })
     .select()
     .single();
@@ -105,10 +108,12 @@ async function executeMCPTool(toolName: string, args: any, planExecutionId: stri
 
     // Update audit record with result
     await supabase
-      .from('mcp_tool_calls')
+      .from('audit_events')
       .update({
         result_json: result,
-        result_hash: generateHash(JSON.stringify(result))
+        result_hash: generateHash(JSON.stringify(result)),
+        result: 'success',
+        finished_at: new Date().toISOString()
       })
       .eq('id', auditRecord.id);
 
@@ -123,10 +128,12 @@ async function executeMCPTool(toolName: string, args: any, planExecutionId: stri
 
     // Update audit record with error
     await supabase
-      .from('mcp_tool_calls')
+      .from('audit_events')
       .update({
         result_json: errorResult,
-        result_hash: generateHash(JSON.stringify(errorResult))
+        result_hash: generateHash(JSON.stringify(errorResult)),
+        result: 'failure',
+        finished_at: new Date().toISOString()
       })
       .eq('id', auditRecord.id);
 
