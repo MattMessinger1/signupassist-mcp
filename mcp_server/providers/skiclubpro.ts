@@ -612,33 +612,38 @@ export const skiClubProTools = {
   'scp.discover_required_fields': scpDiscoverRequiredFields,
 
   'scp.check_account_status': async (args: { credential_id: string; org_ref?: string; email?: string; mandate_id?: string; plan_execution_id?: string }) => {
-    // Stub implementation
+    // Stub implementation - returns expected format for edge function
     return {
-      status: 'ok',
+      status: 'active',  // Changed from 'ok' to 'active' to match expected format
       account_exists: true,
       verified: true,
+      message: 'Account status check completed (stub)',
       credential_id: args.credential_id,
       timestamp: new Date().toISOString()
     };
   },
 
   'scp.check_membership_status': async (args: { org_ref: string; mandate_id?: string; plan_execution_id?: string }) => {
-    // Stub implementation
+    // Stub implementation - returns expected format for edge function
     return {
+      is_member: true,  // Added to match expected format
       membership: 'active',
-      expires_at: '2024-12-31',
+      expires_at: '2025-12-31',  // Updated to future date
       plan_type: 'family',
+      message: 'Membership status check completed (stub)',
       org_ref: args.org_ref,
       timestamp: new Date().toISOString()
     };
   },
 
   'scp.check_payment_method': async (args: { mandate_id: string; plan_execution_id?: string }) => {
-    // Stub implementation
+    // Stub implementation - returns expected format for edge function
     return {
+      has_payment_method: true,  // Added to match expected format
       payment_method: 'valid',
       card_last_four: '4242',
       card_type: 'visa',
+      message: 'Payment method check completed (stub)',
       mandate_id: args.mandate_id,
       timestamp: new Date().toISOString()
     };
