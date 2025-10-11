@@ -157,17 +157,11 @@ export default function MandateSummary({
       const mand = await supabase.functions.invoke('mandate-issue', { body: mandatePayload });
       if (mand.error) throw new Error(mand.error.message || 'mandate-issue failed');
 
+      console.log('[MandateSummary] ✅ mandate-issue returned', mand.data);
       const mandateId = mand.data?.mandate_id || mand.data?.id;
       if (!mandateId) throw new Error('mandate-issue returned no mandate_id');
 
-      // 2️⃣  Create plan
-      console.log('[MandateSummary] 🚀 Preparing to call create-plan', {
-        program_ref: programRef,
-        child_id: childId,
-        opens_at: openTimeISO,
-        mandate_id: mandateId,
-      });
-      
+      // 2️⃣  Create plan using mandate_id
       const planPayload = {
         provider: 'skiclubpro',
         program_ref: programRef,
@@ -175,10 +169,10 @@ export default function MandateSummary({
         opens_at: openTimeISO,
         mandate_id: mandateId,
       };
-      
-      console.log('[MandateSummary] create-plan payload', planPayload);
+      console.log('[MandateSummary] 🚀 about to call create-plan', planPayload);
       const plan = await supabase.functions.invoke('create-plan', { body: planPayload });
       if (plan.error) throw new Error(plan.error.message || 'create-plan failed');
+      console.log('[MandateSummary] ✅ create-plan success', plan.data);
 
       toast({
         title: 'Plan created successfully',
