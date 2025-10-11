@@ -107,7 +107,7 @@ Deno.serve(async (req) => {
       .eq('id', credential_id)
       .eq('user_id', user.id)
       .eq('provider', provider)
-      .single();
+      .maybeSingle();
 
     if (credError) {
       console.error('Credential lookup error:', credError);
@@ -163,11 +163,15 @@ Deno.serve(async (req) => {
         details: caps ? { caps } : null
       }])
       .select()
-      .single();
+      .maybeSingle();
 
     if (insertError) {
       console.error('Error inserting mandate:', insertError);
       throw new Error('Failed to create mandate');
+    }
+
+    if (!mandate) {
+      throw new Error('Mandate created but no data returned');
     }
 
     console.log(`Mandate created with ID: ${mandate.id}`);
