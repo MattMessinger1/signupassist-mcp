@@ -225,8 +225,8 @@ Deno.serve(async (req) => {
         );
       }
 
-      if (mandate.status !== 'signed') {
-        console.log(`[Edge] Mandate not signed - status: ${mandate.status}`);
+      if (mandate.status !== 'signed' && mandate.status !== 'active') {
+        console.log(`[Edge] Mandate not in valid status - status: ${mandate.status}`);
         
         await logStructuredError(supabase, {
           correlationId: executionId,
