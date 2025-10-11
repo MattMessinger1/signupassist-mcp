@@ -46,15 +46,13 @@ Deno.serve(async (req) => {
     }
 
     console.log('[mandate-issue-v2] Searching stored_credentials', { credential_id, user_id: user.id, provider });
+    console.log('[mandate-issue-v2] Types', { idType: typeof credential_id, userIdType: typeof user.id, providerType: typeof provider });
 
     console.log('[mandate-issue-v2] Checking stored_credentials with:', { credential_id, user_id: user.id, provider });
 
     const { data: results, error: credError } = await supabase
       .from('stored_credentials')
-      .select('*')
-      .filter('id', 'eq', credential_id.toString())
-      .filter('user_id', 'eq', user.id.toString())
-      .filter('provider', 'eq', provider.toString());
+      .select('*');
 
     console.log('[mandate-issue-v2] Query results:', results);
 
