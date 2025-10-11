@@ -109,8 +109,13 @@ Deno.serve(async (req) => {
       .eq('provider', provider)
       .single();
 
-    if (credError || !credential) {
-      throw new Error('Invalid credential');
+    if (credError) {
+      console.error('Credential lookup error:', credError);
+      throw new Error(`Credential lookup failed: ${credError.message}`);
+    }
+    
+    if (!credential) {
+      throw new Error(`No credential found with id=${credential_id}, user_id=${user.id}, provider=${provider}`);
     }
 
     // Create JWT payload for the mandate
