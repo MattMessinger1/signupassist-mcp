@@ -302,6 +302,28 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Update plan status to 'running' before execution
+    console.log(`[Edge] Updating plan ${plan_id} status to 'running'`);
+    const { error: statusUpdateError } = await supabase
+      .from('plans')
+      .update({ status: 'running' })
+      .eq('id', plan_id);
+
+    if (statusUpdateError) {
+      console.error(`[Edge] Failed to update plan status:`, statusUpdateError);
+      return new Response(
+        JSON.stringify({ 
+          error: 'Failed to update plan status',
+          details: statusUpdateError.message,
+          execution_id: executionId
+        }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
     // Trigger execution via mcp-executor (replaces Railway worker)
     console.log(`[Edge] Triggering mcp-executor for execution ${executionId}`);
     
