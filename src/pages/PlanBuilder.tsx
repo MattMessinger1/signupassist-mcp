@@ -1049,7 +1049,8 @@ const PlanBuilder = () => {
       const payload = {
         plan_id: createdPlan.plan_id,
         credential_id: credentialId,
-        user_jwt: currentSession.access_token
+        user_jwt: currentSession.access_token,
+        opensAtValue: opensAt instanceof Date ? opensAt.toISOString() : opensAt
       };
       console.log('[Frontend] calling schedule-from-readiness with payload', payload);
       const { data, error } = await supabase.functions.invoke('schedule-from-readiness', {
