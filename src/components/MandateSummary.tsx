@@ -139,6 +139,9 @@ export default function MandateSummary({
         openTimeISO,
       });
       
+      const nowISO = new Date().toISOString();
+      const oneMonthLaterISO = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const maxAmountCents = caps.max_provider_charge_cents ?? 0;
       const mandatePayload = {
         provider: 'skiclubpro',
         program_ref: programRef,
@@ -150,7 +153,14 @@ export default function MandateSummary({
           'scp:pay',
           'signupassist:fee',
         ],
-        caps: { max_provider_charge_cents: caps.max_provider_charge_cents ?? 0, service_fee_cents: caps.service_fee_cents ?? 0 },
+        max_amount_cents: maxAmountCents,
+        valid_from: nowISO,
+        valid_until: oneMonthLaterISO,
+        credential_id: credentialId,
+        caps: {
+          max_provider_charge_cents: maxAmountCents,
+          service_fee_cents: 2000,
+        },
       };
       
       console.log('[MandateSummary] mandate-issue payload', mandatePayload);
