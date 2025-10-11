@@ -305,9 +305,13 @@ export default function MandateSummary({
           </div>
 
           <div className="flex gap-2 pt-1">
-            <Button type="button" onClick={createPlanAndMandate} disabled={!valid || submitting} className="gap-2">
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Sign & Create Plan
+            <Button
+              type="button"
+              className="w-full"
+              disabled={submitting}
+              onClick={createPlanAndMandate}
+            >
+              {submitting ? 'Creating…' : 'Sign & Create Plan'}
             </Button>
           </div>
         </CardContent>
