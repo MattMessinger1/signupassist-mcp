@@ -249,6 +249,8 @@ const PlanBuilder = () => {
   // --- values MandateSummary and create-plan need ---
   const childId = form.watch('childId') || selectedChildId || '';
   const programRef = (form.watch('programRef') as string) || '';
+  
+  // --- load credential id from stored credentials or form state ---
   const credentialId = (form.watch('credentialId') as string) || '';
   const openTimeISO =
     opensAtVal instanceof Date && !Number.isNaN(opensAtVal.getTime())
