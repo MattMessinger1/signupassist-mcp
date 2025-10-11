@@ -117,6 +117,7 @@ export default function MandateSummary({
   }, [consents, childName, programRef, credentialId, openTimeISO]);
 
   const createPlanAndMandate = async () => {
+    console.log('[MandateSummary] 🟢 createPlanAndMandate triggered');
     if (!valid) {
       toast({ title: 'Missing consent or fields', description: 'Please review and accept the terms above.', variant: 'destructive' });
       return;
@@ -124,6 +125,7 @@ export default function MandateSummary({
     
     setSubmitting(true);
     try {
+      console.log('[MandateSummary] 🧭 entering try block');
       // guards
       if (!programRef) throw new Error('programRef missing');
       if (!childId) throw new Error('childId missing');
