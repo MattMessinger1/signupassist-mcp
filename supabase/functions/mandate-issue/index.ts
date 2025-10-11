@@ -101,6 +101,12 @@ Deno.serve(async (req) => {
     }
 
     // Verify the credential belongs to the user
+    console.log('[DEBUG] searching stored_credentials', {
+      credential_id,
+      user_id: user.id,
+      provider,
+    });
+
     const { data: credential, error: credError } = await supabase
       .from('stored_credentials')
       .select('*')
