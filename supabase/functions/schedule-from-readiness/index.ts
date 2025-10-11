@@ -75,24 +75,92 @@ Deno.serve(async (req) => {
     // Extract provider from plan
     const provider = plan.provider || 'skiclubpro';
 
-    // Check prerequisites with correct parameters
-    const { data: prereqResult, error: prereqError } = await supabase.functions.invoke('check-prerequisites', {
-      headers: {
-        Authorization: `Bearer ${user_jwt}`
-      },
-      body: {
+    // Helper function to add timeout to promises
+    const PREREQ_TIMEOUT_MS = 30000; // 30 seconds
+    async function invokeWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+      return Promise.race([
+        promise,
+        new Promise<T>((_, reject) => 
+          setTimeout(() => reject(new Error('Operation timed out')), timeoutMs)
+        )
+      ]);
+    }
+
+    // Check prerequisites with timeout
+    let prereqResult: any;
+    let prereqError: any;
+    
+    try {
+      const result = await invokeWithTimeout(
+        supabase.functions.invoke('check-prerequisites', {
+          headers: {
+            Authorization: `Bearer ${user_jwt}`
+          },
+          body: {
+            credential_id,
+            provider,
+            child_id: plan.child_id
+          }
+        }),
+        PREREQ_TIMEOUT_MS
+      );
+      
+      prereqResult = result.data;
+      prereqError = result.error;
+      
+      // Enhanced logging
+      console.log('[Edge] check-prerequisites response:', { 
+        hasData: !!prereqResult, 
+        hasError: !!prereqError,
+        errorDetails: prereqError,
+        dataType: typeof prereqResult,
+        dataKeys: prereqResult ? Object.keys(prereqResult) : [],
         credential_id,
-        provider,                    // ✅ Pass provider
-        child_id: plan.child_id      // ✅ Pass child_id if available
-      }
-    });
+        provider,
+        child_id: plan.child_id
+      });
+      
+    } catch (timeoutError) {
+      console.error('[Edge] Prerequisites check timed out after 30s:', {
+        credential_id,
+        provider,
+        child_id: plan.child_id
+      });
+      
+      return new Response(
+        JSON.stringify({ 
+          error: 'Prerequisites check timed out',
+          details: 'The prerequisite check took too long to complete (>30s)',
+          execution_id: executionId
+        }),
+        { 
+          status: 408, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
     if (prereqError || !prereqResult) {
-      console.error(`[Edge] Prerequisites check failed:`, prereqError);
+      console.error(`[Edge] Prerequisites check failed:`, {
+        error: prereqError,
+        result: prereqResult,
+        credential_id,
+        provider,
+        child_id: plan.child_id,
+        hasError: !!prereqError,
+        hasResult: !!prereqResult,
+        errorMessage: prereqError?.message
+      });
+      
       return new Response(
         JSON.stringify({ 
           error: 'Prerequisites check failed',
-          details: prereqError?.message,
+          details: prereqError?.message || 'No result returned from check-prerequisites',
+          debug: {
+            hasError: !!prereqError,
+            hasResult: !!prereqResult,
+            errorMessage: prereqError?.message
+          },
           execution_id: executionId
         }),
         { 

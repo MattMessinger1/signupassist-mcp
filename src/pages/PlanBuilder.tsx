@@ -202,6 +202,7 @@ const PlanBuilder = () => {
   }>({ inProgress: false, stage: 'idle' });
   const [discoveryMetadata, setDiscoveryMetadata] = useState<any>(null);
   const [reloadTrigger, setReloadTrigger] = useState<number>(0);
+  const [loginCheckTimeout, setLoginCheckTimeout] = useState<NodeJS.Timeout | null>(null);
   
   // Refs for auto-scroll functionality - one for each step
   const step1Ref = useRef<HTMLDivElement>(null);
@@ -295,6 +296,38 @@ const PlanBuilder = () => {
 
     return ok;
   }, [hasPaymentMethod, opensAtTruthy, maxAmountCentsVal, contactPhoneValid, allMandateChecked, form]);
+
+  // Timeout for login verification - prevent infinite "Checking..." state
+  useEffect(() => {
+    if (mvpTestProgress.inProgress && loginStatus === 'checking') {
+      console.log('[PlanBuilder] Setting 45-second timeout for login verification');
+      
+      // Set 45-second timeout for login verification
+      const timeout = setTimeout(() => {
+        console.warn('[PlanBuilder] Login verification timeout - no logs received');
+        setLoginStatus('action_needed');
+        toast({
+          title: 'Verification Timeout',
+          description: 'Login verification is taking longer than expected. Please check the logs.',
+          variant: 'default'
+        });
+      }, 45000); // 45 seconds
+      
+      setLoginCheckTimeout(timeout);
+      
+      // Cleanup on unmount or when status changes
+      return () => {
+        if (timeout) {
+          clearTimeout(timeout);
+        }
+      };
+    } else if (loginStatus !== 'checking' && loginCheckTimeout) {
+      // Clear timeout if status changes
+      console.log('[PlanBuilder] Clearing login verification timeout - status changed to', loginStatus);
+      clearTimeout(loginCheckTimeout);
+      setLoginCheckTimeout(null);
+    }
+  }, [mvpTestProgress.inProgress, loginStatus, loginCheckTimeout, toast]);
 
   // Debug logging for "Sign & Create Plan" button
   useEffect(() => {
@@ -1102,6 +1135,9 @@ const PlanBuilder = () => {
       const errorMessage = error instanceof Error ? error.message : 'Failed to run MVP test';
       
       toastLogger('mvp_test', errorMessage, 'error', { error });
+      
+      // Reset login status on failure
+      setLoginStatus('action_needed');
       
       setMvpTestProgress({ 
         inProgress: false, 
