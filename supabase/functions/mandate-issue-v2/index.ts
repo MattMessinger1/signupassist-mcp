@@ -65,9 +65,9 @@ Deno.serve(async (req) => {
     console.log('[mandate-issue-v2] Credential found! Creating mandate...');
 
     const payload = {
-      iss: 'signupassist',
+      iss: 'signupassist-platform',
       sub: user.id,
-      aud: provider,
+      aud: 'signupassist-mcp',
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(new Date(valid_until).getTime() / 1000),
       child_id,
@@ -75,6 +75,7 @@ Deno.serve(async (req) => {
       max_amount_cents,
       scope: normalizedScope,
       credential_id,
+      provider,
       ...(caps ? { caps } : {})
     };
 
