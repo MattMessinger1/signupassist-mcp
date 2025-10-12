@@ -167,6 +167,7 @@ export default function MandateSummary({
         program_ref: programRef,
         child_id: childId,
         scopes: [
+          'scp:authenticate',
           'scp:login',
           'scp:enroll',
           'scp:write:register',
