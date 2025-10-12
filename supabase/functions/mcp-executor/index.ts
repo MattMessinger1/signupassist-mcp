@@ -140,10 +140,14 @@ Deno.serve(async (req) => {
     }
 
     // Handle plan execution
-    const { plan_id, plan_execution_id, mandate_id } = body;
+    const { plan_id, plan_execution_id, mandate_id, credential_id, user_jwt } = body;
     
     if (!plan_id) {
       throw new Error('plan_id is required');
+    }
+    
+    if (!credential_id || !user_jwt) {
+      throw new Error('credential_id and user_jwt are required');
     }
 
     console.log(`Starting MCP-powered plan execution for plan ${plan_id}`);
@@ -230,7 +234,8 @@ Deno.serve(async (req) => {
       const loginResult = await executeMCPTool(
         'scp:login',
         {
-          credential_alias: 'skiclubpro-default',
+          credential_id: credential_id,
+          user_jwt: user_jwt,
           program_ref: plan.program_ref
         },
         planExecutionId,
