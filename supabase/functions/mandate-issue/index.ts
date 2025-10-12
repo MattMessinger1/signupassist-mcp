@@ -165,7 +165,7 @@ Deno.serve(async (req) => {
     console.log('Generated JWS mandate:', jws.substring(0, 50) + '...');
 
     // Store the mandate in the database - use provided jws_compact if available, otherwise use generated jws
-    const { data: mandate, error: insertError } = await supabase
+    const { data: mandate, error: insertError } = await serviceSupabase
       .from('mandates')
       .insert([{
         user_id: user.id,
