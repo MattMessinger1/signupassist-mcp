@@ -1202,7 +1202,7 @@ const PlanBuilder = () => {
           valid_from: new Date().toISOString(),
           valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
           provider: 'skiclubpro',
-          scope: ['scp:login', 'scp:enroll', 'scp:pay', 'scp:write:register', 'signupassist:fee'],
+          scope: ['scp:authenticate', 'scp:login', 'scp:enroll', 'scp:pay', 'scp:write:register', 'signupassist:fee'],
           credential_id: formData.credentialId
         }
       });
