@@ -82,8 +82,26 @@ Deno.serve(async (req) => {
     const signingKey = Deno.env.get('MANDATE_SIGNING_KEY');
     if (!signingKey) throw new Error('Mandate signing key not configured');
 
-    const secret = new TextEncoder().encode(signingKey);
-    const jws = await new SignJWT(payload).setProtectedHeader({ alg: 'HS256' }).sign(secret);
+    // Decode the base64 signing key (matching MCP server implementation)
+    const keyBuffer = Uint8Array.from(atob(signingKey), c => c.charCodeAt(0));
+
+    // Create JWK from the raw key
+    const jwk = {
+      kty: 'oct',
+      k: btoa(String.fromCharCode(...keyBuffer)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, ''),
+    };
+
+    const { importJWK } = await import('https://esm.sh/jose@5.9.6');
+    const secret = await importJWK(jwk, 'HS256');
+
+    // Create and sign JWT with proper standard claims
+    const jws = await new SignJWT(payload)
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setIssuer('signupassist-platform')
+      .setAudience('signupassist-mcp')
+      .setExpirationTime(payload.exp)
+      .sign(secret);
 
     const { data: mandate, error: insertError } = await supabase
       .from('mandates')
