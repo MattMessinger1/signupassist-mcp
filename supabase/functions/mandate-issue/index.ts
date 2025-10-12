@@ -126,9 +126,9 @@ Deno.serve(async (req) => {
 
     // Create JWT payload for the mandate
     const payload = {
-      iss: 'signupassist',
+      iss: 'signupassist-platform',
       sub: user.id,
-      aud: provider,
+      aud: 'signupassist-mcp',
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(new Date(valid_until).getTime() / 1000),
       child_id,
