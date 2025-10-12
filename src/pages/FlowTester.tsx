@@ -181,7 +181,7 @@ export default function FlowTester() {
     try {
       // Step 1: Create mandate
       updateStep('mandate', { status: 'running' });
-      const { data: mandateData, error: mandateError } = await supabase.functions.invoke('mandate-issue', {
+      const { data: mandateData, error: mandateError } = await supabase.functions.invoke('mandate-issue-v2', {
         body: {
           provider: mandateConfig.provider,
           program_ref: mandateConfig.programRef,
