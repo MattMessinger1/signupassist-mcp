@@ -1194,7 +1194,7 @@ const PlanBuilder = () => {
       }
       
       // Create mandate using edge function
-      const { data, error } = await supabase.functions.invoke('mandate-issue', {
+      const { data, error } = await supabase.functions.invoke('mandate-issue-v2', {
         body: {
           child_id: formData.childId,
           program_ref: formData.programRef,
