@@ -11,7 +11,7 @@ export interface MandatePayload {
   mandate_id: string;
   user_id: string;
   provider: string;
-  scopes: string[];
+  scope: string[];
   child_id?: string;
   program_ref?: string;
   max_amount_cents?: number;
@@ -137,7 +137,7 @@ export async function verifyMandate(
     }
 
     // Check required scope
-    if (!mandatePayload.scopes.includes(requiredScope)) {
+    if (!mandatePayload.scope.includes(requiredScope)) {
       throw new Error(`Mandate does not include required scope: ${requiredScope}`);
     }
 

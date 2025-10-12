@@ -16,7 +16,7 @@ describe('Mandate Signing & Verification', () => {
       mandate_id: 'test-mandate-123',
       user_id: 'user-456',
       provider: 'skiclubpro',
-      scopes: ['scp:login', 'scp:register', 'scp:pay'],
+      scope: ['scp:login', 'scp:register', 'scp:pay'],
       child_id: 'child-789',
       program_ref: 'blackhawk-2024',
       max_amount_cents: 50000, // $500
@@ -72,7 +72,7 @@ describe('Mandate Signing & Verification', () => {
     it('should reject mandate without required scope', async () => {
       const limitedPayload = {
         ...validPayload,
-        scopes: ['scp:login'], // Missing 'scp:pay'
+        scope: ['scp:login'], // Missing 'scp:pay'
       };
       
       const jws = await issueMandate(limitedPayload);
