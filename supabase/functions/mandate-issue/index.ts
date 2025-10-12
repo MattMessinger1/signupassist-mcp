@@ -177,8 +177,7 @@ Deno.serve(async (req) => {
         provider,
         scope: normalizedScope,
         jws_compact: jws_compact || jws,
-        status: 'active',
-        details: caps ? { caps } : null
+        status: 'active'
       }])
       .select()
       .maybeSingle();
