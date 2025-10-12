@@ -1552,6 +1552,18 @@ const PlanBuilder = () => {
                     <Alert className={mvpTestProgress.stage === 'error' ? 'border-destructive' : ''}>
                       <AlertDescription className="text-sm">
                         {mvpTestProgress.message}
+                        {mvpTestProgress.stage === 'complete' && (
+                          <Button 
+                            variant="link" 
+                            className="p-0 h-auto ml-2 text-primary"
+                            onClick={() => {
+                              document.querySelector('[data-testid="plan-execution-status"]')
+                                ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }}
+                          >
+                            View live progress ↓
+                          </Button>
+                        )}
                       </AlertDescription>
                     </Alert>
                   )}
@@ -2181,14 +2193,16 @@ const PlanBuilder = () => {
 
             {/* Step 9: Plan Created - Show Execution Status */}
             {showConfirmation && createdPlan && (
-              <PlanExecutionStatus
-                planId={createdPlan.plan_id}
-                mandateId={createdPlan.mandate_id}
-                programTitle={friendlyProgramTitle || form.watch('programRef')}
-                childName={selectedChildName}
-                opensAt={opensAt instanceof Date ? opensAt.toISOString() : new Date(opensAt).toISOString()}
-                maxAmountCents={form.watch('maxAmountCents')}
-              />
+              <div data-testid="plan-execution-status">
+                <PlanExecutionStatus
+                  planId={createdPlan.plan_id}
+                  mandateId={createdPlan.mandate_id}
+                  programTitle={friendlyProgramTitle || form.watch('programRef')}
+                  childName={selectedChildName}
+                  opensAt={opensAt instanceof Date ? opensAt.toISOString() : new Date(opensAt).toISOString()}
+                  maxAmountCents={form.watch('maxAmountCents')}
+                />
+              </div>
             )}
 
             {/* V1: Plan Preview removed - no discovered fields */}
