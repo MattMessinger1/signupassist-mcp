@@ -107,7 +107,19 @@ Deno.serve(async (req) => {
       provider,
     });
 
-    const { data: credential, error: credError } = await supabase
+    // Create service role client for credential lookup (bypasses RLS)
+    const serviceSupabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false,
+        }
+      }
+    );
+
+    const { data: credential, error: credError } = await serviceSupabase
       .from('stored_credentials')
       .select('*')
       .eq('id', credential_id)
