@@ -62,94 +62,30 @@ async function executeMCPTool(toolName: string, args: any, planExecutionId: stri
     throw new Error(`No handler found for MCP tool: ${toolName}`);
   }
 
-  // Create audit record in audit_events table
-  const { data: auditRecord, error: auditError } = await supabase
-    .from('audit_events')
-    .insert({
-      event_type: 'mcp_tool_call',
-      provider: 'skiclubpro',
-      tool: toolName,
+  // Call the actual MCP tool implementation
+  // Audit logging is handled by the Railway MCP server
+  const requestBody = {
+    tool: toolName,
+    args: {
+      ...args,
       plan_execution_id: planExecutionId,
-      mandate_id: mandateId,
-      args_json: args,
-      args_hash: generateHash(JSON.stringify(args)),
-      decision: 'allowed', // Since mandate is pre-approved
-      started_at: new Date().toISOString()
-    })
-    .select()
-    .single();
-
-  if (auditError) {
-    throw new Error(`Failed to create audit record: ${auditError.message}`);
-  }
-
-  try {
-    // Call the actual MCP tool implementation
-    const requestBody = {
-      tool: toolName,
-      args: {
-        ...args,
-        plan_execution_id: planExecutionId,
-        mandate_id: mandateId
-      }
-    };
-    
-    console.log(`[Browserbase] Calling ${edgeFunction} with body:`, JSON.stringify(requestBody));
-    
-    const toolResult = await supabase.functions.invoke(edgeFunction, {
-      body: requestBody
-    });
-
-    if (toolResult.error) {
-      throw new Error(`MCP tool failed: ${toolResult.error.message}`);
+      mandate_id: mandateId
     }
+  };
+  
+  console.log(`[Browserbase] Calling ${edgeFunction} with body:`, JSON.stringify(requestBody));
+  
+  const toolResult = await supabase.functions.invoke(edgeFunction, {
+    body: requestBody
+  });
 
-    const result = toolResult.data;
-
-    // Update audit record with result
-    await supabase
-      .from('audit_events')
-      .update({
-        result_json: result,
-        result_hash: generateHash(JSON.stringify(result)),
-        result: 'success',
-        finished_at: new Date().toISOString()
-      })
-      .eq('id', auditRecord.id);
-
-    console.log(`MCP tool ${toolName} completed successfully:`, result);
-    return result;
-
-  } catch (error) {
-    const errorResult = {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
-    };
-
-    // Update audit record with error
-    await supabase
-      .from('audit_events')
-      .update({
-        result_json: errorResult,
-        result_hash: generateHash(JSON.stringify(errorResult)),
-        result: 'failure',
-        finished_at: new Date().toISOString()
-      })
-      .eq('id', auditRecord.id);
-
-    throw error;
+  if (toolResult.error) {
+    throw new Error(`MCP tool failed: ${toolResult.error.message}`);
   }
-}
 
-function generateHash(data: string): string {
-  // Simple hash function for demo - in production use proper crypto
-  let hash = 0;
-  for (let i = 0; i < data.length; i++) {
-    const char = data.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32-bit integer
-  }
-  return Math.abs(hash).toString(16);
+  const result = toolResult.data;
+  console.log(`MCP tool ${toolName} completed successfully:`, result);
+  return result;
 }
 
 Deno.serve(async (req) => {

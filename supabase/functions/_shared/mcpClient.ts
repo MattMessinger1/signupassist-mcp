@@ -73,27 +73,6 @@ export async function invokeMCPTool(
       }
 
       const result = await response.json();
-
-      // Log audit trail if not skipped and we have required IDs
-      if (!skipAudit && (mandate_id || plan_execution_id)) {
-        let safePlanExecutionId = plan_execution_id;
-        
-        if (!safePlanExecutionId || safePlanExecutionId === "") {
-          console.log("DEBUG replacing empty or falsy plan_execution_id with null before audit");
-          safePlanExecutionId = null;
-        }
-
-        await logMCPAudit({
-          tool,
-          args,
-          result,
-          mandate_id,
-          plan_execution_id: safePlanExecutionId
-        });
-      } else if (skipAudit) {
-        console.log("DEBUG skipAudit=true — audit logging intentionally skipped for tool:", tool);
-      }
-
       return result;
     } catch (error) {
       clearTimeout(timeoutId);
@@ -106,27 +85,6 @@ export async function invokeMCPTool(
 
   } catch (error) {
     console.error(`MCP tool ${tool} failed:`, error);
-    
-    // Log failed audit trail if not skipped and we have required IDs
-    if (!skipAudit && (mandate_id || plan_execution_id)) {
-      let safePlanExecutionId = plan_execution_id;
-      if (!safePlanExecutionId) {
-        console.log("DEBUG plan_execution_id falsy in catch block, forcing null before failed audit");
-        safePlanExecutionId = null;
-      }
-
-      await logMCPAudit({
-        tool,
-        args,
-        result: { error: error instanceof Error ? error.message : 'Unknown error' },
-        mandate_id,
-        plan_execution_id: safePlanExecutionId,
-        decision: 'denied'
-      });
-    } else if (skipAudit) {
-      console.log("DEBUG skipAudit=true — failed audit logging also skipped for tool:", tool);
-    }
-    
     throw error;
   }
 }
@@ -152,58 +110,4 @@ export async function invokeMCPToolDirect(tool: string, args: any): Promise<any>
   }
 
   return res.json();
-}
-
-async function logMCPAudit({
-  tool,
-  args,
-  result,
-  mandate_id,
-  plan_execution_id,
-  decision = 'allowed'
-}: {
-  tool: string;
-  args: any;
-  result: any;
-  mandate_id?: string;
-  plan_execution_id?: string | null;
-  decision?: 'allowed' | 'denied';
-}): Promise<void> {
-  try {
-    const serviceSupabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
-    const auditData = {
-      tool,
-      args_json: args,
-      result_json: result,
-      args_hash: await generateHash(JSON.stringify(args)),
-      result_hash: await generateHash(JSON.stringify(result)),
-      decision,
-      mandate_id: mandate_id || crypto.randomUUID(), // Fallback if not provided
-      ...(plan_execution_id ? { plan_execution_id } : {}) // Only include if it has a value
-    };
-
-    const { error: auditError } = await serviceSupabase
-      .from('mcp_tool_calls')
-      .insert(auditData);
-
-    if (auditError) {
-      console.error('Failed to log MCP audit:', auditError);
-    } else {
-      console.log(`Logged MCP audit for tool: ${tool}`);
-    }
-  } catch (error) {
-    console.error('Error logging MCP audit:', error);
-  }
-}
-
-async function generateHash(data: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const dataBuffer = encoder.encode(data);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', dataBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
