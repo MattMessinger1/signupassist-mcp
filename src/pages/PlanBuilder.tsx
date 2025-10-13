@@ -1557,8 +1557,24 @@ const PlanBuilder = () => {
                             variant="link" 
                             className="p-0 h-auto ml-2 text-primary"
                             onClick={() => {
-                              document.querySelector('[data-testid="plan-execution-status"]')
-                                ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                              // Try to find and scroll to the execution status
+                              const statusEl = document.querySelector('[data-testid="plan-execution-status"]');
+                              if (statusEl) {
+                                statusEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                              } else {
+                                // If not found immediately, wait a bit and try again
+                                setTimeout(() => {
+                                  const retryEl = document.querySelector('[data-testid="plan-execution-status"]');
+                                  if (retryEl) {
+                                    retryEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                  } else {
+                                    toast({
+                                      title: "Scroll to Status",
+                                      description: "Please scroll down to see the execution status",
+                                    });
+                                  }
+                                }, 300);
+                              }
                             }}
                           >
                             View live progress ↓
