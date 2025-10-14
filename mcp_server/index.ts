@@ -214,6 +214,21 @@ class SignupAssistMCPServer {
         return;
       }
 
+      // --- Legacy MCP path for older ChatGPT builds
+      if (req.method === 'GET' && url.pathname === '/.mcp/manifest.json') {
+        try {
+          const manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
+          const manifest = readFileSync(manifestPath, 'utf8');
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(manifest);
+        } catch (error: any) {
+          console.error('[LEGACY MCP ERROR]', error);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Failed to load manifest', details: error.message }));
+        }
+        return;
+      }
+
       // --- Default 404
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not found' }));
