@@ -192,6 +192,28 @@ class SignupAssistMCPServer {
         return;
       }
 
+      // --- Redirect /mcp to manifest
+      if (req.method === 'GET' && url.pathname === '/mcp') {
+        res.writeHead(302, { Location: '/mcp/manifest.json' });
+        res.end();
+        return;
+      }
+
+      // --- Well-known AI plugin manifest
+      if (req.method === 'GET' && url.pathname === '/.well-known/ai-plugin.json') {
+        try {
+          const manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
+          const manifest = readFileSync(manifestPath, 'utf8');
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(manifest);
+        } catch (error: any) {
+          console.error('[WELL-KNOWN ERROR]', error);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Failed to load manifest', details: error.message }));
+        }
+        return;
+      }
+
       // --- Default 404
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not found' }));
