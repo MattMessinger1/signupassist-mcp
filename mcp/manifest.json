@@ -1,0 +1,37 @@
+{
+  "name": "SignupAssist",
+  "description": "Securely automates activity signups for parents using a consent-first flow.",
+  "version": "1.0.0",
+  "capabilities": {
+    "tools": {
+      "authorization": {
+        "type": "oauth2",
+        "client_url": "https://dev-33ngu1de5cxjtxyd.us.auth0.com/authorize",
+        "token_url": "https://dev-33ngu1de5cxjtxyd.us.auth0.com/oauth/token",
+        "scopes": ["user"],
+        "client_id": "Nxsagxzf j3u6hv0pupcgNE3aqy60pr5u"
+      }
+    }
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://signupassist-mcp-production.up.railway.app/mcp/openapi.json",
+    "is_user_authenticated": true
+  },
+  "contact_email": "support@signupassist.ai",
+  "legal_info_url": "https://signupassist.ai/privacy",
+  "categories": ["utilities", "productivity"],
+  "developer": {
+    "name": "SignupAssist",
+    "website": "https://signupassist.ai"
+  },
+  "oauth_config": {
+    "authorization_url": "https://dev-33ngu1de5cxjtxyd.us.auth0.com/authorize",
+    "token_url": "https://dev-33ngu1de5cxjtxyd.us.auth0.com/oauth/token",
+    "scopes": ["user"],
+    "redirect_urls": ["https://oauth.openai.com/v1/callback"]
+  },
+  "endpoints": {
+    "mcp": "https://signupassist-mcp-production.up.railway.app/mcp"
+  }
+}
