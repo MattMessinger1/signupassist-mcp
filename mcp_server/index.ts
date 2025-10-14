@@ -1,11 +1,11 @@
 /**
- * MCP Server - Registers all MCP tools with the framework
- * Production-ready with HTTP endpoints, CORS, and health checks
+ * SignupAssist MCP Server
+ * Production-ready with HTTP endpoints, OAuth manifest, and health checks
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { 
+import {
   CallToolRequestSchema,
   ErrorCode,
   ListToolsRequestSchema,
@@ -13,6 +13,9 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { createServer } from 'http';
 import { URL } from 'url';
+import { readFileSync } from 'fs';
+import path from 'path';
+import crypto from 'crypto';
 
 // Import tool providers
 import { skiClubProTools } from './providers/skiclubpro.js';
@@ -45,25 +48,21 @@ class SignupAssistMCPServer {
 
   private setupRequestHandlers() {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      return {
-        tools: Array.from(this.tools.values()),
-      };
+      return { tools: Array.from(this.tools.values()) };
     });
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
-      
       if (!this.tools.has(name)) {
         throw new McpError(ErrorCode.MethodNotFound, `Tool ${name} not found`);
       }
-
       const tool = this.tools.get(name);
       return await tool.handler(args);
     });
   }
 
   private registerTools() {
-    // Register SkiClubPro tools (object format)
+    // Register SkiClubPro tools
     Object.entries(skiClubProTools).forEach(([name, handler]) => {
       this.tools.set(name, {
         name,
@@ -71,20 +70,14 @@ class SignupAssistMCPServer {
         inputSchema: {
           type: 'object',
           properties: {},
-          additionalProperties: true
+          additionalProperties: true,
         },
-        handler
+        handler,
       });
     });
 
-    // Register other provider tools (array format)
-    const arrayTools = [
-      // Only SkiClubPro tools are active
-    ];
-
-    arrayTools.forEach(tool => {
-      this.tools.set(tool.name, tool);
-    });
+    const arrayTools: any[] = [];
+    arrayTools.forEach((tool) => this.tools.set(tool.name, tool));
   }
 
   getToolsList() {
@@ -94,168 +87,132 @@ class SignupAssistMCPServer {
   async start() {
     const transport = new StdioServerTransport();
     await this.server.connect(transport);
-    console.log('SignupAssist MCP Server started');
+    console.log('SignupAssist MCP Server started (stdio mode)');
   }
 
   async startHTTP() {
-    // Railway provides PORT env var; fallback to 8080 for local development
     const port = process.env.PORT ? parseInt(process.env.PORT) : 8080;
-    
+
     const httpServer = createServer((req, res) => {
-      // CORS headers
+      // --- CORS setup
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-      
+
       if (req.method === 'OPTIONS') {
         res.writeHead(200);
         res.end();
         return;
       }
 
-      const url = new URL(req.url!, `http://localhost:${port}`);
-      
+      const url = new URL(req.url || '/', `http://localhost:${port}`);
+
+      // --- Health check
       if (req.method === 'GET' && url.pathname === '/health') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          ok: true,
-          tools: this.getToolsList()
-        }));
+        res.end(JSON.stringify({ ok: true, tools: this.getToolsList() }));
         return;
       }
 
+      // --- Serve manifest.json (fix for Railway paths)
       if (req.method === 'GET' && url.pathname === '/mcp/manifest.json') {
-        const fs = require('fs');
-        const path = require('path');
         try {
-          const manifestPath = path.join(__dirname, '..', 'mcp', 'manifest.json');
-          const manifest = fs.readFileSync(manifestPath, 'utf-8');
+          const manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
+          const manifest = readFileSync(manifestPath, 'utf8');
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(manifest);
-        } catch (error) {
+        } catch (error: any) {
+          console.error('[MANIFEST ERROR]', error);
           res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Failed to load manifest' }));
+          res.end(JSON.stringify({ error: 'Failed to load manifest', details: error.message }));
         }
         return;
       }
 
+      // --- Tool invocation endpoint
       if (url.pathname === '/tools/call') {
-        if (req.method === 'GET') {
+        if (req.method !== 'POST') {
           res.writeHead(405, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ 
-            error: 'This endpoint only supports POST. Use POST with { tool, args }.' 
-          }));
+          res.end(JSON.stringify({ error: 'Only POST supported. Use POST with { tool, args }.' }));
           return;
         }
 
-        if (req.method === 'POST') {
-          let body = '';
-          req.on('data', chunk => body += chunk);
-          req.on('end', async () => {
-            try {
-              let parsedBody;
-              try {
-                parsedBody = JSON.parse(body);
-              } catch (parseError) {
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ 
-                  error: 'Invalid JSON in request body' 
-                }));
-                return;
-              }
-
-              const { tool, args } = parsedBody;
-              const runId = req.headers['x-run-id'] || crypto.randomUUID();
-              const stage = args?.stage || 'program'; // Default to program for backwards compatibility
-              const prefix = stage === 'prereq' ? '[Prereq]' : '[Program]';
-              
-              console.log(`${prefix} run=${runId} start tool=${tool} plan=${args?.plan_id || 'none'}`);
-              
-              if (!tool) {
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ 
-                  error: 'Missing required field: tool' 
-                }));
-                return;
-              }
-              
-              if (!this.tools.has(tool)) {
-                res.writeHead(404, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ 
-                  error: `Tool '${tool}' not found. Available tools: ${Array.from(this.tools.keys()).join(', ')}` 
-                }));
-                return;
-              }
-
-              const toolInstance = this.tools.get(tool);
-              
-              // Add stage and run_id to args for logging
-              const enrichedArgs = {
-                ...args,
-                _stage: stage,
-                _run_id: runId,
-              };
-              
-              const result = await toolInstance.handler(enrichedArgs);
-              
-              console.log(`${prefix} run=${runId} done success=${!!result.success} fields=${result.program_questions?.length || 0}`);
-              
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify(result));
-            } catch (error) {
-              console.error('Tool execution error:', error);
-              res.writeHead(500, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ 
-                error: error instanceof Error ? error.message : 'Unknown error' 
-              }));
+        let body = '';
+        req.on('data', (chunk) => (body += chunk));
+        req.on('end', async () => {
+          try {
+            const parsed = JSON.parse(body);
+            const { tool, args } = parsed;
+            if (!tool) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Missing required field: tool' }));
+              return;
             }
-          });
-          return;
-        }
 
-        // Method not allowed for /tools/call
-        res.writeHead(405, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ 
-          error: `Method ${req.method} not allowed. This endpoint only supports POST.` 
-        }));
+            if (!this.tools.has(tool)) {
+              res.writeHead(404, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({
+                error: `Tool '${tool}' not found. Available: ${Array.from(this.tools.keys()).join(', ')}`
+              }));
+              return;
+            }
+
+            const runId = req.headers['x-run-id'] || crypto.randomUUID();
+            const stage = args?.stage || 'program';
+            const prefix = stage === 'prereq' ? '[Prereq]' : '[Program]';
+            console.log(`${prefix} run=${runId} start tool=${tool}`);
+
+            const toolInstance = this.tools.get(tool);
+            const enrichedArgs = { ...args, _stage: stage, _run_id: runId };
+            const result = await toolInstance.handler(enrichedArgs);
+
+            console.log(`${prefix} run=${runId} done success=${!!result?.success}`);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(result));
+          } catch (err: any) {
+            console.error('[TOOLS/CALL ERROR]', err);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: err.message || 'Unknown error' }));
+          }
+        });
         return;
       }
 
+      // --- List tools
       if (req.method === 'GET' && url.pathname === '/tools') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          tools: Array.from(this.tools.values()).map(tool => ({
-            name: tool.name,
-            description: tool.description
-          }))
-        }));
+        res.end(
+          JSON.stringify({
+            tools: Array.from(this.tools.values()).map((t) => ({
+              name: t.name,
+              description: t.description,
+            })),
+          })
+        );
         return;
       }
 
-      // Default response for unknown routes
+      // --- Default 404
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not found' }));
     });
 
-    // Bind to 0.0.0.0 so Railway can route traffic to the container
-    httpServer.listen(port, "0.0.0.0", () => {
-      console.log(`MCP Server listening on port ${port}`);
-      console.log(`Health check available at http://localhost:${port}/health`);
+    httpServer.listen(port, '0.0.0.0', () => {
+      console.log(`✅ SignupAssist MCP HTTP Server listening on port ${port}`);
+      console.log(`   Health: http://localhost:${port}/health`);
+      console.log(`   Manifest: http://localhost:${port}/mcp/manifest.json`);
     });
   }
 }
 
-// Register all provider prerequisite checkers
+// --- Startup sequence
 console.log('[STARTUP] Registering prerequisite checkers...');
 registerAllProviders();
 console.log('[STARTUP] Prerequisite checkers registered');
 
-// Start both stdio and HTTP servers
 console.log('[STARTUP] Creating SignupAssistMCPServer instance...');
 const server = new SignupAssistMCPServer();
-console.log('[STARTUP] Server instance created');
 
-// Start HTTP server for production/Railway
 console.log('[STARTUP] NODE_ENV:', process.env.NODE_ENV);
 console.log('[STARTUP] PORT:', process.env.PORT);
 
@@ -267,7 +224,6 @@ if (process.env.NODE_ENV === 'production' || process.env.PORT) {
   });
 } else {
   console.log('[STARTUP] Starting stdio server...');
-  // Start stdio server for local MCP development
   server.start().catch((err) => {
     console.error('[STARTUP ERROR]', err);
     process.exit(1);
