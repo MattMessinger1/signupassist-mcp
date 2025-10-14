@@ -124,6 +124,21 @@ class SignupAssistMCPServer {
         return;
       }
 
+      if (req.method === 'GET' && url.pathname === '/mcp/manifest.json') {
+        const fs = require('fs');
+        const path = require('path');
+        try {
+          const manifestPath = path.join(__dirname, '..', 'mcp', 'manifest.json');
+          const manifest = fs.readFileSync(manifestPath, 'utf-8');
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(manifest);
+        } catch (error) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Failed to load manifest' }));
+        }
+        return;
+      }
+
       if (url.pathname === '/tools/call') {
         if (req.method === 'GET') {
           res.writeHead(405, { 'Content-Type': 'application/json' });
