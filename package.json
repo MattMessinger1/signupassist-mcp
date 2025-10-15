@@ -11,7 +11,7 @@
     "build": "vite build",
     "postbuild": "mkdir -p dist/mcp && cp -r mcp/manifest.json dist/mcp/",
     "start": "node dist/mcp_server/index.js",
-    "mcp:start": "node dist/mcp_server/index.js"
+    "mcp:start": "node dist/mcp_server/index.js",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
