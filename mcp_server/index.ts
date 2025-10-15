@@ -13,7 +13,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { createServer } from 'http';
 import { URL, fileURLToPath } from 'url';
-import { readFileSync } from 'fs';
+import { readFileSync, existsSync } from 'fs';
 import path, { dirname } from 'path';
 import crypto from 'crypto';
 
@@ -121,7 +121,13 @@ class SignupAssistMCPServer {
       // --- Serve manifest.json at /mcp/manifest.json
       if (req.method === 'GET' && url.pathname === '/mcp/manifest.json') {
         try {
-          const manifestPath = path.resolve(__dirname, '../mcp/manifest.json');
+          // Load manifest.json with fallback for Railway builds
+          let manifestPath = path.resolve(process.cwd(), 'dist', 'mcp', 'manifest.json');
+          if (!existsSync(manifestPath)) {
+            // Fallback: use source copy
+            manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
+          }
+          console.log('[DEBUG] Using manifest at:', manifestPath);
           const manifest = readFileSync(manifestPath, 'utf8');
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(manifest);
@@ -137,8 +143,13 @@ class SignupAssistMCPServer {
       // --- Serve manifest JSON directly at /mcp (ChatGPT OAuth discovery)
       if (req.method === 'GET' && (url.pathname === '/mcp' || url.pathname === '/mcp/')) {
         try {
-          const manifestPath = path.resolve(__dirname, '../mcp/manifest.json');
-          console.log('[DEBUG] Loading manifest from:', manifestPath);
+          // Load manifest.json with fallback for Railway builds
+          let manifestPath = path.resolve(process.cwd(), 'dist', 'mcp', 'manifest.json');
+          if (!existsSync(manifestPath)) {
+            // Fallback: use source copy
+            manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
+          }
+          console.log('[DEBUG] Using manifest at:', manifestPath);
           const manifest = readFileSync(manifestPath, 'utf8');
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(manifest);
@@ -153,7 +164,13 @@ class SignupAssistMCPServer {
       // --- Serve manifest at .well-known path (legacy plugin compatibility)
       if (req.method === 'GET' && url.pathname === '/.well-known/ai-plugin.json') {
         try {
-          const manifestPath = path.resolve(__dirname, '../mcp/manifest.json');
+          // Load manifest.json with fallback for Railway builds
+          let manifestPath = path.resolve(process.cwd(), 'dist', 'mcp', 'manifest.json');
+          if (!existsSync(manifestPath)) {
+            // Fallback: use source copy
+            manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
+          }
+          console.log('[DEBUG] Using manifest at:', manifestPath);
           const manifest = readFileSync(manifestPath, 'utf8');
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(manifest);
