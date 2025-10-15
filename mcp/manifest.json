@@ -1,39 +1,21 @@
 {
-  "name": "SignupAssist",
-  "description": "Securely automates activity signups for parents using a consent-first flow.",
-  "version": "1.0.0",
+  "schema_version": "v1",
+  "name_for_human": "SignupAssist",
+  "name_for_model": "signupassist",
+  "description_for_human": "Securely automates activity sign-ups for parents using a consent-first flow.",
+  "description_for_model": "Automates signup forms securely using OAuth credentials.",
   "auth": {
-    "type": "oauth2",
+    "type": "oauth",
     "authorization_url": "https://dev-33ngu1de5cxjtxyd.us.auth0.com/authorize",
     "token_url": "https://dev-33ngu1de5cxjtxyd.us.auth0.com/oauth/token",
-    "scopes": ["user"],
-    "client_id": "Nxsagxzf j3u6hv0pupcgNE3aqy60pr5u",
+    "scope": "user",
     "redirect_urls": ["https://oauth.openai.com/v1/callback"]
   },
   "api": {
     "type": "openapi",
-    "url": "https://signupassist-mcp-production.up.railway.app/mcp/openapi.json",
-    "is_user_authenticated": true
+    "url": "https://signupassist-mcp-production.up.railway.app/mcp/openapi.json"
   },
-  "capabilities": {
-    "tools": {
-      "authorization": {
-        "type": "oauth2",
-        "client_url": "https://dev-33ngu1de5cxjtxyd.us.auth0.com/authorize",
-        "token_url": "https://dev-33ngu1de5cxjtxyd.us.auth0.com/oauth/token",
-        "scopes": ["user"],
-        "client_id": "Nxsagxzf j3u6hv0pupcgNE3aqy60pr5u"
-      }
-    }
-  },
+  "logo_url": "https://signupassist.ai/logo.png",
   "contact_email": "support@signupassist.ai",
-  "legal_info_url": "https://signupassist.ai/privacy",
-  "categories": ["utilities", "productivity"],
-  "developer": {
-    "name": "SignupAssist",
-    "website": "https://signupassist.ai"
-  },
-  "endpoints": {
-    "mcp": "https://signupassist-mcp-production.up.railway.app/mcp"
-  }
+  "legal_info_url": "https://signupassist.ai/privacy"
 }
