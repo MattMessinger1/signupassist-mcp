@@ -280,6 +280,26 @@ class SignupAssistMCPServer {
         return;
       }
 
+      // --- Serve /.well-known/openai-connector.json (ChatGPT connector discovery)
+      if (
+        req.method === "GET" &&
+        (url.pathname === "/.well-known/openai-connector.json" ||
+         url.pathname === "/mcp/.well-known/openai-connector.json")
+      ) {
+        try {
+          const manifestPath = path.resolve(process.cwd(), "mcp", "manifest.json");
+          const manifest = readFileSync(manifestPath, "utf8");
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(manifest);
+          console.log("[ROUTE] Served openai-connector.json for", url.pathname);
+        } catch (error: any) {
+          console.error("[CONNECTOR JSON ERROR]", error);
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: "Failed to load openai-connector.json", details: error.message }));
+        }
+        return;
+      }
+
       // --- Default 404
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not found' }));
