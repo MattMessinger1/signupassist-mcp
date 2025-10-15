@@ -117,7 +117,7 @@ class SignupAssistMCPServer {
       // --- Serve manifest.json at /mcp/manifest.json
       if (req.method === 'GET' && url.pathname === '/mcp/manifest.json') {
         try {
-          const manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
+          const manifestPath = path.join(__dirname, '..', 'mcp', 'manifest.json');
           const manifest = readFileSync(manifestPath, 'utf8');
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(manifest);
@@ -135,7 +135,7 @@ class SignupAssistMCPServer {
         const fs = require('fs');
         const path = require('path');
         try {
-          const manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
+          const manifestPath = path.join(__dirname, '..', 'mcp', 'manifest.json');
           const manifest = fs.readFileSync(manifestPath, 'utf8');
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(manifest);
@@ -151,7 +151,7 @@ class SignupAssistMCPServer {
       // --- Serve manifest at .well-known path (legacy plugin compatibility)
       if (req.method === 'GET' && url.pathname === '/.well-known/ai-plugin.json') {
         try {
-          const manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
+          const manifestPath = path.join(__dirname, '..', 'mcp', 'manifest.json');
           const manifest = readFileSync(manifestPath, 'utf8');
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(manifest);
