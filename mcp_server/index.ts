@@ -1,6 +1,6 @@
 /**
  * SignupAssist MCP Server
- * Production-ready with HTTP endpoints, OAuth manifest, and health checks
+ * Production-ready with OAuth redirect routes for ChatGPT discovery
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -114,15 +114,40 @@ class SignupAssistMCPServer {
         return;
       }
 
-      // --- Serve manifest.json (fix for Railway paths)
+      // --- Serve manifest.json (Railway-safe path)
       if (req.method === 'GET' && url.pathname === '/mcp/manifest.json') {
         try {
           const manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
           const manifest = readFileSync(manifestPath, 'utf8');
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(manifest);
+          console.log('[ROUTE] Served /mcp/manifest.json');
         } catch (error: any) {
           console.error('[MANIFEST ERROR]', error);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Failed to load manifest', details: error.message }));
+        }
+        return;
+      }
+
+      // --- Serve root /mcp as redirect to /mcp/manifest.json
+      if (req.method === 'GET' && (url.pathname === '/mcp' || url.pathname === '/mcp/')) {
+        res.writeHead(302, { Location: '/mcp/manifest.json' });
+        res.end();
+        console.log('[ROUTE] Redirected /mcp → /mcp/manifest.json');
+        return;
+      }
+
+      // --- Serve manifest at .well-known path (legacy plugin compatibility)
+      if (req.method === 'GET' && url.pathname === '/.well-known/ai-plugin.json') {
+        try {
+          const manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
+          const manifest = readFileSync(manifestPath, 'utf8');
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(manifest);
+          console.log('[ROUTE] Served /.well-known/ai-plugin.json');
+        } catch (error: any) {
+          console.error('[WELL-KNOWN ERROR]', error);
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Failed to load manifest', details: error.message }));
         }
@@ -151,9 +176,11 @@ class SignupAssistMCPServer {
 
             if (!this.tools.has(tool)) {
               res.writeHead(404, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({
-                error: `Tool '${tool}' not found. Available: ${Array.from(this.tools.keys()).join(', ')}`
-              }));
+              res.end(
+                JSON.stringify({
+                  error: `Tool '${tool}' not found. Available: ${Array.from(this.tools.keys()).join(', ')}`,
+                })
+              );
               return;
             }
 
@@ -192,43 +219,6 @@ class SignupAssistMCPServer {
         return;
       }
 
-      // --- Redirect /mcp to manifest
-      if (req.method === 'GET' && url.pathname === '/mcp') {
-        res.writeHead(302, { Location: '/mcp/manifest.json' });
-        res.end();
-        return;
-      }
-
-      // --- Well-known AI plugin manifest
-      if (req.method === 'GET' && url.pathname === '/.well-known/ai-plugin.json') {
-        try {
-          const manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
-          const manifest = readFileSync(manifestPath, 'utf8');
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(manifest);
-        } catch (error: any) {
-          console.error('[WELL-KNOWN ERROR]', error);
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Failed to load manifest', details: error.message }));
-        }
-        return;
-      }
-
-      // --- Legacy MCP path for older ChatGPT builds
-      if (req.method === 'GET' && url.pathname === '/.mcp/manifest.json') {
-        try {
-          const manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
-          const manifest = readFileSync(manifestPath, 'utf8');
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(manifest);
-        } catch (error: any) {
-          console.error('[LEGACY MCP ERROR]', error);
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Failed to load manifest', details: error.message }));
-        }
-        return;
-      }
-
       // --- Default 404
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not found' }));
@@ -238,6 +228,8 @@ class SignupAssistMCPServer {
       console.log(`✅ SignupAssist MCP HTTP Server listening on port ${port}`);
       console.log(`   Health: http://localhost:${port}/health`);
       console.log(`   Manifest: http://localhost:${port}/mcp/manifest.json`);
+      console.log(`   Redirect: http://localhost:${port}/mcp → manifest`);
+      console.log(`   Well-known: http://localhost:${port}/.well-known/ai-plugin.json`);
     });
   }
 }
