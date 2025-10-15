@@ -189,10 +189,10 @@ class SignupAssistMCPServer {
         const authHeader = req.headers['authorization'];
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
           res.writeHead(401, {
-            'Content-Type': 'application/json',
-            'WWW-Authenticate': 'Bearer realm="signupassist", error="invalid_token", error_description="Access token is missing"'
+            "Content-Type": "application/json",
+            "WWW-Authenticate": "Bearer realm=\"signupassist\", error=\"invalid_token\", error_description=\"Access token is missing\""
           });
-          res.end(JSON.stringify({ error: 'Unauthorized - Access token is missing' }));
+          res.end(JSON.stringify({ error: "Unauthorized - Access token is missing" }));
           return;
         }
 
