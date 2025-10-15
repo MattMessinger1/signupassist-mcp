@@ -185,6 +185,17 @@ class SignupAssistMCPServer {
 
       // --- Tool invocation endpoint
       if (url.pathname === '/tools/call') {
+        // Check for Authorization header
+        const authHeader = req.headers['authorization'];
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          res.writeHead(401, {
+            'Content-Type': 'application/json',
+            'WWW-Authenticate': 'Bearer realm="signupassist", error="invalid_token", error_description="Access token is missing"'
+          });
+          res.end(JSON.stringify({ error: 'Unauthorized - Access token is missing' }));
+          return;
+        }
+
         if (req.method !== 'POST') {
           res.writeHead(405, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Only POST supported. Use POST with { tool, args }.' }));
