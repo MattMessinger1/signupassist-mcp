@@ -133,8 +133,8 @@ class SignupAssistMCPServer {
       // --- Serve manifest JSON directly at /mcp (ChatGPT OAuth discovery)
       if (req.method === 'GET' && (url.pathname === '/mcp' || url.pathname === '/mcp/')) {
         try {
-          // Always read from the compiled output in dist/mcp
-          const manifestPath = path.resolve(process.cwd(), 'dist', 'mcp', 'manifest.json');
+          // Read from source mcp/ folder (copied by Docker COPY . .)
+          const manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
           console.log('[DEBUG] Loading manifest from:', manifestPath);
           const manifest = readFileSync(manifestPath, 'utf8');
           res.writeHead(200, { 'Content-Type': 'application/json' });
