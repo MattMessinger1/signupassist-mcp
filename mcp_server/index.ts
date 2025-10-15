@@ -248,6 +248,24 @@ class SignupAssistMCPServer {
         return;
       }
 
+      // --- Serve ai-plugin.json from both /.well-known and /mcp/.well-known
+      if (req.method === 'GET' && (url.pathname === '/.well-known/ai-plugin.json' || url.pathname === '/mcp/.well-known/ai-plugin.json')) {
+        const fs = require('fs');
+        const path = require('path');
+        try {
+          const manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
+          const manifest = fs.readFileSync(manifestPath, 'utf8');
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(manifest);
+          console.log('[ROUTE] Served ai-plugin.json for', url.pathname);
+        } catch (error) {
+          console.error('[AI-PLUGIN SERVE ERROR]', error);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Failed to load ai-plugin.json', details: error.message }));
+        }
+        return;
+      }
+
       // --- Default 404
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not found' }));
