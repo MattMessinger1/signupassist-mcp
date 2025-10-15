@@ -130,20 +130,23 @@ class SignupAssistMCPServer {
         return;
       }
 
-      // --- Serve manifest directly at /mcp for ChatGPT OAuth discovery
+      // --- Serve manifest JSON directly at /mcp (ChatGPT OAuth discovery)
       if (req.method === 'GET' && (url.pathname === '/mcp' || url.pathname === '/mcp/')) {
         const fs = require('fs');
         const path = require('path');
         try {
-          const manifestPath = path.join(__dirname, '..', 'mcp', 'manifest.json');
+          // ✅ Always resolve relative to project root (handles /dist builds too)
+          const manifestPath = path.resolve(__dirname, '../mcp/manifest.json');
+
+          console.log('[DEBUG] Attempting to load manifest from:', manifestPath);
           const manifest = fs.readFileSync(manifestPath, 'utf8');
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(manifest);
-          console.log('[ROUTE] Served /mcp directly with manifest.json');
-        } catch (error) {
+          console.log('[ROUTE] Served /mcp manifest.json for OAuth discovery');
+        } catch (error: any) {
           console.error('[MCP ROOT ERROR]', error);
           res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Failed to load manifest' }));
+          res.end(JSON.stringify({ error: 'Failed to load manifest', details: error.message }));
         }
         return;
       }
