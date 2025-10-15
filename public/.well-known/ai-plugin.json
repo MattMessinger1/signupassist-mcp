@@ -2,8 +2,8 @@
   "schema_version": "v1",
   "name_for_human": "SignupAssist",
   "name_for_model": "signupassist",
-  "description_for_human": "Securely automates activity signups for parents using a consent-first flow.",
-  "description_for_model": "Automates activity signups securely using OAuth credentials.",
+  "description_for_human": "Securely automates activity sign-ups for parents using a consent-first flow.",
+  "description_for_model": "Automates signup forms securely using OAuth credentials.",
   "auth": {
     "type": "oauth",
     "authorization_url": "https://dev-33ngu1de5cxjtxyd.us.auth0.com/authorize",
