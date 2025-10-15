@@ -133,8 +133,8 @@ class SignupAssistMCPServer {
       // --- Serve manifest JSON directly at /mcp (ChatGPT OAuth discovery)
       if (req.method === 'GET' && (url.pathname === '/mcp' || url.pathname === '/mcp/')) {
         try {
-          // ✅ ESM-safe way to access filesystem
-          const manifestPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../mcp/manifest.json');
+          // ✅ ESM-safe way to access filesystem - go up 2 levels from dist/mcp_server to reach mcp/
+          const manifestPath = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../../mcp/manifest.json');
 
           console.log('[DEBUG] Attempting to load manifest from:', manifestPath);
           const manifest = readFileSync(manifestPath, 'utf8');
