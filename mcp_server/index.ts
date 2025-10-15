@@ -12,10 +12,14 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import { createServer } from 'http';
-import { URL } from 'url';
+import { URL, fileURLToPath } from 'url';
 import { readFileSync } from 'fs';
-import path from 'path';
+import path, { dirname } from 'path';
 import crypto from 'crypto';
+
+// ✅ Fix for ESM __dirname
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // Import tool providers
 import { skiClubProTools } from './providers/skiclubpro.js';
@@ -117,7 +121,7 @@ class SignupAssistMCPServer {
       // --- Serve manifest.json at /mcp/manifest.json
       if (req.method === 'GET' && url.pathname === '/mcp/manifest.json') {
         try {
-          const manifestPath = path.join(__dirname, '..', 'mcp', 'manifest.json');
+          const manifestPath = path.resolve(__dirname, '../mcp/manifest.json');
           const manifest = readFileSync(manifestPath, 'utf8');
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(manifest);
@@ -133,8 +137,7 @@ class SignupAssistMCPServer {
       // --- Serve manifest JSON directly at /mcp (ChatGPT OAuth discovery)
       if (req.method === 'GET' && (url.pathname === '/mcp' || url.pathname === '/mcp/')) {
         try {
-          // Read from source mcp/ folder (copied by Docker COPY . .)
-          const manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
+          const manifestPath = path.resolve(__dirname, '../mcp/manifest.json');
           console.log('[DEBUG] Loading manifest from:', manifestPath);
           const manifest = readFileSync(manifestPath, 'utf8');
           res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -150,7 +153,7 @@ class SignupAssistMCPServer {
       // --- Serve manifest at .well-known path (legacy plugin compatibility)
       if (req.method === 'GET' && url.pathname === '/.well-known/ai-plugin.json') {
         try {
-          const manifestPath = path.join(__dirname, '..', 'mcp', 'manifest.json');
+          const manifestPath = path.resolve(__dirname, '../mcp/manifest.json');
           const manifest = readFileSync(manifestPath, 'utf8');
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(manifest);
