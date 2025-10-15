@@ -1,6 +1,6 @@
 /**
  * SignupAssist MCP Server
- * Production-ready with OAuth redirect routes for ChatGPT discovery
+ * Production-ready with OAuth manifest served at /mcp for ChatGPT discovery
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -114,7 +114,7 @@ class SignupAssistMCPServer {
         return;
       }
 
-      // --- Serve manifest.json (Railway-safe path)
+      // --- Serve manifest.json at /mcp/manifest.json
       if (req.method === 'GET' && url.pathname === '/mcp/manifest.json') {
         try {
           const manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
@@ -130,11 +130,21 @@ class SignupAssistMCPServer {
         return;
       }
 
-      // --- Serve root /mcp as redirect to /mcp/manifest.json
+      // --- Serve manifest directly at /mcp for ChatGPT OAuth discovery
       if (req.method === 'GET' && (url.pathname === '/mcp' || url.pathname === '/mcp/')) {
-        res.writeHead(302, { Location: '/mcp/manifest.json' });
-        res.end();
-        console.log('[ROUTE] Redirected /mcp → /mcp/manifest.json');
+        const fs = require('fs');
+        const path = require('path');
+        try {
+          const manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
+          const manifest = fs.readFileSync(manifestPath, 'utf8');
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(manifest);
+          console.log('[ROUTE] Served /mcp directly with manifest.json');
+        } catch (error) {
+          console.error('[MCP ROOT ERROR]', error);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Failed to load manifest' }));
+        }
         return;
       }
 
@@ -228,7 +238,7 @@ class SignupAssistMCPServer {
       console.log(`✅ SignupAssist MCP HTTP Server listening on port ${port}`);
       console.log(`   Health: http://localhost:${port}/health`);
       console.log(`   Manifest: http://localhost:${port}/mcp/manifest.json`);
-      console.log(`   Redirect: http://localhost:${port}/mcp → manifest`);
+      console.log(`   Root: http://localhost:${port}/mcp`);
       console.log(`   Well-known: http://localhost:${port}/.well-known/ai-plugin.json`);
     });
   }
