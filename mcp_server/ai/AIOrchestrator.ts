@@ -503,24 +503,42 @@ Stay warm, concise, and reassuring.
    * @returns Promise resolving to OrchestratorResponse with provider options
    */
   private async handleProviderSearch(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
-    // Parse user input to extract provider name and city
-    const parsed: ParsedProviderInput = parseProviderInput(userMessage);
-    Logger.info("[Parser] Extracted:", parsed);
+    // Cache parsed results to reduce API calls and latency
+    const cacheKey = `parsed-${userMessage.toLowerCase()}`;
+    let parsed: ParsedProviderInput;
     
-    // Use parsed name for search, fallback to raw input if parsing fails
-    const providerQuery = parsed.name || userMessage;
-    const results = await this.callTool("search_provider", { 
-      name: providerQuery,
-      city: parsed.city 
-    });
+    if (this.isCacheValid(cacheKey)) {
+      Logger.info("Cache hit for parsed input");
+      parsed = this.getFromCache(cacheKey).value;
+    } else {
+      parsed = await this.aiParseProviderInput(userMessage);
+      this.saveToCache(cacheKey, parsed);
+    }
     
-    const message = `🔍 I found these providers for "${parsed.name}": ${results
-      .map((r: any) => r.name + " (" + r.city + ")")
-      .join(", ")}. Please confirm which one is correct.`;
+    Logger.info(`[ProviderSearch] Parsed input`, parsed);
+    
+    // Validation guard - ensure we have a usable name
+    if (!parsed.name) {
+      return this.formatResponse(
+        "Hmm, I couldn't tell which organization you meant. Could you type the name again with a city or keyword?",
+        { type: "message" },
+        {}
+      );
+    }
+    
+    const name = parsed.name;
+    const location = parsed.city;
+    
+    const results = await this.callTool("search_provider", { name, location });
+    const message =
+      results && results.length
+        ? `🔍 I found these providers for **${name}${location ? " in " + location : ""}**. Please confirm which one is correct.`
+        : `🤔 I couldn't find any matches for **${name}**${location ? " in " + location : ""}. Could you double-check the spelling or city?`;
+
     return this.formatResponse(
       message,
-      { type: "cards", options: results },
-      { providerSearchResults: results }
+      { type: "cards", options: results || [] },
+      { lastSearch: parsed, providerSearchResults: results }
     );
   }
 
