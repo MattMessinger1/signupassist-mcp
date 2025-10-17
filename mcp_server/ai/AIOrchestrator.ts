@@ -103,17 +103,30 @@ Always:
    * @returns Promise resolving to OrchestratorResponse
    */
   async generateResponse(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
-    const context = this.getContext(sessionId);
-    const step = this.determineStep(userMessage, context);
-    
-    // Debug logging for flow visibility
-    Logger.info(`🧭 Flow Step: ${step}`, { sessionId, context });
-    
-    this.logInteraction(sessionId, "user", userMessage);
-    const result = await this.handleStep(step, userMessage, sessionId);
-    this.updateContext(sessionId, result.contextUpdates || {});
-    this.logInteraction(sessionId, "assistant", result.assistantMessage);
-    return result;
+    try {
+      const context = this.getContext(sessionId);
+      const step = this.determineStep(userMessage, context);
+      
+      // Audit logging for responsible delegate trail
+      Logger.info(`[Audit] Step=${step}, User=${sessionId}, Action=Flow_Routing`);
+      
+      // Debug logging for flow visibility
+      Logger.info(`🧭 Flow Step: ${step}`, { sessionId, context });
+      
+      this.logInteraction(sessionId, "user", userMessage);
+      const result = await this.handleStep(step, userMessage, sessionId);
+      this.updateContext(sessionId, result.contextUpdates || {});
+      this.logInteraction(sessionId, "assistant", result.assistantMessage);
+      return result;
+    } catch (error: any) {
+      Logger.error(`[${sessionId}] AI error: ${error.message}`);
+      return {
+        assistantMessage:
+          "🤖 Apologies, I'm having a brain freeze. Let's try that again in a moment.",
+        uiPayload: {},
+        contextUpdates: {},
+      };
+    }
   }
 
   /**
@@ -147,6 +160,7 @@ Always:
       ...updates 
     };
     Logger.info(`[Context Updated] ${sessionId}`, updates);
+    Logger.info(`[Audit] Context updated`, this.getContext(sessionId));
     this.logContext(sessionId);
     // TODO: Add Supabase persistence for agentic_checkout_sessions table
   }
@@ -175,34 +189,42 @@ Always:
    * @returns Promise resolving to tool execution result
    */
   async callTool(toolName: string, args: Record<string, any>): Promise<any> {
+    const cacheKey = `${toolName}-${JSON.stringify(args)}`;
+    if (this.isCacheValid(cacheKey)) {
+      Logger.info(`Cache hit for ${cacheKey}`);
+      return this.getFromCache(cacheKey).value;
+    }
+
     // Stubbed tools - will be replaced with real MCP integrations
     const tools: Record<string, Function> = {
-      search_provider: async ({ name }: any) => {
-        Logger.info(`[Tool] search_provider called: ${name}`);
-        return [
-          { name: "Blackhawk Ski Club", city: "Middleton, WI" },
-          { name: "Madison Nordic Club", city: "Madison, WI" },
-        ];
-      },
-      find_programs: async ({ provider }: any) => {
-        Logger.info(`[Tool] find_programs called for: ${provider}`);
-        return [
-          { name: "Beginner Ski Class – Saturdays", id: "prog1" },
-          { name: "Intermediate Ski Class – Sundays", id: "prog2" },
-        ];
-      },
-      check_prerequisites: async () => {
-        Logger.info(`[Tool] check_prerequisites called`);
-        return { membership: "ok", payment: "ok" };
-      }
+      search_provider: async ({ name }: any) => [
+        { name: "Blackhawk Ski Club", city: "Middleton, WI" },
+        { name: "Madison Nordic Club", city: "Madison, WI" },
+      ],
+      find_programs: async ({ provider }: any) => [
+        { name: "Beginner Ski Class – Saturdays", id: "prog1" },
+        { name: "Intermediate Ski Class – Sundays", id: "prog2" },
+      ],
+      check_prerequisites: async () => ({ membership: "ok", payment: "ok" }),
     };
 
     const tool = tools[toolName];
     if (!tool) {
+      Logger.error(`Unknown tool: ${toolName}`);
       throw new Error(`Unknown tool: ${toolName}`);
     }
 
-    return await tool(args);
+    try {
+      Logger.info(`Calling tool: ${toolName}`, args);
+      Logger.info(`[Audit] Tool call`, { toolName, args });
+      const result = await this.withRetry(() => tool(args));
+      this.saveToCache(cacheKey, result);
+      Logger.info(`Tool ${toolName} succeeded.`);
+      return result;
+    } catch (error: any) {
+      Logger.error(`Tool ${toolName} failed:`, error.message);
+      throw error;
+    }
   }
 
   /**
