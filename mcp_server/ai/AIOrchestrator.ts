@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import Logger from "../utils/logger";
 
 // 🔜 TODO:
 // - Replace in-memory session store with Supabase persistence
@@ -40,6 +41,7 @@ interface OrchestratorResponse {
 class AIOrchestrator {
   private openai: OpenAI;
   private sessions: Record<string, SessionContext> = {};
+  private cache: Record<string, any> = {};
   private readonly systemPrompt: string;
   private promptTemplates: Record<string, string>;
   private exampleMessages: Array<{ role: string; content: string }>;
@@ -105,8 +107,7 @@ Always:
     const step = this.determineStep(userMessage, context);
     
     // Debug logging for flow visibility
-    console.log(`🧭 Flow Step: ${step}`);
-    console.log("🧩 Context:", this.getContext(sessionId));
+    Logger.info(`🧭 Flow Step: ${step}`, { sessionId, context });
     
     this.logInteraction(sessionId, "user", userMessage);
     const result = await this.handleStep(step, userMessage, sessionId);
@@ -126,7 +127,7 @@ Always:
   getContext(sessionId: string): SessionContext {
     if (!this.sessions[sessionId]) {
       this.sessions[sessionId] = {};
-      console.log(`[Context Created] New session ${sessionId}`);
+      Logger.info(`[Context Created] New session ${sessionId}`);
     }
     // TODO: Add Supabase persistence for agentic_checkout_sessions table
     return this.sessions[sessionId];
@@ -145,7 +146,7 @@ Always:
       ...existing, 
       ...updates 
     };
-    console.log(`[Context Updated] ${sessionId}:`, updates);
+    Logger.info(`[Context Updated] ${sessionId}`, updates);
     this.logContext(sessionId);
     // TODO: Add Supabase persistence for agentic_checkout_sessions table
   }
@@ -158,7 +159,7 @@ Always:
    */
   resetContext(sessionId: string): void {
     delete this.sessions[sessionId];
-    console.log(`[Context Reset] ${sessionId}`);
+    Logger.info(`[Context Reset] ${sessionId}`);
   }
 
   /**
@@ -177,21 +178,21 @@ Always:
     // Stubbed tools - will be replaced with real MCP integrations
     const tools: Record<string, Function> = {
       search_provider: async ({ name }: any) => {
-        console.log(`[Tool] search_provider called: ${name}`);
+        Logger.info(`[Tool] search_provider called: ${name}`);
         return [
           { name: "Blackhawk Ski Club", city: "Middleton, WI" },
           { name: "Madison Nordic Club", city: "Madison, WI" },
         ];
       },
       find_programs: async ({ provider }: any) => {
-        console.log(`[Tool] find_programs called for: ${provider}`);
+        Logger.info(`[Tool] find_programs called for: ${provider}`);
         return [
           { name: "Beginner Ski Class – Saturdays", id: "prog1" },
           { name: "Intermediate Ski Class – Sundays", id: "prog2" },
         ];
       },
       check_prerequisites: async () => {
-        console.log(`[Tool] check_prerequisites called`);
+        Logger.info(`[Tool] check_prerequisites called`);
         return { membership: "ok", payment: "ok" };
       }
     };
@@ -234,26 +235,45 @@ Always:
    * @param sessionId - Session identifier
    */
   private logContext(sessionId: string): void {
-    console.log(`[Context Snapshot] ${sessionId}:`, JSON.stringify(this.sessions[sessionId], null, 2));
+    Logger.info(`[Context Snapshot] ${sessionId}`, this.sessions[sessionId]);
+  }
+
+  /**
+   * Cache management helpers
+   */
+  private getFromCache(key: string) {
+    return this.cache[key];
+  }
+
+  private saveToCache(key: string, value: any, ttlMs = 300000) { // 5 min default
+    this.cache[key] = { value, expires: Date.now() + ttlMs };
+  }
+
+  private isCacheValid(key: string): boolean {
+    const item = this.cache[key];
+    return !!item && item.expires > Date.now();
   }
 
   /**
    * Retry helper for handling transient errors
-   * Uses exponential backoff to retry failed operations
+   * Uses exponential backoff with enhanced logging
    * 
    * @param fn - Async function to retry
    * @param retries - Number of retry attempts remaining
    * @param delay - Initial delay in milliseconds
    * @returns Promise resolving to function result
    */
-  private async withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
+  private async withRetry<T>(fn: () => Promise<T>, retries = 2, delay = 1000): Promise<T> {
     try {
       return await fn();
     } catch (error: any) {
-      if (retries <= 0) throw error;
-      console.warn(`Retrying after error (${3 - retries + 1}/3):`, error.message);
-      await new Promise(r => setTimeout(r, delay * (4 - retries))); // exponential backoff
-      return this.withRetry(fn, retries - 1, delay);
+      if (retries <= 0) {
+        Logger.error("OpenAI call failed permanently:", error.message);
+        throw error;
+      }
+      Logger.warn(`OpenAI error: ${error.message}. Retrying in ${delay}ms...`);
+      await new Promise(r => setTimeout(r, delay));
+      return this.withRetry(fn, retries - 1, delay * 2); // exponential backoff
     }
   }
 
@@ -264,7 +284,7 @@ Always:
    * @param errorMessage - Error message to log
    */
   private logError(sessionId: string, errorMessage: string): void {
-    console.error(`[${sessionId}] ERROR:`, errorMessage);
+    Logger.error(`[${sessionId}] ERROR:`, errorMessage);
   }
 
   /**
