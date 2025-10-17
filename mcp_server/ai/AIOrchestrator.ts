@@ -94,7 +94,7 @@ Always:
 
   /**
    * Generate AI response for user message
-   * Calls OpenAI API with conversation history and returns structured response
+   * Uses manual orchestration to route to correct step handler
    * 
    * @param userMessage - The user's input text
    * @param sessionId - Unique session identifier for context tracking
@@ -102,46 +102,17 @@ Always:
    */
   async generateResponse(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
     const context = this.getContext(sessionId);
-    const contextSummary = JSON.stringify(context).slice(0, 1500); // truncate long state
-
-    const messages = [
-      { role: "system", content: this.systemPrompt },
-      { role: "assistant", content: `Current context: ${contextSummary}` },
-      { role: "user", content: userMessage }
-    ];
-
-    try {
-      const completion = await this.withRetry(() =>
-        this.openai.chat.completions.create({
-          model: this.model,
-          temperature: this.temperature,
-          max_tokens: 600,
-          messages,
-        })
-      );
-
-      const assistantMessage = completion.choices[0]?.message?.content?.trim() || "";
-      this.logInteraction(sessionId, "assistant", assistantMessage);
-
-      // Log token usage for cost monitoring
-      const usage = completion.usage;
-      if (usage) {
-        console.log(`[${sessionId}] tokens → prompt:${usage.prompt_tokens} completion:${usage.completion_tokens} total:${usage.total_tokens}`);
-      }
-
-      return {
-        assistantMessage,
-        uiPayload: {},
-        contextUpdates: {},
-      };
-    } catch (error: any) {
-      this.logError(sessionId, error.message);
-      return {
-        assistantMessage: "🤖 Sorry, I ran into a technical hiccup. Please try again in a moment.",
-        uiPayload: {},
-        contextUpdates: {},
-      };
-    }
+    const step = this.determineStep(userMessage, context);
+    
+    // Debug logging for flow visibility
+    console.log(`🧭 Flow Step: ${step}`);
+    console.log("🧩 Context:", this.getContext(sessionId));
+    
+    this.logInteraction(sessionId, "user", userMessage);
+    const result = await this.handleStep(step, userMessage, sessionId);
+    this.updateContext(sessionId, result.contextUpdates || {});
+    this.logInteraction(sessionId, "assistant", result.assistantMessage);
+    return result;
   }
 
   /**
@@ -205,15 +176,18 @@ Always:
   async callTool(toolName: string, args: Record<string, any>): Promise<any> {
     // Stubbed tools - will be replaced with real MCP integrations
     const tools: Record<string, Function> = {
-      search_provider: async ({ name, location }: any) => {
-        console.log(`[Tool] search_provider called: ${name}, ${location}`);
-        return [{ name: "Blackhawk Ski Club", city: "Middleton, WI" }];
+      search_provider: async ({ name }: any) => {
+        console.log(`[Tool] search_provider called: ${name}`);
+        return [
+          { name: "Blackhawk Ski Club", city: "Middleton, WI" },
+          { name: "Madison Nordic Club", city: "Madison, WI" },
+        ];
       },
       find_programs: async ({ provider }: any) => {
         console.log(`[Tool] find_programs called for: ${provider}`);
         return [
-          { name: "Beginner Ski Lessons", id: "prog-123" },
-          { name: "Intermediate Snowboarding", id: "prog-456" }
+          { name: "Beginner Ski Class – Saturdays", id: "prog1" },
+          { name: "Intermediate Ski Class – Sundays", id: "prog2" },
         ];
       },
       check_prerequisites: async () => {
