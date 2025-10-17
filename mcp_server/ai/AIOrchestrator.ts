@@ -1,5 +1,12 @@
 import OpenAI from "openai";
 
+// 🔜 TODO:
+// - Replace in-memory session store with Supabase persistence
+//   using table: agentic_checkout_sessions
+// - Add methods: loadContextFromDB(sessionId), saveContextToDB(sessionId)
+// - Sync context automatically every few updates
+
+
 /**
  * Session context structure - defines what's stored for each conversation
  */
@@ -162,7 +169,19 @@ Always:
       ...updates 
     };
     console.log(`[Context Updated] ${sessionId}:`, updates);
+    this.logContext(sessionId);
     // TODO: Add Supabase persistence for agentic_checkout_sessions table
+  }
+
+  /**
+   * Reset session context
+   * Clears all stored data for a session (useful for debugging or new signups)
+   * 
+   * @param sessionId - Session to reset
+   */
+  resetContext(sessionId: string): void {
+    delete this.sessions[sessionId];
+    console.log(`[Context Reset] ${sessionId}`);
   }
 
   /**
@@ -220,6 +239,16 @@ Always:
     const truncated = content.substring(0, 100);
     const suffix = content.length > 100 ? "..." : "";
     console.log(`[${sessionId}] ${role}: ${truncated}${suffix}`);
+  }
+
+  /**
+   * Log full context snapshot for debugging
+   * Visualizes current session state
+   * 
+   * @param sessionId - Session identifier
+   */
+  private logContext(sessionId: string): void {
+    console.log(`[Context Snapshot] ${sessionId}:`, JSON.stringify(this.sessions[sessionId], null, 2));
   }
 }
 
