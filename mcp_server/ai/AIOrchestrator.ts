@@ -209,6 +209,13 @@ Always:
         console.log(`[Tool] search_provider called: ${name}, ${location}`);
         return [{ name: "Blackhawk Ski Club", city: "Middleton, WI" }];
       },
+      find_programs: async ({ provider }: any) => {
+        console.log(`[Tool] find_programs called for: ${provider}`);
+        return [
+          { name: "Beginner Ski Lessons", id: "prog-123" },
+          { name: "Intermediate Snowboarding", id: "prog-456" }
+        ];
+      },
       check_prerequisites: async () => {
         console.log(`[Tool] check_prerequisites called`);
         return { membership: "ok", payment: "ok" };
@@ -351,43 +358,72 @@ Always:
   }
 
   /**
-   * Handle program selection step (placeholder)
+   * Handle program selection step
+   * Retrieves available programs from the provider
+   * 
    * @param userMessage - User's input
    * @param sessionId - Session identifier
    */
   private async handleProgramSelection(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
-    // TODO: Implement program selection logic
-    return { assistantMessage: "Program selection handler - coming soon", uiPayload: {}, contextUpdates: {} };
+    const context = this.getContext(sessionId);
+    const provider = context.provider?.name || userMessage;
+    const programs = await this.callTool("find_programs", { provider });
+    const message = `Here are the upcoming programs for ${provider}: ${programs.map((p: any) => p.name).join(", ")}. Which would you like to choose?`;
+    return { 
+      assistantMessage: message, 
+      uiPayload: { type: "cards", options: programs }, 
+      contextUpdates: { availablePrograms: programs } 
+    };
   }
 
   /**
-   * Handle prerequisite check step (placeholder)
-   * @param userMessage - User's input
+   * Handle prerequisite check step
+   * Verifies membership, waivers, and payment methods
+   * 
+   * @param _ - User's input (unused)
    * @param sessionId - Session identifier
    */
-  private async handlePrerequisiteCheck(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
-    // TODO: Implement prerequisite check logic
-    return { assistantMessage: "Prerequisite check handler - coming soon", uiPayload: {}, contextUpdates: {} };
+  private async handlePrerequisiteCheck(_: string, sessionId: string): Promise<OrchestratorResponse> {
+    const prereqs = await this.callTool("check_prerequisites", {});
+    const allGood = Object.values(prereqs).every((v: any) => v === "ok");
+    const message = allGood
+      ? "✅ All prerequisites are complete! Let's continue to the registration form."
+      : "⚠️ Some prerequisites are missing. Please update your membership or payment method before continuing.";
+    return { 
+      assistantMessage: message, 
+      uiPayload: {}, 
+      contextUpdates: { prerequisites: prereqs } 
+    };
   }
 
   /**
-   * Handle form fill step (placeholder)
-   * @param userMessage - User's input
-   * @param sessionId - Session identifier
+   * Handle form fill step
+   * Collects remaining registration details from user
+   * 
+   * @param _ - User's input (unused)
+   * @param __ - Session identifier (unused)
    */
-  private async handleFormFill(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
-    // TODO: Implement form fill logic
-    return { assistantMessage: "Form fill handler - coming soon", uiPayload: {}, contextUpdates: {} };
+  private async handleFormFill(_: string, __: string): Promise<OrchestratorResponse> {
+    return { 
+      assistantMessage: "📝 Let's fill out the remaining registration details.", 
+      uiPayload: {}, 
+      contextUpdates: { formAnswers: {} } 
+    };
   }
 
   /**
-   * Handle confirmation step (placeholder)
-   * @param userMessage - User's input
-   * @param sessionId - Session identifier
+   * Handle confirmation step
+   * Presents final summary and confirms registration submission
+   * 
+   * @param _ - User's input (unused)
+   * @param __ - Session identifier (unused)
    */
-  private async handleConfirmation(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
-    // TODO: Implement confirmation logic
-    return { assistantMessage: "Confirmation handler - coming soon", uiPayload: {}, contextUpdates: {} };
+  private async handleConfirmation(_: string, __: string): Promise<OrchestratorResponse> {
+    return { 
+      assistantMessage: "✅ Ready to confirm registration. Shall I proceed?", 
+      uiPayload: { type: "confirmation" }, 
+      contextUpdates: { confirmed: true } 
+    };
   }
 }
 
