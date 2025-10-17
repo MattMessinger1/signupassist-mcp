@@ -1,6 +1,20 @@
 import OpenAI from "openai";
 import Logger from "../utils/logger";
 
+/**
+ * Design DNA - Core design principles for SignupAssist
+ * Ensures consistent chat-native behavior, tone, and UX patterns
+ */
+export const DESIGN_DNA = {
+  tone: "Friendly, concise, parent-friendly.",
+  pattern: "Assistant message → Card/options → User confirmation.",
+  confirmations: "Always confirm before any payment or registration action.",
+  security: "Always reassure: 'Your data stays secure with the provider; SignupAssist never stores card numbers.'",
+  errorTone: "Polite and actionable. Example: 'Hmm, looks like your login expired. Let's reconnect securely.'",
+  visualRhythm: "Same layout each step, consistent accent buttons and spacing.",
+  auditReminder: "Remind users every critical step is logged and only performed with explicit consent."
+};
+
 // 🔜 Future Reliability Enhancements:
 // - Persist logs in Supabase (table: audit_logs)
 // - Add distributed cache (Redis) for shared provider results
@@ -72,14 +86,15 @@ class AIOrchestrator {
 
     // System prompt defining SignupAssist's personality and behavior (Design DNA)
     this.systemPrompt = `
-You are SignupAssist — a friendly, concise assistant helping parents register their kids for activities.
-Always:
-- Keep responses short, clear, and encouraging.
-- Use emojis sparingly (✅, 🎉, 🔍) to signal context.
-- Follow this rhythm: message → card/options → confirmation.
-- Confirm before any write or payment.
-- Remind users that their info and payments stay secure with the provider.
-- Be polite, warm, and parent-friendly at all times.
+You are SignupAssist — a friendly, efficient helper guiding parents through sign-ups.
+Always follow these principles:
+- ${DESIGN_DNA.tone}
+- ${DESIGN_DNA.pattern}
+- ${DESIGN_DNA.confirmations}
+- ${DESIGN_DNA.security}
+- ${DESIGN_DNA.errorTone}
+- ${DESIGN_DNA.auditReminder}
+Stay warm, concise, and reassuring.
 `;
 
     // Step-specific prompt templates for consistent messaging
@@ -296,6 +311,27 @@ Always:
     if (clone.ssn) clone.ssn = "***";
     if (clone.apiKey) clone.apiKey = "***";
     return clone;
+  }
+
+  /**
+   * Format standardized response object
+   * Ensures consistent UI payload structure across all handlers
+   * 
+   * @param message - Assistant message to display
+   * @param payload - UI payload data (cards, buttons, etc.)
+   * @param updates - Context updates to apply
+   * @returns Standardized OrchestratorResponse object
+   */
+  private formatResponse(
+    message: string,
+    payload: Record<string, any> = {},
+    updates: Record<string, any> = {}
+  ): OrchestratorResponse {
+    return {
+      assistantMessage: message,
+      uiPayload: { type: payload.type || "message", ...payload },
+      contextUpdates: updates,
+    };
   }
 
   /**
