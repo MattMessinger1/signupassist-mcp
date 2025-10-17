@@ -1,6 +1,12 @@
 import OpenAI from "openai";
 import Logger from "../utils/logger";
 
+// 🔜 Future Reliability Enhancements:
+// - Persist logs in Supabase (table: audit_logs)
+// - Add distributed cache (Redis) for shared provider results
+// - Add tracing IDs for all API calls
+// - Integrate Sentry or similar for runtime error tracking
+
 // 🔜 TODO:
 // - Replace in-memory session store with Supabase persistence
 //   using table: agentic_checkout_sessions
@@ -215,8 +221,8 @@ Always:
     }
 
     try {
-      Logger.info(`Calling tool: ${toolName}`, args);
-      Logger.info(`[Audit] Tool call`, { toolName, args });
+      Logger.info(`Calling tool: ${toolName}`, this.sanitize(args));
+      Logger.info(`[Audit] Tool call`, { toolName, args: this.sanitize(args) });
       const result = await this.withRetry(() => tool(args));
       this.saveToCache(cacheKey, result);
       Logger.info(`Tool ${toolName} succeeded.`);
@@ -274,6 +280,22 @@ Always:
   private isCacheValid(key: string): boolean {
     const item = this.cache[key];
     return !!item && item.expires > Date.now();
+  }
+
+  /**
+   * Sanitize sensitive data before logging
+   * Strips PII and payment information to prevent accidental leakage
+   * 
+   * @param obj - Object to sanitize
+   * @returns Sanitized copy of the object
+   */
+  private sanitize(obj: Record<string, any>): Record<string, any> {
+    const clone = JSON.parse(JSON.stringify(obj));
+    if (clone.password) clone.password = "***";
+    if (clone.cardNumber) clone.cardNumber = "***";
+    if (clone.ssn) clone.ssn = "***";
+    if (clone.apiKey) clone.apiKey = "***";
+    return clone;
   }
 
   /**
