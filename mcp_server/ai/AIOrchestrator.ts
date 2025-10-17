@@ -123,6 +123,12 @@ Always:
       const assistantMessage = completion.choices[0]?.message?.content?.trim() || "";
       this.logInteraction(sessionId, "assistant", assistantMessage);
 
+      // Log token usage for cost monitoring
+      const usage = completion.usage;
+      if (usage) {
+        console.log(`[${sessionId}] tokens → prompt:${usage.prompt_tokens} completion:${usage.completion_tokens} total:${usage.total_tokens}`);
+      }
+
       return {
         assistantMessage,
         uiPayload: {},
@@ -236,9 +242,8 @@ Always:
    * @param content - Message content
    */
   private logInteraction(sessionId: string, role: string, content: string): void {
-    const truncated = content.substring(0, 100);
-    const suffix = content.length > 100 ? "..." : "";
-    console.log(`[${sessionId}] ${role}: ${truncated}${suffix}`);
+    const preview = content.length > 120 ? content.slice(0, 120) + "…" : content;
+    console.log(`[${sessionId}] ${role}: ${preview}`);
   }
 
   /**
