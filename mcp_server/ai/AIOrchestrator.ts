@@ -43,6 +43,8 @@ class AIOrchestrator {
   private readonly systemPrompt: string;
   private promptTemplates: Record<string, string>;
   private exampleMessages: Array<{ role: string; content: string }>;
+  private model: string;
+  private temperature: number;
 
   /**
    * Initialize the AI orchestrator
@@ -53,6 +55,12 @@ class AIOrchestrator {
     this.openai = new OpenAI({ 
       apiKey: process.env.OPENAI_API_KEY! 
     });
+
+    // Model configuration
+    // gpt-4o = best general-purpose model (May 2024)
+    // gpt-4o-mini = cheaper/faster alternative
+    this.model = process.env.OPENAI_MODEL || "gpt-4o";
+    this.temperature = Number(process.env.OPENAI_TEMPERATURE || 0.3);
 
     // System prompt defining SignupAssist's personality and behavior (Design DNA)
     this.systemPrompt = `
@@ -94,46 +102,38 @@ Always:
    */
   async generateResponse(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
     const context = this.getContext(sessionId);
-    
-    // Log user message
-    this.logInteraction(sessionId, "user", userMessage);
-
-    // Build context summary for AI
-    const contextSummary = JSON.stringify(context, null, 2);
+    const contextSummary = JSON.stringify(context).slice(0, 1500); // truncate long state
 
     const messages = [
       { role: "system", content: this.systemPrompt },
-      ...this.exampleMessages,
-      { role: "assistant", content: `Current session context:\n${contextSummary}` },
-      ...(context.conversationHistory || []),
+      { role: "assistant", content: `Current context: ${contextSummary}` },
       { role: "user", content: userMessage }
     ];
 
     try {
-      const completion = await this.openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages
-      });
+      const completion = await this.withRetry(() =>
+        this.openai.chat.completions.create({
+          model: this.model,
+          temperature: this.temperature,
+          max_tokens: 600,
+          messages,
+        })
+      );
 
-      const assistantMessage = completion.choices[0].message?.content || "";
-      
-      // Log assistant response
+      const assistantMessage = completion.choices[0]?.message?.content?.trim() || "";
       this.logInteraction(sessionId, "assistant", assistantMessage);
 
-      return { 
-        assistantMessage, 
-        uiPayload: {}, 
-        contextUpdates: {} 
+      return {
+        assistantMessage,
+        uiPayload: {},
+        contextUpdates: {},
       };
-    } catch (error) {
-      console.error("OpenAI error:", error);
-      const errorMessage = "🤖 Sorry, something went wrong.";
-      this.logInteraction(sessionId, "assistant", errorMessage);
-      
-      return { 
-        assistantMessage: errorMessage, 
-        uiPayload: {}, 
-        contextUpdates: {} 
+    } catch (error: any) {
+      this.logError(sessionId, error.message);
+      return {
+        assistantMessage: "🤖 Sorry, I ran into a technical hiccup. Please try again in a moment.",
+        uiPayload: {},
+        contextUpdates: {},
       };
     }
   }
@@ -249,6 +249,36 @@ Always:
    */
   private logContext(sessionId: string): void {
     console.log(`[Context Snapshot] ${sessionId}:`, JSON.stringify(this.sessions[sessionId], null, 2));
+  }
+
+  /**
+   * Retry helper for handling transient errors
+   * Uses exponential backoff to retry failed operations
+   * 
+   * @param fn - Async function to retry
+   * @param retries - Number of retry attempts remaining
+   * @param delay - Initial delay in milliseconds
+   * @returns Promise resolving to function result
+   */
+  private async withRetry<T>(fn: () => Promise<T>, retries = 3, delay = 1000): Promise<T> {
+    try {
+      return await fn();
+    } catch (error: any) {
+      if (retries <= 0) throw error;
+      console.warn(`Retrying after error (${3 - retries + 1}/3):`, error.message);
+      await new Promise(r => setTimeout(r, delay * (4 - retries))); // exponential backoff
+      return this.withRetry(fn, retries - 1, delay);
+    }
+  }
+
+  /**
+   * Log error for debugging
+   * 
+   * @param sessionId - Session identifier
+   * @param errorMessage - Error message to log
+   */
+  private logError(sessionId: string, errorMessage: string): void {
+    console.error(`[${sessionId}] ERROR:`, errorMessage);
   }
 }
 
