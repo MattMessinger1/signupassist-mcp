@@ -13,6 +13,7 @@ class AIOrchestrator {
   private openai: OpenAI;
   private sessions: Record<string, Record<string, any>> = {};
   private readonly systemPrompt: string;
+  private promptTemplates: Record<string, string>;
 
   /**
    * Initialize the AI orchestrator
@@ -35,6 +36,15 @@ Always:
 - Remind users that their info and payments stay secure with the provider.
 - Be polite, warm, and parent-friendly at all times.
 `;
+
+    // Step-specific prompt templates for consistent messaging
+    this.promptTemplates = {
+      providerSearch: "User said: '{input}'. Extract provider name and city/state.",
+      programSelection: "List available programs for {provider} and help user choose.",
+      prerequisiteCheck: "Explain which prerequisites (membership, waivers) are missing and guide politely.",
+      formFill: "Ask for remaining registration fields clearly and one at a time.",
+      confirmation: "Summarize registration details and ask for explicit confirmation."
+    };
   }
 
   /**
@@ -46,9 +56,33 @@ Always:
    * @returns Promise resolving to assistant's response
    */
   async generateResponse(userMessage: string, sessionId: string): Promise<any> {
-    // TODO: Implement OpenAI chat completion call
-    // TODO: Include system prompt + session context + user message
-    // TODO: Return { assistantMessage, uiPayload?, contextUpdates? }
+    const context = this.getContext(sessionId);
+    const messages = [
+      { role: "system", content: this.systemPrompt },
+      ...(context.exampleMessages || []),
+      { role: "user", content: userMessage }
+    ];
+
+    try {
+      const completion = await this.openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages
+      });
+
+      const assistantMessage = completion.choices[0].message?.content || "";
+      return { 
+        assistantMessage, 
+        uiPayload: {}, 
+        contextUpdates: {} 
+      };
+    } catch (error) {
+      console.error("OpenAI error:", error);
+      return { 
+        assistantMessage: "🤖 Sorry, something went wrong.", 
+        uiPayload: {}, 
+        contextUpdates: {} 
+      };
+    }
   }
 
   /**
@@ -59,8 +93,8 @@ Always:
    * @returns Current session context object
    */
   getContext(sessionId: string): Record<string, any> {
-    // TODO: Return session context or initialize new one
-    return {};
+    // TODO: Add Supabase persistence for agentic_checkout_sessions table
+    return this.sessions[sessionId] || {};
   }
 
   /**
@@ -71,7 +105,11 @@ Always:
    * @param updates - Partial context updates to merge
    */
   updateContext(sessionId: string, updates: Record<string, any>): void {
-    // TODO: Merge updates into session context
+    // TODO: Add Supabase persistence for agentic_checkout_sessions table
+    this.sessions[sessionId] = { 
+      ...(this.sessions[sessionId] || {}), 
+      ...updates 
+    };
   }
 
   /**
@@ -89,6 +127,16 @@ Always:
   async callTool(toolName: string, args: Record<string, any>): Promise<any> {
     // TODO: Route to appropriate MCP tool based on toolName
     // TODO: Handle tool responses and errors
+  }
+
+  /**
+   * Get prompt template for specific signup step
+   * 
+   * @param step - Name of the step (providerSearch, programSelection, etc.)
+   * @returns Template string for that step
+   */
+  getPromptTemplate(step: string): string {
+    return this.promptTemplates[step] || "";
   }
 }
 
