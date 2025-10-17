@@ -1,4 +1,3 @@
-import "dotenv/config";
 import AIOrchestrator from "../mcp_server/ai/AIOrchestrator";
 
 const orchestrator = new AIOrchestrator();
