@@ -141,12 +141,11 @@ Stay warm, concise, and reassuring.
       return result;
     } catch (error: any) {
       Logger.error(`[${sessionId}] AI error: ${error.message}`);
-      return {
-        assistantMessage:
-          "🤖 Apologies, I'm having a brain freeze. Let's try that again in a moment.",
-        uiPayload: {},
-        contextUpdates: {},
-      };
+      return this.formatResponse(
+        "🤖 Apologies, I'm having a brain freeze. Let's try that again in a moment.",
+        {},
+        {}
+      );
     }
   }
 
@@ -335,6 +334,37 @@ Stay warm, concise, and reassuring.
   }
 
   /**
+   * Build a confirmation card UI payload
+   * Reusable component for explicit user confirmation before irreversible actions
+   * 
+   * @param summary - Summary text explaining what will be confirmed
+   * @returns UI payload object for confirmation card
+   */
+  private buildConfirmationCard(summary: string) {
+    return {
+      type: "confirmation",
+      title: "Please Confirm",
+      summary,
+      options: [
+        { label: "✅ Confirm", value: "confirm" },
+        { label: "Cancel", value: "cancel" },
+      ],
+    };
+  }
+
+  /**
+   * Generate security reminder message
+   * Reassures users about data security during sensitive operations
+   * 
+   * @param provider - Optional provider name to personalize message
+   * @returns Security reminder message string
+   */
+  private securityReminder(provider?: string): string {
+    const source = provider ? provider : "your provider";
+    return `🔒 Your data and payment info stay secure with ${source}; SignupAssist never stores card numbers.`;
+  }
+
+  /**
    * Retry helper for handling transient errors
    * Uses exponential backoff with enhanced logging
    * 
@@ -406,7 +436,11 @@ Stay warm, concise, and reassuring.
       case "confirmation":
         return await this.handleConfirmation(userMessage, sessionId);
       default:
-        return { assistantMessage: "🎉 All steps complete!", uiPayload: {}, contextUpdates: {} };
+        return this.formatResponse(
+          "🎉 All steps complete!",
+          {},
+          {}
+        );
     }
   }
 
@@ -424,11 +458,11 @@ Stay warm, concise, and reassuring.
     const message = `🔍 I found these providers for "${providerQuery}": ${results
       .map((r: any) => r.name + " (" + r.city + ")")
       .join(", ")}. Please confirm which one is correct.`;
-    return { 
-      assistantMessage: message, 
-      uiPayload: { type: "cards", options: results }, 
-      contextUpdates: { providerSearchResults: results } 
-    };
+    return this.formatResponse(
+      message,
+      { type: "cards", options: results },
+      { providerSearchResults: results }
+    );
   }
 
   /**
@@ -443,11 +477,11 @@ Stay warm, concise, and reassuring.
     const provider = context.provider?.name || userMessage;
     const programs = await this.callTool("find_programs", { provider });
     const message = `Here are the upcoming programs for ${provider}: ${programs.map((p: any) => p.name).join(", ")}. Which would you like to choose?`;
-    return { 
-      assistantMessage: message, 
-      uiPayload: { type: "cards", options: programs }, 
-      contextUpdates: { availablePrograms: programs } 
-    };
+    return this.formatResponse(
+      message,
+      { type: "cards", options: programs },
+      { availablePrograms: programs }
+    );
   }
 
   /**
@@ -463,11 +497,11 @@ Stay warm, concise, and reassuring.
     const message = allGood
       ? "✅ All prerequisites are complete! Let's continue to the registration form."
       : "⚠️ Some prerequisites are missing. Please update your membership or payment method before continuing.";
-    return { 
-      assistantMessage: message, 
-      uiPayload: {}, 
-      contextUpdates: { prerequisites: prereqs } 
-    };
+    return this.formatResponse(
+      message,
+      {},
+      { prerequisites: prereqs }
+    );
   }
 
   /**
@@ -478,11 +512,11 @@ Stay warm, concise, and reassuring.
    * @param __ - Session identifier (unused)
    */
   private async handleFormFill(_: string, __: string): Promise<OrchestratorResponse> {
-    return { 
-      assistantMessage: "📝 Let's fill out the remaining registration details.", 
-      uiPayload: {}, 
-      contextUpdates: { formAnswers: {} } 
-    };
+    return this.formatResponse(
+      "📝 Let's fill out the remaining registration details.",
+      {},
+      { formAnswers: {} }
+    );
   }
 
   /**
@@ -490,14 +524,19 @@ Stay warm, concise, and reassuring.
    * Presents final summary and confirms registration submission
    * 
    * @param _ - User's input (unused)
-   * @param __ - Session identifier (unused)
+   * @param sessionId - Session identifier
    */
-  private async handleConfirmation(_: string, __: string): Promise<OrchestratorResponse> {
-    return { 
-      assistantMessage: "✅ Ready to confirm registration. Shall I proceed?", 
-      uiPayload: { type: "confirmation" }, 
-      contextUpdates: { confirmed: true } 
-    };
+  private async handleConfirmation(_: string, sessionId: string): Promise<OrchestratorResponse> {
+    const context = this.getContext(sessionId);
+    const provider = context.provider?.name;
+    const summary = "Ready to submit registration. This action will process your payment.";
+    const message = `✅ ${summary}\n\n${this.securityReminder(provider)}`;
+    
+    return this.formatResponse(
+      message,
+      this.buildConfirmationCard(summary),
+      { confirmed: true }
+    );
   }
 }
 
