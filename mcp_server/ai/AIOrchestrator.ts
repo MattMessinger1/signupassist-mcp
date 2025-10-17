@@ -1,6 +1,18 @@
 import OpenAI from "openai";
 
 /**
+ * Session context structure - defines what's stored for each conversation
+ */
+export interface SessionContext {
+  provider?: { name: string; orgRef: string };
+  program?: { name: string; id: string };
+  child?: { name: string; birthdate?: string };
+  prerequisites?: Record<string, "ok" | "required" | "missing">;
+  formAnswers?: Record<string, any>;
+  conversationHistory?: Array<{ role: string; content: string }>;
+}
+
+/**
  * Standardized orchestrator response structure
  */
 interface OrchestratorResponse {
@@ -20,7 +32,7 @@ interface OrchestratorResponse {
  */
 class AIOrchestrator {
   private openai: OpenAI;
-  private sessions: Record<string, Record<string, any>> = {};
+  private sessions: Record<string, SessionContext> = {};
   private readonly systemPrompt: string;
   private promptTemplates: Record<string, string>;
   private exampleMessages: Array<{ role: string; content: string }>;
@@ -79,9 +91,13 @@ Always:
     // Log user message
     this.logInteraction(sessionId, "user", userMessage);
 
+    // Build context summary for AI
+    const contextSummary = JSON.stringify(context, null, 2);
+
     const messages = [
       { role: "system", content: this.systemPrompt },
       ...this.exampleMessages,
+      { role: "assistant", content: `Current session context:\n${contextSummary}` },
       ...(context.conversationHistory || []),
       { role: "user", content: userMessage }
     ];
@@ -117,14 +133,19 @@ Always:
 
   /**
    * Get session context from in-memory store
-   * Creates new context if session doesn't exist
+   * Auto-initializes a new session if none exists
+   * Fetches the current state of the user's signup flow
    * 
    * @param sessionId - Unique session identifier
    * @returns Current session context object
    */
-  getContext(sessionId: string): Record<string, any> {
+  getContext(sessionId: string): SessionContext {
+    if (!this.sessions[sessionId]) {
+      this.sessions[sessionId] = {};
+      console.log(`[Context Created] New session ${sessionId}`);
+    }
     // TODO: Add Supabase persistence for agentic_checkout_sessions table
-    return this.sessions[sessionId] || {};
+    return this.sessions[sessionId];
   }
 
   /**
@@ -134,12 +155,14 @@ Always:
    * @param sessionId - Unique session identifier
    * @param updates - Partial context updates to merge
    */
-  updateContext(sessionId: string, updates: Record<string, any>): void {
-    // TODO: Add Supabase persistence for agentic_checkout_sessions table
+  updateContext(sessionId: string, updates: Partial<SessionContext>): void {
+    const existing = this.getContext(sessionId);
     this.sessions[sessionId] = { 
-      ...(this.sessions[sessionId] || {}), 
+      ...existing, 
       ...updates 
     };
+    console.log(`[Context Updated] ${sessionId}:`, updates);
+    // TODO: Add Supabase persistence for agentic_checkout_sessions table
   }
 
   /**
