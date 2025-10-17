@@ -400,12 +400,16 @@ Stay warm, concise, and reassuring.
         messages: [
           { 
             role: "system", 
-            content: "Extract provider name and city from input. Respond as JSON with {name, city}. If city is not mentioned, omit it." 
+            content: "Extract provider name and city from input. Respond ONLY with raw JSON (no markdown, no code blocks): {\"name\": \"...\", \"city\": \"...\" or omit city if not mentioned}." 
           },
           { role: "user", content: userInput }
         ]
       });
-      const text = completion.choices[0]?.message?.content || "{}";
+      let text = completion.choices[0]?.message?.content || "{}";
+      
+      // Strip markdown code blocks if present
+      text = text.replace(/^```json\s*/i, '').replace(/^```\s*/, '').replace(/\s*```$/, '').trim();
+      
       const parsed = JSON.parse(text);
       return { raw: userInput, name: parsed.name || userInput, city: parsed.city };
     } catch (error) {
