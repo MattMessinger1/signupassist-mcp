@@ -285,6 +285,110 @@ Always:
   private logError(sessionId: string, errorMessage: string): void {
     console.error(`[${sessionId}] ERROR:`, errorMessage);
   }
+
+  /**
+   * Determine the current step of the signup flow
+   * Returns the phase label based on what information is present in context
+   * 
+   * @param userMessage - User's current input
+   * @param context - Current session context
+   * @returns Step identifier string (provider_search, program_selection, etc.)
+   */
+  private determineStep(userMessage: string, context: Record<string, any>): string {
+    if (!context.provider) return "provider_search";
+    if (context.provider && !context.program) return "program_selection";
+    if (context.program && !context.prerequisites) return "prerequisite_check";
+    if (context.program && context.prerequisites && !context.formAnswers) return "form_fill";
+    if (context.formAnswers && !context.confirmed) return "confirmation";
+    return "completed";
+  }
+
+  /**
+   * Dispatch to the correct handler based on current signup step
+   * Routes user interaction to the appropriate step-specific handler
+   * 
+   * @param step - Current step identifier
+   * @param userMessage - User's input message
+   * @param sessionId - Session identifier
+   * @returns Promise resolving to OrchestratorResponse
+   */
+  private async handleStep(step: string, userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
+    switch (step) {
+      case "provider_search":
+        return await this.handleProviderSearch(userMessage, sessionId);
+      case "program_selection":
+        return await this.handleProgramSelection(userMessage, sessionId);
+      case "prerequisite_check":
+        return await this.handlePrerequisiteCheck(userMessage, sessionId);
+      case "form_fill":
+        return await this.handleFormFill(userMessage, sessionId);
+      case "confirmation":
+        return await this.handleConfirmation(userMessage, sessionId);
+      default:
+        return { assistantMessage: "🎉 All steps complete!", uiPayload: {}, contextUpdates: {} };
+    }
+  }
+
+  /**
+   * Handle provider search step
+   * Searches for activity providers based on user input
+   * 
+   * @param userMessage - User's search query
+   * @param sessionId - Session identifier
+   * @returns Promise resolving to OrchestratorResponse with provider options
+   */
+  private async handleProviderSearch(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
+    const providerQuery = userMessage;
+    const results = await this.callTool("search_provider", { name: providerQuery });
+    const message = `🔍 I found these providers for "${providerQuery}": ${results
+      .map((r: any) => r.name + " (" + r.city + ")")
+      .join(", ")}. Please confirm which one is correct.`;
+    return { 
+      assistantMessage: message, 
+      uiPayload: { type: "cards", options: results }, 
+      contextUpdates: { providerSearchResults: results } 
+    };
+  }
+
+  /**
+   * Handle program selection step (placeholder)
+   * @param userMessage - User's input
+   * @param sessionId - Session identifier
+   */
+  private async handleProgramSelection(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
+    // TODO: Implement program selection logic
+    return { assistantMessage: "Program selection handler - coming soon", uiPayload: {}, contextUpdates: {} };
+  }
+
+  /**
+   * Handle prerequisite check step (placeholder)
+   * @param userMessage - User's input
+   * @param sessionId - Session identifier
+   */
+  private async handlePrerequisiteCheck(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
+    // TODO: Implement prerequisite check logic
+    return { assistantMessage: "Prerequisite check handler - coming soon", uiPayload: {}, contextUpdates: {} };
+  }
+
+  /**
+   * Handle form fill step (placeholder)
+   * @param userMessage - User's input
+   * @param sessionId - Session identifier
+   */
+  private async handleFormFill(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
+    // TODO: Implement form fill logic
+    return { assistantMessage: "Form fill handler - coming soon", uiPayload: {}, contextUpdates: {} };
+  }
+
+  /**
+   * Handle confirmation step (placeholder)
+   * @param userMessage - User's input
+   * @param sessionId - Session identifier
+   */
+  private async handleConfirmation(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
+    // TODO: Implement confirmation logic
+    return { assistantMessage: "Confirmation handler - coming soon", uiPayload: {}, contextUpdates: {} };
+  }
 }
 
 export default AIOrchestrator;
