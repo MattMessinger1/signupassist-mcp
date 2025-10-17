@@ -25,6 +25,7 @@ This approach aligns with the **Responsible Delegate Mode (RDM)** vision: moving
 - Clone this repo
 - Deploy with Supabase Edge Functions + MCP server
 - Configure provider credentials via `cred-get`
+- **Set up Google Cloud API Key**: Enable the Places API in Google Cloud Console and add your API key to `.env` as `GOOGLE_PLACES_API_KEY` (required for provider search fallback)
 - Run MCP server:
   ```bash
   npm run mcp:start
