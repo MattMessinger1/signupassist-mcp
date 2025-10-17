@@ -136,14 +136,20 @@ Stay warm, concise, and reassuring.
       
       this.logInteraction(sessionId, "user", userMessage);
       const result = await this.handleStep(step, userMessage, sessionId);
+      
+      // Validate Design DNA compliance
+      this.validateRhythm(result);
+      Logger.info(`[DesignDNA] Step=${step} | Pattern=${DESIGN_DNA.pattern}`);
+      
       this.updateContext(sessionId, result.contextUpdates || {});
       this.logInteraction(sessionId, "assistant", result.assistantMessage);
       return result;
     } catch (error: any) {
       Logger.error(`[${sessionId}] AI error: ${error.message}`);
+      // Never expose stack traces to users - polite recovery only
       return this.formatResponse(
-        "🤖 Apologies, I'm having a brain freeze. Let's try that again in a moment.",
-        {},
+        "🤖 Hmm, looks like I hit a small snag. Let's try that again in a moment.",
+        { type: "message" },
         {}
       );
     }
@@ -362,6 +368,20 @@ Stay warm, concise, and reassuring.
   private securityReminder(provider?: string): string {
     const source = provider ? provider : "your provider";
     return `🔒 Your data and payment info stay secure with ${source}; SignupAssist never stores card numbers.`;
+  }
+
+  /**
+   * Validate Design DNA visual rhythm compliance
+   * Ensures every response follows the message → card → CTA pattern
+   * 
+   * @param response - OrchestratorResponse to validate
+   */
+  private validateRhythm(response: OrchestratorResponse): void {
+    const hasMessage = !!response.assistantMessage;
+    const hasPayload = !!response.uiPayload;
+    if (!hasMessage || !hasPayload) {
+      Logger.warn("[DesignDNA] Missing part of visual rhythm (message → card → CTA).");
+    }
   }
 
   /**
