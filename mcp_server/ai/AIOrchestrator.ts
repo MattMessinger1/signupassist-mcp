@@ -406,7 +406,9 @@ Stay warm, concise, and reassuring.
         ],
         response_format: { type: "json_object" }
       });
-      const text = completion.choices[0]?.message?.content || "{}";
+      let text = completion.choices[0]?.message?.content || "{}";
+      // Strip markdown code blocks even with json_object mode (OpenAI bug workaround)
+      text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/s, '').trim();
       const parsed = JSON.parse(text);
       return { raw: userInput, name: parsed.name || userInput, city: parsed.city };
     } catch (error) {
