@@ -1,4 +1,4 @@
-import AIOrchestrator from "../mcp_server/ai/AIOrchestrator";
+import AIOrchestrator from "../mcp_server/ai/AIOrchestrator.js";
 
 const orchestrator = new AIOrchestrator();
 
