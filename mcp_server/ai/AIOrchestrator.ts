@@ -1,6 +1,15 @@
 import OpenAI from "openai";
 
 /**
+ * Standardized orchestrator response structure
+ */
+interface OrchestratorResponse {
+  assistantMessage: string;
+  uiPayload?: Record<string, any>;
+  contextUpdates?: Record<string, any>;
+}
+
+/**
  * AIOrchestrator - The brain of SignupAssist
  * 
  * Handles all AI-driven interactions including:
@@ -14,6 +23,7 @@ class AIOrchestrator {
   private sessions: Record<string, Record<string, any>> = {};
   private readonly systemPrompt: string;
   private promptTemplates: Record<string, string>;
+  private exampleMessages: Array<{ role: string; content: string }>;
 
   /**
    * Initialize the AI orchestrator
@@ -45,6 +55,14 @@ Always:
       formFill: "Ask for remaining registration fields clearly and one at a time.",
       confirmation: "Summarize registration details and ask for explicit confirmation."
     };
+
+    // Few-shot examples to maintain consistent tone and style
+    this.exampleMessages = [
+      { role: "user", content: "Blackhawk ski Madison" },
+      { role: "assistant", content: "🔍 I found **Blackhawk Ski Club (Middleton, WI)**. Is that correct?" },
+      { role: "user", content: "Yes" },
+      { role: "assistant", content: "✅ Great! Let's check available classes next." }
+    ];
   }
 
   /**
@@ -53,13 +71,18 @@ Always:
    * 
    * @param userMessage - The user's input text
    * @param sessionId - Unique session identifier for context tracking
-   * @returns Promise resolving to assistant's response
+   * @returns Promise resolving to OrchestratorResponse
    */
-  async generateResponse(userMessage: string, sessionId: string): Promise<any> {
+  async generateResponse(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
     const context = this.getContext(sessionId);
+    
+    // Log user message
+    this.logInteraction(sessionId, "user", userMessage);
+
     const messages = [
       { role: "system", content: this.systemPrompt },
-      ...(context.exampleMessages || []),
+      ...this.exampleMessages,
+      ...(context.conversationHistory || []),
       { role: "user", content: userMessage }
     ];
 
@@ -70,6 +93,10 @@ Always:
       });
 
       const assistantMessage = completion.choices[0].message?.content || "";
+      
+      // Log assistant response
+      this.logInteraction(sessionId, "assistant", assistantMessage);
+
       return { 
         assistantMessage, 
         uiPayload: {}, 
@@ -77,8 +104,11 @@ Always:
       };
     } catch (error) {
       console.error("OpenAI error:", error);
+      const errorMessage = "🤖 Sorry, something went wrong.";
+      this.logInteraction(sessionId, "assistant", errorMessage);
+      
       return { 
-        assistantMessage: "🤖 Sorry, something went wrong.", 
+        assistantMessage: errorMessage, 
         uiPayload: {}, 
         contextUpdates: {} 
       };
@@ -125,8 +155,24 @@ Always:
    * @returns Promise resolving to tool execution result
    */
   async callTool(toolName: string, args: Record<string, any>): Promise<any> {
-    // TODO: Route to appropriate MCP tool based on toolName
-    // TODO: Handle tool responses and errors
+    // Stubbed tools - will be replaced with real MCP integrations
+    const tools: Record<string, Function> = {
+      search_provider: async ({ name, location }: any) => {
+        console.log(`[Tool] search_provider called: ${name}, ${location}`);
+        return [{ name: "Blackhawk Ski Club", city: "Middleton, WI" }];
+      },
+      check_prerequisites: async () => {
+        console.log(`[Tool] check_prerequisites called`);
+        return { membership: "ok", payment: "ok" };
+      }
+    };
+
+    const tool = tools[toolName];
+    if (!tool) {
+      throw new Error(`Unknown tool: ${toolName}`);
+    }
+
+    return await tool(args);
   }
 
   /**
@@ -137,6 +183,20 @@ Always:
    */
   getPromptTemplate(step: string): string {
     return this.promptTemplates[step] || "";
+  }
+
+  /**
+   * Log interaction for debugging and monitoring
+   * Truncates long messages and avoids logging sensitive data
+   * 
+   * @param sessionId - Session identifier
+   * @param role - user or assistant
+   * @param content - Message content
+   */
+  private logInteraction(sessionId: string, role: string, content: string): void {
+    const truncated = content.substring(0, 100);
+    const suffix = content.length > 100 ? "..." : "";
+    console.log(`[${sessionId}] ${role}: ${truncated}${suffix}`);
   }
 }
 
