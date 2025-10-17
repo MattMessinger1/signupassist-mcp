@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import Logger from "../utils/logger";
+import { parseProviderInput, ParsedProviderInput } from "../utils/parseInput";
 
 /**
  * Design DNA - Core design principles for SignupAssist
@@ -385,6 +386,35 @@ Stay warm, concise, and reassuring.
   }
 
   /**
+   * AI-assisted provider input parsing
+   * Uses OpenAI to extract provider name and city from complex or misspelled queries
+   * Falls back to heuristic parser on failure
+   * 
+   * @param userInput - Raw user input string
+   * @returns Parsed provider information
+   */
+  private async aiParseProviderInput(userInput: string): Promise<ParsedProviderInput> {
+    try {
+      const completion = await this.openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { 
+            role: "system", 
+            content: "Extract provider name and city from input. Respond as JSON with {name, city}. If city is not mentioned, omit it." 
+          },
+          { role: "user", content: userInput }
+        ]
+      });
+      const text = completion.choices[0]?.message?.content || "{}";
+      const parsed = JSON.parse(text);
+      return { raw: userInput, name: parsed.name || userInput, city: parsed.city };
+    } catch (error) {
+      Logger.warn("[AI Parser] Failed, falling back to heuristic parser:", error);
+      return parseProviderInput(userInput);
+    }
+  }
+
+  /**
    * Retry helper for handling transient errors
    * Uses exponential backoff with enhanced logging
    * 
@@ -473,9 +503,18 @@ Stay warm, concise, and reassuring.
    * @returns Promise resolving to OrchestratorResponse with provider options
    */
   private async handleProviderSearch(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
-    const providerQuery = userMessage;
-    const results = await this.callTool("search_provider", { name: providerQuery });
-    const message = `🔍 I found these providers for "${providerQuery}": ${results
+    // Parse user input to extract provider name and city
+    const parsed: ParsedProviderInput = parseProviderInput(userMessage);
+    Logger.info("[Parser] Extracted:", parsed);
+    
+    // Use parsed name for search, fallback to raw input if parsing fails
+    const providerQuery = parsed.name || userMessage;
+    const results = await this.callTool("search_provider", { 
+      name: providerQuery,
+      city: parsed.city 
+    });
+    
+    const message = `🔍 I found these providers for "${parsed.name}": ${results
       .map((r: any) => r.name + " (" + r.city + ")")
       .join(", ")}. Please confirm which one is correct.`;
     return this.formatResponse(
