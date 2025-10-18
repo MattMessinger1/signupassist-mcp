@@ -1,6 +1,8 @@
 import OpenAI from "openai";
 import Logger from "../utils/logger";
 import { parseProviderInput, ParsedProviderInput } from "../utils/parseInput";
+import { lookupLocalProvider, googlePlacesSearch } from "../utils/providerSearch";
+import type { Provider } from "../utils/providerSearch";
 
 /**
  * Design DNA - Core design principles for SignupAssist
@@ -224,10 +226,32 @@ Stay warm, concise, and reassuring.
 
     // Stubbed tools - will be replaced with real MCP integrations
     const tools: Record<string, Function> = {
-      search_provider: async ({ name }: any) => [
-        { name: "Blackhawk Ski Club", city: "Middleton, WI" },
-        { name: "Madison Nordic Club", city: "Madison, WI" },
-      ],
+      search_provider: async ({ name, location }: any) => {
+        const cacheKey = `provider-${name}-${location || ""}`;
+        if (this.isCacheValid(cacheKey)) {
+          Logger.info("Cache hit for provider search", { name, location });
+          return this.getFromCache(cacheKey).value;
+        }
+
+        const local = await lookupLocalProvider(name);
+        if (local) {
+          Logger.info("✅ Found provider locally:", local.name);
+          this.saveToCache(cacheKey, [local]);
+          return [local];
+        }
+
+        Logger.info("🌍 Falling back to Google Places API...");
+        const googleResults = await googlePlacesSearch(name, location);
+
+        if (googleResults.length) {
+          Logger.info("✅ Google API returned results");
+          this.saveToCache(cacheKey, googleResults);
+          return googleResults;
+        }
+
+        Logger.warn("❌ No provider found for query:", { name, location });
+        return [];
+      },
       find_programs: async ({ provider }: any) => [
         { name: "Beginner Ski Class – Saturdays", id: "prog1" },
         { name: "Intermediate Ski Class – Sundays", id: "prog2" },
