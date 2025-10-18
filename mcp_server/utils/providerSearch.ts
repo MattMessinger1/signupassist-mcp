@@ -1,3 +1,9 @@
+// ⚠️ Safety Notes:
+// - Google API key must have billing enabled.
+// - Restrict your key to specific APIs (Places, Maps) and referrers.
+// - Cache responses to reduce API cost and rate-limit usage.
+// - Always sanitize any user input before sending to Google APIs.
+
 import axios from "axios";
 import Logger from "./logger";
 
