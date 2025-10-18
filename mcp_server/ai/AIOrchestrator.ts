@@ -557,10 +557,12 @@ Stay warm, concise, and reassuring.
     const location = parsed.city;
     
     const results = await this.callTool("search_provider", { name, location });
+    
+    const foundVia = results.length && results[0].source === "google" ? "Google" : "our provider list";
     const message =
-      results && results.length
-        ? `🔍 I found these providers for **${name}${location ? " in " + location : ""}**. Please confirm which one is correct.`
-        : `🤔 I couldn't find any matches for **${name}**${location ? " in " + location : ""}. Could you double-check the spelling or city?`;
+      results.length > 0
+        ? `🔍 I found ${results.length} match${results.length > 1 ? "es" : ""} for **${name}**${location ? " in " + location : ""} using ${foundVia}.`
+        : `🤔 I couldn't find a provider named **${name}**${location ? " in " + location : ""}. Could you double-check the spelling or city?`;
 
     return this.formatResponse(
       message,
