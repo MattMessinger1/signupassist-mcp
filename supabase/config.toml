@@ -1,1 +1,4 @@
 project_id = "jpcrphdevmvzcfgokgym"
+
+[functions.test-provider-search]
+verify_jwt = false
