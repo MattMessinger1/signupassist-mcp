@@ -48,16 +48,18 @@ Deno.serve(async (req) => {
       body: JSON.stringify(sessionBody),
     });
 
+    // Handle non-JSON responses safely
+    const text = await resp.text();
     if (!resp.ok) {
-      const errorText = await resp.text();
-      console.error('[launch-browserbase] Browserbase API error:', errorText);
+      console.error('[launch-browserbase] Browserbase error response:', text.slice(0, 200));
       return new Response(
-        JSON.stringify({ error: 'Failed to create Browserbase session', details: errorText }),
+        JSON.stringify({ error: `Browserbase responded ${resp.status}`, details: text }),
         { status: resp.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const sessionData = await resp.json();
+    // Parse JSON only if response was OK
+    const sessionData = JSON.parse(text);
     console.log('[launch-browserbase] Session created:', sessionData.id);
 
     return new Response(
