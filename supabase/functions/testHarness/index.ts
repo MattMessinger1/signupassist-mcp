@@ -21,9 +21,17 @@ Deno.serve(async (req) => {
     const org_ref = body.org_ref || "mock-org";
 
     // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceRole = Deno.env.get('SUPABASE_SERVICE_ROLE');
+    
+    if (!supabaseUrl) {
+      throw new Error('SUPABASE_URL not configured');
+    }
+    if (!supabaseServiceRole) {
+      throw new Error('SUPABASE_SERVICE_ROLE secret not configured');
+    }
+    
+    const supabase = createClient(supabaseUrl, supabaseServiceRole);
 
     console.log(`[TestHarness] Checking credentials for user: ${user_id}, provider: ${provider_id}`);
 
