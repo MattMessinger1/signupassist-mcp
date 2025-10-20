@@ -68,13 +68,21 @@ export function useProviderDisambiguation() {
         description: `Proceeding with ${providerData.name}`,
       });
       
-      // Store confirmed provider
-      setContext(prev => prev ? { ...prev, confirmedProvider: providerData } : null);
+      // Store confirmed provider with full context
+      setContext(prev => prev ? { 
+        ...prev, 
+        confirmedProvider: {
+          name: providerData.name,
+          location: providerData.location,
+          orgRef: providerData.orgRef,
+          provider: providerData.provider || 'skiclubpro'
+        } 
+      } : null);
       
       return {
         id: `msg-${Date.now()}`,
         role: "assistant" as const,
-        content: `Perfect! I'll help you get signed up with **${providerData.name}**. Let me check what I need from you...`,
+        content: `Great! We'll work with **${providerData.name}** (${providerData.location}). 👍\n\nNext, I'll connect securely to their system to check class availability. You'll log in directly with ${providerData.name} — I never see or store your password.`,
         timestamp: new Date(),
       };
     } else {
