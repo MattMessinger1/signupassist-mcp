@@ -1,12 +1,15 @@
 import { ProviderConfirmationCard } from "./ProviderConfirmationCard";
+import { MultipleProvidersCard } from "./MultipleProvidersCard";
+
+export interface ProviderData {
+  name: string;
+  location: string;
+  orgRef?: string;
+}
 
 export interface MessageCardData {
-  type: "provider_confirmation";
-  data: {
-    name: string;
-    location: string;
-    orgRef?: string;
-  };
+  type: "provider_confirmation" | "multiple_providers";
+  data: ProviderData | ProviderData[];
 }
 
 interface ChatMessageCardProps {
@@ -17,12 +20,24 @@ interface ChatMessageCardProps {
 
 export function ChatMessageCard({ card, onConfirm, onReject }: ChatMessageCardProps) {
   if (card.type === "provider_confirmation") {
+    const data = card.data as ProviderData;
     return (
       <ProviderConfirmationCard
-        name={card.data.name}
-        location={card.data.location}
-        onConfirm={() => onConfirm(card.data)}
-        onReject={onReject ? () => onReject(card.data) : undefined}
+        name={data.name}
+        location={data.location}
+        onConfirm={() => onConfirm(data)}
+        onReject={onReject ? () => onReject(data) : undefined}
+      />
+    );
+  }
+
+  if (card.type === "multiple_providers") {
+    const providers = card.data as ProviderData[];
+    return (
+      <MultipleProvidersCard
+        providers={providers}
+        onSelect={(provider) => onConfirm(provider)}
+        onNoneMatch={onReject ? () => onReject({}) : undefined}
       />
     );
   }

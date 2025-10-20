@@ -11,7 +11,7 @@ import { Send } from "lucide-react";
 export function DisambiguationDemo() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const { handleSingleMatch, handleConfirmation, handleTextFallback, context } = useProviderDisambiguation();
+  const { handleSingleMatch, handleMultipleMatches, handleConfirmation, handleTextFallback, parseMultipleMatchSelection, context } = useProviderDisambiguation();
 
   const simulateSingleMatch = () => {
     const assistantMsg = handleSingleMatch(
@@ -22,6 +22,34 @@ export function DisambiguationDemo() {
         orgRef: "blackhawk-ski",
       },
       "Blackhawk Ski Club"
+    );
+    
+    setMessages(prev => [...prev, assistantMsg]);
+  };
+
+  const simulateMultipleMatches = () => {
+    const assistantMsg = handleMultipleMatches(
+      [
+        {
+          name: "Blackhawk Ski Club",
+          city: "Middleton, WI",
+          address: "123 Ski Lane, Middleton, WI 53562",
+          orgRef: "blackhawk-middleton",
+        },
+        {
+          name: "Blackhawk Ski Club",
+          city: "Madison, WI",
+          address: "456 Snow Drive, Madison, WI 53703",
+          orgRef: "blackhawk-madison",
+        },
+        {
+          name: "Blackhawk Ski Club",
+          city: "Verona, WI",
+          address: "789 Slope Road, Verona, WI 53593",
+          orgRef: "blackhawk-verona",
+        },
+      ],
+      "Blackhawk"
     );
     
     setMessages(prev => [...prev, assistantMsg]);
@@ -63,7 +91,7 @@ export function DisambiguationDemo() {
 
     setMessages(prev => [...prev, userMsg]);
 
-    // Check if this is a text fallback response
+    // Handle text fallback for single match
     if (context?.type === "single_match") {
       const isAffirmative = handleTextFallback(input, "confirm");
       const isNegative = handleTextFallback(input, "reject");
@@ -77,6 +105,49 @@ export function DisambiguationDemo() {
       }
     }
 
+    // Handle text fallback for multiple matches
+    if (context?.type === "multiple_matches") {
+      const { cityMatch, isNoneMatch, isUnclear } = parseMultipleMatchSelection(input);
+
+      if (isNoneMatch) {
+        const assistantMsg: ChatMessage = {
+          id: `msg-${Date.now()}`,
+          role: "assistant" as const,
+          content: "Got it! Maybe I need more details. Could you double-check the name or provide the city to search again?",
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, assistantMsg]);
+      } else if (isUnclear) {
+        const cities = context.providers?.map(p => p.city || "Unknown").join(", ") || "";
+        const assistantMsg: ChatMessage = {
+          id: `msg-${Date.now()}`,
+          role: "assistant" as const,
+          content: `Sure – just let me know which one. Here are the locations: **${cities}**. You can click a card or tell me the city name.`,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, assistantMsg]);
+      } else if (cityMatch && context.providers) {
+        const matchedProvider = context.providers.find(
+          p => (p.city || p.address || "").includes(cityMatch!)
+        );
+        
+        if (matchedProvider) {
+          const confirmMsg: ChatMessage = {
+            id: `msg-${Date.now()}-confirm`,
+            role: "assistant" as const,
+            content: `Thanks! We'll go with **${matchedProvider.name}** (${matchedProvider.city || matchedProvider.address}).`,
+            timestamp: new Date(),
+          };
+          setMessages(prev => [...prev, confirmMsg]);
+          
+          setTimeout(() => {
+            const assistantMsg = handleConfirmation(true, matchedProvider);
+            setMessages(prev => [...prev, assistantMsg]);
+          }, 500);
+        }
+      }
+    }
+
     setInput("");
   };
 
@@ -86,13 +157,18 @@ export function DisambiguationDemo() {
         <CardHeader>
           <CardTitle>Provider Disambiguation Demo</CardTitle>
           <CardDescription>
-            Testing Case 1: Single Match Found with card confirmation and text fallback
+            Testing Case 1 (Single Match) and Case 2 (Multiple Matches) with card confirmation and text fallback
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Button onClick={simulateSingleMatch} variant="outline" className="w-full">
-            Simulate Single Match Found
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={simulateSingleMatch} variant="outline" className="flex-1">
+              Single Match
+            </Button>
+            <Button onClick={simulateMultipleMatches} variant="outline" className="flex-1">
+              Multiple Matches
+            </Button>
+          </div>
 
           <ScrollArea className="h-[400px] rounded-lg border bg-muted/20 p-4">
             <div className="space-y-4">
@@ -146,7 +222,8 @@ export function DisambiguationDemo() {
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Try typing "yes", "that's it", "no", or "not sure" to test text fallback handling
+            <strong>Single Match:</strong> Try "yes", "that's it", "no"<br />
+            <strong>Multiple Matches:</strong> Try "Middleton", "the Madison one", "none of these", "not sure"
           </p>
         </CardContent>
       </Card>
