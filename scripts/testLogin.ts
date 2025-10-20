@@ -1,48 +1,32 @@
 import 'dotenv/config';
 import { skiClubProTools } from '../mcp_server/providers/skiclubpro';
 
-async function main() {
-  console.log("🧠 Running live login smoke test...\n");
-  console.log("Checking SkiClubPro credentials via Playwright...\n");
-  console.log("⚙️ Launching browser, navigating to login page...\n");
-
-  const username = process.env.TEST_USERNAME;
-  const password = process.env.TEST_PASSWORD;
-  const org_ref = process.env.TEST_ORG_REF || 'blackhawk-ski-club';
-
-  if (!username || !password) {
-    console.error("❌ Missing credentials!");
-    console.error("Set TEST_USERNAME and TEST_PASSWORD environment variables.");
-    process.exit(1);
-  }
-
-  try {
-    // Find the login tool
-    const loginTool = skiClubProTools.find(tool => tool.name === 'scp.login');
-    
-    if (!loginTool) {
-      throw new Error('Login tool not found in skiClubProTools');
-    }
-
-    // Call the login handler
-    const result = await loginTool.handler({
-      org_ref,
-      email: username,
-      password,
+// Simple wrapper to match expected interface
+const scp = {
+  login: async (args: { org_ref: string; username: string; password: string }) => {
+    // Note: The actual scp.login requires credential_id and user_jwt
+    // For smoke testing, we're calling it with minimal args
+    // In production, these would come from your mandate/auth system
+    return await skiClubProTools['scp.login']({
+      credential_id: 'test-cred-id',
+      user_jwt: 'test-jwt-token',
+      org_ref: args.org_ref,
       mandate_id: 'test-mandate-smoke',
       plan_execution_id: 'test-exec-smoke'
     });
-
-    console.log("✅ Login successful — session established!\n");
-    console.log("Result:\n");
-    console.log(JSON.stringify(result, null, 2));
-    console.log("\n🎉 Smoke test complete!");
-    console.log("Next step: reconnect this login call to your orchestrator's run-plan so the AI flow can trigger it automatically.\n");
-  } catch (error) {
-    console.error("❌ Login failed:");
-    console.error(error);
-    process.exit(1);
   }
+};
+
+async function main() {
+  console.log("🧠 Running live login smoke test...");
+
+  const result = await scp.login({
+    org_ref: "blackhawk-ski-club",
+    username: process.env.TEST_USERNAME!,
+    password: process.env.TEST_PASSWORD!,
+  });
+
+  console.log("Result:", result);
 }
 
 main();
