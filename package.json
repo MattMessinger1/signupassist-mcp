@@ -16,6 +16,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "mcp:dev": "node --loader ts-node/esm mcp_server/index.ts",
+    "test:cred": "tsx scripts/testCredSealKey.ts",
     "mcp:build": "tsc -p tsconfig.mcp.json",
     "prestart": "npm run mcp:build"
   },
