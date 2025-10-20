@@ -3,7 +3,7 @@
  * Manages short-lived Browserbase sessions with optional reuse
  */
 
-import { launchBrowserbaseSession, closeBrowserbaseSession, BrowserbaseSession } from './browserbase.js';
+import { launchBrowserbaseSession, closeBrowserbaseSession, BrowserbaseSession } from './browserbase-skiclubpro.js';
 
 type ManagedSession = {
   session: BrowserbaseSession;

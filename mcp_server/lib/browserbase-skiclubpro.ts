@@ -4,13 +4,14 @@
  */
 
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
-import Browserbase from '@browserbasehq/sdk';
 import { captureScreenshotEvidence } from './evidence.js';
 import { SKICLUBPRO_CONFIGS } from '../config/skiclubpro_selectors.js';
-import { fillInput } from './browserbase.js';
 import { createStealthContext } from './antibot.js';
+import { createClient } from '@supabase/supabase-js';
 
-const browserbaseApiKey = process.env.BROWSERBASE_API_KEY!;
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 export interface BrowserbaseSession {
   sessionId: string;
@@ -20,19 +21,24 @@ export interface BrowserbaseSession {
 }
 
 /**
- * Launch a new Browserbase session with Playwright
+ * Launch a new Browserbase session with Playwright via Edge Function
  */
 export async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
   try {
-    if (!browserbaseApiKey) {
-      throw new Error('BROWSERBASE_API_KEY environment variable is required');
+    // Call edge function to create Browserbase session
+    const { data, error } = await supabase.functions.invoke('launch-browserbase', {
+      body: { headless: true }
+    });
+
+    if (error) {
+      throw new Error(`Failed to start Browserbase session: ${error.message}`);
     }
 
-    // Create Browserbase session
-    const bb = new Browserbase({ apiKey: browserbaseApiKey });
-    const session = await bb.sessions.create({
-      projectId: process.env.BROWSERBASE_PROJECT_ID!
-    });
+    if (!data?.session) {
+      throw new Error('No session data returned from edge function');
+    }
+
+    const session = data.session;
 
     // Connect Playwright to Browserbase
     const browser = await chromium.connectOverCDP(session.connectUrl);
@@ -66,7 +72,7 @@ export async function checkAccountExists(
   if (!cfg) throw new Error(`No SkiClubPro config found for org_ref: ${org_ref}`);
   
   await page.goto(`https://${cfg.domain}/user/login`, { waitUntil: "networkidle" });
-  await fillInput(page, cfg.selectors.loginEmail, email);
+  await page.fill(cfg.selectors.loginEmail, email);
   
   // Click submit button
   await Promise.all([
@@ -95,16 +101,16 @@ export async function createSkiClubProAccount(
   
   await page.goto(`https://${cfg.domain}/user/register`, { waitUntil: "networkidle" });
   
-  await fillInput(page, cfg.selectors.createName, parent.name);
-  await fillInput(page, cfg.selectors.createEmail, parent.email);
+  await page.fill(cfg.selectors.createName, parent.name);
+  await page.fill(cfg.selectors.createEmail, parent.email);
   if (parent.phone) {
-    await fillInput(page, cfg.selectors.createPhone, parent.phone);
+    await page.fill(cfg.selectors.createPhone, parent.phone);
   }
-  await fillInput(page, cfg.selectors.createPassword, parent.password);
+  await page.fill(cfg.selectors.createPassword, parent.password);
   
   // Fill password confirmation if selector exists
   if (cfg.selectors.createPasswordConfirm) {
-    await fillInput(page, cfg.selectors.createPasswordConfirm, parent.password);
+    await page.fill(cfg.selectors.createPasswordConfirm, parent.password);
   }
   
   await Promise.all([
@@ -165,7 +171,7 @@ export async function purchaseMembership(
   
   // Payment section
   if (opts.payment_method.type === "vgs_alias") {
-    await fillInput(page, 'input[name="vgs_alias"], input[data-vgs]', opts.payment_method.vgs_alias ?? "");
+    await page.fill('input[name="vgs_alias"], input[data-vgs]', opts.payment_method.vgs_alias ?? "");
   } else if (opts.payment_method.type === "stored" && opts.payment_method.card_alias) {
     await page.click(`[data-card-alias="${opts.payment_method.card_alias}"], .stored-payment-method`);
   }
