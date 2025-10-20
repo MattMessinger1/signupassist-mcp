@@ -130,10 +130,15 @@ Deno.serve(async (req) => {
     // The MCP server has the Playwright/Browserbase integration
     console.log('[TestHarness] Calling MCP server to perform automated login');
     
+    // Get and log MCP access token
+    const mcpAccessToken = Deno.env.get('MCP_ACCESS_TOKEN');
+    console.log('[TestHarness] Sending MCP_ACCESS_TOKEN:', mcpAccessToken?.slice(0, 5) + '...');
+    
     const mcpResponse = await fetch(`${mcpServerUrl}/tools/call`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${mcpAccessToken?.trim()}`
       },
       body: JSON.stringify({
         tool: 'scp.login',
