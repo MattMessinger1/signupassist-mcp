@@ -136,10 +136,25 @@ export function useProviderDisambiguation() {
     return { cityMatch, isNoneMatch, isUnclear };
   };
 
+  const handleNoMatch = (searchQuery: string): ChatMessage => {
+    setContext({
+      type: "no_match",
+      searchQuery,
+    });
+
+    return {
+      id: `msg-${Date.now()}`,
+      role: "assistant",
+      content: `Hmm, I didn't find an obvious match for that organization. Could you double-check the name or give me more info (like the city or school name)? 🤔\n\nDon't worry, we only use this info to look up your club, and your data stays private.`,
+      timestamp: new Date(),
+    };
+  };
+
   return {
     context,
     handleSingleMatch,
     handleMultipleMatches,
+    handleNoMatch,
     handleConfirmation,
     handleTextFallback,
     parseMultipleMatchSelection,

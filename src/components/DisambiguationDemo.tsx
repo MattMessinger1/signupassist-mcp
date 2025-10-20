@@ -11,7 +11,7 @@ import { Send } from "lucide-react";
 export function DisambiguationDemo() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const { handleSingleMatch, handleMultipleMatches, handleConfirmation, handleTextFallback, parseMultipleMatchSelection, context } = useProviderDisambiguation();
+  const { handleSingleMatch, handleMultipleMatches, handleNoMatch, handleConfirmation, handleTextFallback, parseMultipleMatchSelection, context } = useProviderDisambiguation();
 
   const simulateSingleMatch = () => {
     const assistantMsg = handleSingleMatch(
@@ -52,6 +52,11 @@ export function DisambiguationDemo() {
       "Blackhawk"
     );
     
+    setMessages(prev => [...prev, assistantMsg]);
+  };
+
+  const simulateNoMatch = () => {
+    const assistantMsg = handleNoMatch("Unknown Sports Club");
     setMessages(prev => [...prev, assistantMsg]);
   };
 
@@ -148,6 +153,50 @@ export function DisambiguationDemo() {
       }
     }
 
+    // Handle text fallback for no match - simulate new search with user's input
+    if (context?.type === "no_match") {
+      // Simulate finding results based on the new input
+      const normalizedInput = input.toLowerCase();
+      
+      if (normalizedInput.includes("blackhawk") || normalizedInput.includes("middleton")) {
+        // Simulate finding a single match
+        setTimeout(() => {
+          const assistantMsg = handleSingleMatch(
+            {
+              name: "Blackhawk Ski Club",
+              city: "Middleton, WI",
+              address: "123 Ski Lane, Middleton, WI 53562",
+              orgRef: "blackhawk-ski",
+            },
+            input
+          );
+          setMessages(prev => [...prev, assistantMsg]);
+        }, 500);
+      } else if (normalizedInput.includes("sunshine")) {
+        // Simulate finding multiple matches
+        setTimeout(() => {
+          const assistantMsg = handleMultipleMatches(
+            [
+              {
+                name: "Sunshine Soccer Club",
+                city: "Chicago, IL",
+                address: "100 Park Ave, Chicago, IL 60601",
+                orgRef: "sunshine-chicago",
+              },
+              {
+                name: "Sunshine Soccer Club",
+                city: "Springfield, IL",
+                address: "200 Field Road, Springfield, IL 62701",
+                orgRef: "sunshine-springfield",
+              },
+            ],
+            input
+          );
+          setMessages(prev => [...prev, assistantMsg]);
+        }, 500);
+      }
+    }
+
     setInput("");
   };
 
@@ -167,6 +216,9 @@ export function DisambiguationDemo() {
             </Button>
             <Button onClick={simulateMultipleMatches} variant="outline" className="flex-1">
               Multiple Matches
+            </Button>
+            <Button onClick={simulateNoMatch} variant="outline" className="flex-1">
+              No Match
             </Button>
           </div>
 
@@ -223,7 +275,8 @@ export function DisambiguationDemo() {
 
           <p className="text-xs text-muted-foreground">
             <strong>Single Match:</strong> Try "yes", "that's it", "no"<br />
-            <strong>Multiple Matches:</strong> Try "Middleton", "the Madison one", "none of these", "not sure"
+            <strong>Multiple Matches:</strong> Try "Middleton", "the Madison one", "none of these", "not sure"<br />
+            <strong>No Match:</strong> Try "Blackhawk Middleton", "Sunshine Chicago", or any other search term
           </p>
         </CardContent>
       </Card>
