@@ -10,8 +10,8 @@ async function main() {
   console.log("🧠 Seeding fake mandate for smoke test...\n");
 
   const fakeUserId = "00000000-0000-0000-0000-000000000000";
-  const fakePlanId = "test-plan-smoke";
-  const fakeExecId = "test-exec-smoke";
+  const fakePlanId = "00000000-0000-0000-0000-000000000001";
+  const fakeExecId = "00000000-0000-0000-0000-000000000002";
 
   // First, create a fake plan
   console.log("📝 Creating fake plan...");
