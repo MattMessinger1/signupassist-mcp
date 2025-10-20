@@ -185,14 +185,18 @@ class SignupAssistMCPServer {
 
       // --- Tool invocation endpoint
       if (url.pathname === '/tools/call') {
-        // Check for Authorization header
+        // Check for Authorization header and verify token
         const authHeader = req.headers['authorization'];
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        const token = authHeader?.replace('Bearer ', '');
+        const expectedToken = process.env.MCP_ACCESS_TOKEN;
+        
+        if (!token || token !== expectedToken) {
           res.writeHead(401, {
             "Content-Type": "application/json",
-            "WWW-Authenticate": "Bearer realm=\"signupassist\", error=\"invalid_token\", error_description=\"Access token is missing\""
+            "WWW-Authenticate": "Bearer realm=\"signupassist\", error=\"invalid_token\", error_description=\"Invalid or missing access token\""
           });
-          res.end(JSON.stringify({ error: "Unauthorized - Access token is missing" }));
+          res.end(JSON.stringify({ error: "Unauthorized - Invalid or missing token" }));
+          console.log('[AUTH] Unauthorized access attempt to /tools/call');
           return;
         }
 
