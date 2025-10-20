@@ -1,13 +1,15 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar, Shield, DollarSign } from 'lucide-react';
+import { Calendar, Shield, DollarSign, Settings } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useState } from 'react';
 import { prompts } from '@/lib/prompts';
+import { SupabaseConfigModal } from '@/components/SupabaseConfigModal';
 
 const Index = () => {
   const [debugResult, setDebugResult] = useState<any>(null);
+  const [configModalOpen, setConfigModalOpen] = useState(false);
 
   const testCredDebug = async () => {
     try {
@@ -46,6 +48,15 @@ const Index = () => {
                 {prompts.landing.hero.manageCredentials}
               </Button>
             </Link>
+            <Button 
+              size="lg" 
+              variant="secondary" 
+              className="text-lg px-8 py-3"
+              onClick={() => setConfigModalOpen(true)}
+            >
+              <Settings className="mr-2 h-5 w-5" />
+              Configure Supabase
+            </Button>
             <Link to="/login-test">
               <Button size="lg" variant="secondary" className="text-lg px-8 py-3">
                 Test Login
@@ -90,6 +101,11 @@ const Index = () => {
           ))}
         </div>
       </div>
+
+      <SupabaseConfigModal 
+        open={configModalOpen}
+        onOpenChange={setConfigModalOpen}
+      />
     </div>
   );
 };
