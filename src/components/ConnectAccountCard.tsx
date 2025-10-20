@@ -1,10 +1,9 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Shield, LogIn, UserPlus } from "lucide-react";
-import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
 import { useState } from "react";
+import { LoginCredentialDialog } from "./LoginCredentialDialog";
 
 interface ConnectAccountCardProps {
   provider: string;
@@ -13,39 +12,17 @@ interface ConnectAccountCardProps {
 }
 
 export function ConnectAccountCard({ provider, orgName, orgRef }: ConnectAccountCardProps) {
-  const navigate = useNavigate();
-  const [isLoading, setIsLoading] = useState(false);
+  const [showLoginDialog, setShowLoginDialog] = useState(false);
 
-  const handleSecureLogin = async () => {
-    setIsLoading(true);
-    
-    try {
-      // For now, navigate to credentials page to add credentials
-      // In future, this will trigger browserbase login flow
-      navigate('/credentials', { 
-        state: { 
-          provider,
-          orgName,
-          orgRef,
-          returnTo: '/',
-          autoLogin: true
-        }
-      });
-      
-      toast({
-        title: "Secure Login",
-        description: `Redirecting to connect your ${orgName} account...`,
-      });
-    } catch (error) {
-      console.error('Error starting login:', error);
-      toast({
-        title: "Login Error",
-        description: "Failed to start secure login. Please try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
+  const handleSecureLogin = () => {
+    setShowLoginDialog(true);
+  };
+
+  const handleLoginSuccess = () => {
+    toast({
+      title: "Credentials Saved",
+      description: `Your ${orgName} account has been connected successfully!`,
+    });
   };
 
   const handleCreateAccount = () => {
@@ -111,10 +88,9 @@ export function ConnectAccountCard({ provider, orgName, orgRef }: ConnectAccount
             onClick={handleSecureLogin} 
             className="w-full"
             size="lg"
-            disabled={isLoading}
           >
             <LogIn className="mr-2 h-4 w-4" />
-            {isLoading ? "Connecting..." : "Log in securely"}
+            Log in securely
           </Button>
 
           <Button 
@@ -132,6 +108,15 @@ export function ConnectAccountCard({ provider, orgName, orgRef }: ConnectAccount
           This connection allows me to help you register for classes
         </p>
       </CardContent>
+
+      <LoginCredentialDialog
+        open={showLoginDialog}
+        onOpenChange={setShowLoginDialog}
+        provider={provider}
+        orgName={orgName}
+        orgRef={orgRef}
+        onSuccess={handleLoginSuccess}
+      />
     </Card>
   );
 }

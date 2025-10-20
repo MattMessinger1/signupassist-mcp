@@ -5,3 +5,6 @@ verify_jwt = false
 
 [functions.orchestrator-test]
 verify_jwt = false
+
+[functions.start-browserbase-login]
+verify_jwt = true
