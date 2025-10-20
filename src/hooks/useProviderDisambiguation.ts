@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChatMessage, DisambiguationContext } from "@/types/chat";
 import { toast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 export function useProviderDisambiguation() {
   const [context, setContext] = useState<DisambiguationContext | null>(null);
@@ -186,7 +187,22 @@ export function useProviderDisambiguation() {
     return wrongSelectionPatterns.some(pattern => input.includes(pattern));
   };
 
-  const handleTextConfirmation = (providerData: any): ChatMessage => {
+  const checkCredential = async (provider: string, userId: string): Promise<boolean> => {
+    try {
+      const { data, error } = await supabase.functions.invoke('cred-list');
+      if (error) throw error;
+      
+      const credentialsArray = data?.credentials || data || [];
+      const hasCredential = credentialsArray.some((cred: any) => cred.provider === provider);
+      
+      return hasCredential;
+    } catch (error) {
+      console.error('Error checking credentials:', error);
+      return false;
+    }
+  };
+
+  const handleTextConfirmation = async (providerData: any): Promise<ChatMessage> => {
     toast({
       title: "Organization confirmed",
       description: `Proceeding with ${providerData.name}`,
@@ -202,13 +218,42 @@ export function useProviderDisambiguation() {
         provider: providerData.provider || 'skiclubpro'
       } 
     } : null);
-    
-    return {
-      id: `msg-${Date.now()}`,
-      role: "assistant" as const,
-      content: `Perfect, I've marked **${providerData.name}** (${providerData.location}) as your organization. 👍\n\nNext, I'll securely connect to their system so we can find classes.`,
-      timestamp: new Date(),
-    };
+
+    // Check for existing credentials
+    const user = (await supabase.auth.getUser()).data.user;
+    if (!user) {
+      return {
+        id: `msg-${Date.now()}`,
+        role: "assistant" as const,
+        content: `Perfect, I've marked **${providerData.name}** (${providerData.location}) as your organization. 👍`,
+        timestamp: new Date(),
+      };
+    }
+
+    const provider = providerData.provider || 'skiclubpro';
+    const hasCredential = await checkCredential(provider, user.id);
+
+    if (hasCredential) {
+      return {
+        id: `msg-${Date.now()}`,
+        role: "assistant" as const,
+        content: `Perfect, I've marked **${providerData.name}** (${providerData.location}) as your organization. 👍\n\n✅ You're already connected to ${providerData.name}! I'll help you browse classes next... (placeholder — registration flow coming soon).`,
+        timestamp: new Date(),
+      };
+    } else {
+      return {
+        id: `msg-${Date.now()}`,
+        role: "assistant" as const,
+        content: `Perfect, I've marked **${providerData.name}** (${providerData.location}) as your organization. 👍\n\nTo get the latest classes from ${providerData.name}, I'll need to securely connect your account. You'll log in directly with ${providerData.name} — we never see or store your password.`,
+        timestamp: new Date(),
+        payload: {
+          type: 'connect_account',
+          provider: provider,
+          org_name: providerData.name,
+          org_ref: providerData.orgRef
+        }
+      };
+    }
   };
 
   return {

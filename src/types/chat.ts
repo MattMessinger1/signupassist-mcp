@@ -6,6 +6,10 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   card?: MessageCardData;
+  payload?: {
+    type: string;
+    [key: string]: any;
+  };
   metadata?: Record<string, any>;
 }
 

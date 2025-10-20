@@ -3,6 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChatMessageCard } from "./ChatMessageCard";
+import { ConnectAccountCard } from "./ConnectAccountCard";
 import { useProviderDisambiguation } from "@/hooks/useProviderDisambiguation";
 import { ChatMessage } from "@/types/chat";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -121,8 +122,9 @@ export function DisambiguationDemo() {
       const isNegative = handleTextFallback(input, "reject");
 
       if (isAffirmative && context.providers?.[0]) {
-        const assistantMsg = handleTextConfirmation(context.providers[0]);
-        setMessages(prev => [...prev, assistantMsg]);
+        handleTextConfirmation(context.providers[0]).then(assistantMsg => {
+          setMessages(prev => [...prev, assistantMsg]);
+        });
       } else if (isNegative) {
         const assistantMsg = handleConfirmation(false, {});
         setMessages(prev => [...prev, assistantMsg]);
@@ -265,12 +267,22 @@ export function DisambiguationDemo() {
                       ))}
                     </div>
                     
-                    {msg.card && (
+                     {msg.card && (
                       <div className="mt-3">
                         <ChatMessageCard
                           card={msg.card}
                           onConfirm={handleCardConfirm}
                           onReject={handleCardReject}
+                        />
+                      </div>
+                    )}
+
+                    {(msg as any).payload?.type === 'connect_account' && (
+                      <div className="mt-3">
+                        <ConnectAccountCard
+                          provider={(msg as any).payload.provider}
+                          orgName={(msg as any).payload.org_name}
+                          orgRef={(msg as any).payload.org_ref}
                         />
                       </div>
                     )}
