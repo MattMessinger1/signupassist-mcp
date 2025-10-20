@@ -1,6 +1,7 @@
 /**
  * SignupAssist MCP Server
  * Production-ready with OAuth manifest served at /mcp for ChatGPT discovery
+ * Last deployment: 2025-10-20
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
