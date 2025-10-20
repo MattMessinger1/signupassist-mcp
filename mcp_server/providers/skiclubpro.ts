@@ -676,6 +676,19 @@ export const skiClubProTools = {
           session = await launchBrowserbaseSession();
           console.log(`DEBUG: Browserbase session launched: ${session.sessionId}`);
           
+          // 🧠 Lovable Debug Mode – Diagnose ensureLoggedIn call safely
+          console.log("🧠 Running safe login diagnostics...");
+          console.log("📡 Checking inputs to ensureLoggedIn...");
+          console.log("DEBUG: calling ensureLoggedIn with:", {
+            credential_id: args.credential_id,
+            user_jwt: args.user_jwt ? "[present]" : "[missing]",
+            baseUrl,
+            userId,
+            orgRef,
+          });
+
+          console.log("⚙️ Running ensureLoggedIn()...");
+          
           // Perform login using existing infrastructure
           const loginProof = await ensureLoggedIn(
             session,
@@ -686,6 +699,16 @@ export const skiClubProTools = {
             orgRef,
             { tool_name: 'scp.find_programs', mandate_id: args.mandate_id }
           );
+          
+          console.log("✅ DEBUG: ensureLoggedIn result:", loginProof);
+          
+          // 💡 Summary
+          if (!args.user_jwt) {
+            console.log("💡 Summary: JWT was missing, but login proof returned successfully — likely safe to continue.");
+            console.log("💡 If this fails again, try passing a dummy user_jwt in the smoke test call.");
+          } else {
+            console.log("💡 Summary: JWT was present, login completed successfully.");
+          }
           
           console.log('DEBUG: Login successful, proof:', loginProof);
           
