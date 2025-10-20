@@ -25,6 +25,13 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceRole = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     
+    console.log('[TestHarness] Environment check:', {
+      hasUrl: !!supabaseUrl,
+      hasServiceRole: !!supabaseServiceRole,
+      userIdType: typeof user_id,
+      userId: user_id
+    });
+    
     if (!supabaseUrl) {
       throw new Error('SUPABASE_URL not configured');
     }
