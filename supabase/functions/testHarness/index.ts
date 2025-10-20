@@ -23,13 +23,13 @@ Deno.serve(async (req) => {
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceRole = Deno.env.get('SUPABASE_SERVICE_ROLE');
+    const supabaseServiceRole = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     
     if (!supabaseUrl) {
       throw new Error('SUPABASE_URL not configured');
     }
     if (!supabaseServiceRole) {
-      throw new Error('SUPABASE_SERVICE_ROLE secret not configured');
+      throw new Error('SUPABASE_SERVICE_ROLE_KEY secret not configured');
     }
     
     const supabase = createClient(supabaseUrl, supabaseServiceRole);
