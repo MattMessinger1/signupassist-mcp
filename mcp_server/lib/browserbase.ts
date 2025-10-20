@@ -39,8 +39,7 @@ import { computeTotalCents } from './pricing/computeTotal.js';
 import { createStealthContext } from './antibot.js';
 import { discoverFieldsSerially } from './serial_field_discovery.js';
 import type { DiscoveredField } from '../types/pricing.js';
-
-const browserbaseApiKey = process.env.BROWSERBASE_API_KEY!;
+import { createClient } from '@supabase/supabase-js';
 
 export interface BrowserbaseSession {
   sessionId: string;
@@ -57,18 +56,29 @@ export interface SkiClubProProgram {
 
 /**
  * Launch a new Browserbase session with Playwright
+ * Now uses secure edge function to keep API key on backend
  */
 export async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
   try {
-    if (!browserbaseApiKey) {
-      throw new Error('BROWSERBASE_API_KEY environment variable is required');
+    const supabaseUrl = process.env.SUPABASE_URL!;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    console.log('[browserbase] Creating session via secure edge function');
+
+    // Call secure edge function instead of direct API
+    const { data, error } = await supabase.functions.invoke('launch-browserbase', {
+      body: { 
+        headless: true,
+        projectId: process.env.BROWSERBASE_PROJECT_ID 
+      }
+    });
+
+    if (error) {
+      throw new Error(`Failed to start Browserbase session: ${error.message}`);
     }
 
-    // Create Browserbase session
-    const bb = new Browserbase({ apiKey: browserbaseApiKey });
-    const session = await bb.sessions.create({
-      projectId: process.env.BROWSERBASE_PROJECT_ID!
-    });
+    const session = data.session;
 
     // Connect Playwright to Browserbase
     const browser = await chromium.connectOverCDP(session.connectUrl);
