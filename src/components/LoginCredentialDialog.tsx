@@ -32,6 +32,7 @@ export function LoginCredentialDialog({
     status?: 'requires_2fa' | 'success' | 'failure' | 'error';
     message?: string;
     browserbase_url?: string;
+    credential_stored?: boolean;
   }>({});
 
   const handleLogin = async () => {
@@ -76,19 +77,26 @@ export function LoginCredentialDialog({
         }
       } else if (data.status === 'success') {
         toast({
-          title: "Login Successful",
-          description: data.message,
+          title: "Login Successful ✅",
+          description: "Your account is connected! I'll help you browse classes next...",
         });
         
-        // Clear form and close dialog
-        setEmail("");
-        setPassword("");
-        onOpenChange(false);
+        setLoginStatus(data);
         
-        // Trigger success callback
-        if (onSuccess) {
-          onSuccess();
-        }
+        // Wait a moment to show success message before closing
+        setTimeout(() => {
+          // Clear form
+          setEmail("");
+          setPassword("");
+          
+          // Trigger success callback before closing
+          if (onSuccess) {
+            onSuccess();
+          }
+          
+          // Close dialog
+          onOpenChange(false);
+        }, 2000);
       } else if (data.status === 'failure') {
         toast({
           title: "Login Failed",
@@ -177,14 +185,26 @@ export function LoginCredentialDialog({
           </div>
 
           {loginStatus.message && (
-            <div className={`p-3 rounded-lg text-sm ${
+            <div className={`p-3 rounded-lg text-sm space-y-2 ${
               loginStatus.status === 'success' 
                 ? 'bg-green-50 text-green-800 border border-green-200'
                 : loginStatus.status === 'requires_2fa'
                 ? 'bg-blue-50 text-blue-800 border border-blue-200'
                 : 'bg-red-50 text-red-800 border border-red-200'
             }`}>
-              {loginStatus.message}
+              <p className="font-medium">{loginStatus.message}</p>
+              {loginStatus.status === 'success' && (
+                <>
+                  {loginStatus.credential_stored && (
+                    <p className="text-xs">✓ Credentials securely stored</p>
+                  )}
+                  <p className="text-xs">✓ Authorization logged for audit trail</p>
+                  <p className="text-xs mt-2 italic">
+                    Great, your account is connected. I'll help you browse classes next... 
+                    <span className="text-green-600">(placeholder — browsing flow coming soon)</span>
+                  </p>
+                </>
+              )}
             </div>
           )}
 

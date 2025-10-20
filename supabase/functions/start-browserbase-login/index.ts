@@ -125,22 +125,29 @@ Deno.serve(async (req) => {
 
       if (storeError) {
         console.error('[BrowserbaseLogin] Failed to store credentials:', storeError);
+      } else {
+        console.log('[BrowserbaseLogin] Credentials stored successfully');
       }
+
+      // Log mandate/authorization event
+      console.log(`[BrowserbaseLogin] Logged authorization for user ${user.id} with provider ${provider}`);
 
       await finishLoginAudit({
         audit_id: auditId,
         result: 'success',
         details: {
           authentication_status: 'success',
-          authentication_message: 'Login successful'
+          authentication_message: 'Login successful ✅ - account connected and credentials stored',
+          credential_stored: !storeError
         }
       });
 
       return new Response(
         JSON.stringify({
           status: 'success',
-          message: '✅ Login successful! Your credentials have been securely saved.',
-          credential_stored: !storeError
+          message: 'Thanks — login successful ✅',
+          credential_stored: !storeError,
+          next_step: 'Great, your account is connected. I\'ll help you browse classes next... (placeholder — browsing flow coming soon).'
         }),
         { 
           status: 200,

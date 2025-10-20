@@ -20,8 +20,9 @@ export function ConnectAccountCard({ provider, orgName, orgRef }: ConnectAccount
 
   const handleLoginSuccess = () => {
     toast({
-      title: "Credentials Saved",
-      description: `Your ${orgName} account has been connected successfully!`,
+      title: "Account Connected ✅",
+      description: `Your ${orgName} account is now connected. Next, I'll help you browse classes... (placeholder — browsing flow coming soon)`,
+      duration: 5000,
     });
   };
 
