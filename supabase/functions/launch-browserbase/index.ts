@@ -15,29 +15,27 @@ Deno.serve(async (req) => {
     const browserbaseKey = Deno.env.get('BROWSERBASE_API_KEY');
     const browserbaseProjectId = Deno.env.get('BROWSERBASE_PROJECT_ID');
     
-    if (!browserbaseKey) {
-      console.error('[launch-browserbase] Missing BROWSERBASE_API_KEY');
+    if (!browserbaseKey || !browserbaseProjectId) {
+      console.error('[launch-browserbase] Missing required environment variables');
       return new Response(
-        JSON.stringify({ error: 'Missing Browserbase API key configuration' }), 
+        JSON.stringify({ error: 'Missing Browserbase API key or project ID configuration' }), 
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const requestBody = await req.json().catch(() => ({}));
-    const { headless = true, projectId } = requestBody;
-
-    const finalProjectId = projectId || browserbaseProjectId;
+    const { headless = true } = requestBody;
     
     console.log('[launch-browserbase] Creating new session', { 
       headless, 
-      projectId: finalProjectId ? 'configured' : 'none' 
+      projectId: 'configured'
     });
 
     // Call Browserbase API to create session
-    const sessionBody: any = { headless };
-    if (finalProjectId) {
-      sessionBody.projectId = finalProjectId;
-    }
+    const sessionBody = {
+      projectId: browserbaseProjectId,
+      headless,
+    };
 
     const resp = await fetch('https://api.browserbase.com/v1/sessions', {
       method: 'POST',
