@@ -170,7 +170,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         status: 'failure',
-        message: '❌ Login failed. Please check your credentials and try again.',
+        message: 'Hmm, it looks like that didn\'t go through. Please check your credentials and try again.',
         error: mcpResult.error || 'Invalid credentials'
       }),
       { 
@@ -186,7 +186,7 @@ Deno.serve(async (req) => {
       JSON.stringify({ 
         status: 'error',
         error: error instanceof Error ? error.message : 'Unknown error',
-        message: '❌ An error occurred during login. Please try again.'
+        message: 'Hmm, something unexpected happened. Let\'s try that again.'
       }),
       { 
         status: 500, 

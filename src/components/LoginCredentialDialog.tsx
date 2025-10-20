@@ -35,6 +35,16 @@ export function LoginCredentialDialog({
     credential_stored?: boolean;
   }>({});
 
+  const handleRetry = () => {
+    // Reset all state for fresh attempt
+    setLoginStatus({});
+    setPassword("");
+    toast({
+      title: "Ready to Try Again",
+      description: "Enter your credentials when ready",
+    });
+  };
+
   const handleLogin = async () => {
     if (!email || !password) {
       toast({
@@ -46,6 +56,7 @@ export function LoginCredentialDialog({
     }
 
     setIsLoading(true);
+    // Clear any previous status before attempting login
     setLoginStatus({});
 
     try {
@@ -67,7 +78,7 @@ export function LoginCredentialDialog({
       // Handle different login statuses
       if (data.status === 'requires_2fa') {
         toast({
-          title: "2FA Required",
+          title: "2FA Required 🔐",
           description: data.message,
         });
         
@@ -98,29 +109,41 @@ export function LoginCredentialDialog({
           onOpenChange(false);
         }, 2000);
       } else if (data.status === 'failure') {
+        // Friendly error message instead of harsh "failed"
         toast({
-          title: "Login Failed",
-          description: data.message,
+          title: "Hmm, that didn't go through",
+          description: "Let's try again with your credentials",
           variant: "destructive",
+        });
+        setLoginStatus({
+          ...data,
+          message: "Hmm, it looks like that didn't go through. Please check your credentials and let's try again."
         });
       } else {
         toast({
-          title: "Error",
-          description: data.message || "An unexpected error occurred",
+          title: "Something went wrong",
+          description: "Let's try that again",
           variant: "destructive",
+        });
+        setLoginStatus({
+          ...data,
+          message: "Hmm, something unexpected happened. Let's try that again."
         });
       }
 
     } catch (error) {
       console.error('Login error:', error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to login";
+      
       toast({
-        title: "Login Error",
-        description: error instanceof Error ? error.message : "Failed to login",
+        title: "Hmm, that didn't go through",
+        description: "Let's try again",
         variant: "destructive",
       });
+      
       setLoginStatus({
         status: 'error',
-        message: error instanceof Error ? error.message : "Failed to login"
+        message: `Hmm, it looks like that didn't go through. ${errorMessage}. Let's try again.`
       });
     } finally {
       setIsLoading(false);
@@ -229,20 +252,31 @@ export function LoginCredentialDialog({
           >
             Cancel
           </Button>
-          <Button
-            onClick={handleLogin}
-            className="flex-1"
-            disabled={isLoading || !email || !password}
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Connecting...
-              </>
-            ) : (
-              'Connect Account'
-            )}
-          </Button>
+          
+          {(loginStatus.status === 'failure' || loginStatus.status === 'error') ? (
+            <Button
+              onClick={handleRetry}
+              className="flex-1"
+              disabled={isLoading}
+            >
+              Try Again
+            </Button>
+          ) : (
+            <Button
+              onClick={handleLogin}
+              className="flex-1"
+              disabled={isLoading || !email || !password}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Connecting...
+                </>
+              ) : (
+                'Connect Account'
+              )}
+            </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>
