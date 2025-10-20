@@ -8,3 +8,6 @@ verify_jwt = false
 
 [functions.start-browserbase-login]
 verify_jwt = true
+
+[functions.testHarness]
+verify_jwt = false
