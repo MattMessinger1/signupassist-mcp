@@ -1,5 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.74.0';
 import { startLoginAudit, finishLoginAudit } from '../_shared/auditLogin.ts';
+import { v4 as uuidv4 } from 'https://esm.sh/uuid@9.0.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,7 +17,7 @@ Deno.serve(async (req) => {
     console.log('[TestHarness] Starting test harness execution');
     
     const body = await req.json();
-    const user_id = body.user_id || "test-user-123";
+    const user_id = body.user_id || uuidv4();
     const provider_id = body.provider_id || "skiclubpro";
     const org_ref = body.org_ref || "mock-org";
 
