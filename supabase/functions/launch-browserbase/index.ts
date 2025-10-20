@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
       sessionBody.projectId = finalProjectId;
     }
 
-    const resp = await fetch('https://www.browserbase.com/v1/sessions', {
+    const resp = await fetch('https://api.browserbase.com/v1/sessions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${browserbaseKey}`,
