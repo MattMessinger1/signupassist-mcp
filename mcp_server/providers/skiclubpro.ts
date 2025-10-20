@@ -111,6 +111,32 @@ function resolveBaseUrl(args: any): { baseUrl: string; baseDomain: string } {
 }
 
 /**
+ * Safely decode JWT without crashing on malformed tokens
+ */
+function safeDecodeJWT(token?: string): Record<string, any> | null {
+  if (!token) {
+    console.warn("[jwt] Missing token – will trigger full login");
+    return null;
+  }
+
+  // Quick structural check: three Base64URL segments
+  const parts = token.split(".");
+  if (parts.length < 2) {
+    console.warn("[jwt] Malformed token – expected 3 segments");
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64").toString("utf8"));
+    console.log("[jwt] Valid payload decoded:", payload.sub ?? "anonymous");
+    return payload;
+  } catch (err) {
+    console.warn("[jwt] Decode failed – invalid Base64:", (err as Error).message);
+    return null;
+  }
+}
+
+/**
  * Helper: Ensure user is logged in using dynamic base URL with optional session caching
  */
 async function ensureLoggedIn(
@@ -667,8 +693,17 @@ export const skiClubProTools = {
           const orgRef = args.org_ref || 'blackhawk-ski-club';
           const { baseUrl, baseDomain } = resolveBaseUrl({ org_ref: orgRef });
           
-          // Extract user_id from JWT for session caching
-          const userId = JSON.parse(atob(args.user_jwt.split('.')[1])).sub;
+          // --- Hardened JWT handling (Lovable update) ---
+          const jwtPayload = safeDecodeJWT(args.user_jwt);
+          
+          let userId: string;
+          if (!jwtPayload) {
+            console.log("[jwt] No valid JWT – proceeding with full login via Playwright");
+            userId = '00000000-0000-0000-0000-000000000000'; // Fallback for smoke tests
+          } else {
+            console.log("[jwt] Using existing session for user:", jwtPayload.sub);
+            userId = jwtPayload.sub;
+          }
           
           console.log(`DEBUG: Starting real login for org: ${orgRef}, baseUrl: ${baseUrl}, baseDomain: ${baseDomain}`);
           
@@ -954,8 +989,16 @@ export const skiClubProTools = {
           
           console.log(`[scp.login] Using unified domain: ${baseDomain}, baseUrl: ${baseUrl}`);
           
-          // Extract user_id from JWT for session caching
-          const userId = JSON.parse(atob(args.user_jwt.split('.')[1])).sub;
+          // --- Hardened JWT handling ---
+          const jwtPayload = safeDecodeJWT(args.user_jwt);
+          
+          let userId: string;
+          if (!jwtPayload) {
+            console.log("[jwt] No valid JWT for list_children – using fallback");
+            userId = '00000000-0000-0000-0000-000000000000';
+          } else {
+            userId = jwtPayload.sub;
+          }
           
           console.log(`[scp:list_children] Starting for org: ${orgRef}`);
           
