@@ -6,6 +6,16 @@ async function main() {
   console.log("Checking SkiClubPro credentials via Playwright...\n");
   console.log("⚙️ Launching browser, navigating to login page...\n");
 
+  const username = process.env.TEST_USERNAME;
+  const password = process.env.TEST_PASSWORD;
+  const org_ref = process.env.TEST_ORG_REF || 'blackhawk-ski-club';
+
+  if (!username || !password) {
+    console.error("❌ Missing credentials!");
+    console.error("Set TEST_USERNAME and TEST_PASSWORD environment variables.");
+    process.exit(1);
+  }
+
   try {
     // Find the login tool
     const loginTool = skiClubProTools.find(tool => tool.name === 'scp.login');
@@ -16,9 +26,9 @@ async function main() {
 
     // Call the login handler
     const result = await loginTool.handler({
-      org_ref: process.env.TEST_ORG_REF || 'blackhawk-ski-club',
-      email: process.env.TEST_USERNAME || process.env.TEST_EMAIL,
-      password: process.env.TEST_PASSWORD,
+      org_ref,
+      email: username,
+      password,
       mandate_id: 'test-mandate-smoke',
       plan_execution_id: 'test-exec-smoke'
     });
