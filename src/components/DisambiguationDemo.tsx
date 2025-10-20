@@ -11,7 +11,18 @@ import { Send } from "lucide-react";
 export function DisambiguationDemo() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const { handleSingleMatch, handleMultipleMatches, handleNoMatch, handleConfirmation, handleTextFallback, parseMultipleMatchSelection, context } = useProviderDisambiguation();
+  const { 
+    handleSingleMatch, 
+    handleMultipleMatches, 
+    handleNoMatch, 
+    handleConfirmation,
+    handleTextConfirmation,
+    handleWrongSelection,
+    detectWrongSelection,
+    handleTextFallback, 
+    parseMultipleMatchSelection, 
+    context 
+  } = useProviderDisambiguation();
 
   const simulateSingleMatch = () => {
     const assistantMsg = handleSingleMatch(
@@ -96,13 +107,21 @@ export function DisambiguationDemo() {
 
     setMessages(prev => [...prev, userMsg]);
 
+    // Check for wrong selection first (applies to confirmed provider state)
+    if (context?.confirmedProvider && detectWrongSelection(input)) {
+      const assistantMsg = handleWrongSelection();
+      setMessages(prev => [...prev, assistantMsg]);
+      setInput("");
+      return;
+    }
+
     // Handle text fallback for single match
     if (context?.type === "single_match") {
       const isAffirmative = handleTextFallback(input, "confirm");
       const isNegative = handleTextFallback(input, "reject");
 
       if (isAffirmative && context.providers?.[0]) {
-        const assistantMsg = handleConfirmation(true, context.providers[0]);
+        const assistantMsg = handleTextConfirmation(context.providers[0]);
         setMessages(prev => [...prev, assistantMsg]);
       } else if (isNegative) {
         const assistantMsg = handleConfirmation(false, {});
@@ -276,7 +295,8 @@ export function DisambiguationDemo() {
           <p className="text-xs text-muted-foreground">
             <strong>Single Match:</strong> Try "yes", "that's it", "no"<br />
             <strong>Multiple Matches:</strong> Try "Middleton", "the Madison one", "none of these", "not sure"<br />
-            <strong>No Match:</strong> Try "Blackhawk Middleton", "Sunshine Chicago", or any other search term
+            <strong>No Match:</strong> Try "Blackhawk Middleton", "Sunshine Chicago", or any other search term<br />
+            <strong>After Confirmation:</strong> Try "oops, not that one" or "that's not my club" to restart
           </p>
         </CardContent>
       </Card>

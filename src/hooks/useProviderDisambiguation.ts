@@ -158,6 +158,59 @@ export function useProviderDisambiguation() {
     };
   };
 
+  const handleWrongSelection = (): ChatMessage => {
+    // Clear context to restart disambiguation
+    setContext(null);
+    
+    return {
+      id: `msg-${Date.now()}`,
+      role: "assistant",
+      content: "No problem! Let's try again — could you tell me the name or city of your organization?",
+      timestamp: new Date(),
+    };
+  };
+
+  const detectWrongSelection = (userInput: string): boolean => {
+    const input = userInput.toLowerCase().trim();
+    const wrongSelectionPatterns = [
+      "oops",
+      "not that one",
+      "that's not my club",
+      "wrong one",
+      "incorrect",
+      "not right",
+      "that's not it",
+      "not my organization",
+    ];
+    
+    return wrongSelectionPatterns.some(pattern => input.includes(pattern));
+  };
+
+  const handleTextConfirmation = (providerData: any): ChatMessage => {
+    toast({
+      title: "Organization confirmed",
+      description: `Proceeding with ${providerData.name}`,
+    });
+    
+    // Store confirmed provider with full context
+    setContext(prev => prev ? { 
+      ...prev, 
+      confirmedProvider: {
+        name: providerData.name,
+        location: providerData.location,
+        orgRef: providerData.orgRef,
+        provider: providerData.provider || 'skiclubpro'
+      } 
+    } : null);
+    
+    return {
+      id: `msg-${Date.now()}`,
+      role: "assistant" as const,
+      content: `Perfect, I've marked **${providerData.name}** (${providerData.location}) as your organization. 👍\n\nNext, I'll securely connect to their system so we can find classes.`,
+      timestamp: new Date(),
+    };
+  };
+
   return {
     context,
     handleSingleMatch,
@@ -165,6 +218,9 @@ export function useProviderDisambiguation() {
     handleNoMatch,
     handleConfirmation,
     handleTextFallback,
+    handleTextConfirmation,
+    handleWrongSelection,
+    detectWrongSelection,
     parseMultipleMatchSelection,
     clearContext: () => setContext(null),
   };
