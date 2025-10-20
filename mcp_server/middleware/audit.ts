@@ -3,6 +3,7 @@
  * Automatically logs all tool executions with mandate verification
  */
 
+import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 import { verifyMandate } from '../lib/mandates.js';
 
