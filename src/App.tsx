@@ -14,6 +14,7 @@ import DiscoveryRuns from "./pages/DiscoveryRuns";
 import MandatesAudit from "./pages/MandatesAudit";
 import FlowTester from "./pages/FlowTester";
 import NotFound from "./pages/NotFound";
+import { DisambiguationDemo } from "./components/DisambiguationDemo";
 
 const queryClient = new QueryClient();
 
@@ -34,6 +35,7 @@ const App = () => (
             <Route path="/mandates" element={<MandatesAudit />} />
             <Route path="/flow-test" element={<FlowTester />} />
             <Route path="/login-test" element={<LoginTest />} />
+            <Route path="/disambiguation-demo" element={<DisambiguationDemo />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
