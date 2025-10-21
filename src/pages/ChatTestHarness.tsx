@@ -10,6 +10,15 @@ import { InlineChatForm } from "@/components/chat-test/InlineChatForm";
 import { StatusChip } from "@/components/chat-test/StatusChip";
 import { initializeMCP, callMCPTool, mcpLogin, mcpFindPrograms, mcpCheckPrerequisites } from "@/lib/chatMcpClient";
 import { useToast } from "@/hooks/use-toast";
+import {
+  parseLoginResponse,
+  parseProgramSearchResponse,
+  parseProgramSelectionResponse,
+  parsePrerequisiteResponse,
+  formatFormRequest,
+  parseRegistrationResponse,
+  formatErrorResponse,
+} from "@/lib/chatResponseParser";
 
 // Test data for demo flow
 const DEMO_TEST_DATA = {
@@ -131,24 +140,51 @@ export default function ChatTestHarness() {
       const result = await mcpFindPrograms(state.orgRef || "blackhawk-ski-club", query);
 
       if (!result.success) {
-        handleError(result.error || "Failed to search programs");
+        const errorResponse = formatErrorResponse(
+          result.error || "Failed to search programs",
+          "searching for programs"
+        );
+        addAssistantMessage(errorResponse.text);
         return;
       }
 
-      // Mock programs for now - in real implementation, parse result.data
-      const programs = [
-        { id: "ski-l1", title: "Ski Lessons - Level 1", description: "Beginner slopes, Ages 6-10" },
-        { id: "ski-l2", title: "Ski Lessons - Level 2", description: "Intermediate, Ages 8-14" },
-        { id: "snowboard-101", title: "Snowboarding 101", description: "Beginner course, Ages 10+" },
+      // Mock programs for demo - in production, use result.data
+      const mockPrograms = [
+        { 
+          id: "ski-l1", 
+          title: "Ski Lessons - Level 1", 
+          description: "Beginner slopes, Ages 6-10",
+          price: 120,
+          schedule: "Saturdays 9am-12pm"
+        },
+        { 
+          id: "ski-l2", 
+          title: "Ski Lessons - Level 2", 
+          description: "Intermediate, Ages 8-14",
+          price: 150,
+          schedule: "Saturdays 1pm-4pm"
+        },
+        { 
+          id: "snowboard-101", 
+          title: "Snowboarding 101", 
+          description: "Beginner course, Ages 10+",
+          price: 140,
+          schedule: "Sundays 10am-1pm"
+        },
       ];
 
-      addAssistantMessage(
-        "I found these programs that match your search. Please select one:",
-        "carousel",
-        { options: programs }
+      const response = parseProgramSearchResponse(
+        { programs: mockPrograms },
+        query
       );
+
+      addAssistantMessage(response.text, response.componentType, response.componentData);
     } catch (error) {
-      handleError(error instanceof Error ? error.message : "Unknown error");
+      const errorResponse = formatErrorResponse(
+        error instanceof Error ? error.message : "Unknown error",
+        "searching for programs"
+      );
+      addAssistantMessage(errorResponse.text);
     } finally {
       setIsProcessing(false);
     }
@@ -158,7 +194,7 @@ export default function ChatTestHarness() {
     console.log("[Chat] Program selected:", program);
     setState({ ...state, selectedProgram: program });
 
-    addUserMessage(`I'll take ${program.title}`);
+    addUserMessage(`I'll take **${program.title}**`);
     setIsProcessing(true);
 
     try {
@@ -169,21 +205,23 @@ export default function ChatTestHarness() {
       );
 
       if (!prereqResult.success) {
-        handleError(prereqResult.error || "Failed to check prerequisites");
+        const errorResponse = formatErrorResponse(
+          prereqResult.error || "Failed to check prerequisites",
+          "checking prerequisites"
+        );
+        addAssistantMessage(errorResponse.text);
         return;
       }
 
-      // Show confirmation card
-      addAssistantMessage(
-        "Perfect! Please review and confirm your selection:",
-        "confirmation",
-        {
-          title: "Confirm Registration",
-          message: `Program: ${program.title}\n${program.description}\nPrice: $120`,
-        }
-      );
+      // Parse and show confirmation
+      const response = parseProgramSelectionResponse(program, prereqResult.data);
+      addAssistantMessage(response.text, response.componentType, response.componentData);
     } catch (error) {
-      handleError(error instanceof Error ? error.message : "Unknown error");
+      const errorResponse = formatErrorResponse(
+        error instanceof Error ? error.message : "Unknown error",
+        "selecting program"
+      );
+      addAssistantMessage(errorResponse.text);
     } finally {
       setIsProcessing(false);
     }
@@ -191,7 +229,7 @@ export default function ChatTestHarness() {
 
   const handleConfirmRegistration = async () => {
     console.log("[Chat] Registration confirmed");
-    addUserMessage("Confirmed!");
+    addUserMessage("Yes, confirm!");
 
     setIsProcessing(true);
 
@@ -200,58 +238,43 @@ export default function ChatTestHarness() {
       const prereqResult = await mcpCheckPrerequisites(state.orgRef || "blackhawk-ski-club");
 
       if (!prereqResult.success) {
-        handleError(prereqResult.error || "Failed to check prerequisites");
+        const errorResponse = formatErrorResponse(
+          prereqResult.error || "Failed to check prerequisites",
+          "checking prerequisites"
+        );
+        addAssistantMessage(errorResponse.text);
         return;
       }
 
-      // Mock prerequisite statuses
-      const prereqStatuses = [
-        { label: "Account Login", status: state.sessionRef ? "done" : "pending" },
-        { label: "Waiver Signed", status: "pending" },
-        { label: "Payment Info", status: "pending" },
-        { label: "Emergency Contact", status: "pending" },
-      ];
-
-      addAssistantMessage(
-        "Great! Let's check your prerequisites:",
-        "status",
-        { statuses: prereqStatuses }
+      // Parse prerequisite status
+      const response = parsePrerequisiteResponse(
+        prereqResult.data || {},
+        !!state.sessionRef
       );
+      addAssistantMessage(response.text, response.componentType, response.componentData);
 
-      // If not logged in, prompt for login
-      if (!state.sessionRef) {
+      // Determine what's missing and show appropriate form
+      const missingPrereqs = [];
+      if (!state.sessionRef) missingPrereqs.push("login");
+      if (!prereqResult.data?.waiver_signed) missingPrereqs.push("waiver");
+      if (!prereqResult.data?.emergency_contact) missingPrereqs.push("emergency_contact");
+
+      if (missingPrereqs.length > 0) {
         setTimeout(() => {
+          const formResponse = formatFormRequest(missingPrereqs);
           addAssistantMessage(
-            "I need your login credentials to proceed. Please fill out this form:",
-            "form",
-            {
-              title: "Login Required",
-              fields: [
-                { id: "email", label: "Email", type: "text", required: true },
-                { id: "password", label: "Password", type: "text", required: true },
-              ],
-            }
-          );
-        }, 1000);
-      } else {
-        // If logged in, ask for additional info
-        setTimeout(() => {
-          addAssistantMessage(
-            "Please provide additional information to complete registration:",
-            "form",
-            {
-              title: "Registration Details",
-              fields: [
-                { id: "childName", label: "Child's Full Name", type: "text", required: true },
-                { id: "emergencyContact", label: "Emergency Contact Phone", type: "text", required: true },
-                { id: "waiver", label: "I agree to the terms and waiver", type: "checkbox", required: true },
-              ],
-            }
+            formResponse.text,
+            formResponse.componentType,
+            formResponse.componentData
           );
         }, 1000);
       }
     } catch (error) {
-      handleError(error instanceof Error ? error.message : "Unknown error");
+      const errorResponse = formatErrorResponse(
+        error instanceof Error ? error.message : "Unknown error",
+        "confirming registration"
+      );
+      addAssistantMessage(errorResponse.text);
     } finally {
       setIsProcessing(false);
     }
@@ -265,7 +288,7 @@ export default function ChatTestHarness() {
     try {
       // If this is a login form
       if (values.email && values.password) {
-        addUserMessage("Logging in...");
+        addUserMessage("Signing in...");
 
         const loginResult = await mcpLogin(
           values.email,
@@ -274,27 +297,26 @@ export default function ChatTestHarness() {
         );
 
         if (!loginResult.success) {
-          handleError(loginResult.error || "Login failed");
+          const errorResponse = formatErrorResponse(
+            loginResult.error || "Login failed",
+            "logging in"
+          );
+          addAssistantMessage(errorResponse.text);
           return;
         }
 
         setState({ ...state, sessionRef: loginResult.session_ref });
 
-        addAssistantMessage("✅ Login successful! You're now connected.");
+        const response = parseLoginResponse(loginResult, values.email);
+        addAssistantMessage(response.text);
 
         // After successful login, proceed to next step
         setTimeout(() => {
+          const formResponse = formatFormRequest(["registration_details"]);
           addAssistantMessage(
-            "Now, please provide additional information:",
-            "form",
-            {
-              title: "Registration Details",
-              fields: [
-                { id: "childName", label: "Child's Full Name", type: "text", required: true },
-                { id: "emergencyContact", label: "Emergency Contact Phone", type: "text", required: true },
-                { id: "waiver", label: "I agree to the terms and waiver", type: "checkbox", required: true },
-              ],
-            }
+            formResponse.text,
+            formResponse.componentType,
+            formResponse.componentData
           );
         }, 1000);
       }
@@ -302,10 +324,11 @@ export default function ChatTestHarness() {
       else if (values.childName) {
         addUserMessage("Submitting registration...");
 
-        // In real implementation, call mcpRegister with actual session and program data
-        addAssistantMessage(
-          `✅ Registration submitted successfully!\n\nChild Name: ${values.childName}\nEmergency Contact: ${values.emergencyContact}\n\nYou'll receive a confirmation email shortly.`
-        );
+        // Simulate registration call
+        const mockResult = { success: true };
+        
+        const response = parseRegistrationResponse(mockResult, values.childName);
+        addAssistantMessage(response.text);
 
         toast({
           title: "Success",
@@ -313,7 +336,11 @@ export default function ChatTestHarness() {
         });
       }
     } catch (error) {
-      handleError(error instanceof Error ? error.message : "Unknown error");
+      const errorResponse = formatErrorResponse(
+        error instanceof Error ? error.message : "Unknown error",
+        "submitting form"
+      );
+      addAssistantMessage(errorResponse.text);
     } finally {
       setIsProcessing(false);
     }
@@ -631,7 +658,17 @@ function MessageBubble({ message, onConfirm, onProgramSelect, onFormSubmit }: Me
             : "bg-muted text-foreground"
         )}
       >
-        <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.text}</p>
+        {/* Render markdown-style formatting */}
+        <div 
+          className="text-sm leading-relaxed whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none"
+          dangerouslySetInnerHTML={{ 
+            __html: message.text
+              .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+              .replace(/\*(.*?)\*/g, '<em>$1</em>')
+              .replace(/^• (.+)$/gm, '<li>$1</li>')
+              .replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>')
+          }}
+        />
         
         {/* Interactive Components */}
         {message.componentType === "confirmation" && message.componentData && onConfirm && (
