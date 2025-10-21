@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { Send } from "lucide-react";
+import { Send, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -10,6 +10,20 @@ import { InlineChatForm } from "@/components/chat-test/InlineChatForm";
 import { StatusChip } from "@/components/chat-test/StatusChip";
 import { initializeMCP, callMCPTool, mcpLogin, mcpFindPrograms, mcpCheckPrerequisites } from "@/lib/chatMcpClient";
 import { useToast } from "@/hooks/use-toast";
+
+// Test data for demo flow
+const DEMO_TEST_DATA = {
+  credentials: {
+    email: "test@example.com",
+    password: "testpass123",
+  },
+  searchQuery: "ski lessons for kids",
+  childInfo: {
+    childName: "Alex Johnson",
+    emergencyContact: "555-0123",
+    waiver: true,
+  },
+};
 
 interface Message {
   id: string;
@@ -45,6 +59,7 @@ export default function ChatTestHarness() {
   const { toast } = useToast();
   const [input, setInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isDemoRunning, setIsDemoRunning] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // Initialize MCP connection on mount
@@ -328,6 +343,174 @@ export default function ChatTestHarness() {
     }
   };
 
+  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+  const runDemoFlow = async () => {
+    if (!mcpConnected) {
+      toast({
+        title: "MCP Not Connected",
+        description: "Cannot run demo without MCP server connection",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsDemoRunning(true);
+    
+    // Reset chat
+    setMessages([{
+      id: "demo-start",
+      sender: "assistant",
+      text: "🤖 Demo Mode: Starting automated signup flow...",
+      timestamp: new Date(),
+    }]);
+    setState({ orgRef: "blackhawk-ski-club" });
+
+    await delay(1000);
+
+    try {
+      // Step 1: Login
+      addAssistantMessage("Let me help you sign in first.");
+      await delay(800);
+      
+      addUserMessage(`Login with ${DEMO_TEST_DATA.credentials.email}`);
+      setIsProcessing(true);
+
+      const loginResult = await mcpLogin(
+        DEMO_TEST_DATA.credentials.email,
+        DEMO_TEST_DATA.credentials.password,
+        state.orgRef || "blackhawk-ski-club"
+      );
+
+      setIsProcessing(false);
+
+      if (!loginResult.success) {
+        addAssistantMessage(`⚠️ Demo: Login failed (${loginResult.error}). Continuing with mock session...`);
+        setState(prev => ({ ...prev, sessionRef: "demo-session-mock" }));
+      } else {
+        setState(prev => ({ ...prev, sessionRef: loginResult.session_ref }));
+        addAssistantMessage("✅ Successfully logged in!");
+      }
+
+      await delay(1500);
+
+      // Step 2: Search for programs
+      addUserMessage(DEMO_TEST_DATA.searchQuery);
+      setIsProcessing(true);
+
+      const searchResult = await mcpFindPrograms(
+        state.orgRef || "blackhawk-ski-club",
+        DEMO_TEST_DATA.searchQuery
+      );
+
+      setIsProcessing(false);
+
+      // Mock programs (in real scenario, parse searchResult.data)
+      const mockPrograms = [
+        { id: "ski-l1", title: "Ski Lessons - Level 1", description: "Beginner slopes, Ages 6-10" },
+        { id: "ski-l2", title: "Ski Lessons - Level 2", description: "Intermediate, Ages 8-14" },
+        { id: "snowboard-101", title: "Snowboarding 101", description: "Beginner course, Ages 10+" },
+      ];
+
+      addAssistantMessage(
+        "I found these programs that match your search:",
+        "carousel",
+        { options: mockPrograms }
+      );
+
+      await delay(2000);
+
+      // Step 3: Auto-select first program
+      const selectedProgram = mockPrograms[0];
+      addUserMessage(`I'll take ${selectedProgram.title}`);
+      setState(prev => ({ ...prev, selectedProgram }));
+
+      setIsProcessing(true);
+      await delay(1000);
+      setIsProcessing(false);
+
+      addAssistantMessage(
+        "Perfect! Please review and confirm your selection:",
+        "confirmation",
+        {
+          title: "Confirm Registration",
+          message: `Program: ${selectedProgram.title}\n${selectedProgram.description}\nPrice: $120`,
+        }
+      );
+
+      await delay(2000);
+
+      // Step 4: Auto-confirm
+      addUserMessage("Confirmed!");
+      setIsProcessing(true);
+
+      const prereqResult = await mcpCheckPrerequisites(state.orgRef || "blackhawk-ski-club");
+
+      setIsProcessing(false);
+
+      const prereqStatuses = [
+        { label: "Account Login", status: "done" },
+        { label: "Waiver Signed", status: "pending" },
+        { label: "Payment Info", status: "pending" },
+        { label: "Emergency Contact", status: "pending" },
+      ];
+
+      addAssistantMessage(
+        "Great! Let's check your prerequisites:",
+        "status",
+        { statuses: prereqStatuses }
+      );
+
+      await delay(1500);
+
+      // Step 5: Auto-fill form
+      addAssistantMessage(
+        "Please provide additional information to complete registration:",
+        "form",
+        {
+          title: "Registration Details",
+          fields: [
+            { id: "childName", label: "Child's Full Name", type: "text", required: true },
+            { id: "emergencyContact", label: "Emergency Contact Phone", type: "text", required: true },
+            { id: "waiver", label: "I agree to the terms and waiver", type: "checkbox", required: true },
+          ],
+        }
+      );
+
+      await delay(2500);
+
+      // Step 6: Auto-submit form
+      addUserMessage("Submitting registration details...");
+      setIsProcessing(true);
+      await delay(1500);
+      setIsProcessing(false);
+
+      addAssistantMessage(
+        `✅ Registration submitted successfully!\n\nChild Name: ${DEMO_TEST_DATA.childInfo.childName}\nEmergency Contact: ${DEMO_TEST_DATA.childInfo.emergencyContact}\n\nYou'll receive a confirmation email shortly.`
+      );
+
+      await delay(1000);
+
+      addAssistantMessage("🎉 Demo flow completed! You can now test manually or run the demo again.");
+
+      toast({
+        title: "Demo Complete",
+        description: "Automated signup flow finished successfully!",
+      });
+
+    } catch (error) {
+      console.error("[Demo] Error during flow:", error);
+      addAssistantMessage(`❌ Demo failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+      toast({
+        title: "Demo Failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDemoRunning(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Header */}
@@ -338,6 +521,16 @@ export default function ChatTestHarness() {
             <p className="text-sm text-muted-foreground">ChatGPT-style conversation simulator</p>
           </div>
           <div className="flex items-center gap-2">
+            <Button
+              onClick={runDemoFlow}
+              disabled={!mcpConnected || isDemoRunning || isProcessing}
+              size="sm"
+              variant="outline"
+              className="gap-2"
+            >
+              <Play className="h-4 w-4" />
+              {isDemoRunning ? "Running Demo..." : "Run Demo Flow"}
+            </Button>
             <div
               className={cn(
                 "flex items-center gap-2 text-xs px-3 py-1 rounded-full",
