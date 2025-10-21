@@ -15,6 +15,7 @@ import MandatesAudit from "./pages/MandatesAudit";
 import FlowTester from "./pages/FlowTester";
 import NotFound from "./pages/NotFound";
 import { DisambiguationDemo } from "./components/DisambiguationDemo";
+import ChatTestHarness from "./pages/ChatTestHarness";
 
 const queryClient = new QueryClient();
 
@@ -36,6 +37,7 @@ const App = () => (
             <Route path="/flow-test" element={<FlowTester />} />
             <Route path="/login-test" element={<LoginTest />} />
             <Route path="/disambiguation-demo" element={<DisambiguationDemo />} />
+            <Route path="/chat-test" element={<ChatTestHarness />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
