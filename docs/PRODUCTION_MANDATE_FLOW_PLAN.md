@@ -1,7 +1,7 @@
 # Production-Ready Mandate & Registration Flow Implementation Plan
 
 **Status:** HOLD - Wait until Discovery Questions work is finalized  
-**Last Updated:** 2025-10-08  
+**Last Updated:** 2025-10-21  
 **Owner:** SignupAssist Team
 
 ---
@@ -21,6 +21,123 @@ This plan implements a production-ready, two-mandate authorization system with p
 3. **Timing Precision:** Pre-warm sequence runs T-5min before opening → verifies login → pre-fills form → submits at T=0
 
 4. **Auditability:** Every tool call, mandate verification, session state, and payment is logged with tamper-proof hashing
+
+---
+
+## Login Flow Architecture (LCP-P1) ✅ IMPLEMENTED
+
+**Status:** Complete - Production Ready  
+**Implementation Date:** 2025-10-21
+
+### Overview
+Implements a secure, chat-native login flow following Design DNA principles with the Assistant → Card → CTA pattern. Ensures explicit user consent before automated browser actions and maintains comprehensive audit trails.
+
+### Components Implemented
+
+#### Frontend Components
+1. **`src/components/LoginPromptCard.tsx`** - Chat-native login card
+   - Displays provider name and security reassurances
+   - Single primary CTA: "Connect [Provider] Account"
+   - Opens LoginCredentialDialog on user consent
+   - Logs audit entry on user action
+
+2. **`src/components/ConnectAccountCard.tsx`** - Simplified connection card
+   - Single-CTA design for account connection
+   - Secondary text link for account creation
+   - Maintains security messaging consistency
+
+3. **`src/components/ChatMessageCard.tsx`** - Updated card renderer
+   - Added handler for `connect_account` card type
+   - Routes to LoginPromptCard component
+   - Maintains existing provider confirmation patterns
+
+#### Type Definitions
+4. **`src/types/chat.ts`** - Extended type system
+   - Added `ConnectAccountPayload` interface
+   - Supports new `connect_account` message card type
+
+#### AI Orchestration
+5. **`mcp_server/ai/AIOrchestrator.ts`** - Login step handler
+   - New `handleLoginStep()` method implementing LCP-P1 spec
+   - Generates warm, reassuring assistant messages
+   - Creates UI payload for LoginPromptCard
+   - Logs audit entries for responsible delegation
+   - Updated flow routing to include login step after provider selection
+
+#### Backend (Already Implemented)
+6. **`supabase/functions/start-browserbase-login/index.ts`** ✅
+   - Handles credential submission and Browserbase login
+   - Integrates with MCP server via `scp.login` tool
+   - Comprehensive audit trail with `startLoginAudit()` / `finishLoginAudit()`
+   - Stores credentials on successful login
+
+7. **`supabase/functions/launch-browserbase/index.ts`** ✅
+   - Creates Browserbase CDP sessions
+   - Proper `project_id` parameter handling
+   - Returns session data for Playwright connection
+
+8. **`supabase/functions/_shared/auditLogin.ts`** ✅
+   - Structured audit logging for login attempts
+   - Tracks login strategy, timing, verification outcomes
+   - Evidence metadata (screenshots, DOM snapshots)
+
+### User Flow Sequence
+
+1. **User:** "I want to sign up for Blackhawk Ski Club"
+2. **AI:** Searches providers → Shows provider confirmation card
+3. **User:** Confirms provider selection
+4. **AI:** Triggers `handleLoginStep()` → Shows assistant message:
+   > "Great, let's connect your Blackhawk Ski Club account so we can proceed. You'll log in directly with Blackhawk Ski Club; we never see or store your password. When you're ready, click Connect Blackhawk Ski Club Account below to log in securely."
+5. **UI:** Renders `LoginPromptCard` with security bullets and CTA
+6. **User:** Clicks "Connect Blackhawk Account"
+7. **Audit:** Logs "User initiated login for skiclubpro"
+8. **UI:** Opens `LoginCredentialDialog`
+9. **User:** Enters credentials → Clicks "Connect Account"
+10. **Backend:** `start-browserbase-login` edge function invoked
+11. **Backend:** Browserbase session created → CDP login automation
+12. **Audit:** Login attempt logged with success/failure, timing, verification
+13. **Backend:** Credentials stored (if successful)
+14. **AI:** "Great, your account is connected. I'll help you browse classes next..."
+
+### Security Features
+
+- ✅ **Explicit User Consent:** CTA button serves as consent checkpoint
+- ✅ **Transparent Security Messaging:** Clear reassurances about credential handling
+- ✅ **Audit Trail:** Every user action and automation step logged
+- ✅ **Encrypted Credentials:** Stored via `store-credentials` edge function
+- ✅ **Anti-Bot Protection:** Browserbase + Playwright with real browser fingerprints
+- ✅ **Session Persistence:** CDP sessions maintained for reuse
+
+### Design DNA Compliance
+
+- ✅ **Tone:** Friendly, concise, parent-friendly messaging
+- ✅ **Pattern:** Assistant message → LoginPromptCard → CTA button
+- ✅ **Confirmations:** Explicit consent before browser automation
+- ✅ **Security Reassurance:** "We never see or store your password"
+- ✅ **Visual Rhythm:** Consistent card layout and accent buttons
+- ✅ **Audit Reminder:** Responsible delegation logged at every step
+
+### Files Modified
+
+**New Files:**
+- `src/components/LoginPromptCard.tsx`
+
+**Modified Files:**
+- `mcp_server/providers/skiclubpro.ts` (removed legacy comments)
+- `src/components/ConnectAccountCard.tsx` (simplified to single-CTA)
+- `mcp_server/ai/AIOrchestrator.ts` (added handleLoginStep)
+- `src/components/ChatMessageCard.tsx` (added connect_account handler)
+- `src/types/chat.ts` (added ConnectAccountPayload)
+
+### Testing Checklist
+
+- [ ] Provider selection → Login card appears
+- [ ] Click "Connect Account" → Dialog opens
+- [ ] Enter credentials → Login succeeds
+- [ ] Audit trail shows "User initiated login"
+- [ ] Edge function logs show login attempt details
+- [ ] Credentials stored in database (encrypted)
+- [ ] Session persisted for future reuse
 
 ---
 

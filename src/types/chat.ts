@@ -13,6 +13,12 @@ export interface ChatMessage {
   metadata?: Record<string, any>;
 }
 
+export interface ConnectAccountPayload {
+  provider: string;
+  org_name: string;
+  org_ref: string;
+}
+
 export interface DisambiguationContext {
   type: "single_match" | "multiple_matches" | "no_match";
   searchQuery: string;

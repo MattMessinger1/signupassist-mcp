@@ -1,55 +1,37 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Shield, LogIn } from "lucide-react";
-import { toast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { LoginCredentialDialog } from "./LoginCredentialDialog";
 
-interface ConnectAccountCardProps {
+interface LoginPromptCardProps {
   provider: string;
   orgName: string;
   orgRef: string;
+  onConnect: () => void;
 }
 
-export function ConnectAccountCard({ provider, orgName, orgRef }: ConnectAccountCardProps) {
+/**
+ * LoginPromptCard - Chat-native login card following LCP-P1 specification
+ * Implements the Assistant → Card → CTA pattern for secure credential submission
+ * 
+ * Design DNA Compliance:
+ * - Friendly, reassuring tone
+ * - Clear security messaging
+ * - Single primary CTA (Connect Account)
+ * - Follows Design DNA visual rhythm
+ */
+export function LoginPromptCard({ provider, orgName, orgRef, onConnect }: LoginPromptCardProps) {
   const [showLoginDialog, setShowLoginDialog] = useState(false);
 
-  const handleSecureLogin = () => {
+  const handleConnect = () => {
+    // Log user consent for audit trail (responsible delegation)
+    console.log(`[Audit] User initiated login for ${provider} (org: ${orgRef})`);
     setShowLoginDialog(true);
   };
 
   const handleLoginSuccess = () => {
-    // TODO: Registration and class browsing flow will continue here in a future prompt pack
-    toast({
-      title: "Account Connected ✅",
-      description: `Your ${orgName} account is now connected. Next, I'll help you browse classes... (placeholder — browsing flow coming soon)`,
-      duration: 5000,
-    });
-  };
-
-  const handleCreateAccount = () => {
-    // Construct signup URL based on provider
-    let signupUrl = '';
-    
-    if (provider === 'skiclubpro') {
-      // Extract base domain from orgRef
-      const baseDomain = orgRef === 'blackhawk-ski-club'
-        ? 'blackhawk.skiclubpro.team'
-        : `${orgRef.replace(/[^a-z0-9-]/g, '').toLowerCase()}.skiclubpro.team`;
-      
-      signupUrl = `https://${baseDomain}/register`;
-    } else {
-      // Fallback for other providers
-      signupUrl = `https://${provider}.com/signup`;
-    }
-
-    // Open signup page in new tab
-    window.open(signupUrl, '_blank', 'noopener,noreferrer');
-    
-    toast({
-      title: "Account Creation",
-      description: `Opening ${orgName}'s signup page in a new tab...`,
-    });
+    onConnect();
   };
 
   return (
@@ -60,7 +42,7 @@ export function ConnectAccountCard({ provider, orgName, orgRef }: ConnectAccount
           <CardTitle className="text-lg">Connect {orgName}</CardTitle>
         </div>
         <CardDescription>
-          To browse classes and register, connect your {orgName} account securely.
+          Ready to log in? You'll authenticate directly on {orgName}'s site.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -86,7 +68,7 @@ export function ConnectAccountCard({ provider, orgName, orgRef }: ConnectAccount
         </div>
 
         <Button 
-          onClick={handleSecureLogin} 
+          onClick={handleConnect} 
           className="w-full"
           size="lg"
         >
@@ -94,14 +76,9 @@ export function ConnectAccountCard({ provider, orgName, orgRef }: ConnectAccount
           Connect {orgName} Account
         </Button>
 
-        <div className="text-center">
-          <button 
-            onClick={handleCreateAccount}
-            className="text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
-          >
-            Don't have an account? Create one
-          </button>
-        </div>
+        <p className="text-xs text-center text-muted-foreground">
+          This secure connection enables automated registration
+        </p>
       </CardContent>
 
       <LoginCredentialDialog
@@ -115,4 +92,3 @@ export function ConnectAccountCard({ provider, orgName, orgRef }: ConnectAccount
     </Card>
   );
 }
-

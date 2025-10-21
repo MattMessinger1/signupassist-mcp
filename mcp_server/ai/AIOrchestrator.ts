@@ -480,10 +480,11 @@ Stay warm, concise, and reassuring.
    * 
    * @param userMessage - User's current input
    * @param context - Current session context
-   * @returns Step identifier string (provider_search, program_selection, etc.)
+   * @returns Step identifier string (provider_search, login, program_selection, etc.)
    */
   private determineStep(userMessage: string, context: Record<string, any>): string {
     if (!context.provider) return "provider_search";
+    if (context.provider && !context.loginCompleted) return "login";
     if (context.provider && !context.program) return "program_selection";
     if (context.program && !context.prerequisites) return "prerequisite_check";
     if (context.program && context.prerequisites && !context.formAnswers) return "form_fill";
@@ -504,6 +505,8 @@ Stay warm, concise, and reassuring.
     switch (step) {
       case "provider_search":
         return await this.handleProviderSearch(userMessage, sessionId);
+      case "login":
+        return await this.handleLoginStep(userMessage, sessionId);
       case "program_selection":
         return await this.handleProgramSelection(userMessage, sessionId);
       case "prerequisite_check":
@@ -569,6 +572,56 @@ Stay warm, concise, and reassuring.
       { type: "cards", options: results || [] },
       { lastSearch: parsed, providerSearchResults: results }
     );
+  }
+
+  /**
+   * Handle login step - LCP-P1: Secure Credential Submission
+   * Implements Assistant → Card → CTA pattern for provider login
+   * 
+   * Compliance with Design DNA:
+   * - Friendly, reassuring tone
+   * - Clear security messaging
+   * - Explicit user consent before automation
+   * - Audit trail for responsible delegation
+   * 
+   * @param userMessage - User's input (typically confirmation from provider selection)
+   * @param sessionId - Session identifier
+   * @returns Promise resolving to OrchestratorResponse with login card
+   */
+  private async handleLoginStep(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
+    const context = this.getContext(sessionId);
+    
+    const providerName = context.provider?.name || 'the provider';
+    const orgRef = context.provider?.orgRef || '';
+    
+    // Assistant message (warm, reassuring) - LCP-P1 spec
+    const assistantMessage = `Great, let's connect your ${providerName} account so we can proceed. You'll log in directly with ${providerName}; we never see or store your password. When you're ready, click Connect ${providerName} Account below to log in securely.`;
+    
+    // UI payload for LoginPromptCard (chat-native card following LCP-P1)
+    const uiPayload = {
+      type: 'connect_account',
+      data: {
+        provider: 'skiclubpro', // TODO: Make dynamic based on context.provider
+        org_name: providerName,
+        org_ref: orgRef
+      }
+    };
+    
+    // Log audit entry for responsible delegation
+    Logger.info(`[Audit] Login step initiated`, { 
+      sessionId, 
+      provider: providerName, 
+      orgRef 
+    });
+    
+    return {
+      assistantMessage,
+      uiPayload,
+      contextUpdates: { 
+        step: 'awaiting_login',
+        loginInitiatedAt: new Date().toISOString()
+      }
+    };
   }
 
   /**

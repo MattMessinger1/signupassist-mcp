@@ -7,8 +7,6 @@ import { verifyMandate } from '../lib/mandates.js';
 import { auditToolCall } from '../middleware/audit.js';
 import { lookupCredentialsById } from '../lib/credentials.js';
 import { launchBrowserbaseSession, captureScreenshot, closeBrowserbaseSession } from '../lib/browserbase-skiclubpro.js';
-// 🧠 Legacy imports removed - functions now handled by Supabase Edge Function (launch-browserbase)
-// import { discoverProgramRequiredFields, performSkiClubProLogin, scrapeSkiClubProPrograms } from '../lib/browserbase.js';
 import { captureScreenshotEvidence } from '../lib/evidence.js';
 import { getAvailablePrograms } from '../config/program_mapping.js';
 import { createClient } from '@supabase/supabase-js';
@@ -160,11 +158,8 @@ async function ensureLoggedIn(
   const { page } = session;
 
   console.log('DEBUG: Using credentials from cred-get:', creds.email);
-  
   console.log('DEBUG: Attempting login to SkiClubPro at:', baseUrl);
   
-  // 🧠 TODO: performSkiClubProLogin removed - migrate to Supabase Edge Function pattern
-  // For now, use basic login via loginWithCredentials
   await page.goto(`${baseUrl}/user/login`, { waitUntil: 'networkidle' });
   await loginWithCredentials(page, creds.email, creds.password, skiClubProConfig);
   
