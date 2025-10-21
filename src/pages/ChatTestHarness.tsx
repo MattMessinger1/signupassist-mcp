@@ -4,13 +4,18 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { ConfirmationCard } from "@/components/chat-test/ConfirmationCard";
+import { OptionsCarousel } from "@/components/chat-test/OptionsCarousel";
+import { InlineChatForm } from "@/components/chat-test/InlineChatForm";
+import { StatusChip } from "@/components/chat-test/StatusChip";
 
 interface Message {
   id: string;
   sender: "user" | "assistant";
   text: string;
   timestamp: Date;
-  payload?: any; // For future interactive elements (cards, buttons, etc.)
+  componentType?: "confirmation" | "carousel" | "form" | "status";
+  componentData?: any;
 }
 
 export default function ChatTestHarness() {
@@ -24,15 +29,75 @@ export default function ChatTestHarness() {
     {
       id: "2",
       sender: "user",
-      text: "Hi, I need help signing up my child for a class.",
+      text: "Hi, I need help signing up my child for ski lessons.",
       timestamp: new Date(),
     },
     {
       id: "3",
       sender: "assistant",
-      text: "Sure, I can help with that! Let's begin the sign-up process. Which program or provider are you interested in?",
+      text: "Great! Here are 3 ski programs that match your search. Please select one:",
+      timestamp: new Date(),
+      componentType: "carousel",
+      componentData: {
+        options: [
+          { id: "1", title: "Ski Lessons - Level 1", description: "Beginner slopes, Ages 6-10" },
+          { id: "2", title: "Ski Lessons - Level 2", description: "Intermediate, Ages 8-14" },
+          { id: "3", title: "Snowboarding 101", description: "Beginner course, Ages 10+" }
+        ]
+      }
+    },
+    {
+      id: "4",
+      sender: "user",
+      text: "I'll take Ski Lessons - Level 1",
       timestamp: new Date(),
     },
+    {
+      id: "5",
+      sender: "assistant",
+      text: "Perfect! You are about to sign up for Ski Lessons - Level 1 on January 5, 2025. Please confirm to continue:",
+      timestamp: new Date(),
+      componentType: "confirmation",
+      componentData: {
+        title: "Confirm Registration",
+        message: "Program: Ski Lessons - Level 1\nDate: January 5, 2025\nPrice: $120"
+      }
+    },
+    {
+      id: "6",
+      sender: "user",
+      text: "Confirmed!",
+      timestamp: new Date(),
+    },
+    {
+      id: "7",
+      sender: "assistant",
+      text: "Excellent! Before we proceed, let's check your prerequisites:",
+      timestamp: new Date(),
+      componentType: "status",
+      componentData: {
+        statuses: [
+          { label: "Waiver Signed", status: "done" },
+          { label: "Payment Info", status: "pending" },
+          { label: "Emergency Contact", status: "pending" }
+        ]
+      }
+    },
+    {
+      id: "8",
+      sender: "assistant",
+      text: "I need a bit more information to complete your registration. Please fill out this form:",
+      timestamp: new Date(),
+      componentType: "form",
+      componentData: {
+        title: "Additional Information",
+        fields: [
+          { id: "childName", label: "Child's Full Name", type: "text", required: true },
+          { id: "emergencyContact", label: "Emergency Contact Phone", type: "text", required: true },
+          { id: "waiver", label: "I agree to the terms and waiver", type: "checkbox", required: true }
+        ]
+      }
+    }
   ]);
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -125,6 +190,22 @@ interface MessageBubbleProps {
 function MessageBubble({ message }: MessageBubbleProps) {
   const isUser = message.sender === "user";
 
+  const handleConfirm = () => {
+    console.log("Confirmed:", message.componentData);
+  };
+
+  const handleCancel = () => {
+    console.log("Cancelled:", message.componentData);
+  };
+
+  const handleOptionSelect = (option: any) => {
+    console.log("Selected option:", option);
+  };
+
+  const handleFormSubmit = (values: any) => {
+    console.log("Form submitted:", values);
+  };
+
   return (
     <div
       className={cn(
@@ -141,13 +222,41 @@ function MessageBubble({ message }: MessageBubbleProps) {
         )}
       >
         <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.text}</p>
-        {/* Placeholder for future interactive elements */}
-        {message.payload && (
-          <div className="mt-3 pt-3 border-t border-border/50">
-            {/* Interactive cards/buttons will be rendered here */}
-            <div className="text-xs opacity-70">
-              [Interactive element placeholder]
-            </div>
+        
+        {/* Interactive Components */}
+        {message.componentType === "confirmation" && message.componentData && (
+          <ConfirmationCard
+            title={message.componentData.title}
+            message={message.componentData.message}
+            onConfirm={handleConfirm}
+            onCancel={handleCancel}
+          />
+        )}
+
+        {message.componentType === "carousel" && message.componentData && (
+          <OptionsCarousel
+            options={message.componentData.options}
+            onSelect={handleOptionSelect}
+          />
+        )}
+
+        {message.componentType === "form" && message.componentData && (
+          <InlineChatForm
+            title={message.componentData.title}
+            fields={message.componentData.fields}
+            onSubmit={handleFormSubmit}
+          />
+        )}
+
+        {message.componentType === "status" && message.componentData && (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {message.componentData.statuses.map((status: any, idx: number) => (
+              <StatusChip
+                key={idx}
+                label={status.label}
+                status={status.status}
+              />
+            ))}
           </div>
         )}
       </div>
