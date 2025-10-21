@@ -1,6 +1,7 @@
 /**
  * SkiClubPro Configurable Browserbase Functions
  * Supports multiple organizations via selector configuration
+ * 🧠 Browserbase sessions now launched via Supabase Edge Function
  */
 
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
@@ -21,11 +22,14 @@ export interface BrowserbaseSession {
 }
 
 /**
- * Launch a new Browserbase session with Playwright via Edge Function
+ * Launch a new Browserbase session via Supabase Edge Function
+ * 🧠 Now handled securely through launch-browserbase edge function
  */
 export async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
   try {
-    // Call edge function to create Browserbase session
+    console.log('[Browserbase] Launching session via Supabase Edge Function...');
+    
+    // Call Supabase Edge Function to create Browserbase session
     const { data, error } = await supabase.functions.invoke('launch-browserbase', {
       body: { headless: true }
     });
@@ -39,13 +43,16 @@ export async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
     }
 
     const session = data.session;
+    console.log('[Browserbase] Session created via Edge Function:', session.id);
 
-    // Connect Playwright to Browserbase
+    // Connect Playwright to Browserbase using the connectUrl
     const browser = await chromium.connectOverCDP(session.connectUrl);
     
     // Create stealth context (handles ANTIBOT_ENABLED internally)
     const context = await createStealthContext(browser);
     const page = await context.newPage();
+
+    console.log('[Browserbase] ✓ Connected to session:', session.id);
 
     return {
       sessionId: session.id,
@@ -54,6 +61,7 @@ export async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
       page,
     };
   } catch (error) {
+    console.error('[Browserbase] Launch failed:', error);
     throw new Error(`Failed to launch Browserbase session: ${error.message}`);
   }
 }
