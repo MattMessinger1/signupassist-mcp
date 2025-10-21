@@ -8,6 +8,7 @@ import { ConfirmationCard } from "@/components/chat-test/ConfirmationCard";
 import { OptionsCarousel } from "@/components/chat-test/OptionsCarousel";
 import { InlineChatForm } from "@/components/chat-test/InlineChatForm";
 import { StatusChip } from "@/components/chat-test/StatusChip";
+import { DebugPanel, LogEntry } from "@/components/chat-test/DebugPanel";
 import { initializeMCP, callMCPTool, mcpLogin, mcpFindPrograms, mcpCheckPrerequisites } from "@/lib/chatMcpClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -19,6 +20,7 @@ import {
   parseRegistrationResponse,
   formatErrorResponse,
 } from "@/lib/chatResponseParser";
+import { createLogEntry, type LogLevel, type LogCategory } from "@/lib/debugLogger";
 
 // Test data for demo flow
 const DEMO_TEST_DATA = {
@@ -69,16 +71,28 @@ export default function ChatTestHarness() {
   const [input, setInput] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDemoRunning, setIsDemoRunning] = useState(false);
+  const [debugLogs, setDebugLogs] = useState<LogEntry[]>([]);
+  const [showDebugPanel, setShowDebugPanel] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Logging helper
+  const addLog = (level: LogLevel, category: LogCategory, message: string, data?: any) => {
+    const entry = createLogEntry(level, category, message, data);
+    setDebugLogs(prev => [...prev, entry]);
+  };
 
   // Initialize MCP connection on mount
   useEffect(() => {
+    addLog("info", "system", "Initializing MCP connection...");
     initializeMCP().then((connected) => {
       setMcpConnected(connected);
       if (!connected) {
+        addLog("error", "system", "MCP server connection failed");
         addAssistantMessage(
           "⚠️ Warning: MCP server connection failed. Make sure the server is running and VITE_MCP_BASE_URL is configured."
         );
+      } else {
+        addLog("success", "system", "MCP server connected successfully");
       }
     });
   }, []);
@@ -98,6 +112,7 @@ export default function ChatTestHarness() {
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, newMessage]);
+    addLog("info", "user", `User message: ${text}`);
   };
 
   const addAssistantMessage = (
@@ -114,9 +129,16 @@ export default function ChatTestHarness() {
       componentData,
     };
     setMessages((prev) => [...prev, newMessage]);
+    addLog(
+      "info",
+      "assistant",
+      `Assistant message: ${text.substring(0, 100)}${text.length > 100 ? "..." : ""}`,
+      componentType ? { componentType, hasData: !!componentData } : undefined
+    );
   };
 
   const handleError = (error: string) => {
+    addLog("error", "system", `Error occurred: ${error}`);
     console.error("[Chat Error]", error);
     toast({
       title: "Error",
@@ -137,7 +159,12 @@ export default function ChatTestHarness() {
     addUserMessage(query);
 
     try {
+      addLog("info", "tool", "Calling mcpFindPrograms", { 
+        orgRef: state.orgRef || "blackhawk-ski-club", 
+        query 
+      });
       const result = await mcpFindPrograms(state.orgRef || "blackhawk-ski-club", query);
+      addLog("success", "tool", "mcpFindPrograms response received", { success: result.success });
 
       if (!result.success) {
         const errorResponse = formatErrorResponse(
@@ -191,6 +218,7 @@ export default function ChatTestHarness() {
   };
 
   const handleProgramSelect = async (program: any) => {
+    addLog("info", "user", "Program selected", { programId: program.id, title: program.title });
     console.log("[Chat] Program selected:", program);
     setState({ ...state, selectedProgram: program });
 
@@ -198,11 +226,16 @@ export default function ChatTestHarness() {
     setIsProcessing(true);
 
     try {
+      addLog("info", "tool", "Calling mcpCheckPrerequisites", { 
+        orgRef: state.orgRef || "blackhawk-ski-club", 
+        programId: program.id 
+      });
       // Check prerequisites for this program
       const prereqResult = await mcpCheckPrerequisites(
         state.orgRef || "blackhawk-ski-club",
         program.id
       );
+      addLog("success", "tool", "mcpCheckPrerequisites response received", { success: prereqResult.success });
 
       if (!prereqResult.success) {
         const errorResponse = formatErrorResponse(
@@ -228,14 +261,17 @@ export default function ChatTestHarness() {
   };
 
   const handleConfirmRegistration = async () => {
+    addLog("info", "user", "User confirmed registration");
     console.log("[Chat] Registration confirmed");
     addUserMessage("Yes, confirm!");
 
     setIsProcessing(true);
 
     try {
+      addLog("info", "tool", "Calling mcpCheckPrerequisites", { orgRef: state.orgRef || "blackhawk-ski-club" });
       // Check prerequisites
       const prereqResult = await mcpCheckPrerequisites(state.orgRef || "blackhawk-ski-club");
+      addLog("success", "tool", "mcpCheckPrerequisites response received", { success: prereqResult.success });
 
       if (!prereqResult.success) {
         const errorResponse = formatErrorResponse(
@@ -281,6 +317,7 @@ export default function ChatTestHarness() {
   };
 
   const handleFormSubmit = async (formId: string, values: Record<string, any>) => {
+    addLog("info", "user", "Form submitted", { formId, fields: Object.keys(values) });
     console.log("[Chat] Form submitted:", formId, values);
 
     setIsProcessing(true);
@@ -290,11 +327,18 @@ export default function ChatTestHarness() {
       if (values.email && values.password) {
         addUserMessage("Signing in...");
 
+        addLog("info", "tool", "Calling mcpLogin", { 
+          email: values.email, 
+          orgRef: state.orgRef || "blackhawk-ski-club" 
+        });
         const loginResult = await mcpLogin(
           values.email,
           values.password,
           state.orgRef || "blackhawk-ski-club"
         );
+        addLog(loginResult.success ? "success" : "error", "tool", "mcpLogin response received", { 
+          success: loginResult.success 
+        });
 
         if (!loginResult.success) {
           const errorResponse = formatErrorResponse(
@@ -324,8 +368,10 @@ export default function ChatTestHarness() {
       else if (values.childName) {
         addUserMessage("Submitting registration...");
 
+        addLog("info", "tool", "Simulating registration submission", { childName: values.childName });
         // Simulate registration call
         const mockResult = { success: true };
+        addLog("success", "tool", "Registration submission successful");
         
         const response = parseRegistrationResponse(mockResult, values.childName);
         addAssistantMessage(response.text);
@@ -383,6 +429,7 @@ export default function ChatTestHarness() {
     }
 
     setIsDemoRunning(true);
+    addLog("info", "system", "🤖 Starting demo flow automation");
     
     // Reset chat
     setMessages([{
@@ -520,6 +567,8 @@ export default function ChatTestHarness() {
 
       addAssistantMessage("🎉 Demo flow completed! You can now test manually or run the demo again.");
 
+      addLog("success", "system", "Demo flow completed successfully");
+
       toast({
         title: "Demo Complete",
         description: "Automated signup flow finished successfully!",
@@ -527,6 +576,7 @@ export default function ChatTestHarness() {
 
     } catch (error) {
       console.error("[Demo] Error during flow:", error);
+      addLog("error", "system", "Demo flow failed", { error: error instanceof Error ? error.message : "Unknown error" });
       addAssistantMessage(`❌ Demo failed: ${error instanceof Error ? error.message : "Unknown error"}`);
       toast({
         title: "Demo Failed",
@@ -539,9 +589,9 @@ export default function ChatTestHarness() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-background">
+    <div className="flex flex-col h-screen bg-background overflow-hidden">
       {/* Header */}
-      <div className="border-b bg-card px-6 py-4">
+      <div className="border-b bg-card px-6 py-4 flex-shrink-0">
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-semibold text-foreground">SignupAssist Test Harness</h1>
@@ -605,7 +655,7 @@ export default function ChatTestHarness() {
       </ScrollArea>
 
       {/* Input Area */}
-      <div className="border-t bg-card px-4 py-4">
+      <div className="border-t bg-card px-4 py-4 flex-shrink-0">
         <div className="max-w-3xl mx-auto flex gap-3 items-end">
           <Textarea
             value={input}
@@ -625,6 +675,14 @@ export default function ChatTestHarness() {
           </Button>
         </div>
       </div>
+
+      {/* Debug Panel */}
+      <DebugPanel
+        logs={debugLogs}
+        isVisible={showDebugPanel}
+        onToggle={() => setShowDebugPanel(!showDebugPanel)}
+        onClear={() => setDebugLogs([])}
+      />
     </div>
   );
 }
