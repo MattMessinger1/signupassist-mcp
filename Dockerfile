@@ -3,15 +3,16 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Faster installs by copying manifests first
-COPY package*.json ./
-RUN npm install --legacy-peer-deps
+# Copy production package.json for minimal dependencies
+COPY package.production.json package.json
+COPY package-lock.json ./
 
-# Copy source
-COPY . .
+# Fast, deterministic production install
+RUN npm ci --production
 
-# Build MCP (TS -> JS in dist/)
-RUN npm run mcp:build
+# Copy pre-built dist folder (build locally before deploy)
+COPY dist ./dist
+COPY mcp ./mcp
 
 # Expose port for local run (Railway sets $PORT)
 EXPOSE 4000

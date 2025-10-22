@@ -1,0 +1,24 @@
+{
+  "name": "signupassist-mcp-server",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "mcp:start": "node dist/mcp_server/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.2",
+    "@supabase/supabase-js": "^2.74.0",
+    "@browserbasehq/sdk": "^2.6.0",
+    "playwright-core": "^1.55.1",
+    "openai": "^6.4.0",
+    "zod": "^3.25.76",
+    "dotenv": "^17.2.3",
+    "axios": "^1.12.2",
+    "jose": "^5.10.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.17",
+    "typescript": "^5.9.2",
+    "tsx": "^4.20.6"
+  }
+}

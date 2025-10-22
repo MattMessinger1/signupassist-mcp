@@ -490,13 +490,27 @@ if (token) {
 
 if (process.env.NODE_ENV === 'production' || process.env.PORT) {
   console.log('[STARTUP] Starting HTTP server...');
+  const startTime = Date.now();
+  
   server.startHTTP()
     .then((httpServer) => {
-      console.log('[STARTUP] HTTP server started successfully');
+      const bootTime = Date.now() - startTime;
+      console.log('[STARTUP] ✅ HTTP server fully operational');
+      console.log('[STARTUP] Boot time:', bootTime, 'ms');
+      console.log('[STARTUP] Process uptime:', process.uptime().toFixed(2), 'seconds');
+      console.log('[STARTUP] Memory usage:', Math.round(process.memoryUsage().heapUsed / 1024 / 1024), 'MB');
+      
+      // Health monitoring heartbeat - logs every 30 seconds
+      setInterval(() => {
+        console.log('[HEARTBEAT] Server healthy | Uptime:', process.uptime().toFixed(0), 's | Memory:', 
+          Math.round(process.memoryUsage().heapUsed / 1024 / 1024), 'MB');
+      }, 30000);
+      
       // Keep reference to prevent garbage collection and ensure process stays alive
     })
     .catch((err) => {
-      console.error('[STARTUP ERROR]', err);
+      console.error('[STARTUP ERROR] Failed to start HTTP server:', err);
+      console.error('[STARTUP ERROR] Stack:', err.stack);
       process.exit(1);
     });
 } else {
