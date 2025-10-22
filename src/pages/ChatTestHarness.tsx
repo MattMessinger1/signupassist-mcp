@@ -302,13 +302,31 @@ export default function ChatTestHarness() {
     const userInput = input.trim();
     setInput("");
 
+    // Detect login requests
+    if (userInput.toLowerCase().includes("login") || userInput.toLowerCase().includes("sign in")) {
+      addUserMessage(userInput);
+      addAssistantMessage(
+        "Please sign in to continue:",
+        "form",
+        {
+          id: "login-form",
+          title: "Sign In",
+          fields: [
+            { id: "email", label: "Email", type: "email", required: true, placeholder: "test@example.com" },
+            { id: "password", label: "Password", type: "password", required: true, placeholder: "Enter password" },
+          ],
+        }
+      );
+      return;
+    }
+
     // Simple keyword-based routing for demo
     if (userInput.toLowerCase().includes("ski") || userInput.toLowerCase().includes("program")) {
       handleSearchPrograms(userInput);
     } else {
       addUserMessage(userInput);
       addAssistantMessage(
-        "I can help you find and register for programs. Try saying something like 'I need ski lessons for my child'."
+        "I can help you find and register for programs. Try saying something like 'I need ski lessons for my child', or type 'login' to sign in."
       );
     }
   };
