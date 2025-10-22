@@ -166,6 +166,130 @@ export default function ChatTestHarness() {
     setIsProcessing(false);
   };
 
+  // ============= Action Handlers =============
+
+  /**
+   * Handle card action clicks (Context-Aware Action Handler)
+   * Routes card button clicks to appropriate flow steps
+   */
+  const handleCardAction = async (action: string, payload: any) => {
+    console.log(`[HARNESS] Card action triggered: ${action}`, payload);
+    addLog("info", "user", `Card action: ${action}`, { payload });
+    
+    setIsProcessing(true);
+
+    try {
+      switch (action) {
+        case "select_provider":
+          // Provider selected from search results
+          console.log('[FLOW] select_provider →', payload.name || payload);
+          addUserMessage(`Yes, that's the one`);
+          
+          setState(prev => ({
+            ...prev,
+            orgRef: payload.orgRef || payload.name,
+          }));
+          
+          // Show login prompt
+          setTimeout(() => {
+            addAssistantMessage(
+              `Great! Now let's connect your account securely. You'll log in directly; we never see or store your password.`,
+              "form",
+              {
+                id: "login-form",
+                title: "Sign In",
+                fields: [
+                  { id: "email", label: "Email", type: "email", required: true, placeholder: "test@example.com" },
+                  { id: "password", label: "Password", type: "password", required: true, placeholder: "Enter password" },
+                ],
+              }
+            );
+          }, 500);
+          break;
+
+        case "reject_provider":
+          // User rejected provider
+          addUserMessage("No, that's not the one");
+          addAssistantMessage(
+            "No problem! Let's try a different search. What's the name of your provider?"
+          );
+          break;
+
+        case "select_program":
+          // Program selected from carousel
+          console.log('[FLOW] select_program →', payload.title);
+          await handleProgramSelect(payload);
+          break;
+
+        case "check_prereqs":
+          // Check prerequisites
+          console.log('[FLOW] check_prereqs');
+          addUserMessage("Check prerequisites");
+          const prereqResult = await executePrerequisiteCheck(createContext());
+          if (prereqResult.success) {
+            addAssistantMessage(prereqResult.text, prereqResult.componentType, prereqResult.componentData);
+          } else {
+            addAssistantMessage(prereqResult.text);
+          }
+          break;
+
+        case "complete_prereqs":
+        case "continue_registration":
+          // Move to confirmation
+          console.log('[FLOW] complete_prereqs → confirmation');
+          addUserMessage("Continue to registration");
+          setTimeout(() => {
+            addAssistantMessage(
+              `✅ Almost there! Please review the details and confirm.\n\n🔒 Your data stays secure; we never store card numbers.`,
+              "confirmation",
+              {
+                title: "Confirm Registration",
+                message: `Ready to register for ${state.selectedProgram || 'this program'}?`,
+                confirmLabel: "✅ Confirm & Register",
+                cancelLabel: "Cancel"
+              }
+            );
+          }, 500);
+          break;
+
+        case "confirm_registration":
+          // Final confirmation
+          console.log('[FLOW] confirm_registration → completed');
+          await handleConfirmRegistration();
+          break;
+
+        case "cancel_registration":
+        case "cancel":
+          // User cancelled
+          addUserMessage("Cancel");
+          addAssistantMessage("No worries! Feel free to start over whenever you're ready.");
+          setState(prev => ({ ...prev, selectedProgram: undefined }));
+          break;
+
+        case "reset":
+        case "retry_search":
+        case "retry_programs":
+        case "retry_prereqs":
+        case "retry_last":
+          // Reset flow
+          addUserMessage("Let's start over");
+          resetConversation(false);
+          addAssistantMessage("Let's start fresh! What provider are you looking for?");
+          break;
+
+        default:
+          console.warn('[HARNESS] Unknown action:', action);
+          addAssistantMessage("Hmm, I'm not sure what to do with that. Let's start over.");
+          break;
+      }
+    } catch (error) {
+      console.error('[HARNESS] Action handler error:', error);
+      addAssistantMessage("Oops, something went wrong. Let's try again.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // ============= Flow Handlers =============
 
   /**
@@ -770,6 +894,7 @@ export default function ChatTestHarness() {
         onConfirm={handleConfirmRegistration}
         onProgramSelect={handleProgramSelect}
         onFormSubmit={handleFormSubmit}
+        onAction={handleCardAction}
       />
 
       <ChatInput

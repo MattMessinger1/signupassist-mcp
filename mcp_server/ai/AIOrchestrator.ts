@@ -32,15 +32,30 @@ export const DESIGN_DNA = {
 
 
 /**
+ * Step constants for flow management
+ */
+export enum FlowStep {
+  PROVIDER_SEARCH = 3,
+  LOGIN = 4,
+  PROGRAM_SELECTION = 5,
+  PREREQUISITE_CHECK = 6,
+  CONFIRMATION = 7,
+  COMPLETED = 8
+}
+
+/**
  * Session context structure - defines what's stored for each conversation
  */
 export interface SessionContext {
+  step?: FlowStep;
   provider?: { name: string; orgRef: string };
   program?: { name: string; id: string };
   child?: { name: string; birthdate?: string };
   prerequisites?: Record<string, "ok" | "required" | "missing">;
   formAnswers?: Record<string, any>;
   conversationHistory?: Array<{ role: string; content: string }>;
+  loginCompleted?: boolean;
+  confirmed?: boolean;
 }
 
 /**
@@ -227,6 +242,7 @@ Stay warm, concise, and reassuring.
     Logger.info(`[Context Updated] ${sessionId}`, updates);
     Logger.info(`[Audit] Context updated`, this.getContext(sessionId));
     this.logContext(sessionId);
+    this.logContextSnapshot(sessionId);
     // TODO: Add Supabase persistence for agentic_checkout_sessions table
   }
 
@@ -239,6 +255,144 @@ Stay warm, concise, and reassuring.
   resetContext(sessionId: string): void {
     delete this.sessions[sessionId];
     Logger.info(`[Context Reset] ${sessionId}`);
+  }
+
+  /**
+   * Handle card action (NEW: Context-Aware Action Handler)
+   * Processes user interactions with cards and advances flow
+   * 
+   * @param action - Action identifier from card button
+   * @param payload - Action payload (provider, program, etc.)
+   * @param sessionId - Session identifier
+   * @returns Promise resolving to next OrchestratorResponse
+   */
+  async handleAction(action: string, payload: any, sessionId: string): Promise<OrchestratorResponse> {
+    const context = this.getContext(sessionId);
+    this.logAction("card_action", { action, sessionId, currentStep: context.step });
+    
+    console.log(`[FLOW] Action received: ${action}`, payload);
+    
+    try {
+      switch (action) {
+        case "select_provider":
+          // Step 3 → Step 4: Provider selected, move to login
+          this.updateContext(sessionId, {
+            provider: payload,
+            step: FlowStep.LOGIN
+          });
+          return this.formatResponse(
+            `Great, we'll use **${payload.name}**! Now let's connect your account securely. ${SECURITY_NOTE}`,
+            [{
+              title: `Connect to ${payload.name}`,
+              subtitle: "Secure login required",
+              description: AUDIT_REMINDER,
+              metadata: { provider: 'skiclubpro', orgRef: payload.orgRef },
+              buttons: [
+                { label: `Connect Account`, action: "connect_account", variant: "accent" }
+              ]
+            }],
+            undefined,
+            {}
+          );
+
+        case "reject_provider":
+          // User rejected provider, ask for clarification
+          this.updateContext(sessionId, { step: FlowStep.PROVIDER_SEARCH });
+          return this.formatResponse(
+            "No problem! Let's try a different search. What's the name of your provider?",
+            undefined,
+            [{ label: "Search Again", action: "retry_search", variant: "accent" }],
+            {}
+          );
+
+        case "connect_account":
+          // Simulate login (in production, this would trigger OAuth flow)
+          this.updateContext(sessionId, {
+            loginCompleted: true,
+            step: FlowStep.PROGRAM_SELECTION
+          });
+          return this.handleProgramSelection("Show programs", sessionId);
+
+        case "select_program":
+          // Step 5 → Step 6: Program selected, check prerequisites
+          this.updateContext(sessionId, {
+            program: payload,
+            step: FlowStep.PREREQUISITE_CHECK
+          });
+          return this.formatResponse(
+            `Perfect choice — **${payload.title}**! Let me check a few prerequisites before we continue.`,
+            undefined,
+            [{ label: "Check Prerequisites", action: "check_prereqs", variant: "accent" }],
+            {}
+          );
+
+        case "check_prereqs":
+          // Check prerequisites and move to confirmation
+          return this.handlePrerequisiteCheck("", sessionId);
+
+        case "complete_prereqs":
+          // Prerequisites completed, show confirmation
+          this.updateContext(sessionId, { step: FlowStep.CONFIRMATION });
+          return this.handleConfirmation("", sessionId);
+
+        case "confirm_registration":
+          // Step 7 → Step 8: Final confirmation
+          this.updateContext(sessionId, {
+            confirmed: true,
+            step: FlowStep.COMPLETED
+          });
+          this.logAction("registration_completed", { sessionId, program: context.program?.name });
+          return this.formatResponse(
+            `🎉 Registration submitted successfully! ${context.child?.name || 'Your child'} is enrolled in **${context.program?.name}** at **${context.provider?.name}**.\n\nYou'll receive a confirmation email shortly. ${AUDIT_REMINDER}`,
+            undefined,
+            undefined,
+            {}
+          );
+
+        case "cancel_registration":
+        case "cancel":
+          // User cancelled, polite acknowledgement
+          this.updateContext(sessionId, { step: FlowStep.PROVIDER_SEARCH });
+          return this.formatResponse(
+            "No worries! Feel free to start over whenever you're ready.",
+            undefined,
+            [{ label: "Start Over", action: "reset", variant: "accent" }],
+            {}
+          );
+
+        case "reset":
+        case "retry_search":
+        case "retry_programs":
+        case "retry_prereqs":
+        case "retry_last":
+          // Reset to provider search
+          this.resetContext(sessionId);
+          return this.formatResponse(
+            "Let's start fresh! What provider are you looking for?",
+            undefined,
+            undefined,
+            { step: FlowStep.PROVIDER_SEARCH }
+          );
+
+        default:
+          // Unknown action
+          Logger.warn(`Unknown action: ${action}`);
+          return this.formatResponse(
+            "Hmm, I'm not sure what to do with that. Let's start over.",
+            undefined,
+            [{ label: "Restart", action: "reset", variant: "accent" }],
+            {}
+          );
+      }
+    } catch (error: any) {
+      Logger.error(`Action handler failed: ${error.message}`);
+      return this.formatResponse(
+        "Oops, something went wrong while processing that. Let's try again securely.",
+        undefined,
+        [{ label: "Retry", action: "retry_last", variant: "accent" }],
+        {}
+      );
+    }
   }
 
   /**
@@ -414,6 +568,23 @@ Stay warm, concise, and reassuring.
   private logAction(action: string, data: Record<string, any>): void {
     const sanitized = this.sanitize(data);
     Logger.info(`[Audit] ${action}`, sanitized);
+  }
+
+  /**
+   * Log context snapshot for debugging
+   * 
+   * @param sessionId - Session identifier
+   */
+  private logContextSnapshot(sessionId: string): void {
+    const context = this.getContext(sessionId);
+    console.log('[CONTEXT]', JSON.stringify({
+      sessionId,
+      step: context.step,
+      provider: context.provider?.name,
+      program: context.program?.name,
+      loginCompleted: context.loginCompleted,
+      confirmed: context.confirmed
+    }, null, 2));
   }
 
   /**

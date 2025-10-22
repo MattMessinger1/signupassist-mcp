@@ -28,6 +28,7 @@ interface MessageBubbleProps {
   onConfirm?: () => void;
   onProgramSelect?: (program: any) => void;
   onFormSubmit?: (formId: string, values: any) => void;
+  onAction?: (action: string, payload: any) => void;
 }
 
 /**
@@ -46,9 +47,18 @@ export function MessageBubble({
   message, 
   onConfirm, 
   onProgramSelect, 
-  onFormSubmit 
+  onFormSubmit,
+  onAction 
 }: MessageBubbleProps) {
   const isUser = message.sender === "user";
+
+  // Handle card button clicks
+  const handleCardButtonClick = (action: string, payload: any) => {
+    console.log('[MessageBubble] Button clicked:', action, payload);
+    if (onAction) {
+      onAction(action, payload);
+    }
+  };
 
   return (
     <div
@@ -74,11 +84,27 @@ export function MessageBubble({
         />
         
         {/* Interactive Components */}
-        {message.componentType === "confirmation" && message.componentData && onConfirm && (
+        {/* Render cards from orchestrator response */}
+        {message.componentData?.cards && message.componentData.cards.map((card: any, idx: number) => (
+          <div key={idx} className="mt-3">
+            <ConfirmationCard
+              title={card.title}
+              message={card.subtitle || card.description || ''}
+              onConfirm={() => card.buttons?.[0] && handleCardButtonClick(card.buttons[0].action, card.metadata)}
+              onCancel={card.buttons?.[1] ? () => handleCardButtonClick(card.buttons[1].action, card.metadata) : undefined}
+              confirmLabel={card.buttons?.[0]?.label}
+              cancelLabel={card.buttons?.[1]?.label}
+            />
+          </div>
+        ))}
+
+        {message.componentType === "confirmation" && message.componentData && !message.componentData.cards && onConfirm && (
           <ConfirmationCard
             title={message.componentData.title}
             message={message.componentData.message}
             onConfirm={onConfirm}
+            confirmLabel={message.componentData.confirmLabel}
+            cancelLabel={message.componentData.cancelLabel}
           />
         )}
 

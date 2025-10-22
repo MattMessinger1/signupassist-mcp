@@ -16,6 +16,7 @@ interface MessageListProps {
   onConfirm?: () => void;
   onProgramSelect?: (program: any) => void;
   onFormSubmit?: (formId: string, values: any) => void;
+  onAction?: (action: string, payload: any) => void;
 }
 
 /**
@@ -53,6 +54,7 @@ export function MessageList({
   onConfirm,
   onProgramSelect,
   onFormSubmit,
+  onAction,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -75,6 +77,7 @@ export function MessageList({
             onConfirm={onConfirm}
             onProgramSelect={onProgramSelect}
             onFormSubmit={onFormSubmit}
+            onAction={onAction}
           />
         ))}
         
