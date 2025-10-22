@@ -52,6 +52,7 @@ class SignupAssistMCPServer {
     );
 
     this.orchestrator = new AIOrchestrator();
+    console.log('✅ AIOrchestrator initialized');
     this.setupRequestHandlers();
     this.registerTools();
   }
@@ -121,8 +122,8 @@ class SignupAssistMCPServer {
       // --- Health check
       if (req.method === 'GET' && url.pathname === '/health') {
         console.log('[HEALTH] check received');
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('OK');
         return;
       }
 
@@ -349,6 +350,7 @@ class SignupAssistMCPServer {
 
       // --- Orchestrator endpoint for Chat Test Harness
       if (url.pathname === '/orchestrator/chat') {
+        console.log('[ROUTE] /orchestrator/chat hit');
         if (req.method === 'OPTIONS') {
           res.writeHead(200);
           res.end();
@@ -433,7 +435,12 @@ class SignupAssistMCPServer {
         console.log(`   Manifest: http://localhost:${port}/mcp/manifest.json`);
         console.log(`   Root: http://localhost:${port}/mcp`);
         console.log(`   Well-known: http://localhost:${port}/.well-known/ai-plugin.json`);
-        resolve(httpServer);
+        
+        // CRITICAL: Give Railway's probe time to connect after bind
+        setTimeout(() => {
+          console.log('[STARTUP] Server ready for healthcheck');
+          resolve(httpServer);
+        }, 100);
       });
 
       httpServer.on('error', reject);
