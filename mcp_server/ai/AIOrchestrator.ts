@@ -44,13 +44,48 @@ export interface SessionContext {
 }
 
 /**
+ * Card specification for UI rendering
+ */
+interface CardSpec {
+  title: string;
+  subtitle?: string;
+  description?: string;
+  imageUrl?: string;
+  metadata?: Record<string, any>;
+  buttons?: Array<{
+    label: string;
+    action: string;
+    variant?: "accent" | "outline";
+  }>;
+}
+
+/**
+ * CTA (Call-to-Action) specification
+ */
+interface CTASpec {
+  label: string;
+  action: string;
+  variant?: "accent" | "outline";
+}
+
+/**
  * Standardized orchestrator response structure
+ * Following Design DNA: Message → Card → CTA pattern
  */
 interface OrchestratorResponse {
-  assistantMessage: string;
-  uiPayload?: Record<string, any>;
+  message: string;              // Assistant text shown above UI
+  cards?: CardSpec[];           // Optional cards to render
+  cta?: CTASpec[];              // Optional primary/secondary buttons
+  uiPayload?: Record<string, any>; // Legacy support - will be phased out
   contextUpdates?: Record<string, any>;
 }
+
+/**
+ * Security and tone constants (Design DNA compliance)
+ */
+const SECURITY_NOTE = "You'll log in directly with the provider; we never see or store your password.";
+const TONE = "Friendly, concise, parent-friendly tone.";
+const AUDIT_REMINDER = "Every action is logged and requires your explicit consent.";
 
 /**
  * AIOrchestrator - The brain of SignupAssist
@@ -120,11 +155,11 @@ Stay warm, concise, and reassuring.
 
   /**
    * Generate AI response for user message
-   * Uses manual orchestration to route to correct step handler
+   * Uses step-aware routing to guide user through signup flow
    * 
    * @param userMessage - The user's input text
    * @param sessionId - Unique session identifier for context tracking
-   * @returns Promise resolving to OrchestratorResponse
+   * @returns Promise resolving to OrchestratorResponse with cards
    */
   async generateResponse(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
     try {
@@ -132,7 +167,7 @@ Stay warm, concise, and reassuring.
       const step = this.determineStep(userMessage, context);
       
       // Audit logging for responsible delegate trail
-      Logger.info(`[Audit] Step=${step}, User=${sessionId}, Action=Flow_Routing`);
+      this.logAction("flow_routing", { step, sessionId, input: userMessage });
       
       // Debug logging for flow visibility
       Logger.info(`🧭 Flow Step: ${step}`, { sessionId, context });
@@ -142,17 +177,18 @@ Stay warm, concise, and reassuring.
       
       // Validate Design DNA compliance
       this.validateRhythm(result);
-      Logger.info(`[DesignDNA] Step=${step} | Pattern=${DESIGN_DNA.pattern}`);
+      this.logAction("response_sent", { step, hasCards: !!result.cards, hasCTA: !!result.cta });
       
       this.updateContext(sessionId, result.contextUpdates || {});
-      this.logInteraction(sessionId, "assistant", result.assistantMessage);
+      this.logInteraction(sessionId, "assistant", result.message);
       return result;
     } catch (error: any) {
       Logger.error(`[${sessionId}] AI error: ${error.message}`);
-      // Never expose stack traces to users - polite recovery only
+      // Graceful error recovery with actionable CTA
       return this.formatResponse(
-        "🤖 Hmm, looks like I hit a small snag. Let's try that again in a moment.",
-        { type: "message" },
+        "Hmm, looks like something went wrong. Let's try that again.",
+        undefined,
+        [{ label: "Retry", action: "retry_last", variant: "accent" }],
         {}
       );
     }
@@ -344,42 +380,100 @@ Stay warm, concise, and reassuring.
   }
 
   /**
-   * Format standardized response object
+   * Format standardized response object (NEW: Card-Native Structure)
    * Ensures consistent UI payload structure across all handlers
    * 
    * @param message - Assistant message to display
-   * @param payload - UI payload data (cards, buttons, etc.)
+   * @param cards - Optional array of cards to render
+   * @param cta - Optional call-to-action buttons
    * @param updates - Context updates to apply
    * @returns Standardized OrchestratorResponse object
    */
   private formatResponse(
     message: string,
-    payload: Record<string, any> = {},
+    cards?: CardSpec[],
+    cta?: CTASpec[],
     updates: Record<string, any> = {}
   ): OrchestratorResponse {
     return {
-      assistantMessage: message,
-      uiPayload: { type: payload.type || "message", ...payload },
+      message,
+      cards,
+      cta,
+      // Legacy support for backward compatibility
+      uiPayload: cards ? { type: "cards", cards, cta } : { type: "message" },
       contextUpdates: updates,
     };
   }
 
   /**
-   * Build a confirmation card UI payload
-   * Reusable component for explicit user confirmation before irreversible actions
+   * Log audit action for responsible delegation
    * 
-   * @param summary - Summary text explaining what will be confirmed
-   * @returns UI payload object for confirmation card
+   * @param action - Action type
+   * @param data - Action metadata (sanitized)
    */
-  private buildConfirmationCard(summary: string) {
+  private logAction(action: string, data: Record<string, any>): void {
+    const sanitized = this.sanitize(data);
+    Logger.info(`[Audit] ${action}`, sanitized);
+  }
+
+  /**
+   * Build provider selection cards
+   * Displays search results with clear selection options
+   * 
+   * @param results - Array of provider search results
+   * @returns Array of CardSpec objects
+   */
+  private buildProviderCards(results: any[]): CardSpec[] {
+    return results.map(provider => ({
+      title: provider.name,
+      subtitle: provider.city ? `${provider.city}, ${provider.state || ''}` : provider.address || '',
+      metadata: { orgRef: provider.orgRef, source: provider.source },
+      buttons: [
+        { label: "Yes – That's Mine", action: "select_provider", variant: "accent" as const },
+        { label: "Not This One", action: "reject_provider", variant: "outline" as const }
+      ]
+    }));
+  }
+
+  /**
+   * Build program selection cards (carousel)
+   * Shows available programs with enrollment options
+   * 
+   * @param programs - Array of program objects
+   * @returns Array of CardSpec objects
+   */
+  private buildProgramCards(programs: any[]): CardSpec[] {
+    return programs.map(program => ({
+      title: program.name,
+      subtitle: program.schedule || 'Schedule TBD',
+      description: program.description || '',
+      metadata: { id: program.id, price: program.price },
+      buttons: [
+        { label: "Enroll", action: "select_program", variant: "accent" as const }
+      ]
+    }));
+  }
+
+  /**
+   * Build confirmation card for final registration
+   * Displays summary before submission
+   * 
+   * @param context - Current session context
+   * @returns CardSpec object
+   */
+  private buildConfirmationCard(context: SessionContext): CardSpec {
+    const provider = context.provider?.name || 'Provider';
+    const program = context.program?.name || 'Program';
+    const child = context.child?.name || 'Child';
+    
     return {
-      type: "confirmation",
-      title: "Please Confirm",
-      summary,
-      options: [
-        { label: "✅ Confirm", value: "confirm" },
-        { label: "Cancel", value: "cancel" },
-      ],
+      title: "Confirm Registration",
+      subtitle: `${child} → ${program}`,
+      description: `Provider: ${provider}\n${AUDIT_REMINDER}`,
+      buttons: [
+        { label: "✅ Confirm & Register", action: "confirm_registration", variant: "accent" as const },
+        { label: "Cancel", action: "cancel_registration", variant: "outline" as const }
+      ]
     };
   }
 
@@ -402,11 +496,11 @@ Stay warm, concise, and reassuring.
    * @param response - OrchestratorResponse to validate
    */
   private validateRhythm(response: OrchestratorResponse): void {
-    const hasMessage = !!response.assistantMessage;
-    const hasPayload = !!response.uiPayload;
-    if (!hasMessage || !hasPayload) {
-      Logger.warn("[DesignDNA] Missing part of visual rhythm (message → card → CTA).");
+    const hasMessage = !!response.message;
+    if (!hasMessage) {
+      Logger.warn("[DesignDNA] Missing assistant message (message → card → CTA pattern violation).");
     }
+    // Cards and CTAs are optional but recommended for interactive steps
   }
 
   /**
@@ -525,14 +619,16 @@ Stay warm, concise, and reassuring.
   }
 
   /**
-   * Handle provider search step
-   * Searches for activity providers based on user input
+   * Handle provider search step (Step 3: Provider Discovery)
+   * Searches for activity providers and returns cards
    * 
    * @param userMessage - User's search query
    * @param sessionId - Session identifier
-   * @returns Promise resolving to OrchestratorResponse with provider options
+   * @returns Promise resolving to OrchestratorResponse with provider cards
    */
   private async handleProviderSearch(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
+    this.logAction("tool_invocation", { toolName: "search_provider", sessionId });
+    
     // Cache parsed results to reduce API calls and latency
     const cacheKey = `parsed-${userMessage.toLowerCase()}`;
     let parsed: ParsedProviderInput;
@@ -551,7 +647,8 @@ Stay warm, concise, and reassuring.
     if (!parsed.name) {
       return this.formatResponse(
         "Hmm, I couldn't tell which organization you meant. Could you type the name again with a city or keyword?",
-        { type: "message" },
+        undefined,
+        [{ label: "Try Again", action: "retry_search", variant: "outline" }],
         {}
       );
     }
@@ -559,108 +656,177 @@ Stay warm, concise, and reassuring.
     const name = parsed.name;
     const location = parsed.city;
     
-    const results = await this.callTool("search_provider", { name, location });
-    
-    const foundVia = results.length && results[0].source === "google" ? "Google" : "our provider list";
-    const message =
-      results.length > 0
-        ? `🔍 I found ${results.length} match${results.length > 1 ? "es" : ""} for **${name}**${location ? " in " + location : ""} using ${foundVia}.`
-        : `🤔 I couldn't find a provider named **${name}**${location ? " in " + location : ""}. Could you double-check the spelling or city?`;
-
-    return this.formatResponse(
-      message,
-      { type: "cards", options: results || [] },
-      { lastSearch: parsed, providerSearchResults: results }
-    );
+    try {
+      const results = await this.callTool("search_provider", { name, location });
+      
+      if (results.length === 0) {
+        return this.formatResponse(
+          `🤔 I couldn't find a provider named **${name}**${location ? " in " + location : ""}. Could you double-check the spelling or try a different search?`,
+          undefined,
+          [{ label: "Search Again", action: "retry_search", variant: "accent" }],
+          { lastSearch: parsed }
+        );
+      }
+      
+      const foundVia = results[0].source === "google" ? "Google" : "our provider list";
+      const message = `🔍 Great! I found ${results.length} match${results.length > 1 ? "es" : ""} for **${name}**${location ? " in " + location : ""} via ${foundVia}. Which one is yours?`;
+      
+      const cards = this.buildProviderCards(results);
+      
+      return this.formatResponse(
+        message,
+        cards,
+        undefined,
+        { lastSearch: parsed, providerSearchResults: results }
+      );
+    } catch (error: any) {
+      Logger.error("Provider search failed:", error.message);
+      return this.formatResponse(
+        "Hmm, I had trouble searching for providers. Let's try again in a moment.",
+        undefined,
+        [{ label: "Retry Search", action: "retry_search", variant: "accent" }],
+        {}
+      );
+    }
   }
 
   /**
-   * Handle login step - LCP-P1: Secure Credential Submission
+   * Handle login step - LCP-P1: Secure Credential Submission (Step 4)
    * Implements Assistant → Card → CTA pattern for provider login
    * 
-   * Compliance with Design DNA:
-   * - Friendly, reassuring tone
-   * - Clear security messaging
-   * - Explicit user consent before automation
-   * - Audit trail for responsible delegation
-   * 
-   * @param userMessage - User's input (typically confirmation from provider selection)
+   * @param userMessage - User's input (confirmation from provider selection)
    * @param sessionId - Session identifier
-   * @returns Promise resolving to OrchestratorResponse with login card
+   * @returns Promise resolving to OrchestratorResponse with login instructions
    */
   private async handleLoginStep(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
     const context = this.getContext(sessionId);
+    this.logAction("login_step_initiated", { sessionId, provider: context.provider?.name });
     
     const providerName = context.provider?.name || 'the provider';
     const orgRef = context.provider?.orgRef || '';
     
-    // Assistant message (warm, reassuring) - LCP-P1 spec
-    const assistantMessage = `Great, let's connect your ${providerName} account so we can proceed. You'll log in directly with ${providerName}; we never see or store your password. When you're ready, click Connect ${providerName} Account below to log in securely.`;
+    // Security-first message with reassurance
+    const message = `Great! Let's connect your ${providerName} account so I can check available programs. ${SECURITY_NOTE}`;
     
-    // UI payload for LoginPromptCard (chat-native card following LCP-P1)
-    const uiPayload = {
-      type: 'connect_account',
-      data: {
-        provider: 'skiclubpro', // TODO: Make dynamic based on context.provider
-        org_name: providerName,
-        org_ref: orgRef
-      }
+    const card: CardSpec = {
+      title: `Connect to ${providerName}`,
+      subtitle: "Secure login required",
+      description: `You'll be redirected to ${providerName}'s login page. ${AUDIT_REMINDER}`,
+      metadata: { provider: 'skiclubpro', orgRef },
+      buttons: [
+        { label: `Connect ${providerName} Account`, action: "connect_account", variant: "accent" }
+      ]
     };
     
-    // Log audit entry for responsible delegation
-    Logger.info(`[Audit] Login step initiated`, { 
-      sessionId, 
-      provider: providerName, 
-      orgRef 
-    });
-    
-    return {
-      assistantMessage,
-      uiPayload,
-      contextUpdates: { 
+    return this.formatResponse(
+      message,
+      [card],
+      undefined,
+      { 
         step: 'awaiting_login',
         loginInitiatedAt: new Date().toISOString()
       }
-    };
+    );
   }
 
   /**
-   * Handle program selection step
-   * Retrieves available programs from the provider
+   * Handle program selection step (Step 5: Program Discovery)
+   * Retrieves and displays available programs as cards
    * 
    * @param userMessage - User's input
    * @param sessionId - Session identifier
+   * @returns Promise resolving to OrchestratorResponse with program carousel
    */
   private async handleProgramSelection(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
     const context = this.getContext(sessionId);
     const provider = context.provider?.name || userMessage;
-    const programs = await this.callTool("find_programs", { provider });
-    const message = `Here are the upcoming programs for ${provider}: ${programs.map((p: any) => p.name).join(", ")}. Which would you like to choose?`;
-    return this.formatResponse(
-      message,
-      { type: "cards", options: programs },
-      { availablePrograms: programs }
-    );
+    
+    this.logAction("tool_invocation", { toolName: "find_programs", sessionId, provider });
+    
+    try {
+      const programs = await this.callTool("find_programs", { provider });
+      
+      if (!programs || programs.length === 0) {
+        return this.formatResponse(
+          `Hmm, I couldn't find any programs currently available at ${provider}. This might be a temporary issue.`,
+          undefined,
+          [
+            { label: "Try Different Provider", action: "change_provider", variant: "accent" },
+            { label: "Contact Support", action: "contact_support", variant: "outline" }
+          ],
+          {}
+        );
+      }
+      
+      const message = `Perfect! Here are the available programs at **${provider}** this season 👇`;
+      const cards = this.buildProgramCards(programs);
+      
+      return this.formatResponse(
+        message,
+        cards,
+        undefined,
+        { availablePrograms: programs }
+      );
+    } catch (error: any) {
+      Logger.error("Program discovery failed:", error.message);
+      return this.formatResponse(
+        "Hmm, I had trouble loading programs. Let's try again.",
+        undefined,
+        [{ label: "Retry", action: "retry_programs", variant: "accent" }],
+        {}
+      );
+    }
   }
 
   /**
-   * Handle prerequisite check step
+   * Handle prerequisite check step (Step 6: Pre-Registration Checks)
    * Verifies membership, waivers, and payment methods
    * 
    * @param _ - User's input (unused)
    * @param sessionId - Session identifier
+   * @returns Promise resolving to OrchestratorResponse with status
    */
   private async handlePrerequisiteCheck(_: string, sessionId: string): Promise<OrchestratorResponse> {
-    const prereqs = await this.callTool("check_prerequisites", {});
-    const allGood = Object.values(prereqs).every((v: any) => v === "ok");
-    const message = allGood
-      ? "✅ All prerequisites are complete! Let's continue to the registration form."
-      : "⚠️ Some prerequisites are missing. Please update your membership or payment method before continuing.";
-    return this.formatResponse(
-      message,
-      {},
-      { prerequisites: prereqs }
-    );
+    this.logAction("tool_invocation", { toolName: "check_prerequisites", sessionId });
+    
+    try {
+      const prereqs = await this.callTool("check_prerequisites", {});
+      const allGood = Object.values(prereqs).every((v: any) => v === "ok");
+      
+      if (allGood) {
+        const message = "✅ Great news! All prerequisites are complete. Let's move forward with registration.";
+        return this.formatResponse(
+          message,
+          undefined,
+          [{ label: "Continue to Registration", action: "continue_registration", variant: "accent" }],
+          { prerequisites: prereqs }
+        );
+      } else {
+        const missing = Object.entries(prereqs)
+          .filter(([_, status]) => status !== "ok")
+          .map(([key, _]) => key);
+        
+        const message = `⚠️ Before we can register, we need to complete: ${missing.join(", ")}. Let me help you with that.`;
+        
+        return this.formatResponse(
+          message,
+          undefined,
+          [
+            { label: "Update Requirements", action: "update_prereqs", variant: "accent" },
+            { label: "Cancel", action: "cancel", variant: "outline" }
+          ],
+          { prerequisites: prereqs, missingPrereqs: missing }
+        );
+      }
+    } catch (error: any) {
+      Logger.error("Prerequisite check failed:", error.message);
+      return this.formatResponse(
+        "Hmm, I had trouble checking prerequisites. Let's try again.",
+        undefined,
+        [{ label: "Retry", action: "retry_prereqs", variant: "accent" }],
+        {}
+      );
+    }
   }
 
   /**
@@ -679,22 +845,27 @@ Stay warm, concise, and reassuring.
   }
 
   /**
-   * Handle confirmation step
-   * Presents final summary and confirms registration submission
+   * Handle confirmation step (Step 6: Final Confirmation)
+   * Presents final summary with card before submission
    * 
    * @param _ - User's input (unused)
    * @param sessionId - Session identifier
+   * @returns Promise resolving to OrchestratorResponse with confirmation card
    */
   private async handleConfirmation(_: string, sessionId: string): Promise<OrchestratorResponse> {
     const context = this.getContext(sessionId);
+    this.logAction("confirmation_step", { sessionId, program: context.program?.name });
+    
     const provider = context.provider?.name;
-    const summary = "Ready to submit registration. This action will process your payment.";
-    const message = `✅ ${summary}\n\n${this.securityReminder(provider)}`;
+    const message = `✅ Almost there! Please review the details below and confirm when ready.\n\n${this.securityReminder(provider)}`;
+    
+    const card = this.buildConfirmationCard(context);
     
     return this.formatResponse(
       message,
-      this.buildConfirmationCard(summary),
-      { confirmed: true }
+      [card],
+      undefined,
+      { confirmed: false, awaitingConfirmation: true }
     );
   }
 }

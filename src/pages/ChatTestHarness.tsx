@@ -134,6 +134,22 @@ export default function ChatTestHarness() {
       `Assistant message: ${text.substring(0, 100)}${text.length > 100 ? "..." : ""}`,
       componentType ? { componentType, hasData: !!componentData } : undefined
     );
+    
+    // Enhanced logging for cards
+    if (componentData?.cards) {
+      console.log('[HARNESS] 📦 Rendering cards:', componentData.cards.length);
+      componentData.cards.forEach((card: any, idx: number) => {
+        console.log(`[HARNESS]   Card ${idx + 1}: ${card.title}`);
+        if (card.buttons) {
+          console.log(`[HARNESS]     Buttons: ${card.buttons.map((b: any) => b.label).join(", ")}`);
+        }
+      });
+    }
+    
+    // Enhanced logging for CTAs
+    if (componentData?.cta) {
+      console.log('[HARNESS] 🎯 CTAs:', componentData.cta.map((c: any) => c.label).join(", "));
+    }
   };
 
   // ============= Error Handling =============
