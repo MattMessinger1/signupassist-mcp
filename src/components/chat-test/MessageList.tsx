@@ -13,9 +13,6 @@ interface MessageListProps {
   messages: ChatMessage[];
   isProcessing: boolean;
   mcpConnected: boolean;
-  onConfirm?: () => void;
-  onProgramSelect?: (program: any) => void;
-  onFormSubmit?: (formId: string, values: any) => void;
   onAction?: (action: string, payload: any) => void;
 }
 
@@ -51,9 +48,6 @@ export function MessageList({
   messages,
   isProcessing,
   mcpConnected,
-  onConfirm,
-  onProgramSelect,
-  onFormSubmit,
   onAction,
 }: MessageListProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -74,9 +68,6 @@ export function MessageList({
           <MessageBubble
             key={message.id}
             message={message}
-            onConfirm={onConfirm}
-            onProgramSelect={onProgramSelect}
-            onFormSubmit={onFormSubmit}
             onAction={onAction}
           />
         ))}

@@ -25,9 +25,6 @@ export interface ChatMessage {
 
 interface MessageBubbleProps {
   message: ChatMessage;
-  onConfirm?: () => void;
-  onProgramSelect?: (program: any) => void;
-  onFormSubmit?: (formId: string, values: any) => void;
   onAction?: (action: string, payload: any) => void;
 }
 
@@ -45,9 +42,6 @@ function renderFormattedText(text: string): string {
 
 export function MessageBubble({ 
   message, 
-  onConfirm, 
-  onProgramSelect, 
-  onFormSubmit,
   onAction 
 }: MessageBubbleProps) {
   const isUser = message.sender === "user";
@@ -98,42 +92,6 @@ export function MessageBubble({
           </div>
         ))}
 
-        {message.componentType === "confirmation" && message.componentData && !message.componentData.cards && onConfirm && (
-          <ConfirmationCard
-            title={message.componentData.title}
-            message={message.componentData.message}
-            onConfirm={onConfirm}
-            confirmLabel={message.componentData.confirmLabel}
-            cancelLabel={message.componentData.cancelLabel}
-          />
-        )}
-
-        {message.componentType === "carousel" && message.componentData && onProgramSelect && (
-          <OptionsCarousel
-            options={message.componentData.options}
-            onSelect={onProgramSelect}
-          />
-        )}
-
-        {message.componentType === "form" && message.componentData && onFormSubmit && (
-          <InlineChatForm
-            title={message.componentData.title}
-            fields={message.componentData.fields}
-            onSubmit={(values) => onFormSubmit(message.id, values)}
-          />
-        )}
-
-        {message.componentType === "status" && message.componentData && (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {message.componentData.statuses.map((status: any, idx: number) => (
-              <StatusChip
-                key={idx}
-                label={status.label}
-                status={status.status}
-              />
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );
