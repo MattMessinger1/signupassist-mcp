@@ -827,9 +827,6 @@ export const skiClubProTools = {
         await session.page.goto(`${baseUrl}/user/login`, { waitUntil: 'networkidle' });
         await loginWithCredentials(session.page, credentials.email, credentials.password, skiClubProConfig);
         const loginResult = { login_status: 'success' };
-          session_token: args.session_token,
-          user_jwt: args.user_jwt
-        });
         
         // ✅ Check login result
         if (loginResult.login_status === 'failed') {
@@ -1066,9 +1063,6 @@ export const skiClubProTools = {
       await session.page.goto(`${baseUrl}/user/login`, { waitUntil: 'networkidle' });
       await loginWithCredentials(session.page, credentials.email, credentials.password, skiClubProConfig);
       const loginResult = { login_status: 'success' };
-        session_token: args.session_token,
-        user_jwt: args.user_jwt
-      });
       
       // Check login result
       if (loginResult.login_status === 'failed') {
