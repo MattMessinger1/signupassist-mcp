@@ -119,8 +119,9 @@ class SignupAssistMCPServer {
 
       // --- Health check
       if (req.method === 'GET' && url.pathname === '/health') {
+        console.log('[HEALTH] check received');
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, tools: this.getToolsList() }));
+        res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
         return;
       }
 
@@ -420,9 +421,13 @@ class SignupAssistMCPServer {
       }
     });
 
+    // Log startup info before binding
+    console.log(`[STARTUP] NODE_ENV: ${process.env.NODE_ENV}`);
+    console.log(`[STARTUP] PORT: ${port}`);
+
     return new Promise((resolve, reject) => {
       httpServer.listen(port, '0.0.0.0', () => {
-        console.log(`✅ SignupAssist MCP HTTP Server listening on port ${port}`);
+        console.log(`✅ MCP HTTP Server listening on port ${port}`);
         console.log(`   Health: http://localhost:${port}/health`);
         console.log(`   Manifest: http://localhost:${port}/mcp/manifest.json`);
         console.log(`   Root: http://localhost:${port}/mcp`);
