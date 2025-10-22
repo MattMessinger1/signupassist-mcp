@@ -162,6 +162,33 @@ class SignupAssistMCPServer {
         return;
       }
 
+      // --- Serve OpenAPI spec at /mcp/openapi.json
+      if (req.method === 'GET' && url.pathname === '/mcp/openapi.json') {
+        try {
+          // Load openapi.json with fallback for Railway builds
+          let openapiPath = path.resolve(process.cwd(), 'dist', 'mcp', 'openapi.json');
+          if (!existsSync(openapiPath)) {
+            // Fallback: use source copy
+            openapiPath = path.resolve(process.cwd(), 'mcp', 'openapi.json');
+          }
+          console.log('[DEBUG] Using OpenAPI spec at:', openapiPath);
+          const spec = readFileSync(openapiPath, 'utf8');
+          res.writeHead(200, { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          });
+          res.end(spec);
+          console.log('[ROUTE] Served /mcp/openapi.json');
+        } catch (error: any) {
+          console.error('[OPENAPI ERROR]', error);
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ 
+            error: 'OpenAPI spec not found. Run: npm run openapi:generate' 
+          }));
+        }
+        return;
+      }
+
       // --- Serve manifest at .well-known path (legacy plugin compatibility)
       if (req.method === 'GET' && url.pathname === '/.well-known/ai-plugin.json') {
         try {

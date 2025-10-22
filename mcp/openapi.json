@@ -1,0 +1,699 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SignupAssist MCP API",
+    "version": "1.0.0",
+    "description": "Automated activity registration system with secure credential management and consent-first flows. Supports program discovery, prerequisite checking, registration, and payment processing.",
+    "contact": {
+      "email": "support@signupassist.ai"
+    }
+  },
+  "servers": [
+    {
+      "url": "https://signupassist-mcp-production.up.railway.app",
+      "description": "Production MCP Server"
+    }
+  ],
+  "paths": {
+    "/tools/call": {
+      "post": {
+        "summary": "Execute MCP tool",
+        "description": "Execute any registered MCP tool by name with provided arguments",
+        "operationId": "callTool",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "tool",
+                  "args"
+                ],
+                "properties": {
+                  "tool": {
+                    "type": "string",
+                    "enum": [
+                      "scp.discover_required_fields",
+                      "scp.find_programs",
+                      "scp.login",
+                      "scp.register",
+                      "scp.pay",
+                      "scp:list_children",
+                      "scp:check_prerequisites",
+                      "scp.check_account_status",
+                      "scp.check_membership_status",
+                      "scp.check_payment_method"
+                    ],
+                    "description": "Name of the tool to execute"
+                  },
+                  "args": {
+                    "type": "object",
+                    "description": "Tool-specific arguments",
+                    "additionalProperties": true
+                  },
+                  "mandate_id": {
+                    "type": "string",
+                    "description": "Optional mandate ID for audit trail",
+                    "format": "uuid"
+                  },
+                  "plan_execution_id": {
+                    "type": "string",
+                    "description": "Optional plan execution ID for tracking",
+                    "format": "uuid"
+                  }
+                }
+              },
+              "examples": {
+                "scp_discover_required_fields": {
+                  "summary": "Example: Discovers the required fields for a given program registration form",
+                  "value": {
+                    "tool": "scp.discover_required_fields",
+                    "args": {
+                      "session_id": "example-session-123",
+                      "mandate_id": "550e8400-e29b-41d4-a716-446655440000",
+                      "program_id": "blackhawk_winter_lessons",
+                      "organization_id": "blackhawk"
+                    }
+                  }
+                },
+                "scp_find_programs": {
+                  "summary": "Example: Finds available programs at a given organization",
+                  "value": {
+                    "tool": "scp.find_programs",
+                    "args": {
+                      "session_id": "example-session-123",
+                      "mandate_id": "550e8400-e29b-41d4-a716-446655440000",
+                      "query": "ski lessons",
+                      "organization_id": "blackhawk"
+                    }
+                  }
+                },
+                "scp_login": {
+                  "summary": "Example: Logs into SkiClubPro with stored credentials",
+                  "value": {
+                    "tool": "scp.login",
+                    "args": {
+                      "session_id": "example-session-123",
+                      "mandate_id": "550e8400-e29b-41d4-a716-446655440000",
+                      "organization_id": "blackhawk",
+                      "credential_id": "cred-12345"
+                    }
+                  }
+                },
+                "scp_register": {
+                  "summary": "Example: Registers a child for a program",
+                  "value": {
+                    "tool": "scp.register",
+                    "args": {
+                      "session_id": "example-session-123",
+                      "mandate_id": "550e8400-e29b-41d4-a716-446655440000",
+                      "program_id": "blackhawk_winter_lessons",
+                      "organization_id": "blackhawk",
+                      "child_id": "child-123",
+                      "form_data": {
+                        "emergency_contact": "Jane Doe",
+                        "emergency_phone": "555-0123"
+                      }
+                    }
+                  }
+                },
+                "scp_pay": {
+                  "summary": "Example: Processes payment for a registration",
+                  "value": {
+                    "tool": "scp.pay",
+                    "args": {
+                      "session_id": "example-session-123",
+                      "mandate_id": "550e8400-e29b-41d4-a716-446655440000",
+                      "organization_id": "blackhawk",
+                      "amount": 150.0,
+                      "payment_method_id": "pm_card_visa"
+                    }
+                  }
+                },
+                "scp_check_prerequisites": {
+                  "summary": "Example: Checks if all prerequisites are met for registration",
+                  "value": {
+                    "tool": "scp:check_prerequisites",
+                    "args": {
+                      "session_id": "example-session-123",
+                      "mandate_id": "550e8400-e29b-41d4-a716-446655440000",
+                      "organization_id": "blackhawk",
+                      "program_id": "blackhawk_winter_lessons"
+                    }
+                  }
+                },
+                "scp_list_children": {
+                  "summary": "Example: Lists children registered to the account",
+                  "value": {
+                    "tool": "scp:list_children",
+                    "args": {
+                      "session_id": "example-session-123",
+                      "mandate_id": "550e8400-e29b-41d4-a716-446655440000"
+                    }
+                  }
+                },
+                "scp_check_account_status": {
+                  "summary": "Example: Checks account status and validity",
+                  "value": {
+                    "tool": "scp.check_account_status",
+                    "args": {
+                      "session_id": "example-session-123",
+                      "mandate_id": "550e8400-e29b-41d4-a716-446655440000"
+                    }
+                  }
+                },
+                "scp_check_membership_status": {
+                  "summary": "Example: Checks membership status and expiration",
+                  "value": {
+                    "tool": "scp.check_membership_status",
+                    "args": {
+                      "session_id": "example-session-123",
+                      "mandate_id": "550e8400-e29b-41d4-a716-446655440000"
+                    }
+                  }
+                },
+                "scp_check_payment_method": {
+                  "summary": "Example: Checks if payment method is configured",
+                  "value": {
+                    "tool": "scp.check_payment_method",
+                    "args": {
+                      "session_id": "example-session-123",
+                      "mandate_id": "550e8400-e29b-41d4-a716-446655440000"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful tool execution",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "tool": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - OAuth token invalid or missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "scp.discover_required_fields_input": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Browser session ID"
+          },
+          "mandate_id": {
+            "type": "string",
+            "description": "Mandate ID for audit trail"
+          },
+          "program_id": {
+            "type": "string",
+            "description": "Program identifier"
+          },
+          "organization_id": {
+            "type": "string",
+            "description": "Organization identifier"
+          }
+        },
+        "required": [
+          "session_id",
+          "mandate_id",
+          "program_id",
+          "organization_id"
+        ],
+        "additionalProperties": false
+      },
+      "scp.discover_required_fields_response": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "scp.find_programs_input": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Browser session ID"
+          },
+          "mandate_id": {
+            "type": "string",
+            "description": "Mandate ID for audit trail"
+          },
+          "organization_id": {
+            "type": "string",
+            "description": "Organization identifier"
+          },
+          "query": {
+            "type": "string",
+            "description": "Search query"
+          }
+        },
+        "required": [
+          "session_id",
+          "mandate_id",
+          "organization_id"
+        ],
+        "additionalProperties": false
+      },
+      "scp.find_programs_response": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "scp.login_input": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Browser session ID"
+          },
+          "mandate_id": {
+            "type": "string",
+            "description": "Mandate ID for audit trail"
+          },
+          "organization_id": {
+            "type": "string",
+            "description": "Organization identifier"
+          },
+          "credential_id": {
+            "type": "string",
+            "description": "Credential ID"
+          }
+        },
+        "required": [
+          "session_id",
+          "mandate_id",
+          "organization_id",
+          "credential_id"
+        ],
+        "additionalProperties": false
+      },
+      "scp.login_response": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "scp.register_input": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Browser session ID"
+          },
+          "mandate_id": {
+            "type": "string",
+            "description": "Mandate ID for audit trail"
+          },
+          "program_id": {
+            "type": "string",
+            "description": "Program identifier"
+          },
+          "organization_id": {
+            "type": "string",
+            "description": "Organization identifier"
+          },
+          "child_id": {
+            "type": "string",
+            "description": "Child identifier"
+          },
+          "form_data": {
+            "type": "object",
+            "description": "Registration form data",
+            "additionalProperties": true
+          }
+        },
+        "required": [
+          "session_id",
+          "mandate_id",
+          "program_id",
+          "organization_id",
+          "form_data"
+        ],
+        "additionalProperties": false
+      },
+      "scp.register_response": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "scp.pay_input": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Browser session ID"
+          },
+          "mandate_id": {
+            "type": "string",
+            "description": "Mandate ID for audit trail"
+          },
+          "organization_id": {
+            "type": "string",
+            "description": "Organization identifier"
+          },
+          "amount": {
+            "type": "number",
+            "description": "Payment amount"
+          },
+          "payment_method_id": {
+            "type": "string",
+            "description": "Payment method ID"
+          }
+        },
+        "required": [
+          "session_id",
+          "mandate_id",
+          "organization_id",
+          "amount"
+        ],
+        "additionalProperties": false
+      },
+      "scp.pay_response": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "scp:list_children_input": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Browser session ID"
+          },
+          "mandate_id": {
+            "type": "string",
+            "description": "Mandate ID for audit trail"
+          }
+        },
+        "required": [
+          "session_id",
+          "mandate_id"
+        ],
+        "additionalProperties": false
+      },
+      "scp:list_children_response": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "scp:check_prerequisites_input": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Browser session ID"
+          },
+          "mandate_id": {
+            "type": "string",
+            "description": "Mandate ID for audit trail"
+          },
+          "organization_id": {
+            "type": "string",
+            "description": "Organization identifier"
+          },
+          "program_id": {
+            "type": "string",
+            "description": "Program identifier"
+          }
+        },
+        "required": [
+          "session_id",
+          "mandate_id",
+          "organization_id"
+        ],
+        "additionalProperties": false
+      },
+      "scp:check_prerequisites_response": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "scp.check_account_status_input": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Browser session ID"
+          },
+          "mandate_id": {
+            "type": "string",
+            "description": "Mandate ID for audit trail"
+          }
+        },
+        "required": [
+          "session_id",
+          "mandate_id"
+        ],
+        "additionalProperties": false
+      },
+      "scp.check_account_status_response": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "scp.check_membership_status_input": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Browser session ID"
+          },
+          "mandate_id": {
+            "type": "string",
+            "description": "Mandate ID for audit trail"
+          }
+        },
+        "required": [
+          "session_id",
+          "mandate_id"
+        ],
+        "additionalProperties": false
+      },
+      "scp.check_membership_status_response": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      },
+      "scp.check_payment_method_input": {
+        "type": "object",
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "description": "Browser session ID"
+          },
+          "mandate_id": {
+            "type": "string",
+            "description": "Mandate ID for audit trail"
+          }
+        },
+        "required": [
+          "session_id",
+          "mandate_id"
+        ],
+        "additionalProperties": false
+      },
+      "scp.check_payment_method_response": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "error": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "OAuth2": {
+        "type": "oauth2",
+        "flows": {
+          "authorizationCode": {
+            "authorizationUrl": "https://dev-33ngu1de5cxjtxyd.us.auth0.com/authorize",
+            "tokenUrl": "https://dev-33ngu1de5cxjtxyd.us.auth0.com/oauth/token",
+            "scopes": {
+              "user": "Access user data and perform actions on behalf of the user"
+            }
+          }
+        }
+      }
+    }
+  },
+  "security": [
+    {
+      "OAuth2": [
+        "user"
+      ]
+    }
+  ]
+}
