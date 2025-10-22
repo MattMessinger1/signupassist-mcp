@@ -161,7 +161,7 @@ async function ensureLoggedIn(
   console.log('DEBUG: Attempting login to SkiClubPro at:', baseUrl);
   
   await page.goto(`${baseUrl}/user/login`, { waitUntil: 'networkidle' });
-  await loginWithCredentials(page, creds.email, creds.password, skiClubProConfig);
+  await loginWithCredentials(page, skiClubProConfig, creds, session.browser);
   
   console.log('DEBUG: Logged in as', creds.email);
   return { email: creds.email, login_status: 'success' };
@@ -817,15 +817,19 @@ export const skiClubProTools = {
           }
         }
         
+        // Get base URL for organization
+        const override = getOrgOverride(orgRef);
+        const baseUrl = buildBaseUrl(orgRef, override.customDomain);
+        
         // Launch Browserbase session
         console.log('[scp.find_programs] Launching Browserbase session...');
         session = await launchBrowserbaseSession();
         
-        // 🧠 TODO: Login now uses basic loginWithCredentials (performSkiClubProLogin removed)
+        // Login with credentials
         console.log('[scp.find_programs] Logging in...');
         const credentials = await lookupCredentialsById(args.credential_id, args.user_jwt);
         await session.page.goto(`${baseUrl}/user/login`, { waitUntil: 'networkidle' });
-        await loginWithCredentials(session.page, credentials.email, credentials.password, skiClubProConfig);
+        await loginWithCredentials(session.page, skiClubProConfig, credentials, session.browser);
         const loginResult = { login_status: 'success' };
         
         // ✅ Check login result
@@ -1049,7 +1053,7 @@ export const skiClubProTools = {
       
       const orgRef = args.org_ref || 'blackhawk-ski-club';
       const override = getOrgOverride(orgRef);
-      const base = buildBaseUrl(orgRef, override.customDomain);
+      const baseUrl = buildBaseUrl(orgRef, override.customDomain);
       
       console.log(`[scp:check_prerequisites] Starting checks for org: ${orgRef} (no mandate required)`);
       
@@ -1057,11 +1061,11 @@ export const skiClubProTools = {
       session = await launchBrowserbaseSession();
       const { page } = session;
       
-      // 🧠 TODO: Login now uses basic loginWithCredentials (performSkiClubProLogin removed)
+      // Login with credentials
       console.log('[scp:check_prerequisites] Logging in...');
       const credentials = await lookupCredentialsById(args.credential_id, args.user_jwt);
       await session.page.goto(`${baseUrl}/user/login`, { waitUntil: 'networkidle' });
-      await loginWithCredentials(session.page, credentials.email, credentials.password, skiClubProConfig);
+      await loginWithCredentials(session.page, skiClubProConfig, credentials, session.browser);
       const loginResult = { login_status: 'success' };
       
       // Check login result

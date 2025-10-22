@@ -3,7 +3,16 @@
  * Auto-generates OpenAPI spec from MCP tool definitions
  */
 
-import { MCPTool } from '@modelcontextprotocol/sdk/types.js';
+// Define tool type based on our implementation
+interface MCPTool {
+  name: string;
+  description: string;
+  inputSchema: {
+    type: string;
+    properties: Record<string, any>;
+    required?: string[];
+  };
+}
 
 interface OpenAPISpec {
   openapi: string;
