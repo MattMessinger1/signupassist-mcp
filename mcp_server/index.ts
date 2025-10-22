@@ -213,19 +213,27 @@ class SignupAssistMCPServer {
 
       // --- Tool invocation endpoint
       if (url.pathname === '/tools/call') {
-        // Check for Authorization header and verify token
-        const authHeader = req.headers['authorization'];
-        const token = authHeader?.replace('Bearer ', '');
-        const expectedToken = process.env.MCP_ACCESS_TOKEN;
-        
-        if (!token || token !== expectedToken) {
-          res.writeHead(401, {
-            "Content-Type": "application/json",
-            "WWW-Authenticate": "Bearer realm=\"signupassist\", error=\"invalid_token\", error_description=\"Invalid or missing access token\""
-          });
-          res.end(JSON.stringify({ error: "Unauthorized - Invalid or missing token" }));
-          console.log('[AUTH] Unauthorized access attempt to /tools/call');
-          return;
+        // Development mode bypass (non-production only)
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn('[AUTH] Dev mode: bypassing auth for /tools/call');
+          // Continue to tool execution below
+        } else {
+          // Production auth validation
+          const authHeader = req.headers['authorization'];
+          const token = authHeader?.replace('Bearer ', '');
+          const expectedToken = process.env.MCP_ACCESS_TOKEN;
+          
+          if (!token || token !== expectedToken) {
+            res.writeHead(401, {
+              "Content-Type": "application/json",
+              "WWW-Authenticate": "Bearer realm=\"signupassist\", error=\"invalid_token\", error_description=\"Invalid or missing access token\""
+            });
+            res.end(JSON.stringify({ error: "Unauthorized - Invalid or missing token" }));
+            console.log('[AUTH] Unauthorized access attempt to /tools/call');
+            return;
+          }
+          
+          console.log('[AUTH] Authorized request to /tools/call');
         }
 
         if (req.method !== 'POST') {
@@ -357,6 +365,14 @@ const server = new SignupAssistMCPServer();
 
 console.log('[STARTUP] NODE_ENV:', process.env.NODE_ENV);
 console.log('[STARTUP] PORT:', process.env.PORT);
+
+// Enhanced logging for MCP_ACCESS_TOKEN
+const token = process.env.MCP_ACCESS_TOKEN;
+if (token) {
+  console.log('[AUTH] Token configured:', token.slice(0, 4) + '****');
+} else {
+  console.warn('[AUTH] Warning: No MCP_ACCESS_TOKEN detected in environment');
+}
 
 if (process.env.NODE_ENV === 'production' || process.env.PORT) {
   console.log('[STARTUP] Starting HTTP server...');
