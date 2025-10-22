@@ -208,6 +208,96 @@ export function getEnvironmentConfig() {
   };
 }
 
+// ============= Test Scenarios =============
+
+export interface TestScenario {
+  id: string;
+  name: string;
+  orchestratorInput: string;
+  mcpToolCall: {
+    tool: string;
+    args: Record<string, any>;
+  };
+  expectedOutputs: {
+    orchestrator: {
+      cards?: string[];
+      cta?: string[];
+      message?: string;
+    };
+    mcp: {
+      success?: boolean;
+      [key: string]: any;
+    };
+  };
+}
+
+export const TEST_SCENARIOS: TestScenario[] = [
+  {
+    id: 'login',
+    name: 'Login Flow',
+    orchestratorInput: 'I need to connect to Blackhawk Ski Club',
+    mcpToolCall: {
+      tool: 'scp:login',
+      args: {
+        email: TEST_CREDENTIALS.email,
+        password: TEST_CREDENTIALS.password,
+        org_ref: 'blackhawk',
+      },
+    },
+    expectedOutputs: {
+      orchestrator: {
+        cards: ['ConnectAccount'],
+        cta: ['login'],
+      },
+      mcp: {
+        success: true,
+        session_ref: 'string',
+      },
+    },
+  },
+  {
+    id: 'program_search',
+    name: 'Program Search',
+    orchestratorInput: 'Show me ski lessons for kids',
+    mcpToolCall: {
+      tool: 'scp:find_programs',
+      args: {
+        query: 'ski lessons',
+        org_ref: 'blackhawk',
+      },
+    },
+    expectedOutputs: {
+      orchestrator: {
+        cards: ['ProgramBrowser'],
+      },
+      mcp: {
+        success: true,
+        programs: 'array',
+      },
+    },
+  },
+  {
+    id: 'prerequisites',
+    name: 'Check Prerequisites',
+    orchestratorInput: 'What do I need to complete?',
+    mcpToolCall: {
+      tool: 'scp:check_prerequisites',
+      args: {
+        org_ref: 'blackhawk',
+      },
+    },
+    expectedOutputs: {
+      orchestrator: {
+        cards: ['Prerequisites'],
+      },
+      mcp: {
+        success: true,
+        prerequisites: 'array',
+      },
+    },
+  },
+];
+
 // ============= Validation Helpers =============
 
 /**

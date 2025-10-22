@@ -29,9 +29,11 @@ import { HarnessHeader } from "@/components/chat-test/HarnessHeader";
 import { MessageList } from "@/components/chat-test/MessageList";
 import { ChatInput } from "@/components/chat-test/ChatInput";
 import { DebugPanel, LogEntry } from "@/components/chat-test/DebugPanel";
+import { TestCoveragePanel } from "@/components/chat-test/TestCoveragePanel";
 import type { ChatMessage } from "@/components/chat-test/MessageBubble";
-import { checkMCPHealth, type MCPHealthCheckResult } from "@/lib/chatMcpClient";
+import { checkMCPHealth, type MCPHealthCheckResult, callMCPTool } from "@/lib/chatMcpClient";
 import { createLogEntry, type LogLevel, type LogCategory } from "@/lib/debugLogger";
+import { TestComparisonTracker, type CoverageReport, type TestResult } from "@/lib/testComparison";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +41,7 @@ import { CheckCircle2, XCircle, Activity } from "lucide-react";
 import { sendMessage, sendAction } from "@/lib/orchestratorClient";
 import {
   DEFAULT_PROVIDER,
+  TEST_SCENARIOS,
 } from "@/lib/config/testHarness";
 
 // ============= Types =============
@@ -77,6 +80,8 @@ export default function ChatTestHarness() {
   const [showDebugPanel, setShowDebugPanel] = useState(true);
   const [healthCheckResult, setHealthCheckResult] = useState<MCPHealthCheckResult | null>(null);
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
+  const [testTracker] = useState(() => new TestComparisonTracker());
+  const [coverageReport, setCoverageReport] = useState<CoverageReport | null>(null);
 
   const { toast } = useToast();
 
@@ -197,8 +202,8 @@ export default function ChatTestHarness() {
   // ============= Flow Handlers =============
 
   /**
-   * Handle sending a message - orchestrated flow version
-   * Routes user input through the orchestrator backend
+   * Handle sending a message - Auto-detects comprehensive test requests
+   * Routes user input through the orchestrator backend OR triggers full test
    */
   const handleSend = async () => {
     if (!input.trim() || isProcessing) return;
@@ -209,6 +214,15 @@ export default function ChatTestHarness() {
     
     console.log('[HARNESS] ===== USER INPUT =====');
     console.log('[HARNESS] Input:', userInput);
+
+    // Auto-detect comprehensive test request
+    const lowerInput = userInput.toLowerCase();
+    if (lowerInput.includes('run full test') || 
+        lowerInput.includes('test everything') ||
+        lowerInput.includes('comprehensive test')) {
+      await runComprehensiveTests();
+      return;
+    }
     
     setIsProcessing(true);
 
@@ -239,9 +253,177 @@ export default function ChatTestHarness() {
     }
   };
 
-  // ============= Demo Flow =============
+  // ============= Comprehensive Testing =============
 
   const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+  /**
+   * Run comprehensive tests - both Orchestrator and MCP Direct modes
+   */
+  const runComprehensiveTests = async () => {
+    setIsDemoRunning(true);
+    addLog("info", "test", "🧪 Starting comprehensive test suite (Orchestrator + MCP Direct)");
+    
+    // Clear previous results
+    testTracker.clear();
+    setCoverageReport(null);
+
+    try {
+      // PHASE 1: Orchestrator Mode
+      addAssistantMessage("📋 **PHASE 1: Testing Orchestrator Mode (REST API)**");
+      await delay(1000);
+      await runOrchestratorTests();
+      
+      await delay(2000);
+      
+      // PHASE 2: MCP Direct Mode
+      addAssistantMessage("🔧 **PHASE 2: Testing MCP Direct Mode (Raw Tools)**");
+      await delay(1000);
+      await runMCPDirectTests();
+      
+      await delay(2000);
+      
+      // PHASE 3: Generate comparison report
+      addAssistantMessage("📊 **PHASE 3: Generating Coverage Report**");
+      const report = testTracker.generateReport();
+      setCoverageReport(report);
+      
+      addLog("success", "test", "Comprehensive tests completed", { report });
+      
+      // Display summary
+      const summary = `
+**Test Summary:**
+- Orchestrator: ${report.orchestratorCoverage.stepsCompleted} steps, ${report.orchestratorCoverage.cardsGenerated} cards, ${report.orchestratorCoverage.ctasGenerated} CTAs
+- MCP Direct: ${report.mcpCoverage.toolsCalled} tools called, ${report.mcpCoverage.rawResponsesReceived} successful
+- Overall: ${report.overallPassed ? '✅ PASSED' : '❌ FAILED'}
+      `.trim();
+      
+      addAssistantMessage(summary);
+      
+      toast({
+        title: report.overallPassed ? "✅ All Tests Passed" : "⚠️ Some Tests Failed",
+        description: `Orchestrator: ${report.orchestratorCoverage.stepsCompleted} steps | MCP: ${report.mcpCoverage.toolsCalled} tools`,
+      });
+      
+    } catch (error) {
+      console.error("[Comprehensive Tests] Error:", error);
+      addLog("error", "test", "Comprehensive tests failed", { error: error instanceof Error ? error.message : "Unknown error" });
+      handleError(error instanceof Error ? error.message : "Unknown error");
+    } finally {
+      setIsDemoRunning(false);
+    }
+  };
+
+  /**
+   * Run orchestrator mode tests
+   */
+  const runOrchestratorTests = async () => {
+    const sessionId = `orchestrator-test-${Date.now()}`;
+    
+    for (const scenario of TEST_SCENARIOS) {
+      addLog("info", "orchestrator", `Testing: ${scenario.name}`);
+      const startTime = Date.now();
+      const errors: string[] = [];
+      
+      try {
+        const response = await sendMessage(scenario.orchestratorInput, sessionId);
+        const timing = Date.now() - startTime;
+        
+        const result: TestResult = {
+          mode: 'orchestrator',
+          step: scenario.id,
+          input: scenario.orchestratorInput,
+          output: response,
+          timing,
+          errors,
+          timestamp: new Date(),
+        };
+        
+        testTracker.addResult(result);
+        addLog("success", "orchestrator", `${scenario.name} completed in ${timing}ms`);
+        
+        // Visual feedback
+        addAssistantMessage(
+          `✅ Orchestrator: ${scenario.name} (${timing}ms)`,
+          response.cards ? "cards" : undefined,
+          { cards: response.cards, cta: response.cta }
+        );
+        
+      } catch (error: any) {
+        errors.push(error.message);
+        const result: TestResult = {
+          mode: 'orchestrator',
+          step: scenario.id,
+          input: scenario.orchestratorInput,
+          output: { error: error.message },
+          timing: Date.now() - startTime,
+          errors,
+          timestamp: new Date(),
+        };
+        testTracker.addResult(result);
+        addLog("error", "orchestrator", `${scenario.name} failed`, { error: error.message });
+      }
+      
+      await delay(1000);
+    }
+  };
+
+  /**
+   * Run MCP direct mode tests
+   */
+  const runMCPDirectTests = async () => {
+    for (const scenario of TEST_SCENARIOS) {
+      addLog("info", "mcp", `Testing tool: ${scenario.mcpToolCall.tool}`);
+      const startTime = Date.now();
+      const errors: string[] = [];
+      
+      try {
+        const response = await callMCPTool(
+          scenario.mcpToolCall.tool,
+          scenario.mcpToolCall.args
+        );
+        const timing = Date.now() - startTime;
+        
+        const result: TestResult = {
+          mode: 'mcp-direct',
+          step: scenario.id,
+          input: scenario.mcpToolCall,
+          output: response,
+          timing,
+          errors,
+          timestamp: new Date(),
+        };
+        
+        testTracker.addResult(result);
+        addLog("success", "mcp", `${scenario.mcpToolCall.tool} completed in ${timing}ms`);
+        
+        // Visual feedback with raw output
+        addAssistantMessage(
+          `✅ MCP Direct: ${scenario.name} (${timing}ms)`,
+          undefined,
+          { rawMCP: response }
+        );
+        
+      } catch (error: any) {
+        errors.push(error.message);
+        const result: TestResult = {
+          mode: 'mcp-direct',
+          step: scenario.id,
+          input: scenario.mcpToolCall,
+          output: { error: error.message },
+          timing: Date.now() - startTime,
+          errors,
+          timestamp: new Date(),
+        };
+        testTracker.addResult(result);
+        addLog("error", "mcp", `${scenario.mcpToolCall.tool} failed`, { error: error.message });
+      }
+      
+      await delay(1000);
+    }
+  };
+
+  // ============= Demo Flow =============
 
   /**
    * Execute automated demo flow
@@ -397,6 +579,13 @@ export default function ChatTestHarness() {
         onRunDemo={runDemoFlow}
         onReset={() => resetConversation()}
       />
+
+      {/* Test Coverage Report */}
+      {coverageReport && (
+        <div className="px-4 py-2">
+          <TestCoveragePanel report={coverageReport} />
+        </div>
+      )}
 
       {/* MCP Diagnostics Panel */}
       <div className="px-4 py-2 border-b bg-muted/30">

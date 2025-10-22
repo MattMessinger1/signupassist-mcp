@@ -19,7 +19,7 @@ export interface ChatMessage {
   sender: "user" | "assistant";
   text: string;
   timestamp: Date;
-  componentType?: "confirmation" | "carousel" | "form" | "status" | "cards";
+  componentType?: "confirmation" | "carousel" | "form" | "status" | "cards" | "test-comparison";
   componentData?: any;
 }
 
@@ -91,6 +91,31 @@ export function MessageBubble({
             />
           </div>
         ))}
+
+        {/* Test Comparison View */}
+        {message.componentData?.testComparison && (
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="border rounded-lg p-3 bg-background">
+              <h4 className="font-semibold text-xs mb-2 text-primary">Orchestrator Mode</h4>
+              <pre className="text-[10px] overflow-x-auto whitespace-pre-wrap font-mono text-muted-foreground">
+                {JSON.stringify(message.componentData.testComparison.orchestrator, null, 2)}
+              </pre>
+            </div>
+            <div className="border rounded-lg p-3 bg-background">
+              <h4 className="font-semibold text-xs mb-2 text-secondary">MCP Direct Mode</h4>
+              <pre className="text-[10px] overflow-x-auto whitespace-pre-wrap font-mono text-muted-foreground">
+                {JSON.stringify(message.componentData.testComparison.mcp, null, 2)}
+              </pre>
+            </div>
+          </div>
+        )}
+
+        {/* Raw MCP Output */}
+        {message.componentData?.rawMCP && (
+          <pre className="mt-3 p-3 bg-slate-900 dark:bg-slate-950 rounded-lg text-[10px] overflow-x-auto font-mono text-slate-100">
+            {JSON.stringify(message.componentData.rawMCP, null, 2)}
+          </pre>
+        )}
 
       </div>
     </div>

@@ -7,7 +7,7 @@ export interface LogEntry {
   id: string;
   timestamp: Date;
   level: "info" | "success" | "error" | "warning" | "debug";
-  category: "user" | "tool" | "assistant" | "system";
+  category: "user" | "tool" | "assistant" | "system" | "mcp" | "orchestrator" | "test";
   message: string;
   data?: any;
 }
@@ -84,11 +84,14 @@ function LogLine({ log }: { log: LogEntry }) {
     debug: "🔧",
   };
 
-  const categoryLabels = {
+  const categoryLabels: Record<LogEntry['category'], string> = {
     user: "[USER]",
     tool: "[TOOL]",
     assistant: "[ASST]",
     system: "[SYS]",
+    mcp: "[MCP]",
+    orchestrator: "[ORCH]",
+    test: "[TEST]",
   };
 
   const timestamp = log.timestamp.toLocaleTimeString("en-US", {
