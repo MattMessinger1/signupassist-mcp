@@ -30,8 +30,12 @@ import { MessageList } from "@/components/chat-test/MessageList";
 import { ChatInput } from "@/components/chat-test/ChatInput";
 import { DebugPanel, LogEntry } from "@/components/chat-test/DebugPanel";
 import type { ChatMessage } from "@/components/chat-test/MessageBubble";
-import { initializeMCP } from "@/lib/chatMcpClient";
+import { initializeMCP, checkMCPHealth, type MCPHealthCheckResult } from "@/lib/chatMcpClient";
 import { createLogEntry, type LogLevel, type LogCategory } from "@/lib/debugLogger";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { CheckCircle2, XCircle, Activity } from "lucide-react";
 import {
   executeLogin,
   executeSearch,
@@ -83,6 +87,8 @@ export default function ChatTestHarness() {
   const [isDemoRunning, setIsDemoRunning] = useState(false);
   const [debugLogs, setDebugLogs] = useState<LogEntry[]>([]);
   const [showDebugPanel, setShowDebugPanel] = useState(true);
+  const [healthCheckResult, setHealthCheckResult] = useState<MCPHealthCheckResult | null>(null);
+  const [isCheckingHealth, setIsCheckingHealth] = useState(false);
 
   const { toast } = useToast();
 
@@ -528,6 +534,33 @@ export default function ChatTestHarness() {
     }
   };
 
+  // ============= Health Check =============
+
+  const runHealthCheck = async () => {
+    setIsCheckingHealth(true);
+    addLog("info", "system", "Running MCP health check...");
+    
+    const result = await checkMCPHealth();
+    setHealthCheckResult(result);
+    
+    if (result.ok) {
+      addLog("success", "system", `Health check passed - ${result.details.toolCount} tools available`);
+      toast({
+        title: "✅ MCP Connection Healthy",
+        description: `${result.details.toolCount} tools available`,
+      });
+    } else {
+      addLog("error", "system", `Health check failed: ${result.details.error}`);
+      toast({
+        title: "❌ MCP Connection Failed",
+        description: result.details.error || "Check console for details",
+        variant: "destructive",
+      });
+    }
+    
+    setIsCheckingHealth(false);
+  };
+
   // ============= Initialization =============
 
   useEffect(() => {
@@ -556,6 +589,51 @@ export default function ChatTestHarness() {
         onRunDemo={runDemoFlow}
         onReset={() => resetConversation()}
       />
+
+      {/* MCP Diagnostics Panel */}
+      <div className="px-4 py-2 border-b bg-muted/30">
+        <div className="flex items-center gap-3">
+          <Button 
+            onClick={runHealthCheck} 
+            disabled={isCheckingHealth}
+            size="sm"
+            variant="outline"
+            className="gap-2"
+          >
+            <Activity className="h-4 w-4" />
+            {isCheckingHealth ? "Checking..." : "Test Connection"}
+          </Button>
+          
+          {healthCheckResult && (
+            <div className="flex items-center gap-4">
+              {healthCheckResult.ok ? (
+                <>
+                  <div className="flex items-center gap-1.5">
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    <span className="text-sm font-medium text-green-700">Health: OK</span>
+                  </div>
+                  <Badge variant="outline" className="gap-1">
+                    <span className="text-xs">Tools: {healthCheckResult.details.toolCount}</span>
+                  </Badge>
+                  {healthCheckResult.details.tools && healthCheckResult.details.tools.length > 0 && (
+                    <span className="text-xs text-muted-foreground truncate max-w-md">
+                      {healthCheckResult.details.tools.slice(0, 5).map(t => t.name).join(', ')}
+                      {healthCheckResult.details.tools.length > 5 && '...'}
+                    </span>
+                  )}
+                </>
+              ) : (
+                <div className="flex items-center gap-1.5">
+                  <XCircle className="h-4 w-4 text-destructive" />
+                  <span className="text-sm font-medium text-destructive">
+                    {healthCheckResult.details.error || 'Connection failed'}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
 
       <MessageList
         messages={messages}

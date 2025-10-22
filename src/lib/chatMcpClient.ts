@@ -52,7 +52,12 @@ export async function callMCPTool(
 ): Promise<MCPCallResult> {
   const runId = crypto.randomUUID();
 
-  console.log(`[MCP] Calling tool: ${toolName}`, args);
+  console.log(`[MCP] ===== TOOL CALL START =====`);
+  console.log(`[MCP] Tool: ${toolName}`);
+  console.log(`[MCP] Args:`, args);
+  console.log(`[MCP] Run ID: ${runId}`);
+  console.log(`[MCP] Base URL: ${MCP_BASE}`);
+  console.log(`[MCP] Auth Token: ${MCP_TOKEN ? MCP_TOKEN.slice(0, 4) + '****' : 'MISSING'}`);
 
   try {
     const headers: Record<string, string> = {
@@ -60,24 +65,34 @@ export async function callMCPTool(
       'X-Run-Id': runId,
     };
 
-    // Add auth token if available
     if (MCP_TOKEN) {
       headers['Authorization'] = `Bearer ${MCP_TOKEN}`;
+      console.log(`[MCP] Auth header added: Bearer ${MCP_TOKEN.slice(0, 4)}****`);
+    } else {
+      console.warn('[MCP] WARNING: No auth token configured!');
     }
+
+    const requestBody = {
+      tool: toolName,
+      args,
+    };
+    console.log(`[MCP] Request body:`, JSON.stringify(requestBody, null, 2));
 
     const res = await fetch(`${MCP_BASE}/tools/call`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({
-        tool: toolName,
-        args,
-      }),
+      body: JSON.stringify(requestBody),
     });
 
+    console.log(`[MCP] Response status: ${res.status}`);
+    console.log(`[MCP] Response headers:`, Object.fromEntries(res.headers.entries()));
+
     const data = await res.json().catch(() => ({}));
+    console.log(`[MCP] Response data:`, data);
 
     if (!res.ok) {
       console.error(`[MCP] Tool call failed:`, res.status, data);
+      console.log(`[MCP] ===== TOOL CALL FAILED =====`);
       return {
         success: false,
         error: data.error || `HTTP ${res.status}`,
@@ -85,13 +100,15 @@ export async function callMCPTool(
       };
     }
 
-    console.log(`[MCP] Tool call success:`, data);
+    console.log(`[MCP] Tool call success!`);
+    console.log(`[MCP] ===== TOOL CALL SUCCESS =====`);
     return {
       success: true,
       ...data,
     };
   } catch (error) {
     console.error('[MCP] Network error:', error);
+    console.log(`[MCP] ===== TOOL CALL ERROR =====`);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Network error',
@@ -139,6 +156,70 @@ export async function mcpPay(sessionRef: string, registrationRef: string, amount
     registration_ref: registrationRef,
     amount_cents: amountCents,
   });
+}
+
+/**
+ * Health check and diagnostics for MCP connection
+ */
+export interface MCPHealthCheckResult {
+  ok: boolean;
+  details: {
+    health?: string;
+    toolCount?: number;
+    tools?: MCPTool[];
+    manifest?: any;
+    error?: string;
+  };
+}
+
+export async function checkMCPHealth(): Promise<MCPHealthCheckResult> {
+  console.log('[MCP Health] ===== STARTING HEALTH CHECK =====');
+  console.log('[MCP Health] Base URL:', MCP_BASE);
+  console.log('[MCP Health] Token configured:', !!MCP_TOKEN);
+  
+  try {
+    // 1. Health endpoint (no auth required)
+    console.log('[MCP Health] Checking /health endpoint...');
+    const healthRes = await fetch(`${MCP_BASE}/health`);
+    const healthData = await healthRes.text();
+    console.log('[MCP Health] /health response:', healthData, `(${healthRes.status})`);
+    
+    // 2. Manifest endpoint (no auth required)
+    console.log('[MCP Health] Checking /mcp/manifest.json endpoint...');
+    const manifestRes = await fetch(`${MCP_BASE}/mcp/manifest.json`);
+    const manifestData = await manifestRes.json().catch(() => ({}));
+    console.log('[MCP Health] Manifest tools count:', manifestData.tools?.length || 0);
+    console.log('[MCP Health] Manifest tools:', manifestData.tools?.map((t: any) => t.name).join(', '));
+    
+    // 3. Tools list endpoint (no auth required)
+    console.log('[MCP Health] Checking /tools endpoint...');
+    const toolsRes = await fetch(`${MCP_BASE}/tools`);
+    const toolsData = await toolsRes.json().catch(() => ({}));
+    console.log('[MCP Health] Available tools count:', toolsData.tools?.length || 0);
+    console.log('[MCP Health] Available tools:', toolsData.tools?.map((t: any) => t.name).join(', '));
+    
+    const allOk = healthRes.ok && manifestRes.ok && toolsRes.ok;
+    console.log('[MCP Health] ===== HEALTH CHECK', allOk ? 'PASSED' : 'FAILED', '=====');
+    
+    return {
+      ok: allOk,
+      details: {
+        health: healthData,
+        toolCount: toolsData.tools?.length || 0,
+        tools: toolsData.tools || [],
+        manifest: manifestData,
+      }
+    };
+  } catch (error) {
+    console.error('[MCP Health] Connection failed:', error);
+    console.log('[MCP Health] ===== HEALTH CHECK ERROR =====');
+    return { 
+      ok: false, 
+      details: { 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      } 
+    };
+  }
 }
 
 /**
