@@ -19,7 +19,7 @@ export interface ChatMessage {
   sender: "user" | "assistant";
   text: string;
   timestamp: Date;
-  componentType?: "confirmation" | "carousel" | "form" | "status";
+  componentType?: "confirmation" | "carousel" | "form" | "status" | "cards";
   componentData?: any;
 }
 

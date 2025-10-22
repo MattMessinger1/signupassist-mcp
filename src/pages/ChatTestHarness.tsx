@@ -30,29 +30,15 @@ import { MessageList } from "@/components/chat-test/MessageList";
 import { ChatInput } from "@/components/chat-test/ChatInput";
 import { DebugPanel, LogEntry } from "@/components/chat-test/DebugPanel";
 import type { ChatMessage } from "@/components/chat-test/MessageBubble";
-import { initializeMCP, checkMCPHealth, type MCPHealthCheckResult } from "@/lib/chatMcpClient";
+import { checkMCPHealth, type MCPHealthCheckResult } from "@/lib/chatMcpClient";
 import { createLogEntry, type LogLevel, type LogCategory } from "@/lib/debugLogger";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, XCircle, Activity } from "lucide-react";
+import { sendMessage, sendAction } from "@/lib/orchestratorClient";
 import {
-  executeLogin,
-  executeSearch,
-  executeProgramSelect,
-  executePrerequisiteCheck,
-  executeRegistration,
-  type OrchestratorContext,
-} from "@/lib/chatFlowOrchestrator";
-import {
-  formatFormRequest,
-  formatErrorResponse,
-} from "@/lib/chatResponseParser";
-import {
-  DEMO_TEST_DATA,
   DEFAULT_PROVIDER,
-  MOCK_PROGRAMS,
-  MOCK_PREREQUISITE_STATUSES,
 } from "@/lib/config/testHarness";
 
 // ============= Types =============
@@ -170,7 +156,7 @@ export default function ChatTestHarness() {
 
   /**
    * Handle card action clicks (Context-Aware Action Handler)
-   * Routes card button clicks to appropriate flow steps
+   * Routes card button clicks to orchestrator backend
    */
   const handleCardAction = async (action: string, payload: any) => {
     console.log(`[HARNESS] Card action triggered: ${action}`, payload);
@@ -179,112 +165,30 @@ export default function ChatTestHarness() {
     setIsProcessing(true);
 
     try {
-      switch (action) {
-        case "select_provider":
-          // Provider selected from search results
-          console.log('[FLOW] select_provider →', payload.name || payload);
-          addUserMessage(`Yes, that's the one`);
-          
-          setState(prev => ({
-            ...prev,
-            orgRef: payload.orgRef || payload.name,
-          }));
-          
-          // Show login prompt
-          setTimeout(() => {
-            addAssistantMessage(
-              `Great! Now let's connect your account securely. You'll log in directly; we never see or store your password.`,
-              "form",
-              {
-                id: "login-form",
-                title: "Sign In",
-                fields: [
-                  { id: "email", label: "Email", type: "email", required: true, placeholder: "test@example.com" },
-                  { id: "password", label: "Password", type: "password", required: true, placeholder: "Enter password" },
-                ],
-              }
-            );
-          }, 500);
-          break;
-
-        case "reject_provider":
-          // User rejected provider
-          addUserMessage("No, that's not the one");
-          addAssistantMessage(
-            "No problem! Let's try a different search. What's the name of your provider?"
-          );
-          break;
-
-        case "select_program":
-          // Program selected from carousel
-          console.log('[FLOW] select_program →', payload.title);
-          await handleProgramSelect(payload);
-          break;
-
-        case "check_prereqs":
-          // Check prerequisites
-          console.log('[FLOW] check_prereqs');
-          addUserMessage("Check prerequisites");
-          const prereqResult = await executePrerequisiteCheck(createContext());
-          if (prereqResult.success) {
-            addAssistantMessage(prereqResult.text, prereqResult.componentType, prereqResult.componentData);
-          } else {
-            addAssistantMessage(prereqResult.text);
-          }
-          break;
-
-        case "complete_prereqs":
-        case "continue_registration":
-          // Move to confirmation
-          console.log('[FLOW] complete_prereqs → confirmation');
-          addUserMessage("Continue to registration");
-          setTimeout(() => {
-            addAssistantMessage(
-              `✅ Almost there! Please review the details and confirm.\n\n🔒 Your data stays secure; we never store card numbers.`,
-              "confirmation",
-              {
-                title: "Confirm Registration",
-                message: `Ready to register for ${state.selectedProgram || 'this program'}?`,
-                confirmLabel: "✅ Confirm & Register",
-                cancelLabel: "Cancel"
-              }
-            );
-          }, 500);
-          break;
-
-        case "confirm_registration":
-          // Final confirmation
-          console.log('[FLOW] confirm_registration → completed');
-          await handleConfirmRegistration();
-          break;
-
-        case "cancel_registration":
-        case "cancel":
-          // User cancelled
-          addUserMessage("Cancel");
-          addAssistantMessage("No worries! Feel free to start over whenever you're ready.");
-          setState(prev => ({ ...prev, selectedProgram: undefined }));
-          break;
-
-        case "reset":
-        case "retry_search":
-        case "retry_programs":
-        case "retry_prereqs":
-        case "retry_last":
-          // Reset flow
-          addUserMessage("Let's start over");
-          resetConversation(false);
-          addAssistantMessage("Let's start fresh! What provider are you looking for?");
-          break;
-
-        default:
-          console.warn('[HARNESS] Unknown action:', action);
-          addAssistantMessage("Hmm, I'm not sure what to do with that. Let's start over.");
-          break;
+      // Call orchestrator's handleAction
+      const sessionId = state.sessionRef || `session-${Date.now()}`;
+      const response = await sendAction(action, payload, sessionId);
+      
+      console.log('[HARNESS] Action response:', response);
+      console.log('[FLOW]', action, '→', response.cards ? `${response.cards.length} cards` : 'no cards');
+      
+      // Add visual feedback for action
+      addUserMessage(`[Action: ${action}]`);
+      
+      // Render next assistant message with cards
+      addAssistantMessage(
+        response.message,
+        response.cards ? "cards" : undefined,
+        { cards: response.cards, cta: response.cta }
+      );
+      
+      // Update local state
+      if (response.contextUpdates) {
+        setState(prev => ({ ...prev, ...response.contextUpdates }));
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[HARNESS] Action handler error:', error);
-      addAssistantMessage("Oops, something went wrong. Let's try again.");
+      handleError(error.message);
     } finally {
       setIsProcessing(false);
     }
@@ -293,194 +197,8 @@ export default function ChatTestHarness() {
   // ============= Flow Handlers =============
 
   /**
-   * Create orchestrator context from current state
-   */
-  const createContext = (): OrchestratorContext => ({
-    orgRef: state.orgRef,
-    sessionRef: state.sessionRef,
-    selectedProgram: state.selectedProgram,
-    addLog,
-  });
-
-  /**
-   * Handle program search
-   */
-  const handleSearchPrograms = async (query: string) => {
-    if (!mcpConnected) {
-      handleError("MCP server not connected");
-      return;
-    }
-
-    console.log('[HARNESS] Program search initiated');
-    console.log('[MCP] → calling tool: scp:find_programs');
-    addLog("info", "tool", `Searching for programs: ${query}`);
-    
-    setIsProcessing(true);
-    addUserMessage(query);
-
-    const result = await executeSearch(query, createContext());
-
-    if (result.success) {
-      console.log('[MCP] ✅ Programs found:', result.componentData?.programs?.length || 0);
-      addAssistantMessage(result.text, result.componentType, result.componentData);
-    } else {
-      console.log('[MCP] ❌ Program search failed');
-      addAssistantMessage(result.text);
-    }
-
-    setIsProcessing(false);
-  };
-
-  /**
-   * Handle program selection
-   */
-  const handleProgramSelect = async (program: any) => {
-    console.log('[HARNESS] Program selected:', program.title);
-    addLog("info", "user", "Program selected", { programId: program.id, title: program.title });
-    addUserMessage(`I'll take **${program.title}**`);
-    setIsProcessing(true);
-
-    const result = await executeProgramSelect(program, createContext());
-
-    if (result.success && result.stateUpdate) {
-      console.log('[HARNESS] → Program selection successful, updating state');
-      setState({ ...state, ...result.stateUpdate });
-      addAssistantMessage(result.text, result.componentType, result.componentData);
-    } else {
-      console.log('[HARNESS] ❌ Program selection failed');
-      addAssistantMessage(result.text);
-    }
-
-    setIsProcessing(false);
-  };
-
-  /**
-   * Handle registration confirmation
-   */
-  const handleConfirmRegistration = async () => {
-    console.log('[HARNESS] Registration confirmation requested');
-    addLog("info", "user", "User confirmed registration");
-    addUserMessage("Yes, confirm!");
-    setIsProcessing(true);
-
-    const result = await executePrerequisiteCheck(createContext());
-
-    if (result.success) {
-      console.log('[HARNESS] ✅ Prerequisites check passed');
-      addAssistantMessage(result.text, result.componentType, result.componentData);
-
-      // Check if form is needed
-      const missingPrereqs = [];
-      if (!state.sessionRef) missingPrereqs.push("login");
-      if (!result.componentData?.waiver_signed) missingPrereqs.push("waiver");
-      if (!result.componentData?.emergency_contact) missingPrereqs.push("emergency_contact");
-
-      if (missingPrereqs.length > 0) {
-        console.log('[HARNESS] → Missing prerequisites:', missingPrereqs);
-        setTimeout(() => {
-          const formResponse = formatFormRequest(missingPrereqs);
-          addAssistantMessage(
-            formResponse.text,
-            formResponse.componentType,
-            formResponse.componentData
-          );
-        }, 1000);
-      }
-    } else {
-      console.log('[HARNESS] ❌ Prerequisites check failed');
-      addAssistantMessage(result.text);
-    }
-
-    setIsProcessing(false);
-  };
-
-  /**
-   * Handle form submission
-   */
-  const handleFormSubmit = async (formId: string, values: Record<string, any>) => {
-    console.log('[HARNESS] Form submitted:', formId);
-    addLog("info", "user", "Form submitted", { formId, fields: Object.keys(values) });
-    setIsProcessing(true);
-
-    try {
-      // Login form
-      if (values.email && values.password) {
-        console.log('[HARNESS] → Processing login form');
-        console.log('[MCP] → calling tool: scp:login');
-        addUserMessage("Signing in...");
-
-        const result = await executeLogin(values.email, values.password, createContext());
-
-        if (result.success && result.stateUpdate) {
-          console.log('[MCP] ✅ Login successful');
-          setState({ ...state, ...result.stateUpdate });
-          addAssistantMessage(result.text);
-
-          // Show next form after successful login
-          setTimeout(() => {
-            const formResponse = formatFormRequest(["registration_details"]);
-            addAssistantMessage(
-              formResponse.text,
-              formResponse.componentType,
-              formResponse.componentData
-            );
-          }, 1000);
-        } else {
-          console.log('[MCP] ❌ Login failed');
-          addAssistantMessage(result.text);
-        }
-      }
-      // Registration details form
-      else if (values.childName) {
-        console.log('[HARNESS] → Processing registration form');
-        console.log('[MCP] → calling tool: scp:submit_registration');
-        addUserMessage("Submitting registration...");
-
-        const result = await executeRegistration(values.childName, createContext());
-
-        if (result.success && result.stateUpdate) {
-          console.log('[MCP] ✅ Registration successful');
-          setState({ ...state, ...result.stateUpdate });
-          addAssistantMessage(result.text);
-
-          toast({
-            title: "Success",
-            description: "Registration completed!",
-          });
-        } else {
-          console.log('[MCP] ❌ Registration failed');
-          addAssistantMessage(result.text);
-        }
-      }
-    } catch (error) {
-      console.error('[HARNESS] Form submission error:', error);
-      const errorResponse = formatErrorResponse(
-        error instanceof Error ? error.message : "Unknown error",
-        "submitting form"
-      );
-      addAssistantMessage(errorResponse.text);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  /**
-   * Determine current step based on conversation state
-   * Follows the orchestrated signup flow pattern
-   */
-  const determineCurrentStep = (): string => {
-    console.log('[HARNESS] Determining current step', { state });
-    
-    if (!state.orgRef) return "provider_search";
-    if (state.orgRef && !state.sessionRef) return "login";
-    if (state.orgRef && state.sessionRef && !state.selectedProgram) return "program_selection";
-    if (state.selectedProgram && !state.prerequisitesComplete) return "prerequisite_check";
-    return "completed";
-  };
-
-  /**
    * Handle sending a message - orchestrated flow version
-   * Routes user input through the proper signup steps
+   * Routes user input through the orchestrator backend
    */
   const handleSend = async () => {
     if (!input.trim() || isProcessing) return;
@@ -491,101 +209,33 @@ export default function ChatTestHarness() {
     
     console.log('[HARNESS] ===== USER INPUT =====');
     console.log('[HARNESS] Input:', userInput);
-    console.log('[HARNESS] Current state:', state);
-
-    const currentStep = determineCurrentStep();
-    console.log('[HARNESS] Current step:', currentStep);
     
     setIsProcessing(true);
 
     try {
-      switch (currentStep) {
-        case "provider_search":
-          console.log('[HARNESS] → Executing provider search flow');
-          await handleProviderSearch(userInput);
-          break;
-          
-        case "login":
-          console.log('[HARNESS] → User needs to login first');
-          addAssistantMessage(
-            `Great! Let's connect your ${state.orgRef} account. Click the Connect Account button to log in securely.`,
-            "form",
-            {
-              id: "login-form",
-              title: "Sign In",
-              fields: [
-                { id: "email", label: "Email", type: "email", required: true, placeholder: "test@example.com" },
-                { id: "password", label: "Password", type: "password", required: true, placeholder: "Enter password" },
-              ],
-            }
-          );
-          break;
-          
-        case "program_selection":
-          console.log('[HARNESS] → Executing program search');
-          await handleSearchPrograms(userInput);
-          break;
-          
-        case "prerequisite_check":
-          console.log('[HARNESS] → Checking prerequisites');
-          const prereqResult = await executePrerequisiteCheck(createContext());
-          if (prereqResult.success) {
-            addAssistantMessage(prereqResult.text, prereqResult.componentType, prereqResult.componentData);
-          } else {
-            addAssistantMessage(prereqResult.text);
-          }
-          break;
-          
-        default:
-          console.log('[HARNESS] → Default response');
-          addAssistantMessage(
-            "I can help you find and register for programs. Try saying something like 'I need ski lessons' or 'Show me Blackhawk Ski Club programs'."
-          );
-      }
-    } catch (error) {
-      console.error('[HARNESS] Error handling user input:', error);
+      // Call orchestrator instead of direct tools
+      const sessionId = state.sessionRef || `session-${Date.now()}`;
+      const response = await sendMessage(userInput, sessionId);
+      
+      console.log('[HARNESS] Orchestrator response:', response);
+      
+      // Render assistant message with cards
       addAssistantMessage(
-        "Sorry, I encountered an error. Please try again or check the debug panel for details."
+        response.message,
+        response.cards ? "cards" : undefined,
+        { cards: response.cards, cta: response.cta }
       );
+      
+      // Update local state if context changed
+      if (response.contextUpdates) {
+        setState(prev => ({ ...prev, ...response.contextUpdates }));
+      }
+    } catch (error: any) {
+      console.error('[HARNESS] Error handling user input:', error);
+      handleError(error.message);
     } finally {
       setIsProcessing(false);
       console.log('[HARNESS] ===== INPUT PROCESSED =====');
-    }
-  };
-
-  /**
-   * Handle provider search with card rendering
-   */
-  const handleProviderSearch = async (query: string) => {
-    console.log('[HARNESS] Provider search initiated');
-    console.log('[MCP] → calling tool: scp:find_programs');
-    addLog("info", "system", `Searching for provider: ${query}`);
-    
-    const result = await executeSearch(query, createContext());
-    
-    if (result.success && result.componentData?.programs) {
-      console.log('[MCP] ✅ Programs found:', result.componentData.programs.length);
-      
-      // Show provider confirmation first
-      const providerName = state.orgRef || "the provider";
-      addAssistantMessage(
-        `🔍 I found programs at **${providerName}**. Is this the right provider?`,
-        "confirmation",
-        {
-          title: "Confirm Provider",
-          message: `We found ${result.componentData.programs.length} programs at ${providerName}.`,
-          confirmLabel: "Yes, that's right",
-          cancelLabel: "No, different provider"
-        }
-      );
-      
-      // Store programs for next step
-      setState(prev => ({ ...prev, availablePrograms: result.componentData?.programs }));
-    } else {
-      console.log('[MCP] ❌ No programs found');
-      addAssistantMessage(
-        result.text || "I couldn't find any programs matching that search. Could you try rephrasing or providing more details?"
-      );
     }
   };
 
@@ -595,18 +245,9 @@ export default function ChatTestHarness() {
 
   /**
    * Execute automated demo flow
-   * Simulates a complete signup process from login to completion
+   * Simulates a complete signup process via orchestrator
    */
   const runDemoFlow = async () => {
-    if (!mcpConnected) {
-      toast({
-        title: "MCP Not Connected",
-        description: "Cannot run demo without MCP server connection",
-        variant: "destructive",
-      });
-      return;
-    }
-
     setIsDemoRunning(true);
     addLog("info", "system", "🤖 Starting demo flow automation");
 
@@ -617,122 +258,35 @@ export default function ChatTestHarness() {
     await delay(1000);
 
     try {
-      // Step 1: Login
-      addAssistantMessage("Let me help you sign in first.");
-      await delay(800);
-
-      addUserMessage(`Login with ${DEMO_TEST_DATA.credentials.email}`);
+      // Step 1: Provider search
+      addUserMessage("I need ski lessons for Blackhawk");
       setIsProcessing(true);
 
-      const loginResult = await executeLogin(
-        DEMO_TEST_DATA.credentials.email,
-        DEMO_TEST_DATA.credentials.password,
-        createContext()
-      );
-
+      const sessionId = `demo-session-${Date.now()}`;
+      const response1 = await sendMessage("I need ski lessons for Blackhawk", sessionId);
+      
       setIsProcessing(false);
-
-      if (!loginResult.success) {
-        addAssistantMessage(`⚠️ Demo: Login failed. Continuing with mock session...`);
-        setState(prev => ({ ...prev, sessionRef: "demo-session-mock" }));
-      } else {
-        if (loginResult.stateUpdate) {
-          setState(prev => ({ ...prev, ...loginResult.stateUpdate }));
-        }
-        addAssistantMessage("✅ Successfully logged in!");
-      }
-
-      await delay(1500);
-
-      // Step 2: Search for programs
-      addUserMessage(DEMO_TEST_DATA.searchQuery);
-      setIsProcessing(true);
-
-      const searchResult = await executeSearch(DEMO_TEST_DATA.searchQuery, createContext());
-
-      setIsProcessing(false);
-
-      addAssistantMessage(
-        searchResult.text,
-        searchResult.componentType,
-        searchResult.componentData
-      );
+      addAssistantMessage(response1.message, response1.cards ? "cards" : undefined, { cards: response1.cards, cta: response1.cta });
 
       await delay(2000);
 
-      // Step 3: Auto-select first program
-      const selectedProgram = MOCK_PROGRAMS[0];
-      addUserMessage(`I'll take ${selectedProgram.title}`);
-      setState(prev => ({ ...prev, selectedProgram }));
-
-      setIsProcessing(true);
-      await delay(1000);
-      setIsProcessing(false);
-
-      addAssistantMessage(
-        "Perfect! Please review and confirm your selection:",
-        "confirmation",
-        {
-          title: "Confirm Registration",
-          message: `Program: ${selectedProgram.title}\n${selectedProgram.description}\nPrice: $${selectedProgram.price}`,
-        }
-      );
-
-      await delay(2000);
-
-      // Step 4: Auto-confirm
-      addUserMessage("Confirmed!");
-      setIsProcessing(true);
-      await delay(1000);
-      setIsProcessing(false);
-
-      addAssistantMessage(
-        "Great! Let's check your prerequisites:",
-        "status",
-        { statuses: MOCK_PREREQUISITE_STATUSES }
-      );
-
-      await delay(1500);
-
-      // Step 5: Auto-show form
-      addAssistantMessage(
-        "Please provide additional information to complete registration:",
-        "form",
-        {
-          title: "Registration Details",
-          fields: [
-            { id: "childName", label: "Child's Full Name", type: "text", required: true },
-            { id: "emergencyContact", label: "Emergency Contact Phone", type: "text", required: true },
-            { id: "waiver", label: "I agree to the terms and waiver", type: "checkbox", required: true },
-          ],
-        }
-      );
-
-      await delay(2500);
-
-      // Step 6: Auto-submit form
-      addUserMessage("Submitting registration details...");
-      setIsProcessing(true);
-
-      const regResult = await executeRegistration(
-        DEMO_TEST_DATA.childInfo.childName,
-        createContext()
-      );
-
-      setIsProcessing(false);
-
-      if (regResult.success && regResult.stateUpdate) {
-        setState(prev => ({ ...prev, ...regResult.stateUpdate }));
+      // Step 2: Select provider (simulate clicking first card button)
+      if (response1.cards?.[0]?.buttons?.[0]) {
+        const action = response1.cards[0].buttons[0].action;
+        const payload = response1.cards[0].metadata || {};
+        
+        addUserMessage("Yes, that's the one");
+        setIsProcessing(true);
+        
+        const response2 = await sendAction(action, payload, sessionId);
+        setIsProcessing(false);
+        
+        addAssistantMessage(response2.message, response2.cards ? "cards" : undefined, { cards: response2.cards, cta: response2.cta });
+        
+        await delay(2000);
       }
 
-      addAssistantMessage(
-        `✅ Registration submitted successfully!\n\nChild Name: ${DEMO_TEST_DATA.childInfo.childName}\nEmergency Contact: ${DEMO_TEST_DATA.childInfo.emergencyContact}\n\nYou'll receive a confirmation email shortly.`
-      );
-
-      await delay(1000);
-
-      addAssistantMessage("🎉 Demo flow completed! You can now test manually or run the demo again.");
-
+      addAssistantMessage("🎉 Demo flow completed! Continue testing manually.");
       addLog("success", "system", "Demo flow completed successfully");
 
       toast({
@@ -816,13 +370,15 @@ export default function ChatTestHarness() {
   // ============= Initialization =============
 
   useEffect(() => {
-    addLog("info", "system", "Initializing MCP connection...");
-    initializeMCP().then((connected) => {
-      setMcpConnected(connected);
-      if (!connected) {
+    addLog("info", "system", "Initializing chat test harness...");
+    
+    // Check MCP health
+    checkMCPHealth().then((result) => {
+      setMcpConnected(result.ok);
+      if (!result.ok) {
         addLog("error", "system", "MCP server connection failed");
         addAssistantMessage(
-          "⚠️ Warning: MCP server connection failed. Make sure the server is running and VITE_MCP_BASE_URL is configured."
+          "⚠️ Warning: MCP server connection failed. Make sure the server is running."
         );
       } else {
         addLog("success", "system", "MCP server connected successfully");
@@ -891,9 +447,6 @@ export default function ChatTestHarness() {
         messages={messages}
         isProcessing={isProcessing}
         mcpConnected={mcpConnected}
-        onConfirm={handleConfirmRegistration}
-        onProgramSelect={handleProgramSelect}
-        onFormSubmit={handleFormSubmit}
         onAction={handleCardAction}
       />
 

@@ -30,9 +30,13 @@ import { skiClubProTools } from './providers/skiclubpro.js';
 // Import prereqs registry
 import { registerAllProviders } from './prereqs/providers.js';
 
+// Import AI Orchestrator
+import AIOrchestrator from './ai/AIOrchestrator.js';
+
 class SignupAssistMCPServer {
   private server: Server;
   private tools: Map<string, any> = new Map();
+  private orchestrator: AIOrchestrator;
 
   constructor() {
     this.server = new Server(
@@ -47,6 +51,7 @@ class SignupAssistMCPServer {
       }
     );
 
+    this.orchestrator = new AIOrchestrator();
     this.setupRequestHandlers();
     this.registerTools();
   }
@@ -337,6 +342,65 @@ class SignupAssistMCPServer {
           res.writeHead(500, { "Content-Type": "application/json" });
           res.end(JSON.stringify({ error: "Failed to load openai-connector.json", details: error.message }));
         }
+        return;
+      }
+
+      // --- Orchestrator endpoint for Chat Test Harness
+      if (url.pathname === '/orchestrator/chat') {
+        if (req.method === 'OPTIONS') {
+          res.writeHead(200);
+          res.end();
+          return;
+        }
+        
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Only POST supported' }));
+          return;
+        }
+
+        let body = '';
+        req.on('data', (chunk) => (body += chunk));
+        req.on('end', async () => {
+          try {
+            const { message, sessionId, action, payload } = JSON.parse(body);
+            
+            // Validate required fields
+            if (!sessionId) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Missing sessionId' }));
+              return;
+            }
+
+            let result;
+            
+            // Route to appropriate orchestrator method
+            if (action) {
+              // Card action (button click)
+              console.log(`[Orchestrator] handleAction: ${action}`);
+              result = await this.orchestrator.handleAction(action, payload || {}, sessionId);
+            } else if (message) {
+              // Text message
+              console.log(`[Orchestrator] generateResponse: ${message}`);
+              result = await this.orchestrator.generateResponse(message, sessionId);
+            } else {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Missing message or action' }));
+              return;
+            }
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(result));
+          } catch (err: any) {
+            console.error('[Orchestrator] Error:', err);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ 
+              error: err.message || 'Unknown error',
+              message: "Something went wrong. Let's try that again.",
+              cta: [{ label: "Retry", action: "retry_last", variant: "accent" }]
+            }));
+          }
+        });
         return;
       }
 
