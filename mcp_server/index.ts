@@ -116,6 +116,7 @@ class SignupAssistMCPServer {
       }
 
       const url = new URL(req.url || '/', `http://localhost:${port}`);
+      console.log(`[REQUEST] ${req.method} ${url.pathname}`);
 
       // --- Health check
       if (req.method === 'GET' && url.pathname === '/health') {
