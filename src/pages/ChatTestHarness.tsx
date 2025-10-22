@@ -64,6 +64,8 @@ interface ConversationState {
   childId?: string;
   registrationRef?: string;
   prerequisites?: any[];
+  prerequisitesComplete?: boolean;
+  availablePrograms?: any[];
 }
 
 // ============= Main Component =============
@@ -169,14 +171,20 @@ export default function ChatTestHarness() {
       return;
     }
 
+    console.log('[HARNESS] Program search initiated');
+    console.log('[MCP] → calling tool: scp:find_programs');
+    addLog("info", "tool", `Searching for programs: ${query}`);
+    
     setIsProcessing(true);
     addUserMessage(query);
 
     const result = await executeSearch(query, createContext());
 
     if (result.success) {
+      console.log('[MCP] ✅ Programs found:', result.componentData?.programs?.length || 0);
       addAssistantMessage(result.text, result.componentType, result.componentData);
     } else {
+      console.log('[MCP] ❌ Program search failed');
       addAssistantMessage(result.text);
     }
 
@@ -187,6 +195,7 @@ export default function ChatTestHarness() {
    * Handle program selection
    */
   const handleProgramSelect = async (program: any) => {
+    console.log('[HARNESS] Program selected:', program.title);
     addLog("info", "user", "Program selected", { programId: program.id, title: program.title });
     addUserMessage(`I'll take **${program.title}**`);
     setIsProcessing(true);
@@ -194,9 +203,11 @@ export default function ChatTestHarness() {
     const result = await executeProgramSelect(program, createContext());
 
     if (result.success && result.stateUpdate) {
+      console.log('[HARNESS] → Program selection successful, updating state');
       setState({ ...state, ...result.stateUpdate });
       addAssistantMessage(result.text, result.componentType, result.componentData);
     } else {
+      console.log('[HARNESS] ❌ Program selection failed');
       addAssistantMessage(result.text);
     }
 
@@ -207,6 +218,7 @@ export default function ChatTestHarness() {
    * Handle registration confirmation
    */
   const handleConfirmRegistration = async () => {
+    console.log('[HARNESS] Registration confirmation requested');
     addLog("info", "user", "User confirmed registration");
     addUserMessage("Yes, confirm!");
     setIsProcessing(true);
@@ -214,6 +226,7 @@ export default function ChatTestHarness() {
     const result = await executePrerequisiteCheck(createContext());
 
     if (result.success) {
+      console.log('[HARNESS] ✅ Prerequisites check passed');
       addAssistantMessage(result.text, result.componentType, result.componentData);
 
       // Check if form is needed
@@ -223,6 +236,7 @@ export default function ChatTestHarness() {
       if (!result.componentData?.emergency_contact) missingPrereqs.push("emergency_contact");
 
       if (missingPrereqs.length > 0) {
+        console.log('[HARNESS] → Missing prerequisites:', missingPrereqs);
         setTimeout(() => {
           const formResponse = formatFormRequest(missingPrereqs);
           addAssistantMessage(
@@ -233,6 +247,7 @@ export default function ChatTestHarness() {
         }, 1000);
       }
     } else {
+      console.log('[HARNESS] ❌ Prerequisites check failed');
       addAssistantMessage(result.text);
     }
 
@@ -243,17 +258,21 @@ export default function ChatTestHarness() {
    * Handle form submission
    */
   const handleFormSubmit = async (formId: string, values: Record<string, any>) => {
+    console.log('[HARNESS] Form submitted:', formId);
     addLog("info", "user", "Form submitted", { formId, fields: Object.keys(values) });
     setIsProcessing(true);
 
     try {
       // Login form
       if (values.email && values.password) {
+        console.log('[HARNESS] → Processing login form');
+        console.log('[MCP] → calling tool: scp:login');
         addUserMessage("Signing in...");
 
         const result = await executeLogin(values.email, values.password, createContext());
 
         if (result.success && result.stateUpdate) {
+          console.log('[MCP] ✅ Login successful');
           setState({ ...state, ...result.stateUpdate });
           addAssistantMessage(result.text);
 
@@ -267,16 +286,20 @@ export default function ChatTestHarness() {
             );
           }, 1000);
         } else {
+          console.log('[MCP] ❌ Login failed');
           addAssistantMessage(result.text);
         }
       }
       // Registration details form
       else if (values.childName) {
+        console.log('[HARNESS] → Processing registration form');
+        console.log('[MCP] → calling tool: scp:submit_registration');
         addUserMessage("Submitting registration...");
 
         const result = await executeRegistration(values.childName, createContext());
 
         if (result.success && result.stateUpdate) {
+          console.log('[MCP] ✅ Registration successful');
           setState({ ...state, ...result.stateUpdate });
           addAssistantMessage(result.text);
 
@@ -285,10 +308,12 @@ export default function ChatTestHarness() {
             description: "Registration completed!",
           });
         } else {
+          console.log('[MCP] ❌ Registration failed');
           addAssistantMessage(result.text);
         }
       }
     } catch (error) {
+      console.error('[HARNESS] Form submission error:', error);
       const errorResponse = formatErrorResponse(
         error instanceof Error ? error.message : "Unknown error",
         "submitting form"
@@ -300,39 +325,126 @@ export default function ChatTestHarness() {
   };
 
   /**
-   * Handle sending a message
+   * Determine current step based on conversation state
+   * Follows the orchestrated signup flow pattern
    */
-  const handleSend = () => {
+  const determineCurrentStep = (): string => {
+    console.log('[HARNESS] Determining current step', { state });
+    
+    if (!state.orgRef) return "provider_search";
+    if (state.orgRef && !state.sessionRef) return "login";
+    if (state.orgRef && state.sessionRef && !state.selectedProgram) return "program_selection";
+    if (state.selectedProgram && !state.prerequisitesComplete) return "prerequisite_check";
+    return "completed";
+  };
+
+  /**
+   * Handle sending a message - orchestrated flow version
+   * Routes user input through the proper signup steps
+   */
+  const handleSend = async () => {
     if (!input.trim() || isProcessing) return;
 
     const userInput = input.trim();
     setInput("");
+    addUserMessage(userInput);
+    
+    console.log('[HARNESS] ===== USER INPUT =====');
+    console.log('[HARNESS] Input:', userInput);
+    console.log('[HARNESS] Current state:', state);
 
-    // Detect login requests
-    if (userInput.toLowerCase().includes("login") || userInput.toLowerCase().includes("sign in")) {
-      addUserMessage(userInput);
+    const currentStep = determineCurrentStep();
+    console.log('[HARNESS] Current step:', currentStep);
+    
+    setIsProcessing(true);
+
+    try {
+      switch (currentStep) {
+        case "provider_search":
+          console.log('[HARNESS] → Executing provider search flow');
+          await handleProviderSearch(userInput);
+          break;
+          
+        case "login":
+          console.log('[HARNESS] → User needs to login first');
+          addAssistantMessage(
+            `Great! Let's connect your ${state.orgRef} account. Click the Connect Account button to log in securely.`,
+            "form",
+            {
+              id: "login-form",
+              title: "Sign In",
+              fields: [
+                { id: "email", label: "Email", type: "email", required: true, placeholder: "test@example.com" },
+                { id: "password", label: "Password", type: "password", required: true, placeholder: "Enter password" },
+              ],
+            }
+          );
+          break;
+          
+        case "program_selection":
+          console.log('[HARNESS] → Executing program search');
+          await handleSearchPrograms(userInput);
+          break;
+          
+        case "prerequisite_check":
+          console.log('[HARNESS] → Checking prerequisites');
+          const prereqResult = await executePrerequisiteCheck(createContext());
+          if (prereqResult.success) {
+            addAssistantMessage(prereqResult.text, prereqResult.componentType, prereqResult.componentData);
+          } else {
+            addAssistantMessage(prereqResult.text);
+          }
+          break;
+          
+        default:
+          console.log('[HARNESS] → Default response');
+          addAssistantMessage(
+            "I can help you find and register for programs. Try saying something like 'I need ski lessons' or 'Show me Blackhawk Ski Club programs'."
+          );
+      }
+    } catch (error) {
+      console.error('[HARNESS] Error handling user input:', error);
       addAssistantMessage(
-        "Please sign in to continue:",
-        "form",
+        "Sorry, I encountered an error. Please try again or check the debug panel for details."
+      );
+    } finally {
+      setIsProcessing(false);
+      console.log('[HARNESS] ===== INPUT PROCESSED =====');
+    }
+  };
+
+  /**
+   * Handle provider search with card rendering
+   */
+  const handleProviderSearch = async (query: string) => {
+    console.log('[HARNESS] Provider search initiated');
+    console.log('[MCP] → calling tool: scp:find_programs');
+    addLog("info", "system", `Searching for provider: ${query}`);
+    
+    const result = await executeSearch(query, createContext());
+    
+    if (result.success && result.componentData?.programs) {
+      console.log('[MCP] ✅ Programs found:', result.componentData.programs.length);
+      
+      // Show provider confirmation first
+      const providerName = state.orgRef || "the provider";
+      addAssistantMessage(
+        `🔍 I found programs at **${providerName}**. Is this the right provider?`,
+        "confirmation",
         {
-          id: "login-form",
-          title: "Sign In",
-          fields: [
-            { id: "email", label: "Email", type: "email", required: true, placeholder: "test@example.com" },
-            { id: "password", label: "Password", type: "password", required: true, placeholder: "Enter password" },
-          ],
+          title: "Confirm Provider",
+          message: `We found ${result.componentData.programs.length} programs at ${providerName}.`,
+          confirmLabel: "Yes, that's right",
+          cancelLabel: "No, different provider"
         }
       );
-      return;
-    }
-
-    // Simple keyword-based routing for demo
-    if (userInput.toLowerCase().includes("ski") || userInput.toLowerCase().includes("program")) {
-      handleSearchPrograms(userInput);
+      
+      // Store programs for next step
+      setState(prev => ({ ...prev, availablePrograms: result.componentData?.programs }));
     } else {
-      addUserMessage(userInput);
+      console.log('[MCP] ❌ No programs found');
       addAssistantMessage(
-        "I can help you find and register for programs. Try saying something like 'I need ski lessons for my child', or type 'login' to sign in."
+        result.text || "I couldn't find any programs matching that search. Could you try rephrasing or providing more details?"
       );
     }
   };
