@@ -100,7 +100,7 @@ class SignupAssistMCPServer {
     console.log('SignupAssist MCP Server started (stdio mode)');
   }
 
-  async startHTTP() {
+  async startHTTP(): Promise<any> {
     const port = process.env.PORT ? parseInt(process.env.PORT) : 8080;
 
     const httpServer = createServer((req, res) => {
@@ -409,15 +409,52 @@ class SignupAssistMCPServer {
       res.end(JSON.stringify({ error: 'Not found' }));
     });
 
-    httpServer.listen(port, '0.0.0.0', () => {
-      console.log(`✅ SignupAssist MCP HTTP Server listening on port ${port}`);
-      console.log(`   Health: http://localhost:${port}/health`);
-      console.log(`   Manifest: http://localhost:${port}/mcp/manifest.json`);
-      console.log(`   Root: http://localhost:${port}/mcp`);
-      console.log(`   Well-known: http://localhost:${port}/.well-known/ai-plugin.json`);
+    // Add error handler for the HTTP server
+    httpServer.on('error', (error: any) => {
+      if (error.code === 'EADDRINUSE') {
+        console.error(`[HTTP ERROR] Port ${port} is already in use`);
+        process.exit(1);
+      } else {
+        console.error('[HTTP ERROR]', error);
+        process.exit(1);
+      }
+    });
+
+    return new Promise((resolve, reject) => {
+      httpServer.listen(port, '0.0.0.0', () => {
+        console.log(`✅ SignupAssist MCP HTTP Server listening on port ${port}`);
+        console.log(`   Health: http://localhost:${port}/health`);
+        console.log(`   Manifest: http://localhost:${port}/mcp/manifest.json`);
+        console.log(`   Root: http://localhost:${port}/mcp`);
+        console.log(`   Well-known: http://localhost:${port}/.well-known/ai-plugin.json`);
+        resolve(httpServer);
+      });
+
+      httpServer.on('error', reject);
     });
   }
 }
+
+// --- Graceful shutdown handling
+process.on('SIGTERM', () => {
+  console.log('[SHUTDOWN] SIGTERM received, closing server gracefully...');
+  process.exit(0);
+});
+
+process.on('SIGINT', () => {
+  console.log('[SHUTDOWN] SIGINT received, closing server gracefully...');
+  process.exit(0);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('[FATAL] Uncaught exception:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled promise rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
 
 // --- Startup sequence
 console.log('[STARTUP] Registering prerequisite checkers...');
@@ -440,10 +477,15 @@ if (token) {
 
 if (process.env.NODE_ENV === 'production' || process.env.PORT) {
   console.log('[STARTUP] Starting HTTP server...');
-  server.startHTTP().catch((err) => {
-    console.error('[STARTUP ERROR]', err);
-    process.exit(1);
-  });
+  server.startHTTP()
+    .then((httpServer) => {
+      console.log('[STARTUP] HTTP server started successfully');
+      // Keep reference to prevent garbage collection and ensure process stays alive
+    })
+    .catch((err) => {
+      console.error('[STARTUP ERROR]', err);
+      process.exit(1);
+    });
 } else {
   console.log('[STARTUP] Starting stdio server...');
   server.start().catch((err) => {
