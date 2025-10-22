@@ -1089,7 +1089,7 @@ export const skiClubProTools = {
         orgRef,
         programRef: args.program_ref,
         page,
-        baseUrl: base,
+        baseUrl: baseUrl,
         userId: args.user_id
       });
       
