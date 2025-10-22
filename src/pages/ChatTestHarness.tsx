@@ -97,7 +97,7 @@ export default function ChatTestHarness() {
 
   const addUserMessage = (text: string) => {
     const newMessage: ChatMessage = {
-      id: Date.now().toString(),
+      id: `user-${Date.now()}-${Math.random()}`,
       sender: "user",
       text,
       timestamp: new Date(),
@@ -112,7 +112,7 @@ export default function ChatTestHarness() {
     componentData?: any
   ) => {
     const newMessage: ChatMessage = {
-      id: Date.now().toString(),
+      id: `assistant-${Date.now()}-${Math.random()}`,
       sender: "assistant",
       text,
       timestamp: new Date(),
