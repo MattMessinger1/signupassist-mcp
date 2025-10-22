@@ -13,9 +13,16 @@ http://localhost:5173/chat-test
 
 1. **Set up environment variables** in `.env`:
    ```env
-   VITE_MCP_BASE_URL=http://localhost:8080  # Your MCP server URL
-   VITE_MCP_ACCESS_TOKEN=your_token_here    # Optional: Auth token
+   VITE_MCP_BASE_URL=https://signupassist-mcp-production.up.railway.app
+   VITE_MCP_ACCESS_TOKEN=your-railway-mcp-token-here  # REQUIRED for tool calls
    ```
+   
+   **Important**: The `VITE_MCP_ACCESS_TOKEN` is **required** for making tool calls to the MCP server. Without it, login and other operations will fail with "Failed to fetch" errors.
+   
+   To get your Railway MCP access token:
+   - Check your Railway dashboard under the MCP server environment variables
+   - Look for `MCP_ACCESS_TOKEN` or similar variable
+   - Copy the value and paste it into your `.env` file
 
 2. **Start the MCP server** (in another terminal):
    ```bash
@@ -247,16 +254,25 @@ export async function executePayment(
 ### Issue: "MCP server not connected"
 
 **Solution:**
-1. Check if MCP server is running: `npm run mcp:server`
-2. Verify `VITE_MCP_BASE_URL` in `.env`
+1. Verify `VITE_MCP_BASE_URL` points to your Railway deployment
+2. Check `VITE_MCP_ACCESS_TOKEN` is set in `.env` (required!)
 3. Check browser console for connection errors
+4. Ensure Railway MCP server is deployed and running
+
+### Issue: Login fails with "Failed to fetch" or network errors
+
+**Solution:**
+1. **Most common**: Missing `VITE_MCP_ACCESS_TOKEN` in `.env`
+2. Get the token from your Railway MCP server environment variables
+3. Restart your dev server after adding the token: `npm run dev`
+4. Test again - the debug logs should show actual responses instead of fetch errors
 
 ### Issue: Login fails with "Invalid credentials"
 
 **Solution:**
 1. Verify test credentials match what's in your provider
-2. Check MCP server logs for auth errors
-3. Use debug panel to inspect the actual request
+2. Check MCP server logs in Railway for auth errors
+3. Use debug panel to inspect the actual request/response
 
 ### Issue: Debug panel not showing logs
 
