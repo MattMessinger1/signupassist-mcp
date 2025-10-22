@@ -783,7 +783,7 @@ Stay warm, concise, and reassuring.
       default:
         return this.formatResponse(
           "🎉 All steps complete!",
-          {},
+          [],
           {}
         );
     }
@@ -1010,7 +1010,7 @@ Stay warm, concise, and reassuring.
   private async handleFormFill(_: string, __: string): Promise<OrchestratorResponse> {
     return this.formatResponse(
       "📝 Let's fill out the remaining registration details.",
-      {},
+      [],
       { formAnswers: {} }
     );
   }
