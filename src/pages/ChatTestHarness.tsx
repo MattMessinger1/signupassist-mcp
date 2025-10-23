@@ -87,29 +87,7 @@ export default function ChatTestHarness() {
   const { toast } = useToast();
 
   // ============= Geolocation Setup =============
-
-  useEffect(() => {
-    // Request user's location on mount for GPS-based provider filtering
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const coords = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          };
-          setUserLocation(coords);
-          addLog("success", "system", `GPS location acquired: ${coords.lat.toFixed(2)},${coords.lng.toFixed(2)}`);
-          console.log('[HARNESS] 📍 User location:', coords);
-        },
-        (error) => {
-          addLog("warning", "system", `Geolocation denied: ${error.message} - will use text-based search`);
-          console.warn('[HARNESS] Geolocation denied, falling back to text-based search');
-        }
-      );
-    } else {
-      addLog("warning", "system", "Geolocation not supported by browser");
-    }
-  }, []);
+  // Location will be added via IP geolocation later (no upfront browser prompt)
 
   // ============= Logging =============
 
