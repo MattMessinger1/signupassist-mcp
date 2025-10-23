@@ -1,4 +1,4 @@
-import { chromium } from "playwright";
+import { chromium } from "playwright-core";
 import { extractSingleStep } from "./htmlToJsonSchema";
 
 // First step of the Blackhawk Ski Club (SkiClubPro 309) registration form.

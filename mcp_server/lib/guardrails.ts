@@ -5,7 +5,7 @@
  * accidentally submit payment forms or navigate to payment pages.
  */
 
-import { Page, Locator } from 'playwright';
+import { Page, Locator } from 'playwright-core';
 
 /**
  * Check if a button/element appears to be a payment submission button

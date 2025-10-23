@@ -6,7 +6,7 @@
  * Each stage has custom guardrails for safety and accuracy.
  */
 
-import { Page } from 'playwright';
+import { Page } from 'playwright-core';
 import { discoverFieldsSerially, SerialDiscoveryResult, DiscoveredField } from './serial_field_discovery.js';
 import { humanPause } from './humanize.js';
 import { getPrerequisitePaths, PrerequisitePath } from '../config/prerequisite_paths.js';

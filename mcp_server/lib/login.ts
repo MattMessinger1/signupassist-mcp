@@ -1,4 +1,4 @@
-import { Browser, Page } from 'playwright';
+import { Browser, Page } from 'playwright-core';
 import { sleep, humanPause, jitter } from './humanize.js';
 import { createStealthContext } from './antibot.js';
 

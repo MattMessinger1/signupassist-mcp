@@ -1,4 +1,4 @@
-import { Page, Locator } from 'playwright';
+import { Page, Locator } from 'playwright-core';
 import { chooseDefaultAnswer } from './pricing/chooseAnswer.js';
 import { computeTotalCents } from './pricing/computeTotal.js';
 import type { DiscoveredField } from '../types/pricing.js';

@@ -1,4 +1,4 @@
-import { Page } from "playwright";
+import { Page } from "playwright-core";
 import crypto from "crypto";
 
 export interface DiscoveredField {

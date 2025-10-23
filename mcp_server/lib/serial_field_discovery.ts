@@ -10,7 +10,7 @@
  * 5. Repeat until no new errors appear or max loops reached
  */
 
-import { Page } from 'playwright';
+import { Page } from 'playwright-core';
 import { humanPause, jitter } from './humanize.js';
 
 export interface FieldError {

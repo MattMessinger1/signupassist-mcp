@@ -3,7 +3,7 @@
  * Provides basic anti-detection measures when ANTIBOT_ENABLED=true
  */
 
-import { Browser, BrowserContext } from 'playwright';
+import { Browser, BrowserContext } from 'playwright-core';
 
 export interface StealthOptions {
   userAgent?: string;

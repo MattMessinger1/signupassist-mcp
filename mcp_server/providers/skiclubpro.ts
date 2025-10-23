@@ -2,7 +2,7 @@
  * SkiClubPro Provider - MCP Tools for SkiClubPro automation
  */
 
-import { Page } from 'playwright';
+import { Page } from 'playwright-core';
 import { verifyMandate } from '../lib/mandates.js';
 import { auditToolCall } from '../middleware/audit.js';
 import { lookupCredentialsById } from '../lib/credentials.js';

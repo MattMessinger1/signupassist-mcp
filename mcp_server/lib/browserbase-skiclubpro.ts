@@ -4,7 +4,7 @@
  * 🧠 Browserbase sessions now launched via Supabase Edge Function
  */
 
-import { chromium, Browser, BrowserContext, Page } from 'playwright';
+import { chromium, Browser, BrowserContext, Page } from 'playwright-core';
 import { captureScreenshotEvidence } from './evidence.js';
 import { SKICLUBPRO_CONFIGS } from '../config/skiclubpro_selectors.js';
 import { createStealthContext } from './antibot.js';
