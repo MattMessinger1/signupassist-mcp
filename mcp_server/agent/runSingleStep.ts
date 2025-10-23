@@ -1,5 +1,5 @@
 import { chromium } from "playwright-core";
-import { extractSingleStep } from "./htmlToJsonSchema";
+import { extractSingleStep } from "./htmlToJsonSchema.js";
 
 // First step of the Blackhawk Ski Club (SkiClubPro 309) registration form.
 const PROGRAM_URL = process.env.SCP_REG_URL || "https://blackhawk.skiclubpro.team/registration/309/start";

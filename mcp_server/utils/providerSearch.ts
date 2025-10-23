@@ -5,7 +5,7 @@
 // - Always sanitize any user input before sending to Google APIs.
 
 import axios from "axios";
-import Logger from "./logger";
+import Logger from "./logger.js";
 
 export interface Provider {
   name: string;
