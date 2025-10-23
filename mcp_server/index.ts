@@ -30,15 +30,21 @@ import { skiClubProTools } from './providers/skiclubpro.js';
 // Import prereqs registry
 import { registerAllProviders } from './prereqs/providers.js';
 
-// Import AI Orchestrator
-console.log('[STARTUP] Importing AIOrchestrator...');
-import AIOrchestrator from './ai/AIOrchestrator.js';
-console.log('[STARTUP] AIOrchestrator import successful');
+// Register error handlers FIRST to catch any import failures
+process.on('uncaughtException', (error) => {
+  console.error('[FATAL] Uncaught exception:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('[FATAL] Unhandled promise rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
 
 class SignupAssistMCPServer {
   private server: Server;
   private tools: Map<string, any> = new Map();
-  private orchestrator: AIOrchestrator;
+  private orchestrator: AIOrchestrator | null = null;
 
   constructor() {
     console.log('[STARTUP] SignupAssistMCPServer constructor called');
@@ -54,22 +60,27 @@ class SignupAssistMCPServer {
       }
     );
     console.log('[STARTUP] MCP Server instance created');
-
-    try {
-      console.log('[STARTUP] Initializing AIOrchestrator...');
-      console.log('[STARTUP] AIOrchestrator type:', typeof AIOrchestrator);
-      this.orchestrator = new AIOrchestrator();
-      console.log('✅ AIOrchestrator initialized');
-    } catch (error) {
-      console.error('❌ WARNING: AIOrchestrator initialization failed - server will start without it');
-      console.error('Error:', error);
-      console.error('Stack:', error instanceof Error ? error.stack : 'No stack trace');
-      console.error('Tip: Set OPENAI_API_KEY environment variable if using OpenAI');
-      this.orchestrator = null as any; // Allow server to start without orchestrator
-    }
     
     this.setupRequestHandlers();
     this.registerTools();
+  }
+
+  async initializeOrchestrator() {
+    try {
+      console.log('[STARTUP] Dynamically importing AIOrchestrator...');
+      const { default: AIOrchestrator } = await import('./ai/AIOrchestrator.js');
+      console.log('[STARTUP] AIOrchestrator module loaded successfully');
+      console.log('[STARTUP] AIOrchestrator type:', typeof AIOrchestrator);
+      
+      this.orchestrator = new AIOrchestrator();
+      console.log('✅ AIOrchestrator initialized');
+    } catch (error) {
+      console.error('❌ WARNING: AIOrchestrator failed to load - server will start without it');
+      console.error('Error:', error);
+      console.error('Stack:', error instanceof Error ? error.stack : 'No stack trace');
+      console.error('Tip: Set OPENAI_API_KEY environment variable if using OpenAI');
+      this.orchestrator = null;
+    }
   }
 
   private setupRequestHandlers() {
@@ -539,16 +550,6 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-process.on('uncaughtException', (error) => {
-  console.error('[FATAL] Uncaught exception:', error);
-  process.exit(1);
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('[FATAL] Unhandled promise rejection at:', promise, 'reason:', reason);
-  process.exit(1);
-});
-
 // --- Startup sequence
 console.log('[STARTUP] Registering prerequisite checkers...');
 registerAllProviders();
@@ -556,6 +557,10 @@ console.log('[STARTUP] Prerequisite checkers registered');
 
 console.log('[STARTUP] Creating SignupAssistMCPServer instance...');
 const server = new SignupAssistMCPServer();
+
+console.log('[STARTUP] Initializing AIOrchestrator asynchronously...');
+await server.initializeOrchestrator();
+console.log('[STARTUP] AIOrchestrator initialization complete');
 
 console.log('[STARTUP] NODE_ENV:', process.env.NODE_ENV);
 console.log('[STARTUP] PORT:', process.env.PORT);
