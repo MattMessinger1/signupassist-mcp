@@ -37,7 +37,7 @@ export function ProviderConfirmationCard({
           className="flex-1"
           size="sm"
         >
-          Yes, that's it
+          Yes
         </Button>
         {onReject && (
           <Button 
@@ -46,7 +46,7 @@ export function ProviderConfirmationCard({
             className="flex-1"
             size="sm"
           >
-            Not this one
+            Show me Others
           </Button>
         )}
       </CardFooter>
