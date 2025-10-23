@@ -873,11 +873,9 @@ Stay warm, concise, and reassuring.
         );
       }
       
-      const foundVia = results[0].source === "google" ? "Google" : "our provider list";
-      // Fix 1: Don't echo user input, use actual provider name or simplified message
       const message = results.length === 1 
-        ? `🔍 Great! I found **${results[0].name}** via ${foundVia}. Is this yours?`
-        : `🔍 Great! I found ${results.length} matches via ${foundVia}. Which one is yours?`;
+        ? `🔍 Great! Is this what you're looking for?`
+        : `🔍 I found ${results.length} matches. Which one is yours?`;
       
       const cards = this.buildProviderCards(results);
       
