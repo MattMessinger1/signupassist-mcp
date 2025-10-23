@@ -1,8 +1,8 @@
 import OpenAI from "openai";
-import Logger from "../utils/logger";
-import { parseProviderInput, ParsedProviderInput } from "../utils/parseInput";
-import { lookupLocalProvider, googlePlacesSearch } from "../utils/providerSearch";
-import type { Provider } from "../utils/providerSearch";
+import Logger from "../utils/logger.js";
+import { parseProviderInput, ParsedProviderInput } from "../utils/parseInput.js";
+import { lookupLocalProvider, googlePlacesSearch } from "../utils/providerSearch.js";
+import type { Provider } from "../utils/providerSearch.js";
 
 /**
  * Design DNA - Core design principles for SignupAssist
