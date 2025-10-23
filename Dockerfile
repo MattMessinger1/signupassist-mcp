@@ -21,6 +21,9 @@ COPY mcp ./mcp
 # Build backend TypeScript to dist/
 RUN npx tsc -p tsconfig.mcp.json
 
+# Verify AIOrchestrator was built
+RUN ls -la dist/mcp_server/ai/ || echo "⚠️ AI folder not built"
+
 # Copy frontend source and configs for FRONTEND BUILD
 COPY src ./src
 COPY index.html ./

@@ -55,9 +55,17 @@ class SignupAssistMCPServer {
     );
     console.log('[STARTUP] MCP Server instance created');
 
-    console.log('[STARTUP] Initializing AIOrchestrator...');
-    this.orchestrator = new AIOrchestrator();
-    console.log('✅ AIOrchestrator initialized');
+    try {
+      console.log('[STARTUP] Initializing AIOrchestrator...');
+      console.log('[STARTUP] AIOrchestrator type:', typeof AIOrchestrator);
+      this.orchestrator = new AIOrchestrator();
+      console.log('✅ AIOrchestrator initialized');
+    } catch (error) {
+      console.error('❌ FATAL: AIOrchestrator initialization failed');
+      console.error('Error:', error);
+      console.error('Stack:', error instanceof Error ? error.stack : 'No stack trace');
+      throw error; // Re-throw to prevent server from starting in broken state
+    }
     
     this.setupRequestHandlers();
     this.registerTools();
