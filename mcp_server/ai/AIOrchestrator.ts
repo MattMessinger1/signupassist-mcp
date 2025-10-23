@@ -629,8 +629,8 @@ Stay warm, concise, and reassuring.
         subtitle,
         metadata: { orgRef: provider.orgRef, source: provider.source, distance: provider.distance },
         buttons: [
-          { label: "Yes – That's Mine", action: "select_provider", variant: "accent" as const },
-          { label: "Not This One", action: "reject_provider", variant: "outline" as const }
+          { label: "Yes", action: "select_provider", variant: "accent" as const },
+          { label: "Show me Others", action: "reject_provider", variant: "outline" as const }
         ]
       };
     });
