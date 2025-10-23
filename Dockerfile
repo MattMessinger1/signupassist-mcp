@@ -1,31 +1,41 @@
-# Use Node LTS
-FROM node:20-alpine
+# ============= BUILD STAGE =============
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# Copy production package.json with build dependencies
+# Copy all package files
 COPY package.production.json package.json
 COPY package-lock.json ./
 
-# Install all dependencies (including devDependencies for build)
+# Install ALL dependencies (including devDependencies for build)
 RUN npm ci
 
-# Copy TypeScript configs
-COPY tsconfig.json ./
-COPY tsconfig.mcp.json ./
-
-# Copy source files
+# Copy TypeScript configs and source
+COPY tsconfig.json tsconfig.mcp.json ./
 COPY mcp_server ./mcp_server
 COPY mcp ./mcp
 
 # Build TypeScript to dist/
 RUN npx tsc -p tsconfig.mcp.json
 
-# Remove devDependencies after build to keep image small
-RUN npm prune --production
+# ============= RUNTIME STAGE =============
+FROM node:20-alpine
 
-# Expose port for local run (Railway sets $PORT)
+WORKDIR /app
+
+# Copy production package.json
+COPY package.production.json package.json
+COPY package-lock.json ./
+
+# Install ONLY production dependencies (fast, no playwright/typescript)
+RUN npm ci --production
+
+# Copy built code from builder stage
+COPY --from=builder /app/dist ./dist
+COPY mcp ./mcp
+
+# Expose port
 EXPOSE 4000
 
-# Start in production mode (listens on $PORT internally)
+# Start server
 CMD ["npm", "run", "mcp:start"]
