@@ -422,30 +422,48 @@ Stay warm, concise, and reassuring.
     // Stubbed tools - will be replaced with real MCP integrations
     const tools: Record<string, Function> = {
       search_provider: async ({ name, location, userCoords }: any) => {
-        const cacheKey = `provider-${name}-${location || ""}-${userCoords ? `${userCoords.lat},${userCoords.lng}` : ""}`;
-        if (this.isCacheValid(cacheKey)) {
-          Logger.info("Cache hit for provider search", { name, location, hasCoords: !!userCoords });
-          return this.getFromCache(cacheKey).value;
+        try {
+          Logger.info("[search_provider] Starting search", { name, location, hasCoords: !!userCoords });
+          
+          const cacheKey = `provider-${name}-${location || ""}-${userCoords ? `${userCoords.lat},${userCoords.lng}` : ""}`;
+          if (this.isCacheValid(cacheKey)) {
+            Logger.info("[search_provider] Cache hit", { name, location, hasCoords: !!userCoords });
+            return this.getFromCache(cacheKey).value;
+          }
+
+          // Try local first
+          Logger.info("[search_provider] Checking local providers...");
+          const local = await lookupLocalProvider(name);
+          if (local) {
+            Logger.info("[search_provider] ✅ Found locally:", local.name);
+            this.saveToCache(cacheKey, [local]);
+            return [local];
+          }
+          Logger.info("[search_provider] Not found locally, trying Google API...");
+
+          // Try Google API
+          const googleResults = await googlePlacesSearch(name, location, userCoords);
+          Logger.info("[search_provider] Google API returned", { count: googleResults.length });
+
+          if (googleResults.length) {
+            Logger.info("[search_provider] ✅ Found via Google", { count: googleResults.length, hasDistances: !!googleResults[0]?.distance });
+            this.saveToCache(cacheKey, googleResults);
+            return googleResults;
+          }
+
+          Logger.warn("[search_provider] No results found");
+          return [];
+          
+        } catch (error: any) {
+          Logger.error("[search_provider] ERROR:", {
+            message: error.message,
+            stack: error.stack?.split('\n')[0],
+            name, 
+            location, 
+            hasCoords: !!userCoords
+          });
+          throw error; // Re-throw so orchestrator can handle it
         }
-
-        const local = await lookupLocalProvider(name);
-        if (local) {
-          Logger.info("✅ Found provider locally:", local.name);
-          this.saveToCache(cacheKey, [local]);
-          return [local];
-        }
-
-        Logger.info("🌍 Falling back to Google Places API...", { hasCoords: !!userCoords });
-        const googleResults = await googlePlacesSearch(name, location, userCoords);
-
-        if (googleResults.length) {
-          Logger.info("✅ Google API returned results", { count: googleResults.length, hasDistances: !!googleResults[0]?.distance });
-          this.saveToCache(cacheKey, googleResults);
-          return googleResults;
-        }
-
-        Logger.warn("❌ No provider found for query:", { name, location });
-        return [];
       },
       find_programs: async ({ provider }: any) => [
         { name: "Beginner Ski Class – Saturdays", id: "prog1" },
@@ -880,11 +898,41 @@ Stay warm, concise, and reassuring.
         { lastSearch: parsed, providerSearchResults: results }
       );
     } catch (error: any) {
-      Logger.error("Provider search failed:", error.message);
+      Logger.error(`[ProviderSearch] Failed for "${name}":`, error.message);
+      
+      // Provide specific error messages based on error type
+      if (error.message.includes("API key") || error.message.includes("GOOGLE_PLACES_API_KEY")) {
+        return this.formatResponse(
+          "⚠️ Provider search is temporarily unavailable. Please try again in a moment.",
+          undefined,
+          [{ label: "Retry", action: "retry_search", variant: "accent" }],
+          {}
+        );
+      }
+      
+      if (error.message.includes("timeout") || error.message.includes("ECONNREFUSED") || error.message.includes("network")) {
+        return this.formatResponse(
+          "🌐 Network issue detected. Let's try that search again.",
+          undefined,
+          [{ label: "Retry Search", action: "retry_search", variant: "accent" }],
+          {}
+        );
+      }
+      
+      if (error.message.includes("Google API error")) {
+        return this.formatResponse(
+          "🔍 Search service temporarily unavailable. Please try again shortly.",
+          undefined,
+          [{ label: "Retry", action: "retry_search", variant: "accent" }],
+          {}
+        );
+      }
+      
+      // Generic error
       return this.formatResponse(
-        "Hmm, I had trouble searching for providers. Let's try again in a moment.",
+        "Hmm, something went wrong with the search. Let's try again.",
         undefined,
-        [{ label: "Retry Search", action: "retry_search", variant: "accent" }],
+        [{ label: "Try Again", action: "retry_search", variant: "accent" }],
         {}
       );
     }

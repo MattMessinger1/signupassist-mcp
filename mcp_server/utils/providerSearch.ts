@@ -55,51 +55,75 @@ export async function googlePlacesSearch(
   location?: string,
   userCoords?: {lat: number, lng: number}
 ): Promise<Provider[]> {
-  const query = `${name}${location ? ", " + location : ""}`;
-  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
-  if (!apiKey) throw new Error("Missing GOOGLE_PLACES_API_KEY in environment variables.");
-
-  let url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}`;
-  
-  // Add location bias if coordinates provided (50km radius)
-  if (userCoords) {
-    url += `&location=${userCoords.lat},${userCoords.lng}&radius=50000`;
-    Logger.info(`[GoogleAPI] Using location bias: ${userCoords.lat},${userCoords.lng} (50km radius)`);
-  }
-  
-  url += `&key=${apiKey}`;
-
-  Logger.info(`[GoogleAPI] Searching for "${query}"`);
-
-  const res = await axios.get(url);
-  const data = res.data.results || [];
-
-  if (!data.length) {
-    Logger.warn(`[GoogleAPI] No results for query: ${query}`);
-    return [];
-  }
-
-  Logger.info(`[GoogleAPI] Found ${data.length} results`);
-
-  return data.slice(0, 3).map((r: any) => {
-    const provider: Provider = {
-      name: r.name,
-      city: r.formatted_address?.split(",")[1]?.trim() || "",
-      address: r.formatted_address,
-      orgRef: r.place_id,
-      source: "google",
-    };
+  try {
+    const query = `${name}${location ? ", " + location : ""}`;
+    const apiKey = process.env.GOOGLE_PLACES_API_KEY;
     
-    // Calculate distance if user location available
-    if (userCoords && r.geometry?.location) {
-      provider.distance = calculateDistance(
-        userCoords.lat,
-        userCoords.lng,
-        r.geometry.location.lat,
-        r.geometry.location.lng
-      );
+    if (!apiKey) {
+      Logger.error("[GoogleAPI] GOOGLE_PLACES_API_KEY not set!");
+      throw new Error("Google Places API key not configured");
+    }
+
+    let url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}`;
+    
+    // Add location bias if coordinates provided (50km radius)
+    if (userCoords) {
+      url += `&location=${userCoords.lat},${userCoords.lng}&radius=50000`;
+      Logger.info(`[GoogleAPI] Using location bias: ${userCoords.lat},${userCoords.lng} (50km radius)`);
     }
     
-    return provider;
-  });
+    url += `&key=${apiKey}`;
+
+    Logger.info(`[GoogleAPI] Calling API for "${query}"`);
+    
+    const res = await axios.get(url, { timeout: 10000 }); // Add 10s timeout
+    
+    // Check for API errors
+    if (res.data.status && res.data.status !== "OK" && res.data.status !== "ZERO_RESULTS") {
+      Logger.error(`[GoogleAPI] API error: ${res.data.status}`, res.data.error_message);
+      throw new Error(`Google API error: ${res.data.status}`);
+    }
+    
+    const data = res.data.results || [];
+
+    if (!data.length) {
+      Logger.warn(`[GoogleAPI] No results for query: ${query}`);
+      return [];
+    }
+
+    Logger.info(`[GoogleAPI] Success - found ${data.length} results`);
+
+    return data.slice(0, 3).map((r: any) => {
+      const provider: Provider = {
+        name: r.name,
+        city: r.formatted_address?.split(",")[1]?.trim() || "",
+        address: r.formatted_address,
+        orgRef: r.place_id,
+        source: "google",
+      };
+      
+      // Calculate distance if user location available
+      if (userCoords && r.geometry?.location) {
+        provider.distance = calculateDistance(
+          userCoords.lat,
+          userCoords.lng,
+          r.geometry.location.lat,
+          r.geometry.location.lng
+        );
+      }
+      
+      return provider;
+    });
+    
+  } catch (error: any) {
+    Logger.error("[GoogleAPI] Request failed:", {
+      message: error.message,
+      code: error.code,
+      response: error.response?.data
+    });
+    
+    // Don't throw - return empty array so flow can continue with local providers
+    // This allows graceful degradation if Google API is unavailable
+    return [];
+  }
 }
