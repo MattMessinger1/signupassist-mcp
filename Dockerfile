@@ -3,6 +3,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+# Skip Playwright browser downloads to speed up build
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+
 # Copy all package files
 COPY package.production.json package.json
 COPY package-lock.json ./
@@ -10,13 +13,27 @@ COPY package-lock.json ./
 # Install ALL dependencies (including devDependencies for build)
 RUN npm ci
 
-# Copy TypeScript configs and source
+# Copy TypeScript configs and source for BACKEND
 COPY tsconfig.json tsconfig.mcp.json ./
 COPY mcp_server ./mcp_server
 COPY mcp ./mcp
 
-# Build TypeScript to dist/
+# Build backend TypeScript to dist/
 RUN npx tsc -p tsconfig.mcp.json
+
+# Copy frontend source and configs for FRONTEND BUILD
+COPY src ./src
+COPY index.html ./
+COPY vite.config.ts ./
+COPY tailwind.config.ts ./
+COPY postcss.config.js ./
+COPY tsconfig.app.json ./
+COPY tsconfig.node.json ./
+COPY components.json ./
+COPY public ./public
+
+# Build frontend (Vite production bundle)
+RUN npm run build:frontend
 
 # ============= RUNTIME STAGE =============
 FROM node:20-alpine
@@ -30,12 +47,15 @@ COPY package-lock.json ./
 # Install ONLY production dependencies (fast, no playwright/typescript)
 RUN npm ci --production
 
-# Copy built code from builder stage
+# Copy built backend code from builder stage
 COPY --from=builder /app/dist ./dist
 COPY mcp ./mcp
 
-# Expose port
-EXPOSE 4000
+# Copy built frontend static files from builder stage
+COPY --from=builder /app/dist/client ./dist/client
+
+# Expose correct port (matches code default)
+EXPOSE 8080
 
 # Start server
 CMD ["npm", "run", "mcp:start"]

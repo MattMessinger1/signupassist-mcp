@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "mcp:start": "node dist/mcp_server/index.js"
+    "mcp:start": "node dist/mcp_server/index.js",
+    "build:frontend": "vite build"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.18.2",
@@ -24,6 +25,32 @@
     "typescript": "^5.9.2",
     "tsx": "^4.20.6",
     "@types/express": "^4.17.23",
-    "@types/cors": "^2.8.19"
+    "@types/cors": "^2.8.19",
+    "vite": "^7.1.7",
+    "@vitejs/plugin-react-swc": "^4.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "tailwindcss": "^3.4.1",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "@tailwindcss/postcss": "^4.1.13",
+    "tailwind-merge": "^3.3.1",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lovable-tagger": "^1.1.10",
+    "react-router-dom": "^7.9.2",
+    "@tanstack/react-query": "^5.90.2",
+    "lucide-react": "^0.544.0",
+    "sonner": "^1.7.4",
+    "@radix-ui/react-slot": "^1.2.3",
+    "@radix-ui/react-dialog": "^1.1.15",
+    "@radix-ui/react-toast": "^1.2.15",
+    "@radix-ui/react-tooltip": "^1.2.8",
+    "tailwindcss-animate": "^1.0.7",
+    "react-hook-form": "^7.63.0",
+    "@hookform/resolvers": "^3.10.0",
+    "framer-motion": "^12.23.22"
   }
 }

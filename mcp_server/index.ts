@@ -408,6 +408,61 @@ class SignupAssistMCPServer {
         return;
       }
 
+      // --- Serve static frontend files (React SPA)
+      if (req.method === 'GET') {
+        const servePath = url.pathname === '/' ? '/index.html' : url.pathname;
+        const filePath = path.resolve(process.cwd(), 'dist', 'client', `.${servePath}`);
+        
+        if (existsSync(filePath)) {
+          // Determine content type by file extension
+          const ext = path.extname(filePath);
+          const contentTypeMap: Record<string, string> = {
+            '.html': 'text/html',
+            '.js': 'text/javascript',
+            '.css': 'text/css',
+            '.png': 'image/png',
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.gif': 'image/gif',
+            '.svg': 'image/svg+xml',
+            '.ico': 'image/x-icon',
+            '.json': 'application/json',
+            '.woff': 'font/woff',
+            '.woff2': 'font/woff2',
+            '.ttf': 'font/ttf',
+          };
+          const contentType = contentTypeMap[ext] || 'application/octet-stream';
+          
+          try {
+            const content = readFileSync(filePath);
+            res.writeHead(200, { 'Content-Type': contentType });
+            res.end(content);
+            console.log('[STATIC] Served:', servePath);
+            return;
+          } catch (err: any) {
+            console.error('[STATIC ERROR]', err);
+            res.writeHead(500, { 'Content-Type': 'text/plain' });
+            res.end('Internal Server Error');
+            return;
+          }
+        }
+        
+        // For SPA routing: serve index.html for non-file paths
+        if (!servePath.includes('.')) {
+          try {
+            const indexPath = path.resolve(process.cwd(), 'dist', 'client', 'index.html');
+            const content = readFileSync(indexPath);
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end(content);
+            console.log('[SPA] Served index.html for:', url.pathname);
+            return;
+          } catch (err: any) {
+            console.error('[SPA ERROR]', err);
+            // Fall through to 404
+          }
+        }
+      }
+
       // --- Default 404
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not found' }));
