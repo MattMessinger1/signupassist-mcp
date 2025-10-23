@@ -30,6 +30,9 @@ import { skiClubProTools } from './providers/skiclubpro.js';
 // Import prereqs registry
 import { registerAllProviders } from './prereqs/providers.js';
 
+// Type-only import for AIOrchestrator (safe - doesn't execute module code)
+import type AIOrchestrator from './ai/AIOrchestrator.js';
+
 // Register error handlers FIRST to catch any import failures
 process.on('uncaughtException', (error) => {
   console.error('[FATAL] Uncaught exception:', error);
