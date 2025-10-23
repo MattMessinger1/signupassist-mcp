@@ -61,10 +61,11 @@ class SignupAssistMCPServer {
       this.orchestrator = new AIOrchestrator();
       console.log('✅ AIOrchestrator initialized');
     } catch (error) {
-      console.error('❌ FATAL: AIOrchestrator initialization failed');
+      console.error('❌ WARNING: AIOrchestrator initialization failed - server will start without it');
       console.error('Error:', error);
       console.error('Stack:', error instanceof Error ? error.stack : 'No stack trace');
-      throw error; // Re-throw to prevent server from starting in broken state
+      console.error('Tip: Set OPENAI_API_KEY environment variable if using OpenAI');
+      this.orchestrator = null as any; // Allow server to start without orchestrator
     }
     
     this.setupRequestHandlers();
@@ -382,6 +383,16 @@ class SignupAssistMCPServer {
         req.on('end', async () => {
           try {
             const { message, sessionId, action, payload } = JSON.parse(body);
+            
+            // Check if orchestrator is available
+            if (!this.orchestrator) {
+              res.writeHead(503, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ 
+                error: 'AI Orchestrator unavailable', 
+                details: 'Server started without AI capabilities. Check logs for initialization errors.' 
+              }));
+              return;
+            }
             
             // Validate required fields
             if (!sessionId) {
