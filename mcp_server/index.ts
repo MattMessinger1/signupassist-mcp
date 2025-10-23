@@ -31,7 +31,9 @@ import { skiClubProTools } from './providers/skiclubpro.js';
 import { registerAllProviders } from './prereqs/providers.js';
 
 // Import AI Orchestrator
+console.log('[STARTUP] Importing AIOrchestrator...');
 import AIOrchestrator from './ai/AIOrchestrator.js';
+console.log('[STARTUP] AIOrchestrator import successful');
 
 class SignupAssistMCPServer {
   private server: Server;
@@ -39,6 +41,7 @@ class SignupAssistMCPServer {
   private orchestrator: AIOrchestrator;
 
   constructor() {
+    console.log('[STARTUP] SignupAssistMCPServer constructor called');
     this.server = new Server(
       {
         name: 'signupassist-mcp',
@@ -50,9 +53,12 @@ class SignupAssistMCPServer {
         },
       }
     );
+    console.log('[STARTUP] MCP Server instance created');
 
+    console.log('[STARTUP] Initializing AIOrchestrator...');
     this.orchestrator = new AIOrchestrator();
     console.log('✅ AIOrchestrator initialized');
+    
     this.setupRequestHandlers();
     this.registerTools();
   }
