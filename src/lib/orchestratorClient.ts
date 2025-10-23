@@ -32,18 +32,20 @@ export interface OrchestratorResponse {
  * Send a text message to the orchestrator
  * @param message - User's text input
  * @param sessionId - Unique session identifier
+ * @param userLocation - Optional GPS coordinates for location-based filtering
  * @returns Promise resolving to orchestrator response with cards
  */
 export async function sendMessage(
   message: string,
-  sessionId: string
+  sessionId: string,
+  userLocation?: {lat: number, lng: number}
 ): Promise<OrchestratorResponse> {
-  console.log('[Orchestrator Client] Sending message:', message);
+  console.log('[Orchestrator Client] Sending message:', message, { hasLocation: !!userLocation });
   
   const res = await fetch(`${ORCHESTRATOR_BASE}/orchestrator/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, sessionId }),
+    body: JSON.stringify({ message, sessionId, userLocation }),
   });
 
   if (!res.ok) {

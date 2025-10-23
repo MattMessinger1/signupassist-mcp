@@ -82,8 +82,34 @@ export default function ChatTestHarness() {
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
   const [testTracker] = useState(() => new TestComparisonTracker());
   const [coverageReport, setCoverageReport] = useState<CoverageReport | null>(null);
+  const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
 
   const { toast } = useToast();
+
+  // ============= Geolocation Setup =============
+
+  useEffect(() => {
+    // Request user's location on mount for GPS-based provider filtering
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const coords = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          };
+          setUserLocation(coords);
+          addLog("success", "system", `GPS location acquired: ${coords.lat.toFixed(2)},${coords.lng.toFixed(2)}`);
+          console.log('[HARNESS] 📍 User location:', coords);
+        },
+        (error) => {
+          addLog("warning", "system", `Geolocation denied: ${error.message} - will use text-based search`);
+          console.warn('[HARNESS] Geolocation denied, falling back to text-based search');
+        }
+      );
+    } else {
+      addLog("warning", "system", "Geolocation not supported by browser");
+    }
+  }, []);
 
   // ============= Logging =============
 
@@ -229,7 +255,7 @@ export default function ChatTestHarness() {
     try {
       // Call orchestrator instead of direct tools
       const sessionId = state.sessionRef || `session-${Date.now()}`;
-      const response = await sendMessage(userInput, sessionId);
+      const response = await sendMessage(userInput, sessionId, userLocation || undefined);
       
       console.log('[HARNESS] Orchestrator response:', response);
       
@@ -326,7 +352,7 @@ export default function ChatTestHarness() {
       const errors: string[] = [];
       
       try {
-        const response = await sendMessage(scenario.orchestratorInput, sessionId);
+        const response = await sendMessage(scenario.orchestratorInput, sessionId, userLocation || undefined);
         const timing = Date.now() - startTime;
         
         const result: TestResult = {
@@ -445,7 +471,7 @@ export default function ChatTestHarness() {
       setIsProcessing(true);
 
       const sessionId = `demo-session-${Date.now()}`;
-      const response1 = await sendMessage("I need ski lessons for Blackhawk", sessionId);
+      const response1 = await sendMessage("I need ski lessons for Blackhawk", sessionId, userLocation || undefined);
       
       setIsProcessing(false);
       addAssistantMessage(response1.message, response1.cards ? "cards" : undefined, { cards: response1.cards, cta: response1.cta });

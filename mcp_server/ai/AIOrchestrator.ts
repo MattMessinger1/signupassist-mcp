@@ -174,18 +174,23 @@ Stay warm, concise, and reassuring.
    * 
    * @param userMessage - The user's input text
    * @param sessionId - Unique session identifier for context tracking
+   * @param userLocation - Optional GPS coordinates {lat, lng} for location-based filtering
    * @returns Promise resolving to OrchestratorResponse with cards
    */
-  async generateResponse(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
+  async generateResponse(userMessage: string, sessionId: string, userLocation?: {lat: number, lng: number}): Promise<OrchestratorResponse> {
     try {
       const context = this.getContext(sessionId);
+      // Store userLocation in context for tool calls
+      if (userLocation) {
+        this.updateContext(sessionId, { userLocation } as any);
+      }
       const step = this.determineStep(userMessage, context);
       
       // Audit logging for responsible delegate trail
-      this.logAction("flow_routing", { step, sessionId, input: userMessage });
+      this.logAction("flow_routing", { step, sessionId, input: userMessage, hasLocation: !!userLocation });
       
       // Debug logging for flow visibility
-      Logger.info(`🧭 Flow Step: ${step}`, { sessionId, context });
+      Logger.info(`🧭 Flow Step: ${step}`, { sessionId, context, hasLocation: !!userLocation });
       
       this.logInteraction(sessionId, "user", userMessage);
       const result = await this.handleStep(step, userMessage, sessionId);
@@ -416,10 +421,10 @@ Stay warm, concise, and reassuring.
 
     // Stubbed tools - will be replaced with real MCP integrations
     const tools: Record<string, Function> = {
-      search_provider: async ({ name, location }: any) => {
-        const cacheKey = `provider-${name}-${location || ""}`;
+      search_provider: async ({ name, location, userCoords }: any) => {
+        const cacheKey = `provider-${name}-${location || ""}-${userCoords ? `${userCoords.lat},${userCoords.lng}` : ""}`;
         if (this.isCacheValid(cacheKey)) {
-          Logger.info("Cache hit for provider search", { name, location });
+          Logger.info("Cache hit for provider search", { name, location, hasCoords: !!userCoords });
           return this.getFromCache(cacheKey).value;
         }
 
@@ -430,11 +435,11 @@ Stay warm, concise, and reassuring.
           return [local];
         }
 
-        Logger.info("🌍 Falling back to Google Places API...");
-        const googleResults = await googlePlacesSearch(name, location);
+        Logger.info("🌍 Falling back to Google Places API...", { hasCoords: !!userCoords });
+        const googleResults = await googlePlacesSearch(name, location, userCoords);
 
         if (googleResults.length) {
-          Logger.info("✅ Google API returned results");
+          Logger.info("✅ Google API returned results", { count: googleResults.length, hasDistances: !!googleResults[0]?.distance });
           this.saveToCache(cacheKey, googleResults);
           return googleResults;
         }
@@ -595,15 +600,22 @@ Stay warm, concise, and reassuring.
    * @returns Array of CardSpec objects
    */
   private buildProviderCards(results: any[]): CardSpec[] {
-    return results.map(provider => ({
-      title: provider.name,
-      subtitle: provider.city ? `${provider.city}, ${provider.state || ''}` : provider.address || '',
-      metadata: { orgRef: provider.orgRef, source: provider.source },
-      buttons: [
-        { label: "Yes – That's Mine", action: "select_provider", variant: "accent" as const },
-        { label: "Not This One", action: "reject_provider", variant: "outline" as const }
-      ]
-    }));
+    return results.map(provider => {
+      let subtitle = provider.city ? `${provider.city}, ${provider.state || ''}` : provider.address || '';
+      // Add distance if available
+      if (provider.distance !== undefined) {
+        subtitle += ` • ${provider.distance}km away`;
+      }
+      return {
+        title: provider.name,
+        subtitle,
+        metadata: { orgRef: provider.orgRef, source: provider.source, distance: provider.distance },
+        buttons: [
+          { label: "Yes – That's Mine", action: "select_provider", variant: "accent" as const },
+          { label: "Not This One", action: "reject_provider", variant: "outline" as const }
+        ]
+      };
+    });
   }
 
   /**
@@ -828,7 +840,11 @@ Stay warm, concise, and reassuring.
     const location = parsed.city;
     
     try {
-      const results = await this.callTool("search_provider", { name, location });
+      // Get userLocation from context if available
+      const context = this.getContext(sessionId);
+      const userCoords = (context as any).userLocation;
+      
+      const results = await this.callTool("search_provider", { name, location, userCoords });
       
       if (results.length === 0) {
         return this.formatResponse(
@@ -840,9 +856,22 @@ Stay warm, concise, and reassuring.
       }
       
       const foundVia = results[0].source === "google" ? "Google" : "our provider list";
-      const message = `🔍 Great! I found ${results.length} match${results.length > 1 ? "es" : ""} for **${name}**${location ? " in " + location : ""} via ${foundVia}. Which one is yours?`;
+      // Fix 1: Don't echo user input, use actual provider name or simplified message
+      const message = results.length === 1 
+        ? `🔍 Great! I found **${results[0].name}** via ${foundVia}. Is this yours?`
+        : `🔍 Great! I found ${results.length} matches via ${foundVia}. Which one is yours?`;
       
       const cards = this.buildProviderCards(results);
+      
+      // Log location-based search for audit trail
+      if (userCoords) {
+        this.logAction("location_based_search", {
+          sessionId,
+          userProvided: true,
+          method: 'gps',
+          approximateLocation: `${userCoords.lat.toFixed(2)},${userCoords.lng.toFixed(2)}`
+        });
+      }
       
       return this.formatResponse(
         message,
