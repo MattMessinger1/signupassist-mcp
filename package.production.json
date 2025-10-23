@@ -14,11 +14,13 @@
     "zod": "^3.25.76",
     "dotenv": "^17.2.3",
     "axios": "^1.12.2",
-    "jose": "^5.10.0"
+    "jose": "^5.10.0",
+    "stripe": "^15.12.0"
   },
   "devDependencies": {
     "@types/node": "^20.19.17",
     "typescript": "^5.9.2",
-    "tsx": "^4.20.6"
+    "tsx": "^4.20.6",
+    "playwright": "^1.55.1"
   }
 }

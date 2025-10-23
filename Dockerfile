@@ -3,26 +3,26 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install TypeScript globally for build step
-RUN npm install -g typescript tsx
-
-# Copy production package.json for minimal dependencies
+# Copy production package.json with build dependencies
 COPY package.production.json package.json
 COPY package-lock.json ./
 
-# Fast, deterministic production install
-RUN npm ci --production
+# Install all dependencies (including devDependencies for build)
+RUN npm ci
 
-# Install TypeScript as dev dependency for build
-RUN npm install --save-dev typescript @types/node
+# Copy TypeScript configs
+COPY tsconfig.json ./
+COPY tsconfig.mcp.json ./
 
 # Copy source files
 COPY mcp_server ./mcp_server
 COPY mcp ./mcp
-COPY tsconfig.mcp.json ./
 
 # Build TypeScript to dist/
 RUN npx tsc -p tsconfig.mcp.json
+
+# Remove devDependencies after build to keep image small
+RUN npm prune --production
 
 # Expose port for local run (Railway sets $PORT)
 EXPOSE 4000
