@@ -381,7 +381,11 @@ class SignupAssistMCPServer {
       if (url.pathname === '/orchestrator/chat') {
         console.log('[ROUTE] /orchestrator/chat hit');
         if (req.method === 'OPTIONS') {
-          res.writeHead(200);
+          res.writeHead(200, {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type'
+          });
           res.end();
           return;
         }
@@ -400,10 +404,14 @@ class SignupAssistMCPServer {
             
             // Check if orchestrator is available
             if (!this.orchestrator) {
-              res.writeHead(503, { 'Content-Type': 'application/json' });
+              res.writeHead(503, { 
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+              });
               res.end(JSON.stringify({ 
                 error: 'AI Orchestrator unavailable', 
-                details: 'Server started without AI capabilities. Check logs for initialization errors.' 
+                details: 'OPENAI_API_KEY not configured. Set it in Railway environment variables.',
+                message: '⚠️ The AI orchestrator is not available. Please configure the OPENAI_API_KEY environment variable in Railway.'
               }));
               return;
             }
@@ -432,11 +440,17 @@ class SignupAssistMCPServer {
               return;
             }
 
-            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.writeHead(200, { 
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            });
             res.end(JSON.stringify(result));
           } catch (err: any) {
             console.error('[Orchestrator] Error:', err);
-            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.writeHead(500, { 
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*'
+            });
             res.end(JSON.stringify({ 
               error: err.message || 'Unknown error',
               message: "Something went wrong. Let's try that again.",
