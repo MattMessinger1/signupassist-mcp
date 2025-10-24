@@ -880,9 +880,14 @@ Stay warm, concise, and reassuring.
         );
       }
       
-      const message = results.length === 1 
+      let message = results.length === 1 
         ? `🔍 Great! Is this what you're looking for?`
         : `🔍 I found ${results.length} matches. Which one is yours?`;
+      
+      // Add transparency note when location-based search is used
+      if (userCoords) {
+        message += `\n\n_Results are shown near your general area._`;
+      }
       
       const cards = this.buildProviderCards(results);
       
