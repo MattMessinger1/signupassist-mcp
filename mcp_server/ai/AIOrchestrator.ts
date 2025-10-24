@@ -637,7 +637,7 @@ Stay warm, concise, and reassuring.
         },
         buttons: [
           { label: "Yes", action: "select_provider", variant: "accent" as const },
-          { label: "Show me Others", action: "reject_provider", variant: "outline" as const }
+          { label: "Show Me Others", action: "reject_provider", variant: "outline" as const }
         ]
       };
     });
