@@ -39,6 +39,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, XCircle, Activity } from "lucide-react";
 import { sendMessage, sendAction } from "@/lib/orchestratorClient";
+import { supabase } from "@/integrations/supabase/client";
 import {
   DEFAULT_PROVIDER,
   TEST_SCENARIOS,
@@ -87,7 +88,59 @@ export default function ChatTestHarness() {
   const { toast } = useToast();
 
   // ============= Geolocation Setup =============
-  // Location will be added via IP geolocation later (no upfront browser prompt)
+  useEffect(() => {
+    const fetchIPLocation = async () => {
+      try {
+        addLog("info", "system", "🌍 Detecting location from IP...");
+        
+        const { data, error } = await supabase.functions.invoke('get-user-location');
+        
+        if (error) {
+          console.warn('[Location] IP geolocation failed:', error);
+          addLog("warning", "system", "⚠️ Could not detect location - search will work without location bias");
+          return;
+        }
+        
+        if (data?.lat && data?.lng) {
+          const coords = { lat: data.lat, lng: data.lng };
+          setUserLocation(coords);
+          
+          // Different messages for mock vs real location
+          const isMock = data.mock === true;
+          const mockReasonMap: Record<string, string> = {
+            "no_api_key": "IPAPI_KEY not configured",
+            "localhost": "Development mode",
+            "api_error": "API error - using fallback",
+            "invalid_response": "Invalid response - using fallback",
+            "error": "Error - using fallback"
+          };
+          const mockReason = mockReasonMap[data.reason as string] || "Using fallback";
+          
+          toast({
+            title: isMock ? "🧪 Mock Location" : "📍 Location Detected",
+            description: isMock 
+              ? `${data.city}, ${data.region} (${mockReason})`
+              : `${data.city}, ${data.region} - Helps find nearby providers`,
+          });
+          
+          addLog(
+            isMock ? "warning" : "success", 
+            "system", 
+            isMock 
+              ? `🧪 Using mock location (${mockReason}): ${data.city}, ${data.region}`
+              : `📍 Real location detected: ${data.city}, ${data.region}`,
+            coords
+          );
+        }
+      } catch (error) {
+        console.warn('[Location] IP geolocation failed:', error);
+        addLog("warning", "system", "⚠️ Location detection failed - search will work without location bias");
+      }
+    };
+    
+    fetchIPLocation();
+  }, []);
+
 
   // ============= Logging =============
 

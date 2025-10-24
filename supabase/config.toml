@@ -1,5 +1,8 @@
 project_id = "jpcrphdevmvzcfgokgym"
 
+[functions.get-user-location]
+verify_jwt = false
+
 [functions.test-provider-search]
 verify_jwt = false
 
