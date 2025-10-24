@@ -627,7 +627,14 @@ Stay warm, concise, and reassuring.
       return {
         title: provider.name,
         subtitle,
-        metadata: { orgRef: provider.orgRef, source: provider.source, distance: provider.distance },
+        metadata: { 
+          name: provider.name,
+          orgRef: provider.orgRef, 
+          source: provider.source, 
+          distance: provider.distance,
+          city: provider.city,
+          state: provider.state
+        },
         buttons: [
           { label: "Yes", action: "select_provider", variant: "accent" as const },
           { label: "Show me Others", action: "reject_provider", variant: "outline" as const }
