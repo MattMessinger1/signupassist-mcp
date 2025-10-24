@@ -234,9 +234,6 @@ export default function ChatTestHarness() {
       console.log('[HARNESS] Action response:', response);
       console.log('[FLOW]', action, '→', response.cards ? `${response.cards.length} cards` : 'no cards');
       
-      // Add visual feedback for action
-      addUserMessage(`[Action: ${action}]`);
-      
       // Render next assistant message with cards
       addAssistantMessage(
         response.message,
