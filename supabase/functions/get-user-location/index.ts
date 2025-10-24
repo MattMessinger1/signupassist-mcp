@@ -6,6 +6,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// In-memory cache for IP lookups (TTL: 15 minutes)
+const cache: Record<string, { 
+  data: { lat: number; lng: number; city: string; region: string; mock: boolean; reason?: string }, 
+  timestamp: number 
+}> = {};
+const CACHE_TTL = 15 * 60 * 1000; // 15 minutes in milliseconds
+
 serve(async (req) => {
   // Handle preflight CORS requests
   if (req.method === "OPTIONS") {
@@ -20,6 +27,22 @@ serve(async (req) => {
     let clientIp = forwardedFor?.split(",")[0]?.trim() || realIP || cfIP || null;
 
     console.log("[get-user-location] IP extraction:", { forwardedFor, realIP, cfIP, clientIp });
+
+    // Check cache first (skip localhost IPs)
+    if (clientIp && clientIp !== "127.0.0.1" && clientIp !== "::1" && cache[clientIp]) {
+      const cachedEntry = cache[clientIp];
+      if (Date.now() - cachedEntry.timestamp < CACHE_TTL) {
+        console.log(`[get-user-location] ✅ Cache hit for IP: ${clientIp}`);
+        return new Response(JSON.stringify(cachedEntry.data), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      } else {
+        // Cache expired, remove it
+        delete cache[clientIp];
+        console.log(`[get-user-location] Cache expired for IP: ${clientIp}`);
+      }
+    }
 
     // Handle localhost/development (return mock location)
     if (!clientIp || clientIp === "127.0.0.1" || clientIp === "::1") {
@@ -108,6 +131,12 @@ serve(async (req) => {
       region: data.region,
       mock: false
     };
+
+    // Store in cache
+    if (clientIp) {
+      cache[clientIp] = { data: result, timestamp: Date.now() };
+      console.log(`[get-user-location] Cached result for IP: ${clientIp}`);
+    }
 
     console.log("[get-user-location] ✅ Real location detected:", result);
     return new Response(JSON.stringify(result), {
