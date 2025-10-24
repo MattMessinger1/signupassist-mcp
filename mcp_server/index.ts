@@ -400,7 +400,7 @@ class SignupAssistMCPServer {
         req.on('data', (chunk) => (body += chunk));
         req.on('end', async () => {
           try {
-            const { message, sessionId, action, payload, userLocation } = JSON.parse(body);
+            const { message, sessionId, action, payload, userLocation, userJwt } = JSON.parse(body);
             
             // Check if orchestrator is available
             if (!this.orchestrator) {
@@ -428,12 +428,12 @@ class SignupAssistMCPServer {
             // Route to appropriate orchestrator method
             if (action) {
               // Card action (button click)
-              console.log(`[Orchestrator] handleAction: ${action}`);
-              result = await this.orchestrator.handleAction(action, payload || {}, sessionId);
+              console.log(`[Orchestrator] handleAction: ${action}`, { hasJwt: !!userJwt });
+              result = await this.orchestrator.handleAction(action, payload || {}, sessionId, userJwt);
             } else if (message) {
               // Text message
-              console.log(`[Orchestrator] generateResponse: ${message}`, { hasLocation: !!userLocation });
-              result = await this.orchestrator.generateResponse(message, sessionId, userLocation);
+              console.log(`[Orchestrator] generateResponse: ${message}`, { hasLocation: !!userLocation, hasJwt: !!userJwt });
+              result = await this.orchestrator.generateResponse(message, sessionId, userLocation, userJwt);
             } else {
               res.writeHead(400, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: 'Missing message or action' }));

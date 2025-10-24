@@ -38,14 +38,23 @@ export interface OrchestratorResponse {
 export async function sendMessage(
   message: string,
   sessionId: string,
-  userLocation?: {lat: number, lng: number}
+  userLocation?: {lat: number, lng: number},
+  userJwt?: string
 ): Promise<OrchestratorResponse> {
-  console.log('[Orchestrator Client] Sending message:', message, { hasLocation: !!userLocation });
+  console.log('[Orchestrator Client] Sending message:', message, { hasLocation: !!userLocation, hasJwt: !!userJwt });
+  
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+  
+  if (userJwt) {
+    headers['Authorization'] = `Bearer ${userJwt}`;
+  }
   
   const res = await fetch(`${ORCHESTRATOR_BASE}/orchestrator/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, sessionId, userLocation }),
+    headers,
+    body: JSON.stringify({ message, sessionId, userLocation, userJwt }),
   });
 
   if (!res.ok) {
@@ -66,14 +75,23 @@ export async function sendMessage(
 export async function sendAction(
   action: string,
   payload: any,
-  sessionId: string
+  sessionId: string,
+  userJwt?: string
 ): Promise<OrchestratorResponse> {
-  console.log('[Orchestrator Client] Sending action:', action, payload);
+  console.log('[Orchestrator Client] Sending action:', action, payload, { hasJwt: !!userJwt });
+  
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
+  };
+  
+  if (userJwt) {
+    headers['Authorization'] = `Bearer ${userJwt}`;
+  }
   
   const res = await fetch(`${ORCHESTRATOR_BASE}/orchestrator/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, payload, sessionId }),
+    headers,
+    body: JSON.stringify({ action, payload, sessionId, userJwt }),
   });
 
   if (!res.ok) {

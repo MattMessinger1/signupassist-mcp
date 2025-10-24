@@ -25,6 +25,8 @@
 
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/AuthContext";
+import { useNavigate } from "react-router-dom";
 import { HarnessHeader } from "@/components/chat-test/HarnessHeader";
 import { MessageList } from "@/components/chat-test/MessageList";
 import { ChatInput } from "@/components/chat-test/ChatInput";
@@ -61,6 +63,48 @@ interface ConversationState {
 // ============= Main Component =============
 
 export default function ChatTestHarness() {
+  // Auth
+  const { user, session, loading, isSessionValid } = useAuth();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
+  // Redirect to auth if not logged in
+  useEffect(() => {
+    if (!loading && !user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to use the Chat Test Harness",
+        variant: "destructive",
+      });
+      navigate('/auth');
+    }
+  }, [user, loading, navigate, toast]);
+
+  // Show loading state while checking auth
+  if (loading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="text-center">
+          <Activity className="h-8 w-8 animate-spin mx-auto mb-4" />
+          <p>Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render if not authenticated (will redirect)
+  if (!user || !session) {
+    return null;
+  }
+
+  return <ChatTestHarnessContent />;
+}
+
+function ChatTestHarnessContent() {
+  const { session, isSessionValid } = useAuth();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+
   // State
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -85,7 +129,27 @@ export default function ChatTestHarness() {
   const [coverageReport, setCoverageReport] = useState<CoverageReport | null>(null);
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
 
-  const { toast } = useToast();
+  // Get JWT helper
+  const getUserJwt = (): string | undefined => {
+    if (!session?.access_token) {
+      console.warn('[Auth] No JWT available in session');
+      return undefined;
+    }
+    
+    // Validate session is not expired
+    if (!isSessionValid()) {
+      console.error('[Auth] Session expired, JWT invalid');
+      toast({
+        title: "Session Expired",
+        description: "Please log in again",
+        variant: "destructive",
+      });
+      navigate('/auth');
+      return undefined;
+    }
+    
+    return session.access_token;
+  };
 
   // ============= Geolocation Setup =============
   useEffect(() => {
@@ -229,7 +293,7 @@ export default function ChatTestHarness() {
     try {
       // Call orchestrator's handleAction
       const sessionId = state.sessionRef || `session-${Date.now()}`;
-      const response = await sendAction(action, payload, sessionId);
+      const response = await sendAction(action, payload, sessionId, getUserJwt());
       
       console.log('[HARNESS] Action response:', response);
       console.log('[FLOW]', action, '→', response.cards ? `${response.cards.length} cards` : 'no cards');
@@ -283,7 +347,7 @@ export default function ChatTestHarness() {
     try {
       // Call orchestrator instead of direct tools
       const sessionId = state.sessionRef || `session-${Date.now()}`;
-      const response = await sendMessage(userInput, sessionId, userLocation || undefined);
+      const response = await sendMessage(userInput, sessionId, userLocation || undefined, getUserJwt());
       
       console.log('[HARNESS] Orchestrator response:', response);
       
@@ -380,7 +444,7 @@ export default function ChatTestHarness() {
       const errors: string[] = [];
       
       try {
-        const response = await sendMessage(scenario.orchestratorInput, sessionId, userLocation || undefined);
+        const response = await sendMessage(scenario.orchestratorInput, sessionId, userLocation || undefined, getUserJwt());
         const timing = Date.now() - startTime;
         
         const result: TestResult = {

@@ -56,6 +56,9 @@ export interface SessionContext {
   conversationHistory?: Array<{ role: string; content: string }>;
   loginCompleted?: boolean;
   confirmed?: boolean;
+  user_jwt?: string;
+  credential_id?: string;
+  pendingLogin?: { provider: string; orgRef: string };
 }
 
 /**
@@ -177,12 +180,15 @@ Stay warm, concise, and reassuring.
    * @param userLocation - Optional GPS coordinates {lat, lng} for location-based filtering
    * @returns Promise resolving to OrchestratorResponse with cards
    */
-  async generateResponse(userMessage: string, sessionId: string, userLocation?: {lat: number, lng: number}): Promise<OrchestratorResponse> {
+  async generateResponse(userMessage: string, sessionId: string, userLocation?: {lat: number, lng: number}, userJwt?: string): Promise<OrchestratorResponse> {
     try {
       const context = this.getContext(sessionId);
-      // Store userLocation in context for tool calls
+      // Store userLocation and JWT in context for tool calls
       if (userLocation) {
         this.updateContext(sessionId, { userLocation } as any);
+      }
+      if (userJwt) {
+        this.updateContext(sessionId, { user_jwt: userJwt } as any);
       }
       const step = this.determineStep(userMessage, context);
       
@@ -271,8 +277,14 @@ Stay warm, concise, and reassuring.
    * @param sessionId - Session identifier
    * @returns Promise resolving to next OrchestratorResponse
    */
-  async handleAction(action: string, payload: any, sessionId: string): Promise<OrchestratorResponse> {
+  async handleAction(action: string, payload: any, sessionId: string, userJwt?: string): Promise<OrchestratorResponse> {
     const context = this.getContext(sessionId);
+    
+    // Store JWT in context if provided
+    if (userJwt) {
+      this.updateContext(sessionId, { user_jwt: userJwt } as any);
+    }
+    
     this.logAction("card_action", { action, sessionId, currentStep: context.step });
     
     console.log(`[FLOW] Action received: ${action}`, payload);
@@ -311,12 +323,37 @@ Stay warm, concise, and reassuring.
           );
 
         case "connect_account":
-          // Simulate login (in production, this would trigger OAuth flow)
+          // Check if user is authenticated
+          const context = this.getContext(sessionId);
+          
+          if (!context.user_jwt) {
+            return this.formatResponse(
+              "⚠️ Please log in to connect your account.",
+              undefined,
+              [{ label: "Log In", action: "redirect_to_auth", variant: "accent" }],
+              {}
+            );
+          }
+          
+          // Store pending login info for credential collection
           this.updateContext(sessionId, {
-            loginCompleted: true,
-            step: FlowStep.PROGRAM_SELECTION
+            pendingLogin: {
+              provider: payload.provider,
+              orgRef: payload.orgRef
+            },
+            step: FlowStep.LOGIN
           });
-          return this.handleProgramSelection("Show programs", sessionId);
+          
+          return this.formatResponse(
+            `To connect your ${payload.orgRef} account, please provide your credentials. Click the button below to securely log in.`,
+            undefined,
+            [{ 
+              label: "Enter Credentials", 
+              action: "show_login_dialog", 
+              variant: "accent" 
+            }],
+            { requiresCredentials: true }
+          );
 
         case "select_program":
           // Step 5 → Step 6: Program selected, check prerequisites
@@ -364,6 +401,18 @@ Stay warm, concise, and reassuring.
             [{ label: "Start Over", action: "reset", variant: "accent" }],
             {}
           );
+
+        case "credentials_submitted":
+          // Handle callback after user enters credentials
+          const { credential_id } = payload;
+          
+          this.updateContext(sessionId, {
+            credential_id,
+            loginCompleted: true,
+            step: FlowStep.PROGRAM_SELECTION
+          });
+          
+          return this.handleProgramSelection("Show programs", sessionId);
 
         case "reset":
         case "retry_search":
