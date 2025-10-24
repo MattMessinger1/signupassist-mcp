@@ -46,7 +46,7 @@ export function ProviderConfirmationCard({
             className="flex-1"
             size="sm"
           >
-            Show me Others
+            Show Me Others
           </Button>
         )}
       </CardFooter>
