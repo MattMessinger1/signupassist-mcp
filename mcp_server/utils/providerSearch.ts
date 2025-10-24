@@ -10,6 +10,7 @@ import Logger from "./logger.js";
 export interface Provider {
   name: string;
   city?: string;
+  state?: string;
   address?: string;
   orgRef?: string;
   source: "local" | "google";
@@ -19,7 +20,8 @@ export interface Provider {
 const knownProviders: Record<string, Provider> = {
   blackhawk: {
     name: "Blackhawk Ski Club",
-    city: "Middleton, WI",
+    city: "Middleton",
+    state: "WI",
     orgRef: "blackhawk-ski",
     source: "local",
   },
@@ -94,9 +96,14 @@ export async function googlePlacesSearch(
     Logger.info(`[GoogleAPI] Success - found ${data.length} results`);
 
     return data.slice(0, 3).map((r: any) => {
+      const addressParts = r.formatted_address?.split(",") || [];
+      const cityPart = addressParts[1]?.trim() || "";
+      const statePart = addressParts[2]?.trim().split(" ")[0] || ""; // Extract state from "WI 53562"
+      
       const provider: Provider = {
         name: r.name,
-        city: r.formatted_address?.split(",")[1]?.trim() || "",
+        city: cityPart,
+        state: statePart,
         address: r.formatted_address,
         orgRef: r.place_id,
         source: "google",
