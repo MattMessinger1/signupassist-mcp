@@ -17,6 +17,7 @@ export type Database = {
       agentic_checkout_sessions: {
         Row: {
           created_at: string
+          expires_at: string | null
           id: string
           provider_id: string
           state: Json | null
@@ -25,6 +26,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          expires_at?: string | null
           id: string
           provider_id: string
           state?: Json | null
@@ -33,6 +35,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          expires_at?: string | null
           id?: string
           provider_id?: string
           state?: Json | null
@@ -457,6 +460,42 @@ export type Database = {
           },
         ]
       }
+      mandate_audit: {
+        Row: {
+          action: string
+          created_at: string
+          credential_id: string | null
+          id: string
+          metadata: Json | null
+          org_ref: string | null
+          program_ref: string | null
+          provider: string | null
+          user_id: string
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          credential_id?: string | null
+          id?: string
+          metadata?: Json | null
+          org_ref?: string | null
+          program_ref?: string | null
+          provider?: string | null
+          user_id: string
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          credential_id?: string | null
+          id?: string
+          metadata?: Json | null
+          org_ref?: string | null
+          program_ref?: string | null
+          provider?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       mandates: {
         Row: {
           child_id: string | null
@@ -700,10 +739,8 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      cleanup_expired_sessions: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      cleanup_expired_checkout_sessions: { Args: never; Returns: undefined }
+      cleanup_expired_sessions: { Args: never; Returns: undefined }
       get_best_hints: {
         Args: { p_program: string; p_provider: string; p_stage: string }
         Returns: Json
@@ -729,22 +766,13 @@ export type Database = {
         }
         Returns: string
       }
-      merge_hints: {
-        Args: { existing: Json; newest: Json }
-        Returns: Json
-      }
+      merge_hints: { Args: { existing: Json; newest: Json }; Returns: Json }
       recompute_confidence: {
         Args: { latest: number; prev: number; samples: number }
         Returns: number
       }
-      refresh_best_hints: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
-      sanitize_error_text: {
-        Args: { txt: string }
-        Returns: string
-      }
+      refresh_best_hints: { Args: never; Returns: undefined }
+      sanitize_error_text: { Args: { txt: string }; Returns: string }
       upsert_discovery_run: {
         Args: {
           p_errors: Json

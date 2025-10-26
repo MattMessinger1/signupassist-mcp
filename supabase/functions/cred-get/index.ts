@@ -91,6 +91,25 @@ serve(async (req) => {
         )
       }
 
+      // PHASE 4: Log credential access to audit trail
+      try {
+        await supabase
+          .from('mandate_audit')
+          .insert({
+            user_id: user.id,
+            action: 'credentials_accessed',
+            provider: data.provider,
+            credential_id: data.id,
+            metadata: { 
+              accessed_at: new Date().toISOString(),
+              credential_alias: data.alias
+            }
+          });
+      } catch (auditError) {
+        console.error('Failed to log credential access:', auditError);
+        // Don't fail the request if audit logging fails
+      }
+
       // Decrypt the credentials
       try {
         const [encryptedBase64, ivBase64] = data.encrypted_data.split(':')

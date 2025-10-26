@@ -3,6 +3,8 @@ import Logger from "../utils/logger.js";
 import { parseProviderInput, ParsedProviderInput } from "../utils/parseInput.js";
 import { lookupLocalProvider, googlePlacesSearch } from "../utils/providerSearch.js";
 import type { Provider } from "../utils/providerSearch.js";
+import { logAudit, extractUserIdFromJWT } from "../lib/auditLogger.js";
+import { loadSessionFromDB, saveSessionToDB } from "../lib/sessionPersistence.js";
 
 /**
  * Design DNA - Core design principles for SignupAssist
@@ -182,13 +184,13 @@ Stay warm, concise, and reassuring.
    */
   async generateResponse(userMessage: string, sessionId: string, userLocation?: {lat: number, lng: number}, userJwt?: string): Promise<OrchestratorResponse> {
     try {
-      const context = this.getContext(sessionId);
+      const context = await this.getContext(sessionId);
       // Store userLocation and JWT in context for tool calls
       if (userLocation) {
-        this.updateContext(sessionId, { userLocation } as any);
+        await this.updateContext(sessionId, { userLocation } as any);
       }
       if (userJwt) {
-        this.updateContext(sessionId, { user_jwt: userJwt } as any);
+        await this.updateContext(sessionId, { user_jwt: userJwt } as any);
       }
       const step = this.determineStep(userMessage, context);
       
@@ -205,7 +207,7 @@ Stay warm, concise, and reassuring.
       this.validateRhythm(result);
       this.logAction("response_sent", { step, hasCards: !!result.cards, hasCTA: !!result.cta });
       
-      this.updateContext(sessionId, result.contextUpdates || {});
+      await this.updateContext(sessionId, result.contextUpdates || {});
       this.logInteraction(sessionId, "assistant", result.message);
       return result;
     } catch (error: any) {
@@ -224,37 +226,55 @@ Stay warm, concise, and reassuring.
    * Get session context from in-memory store
    * Auto-initializes a new session if none exists
    * Fetches the current state of the user's signup flow
+   * PHASE 2: Now with Supabase persistence
    * 
    * @param sessionId - Unique session identifier
    * @returns Current session context object
    */
-  getContext(sessionId: string): SessionContext {
-    if (!this.sessions[sessionId]) {
-      this.sessions[sessionId] = {};
-      Logger.info(`[Context Created] New session ${sessionId}`);
+  async getContext(sessionId: string): Promise<SessionContext> {
+    // Check in-memory first (fast path)
+    if (this.sessions[sessionId]) {
+      return this.sessions[sessionId];
     }
-    // TODO: Add Supabase persistence for agentic_checkout_sessions table
+
+    // Try to load from Supabase
+    const userId = extractUserIdFromJWT(this.sessions[sessionId]?.user_jwt);
+    const dbContext = await loadSessionFromDB(sessionId, userId || undefined);
+    
+    if (dbContext) {
+      this.sessions[sessionId] = dbContext;
+      Logger.info(`[Context Loaded from DB] ${sessionId}`);
+      return dbContext;
+    }
+
+    // Initialize new session
+    this.sessions[sessionId] = {};
+    Logger.info(`[Context Created] New session ${sessionId}`);
     return this.sessions[sessionId];
   }
 
   /**
    * Update session context with new data
    * Merges updates into existing context
+   * PHASE 2: Now with Supabase persistence
    * 
    * @param sessionId - Unique session identifier
    * @param updates - Partial context updates to merge
    */
-  updateContext(sessionId: string, updates: Partial<SessionContext>): void {
-    const existing = this.getContext(sessionId);
+  async updateContext(sessionId: string, updates: Partial<SessionContext>): Promise<void> {
+    const existing = await this.getContext(sessionId);
     this.sessions[sessionId] = { 
       ...existing, 
       ...updates 
     };
     Logger.info(`[Context Updated] ${sessionId}`, updates);
-    Logger.info(`[Audit] Context updated`, this.getContext(sessionId));
+    Logger.info(`[Audit] Context updated`, await this.getContext(sessionId));
     this.logContext(sessionId);
     this.logContextSnapshot(sessionId);
-    // TODO: Add Supabase persistence for agentic_checkout_sessions table
+    
+    // PHASE 2: Persist to Supabase
+    const userId = extractUserIdFromJWT(this.sessions[sessionId]?.user_jwt);
+    await saveSessionToDB(sessionId, this.sessions[sessionId], userId || undefined);
   }
 
   /**
@@ -278,22 +298,35 @@ Stay warm, concise, and reassuring.
    * @returns Promise resolving to next OrchestratorResponse
    */
   async handleAction(action: string, payload: any, sessionId: string, userJwt?: string): Promise<OrchestratorResponse> {
-    const context = this.getContext(sessionId);
+    const context = await this.getContext(sessionId);
     
     // Store JWT in context if provided
     if (userJwt) {
-      this.updateContext(sessionId, { user_jwt: userJwt } as any);
+      await this.updateContext(sessionId, { user_jwt: userJwt } as any);
     }
     
     this.logAction("card_action", { action, sessionId, currentStep: context.step });
     
     console.log(`[FLOW] Action received: ${action}`, payload);
     
+    // PHASE 1: Log all actions to audit trail
+    const userId = extractUserIdFromJWT(userJwt || context.user_jwt);
+    if (userId) {
+      await logAudit({
+        user_id: userId,
+        action: `action_${action}`,
+        provider: payload.provider || context.provider?.orgRef,
+        org_ref: payload.orgRef || context.provider?.orgRef,
+        program_ref: payload.program_ref || context.program?.id,
+        metadata: { action, payload, sessionId }
+      });
+    }
+    
     try {
       switch (action) {
         case "select_provider":
           // Step 3 → Step 4: Provider selected, move to login
-          this.updateContext(sessionId, {
+          await this.updateContext(sessionId, {
             provider: payload,
             step: FlowStep.LOGIN
           });
@@ -314,7 +347,7 @@ Stay warm, concise, and reassuring.
 
         case "reject_provider":
           // User rejected provider, ask for clarification
-          this.updateContext(sessionId, { step: FlowStep.PROVIDER_SEARCH });
+          await this.updateContext(sessionId, { step: FlowStep.PROVIDER_SEARCH });
           return this.formatResponse(
             "No problem! Let's try a different search. What's the name of your provider?",
             undefined,
@@ -324,9 +357,9 @@ Stay warm, concise, and reassuring.
 
         case "connect_account":
           // Check if user is authenticated
-          const context = this.getContext(sessionId);
+          const currentContext = await this.getContext(sessionId);
           
-          if (!context.user_jwt) {
+          if (!currentContext.user_jwt) {
             return this.formatResponse(
               "⚠️ Please log in to connect your account.",
               undefined,
@@ -336,7 +369,7 @@ Stay warm, concise, and reassuring.
           }
           
           // Store pending login info for credential collection
-          this.updateContext(sessionId, {
+          await this.updateContext(sessionId, {
             pendingLogin: {
               provider: payload.provider,
               orgRef: payload.orgRef
@@ -357,7 +390,7 @@ Stay warm, concise, and reassuring.
 
         case "select_program":
           // Step 5 → Step 6: Program selected, check prerequisites
-          this.updateContext(sessionId, {
+          await this.updateContext(sessionId, {
             program: payload,
             step: FlowStep.PREREQUISITE_CHECK
           });
@@ -374,16 +407,29 @@ Stay warm, concise, and reassuring.
 
         case "complete_prereqs":
           // Prerequisites completed, show confirmation
-          this.updateContext(sessionId, { step: FlowStep.CONFIRMATION });
+          await this.updateContext(sessionId, { step: FlowStep.CONFIRMATION });
           return this.handleConfirmation("", sessionId);
 
         case "confirm_registration":
           // Step 7 → Step 8: Final confirmation
-          this.updateContext(sessionId, {
+          await this.updateContext(sessionId, {
             confirmed: true,
             step: FlowStep.COMPLETED
           });
           this.logAction("registration_completed", { sessionId, program: context.program?.name });
+          
+          // PHASE 1: Log successful registration
+          if (userId) {
+            await logAudit({
+              user_id: userId,
+              action: 'registration_completed',
+              provider: context.provider?.orgRef,
+              org_ref: context.provider?.orgRef,
+              program_ref: context.program?.id,
+              metadata: { sessionId, program: context.program?.name }
+            });
+          }
+          
           return this.formatResponse(
             `🎉 Registration submitted successfully! ${context.child?.name || 'Your child'} is enrolled in **${context.program?.name}** at **${context.provider?.name}**.\n\nYou'll receive a confirmation email shortly. ${AUDIT_REMINDER}`,
             undefined,
@@ -394,7 +440,7 @@ Stay warm, concise, and reassuring.
         case "cancel_registration":
         case "cancel":
           // User cancelled, polite acknowledgement
-          this.updateContext(sessionId, { step: FlowStep.PROVIDER_SEARCH });
+          await this.updateContext(sessionId, { step: FlowStep.PROVIDER_SEARCH });
           return this.formatResponse(
             "No worries! Feel free to start over whenever you're ready.",
             undefined,
@@ -406,11 +452,23 @@ Stay warm, concise, and reassuring.
           // Handle callback after user enters credentials
           const { credential_id } = payload;
           
-          this.updateContext(sessionId, {
+          await this.updateContext(sessionId, {
             credential_id,
             loginCompleted: true,
             step: FlowStep.PROGRAM_SELECTION
           });
+          
+          // PHASE 1: Log credential submission
+          if (userId && credential_id) {
+            await logAudit({
+              user_id: userId,
+              action: 'credentials_submitted',
+              provider: context.provider?.orgRef,
+              org_ref: context.provider?.orgRef,
+              credential_id,
+              metadata: { sessionId }
+            });
+          }
           
           return this.handleProgramSelection("Show programs", sessionId);
 
@@ -451,6 +509,7 @@ Stay warm, concise, and reassuring.
 
   /**
    * Call a tool/helper function
+   * PHASE 3: Real MCP integration with retry and timeout
    * 
    * Integrates with MCP tools like:
    * - scp.check_prerequisites
@@ -468,7 +527,62 @@ Stay warm, concise, and reassuring.
       return this.getFromCache(cacheKey).value;
     }
 
-    // Stubbed tools - will be replaced with real MCP integrations
+    // PHASE 3: Real MCP HTTP endpoint integration
+    const MCP_SERVER_URL = process.env.MCP_SERVER_URL || 'http://localhost:8080';
+    const USE_REAL_MCP = process.env.USE_REAL_MCP === 'true';
+
+    // Map internal tool names to MCP tool names
+    const mcpToolMapping: Record<string, string> = {
+      'search_provider': 'scp.search_providers',
+      'find_programs': 'scp.get_programs',
+      'check_prerequisites': 'scp.check_prerequisites',
+      'discover_fields': 'scp.discover_required_fields',
+      'submit_registration': 'scp.submit_registration'
+    };
+
+    const mcpToolName = mcpToolMapping[toolName];
+
+    // If MCP integration enabled and tool is mapped, use real MCP
+    if (USE_REAL_MCP && mcpToolName) {
+      try {
+        Logger.info(`[MCP] Calling real tool: ${mcpToolName}`, this.sanitize(args));
+        
+        // PHASE 5: Add timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+        const response = await fetch(`${MCP_SERVER_URL}/tools/call`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tool: mcpToolName,
+            args
+          }),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`MCP tool call failed: ${response.status} ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        this.saveToCache(cacheKey, result);
+        Logger.info(`[MCP] Tool ${mcpToolName} succeeded`);
+        return result;
+      } catch (error: any) {
+        if (error.name === 'AbortError') {
+          Logger.error(`[MCP] Tool ${mcpToolName} timed out after 30 seconds`);
+          throw new Error('This is taking longer than expected. Please try again.');
+        }
+        Logger.error(`[MCP] Tool ${mcpToolName} failed:`, error.message);
+        // PHASE 5: Fall through to mock tools for development
+        Logger.warn(`[MCP] Falling back to mock tool for ${toolName}`);
+      }
+    }
+
+    // Stubbed tools - for local development when MCP not available
     const tools: Record<string, Function> = {
       search_provider: async ({ name, location, userCoords }: any) => {
         try {
@@ -530,7 +644,9 @@ Stay warm, concise, and reassuring.
     try {
       Logger.info(`Calling tool: ${toolName}`, this.sanitize(args));
       Logger.info(`[Audit] Tool call`, { toolName, args: this.sanitize(args) });
-      const result = await this.withRetry(() => tool(args));
+      
+      // PHASE 5: Add retry logic with exponential backoff
+      const result = await this.withRetry(() => tool(args), 3);
       this.saveToCache(cacheKey, result);
       Logger.info(`Tool ${toolName} succeeded.`);
       return result;
@@ -647,8 +763,8 @@ Stay warm, concise, and reassuring.
    * 
    * @param sessionId - Session identifier
    */
-  private logContextSnapshot(sessionId: string): void {
-    const context = this.getContext(sessionId);
+  private async logContextSnapshot(sessionId: string): Promise<void> {
+    const context = await this.getContext(sessionId);
     console.log('[CONTEXT]', JSON.stringify({
       sessionId,
       step: context.step,
@@ -1006,7 +1122,7 @@ Stay warm, concise, and reassuring.
    * @returns Promise resolving to OrchestratorResponse with login instructions
    */
   private async handleLoginStep(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
-    const context = this.getContext(sessionId);
+    const context = await this.getContext(sessionId);
     this.logAction("login_step_initiated", { sessionId, provider: context.provider?.name });
     
     const providerName = context.provider?.name || 'the provider';
@@ -1161,7 +1277,7 @@ Stay warm, concise, and reassuring.
    * @returns Promise resolving to OrchestratorResponse with confirmation card
    */
   private async handleConfirmation(_: string, sessionId: string): Promise<OrchestratorResponse> {
-    const context = this.getContext(sessionId);
+    const context = await this.getContext(sessionId);
     this.logAction("confirmation_step", { sessionId, program: context.program?.name });
     
     const provider = context.provider?.name;

@@ -44,11 +44,24 @@ interface AuditEvent {
   result: string | null;
 }
 
+interface MandateAuditLog {
+  id: string;
+  user_id: string;
+  action: string;
+  provider: string | null;
+  org_ref: string | null;
+  program_ref: string | null;
+  credential_id: string | null;
+  metadata: any;
+  created_at: string;
+}
+
 export default function MandatesAudit() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [mandates, setMandates] = useState<Mandate[]>([]);
   const [auditEvents, setAuditEvents] = useState<Record<string, AuditEvent[]>>({});
+  const [mandateAuditLogs, setMandateAuditLogs] = useState<MandateAuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -97,6 +110,19 @@ export default function MandatesAudit() {
         }, {} as Record<string, AuditEvent[]>);
 
         setAuditEvents(grouped);
+      }
+
+      // PHASE 4: Fetch mandate_audit logs
+      const { data: auditLogsData, error: auditLogsError } = await supabase
+        .from('mandate_audit')
+        .select('*')
+        .eq('user_id', user!.id)
+        .order('created_at', { ascending: false });
+
+      if (auditLogsError) {
+        console.error('Error fetching audit logs:', auditLogsError);
+      } else {
+        setMandateAuditLogs(auditLogsData || []);
       }
     } catch (err) {
       console.error('Error fetching mandates:', err);
@@ -155,8 +181,9 @@ export default function MandatesAudit() {
           </div>
 
           <Tabs defaultValue="mandates" className="w-full">
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="mandates">Mandates</TabsTrigger>
+              <TabsTrigger value="audit-trail">Audit Trail</TabsTrigger>
               <TabsTrigger value="testing">Testing Tools</TabsTrigger>
             </TabsList>
 
@@ -304,6 +331,78 @@ export default function MandatesAudit() {
               ))}
             </div>
           )}
+            </TabsContent>
+
+            <TabsContent value="audit-trail" className="space-y-4 mt-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <FileText className="h-5 w-5" />
+                    Production Audit Trail
+                  </CardTitle>
+                  <CardDescription>
+                    Complete log of all actions performed (credentials accessed, registrations, etc.)
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {mandateAuditLogs.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      No audit logs yet. Actions will appear here as you use the system.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {mandateAuditLogs.map((log) => (
+                        <div
+                          key={log.id}
+                          className="border rounded p-3 space-y-2 hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline">
+                                {log.action}
+                              </Badge>
+                              {log.provider && (
+                                <span className="text-sm text-muted-foreground">
+                                  {log.provider}
+                                </span>
+                              )}
+                              {log.org_ref && (
+                                <Badge variant="secondary" className="text-xs">
+                                  {log.org_ref}
+                                </Badge>
+                              )}
+                            </div>
+                            <span className="text-xs text-muted-foreground">
+                              {format(new Date(log.created_at), 'PPp')}
+                            </span>
+                          </div>
+                          {log.program_ref && (
+                            <div className="text-sm">
+                              <span className="text-muted-foreground">Program:</span>{' '}
+                              {log.program_ref}
+                            </div>
+                          )}
+                          {log.credential_id && (
+                            <div className="text-xs text-muted-foreground">
+                              Credential ID: {log.credential_id}
+                            </div>
+                          )}
+                          {log.metadata && Object.keys(log.metadata).length > 0 && (
+                            <details className="text-xs">
+                              <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                                View metadata
+                              </summary>
+                              <pre className="mt-2 bg-muted p-2 rounded overflow-x-auto">
+                                {JSON.stringify(log.metadata, null, 2)}
+                              </pre>
+                            </details>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </TabsContent>
 
             <TabsContent value="testing" className="space-y-4 mt-6">
