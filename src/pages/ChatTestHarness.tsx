@@ -105,6 +105,9 @@ function ChatTestHarnessContent() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // Generate persistent session ID
+  const [sessionId] = useState(() => `session-${Date.now()}-${Math.random().toString(36).substring(7)}`);
+
   // State
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
@@ -292,7 +295,6 @@ function ChatTestHarnessContent() {
 
     try {
       // Call orchestrator's handleAction
-      const sessionId = state.sessionRef || `session-${Date.now()}`;
       const response = await sendAction(action, payload, sessionId, getUserJwt());
       
       console.log('[HARNESS] Action response:', response);
@@ -346,7 +348,6 @@ function ChatTestHarnessContent() {
 
     try {
       // Call orchestrator instead of direct tools
-      const sessionId = state.sessionRef || `session-${Date.now()}`;
       const response = await sendMessage(userInput, sessionId, userLocation || undefined, getUserJwt());
       
       console.log('[HARNESS] Orchestrator response:', response);
