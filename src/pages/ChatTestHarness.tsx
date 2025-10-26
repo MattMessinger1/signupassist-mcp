@@ -32,6 +32,7 @@ import { MessageList } from "@/components/chat-test/MessageList";
 import { ChatInput } from "@/components/chat-test/ChatInput";
 import { DebugPanel, LogEntry } from "@/components/chat-test/DebugPanel";
 import { TestCoveragePanel } from "@/components/chat-test/TestCoveragePanel";
+import { LoginCredentialDialog } from "@/components/LoginCredentialDialog";
 import type { ChatMessage } from "@/components/chat-test/MessageBubble";
 import { checkMCPHealth, type MCPHealthCheckResult, callMCPTool } from "@/lib/chatMcpClient";
 import { createLogEntry, type LogLevel, type LogCategory } from "@/lib/debugLogger";
@@ -131,6 +132,12 @@ function ChatTestHarnessContent() {
   const [testTracker] = useState(() => new TestComparisonTracker());
   const [coverageReport, setCoverageReport] = useState<CoverageReport | null>(null);
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [showLoginDialog, setShowLoginDialog] = useState(false);
+  const [loginDialogData, setLoginDialogData] = useState<{
+    provider: string;
+    orgName: string;
+    orgRef: string;
+  } | null>(null);
 
   // Get JWT helper
   const getUserJwt = (): string | undefined => {
@@ -290,6 +297,18 @@ function ChatTestHarnessContent() {
   const handleCardAction = async (action: string, payload: any) => {
     console.log(`[HARNESS] Card action triggered: ${action}`, payload);
     addLog("info", "user", `Card action: ${action}`, { payload });
+    
+    // Handle special actions that need UI dialogs
+    if (action === "show_login_dialog" || action === "connect_account") {
+      console.log('[HARNESS] Opening login dialog with payload:', payload);
+      setLoginDialogData({
+        provider: payload.provider || 'skiclubpro',
+        orgName: payload.orgName || payload.orgRef || 'Provider',
+        orgRef: payload.orgRef || 'unknown'
+      });
+      setShowLoginDialog(true);
+      return;
+    }
     
     setIsProcessing(true);
 
@@ -771,6 +790,22 @@ function ChatTestHarnessContent() {
         onToggle={() => setShowDebugPanel(!showDebugPanel)}
         onClear={() => setDebugLogs([])}
       />
+
+      {/* Login Credential Dialog */}
+      {loginDialogData && (
+        <LoginCredentialDialog
+          open={showLoginDialog}
+          onOpenChange={setShowLoginDialog}
+          provider={loginDialogData.provider}
+          orgName={loginDialogData.orgName}
+          orgRef={loginDialogData.orgRef}
+          onSuccess={() => {
+            setShowLoginDialog(false);
+            addLog("success", "system", "Credentials stored successfully");
+            addAssistantMessage("✅ Account connected! Let me find available programs for you...");
+          }}
+        />
+      )}
     </div>
   );
 }
