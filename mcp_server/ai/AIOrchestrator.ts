@@ -1161,7 +1161,7 @@ Stay warm, concise, and reassuring.
    * @returns Promise resolving to OrchestratorResponse with program carousel
    */
   private async handleProgramSelection(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
-    const context = this.getContext(sessionId);
+    const context = await this.getContext(sessionId);
     const provider = context.provider?.name || userMessage;
     
     this.logAction("tool_invocation", { toolName: "find_programs", sessionId, provider });
