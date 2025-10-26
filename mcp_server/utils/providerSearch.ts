@@ -27,6 +27,10 @@ const knownProviders: Record<string, Provider> = {
   },
 };
 
+// Keywords to exclude physical facilities (not organizations)
+const EXCLUDE_KEYWORDS = process.env.PROVIDER_EXCLUDE_KEYWORDS?.split(',') || 
+  ['chalet', 'building', 'parking', 'lodge', 'facility', 'area', 'trailhead', 'warming house', 'west chalet', 'east chalet'];
+
 export async function lookupLocalProvider(name: string): Promise<Provider | null> {
   const key = name.toLowerCase().replace(/\s+/g, "");
   const entry = Object.keys(knownProviders).find(k => key.includes(k));
@@ -74,6 +78,8 @@ export async function googlePlacesSearch(
       Logger.info(`[GoogleAPI] Using location bias: ${userCoords.lat},${userCoords.lng} (50km radius)`);
     }
     
+    // Prefer establishments (organizations) over geographic features
+    url += `&type=establishment`;
     url += `&key=${apiKey}`;
 
     Logger.info(`[GoogleAPI] Calling API for "${query}"`);
@@ -95,7 +101,21 @@ export async function googlePlacesSearch(
 
     Logger.info(`[GoogleAPI] Success - found ${data.length} results`);
 
-    return data.slice(0, 3).map((r: any) => {
+    // Filter out physical facilities (chalets, buildings, etc.)
+    const filtered = data.filter((r: any) => {
+      const name = r.name?.toLowerCase() || '';
+      const address = r.formatted_address?.toLowerCase() || '';
+      const combined = `${name} ${address}`;
+      
+      return !EXCLUDE_KEYWORDS.some(keyword => combined.includes(keyword.toLowerCase()));
+    });
+
+    const filteredCount = data.length - filtered.length;
+    if (filteredCount > 0) {
+      Logger.info(`[GoogleAPI] Filtered out ${filteredCount} physical facilities`);
+    }
+
+    return filtered.slice(0, 3).map((r: any) => {
       const addressParts = r.formatted_address?.split(",") || [];
       const cityPart = addressParts[1]?.trim() || "";
       const statePart = addressParts[2]?.trim().split(" ")[0] || ""; // Extract state from "WI 53562"
