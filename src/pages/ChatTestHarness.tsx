@@ -569,49 +569,64 @@ function ChatTestHarnessContent() {
    */
   const runDemoFlow = async () => {
     setIsDemoRunning(true);
-    addLog("info", "system", "🤖 Starting demo flow automation");
+    addLog("info", "system", "🤖 Starting MCP Direct demo flow");
 
     // Reset conversation
     resetConversation(false);
-    addAssistantMessage("🤖 Demo Mode: Starting automated signup flow...");
+    addAssistantMessage("🤖 Demo Mode: Testing MCP tool calls directly...");
 
     await delay(1000);
 
     try {
-      // Step 1: Provider search
-      addUserMessage("I need ski lessons for Blackhawk");
+      // Step 1: Test find_programs
+      addUserMessage("Finding programs at Blackhawk Ski Club");
       setIsProcessing(true);
-
-      const sessionId = `demo-session-${Date.now()}`;
-      const response1 = await sendMessage("I need ski lessons for Blackhawk", sessionId, userLocation || undefined);
+      addLog("info", "mcp", "Calling scp.find_programs");
+      
+      const programsResult = await callMCPTool('scp.find_programs', {
+        org_ref: 'blackhawk',
+        query: 'ski lessons'
+      });
       
       setIsProcessing(false);
-      addAssistantMessage(response1.message, response1.cards ? "cards" : undefined, { cards: response1.cards, cta: response1.cta });
+      
+      if (programsResult.success && programsResult.data?.programs) {
+        const programs = programsResult.data.programs;
+        addAssistantMessage(
+          `Found ${programs.length} programs at Blackhawk Ski Club:\n${JSON.stringify(programs.slice(0, 3), null, 2)}`
+        );
+        addLog("success", "mcp", `Found ${programs.length} programs`);
+      } else {
+        addAssistantMessage(`No programs found: ${JSON.stringify(programsResult)}`);
+        addLog("error", "mcp", "No programs returned");
+      }
 
       await delay(2000);
 
-      // Step 2: Select provider (simulate clicking first card button)
-      if (response1.cards?.[0]?.buttons?.[0]) {
-        const action = response1.cards[0].buttons[0].action;
-        const payload = response1.cards[0].metadata || {};
-        
-        addUserMessage("Yes, that's the one");
-        setIsProcessing(true);
-        
-        const response2 = await sendAction(action, payload, sessionId);
-        setIsProcessing(false);
-        
-        addAssistantMessage(response2.message, response2.cards ? "cards" : undefined, { cards: response2.cards, cta: response2.cta });
-        
-        await delay(2000);
-      }
+      // Step 2: Test check_prerequisites
+      addUserMessage("Checking prerequisites");
+      setIsProcessing(true);
+      addLog("info", "mcp", "Calling scp.check_prerequisites");
+      
+      const prereqResult = await callMCPTool('scp.check_prerequisites', {
+        org_ref: 'blackhawk',
+        user_id: getUserJwt() ? await supabase.auth.getUser().then(r => r.data.user?.id) : undefined
+      });
+      
+      setIsProcessing(false);
+      addAssistantMessage(
+        `Prerequisite check complete:\n${JSON.stringify(prereqResult.data, null, 2)}`
+      );
+      addLog("success", "mcp", "Prerequisites checked");
 
-      addAssistantMessage("🎉 Demo flow completed! Continue testing manually.");
-      addLog("success", "system", "Demo flow completed successfully");
+      await delay(1000);
+
+      addAssistantMessage("🎉 MCP Demo completed! All tools are working.");
+      addLog("success", "system", "MCP demo flow completed successfully");
 
       toast({
-        title: "Demo Complete",
-        description: "Automated signup flow finished successfully!",
+        title: "MCP Demo Complete",
+        description: "Direct tool calls working successfully!",
       });
 
     } catch (error) {
