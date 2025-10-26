@@ -58,6 +58,7 @@ Deno.serve(async (req) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': authHeader, // Pass user's JWT token
       },
       body: JSON.stringify({
         tool: 'scp.login',
