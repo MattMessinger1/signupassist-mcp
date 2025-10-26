@@ -53,12 +53,17 @@ Deno.serve(async (req) => {
       throw new Error('MCP_SERVER_URL not configured');
     }
 
+    const mcpAccessToken = Deno.env.get('MCP_ACCESS_TOKEN');
+    if (!mcpAccessToken) {
+      throw new Error('MCP_ACCESS_TOKEN not configured');
+    }
+
     // Invoke scp.login through the MCP server
     const mcpResponse = await fetch(`${mcpServerUrl}/tools/call`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': authHeader, // Pass user's JWT token
+        'Authorization': `Bearer ${mcpAccessToken}`, // Use MCP access token, not user JWT
       },
       body: JSON.stringify({
         tool: 'scp.login',
