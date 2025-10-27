@@ -246,21 +246,28 @@ export function LoginCredentialDialog({
               <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
               <div className="space-y-2 flex-1">
                 <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">
-                  Authorization & Consent
+                  Discovery Authorization
                 </p>
                 
                 <div className="space-y-2 text-xs text-blue-800 dark:text-blue-200">
                   <div className="flex items-start gap-2">
                     <div className="h-1.5 w-1.5 rounded-full bg-blue-600 dark:bg-blue-400 mt-1.5 flex-shrink-0" />
                     <p>
-                      <strong>What we're asking permission for:</strong> By clicking "Connect Account," you authorize SignupAssist to log into your {orgName} account <strong>one time</strong> to verify your identity and browse available programs.
+                      <strong>What we're asking permission for:</strong> By clicking "Connect Account," you authorize SignupAssist to log into your {orgName} account to browse programs and check prerequisites. This is read-only access.
                     </p>
                   </div>
                   
                   <div className="flex items-start gap-2">
                     <div className="h-1.5 w-1.5 rounded-full bg-blue-600 dark:bg-blue-400 mt-1.5 flex-shrink-0" />
                     <p>
-                      <strong>How it works:</strong> We create a cryptographically signed "mandate" (permission token) that authorizes <strong>only this specific login</strong>. This mandate expires after 30 minutes and cannot be reused.
+                      <strong>What we CAN'T do with this authorization:</strong> We cannot submit registrations, process payments, or modify your account. Those actions require a separate "execution mandate" that you'll explicitly approve later.
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-start gap-2">
+                    <div className="h-1.5 w-1.5 rounded-full bg-blue-600 dark:bg-blue-400 mt-1.5 flex-shrink-0" />
+                    <p>
+                      <strong>How it works:</strong> We create a cryptographically signed "discovery mandate" (permission token) valid for 24 hours. You can browse freely during this time.
                     </p>
                   </div>
                   

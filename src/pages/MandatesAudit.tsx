@@ -213,12 +213,28 @@ export default function MandatesAudit() {
                   <CardHeader>
                     <div className="flex items-start justify-between">
                       <div className="space-y-1">
-                        <CardTitle className="flex items-center gap-2">
-                          <Shield className="h-5 w-5" />
-                          {mandate.provider} Mandate
-                        </CardTitle>
+                        <div className="flex items-center gap-2 mb-2">
+                          <CardTitle className="flex items-center gap-2">
+                            <Shield className="h-5 w-5" />
+                            {mandate.provider} Mandate
+                          </CardTitle>
+                          {/* Tier badge - check metadata for mandate_tier */}
+                          {(mandate as any).metadata?.mandate_tier && (
+                            <Badge 
+                              variant={(mandate as any).metadata.mandate_tier === 'discovery' ? 'secondary' : 'default'}
+                            >
+                              {(mandate as any).metadata.mandate_tier === 'discovery' 
+                                ? '🔍 Discovery' 
+                                : '⚡ Execution'}
+                            </Badge>
+                          )}
+                        </div>
                         <CardDescription>
-                          {mandate.program_ref && `Program: ${mandate.program_ref}`}
+                          {(mandate as any).metadata?.mandate_tier === 'discovery' 
+                            ? 'Browse programs and check prerequisites'
+                            : mandate.program_ref 
+                            ? `Register for ${mandate.program_ref}`
+                            : 'Execution mandate'}
                         </CardDescription>
                       </div>
                       <Badge variant={getStatusColor(mandate.status)}>

@@ -219,6 +219,109 @@ User: "Sign up my child for Blackhawk ski lessons"
 Always be conversational, clear, and prioritize user consent.
 ```
 
+### Presenting Consent to Users
+
+**Two-Tier Mandate System:**
+
+SignupAssist uses a two-tier mandate system to balance user friction and explicit consent:
+
+**1. Discovery Mandate (Auto-Created After OAuth):**
+- **Purpose**: Browse programs and check prerequisites
+- **Scope**: `['scp:read:listings', 'scp:authenticate']`
+- **Duration**: 24 hours
+- **Creation**: Automatically created after successful OAuth login
+- **User Friction**: Low - brief confirmation message shown after OAuth
+
+After successful OAuth, immediately show the discovery consent message:
+
+```typescript
+// Auto-create discovery mandate after OAuth
+const discoveryMessage = `
+🔐 Browsing Permissions Granted
+
+You're connected! I can now help you browse programs.
+
+**What I can do right now:**
+• Browse available programs and their details
+• Check prerequisites for your account
+• Answer questions about registration options
+
+**What I CAN'T do (yet):**
+• Submit registrations
+• Process payments
+• Modify your account
+
+These permissions last for 24 hours so we can help you explore options freely.
+
+Ready to find a program? Just tell me what you're looking for!
+`;
+```
+
+**2. Execution Mandate (User-Triggered, Explicit Consent):**
+- **Purpose**: Complete registration and payment
+- **Scope**: `['scp:authenticate', 'scp:register', 'scp:payment']`
+- **Duration**: Valid until registration window (e.g., 7am on Jan 20)
+- **Creation**: User must explicitly authorize with "authorize" response
+- **User Friction**: One-time comprehensive consent required
+
+When user confirms they want to register, show the full execution consent:
+
+```typescript
+// Only create execution mandate after explicit user authorization
+const executionMessage = `
+🎯 Authorization Required
+
+Ready to set up automatic registration for Emma in Beginner Alpine ($125)?
+
+**🔐 Authorization & Consent**
+
+✓ **What we're asking permission for:**
+  By authorizing this plan, you allow SignupAssist to:
+  • Log into your account when registration opens
+  • Fill out and submit the registration form for Emma
+  • Process payment up to $150 using your saved payment method
+
+✓ **How it works:**
+  We create a cryptographically signed "mandate" (permission token)
+  that authorizes these specific actions. This mandate is valid until
+  Jan 20, 2025 at 7:00 AM and cannot be reused after that.
+
+✓ **Security guarantees:**
+  • Your credentials are encrypted end-to-end
+  • We never see your full credit card number
+  • Registration happens in an isolated browser session
+  • Session is destroyed immediately after completion
+
+✓ **Full transparency:**
+  Every action is logged in your audit trail, including:
+  • When the mandate was issued
+  • What actions were attempted
+  • Screenshots of key moments (form filled, confirmation)
+  • Final outcome (success or any blockers)
+  
+  [View your audit trail →](/mandates-audit)
+
+✓ **Your control:**
+  • You can revoke this at any time from your audit trail
+  • Mandate expires automatically after registration
+  • If we hit a blocker (CAPTCHA, new waiver), we'll pause and notify you
+
+💰 **Cost Limit:** $150
+⏰ **Valid Until:** Jan 20, 2025 at 7:00 AM
+
+Say "authorize" to proceed, or "cancel" to stop.
+`;
+
+// Wait for explicit "authorize" or "yes" response before creating mandate
+```
+
+**Implementation Guidelines:**
+- Discovery mandates are created server-side after OAuth and stored in ChatGPT context
+- Execution mandates require explicit user confirmation via "authorize" keyword
+- Both mandate types appear in `/mandates-audit` with distinct badges
+- Audit trail shows which tier of mandate authorized each action
+- Users can revoke either type of mandate at any time
+
 ---
 
 ## Testing Integration

@@ -218,7 +218,84 @@ export const prompts = {
   },
 
   // ------------------------------------------------------------
-  // 10. SUCCESS & TOASTS
+  // 10. MANDATE CONSENT MESSAGING (Two-Tier System)
+  // ------------------------------------------------------------
+  mandates: {
+    discovery: {
+      title: '🔐 Browsing Permissions Granted',
+      body: (validHours: number) => [
+        'You\'re connected! I can now help you browse programs.',
+        '',
+        '**What I can do right now:**',
+        '• Browse available programs and their details',
+        '• Check prerequisites for your account',
+        '• Answer questions about registration options',
+        '',
+        '**What I CAN\'T do (yet):**',
+        '• Submit registrations',
+        '• Process payments',
+        '• Modify your account',
+        '',
+        `These permissions last for ${validHours} hours so we can help you explore options freely.`,
+        '',
+        'Ready to find a program? Just tell me what you\'re looking for!',
+      ].join('\n'),
+    },
+    execution: {
+      title: '🎯 Authorization Required',
+      body: (program: string, child: string, maxAmount: string, validUntil: string) => [
+        `Ready to set up automatic registration for ${child} in ${program}?`,
+        '',
+        '**🔐 Authorization & Consent**',
+        '',
+        '✓ **What we\'re asking permission for:**',
+        '  By authorizing this plan, you allow SignupAssist to:',
+        '  • Log into your account when registration opens',
+        `  • Fill out and submit the registration form for ${child}`,
+        `  • Process payment up to ${maxAmount} using your saved payment method`,
+        '',
+        '✓ **How it works:**',
+        '  We create a cryptographically signed "mandate" (permission token)',
+        '  that authorizes these specific actions. This mandate is valid until',
+        `  ${validUntil} and cannot be reused after that.`,
+        '',
+        '✓ **Security guarantees:**',
+        '  • Your credentials are encrypted end-to-end',
+        '  • We never see your full credit card number',
+        '  • Registration happens in an isolated browser session',
+        '  • Session is destroyed immediately after completion',
+        '',
+        '✓ **Full transparency:**',
+        '  Every action is logged in your audit trail, including:',
+        '  • When the mandate was issued',
+        '  • What actions were attempted',
+        '  • Screenshots of key moments (form filled, confirmation)',
+        '  • Final outcome (success or any blockers)',
+        '',
+        '  [View your audit trail →](/mandates-audit)',
+        '',
+        '✓ **Your control:**',
+        '  • You can revoke this at any time from your audit trail',
+        '  • Mandate expires automatically after registration',
+        '  • If we hit a blocker (CAPTCHA, new waiver), we\'ll pause and notify you',
+        '',
+        `💰 **Cost Limit:** ${maxAmount}`,
+        `⏰ **Valid Until:** ${validUntil}`,
+        '',
+        'Say "authorize" to proceed, or "cancel" to stop.',
+      ].join('\n'),
+    },
+    audit: {
+      discoveryBadge: '🔍 Discovery',
+      executionBadge: '⚡ Execution',
+      discoveryDescription: 'Browse programs and check prerequisites',
+      executionDescription: (program: string, child: string) =>
+        `Register ${child} for ${program}`,
+    },
+  },
+
+  // ------------------------------------------------------------
+  // 11. SUCCESS & TOASTS
   // ------------------------------------------------------------
   success: {
     title: 'Mandate created',
