@@ -1,5 +1,5 @@
 {
-  "schema_version": "v1",
+  "schema_version": "v2.0.0",
   "name_for_human": "SignupAssist",
   "name_for_model": "signupassist",
   "description_for_human": "Securely automates activity sign-ups for parents using a consent-first flow.",

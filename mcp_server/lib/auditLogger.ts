@@ -26,6 +26,14 @@ export interface AuditLogEntry {
   metadata?: Record<string, any>;
 }
 
+export interface ToneChangeEntry {
+  sessionId: string;
+  aspect: string;
+  oldValue: string;
+  newValue: string;
+  timestamp: string;
+}
+
 /**
  * Log an action to the mandate_audit table
  * Safe to call even if Supabase is not configured (logs to console only)
@@ -56,6 +64,37 @@ export async function logAudit(entry: AuditLogEntry): Promise<void> {
     }
   } catch (err) {
     console.error('[AuditLogger] Unexpected error:', err);
+  }
+}
+
+/**
+ * Log a tone configuration change for audit trail
+ */
+export async function logToneChange(entry: ToneChangeEntry): Promise<void> {
+  console.log('[ToneChangeLogger]', entry);
+
+  if (!supabase) {
+    console.warn('[ToneChangeLogger] Supabase not configured, skipping database insert');
+    return;
+  }
+
+  try {
+    const { error } = await supabase
+      .from('mandate_audit')
+      .insert({
+        user_id: 'system', // Tone changes are system-level
+        action: 'tone_configuration_change',
+        metadata: {
+          ...entry,
+          event_type: 'tone_adjustment'
+        }
+      });
+
+    if (error) {
+      console.error('[ToneChangeLogger] Failed to insert tone change log:', error);
+    }
+  } catch (err) {
+    console.error('[ToneChangeLogger] Unexpected error:', err);
   }
 }
 

@@ -37,6 +37,7 @@ import type { ChatMessage } from "@/components/chat-test/MessageBubble";
 import { checkMCPHealth, type MCPHealthCheckResult, callMCPTool } from "@/lib/chatMcpClient";
 import { createLogEntry, type LogLevel, type LogCategory } from "@/lib/debugLogger";
 import { TestComparisonTracker, type CoverageReport, type TestResult } from "@/lib/testComparison";
+import { validateTone, determineToneContext, formatToneIssues } from "@/lib/toneValidator";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +60,7 @@ interface ConversationState {
   prerequisites?: any[];
   prerequisitesComplete?: boolean;
   availablePrograms?: any[];
+  step?: string; // Current flow step
 }
 
 // ============= Main Component =============
@@ -239,7 +241,8 @@ function ChatTestHarnessContent() {
   const addAssistantMessage = (
     text: string,
     componentType?: ChatMessage["componentType"],
-    componentData?: any
+    componentData?: any,
+    stepName?: string
   ) => {
     const newMessage: ChatMessage = {
       id: `assistant-${Date.now()}-${Math.random()}`,
@@ -256,6 +259,28 @@ function ChatTestHarnessContent() {
       `Assistant message: ${text.substring(0, 100)}${text.length > 100 ? "..." : ""}`,
       componentType ? { componentType, hasData: !!componentData } : undefined
     );
+    
+    // Tone validation (Design DNA compliance check)
+    const toneContext = determineToneContext(text, stepName);
+    const toneValidation = validateTone(text, toneContext);
+    
+    if (toneValidation.issues.length > 0) {
+      addLog("warning", "tone", "⚠️ Tone validation", {
+        issues: toneValidation.issues,
+        emojiCount: toneValidation.emojiCount,
+        readingLevel: toneValidation.readingLevel.toFixed(1),
+      });
+      
+      // Log individual issues for visibility
+      toneValidation.issues.forEach(issue => {
+        console.warn('[Tone Validator]', issue);
+      });
+    } else {
+      addLog("success", "tone", "✅ Tone validation passed", {
+        emojiCount: toneValidation.emojiCount,
+        readingLevel: toneValidation.readingLevel.toFixed(1),
+      });
+    }
     
     // Enhanced logging for cards
     if (componentData?.cards) {
@@ -319,11 +344,12 @@ function ChatTestHarnessContent() {
       console.log('[HARNESS] Action response:', response);
       console.log('[FLOW]', action, '→', response.cards ? `${response.cards.length} cards` : 'no cards');
       
-      // Render next assistant message with cards
+      // Render next assistant message with cards (with tone validation context)
       addAssistantMessage(
         response.message,
         response.cards ? "cards" : undefined,
-        { cards: response.cards, cta: response.cta }
+        { cards: response.cards, cta: response.cta },
+        response.contextUpdates?.step || state.step
       );
       
       // Update local state
@@ -371,11 +397,12 @@ function ChatTestHarnessContent() {
       
       console.log('[HARNESS] Orchestrator response:', response);
       
-      // Render assistant message with cards
+      // Render assistant message with cards (with tone validation context)
       addAssistantMessage(
         response.message,
         response.cards ? "cards" : undefined,
-        { cards: response.cards, cta: response.cta }
+        { cards: response.cards, cta: response.cta },
+        response.contextUpdates?.step || state.step
       );
       
       // Update local state if context changed

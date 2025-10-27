@@ -3,20 +3,53 @@
  */
 
 /**
+ * Metadata hints for AI tone and UX guidance
+ */
+export interface ToolMetadata {
+  tone_hints?: string;        // e.g., "Emphasize age ranges and schedule flexibility"
+  security_note?: string;     // e.g., "Login credentials are never stored by SignupAssist"
+  next_actions?: string[];    // e.g., ["select_program", "view_details"]
+  confidence?: 'high' | 'medium' | 'low';
+}
+
+/**
+ * UI card specification for consistent rendering
+ */
+export interface UICard {
+  title: string;
+  subtitle?: string;
+  description?: string;
+  metadata?: Record<string, any>;
+  buttons?: Array<{
+    label: string;
+    action: string;
+    variant?: 'accent' | 'outline';
+  }>;
+}
+
+/**
+ * Parent-friendly error structure
+ */
+export interface ParentFriendlyError {
+  display: string;      // What parent sees
+  recovery: string;     // Clear next step
+  severity: 'low' | 'medium' | 'high';
+  code?: string;        // Internal reference
+}
+
+/**
  * Standard response format for all provider tools
- * This ensures consistent login_status reporting across all providers
+ * This ensures consistent reporting across all providers
  * (SkiClubPro, Shopify, Jackrabbit, etc.)
  */
 export interface ProviderResponse<T = any> {
   /**
-   * Status of the provider login attempt
-   * - 'success': Provider login succeeded
-   * - 'failed': Provider login failed or could not be verified
-   * 
-   * NOTE: This is independent of the app's Supabase session state.
-   * Always check login_status to know if the provider login succeeded.
+   * Status of the provider operation
+   * - 'success': Operation succeeded
+   * - 'failed': Operation failed or could not be verified
    */
-  login_status: 'success' | 'failed';
+  login_status?: 'success' | 'failed'; // Legacy, kept for compatibility
+  success: boolean;
   
   /**
    * The actual data returned by the provider tool (if successful)
@@ -24,9 +57,22 @@ export interface ProviderResponse<T = any> {
   data?: T;
   
   /**
-   * Error message (if login or operation failed)
+   * Metadata for AI tone and UX guidance
    */
-  error?: string;
+  meta?: ToolMetadata;
+  
+  /**
+   * UI elements to render
+   */
+  ui?: {
+    cards?: UICard[];
+    message?: string;
+  };
+  
+  /**
+   * Error details (if operation failed)
+   */
+  error?: ParentFriendlyError | string; // string for legacy compatibility
   
   /**
    * Timestamp of the operation

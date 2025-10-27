@@ -4,7 +4,7 @@
  */
 
 export type LogLevel = "info" | "success" | "error" | "warning" | "debug";
-export type LogCategory = "user" | "tool" | "assistant" | "system" | "mcp" | "orchestrator" | "test";
+export type LogCategory = "user" | "tool" | "assistant" | "system" | "mcp" | "orchestrator" | "test" | "tone";
 
 export interface LogEntry {
   id: string;

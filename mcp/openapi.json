@@ -271,6 +271,139 @@
   },
   "components": {
     "schemas": {
+      "ToolMetadata": {
+        "type": "object",
+        "description": "Metadata hints for AI tone and UX guidance",
+        "properties": {
+          "tone_hints": {
+            "type": "string",
+            "description": "Guidance for AI tone (e.g., 'Emphasize age ranges and schedule flexibility')"
+          },
+          "security_note": {
+            "type": "string",
+            "description": "Security reminder to display (e.g., 'Login credentials are never stored')"
+          },
+          "next_actions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Suggested next actions for the user"
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["high", "medium", "low"],
+            "description": "Confidence level of the response"
+          }
+        }
+      },
+      "UICard": {
+        "type": "object",
+        "description": "UI card specification for consistent rendering",
+        "required": ["title"],
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "subtitle": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "buttons": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["label", "action"],
+              "properties": {
+                "label": {
+                  "type": "string"
+                },
+                "action": {
+                  "type": "string"
+                },
+                "variant": {
+                  "type": "string",
+                  "enum": ["accent", "outline"]
+                }
+              }
+            }
+          }
+        }
+      },
+      "ParentFriendlyError": {
+        "type": "object",
+        "description": "Parent-friendly error structure",
+        "required": ["display", "recovery", "severity"],
+        "properties": {
+          "display": {
+            "type": "string",
+            "description": "What parent sees"
+          },
+          "recovery": {
+            "type": "string",
+            "description": "Clear next step"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "code": {
+            "type": "string",
+            "description": "Internal error code"
+          }
+        }
+      },
+      "ProviderResponse": {
+        "type": "object",
+        "description": "Standard response format for all provider tools",
+        "required": ["success"],
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ToolMetadata"
+          },
+          "ui": {
+            "type": "object",
+            "properties": {
+              "cards": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/UICard"
+                }
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "error": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ParentFriendlyError"
+              },
+              {
+                "type": "string"
+              }
+            ]
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "scp.discover_required_fields_input": {
         "type": "object",
         "properties": {

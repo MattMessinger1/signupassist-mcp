@@ -17,6 +17,96 @@ export interface StructuredErrorPayload {
 }
 
 /**
+ * Parent-friendly error structure
+ */
+export interface ParentFriendlyError {
+  display: string;      // What parent sees
+  recovery: string;     // Clear next step
+  severity: 'low' | 'medium' | 'high';
+  code?: string;        // Internal reference
+}
+
+/**
+ * Error code → parent-friendly message mapping
+ * Maps technical errors to actionable, warm messages for parents
+ */
+const ERROR_MESSAGES: Record<string, ParentFriendlyError> = {
+  'LOGIN_EXPIRED': {
+    display: "Looks like your provider login expired.",
+    recovery: "Let's reconnect securely. Click 'Reconnect Account' below.",
+    severity: 'medium',
+    code: 'LOGIN_EXPIRED'
+  },
+  'PAYMENT_DECLINED': {
+    display: "The payment method was declined.",
+    recovery: "Please check your card details or try a different payment method.",
+    severity: 'high',
+    code: 'PAYMENT_DECLINED'
+  },
+  'PROGRAM_FULL': {
+    display: "This program is currently full.",
+    recovery: "Would you like to join the waitlist or see similar programs?",
+    severity: 'medium',
+    code: 'PROGRAM_FULL'
+  },
+  'NETWORK_ERROR': {
+    display: "Couldn't connect to the provider.",
+    recovery: "Please check your internet connection and try again.",
+    severity: 'low',
+    code: 'NETWORK_ERROR'
+  },
+  'INVALID_CREDENTIALS': {
+    display: "Those login credentials didn't work.",
+    recovery: "Please double-check your username and password, then try again.",
+    severity: 'medium',
+    code: 'INVALID_CREDENTIALS'
+  },
+  'SESSION_TIMEOUT': {
+    display: "Your session timed out.",
+    recovery: "Let's start fresh. Click 'Retry' to continue.",
+    severity: 'low',
+    code: 'SESSION_TIMEOUT'
+  },
+  'MISSING_PREREQUISITES': {
+    display: "A few prerequisites need to be completed first.",
+    recovery: "I'll walk you through each one. Let's start now.",
+    severity: 'medium',
+    code: 'MISSING_PREREQUISITES'
+  }
+};
+
+/**
+ * Maps technical errors to parent-friendly messages
+ * @param error - The error object or string
+ * @param errorCode - Optional error code for specific mapping
+ * @returns Parent-friendly error with actionable recovery steps
+ */
+export function mapToParentFriendlyError(error: unknown, errorCode?: string): ParentFriendlyError {
+  // Try to match error code
+  if (errorCode && ERROR_MESSAGES[errorCode]) {
+    return ERROR_MESSAGES[errorCode];
+  }
+  
+  // Try to extract error code from error message
+  if (error instanceof Error) {
+    const message = error.message.toUpperCase();
+    for (const [code, friendlyError] of Object.entries(ERROR_MESSAGES)) {
+      if (message.includes(code)) {
+        return friendlyError;
+      }
+    }
+  }
+  
+  // Fall back to generic friendly error
+  return {
+    display: "Something unexpected happened.",
+    recovery: "Let's try that again. If this keeps happening, please contact support.",
+    severity: 'medium',
+    code: 'UNKNOWN_ERROR'
+  };
+}
+
+/**
  * Logs a structured error to Supabase execution_logs using RPC
  */
 export async function logStructuredError(
