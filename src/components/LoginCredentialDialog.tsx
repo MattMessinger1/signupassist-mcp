@@ -219,9 +219,19 @@ export function LoginCredentialDialog({
               {loginStatus.status === 'success' && (
                 <>
                   {loginStatus.credential_stored && (
-                    <p className="text-xs">✓ Credentials securely stored</p>
+                    <p className="text-xs">✓ Credentials securely stored (encrypted)</p>
                   )}
-                  <p className="text-xs">✓ Authorization logged for audit trail</p>
+                  <p className="text-xs">✓ Mandate issued and logged</p>
+                  <p className="text-xs">
+                    ✓ View your{' '}
+                    <a 
+                      href="/mandates-audit" 
+                      target="_blank"
+                      className="underline font-semibold hover:opacity-80"
+                    >
+                      authorization history
+                    </a>
+                  </p>
                   <p className="text-xs mt-2 italic">
                     Great, your account is connected. I'll help you browse classes next... 
                     <span className="text-green-600">(placeholder — browsing flow coming soon)</span>
@@ -231,15 +241,60 @@ export function LoginCredentialDialog({
             </div>
           )}
 
-          <div className="bg-muted/50 rounded-lg p-3 space-y-1">
-            <p className="text-xs text-muted-foreground flex items-start gap-2">
-              <div className="h-1 w-1 rounded-full bg-primary mt-1.5" />
-              Your credentials are encrypted before storage
-            </p>
-            <p className="text-xs text-muted-foreground flex items-start gap-2">
-              <div className="h-1 w-1 rounded-full bg-primary mt-1.5" />
-              We verify your login securely through {orgName}
-            </p>
+          <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4 space-y-3">
+            <div className="flex items-start gap-2">
+              <Shield className="h-5 w-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+              <div className="space-y-2 flex-1">
+                <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">
+                  Authorization & Consent
+                </p>
+                
+                <div className="space-y-2 text-xs text-blue-800 dark:text-blue-200">
+                  <div className="flex items-start gap-2">
+                    <div className="h-1.5 w-1.5 rounded-full bg-blue-600 dark:bg-blue-400 mt-1.5 flex-shrink-0" />
+                    <p>
+                      <strong>What we're asking permission for:</strong> By clicking "Connect Account," you authorize SignupAssist to log into your {orgName} account <strong>one time</strong> to verify your identity and browse available programs.
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-start gap-2">
+                    <div className="h-1.5 w-1.5 rounded-full bg-blue-600 dark:bg-blue-400 mt-1.5 flex-shrink-0" />
+                    <p>
+                      <strong>How it works:</strong> We create a cryptographically signed "mandate" (permission token) that authorizes <strong>only this specific login</strong>. This mandate expires after 30 minutes and cannot be reused.
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-start gap-2">
+                    <div className="h-1.5 w-1.5 rounded-full bg-blue-600 dark:bg-blue-400 mt-1.5 flex-shrink-0" />
+                    <p>
+                      <strong>Security guarantees:</strong> Your credentials are encrypted end-to-end. We never store your password in plain text. The login session is isolated and automatically destroyed after use.
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-start gap-2">
+                    <div className="h-1.5 w-1.5 rounded-full bg-blue-600 dark:bg-blue-400 mt-1.5 flex-shrink-0" />
+                    <p>
+                      <strong>Full transparency:</strong> Every action taken under this authorization is logged in your{' '}
+                      <a 
+                        href="/mandates-audit" 
+                        target="_blank" 
+                        className="underline font-semibold hover:text-blue-600 dark:hover:text-blue-300"
+                      >
+                        audit trail
+                      </a>
+                      , including when the mandate was issued, what actions were attempted, and the outcome of each action.
+                    </p>
+                  </div>
+                  
+                  <div className="flex items-start gap-2">
+                    <div className="h-1.5 w-1.5 rounded-full bg-blue-600 dark:bg-blue-400 mt-1.5 flex-shrink-0" />
+                    <p>
+                      <strong>Your control:</strong> You can revoke access at any time by visiting your audit trail. All mandates have strict expiration times and cannot be extended without your explicit consent.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
