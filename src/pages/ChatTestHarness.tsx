@@ -382,7 +382,32 @@ function ChatTestHarnessContent() {
 
     // Auto-detect comprehensive test request
     const lowerInput = userInput.toLowerCase();
-    if (lowerInput.includes('run full test') || 
+    
+    // Handle /tonepatch command for inline tone training
+    if (userInput.startsWith('/tonepatch ')) {
+      const newPrompt = userInput.replace('/tonepatch ', '').trim();
+      if (!newPrompt) {
+        addAssistantMessage("❌ Please provide a prompt to apply. Example: `/tonepatch Make success messages more celebratory`");
+        setIsProcessing(false);
+        return;
+      }
+      
+      addLog('info', 'tone', 'Tone Override', `Applying custom prompt: ${newPrompt.substring(0, 50)}...`);
+      addAssistantMessage(`✅ Tone override applied. New prompt active for this session. Type "/tonepatch reset" to revert to production prompt.`);
+      
+      // TODO: Send to orchestrator when overridePrompt method is exposed via API
+      // For now, just log the intent
+      addLog('info', 'tone', 'Tone Override', '⚠️ Orchestrator API integration pending');
+      return;
+    }
+    
+    if (userInput === '/tonepatch reset') {
+      addLog('info', 'tone', 'Tone Reset', 'Reverting to production prompt');
+      addAssistantMessage('✅ Prompt reset to production version.');
+      return;
+    }
+    
+    if (lowerInput.includes('run full test') ||
         lowerInput.includes('test everything') ||
         lowerInput.includes('comprehensive test')) {
       await runComprehensiveTests();

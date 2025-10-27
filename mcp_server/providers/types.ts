@@ -10,6 +10,7 @@ export interface ToolMetadata {
   security_note?: string;     // e.g., "Login credentials are never stored by SignupAssist"
   next_actions?: string[];    // e.g., ["select_program", "view_details"]
   confidence?: 'high' | 'medium' | 'low';
+  prompt_version?: string;    // e.g., "v1.0.0" - tracks which prompt version generated this response
 }
 
 /**

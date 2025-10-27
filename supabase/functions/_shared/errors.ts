@@ -55,6 +55,24 @@ const ERROR_MESSAGES: Record<string, ParentFriendlyError> = {
     severity: 'low',
     code: 'NETWORK_ERROR'
   },
+  'MEMBERSHIP_REQUIRED': {
+    display: "An active club membership is required before we can register.",
+    recovery: "Open **Membership** on the club site to renew, then tell me when it's done.",
+    severity: 'medium',
+    code: 'MEMBERSHIP_REQUIRED'
+  },
+  'PAYMENT_METHOD_MISSING': {
+    display: "There's no saved payment method on file.",
+    recovery: "Add a card on the club's site, then return here and choose **Retry**.",
+    severity: 'medium',
+    code: 'PAYMENT_METHOD_MISSING'
+  },
+  'CONFIRMATION_REQUIRED': {
+    display: "Please confirm before I continue with this step.",
+    recovery: "Choose **Yes** or **No** below to proceed.",
+    severity: 'low',
+    code: 'CONFIRMATION_REQUIRED'
+  },
   'INVALID_CREDENTIALS': {
     display: "Those login credentials didn't work.",
     recovery: "Please double-check your username and password, then try again.",

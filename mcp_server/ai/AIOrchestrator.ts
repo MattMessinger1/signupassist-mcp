@@ -3,8 +3,13 @@ import Logger from "../utils/logger.js";
 import { parseProviderInput, ParsedProviderInput } from "../utils/parseInput.js";
 import { lookupLocalProvider, googlePlacesSearch } from "../utils/providerSearch.js";
 import type { Provider } from "../utils/providerSearch.js";
-import { logAudit, extractUserIdFromJWT } from "../lib/auditLogger.js";
+import { logAudit, extractUserIdFromJWT, logToneChange } from "../lib/auditLogger.js";
 import { loadSessionFromDB, saveSessionToDB } from "../lib/sessionPersistence.js";
+
+/**
+ * Prompt version tracking for tone changes
+ */
+export const PROMPT_VERSION = "v1.0.0";
 
 /**
  * Production System Prompt - Single source of truth for SignupAssist tone and behavior
@@ -153,7 +158,7 @@ class AIOrchestrator {
   private openai: OpenAI;
   private sessions: Record<string, SessionContext> = {};
   private cache: Record<string, any> = {};
-  private readonly systemPrompt: string;
+  private systemPrompt: string; // Made mutable for tone training
   private promptTemplates: Record<string, string>;
   private exampleMessages: Array<{ role: string; content: string }>;
   private model: string;
@@ -298,6 +303,28 @@ class AIOrchestrator {
     // PHASE 2: Persist to Supabase
     const userId = extractUserIdFromJWT(this.sessions[sessionId]?.user_jwt);
     await saveSessionToDB(sessionId, this.sessions[sessionId], userId || undefined);
+  }
+
+  /**
+   * Override the system prompt temporarily for tone testing
+   * @param sessionId - Session for which to override prompt
+   * @param newPrompt - The new prompt text
+   */
+  overridePrompt(sessionId: string, newPrompt: string): void {
+    const oldPrompt = this.systemPrompt;
+    this.systemPrompt = newPrompt;
+    
+    logToneChange(sessionId, 'system_prompt', oldPrompt.substring(0, 50), newPrompt.substring(0, 50));
+    
+    Logger.info(`[AIOrchestrator] Prompt overridden for session ${sessionId}`);
+  }
+
+  /**
+   * Reset to production prompt
+   */
+  resetPrompt(): void {
+    this.systemPrompt = PRODUCTION_SYSTEM_PROMPT;
+    Logger.info(`[AIOrchestrator] Prompt reset to production version ${PROMPT_VERSION}`);
   }
 
   /**
