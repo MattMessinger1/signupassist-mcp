@@ -852,6 +852,7 @@ export const skiClubProTools = {
           } catch (mandateError) {
             console.error('[scp.find_programs] Mandate verification failed:', mandateError);
             return { 
+              success: false,
               login_status: 'failed', 
               error: `Mandate verification failed: ${mandateError.message}`,
               timestamp: new Date().toISOString()
@@ -878,6 +879,7 @@ export const skiClubProTools = {
         if (loginResult.login_status === 'failed') {
           console.error('[scp.find_programs] Login failed');
           return { 
+            success: false,
             login_status: 'failed', 
             error: 'Login failed - unable to authenticate. Try again with hard reset.',
             timestamp: new Date().toISOString()
@@ -917,6 +919,7 @@ export const skiClubProTools = {
         console.log(`[scp.find_programs] ✓ Successfully scraped ${programs.length} programs`);
         
         return {
+          success: true,
           login_status: 'success',
           data: {
             programs
@@ -928,6 +931,7 @@ export const skiClubProTools = {
         console.error('[scp.find_programs] Live scraping failed:', error);
         
         return {
+          success: false,
           login_status: 'failed',
           error: error.message || 'Unknown error during live scraping',
           timestamp: new Date().toISOString()
@@ -970,6 +974,7 @@ export const skiClubProTools = {
     }
     
     return {
+      success: false,
       login_status: 'failed',
       data: {
         programs: filteredPrograms

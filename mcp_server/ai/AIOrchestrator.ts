@@ -137,6 +137,11 @@ interface OrchestratorResponse {
   cta?: CTASpec[];              // Optional primary/secondary buttons
   uiPayload?: Record<string, any>; // Legacy support - will be phased out
   contextUpdates?: Record<string, any>;
+  toolMetadata?: {              // Metadata from tool responses
+    tone_hints?: string;
+    security_note?: string;
+    next_actions?: string[];
+  };
 }
 
 /**
@@ -320,7 +325,13 @@ class AIOrchestrator {
     const oldPrompt = this.systemPrompt;
     this.systemPrompt = newPrompt;
     
-    logToneChange(sessionId, 'system_prompt', oldPrompt.substring(0, 50), newPrompt.substring(0, 50));
+    logToneChange({
+      sessionId,
+      aspect: 'system_prompt',
+      oldValue: oldPrompt.substring(0, 50),
+      newValue: newPrompt.substring(0, 50),
+      timestamp: new Date().toISOString()
+    });
     
     Logger.info(`[AIOrchestrator] Prompt overridden for session ${sessionId}`);
   }
