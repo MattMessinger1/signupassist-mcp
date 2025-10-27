@@ -42,12 +42,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, XCircle, Activity } from "lucide-react";
-import { sendMessage, sendAction } from "@/lib/orchestratorClient";
+import { sendMessage, sendAction, overridePrompt } from "@/lib/orchestratorClient";
 import { supabase } from "@/integrations/supabase/client";
 import {
   DEFAULT_PROVIDER,
   TEST_SCENARIOS,
 } from "@/lib/config/testHarness";
+import { PRODUCTION_SYSTEM_PROMPT } from "@/lib/prompts";
 
 // ============= Types =============
 
@@ -386,24 +387,49 @@ function ChatTestHarnessContent() {
     // Handle /tonepatch command for inline tone training
     if (userInput.startsWith('/tonepatch ')) {
       const newPrompt = userInput.replace('/tonepatch ', '').trim();
+      
+      if (newPrompt === 'reset') {
+        try {
+          await overridePrompt(sessionId, PRODUCTION_SYSTEM_PROMPT);
+          addLog('info', 'tone', 'Tone Reset', `✅ Prompt reset to production version for session ${sessionId}`);
+          addAssistantMessage('✅ Prompt reset to production version.');
+        } catch (error: any) {
+          addLog('error', 'tone', 'Tone Reset Failed', `❌ Error: ${error.message}`);
+          addAssistantMessage(`❌ Failed to reset prompt: ${error.message}`);
+        }
+        setIsProcessing(false);
+        return;
+      }
+      
       if (!newPrompt) {
         addAssistantMessage("❌ Please provide a prompt to apply. Example: `/tonepatch Make success messages more celebratory`");
         setIsProcessing(false);
         return;
       }
       
-      addLog('info', 'tone', 'Tone Override', `Applying custom prompt: ${newPrompt.substring(0, 50)}...`);
-      addAssistantMessage(`✅ Tone override applied. New prompt active for this session. Type "/tonepatch reset" to revert to production prompt.`);
+      try {
+        await overridePrompt(sessionId, newPrompt);
+        addLog('info', 'tone', 'Tone Override', `✅ Applied custom prompt: "${newPrompt.substring(0, 50)}..."`);
+        addAssistantMessage(`✅ Tone override applied. New prompt active for this session. Type "/tonepatch reset" to revert.`);
+      } catch (error: any) {
+        addLog('error', 'tone', 'Tone Override Failed', `❌ Error: ${error.message}`);
+        addAssistantMessage(`❌ Failed to apply custom prompt: ${error.message}`);
+      }
       
-      // TODO: Send to orchestrator when overridePrompt method is exposed via API
-      // For now, just log the intent
-      addLog('info', 'tone', 'Tone Override', '⚠️ Orchestrator API integration pending');
+      setIsProcessing(false);
       return;
     }
     
     if (userInput === '/tonepatch reset') {
-      addLog('info', 'tone', 'Tone Reset', 'Reverting to production prompt');
-      addAssistantMessage('✅ Prompt reset to production version.');
+      try {
+        await overridePrompt(sessionId, PRODUCTION_SYSTEM_PROMPT);
+        addLog('info', 'tone', 'Tone Reset', '✅ Reverted to production prompt');
+        addAssistantMessage('✅ Prompt reset to production version.');
+      } catch (error: any) {
+        addLog('error', 'tone', 'Tone Reset Failed', `❌ Error: ${error.message}`);
+        addAssistantMessage(`❌ Failed to reset prompt: ${error.message}`);
+      }
+      setIsProcessing(false);
       return;
     }
     

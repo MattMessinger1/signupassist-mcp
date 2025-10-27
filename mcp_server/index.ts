@@ -377,6 +377,54 @@ class SignupAssistMCPServer {
         return;
       }
 
+      // --- Prompt override endpoint for tone training
+      if (url.pathname === '/api/override-prompt') {
+        if (req.method === 'OPTIONS') {
+          res.writeHead(200);
+          res.end();
+          return;
+        }
+        
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Only POST supported' }));
+          return;
+        }
+        
+        let body = '';
+        req.on('data', (chunk) => (body += chunk));
+        req.on('end', async () => {
+          try {
+            const { sessionId, newPrompt } = JSON.parse(body);
+            
+            if (!sessionId || !newPrompt) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Missing sessionId or newPrompt' }));
+              return;
+            }
+            
+            if (!this.orchestrator) {
+              res.writeHead(503, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'AI Orchestrator unavailable' }));
+              return;
+            }
+            
+            this.orchestrator.overridePrompt(sessionId, newPrompt);
+            
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ 
+              success: true, 
+              message: `Prompt overridden for session ${sessionId}` 
+            }));
+          } catch (err: any) {
+            console.error('[Override Prompt] Error:', err);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: err.message || 'Unknown error' }));
+          }
+        });
+        return;
+      }
+
       // --- Orchestrator endpoint for Chat Test Harness
       if (url.pathname === '/orchestrator/chat') {
         console.log('[ROUTE] /orchestrator/chat hit');

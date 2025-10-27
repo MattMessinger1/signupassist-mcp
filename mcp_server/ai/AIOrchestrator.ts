@@ -140,7 +140,8 @@ interface OrchestratorResponse {
 }
 
 /**
- * Helper constants for common messages (extracted from system prompt)
+ * Helper constants for common messages (only used for backward compatibility)
+ * NEW: Prefer using meta.security_note from tool responses
  */
 const SECURITY_NOTE = "Credentials and card data stay with the provider; SignupAssist never stores card numbers.";
 const AUDIT_REMINDER = "Every action is logged and requires your explicit consent.";
@@ -230,6 +231,11 @@ class AIOrchestrator {
       
       this.logInteraction(sessionId, "user", userMessage);
       const result = await this.handleStep(step, userMessage, sessionId);
+      
+      // NEW: Extract and apply metadata from tool responses
+      if (result.toolMetadata) {
+        Logger.info(`[Metadata Applied] ${sessionId}`, result.toolMetadata);
+      }
       
       // Validate Design DNA compliance
       this.validateRhythm(result);

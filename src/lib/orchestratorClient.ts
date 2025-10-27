@@ -101,3 +101,31 @@ export async function sendAction(
 
   return res.json();
 }
+
+/**
+ * Override the system prompt for a session (tone training)
+ * @param sessionId - Session identifier
+ * @param newPrompt - New system prompt text
+ * @returns Promise resolving to success response
+ */
+export async function overridePrompt(
+  sessionId: string,
+  newPrompt: string
+): Promise<{ success: boolean; message: string }> {
+  console.log('[Orchestrator Client] Overriding prompt for session:', sessionId);
+  
+  const res = await fetch(`${ORCHESTRATOR_BASE}/api/override-prompt`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ sessionId, newPrompt }),
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(error.error || `HTTP ${res.status}`);
+  }
+
+  return res.json();
+}
