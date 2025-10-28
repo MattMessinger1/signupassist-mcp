@@ -34,6 +34,7 @@
                   "tool": {
                     "type": "string",
                     "enum": [
+                      "scp.create_mandate",
                       "scp.discover_required_fields",
                       "scp.find_programs",
                       "scp.login",
@@ -65,6 +66,20 @@
                 }
               },
               "examples": {
+                "scp_create_mandate": {
+                  "summary": "Example: Creates a signed mandate for user authorization",
+                  "value": {
+                    "tool": "scp.create_mandate",
+                    "args": {
+                      "user_jwt": "eyJhbGc...",
+                      "provider": "skiclubpro",
+                      "org_ref": "blackhawk-ski-club",
+                      "scope": ["scp:authenticate", "scp:read:listings"],
+                      "mandate_tier": "discovery",
+                      "valid_duration_minutes": 1440
+                    }
+                  }
+                },
                 "scp_discover_required_fields": {
                   "summary": "Example: Discovers the required fields for a given program registration form",
                   "value": {
@@ -401,6 +416,98 @@
           "timestamp": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "scp.create_mandate_input": {
+        "type": "object",
+        "properties": {
+          "user_jwt": {
+            "type": "string",
+            "description": "JWT token from OAuth authentication"
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider identifier (e.g., 'skiclubpro')"
+          },
+          "org_ref": {
+            "type": "string",
+            "description": "Organization reference (e.g., 'blackhawk-ski-club')"
+          },
+          "scope": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Scope of authorization (e.g., ['scp:authenticate', 'scp:read:listings'])"
+          },
+          "mandate_tier": {
+            "type": "string",
+            "enum": ["discovery", "execution"],
+            "description": "Tier of mandate - 'discovery' for read-only, 'execution' for write operations"
+          },
+          "valid_duration_minutes": {
+            "type": "number",
+            "description": "How long the mandate is valid in minutes (default: 1440 = 24 hours)"
+          },
+          "child_id": {
+            "type": "string",
+            "description": "Optional child identifier for scoped mandates"
+          },
+          "program_ref": {
+            "type": "string",
+            "description": "Optional program reference for scoped mandates"
+          },
+          "max_amount_cents": {
+            "type": "number",
+            "description": "Optional maximum amount in cents for execution mandates"
+          }
+        },
+        "required": [
+          "user_jwt",
+          "provider",
+          "org_ref",
+          "scope",
+          "mandate_tier"
+        ],
+        "additionalProperties": false
+      },
+      "scp.create_mandate_response": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "mandate_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "jws_token": {
+            "type": "string"
+          },
+          "mandate_tier": {
+            "type": "string",
+            "enum": ["discovery", "execution"]
+          },
+          "valid_from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "valid_until": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "scope": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "consent_message": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
           }
         }
       },

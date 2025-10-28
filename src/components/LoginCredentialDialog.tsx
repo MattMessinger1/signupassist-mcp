@@ -60,12 +60,55 @@ export function LoginCredentialDialog({
     setLoginStatus({});
 
     try {
+      // Step 1: Get user session for JWT
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('No active session - please log in first');
+      }
+
+      // Step 2: Create discovery mandate via MCP server
+      const mcpServerUrl = import.meta.env.VITE_MCP_BASE_URL || 'https://signupassist-mcp-production.up.railway.app';
+      
+      console.log('[LoginCredentialDialog] Creating discovery mandate...');
+      const mandateResponse = await fetch(`${mcpServerUrl}/tools/call`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tool: 'scp.create_mandate',
+          args: {
+            user_jwt: session.access_token,
+            provider: 'skiclubpro',
+            org_ref: orgRef,
+            scope: ['scp:authenticate', 'scp:read:listings'],
+            mandate_tier: 'discovery',
+            valid_duration_minutes: 1440 // 24 hours
+          }
+        })
+      });
+
+      if (!mandateResponse.ok) {
+        const errorText = await mandateResponse.text();
+        console.error('[LoginCredentialDialog] Failed to create mandate:', errorText);
+        throw new Error(`Failed to create mandate: ${errorText}`);
+      }
+
+      const mandateResult = await mandateResponse.json();
+      console.log('[LoginCredentialDialog] Mandate created:', mandateResult);
+
+      if (!mandateResult.success || !mandateResult.mandate_id) {
+        throw new Error(mandateResult.error || 'Failed to create mandate');
+      }
+
+      // Step 3: Call browserbase login with mandate_id
       const { data, error } = await supabase.functions.invoke('start-browserbase-login', {
         body: {
           provider,
           org_ref: orgRef,
           email,
-          password
+          password,
+          mandate_id: mandateResult.mandate_id
         }
       });
 

@@ -824,7 +824,121 @@ export const skiClubProTools = {
     };
   },
 
-  'scp.find_programs': async (args: { 
+  /**
+   * Create Mandate - Issues a signed mandate token for user authorization
+   */
+  'scp.create_mandate': async (args: {
+    user_jwt: string;
+    provider: string;
+    org_ref: string;
+    scope: string[];
+    mandate_tier: 'discovery' | 'execution';
+    valid_duration_minutes?: number;
+    child_id?: string;
+    program_ref?: string;
+    max_amount_cents?: number;
+  }) => {
+    try {
+      console.log('[scp.create_mandate] Creating mandate:', {
+        provider: args.provider,
+        org_ref: args.org_ref,
+        mandate_tier: args.mandate_tier,
+        scope: args.scope
+      });
+
+      // Decode JWT to get user_id
+      const jwtPayload = safeDecodeJWT(args.user_jwt);
+      if (!jwtPayload) {
+        throw new Error('Invalid user_jwt - unable to decode');
+      }
+      const userId = jwtPayload.sub;
+
+      // Import mandate functions
+      const { issueMandate } = await import('../lib/mandates.js');
+
+      // Generate mandate_id
+      const mandateId = crypto.randomUUID();
+
+      // Calculate validity period
+      const validFrom = new Date();
+      const validUntil = new Date(validFrom.getTime() + (args.valid_duration_minutes || 1440) * 60 * 1000);
+
+      // Create mandate payload
+      const mandatePayload = {
+        mandate_id: mandateId,
+        user_id: userId,
+        provider: args.provider,
+        scope: args.scope,
+        child_id: args.child_id,
+        program_ref: args.program_ref,
+        max_amount_cents: args.max_amount_cents,
+        valid_from: validFrom.toISOString(),
+        valid_until: validUntil.toISOString(),
+        credential_type: 'jws' as const
+      };
+
+      // Issue the JWS token
+      const jws = await issueMandate(mandatePayload);
+
+      // Store in mandates table
+      const { error: insertError } = await supabase
+        .from('mandates')
+        .insert({
+          id: mandateId,
+          user_id: userId,
+          provider: args.provider,
+          org_ref: args.org_ref,
+          scope: args.scope,
+          status: 'active',
+          mandate_tier: args.mandate_tier,
+          jws_token: jws,
+          valid_from: validFrom.toISOString(),
+          valid_until: validUntil.toISOString(),
+          metadata: {
+            child_id: args.child_id,
+            program_ref: args.program_ref,
+            max_amount_cents: args.max_amount_cents,
+            created_via: 'scp.create_mandate'
+          }
+        });
+
+      if (insertError) {
+        console.error('[scp.create_mandate] Failed to store mandate:', insertError);
+        throw new Error(`Failed to store mandate: ${insertError.message}`);
+      }
+
+      console.log('[scp.create_mandate] Mandate created successfully:', mandateId);
+
+      // Return mandate details and consent message
+      const consentMessage = args.mandate_tier === 'discovery'
+        ? '🔍 Discovery Authorization: I authorize SignupAssist to access my account information, browse available programs, and check prerequisites. This authorization is read-only and does not permit any enrollments or payments.'
+        : '⚡ Execution Authorization: I authorize SignupAssist to complete registrations and process payments on my behalf according to the parameters I specify. This is a secure, time-limited authorization.';
+
+      return {
+        success: true,
+        mandate_id: mandateId,
+        jws_token: jws,
+        mandate_tier: args.mandate_tier,
+        valid_from: validFrom.toISOString(),
+        valid_until: validUntil.toISOString(),
+        scope: args.scope,
+        consent_message: consentMessage,
+        metadata: {
+          provider: args.provider,
+          org_ref: args.org_ref,
+          user_id: userId
+        }
+      };
+    } catch (error) {
+      console.error('[scp.create_mandate] Error creating mandate:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create mandate'
+      };
+    }
+  },
+
+  'scp.find_programs': async (args: {
     org_ref?: string; 
     query?: string; 
     mandate_id?: string; 

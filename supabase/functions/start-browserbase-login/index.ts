@@ -30,10 +30,14 @@ Deno.serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    const { provider, org_ref, email, password } = await req.json();
+    const { provider, org_ref, email, password, mandate_id } = await req.json();
 
     if (!provider || !org_ref || !email || !password) {
       throw new Error('Missing required parameters: provider, org_ref, email, password');
+    }
+
+    if (!mandate_id) {
+      throw new Error('Missing mandate_id - user must authorize access first');
     }
 
     console.log(`[BrowserbaseLogin] Starting login for ${email} at ${org_ref}`);
@@ -73,6 +77,7 @@ Deno.serve(async (req) => {
           email,
           password,
           user_id: user.id,
+          mandate_id, // Forward mandate_id for verification
           return_session_data: true
         }
       })
