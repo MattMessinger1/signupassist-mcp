@@ -333,34 +333,49 @@ export async function loginWithCredentials(
       const hasCookie = await hasDrupalSessCookie(page);
       
       // CRITICAL: Handle Antibot blocking JavaScript redirects
-      // If session exists but we're still on login page, manually navigate
+      // If session exists but we're still on login page, follow Drupal redirect
       if (url.includes('/user/login') && hasCookie) {
-        console.log('DEBUG ⚠ Session created but redirect blocked - forcing manual navigation...');
+        console.log('DEBUG ⚠ Session created but redirect blocked - following Drupal redirect...');
         
         // Extract destination from URL params or default to /dashboard
         const urlObj = new URL(url);
         const destination = urlObj.searchParams.get('destination') || '/dashboard';
-        const targetUrl = `${urlObj.origin}${destination}`;
+        const redirectUrl = `${urlObj.origin}/user/login?destination=${destination}`;
         
-        console.log(`DEBUG Manually navigating to: ${targetUrl}`);
+        console.log(`DEBUG Following Drupal redirect chain: ${redirectUrl}`);
         
         try {
-          await page.goto(targetUrl, { 
-            waitUntil: 'networkidle',
-            timeout: 15000 
-          });
+          // Wait for network activity to settle, then let the site redirect naturally
+          await page.waitForTimeout(2000);
+          
+          // Follow the same redirect chain the browser would use
+          await page.goto(redirectUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+          
+          // Verify if redirected successfully
+          if (page.url().includes('/user/login')) {
+            // As fallback, trigger post-login AJAX redirect by clicking any dashboard link if present
+            const dashboardLink = await page.$('a[href*="dashboard"]');
+            if (dashboardLink) {
+              console.log('DEBUG Clicking dashboard link to trigger redirect...');
+              await dashboardLink.click();
+            }
+          }
+          
+          await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
           
           url = page.url();
           
-          // Verify we're no longer on login page
-          if (url.includes('/user/login')) {
-            throw new Error('Manual navigation failed - still on login page');
+          // Final verification
+          if (url.includes('/dashboard')) {
+            console.log('DEBUG ✓ Login redirect completed successfully to:', url);
+          } else if (!url.includes('/user/login')) {
+            console.log('DEBUG ✓ Login redirect completed to:', url);
+          } else {
+            throw new Error('Login succeeded but redirect not completed');
           }
-          
-          console.log('DEBUG ✓ Manual navigation successful to:', url);
         } catch (e) {
-          console.log('DEBUG ✗ Manual navigation failed:', e);
-          throw new Error('Login succeeded but unable to navigate to dashboard');
+          console.log('DEBUG ✗ Drupal redirect failed:', e);
+          throw new Error('Login succeeded but unable to complete redirect chain');
         }
       }
       
