@@ -880,26 +880,22 @@ export const skiClubProTools = {
       // Issue the JWS token
       const jws = await issueMandate(mandatePayload);
 
-      // Store in mandates table
+      // Store in mandates table (using existing schema columns only)
       const { error: insertError } = await supabase
         .from('mandates')
         .insert({
           id: mandateId,
           user_id: userId,
           provider: args.provider,
-          org_ref: args.org_ref,
           scope: args.scope,
           status: 'active',
-          mandate_tier: args.mandate_tier,
-          jws_token: jws,
+          credential_type: 'jws',
+          jws_compact: jws, // Correct column name
           valid_from: validFrom.toISOString(),
           valid_until: validUntil.toISOString(),
-          metadata: {
-            child_id: args.child_id,
-            program_ref: args.program_ref,
-            max_amount_cents: args.max_amount_cents,
-            created_via: 'scp.create_mandate'
-          }
+          child_id: args.child_id,
+          program_ref: args.program_ref,
+          max_amount_cents: args.max_amount_cents
         });
 
       if (insertError) {
@@ -918,16 +914,14 @@ export const skiClubProTools = {
         success: true,
         mandate_id: mandateId,
         jws_token: jws,
-        mandate_tier: args.mandate_tier,
+        mandate_tier: args.mandate_tier, // Not stored in DB but returned for client
         valid_from: validFrom.toISOString(),
         valid_until: validUntil.toISOString(),
         scope: args.scope,
         consent_message: consentMessage,
-        metadata: {
-          provider: args.provider,
-          org_ref: args.org_ref,
-          user_id: userId
-        }
+        provider: args.provider,
+        org_ref: args.org_ref,
+        user_id: userId
       };
     } catch (error) {
       console.error('[scp.create_mandate] Error creating mandate:', error);
