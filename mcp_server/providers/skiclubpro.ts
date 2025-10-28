@@ -142,11 +142,13 @@ function safeDecodeJWT(token?: string): Record<string, any> | null {
  */
 async function ensureLoggedIn(
   session: any, 
-  credential_id: string, 
+  credential_id: string | undefined, 
   user_jwt: string, 
   baseUrl: string,
   userId: string,
   orgRef: string,
+  email?: string,
+  password?: string,
   auditParams?: { 
     tool_name?: string; 
     mandate_id?: string;
@@ -155,7 +157,21 @@ async function ensureLoggedIn(
     session_token?: string;
   }
 ) {
-  const creds = await lookupCredentialsById(credential_id, user_jwt);
+  // Handle both authentication methods
+  let creds;
+  
+  if (credential_id) {
+    // Use stored credential
+    console.log(`[ensureLoggedIn] Using stored credential_id=${credential_id}`);
+    creds = await lookupCredentialsById(credential_id, user_jwt);
+  } else if (email && password) {
+    // Use provided credentials directly
+    console.log(`[ensureLoggedIn] Using provided credentials for email=${email}`);
+    creds = { email, password };
+  } else {
+    throw new Error('Must provide either credential_id OR email+password for login');
+  }
+  
   const { page } = session;
 
   console.log('DEBUG: Using credentials from cred-get:', creds.email);
@@ -267,6 +283,8 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
             baseUrl, 
             userId, 
             orgRef,
+            undefined,
+            undefined,
             { 
               tool_name: 'scp.discover_required_fields (prereqs)', 
               mandate_id: args.mandate_id,
@@ -339,6 +357,8 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           baseUrl,
           userId,
           orgRef,
+          undefined,
+          undefined,
           { 
             tool_name: 'scp.discover_required_fields (program)', 
             mandate_id: args.mandate_id,
@@ -763,6 +783,8 @@ export const skiClubProTools = {
             baseUrl,
             userId,
             orgRef,
+            args.email,
+            args.password,
             { tool_name: 'scp.find_programs', mandate_id: args.mandate_id }
           );
           
@@ -1204,6 +1226,8 @@ export const skiClubProTools = {
               baseUrl,
               userId,
               orgRef,
+              undefined,
+              undefined,
               { tool_name: 'scp.list_children', mandate_id: args.mandate_id }
             );
           }
