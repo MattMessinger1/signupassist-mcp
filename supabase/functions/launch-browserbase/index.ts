@@ -23,19 +23,15 @@ Deno.serve(async (req) => {
       );
     }
 
-    const requestBody = await req.json().catch(() => ({}));
-    const { headless = true } = requestBody;
-    
     console.log('[launch-browserbase] Creating new session', { 
-      headless, 
       projectId: 'configured'
     });
 
     // Call Browserbase API to create session
-    const sessionBody: any = { headless };
-    if (browserbaseProjectId) {
-      sessionBody.projectId = browserbaseProjectId;  // camelCase required by Browserbase API
-    }
+    // Note: 'headless' field is deprecated and causes validation errors
+    const sessionBody: any = {
+      projectId: browserbaseProjectId
+    };
 
     const resp = await fetch('https://www.browserbase.com/v1/sessions', {
       method: 'POST',
