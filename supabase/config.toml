@@ -9,6 +9,9 @@ verify_jwt = false
 [functions.orchestrator-test]
 verify_jwt = false
 
+[functions.create-mandate]
+verify_jwt = true
+
 [functions.start-browserbase-login]
 verify_jwt = true
 
