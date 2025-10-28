@@ -62,6 +62,17 @@ Deno.serve(async (req) => {
       throw new Error('MCP_ACCESS_TOKEN not configured');
     }
 
+    // Check for existing credential
+    const { data: existingCred } = await supabase
+      .from('stored_credentials')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('provider', provider)
+      .ilike('alias', `%${org_ref}%`)
+      .single();
+
+    console.log(`[BrowserbaseLogin] Existing credential lookup: ${existingCred ? existingCred.id : 'none'}`);
+
     // Invoke scp.login through the MCP server
     const mcpResponse = await fetch(`${mcpServerUrl}/tools/call`, {
       method: 'POST',
@@ -72,10 +83,10 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         tool: 'scp.login',
         args: {
-          credential_id: null, // Will use email/password directly
+          credential_id: existingCred?.id || null, // Use stored credential_id if available
           org_ref,
-          email,
-          password,
+          email: existingCred ? undefined : email, // Only pass email if no credential_id
+          password: existingCred ? undefined : password, // Only pass password if no credential_id
           user_id: user.id,
           mandate_id, // Forward mandate_id for verification
           return_session_data: true
@@ -124,20 +135,25 @@ Deno.serve(async (req) => {
 
     // Check login success
     if (mcpResult.success || mcpResult.logged_in) {
-      // Store credentials securely using store-credentials edge function
-      const { error: storeError } = await supabase.functions.invoke('store-credentials', {
-        body: {
-          alias: `${org_ref}-account`,
-          provider_slug: provider,
-          email,
-          password
-        }
-      });
+      let credentialId = existingCred?.id;
+      
+      // Only store credentials if they don't already exist
+      if (!existingCred && email && password) {
+        const { data: storeResult, error: storeError } = await supabase.functions.invoke('store-credentials', {
+          body: {
+            alias: `${org_ref}-account`,
+            provider_slug: provider,
+            email,
+            password
+          }
+        });
 
-      if (storeError) {
-        console.error('[BrowserbaseLogin] Failed to store credentials:', storeError);
-      } else {
-        console.log('[BrowserbaseLogin] Credentials stored successfully');
+        if (storeError) {
+          console.error('[BrowserbaseLogin] Failed to store credentials:', storeError);
+        } else {
+          console.log('[BrowserbaseLogin] Credentials stored successfully');
+          credentialId = storeResult?.credential_id;
+        }
       }
 
       // Log mandate/authorization event
@@ -149,7 +165,8 @@ Deno.serve(async (req) => {
         details: {
           authentication_status: 'success',
           authentication_message: 'Login successful ✅ - account connected and credentials stored',
-          credential_stored: !storeError
+          credential_stored: !!credentialId,
+          credential_id: credentialId
         }
       });
 
@@ -157,7 +174,8 @@ Deno.serve(async (req) => {
         JSON.stringify({
           status: 'success',
           message: 'Thanks — login successful ✅',
-          credential_stored: !storeError,
+          credential_stored: !!credentialId,
+          credential_id: credentialId,
           next_step: 'Great, your account is connected. I\'ll help you browse classes next... (placeholder — browsing flow coming soon).'
         }),
         { 

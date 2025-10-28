@@ -84,23 +84,24 @@ export enum FlowStep {
   COMPLETED = 8
 }
 
-/**
- * Session context structure - defines what's stored for each conversation
- */
-export interface SessionContext {
-  step?: FlowStep;
-  provider?: { name: string; orgRef: string };
-  program?: { name: string; id: string };
-  child?: { name: string; birthdate?: string };
-  prerequisites?: Record<string, "ok" | "required" | "missing">;
-  formAnswers?: Record<string, any>;
-  conversationHistory?: Array<{ role: string; content: string }>;
-  loginCompleted?: boolean;
-  confirmed?: boolean;
-  user_jwt?: string;
-  credential_id?: string;
-  pendingLogin?: { provider: string; orgRef: string };
-}
+  /**
+   * Session context structure - defines what's stored for each conversation
+   */
+  export interface SessionContext {
+    step?: FlowStep;
+    provider?: { name: string; orgRef: string };
+    program?: { name: string; id: string };
+    child?: { name: string; birthdate?: string };
+    prerequisites?: Record<string, "ok" | "required" | "missing">;
+    formAnswers?: Record<string, any>;
+    conversationHistory?: Array<{ role: string; content: string }>;
+    loginCompleted?: boolean;
+    confirmed?: boolean;
+    user_jwt?: string;
+    credential_id?: string;
+    credentials?: { [provider: string]: { id: string; credential_id: string } };
+    pendingLogin?: { provider: string; orgRef: string };
+  }
 
 /**
  * Card specification for UI rendering
@@ -435,6 +436,33 @@ class AIOrchestrator {
             );
           }
           
+          // First, check if credentials already exist for this provider
+          const userId = extractUserIdFromJWT(currentContext.user_jwt);
+          const existingCred = await this.lookupStoredCredential(userId, payload.provider, payload.orgRef);
+          
+          if (existingCred) {
+            console.log(`[orchestrator] Retrieved credential_id=${existingCred.id} for ${payload.provider}`);
+            
+            // Store credential in context
+            await this.updateContext(sessionId, {
+              credentials: {
+                [payload.provider]: {
+                  id: existingCred.id,
+                  credential_id: existingCred.id
+                }
+              },
+              loginCompleted: true,
+              step: FlowStep.PROGRAM_SELECTION
+            });
+            
+            return this.formatResponse(
+              `✅ Your ${payload.orgRef} account is already connected! Let's check available programs.`,
+              undefined,
+              [{ label: "View Programs", action: "check_programs", variant: "accent" }],
+              {}
+            );
+          }
+          
           // Store pending login info for credential collection
           await this.updateContext(sessionId, {
             pendingLogin: {
@@ -467,6 +495,13 @@ class AIOrchestrator {
             [{ label: "Check Prerequisites", action: "check_prereqs", variant: "accent" }],
             {}
           );
+
+        case "check_programs":
+          // After credential confirmation, move to program selection
+          await this.updateContext(sessionId, {
+            step: FlowStep.PROGRAM_SELECTION
+          });
+          return this.handleProgramSelection("", sessionId);
 
         case "check_prereqs":
           // Check prerequisites and move to confirmation
@@ -770,6 +805,50 @@ class AIOrchestrator {
   private isCacheValid(key: string): boolean {
     const item = this.cache[key];
     return !!item && item.expires > Date.now();
+  }
+
+  /**
+   * Lookup stored credentials for a provider
+   * Retrieves credential_id from Supabase for use with scp.login
+   * 
+   * @param userId - User ID from JWT
+   * @param provider - Provider slug (e.g., 'skiclubpro')
+   * @param orgRef - Organization reference (e.g., 'blackhawk-ski')
+   * @returns Promise resolving to credential record or null
+   */
+  private async lookupStoredCredential(
+    userId: string | undefined, 
+    provider: string, 
+    orgRef: string
+  ): Promise<{ id: string; alias: string } | null> {
+    if (!userId) {
+      Logger.warn("[orchestrator] No user_id provided for credential lookup");
+      return null;
+    }
+
+    try {
+      // Note: This requires a Supabase client instance
+      // For now, we'll use a placeholder that returns null
+      // In production, you'd import and use the Supabase client here
+      Logger.info(`[orchestrator] Would lookup credentials for user=${userId}, provider=${provider}, org=${orgRef}`);
+      
+      // TODO: Import createClient from '@supabase/supabase-js' and query stored_credentials table
+      // const { data, error } = await supabase
+      //   .from('stored_credentials')
+      //   .select('id, alias')
+      //   .eq('user_id', userId)
+      //   .eq('provider', provider)
+      //   .ilike('alias', `%${orgRef}%`)
+      //   .single();
+      // 
+      // if (error || !data) return null;
+      // return data;
+      
+      return null; // Placeholder until Supabase client is available in orchestrator
+    } catch (error) {
+      Logger.error("[orchestrator] Failed to lookup credentials:", error);
+      return null;
+    }
   }
 
   /**
