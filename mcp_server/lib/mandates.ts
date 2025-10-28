@@ -17,6 +17,7 @@ export interface MandatePayload {
   max_amount_cents?: number;
   valid_from: string;
   valid_until: string;
+  time_period: string;
   credential_type: 'jws' | 'vc';
 }
 
@@ -66,7 +67,7 @@ export async function issueMandate(
       .setIssuedAt()
       .setIssuer('signupassist-platform')
       .setAudience('signupassist-mcp')
-      .setExpirationTime(mandatePayload.valid_until)
+      .setExpirationTime(mandatePayload.time_period)
       .sign(secret);
 
     return jwt;

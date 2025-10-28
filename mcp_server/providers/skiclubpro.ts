@@ -861,7 +861,15 @@ export const skiClubProTools = {
 
       // Calculate validity period
       const validFrom = new Date();
-      const validUntil = new Date(validFrom.getTime() + (args.valid_duration_minutes || 1440) * 60 * 1000);
+      const durationMinutes = args.valid_duration_minutes || 1440;
+      const validUntil = new Date(validFrom.getTime() + durationMinutes * 60 * 1000);
+
+      // Calculate time_period based on duration (jose library expects '15m', '1h', '24h', etc.)
+      const timePeriod = durationMinutes < 60 
+        ? `${durationMinutes}m`
+        : `${Math.floor(durationMinutes / 60)}h`;
+
+      console.log(`[scp.create_mandate] Time period: ${timePeriod} (${durationMinutes} minutes)`);
 
       // Create mandate payload
       const mandatePayload = {
@@ -874,6 +882,7 @@ export const skiClubProTools = {
         max_amount_cents: args.max_amount_cents,
         valid_from: validFrom.toISOString(),
         valid_until: validUntil.toISOString(),
+        time_period: timePeriod,
         credential_type: 'jws' as const
       };
 
@@ -903,7 +912,7 @@ export const skiClubProTools = {
         throw new Error(`Failed to store mandate: ${insertError.message}`);
       }
 
-      console.log('[scp.create_mandate] Mandate created successfully:', mandateId);
+      console.log(`[scp.create_mandate] Mandate issued for ${args.org_ref} (${timePeriod}, tier: ${args.mandate_tier || 'discovery'})`);
 
       // Return mandate details and consent message
       const consentMessage = args.mandate_tier === 'discovery'
