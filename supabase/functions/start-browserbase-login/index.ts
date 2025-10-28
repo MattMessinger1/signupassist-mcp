@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
 
     console.log(`[BrowserbaseLogin] Existing credential lookup: ${existingCred ? existingCred.id : 'none'}`);
 
-    // Invoke scp.login through the MCP server
+    // Invoke provider's login through the MCP server (dynamic tool name)
     const mcpResponse = await fetch(`${mcpServerUrl}/tools/call`, {
       method: 'POST',
       headers: {
@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
         'Authorization': `Bearer ${mcpAccessToken}`, // Use MCP access token, not user JWT
       },
       body: JSON.stringify({
-        tool: 'scp.login',
+        tool: `${provider}.login`,
         args: {
           ...(existingCred?.id ? { credential_id: existingCred.id } : { email, password }), // Use stored credential_id OR email+password
           org_ref,
@@ -163,19 +163,80 @@ Deno.serve(async (req) => {
         result: 'success',
         details: {
           authentication_status: 'success',
-          authentication_message: 'Login successful ✅ - account connected and credentials stored',
+          authentication_message: 'Login successful ✅',
           credential_stored: !!credentialId,
-          credential_id: credentialId
+          credential_id: credentialId,
+          session_token: mcpResult.session_token
         }
       });
 
+      // AUTO-CONTINUE: Call provider's find_programs with the session token
+      if (mcpResult.session_token) {
+        console.log('[BrowserbaseLogin] Auto-continuing to program discovery...');
+        
+        const findProgramsTool = `${provider}.find_programs`;
+        
+        const programsResponse = await fetch(`${mcpServerUrl}/tools/call`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${mcpAccessToken}`,
+          },
+          body: JSON.stringify({
+            tool: findProgramsTool,
+            args: {
+              org_ref,
+              session_token: mcpResult.session_token,
+              credential_id: credentialId,
+              user_jwt: token,
+              mandate_id
+            }
+          })
+        });
+        
+        if (!programsResponse.ok) {
+          console.error('[BrowserbaseLogin] Failed to fetch programs:', await programsResponse.text());
+          // Fall back to success-but-no-programs response
+          return new Response(
+            JSON.stringify({
+              status: 'success',
+              message: 'Login successful ✅',
+              credential_stored: !!credentialId,
+              next_step: 'manual_program_selection'
+            }),
+            { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+        
+        const programsResult = await programsResponse.json();
+        console.log('[BrowserbaseLogin] Programs fetched:', programsResult);
+        
+        // Return login success + programs in one response
+        return new Response(
+          JSON.stringify({
+            status: 'success',
+            message: 'Login successful ✅',
+            credential_stored: !!credentialId,
+            credential_id: credentialId,
+            programs: programsResult.data?.programs || [],
+            session_token: mcpResult.session_token,
+            next_step: 'program_selection'
+          }),
+          { 
+            status: 200,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
+
+      // Fallback if no session_token (shouldn't happen)
       return new Response(
         JSON.stringify({
           status: 'success',
-          message: 'Thanks — login successful ✅',
+          message: 'Login successful ✅',
           credential_stored: !!credentialId,
           credential_id: credentialId,
-          next_step: 'Great, your account is connected. I\'ll help you browse classes next... (placeholder — browsing flow coming soon).'
+          next_step: 'Session token missing - please try again'
         }),
         { 
           status: 200,

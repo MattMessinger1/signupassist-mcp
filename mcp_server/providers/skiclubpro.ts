@@ -812,9 +812,15 @@ export const skiClubProTools = {
           const cached = typeof loginProof === 'object' && 'cached' in loginProof ? loginProof.cached : false;
           const url = typeof loginProof === 'object' && 'url' in loginProof ? loginProof.url : undefined;
           
+          // Store session for reuse (5 min TTL) instead of closing immediately
+          const sessionToken = generateToken();
+          storeSession(sessionToken, session, 300000); // 5 minutes
+          console.log(`[scp.login] Session stored with token: ${sessionToken} for reuse in subsequent steps`);
+          
           return {
             success: true,
             session_id: session.sessionId,
+            session_token: sessionToken,
             message: 'Login successful via Browserbase',
             email: email || url || 'logged in',
             cached: cached,
@@ -824,13 +830,11 @@ export const skiClubProTools = {
           
         } catch (error) {
           console.error('Real login failed:', error);
-          throw new Error(`Login failed: ${error.message}`);
-        } finally {
-          // Close the Browserbase session (cached cookies will persist)
+          // Close session on error
           if (session) {
             await closeBrowserbaseSession(session);
-            console.log('DEBUG: Browserbase session closed');
           }
+          throw new Error(`Login failed: ${error.message}`);
         }
       },
       'scp:authenticate' // Required scope for mandate verification
@@ -1003,6 +1007,7 @@ export const skiClubProTools = {
       console.log('[scp.find_programs] Using live Browserbase scraping');
       
       let session: any = null;
+      let sessionToken = args.session_token;
       
       try {
         // Verify mandate includes required scope
@@ -1024,15 +1029,34 @@ export const skiClubProTools = {
         const override = getOrgOverride(orgRef);
         const baseUrl = buildBaseUrl(orgRef, override.customDomain);
         
-        // Launch Browserbase session
-        console.log('[scp.find_programs] Launching Browserbase session...');
-        session = await launchBrowserbaseSession();
+        // Try to restore session if token provided
+        if (sessionToken) {
+          console.log(`[scp.find_programs] Attempting to reuse session from token: ${sessionToken}`);
+          const restored = await getSession(sessionToken);
+          if (restored && restored.session) {
+            session = restored.session;
+            sessionToken = restored.newToken;
+            console.log('[scp.find_programs] ✓ Reusing existing session');
+          }
+        }
         
-        // Login with credentials
-        console.log('[scp.find_programs] Logging in...');
-        const credentials = await lookupCredentialsById(args.credential_id, args.user_jwt);
-        await session.page.goto(`${baseUrl}/user/login`, { waitUntil: 'networkidle' });
-        await loginWithCredentials(session.page, skiClubProConfig, credentials, session.browser);
+        // If no session restored, launch new one and login
+        if (!session) {
+          console.log('[scp.find_programs] Launching new Browserbase session...');
+          session = await launchBrowserbaseSession();
+        
+          // Login with credentials (only if new session)
+          console.log('[scp.find_programs] Logging in...');
+          const credentials = await lookupCredentialsById(args.credential_id, args.user_jwt);
+          await session.page.goto(`${baseUrl}/user/login`, { waitUntil: 'networkidle' });
+          await loginWithCredentials(session.page, skiClubProConfig, credentials, session.browser);
+          
+          // Store session for reuse
+          sessionToken = generateToken();
+          storeSession(sessionToken, session, 300000); // 5 min TTL
+          console.log(`[scp.find_programs] ✓ Session stored with token: ${sessionToken}`);
+        }
+        
         const loginResult = { login_status: 'success' };
         
         // ✅ Check login result
@@ -1081,6 +1105,7 @@ export const skiClubProTools = {
         return {
           success: true,
           login_status: 'success',
+          session_token: sessionToken,
           data: {
             programs
           },
@@ -1098,13 +1123,8 @@ export const skiClubProTools = {
         };
         
       } finally {
-        if (session) {
-          try {
-            await closeBrowserbaseSession(session);
-          } catch (closeError) {
-            console.warn('[scp.find_programs] Error closing session:', closeError);
-          }
-        }
+        // Don't close session - keep it alive for next step (session will expire after 5 min)
+        console.log('[scp.find_programs] Session kept alive for next step');
       }
     }
     

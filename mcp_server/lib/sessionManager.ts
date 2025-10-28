@@ -49,17 +49,18 @@ export async function releaseSession(token: string, session: BrowserbaseSession)
 /**
  * Store session for potential reuse (default 60s TTL)
  */
-export function storeSession(token: string, session: BrowserbaseSession, ttlMs = 60000) {
+export function storeSession(token: string, session: BrowserbaseSession, ttlMs = 60000): string {
   sessions.set(token, { 
     session, 
     expiresAt: Date.now() + ttlMs 
   });
+  return token;
 }
 
 /**
  * Generate random session token
  */
-function generateToken(): string {
+export function generateToken(): string {
   return Math.random().toString(36).substring(2, 10);
 }
 
