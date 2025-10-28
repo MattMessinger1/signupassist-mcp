@@ -686,7 +686,15 @@ export const skiClubProTools = {
     };
   },
 
-  'scp.login': async (args: { credential_id: string; user_jwt: string; org_ref?: string; mandate_id?: string; plan_execution_id?: string }) => {
+  'scp.login': async (args: { 
+    credential_id?: string; 
+    user_jwt: string; 
+    org_ref?: string; 
+    email?: string; 
+    password?: string; 
+    mandate_id?: string; 
+    plan_execution_id?: string 
+  }) => {
     return await auditToolCall(
       {
         tool: 'scp.login',
@@ -697,9 +705,21 @@ export const skiClubProTools = {
       async () => {
         let session = null;
         try {
-          // Validate inputs
-          if (!args.credential_id) throw new Error('credential_id is required');
-          if (!args.user_jwt) throw new Error('user_jwt is required');
+          // Validate inputs - require either credential_id OR email+password
+          if (!args.credential_id && (!args.email || !args.password)) {
+            console.error("[scp.login] Missing authentication - must provide either credential_id OR email+password");
+            throw new Error('credential_id or email+password is required for login');
+          }
+          if (!args.user_jwt) {
+            console.error("[scp.login] Missing user_jwt in request");
+            throw new Error('user_jwt is required');
+          }
+          
+          if (args.credential_id) {
+            console.log(`[scp.login] Launching Browserbase session with credential_id=${args.credential_id}`);
+          } else {
+            console.log(`[scp.login] Launching Browserbase session with email=${args.email}`);
+          }
           
           const orgRef = args.org_ref || 'blackhawk-ski-club';
           const { baseUrl, baseDomain } = resolveBaseUrl({ org_ref: orgRef });
@@ -757,6 +777,7 @@ export const skiClubProTools = {
           }
           
           console.log('DEBUG: Login successful, proof:', loginProof);
+          console.log(`[scp.login] ✅ Login successful for ${orgRef} using credential ${args.credential_id}`);
           
           // Capture screenshot as evidence (if we have a plan_execution_id)
           if (args.plan_execution_id) {

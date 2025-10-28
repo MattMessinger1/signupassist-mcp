@@ -827,24 +827,44 @@ class AIOrchestrator {
     }
 
     try {
-      // Note: This requires a Supabase client instance
-      // For now, we'll use a placeholder that returns null
-      // In production, you'd import and use the Supabase client here
-      Logger.info(`[orchestrator] Would lookup credentials for user=${userId}, provider=${provider}, org=${orgRef}`);
+      // Import Supabase client from sessionPersistence (already configured there)
+      const { createClient } = await import('@supabase/supabase-js');
+      const supabaseUrl = process.env.SUPABASE_URL || process.env.SB_URL || '';
+      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SB_SERVICE_ROLE_KEY || '';
       
-      // TODO: Import createClient from '@supabase/supabase-js' and query stored_credentials table
-      // const { data, error } = await supabase
-      //   .from('stored_credentials')
-      //   .select('id, alias')
-      //   .eq('user_id', userId)
-      //   .eq('provider', provider)
-      //   .ilike('alias', `%${orgRef}%`)
-      //   .single();
-      // 
-      // if (error || !data) return null;
-      // return data;
+      if (!supabaseUrl || !supabaseKey) {
+        Logger.warn("[orchestrator] Supabase credentials not configured - cannot lookup stored credentials");
+        return null;
+      }
       
-      return null; // Placeholder until Supabase client is available in orchestrator
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      
+      Logger.info(`[orchestrator] Looking up credentials for user=${userId}, provider=${provider}, org=${orgRef}`);
+      
+      const { data, error } = await supabase
+        .from('stored_credentials')
+        .select('id, alias')
+        .eq('user_id', userId)
+        .eq('provider', provider)
+        .single();
+      
+      if (error) {
+        if (error.code === 'PGRST116') {
+          // No rows found - user hasn't connected account yet
+          Logger.info(`[orchestrator] No stored credentials found for user=${userId}, provider=${provider}`);
+          return null;
+        }
+        Logger.error("[orchestrator] Supabase error looking up credentials:", error);
+        return null;
+      }
+      
+      if (!data) {
+        Logger.info(`[orchestrator] No credentials found for user=${userId}, provider=${provider}`);
+        return null;
+      }
+      
+      Logger.info(`[orchestrator] Retrieved credential_id=${data.id} for ${provider}`);
+      return data;
     } catch (error) {
       Logger.error("[orchestrator] Failed to lookup credentials:", error);
       return null;

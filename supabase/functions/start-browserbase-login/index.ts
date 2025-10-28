@@ -83,10 +83,9 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         tool: 'scp.login',
         args: {
-          credential_id: existingCred?.id || null, // Use stored credential_id if available
+          ...(existingCred?.id ? { credential_id: existingCred.id } : { email, password }), // Use stored credential_id OR email+password
           org_ref,
-          email: existingCred ? undefined : email, // Only pass email if no credential_id
-          password: existingCred ? undefined : password, // Only pass password if no credential_id
+          user_jwt: token, // Pass user JWT for authentication
           user_id: user.id,
           mandate_id, // Forward mandate_id for verification
           return_session_data: true
