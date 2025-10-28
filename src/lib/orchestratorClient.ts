@@ -5,7 +5,11 @@
  * Handles both text messages and card action clicks.
  */
 
-const ORCHESTRATOR_BASE = import.meta.env.VITE_MCP_BASE_URL || 'http://localhost:8080';
+const ORCHESTRATOR_BASE = import.meta.env.VITE_MCP_BASE_URL;
+
+if (!ORCHESTRATOR_BASE) {
+  console.error('[Orchestrator] VITE_MCP_BASE_URL not configured. Please set it in your .env file.');
+}
 
 export interface OrchestratorResponse {
   message: string;
@@ -41,6 +45,10 @@ export async function sendMessage(
   userLocation?: {lat: number, lng: number},
   userJwt?: string
 ): Promise<OrchestratorResponse> {
+  if (!ORCHESTRATOR_BASE) {
+    throw new Error('MCP Server URL not configured. Please set VITE_MCP_BASE_URL in your .env file.');
+  }
+  
   console.log('[Orchestrator Client] Sending message:', message, { hasLocation: !!userLocation, hasJwt: !!userJwt });
   
   const headers: Record<string, string> = {
@@ -78,6 +86,10 @@ export async function sendAction(
   sessionId: string,
   userJwt?: string
 ): Promise<OrchestratorResponse> {
+  if (!ORCHESTRATOR_BASE) {
+    throw new Error('MCP Server URL not configured. Please set VITE_MCP_BASE_URL in your .env file.');
+  }
+  
   console.log('[Orchestrator Client] Sending action:', action, payload, { hasJwt: !!userJwt });
   
   const headers: Record<string, string> = {
@@ -112,6 +124,10 @@ export async function overridePrompt(
   sessionId: string,
   newPrompt: string
 ): Promise<{ success: boolean; message: string }> {
+  if (!ORCHESTRATOR_BASE) {
+    throw new Error('MCP Server URL not configured. Please set VITE_MCP_BASE_URL in your .env file.');
+  }
+  
   console.log('[Orchestrator Client] Overriding prompt for session:', sessionId);
   
   const res = await fetch(`${ORCHESTRATOR_BASE}/api/override-prompt`, {
