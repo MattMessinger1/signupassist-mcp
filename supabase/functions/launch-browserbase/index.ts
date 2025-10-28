@@ -32,15 +32,15 @@ Deno.serve(async (req) => {
     });
 
     // Call Browserbase API to create session
-    const sessionBody = { headless };
+    const sessionBody: any = { headless };
     if (browserbaseProjectId) {
-      sessionBody.project_id = browserbaseProjectId;  // underscore version required by Browserbase API
+      sessionBody.projectId = browserbaseProjectId;  // camelCase required by Browserbase API
     }
 
-    const resp = await fetch('https://api.browserbase.com/v1/sessions', {
+    const resp = await fetch('https://www.browserbase.com/v1/sessions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${browserbaseKey}`,
+        'X-BB-API-Key': browserbaseKey,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(sessionBody),
