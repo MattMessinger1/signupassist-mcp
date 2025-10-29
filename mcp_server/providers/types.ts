@@ -53,6 +53,11 @@ export interface ProviderResponse<T = any> {
   success: boolean;
   
   /**
+   * Session token for reusing Browserbase sessions across tool calls
+   */
+  session_token?: string;
+  
+  /**
    * The actual data returned by the provider tool (if successful)
    */
   data?: T;

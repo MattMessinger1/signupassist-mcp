@@ -7,6 +7,7 @@ import { verifyMandate } from '../lib/mandates.js';
 import { auditToolCall } from '../middleware/audit.js';
 import { lookupCredentialsById } from '../lib/credentials.js';
 import { launchBrowserbaseSession, captureScreenshot, closeBrowserbaseSession } from '../lib/browserbase-skiclubpro.js';
+import { storeSession, generateToken, getSession } from '../lib/sessionManager.js';
 import { captureScreenshotEvidence } from '../lib/evidence.js';
 import { getAvailablePrograms } from '../config/program_mapping.js';
 import { createClient } from '@supabase/supabase-js';
