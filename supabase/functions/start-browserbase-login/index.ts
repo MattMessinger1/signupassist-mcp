@@ -6,6 +6,18 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Map provider slugs to their MCP tool prefixes
+const PROVIDER_PREFIX_MAP: Record<string, string> = {
+  'skiclubpro': 'scp',
+  'campminder': 'cm',
+  'daysmart': 'ds',
+};
+
+function getToolName(provider: string, toolName: string): string {
+  const prefix = PROVIDER_PREFIX_MAP[provider] || provider;
+  return `${prefix}.${toolName}`;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -81,7 +93,7 @@ Deno.serve(async (req) => {
         'Authorization': `Bearer ${mcpAccessToken}`, // Use MCP access token, not user JWT
       },
       body: JSON.stringify({
-        tool: `${provider}.login`,
+        tool: getToolName(provider, 'login'),
         args: {
           ...(existingCred?.id ? { credential_id: existingCred.id } : { email, password }), // Use stored credential_id OR email+password
           org_ref,
@@ -174,7 +186,7 @@ Deno.serve(async (req) => {
       if (mcpResult.session_token) {
         console.log('[BrowserbaseLogin] Auto-continuing to program discovery...');
         
-        const findProgramsTool = `${provider}.find_programs`;
+        const findProgramsTool = getToolName(provider, 'find_programs');
         
         const programsResponse = await fetch(`${mcpServerUrl}/tools/call`, {
           method: 'POST',
