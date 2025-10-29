@@ -1071,10 +1071,30 @@ export const skiClubProTools = {
           };
         }
         
-        // 🧠 TODO: scrapeSkiClubProPrograms removed - implement basic program scraping
-        console.log('[scp.find_programs] ✓ Login verified, scraping programs...');
-        // Temporary: return empty array until scraping is re-implemented
-        const scrapedPrograms = [];
+        // ✅ Three-Pass Extractor: AI-powered program extraction
+        console.log('[scp.find_programs] ✓ Login verified, running Three-Pass Extractor...');
+        
+        let scrapedPrograms: any[] = [];
+        try {
+          // Import the extractor
+          const { runThreePassExtractor } = await import('../lib/threePassExtractor.js');
+          
+          // Verify OpenAI API key is configured
+          if (!process.env.OPENAI_API_KEY) {
+            throw new Error('OPENAI_API_KEY not configured for AI extraction');
+          }
+          
+          // Run the Three-Pass Extractor using the active session
+          const page = session.page;
+          scrapedPrograms = await runThreePassExtractor(page, orgRef, 'skiclubpro');
+          
+          console.log(`[scp.find_programs] ✅ Extracted ${scrapedPrograms.length} programs via Three-Pass Extractor`);
+          
+        } catch (extractorError) {
+          console.error('[scp.find_programs] ❌ Three-Pass Extractor failed:', extractorError);
+          // Continue with empty array if extraction fails
+          scrapedPrograms = [];
+        }
         
         // Capture screenshot evidence if plan execution exists
         if (args.plan_execution_id) {
@@ -1087,19 +1107,8 @@ export const skiClubProTools = {
           }
         }
         
-        // Map scraped programs to expected format
-        const programs = scrapedPrograms.map(program => ({
-          id: program.program_ref,
-          program_ref: program.program_ref,
-          title: program.title,
-          description: `Opens at ${program.opens_at}`,
-          schedule: `Registration opens ${new Date(program.opens_at).toLocaleDateString()}`,
-          age_range: 'See program details',
-          skill_level: 'All levels',
-          price: 'See website',
-          actual_id: program.program_ref,
-          org_ref: orgRef
-        }));
+        // Programs already in expected format from Three-Pass Extractor
+        const programs = scrapedPrograms;
         
         console.log(`[scp.find_programs] ✓ Successfully scraped ${programs.length} programs`);
         
