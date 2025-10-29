@@ -155,7 +155,8 @@ Deno.serve(async (req) => {
             alias: `${org_ref}-account`,
             provider_slug: provider,
             email,
-            password
+            password,
+            user_id: user.id
           }
         });
 

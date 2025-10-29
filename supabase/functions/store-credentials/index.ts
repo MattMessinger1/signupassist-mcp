@@ -37,29 +37,39 @@ serve(async (req) => {
       )
     }
 
-    const supabaseClient = createClient(
-      sbUrl,
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
-      }
-    )
-
-    // Get current user
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
-    if (userError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      )
-    }
-
     const body = await req.json()
+    const { alias, provider_slug, email, password, user_id } = body
+
+    // If user_id is provided, assume service role call (skip auth check)
+    let userId: string
+    
+    if (user_id) {
+      // Service role call - use provided user_id
+      userId = user_id
+      console.log('[store-credentials] Service role call for user:', userId)
+    } else {
+      // Regular user call - authenticate
+      const supabaseClient = createClient(
+        sbUrl,
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        {
+          global: {
+            headers: { Authorization: req.headers.get('Authorization')! },
+          },
+        }
+      )
+
+      const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
+      if (userError || !user) {
+        return new Response(
+          JSON.stringify({ error: 'Unauthorized' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+      userId = user.id
+    }
     
     // Validate payload
-    const { alias, provider_slug, email, password } = body
     if (!alias || !provider_slug || !email || !password) {
       return new Response(
         JSON.stringify({ error: 'Missing required field(s)' }),
@@ -100,7 +110,7 @@ serve(async (req) => {
     const row = {
       alias,
       provider: provider_slug,
-      user_id: user.id,
+      user_id: userId,
       encrypted_data: ciphertext,
     }
 
@@ -119,7 +129,7 @@ serve(async (req) => {
       }
 
       return new Response(
-        JSON.stringify(data),
+        JSON.stringify({ ...data, credential_id: data.id }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     } catch (err) {
