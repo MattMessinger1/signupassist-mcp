@@ -107,29 +107,47 @@ serve(async (req) => {
 
     const supabase = createClient(sbUrl, sbServiceKey)
 
-    const row = {
+    const payload = {
       alias,
       provider: provider_slug,
       user_id: userId,
       encrypted_data: ciphertext,
     }
 
+    console.log('[store-credentials] Insert payload:', payload)
+
     try {
       const { data, error } = await supabase
         .from('stored_credentials')
-        .insert(row)
-        .select('id, alias, provider, created_at')
-        .single()
+        .upsert([payload], { onConflict: 'user_id,alias', ignoreDuplicates: false })
+        .select('id, user_id, provider, alias, created_at')
+      
+      // Temporarily remove .single() for full visibility
+      console.log('[store-credentials] Raw Supabase response:', { data, error })
 
       if (error) {
+        console.error('[store-credentials] ❌ Supabase insert error:', error)
         return new Response(
-          JSON.stringify({ error: error.message }),
+          JSON.stringify({ error: error.message || error }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      console.log('[store-credentials] ✅ Credential stored successfully:', data)
+
+      // Handle array response from upsert
+      const record = Array.isArray(data) ? data[0] : data
+      
+      if (!record) {
+        console.error('[store-credentials] ❌ No record returned from upsert')
+        return new Response(
+          JSON.stringify({ error: 'No credential record returned' }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         )
       }
 
       return new Response(
-        JSON.stringify({ ...data, credential_id: data.id }),
+        JSON.stringify({ ...record, credential_id: record.id }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       )
     } catch (err) {
