@@ -140,7 +140,7 @@ async function identifyProgramContainers(
   });
   
   const toolCall = response.choices[0].message.tool_calls?.[0];
-  if (!toolCall) {
+  if (!toolCall || toolCall.type !== 'function') {
     console.warn('[ThreePassExtractor] Pass 1: No tool call returned');
     return [];
   }
@@ -203,7 +203,7 @@ async function extractProgramData(
   });
   
   const toolCall = response.choices[0].message.tool_calls?.[0];
-  if (!toolCall) {
+  if (!toolCall || toolCall.type !== 'function') {
     console.warn('[ThreePassExtractor] Pass 2: No tool call returned');
     return [];
   }
