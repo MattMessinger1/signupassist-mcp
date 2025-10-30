@@ -189,6 +189,14 @@ Deno.serve(async (req) => {
         
         const findProgramsTool = getToolName(provider, 'find_programs');
         
+        console.log('[EdgeFunction] Preparing to call find_programs with:', {
+          org_ref,
+          credential_id: credentialId,
+          session_token: mcpResult.session_token,
+          user_jwt: token ? 'present' : 'missing',
+          mandate_id
+        });
+        
         const programsResponse = await fetch(`${mcpServerUrl}/tools/call`, {
           method: 'POST',
           headers: {
@@ -206,6 +214,8 @@ Deno.serve(async (req) => {
             }
           })
         });
+        
+        console.log('[EdgeFunction] Received programsResponse status:', programsResponse.status);
         
         if (!programsResponse.ok) {
           console.error('[BrowserbaseLogin] Failed to fetch programs:', await programsResponse.text());
