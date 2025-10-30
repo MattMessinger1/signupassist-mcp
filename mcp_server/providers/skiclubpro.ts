@@ -1003,8 +1003,15 @@ export const skiClubProTools = {
   }): Promise<ProviderResponse<{ programs: any[] }>> => {
     const orgRef = args.org_ref || 'blackhawk-ski-club';
     
-    // If credentials provided, use live Browserbase scraping
-    if (args.credential_id && args.user_jwt) {
+    console.log('[scp.find_programs] Incoming args:', {
+      org_ref: args.org_ref,
+      credential_id: args.credential_id,
+      session_token: args.session_token,
+      user_jwt: !!args.user_jwt
+    });
+    
+    // If credentials or session token provided, use live Browserbase scraping
+    if (args.credential_id || args.session_token) {
       console.log('[scp.find_programs] Using live Browserbase scraping');
       
       let session: any = null;
@@ -1037,7 +1044,9 @@ export const skiClubProTools = {
           if (restored && restored.session) {
             session = restored.session;
             sessionToken = restored.newToken;
-            console.log('[scp.find_programs] ✓ Reusing existing session');
+            console.log(`[scp.find_programs] Reusing session from token: ${sessionToken}`);
+          } else {
+            console.log('[scp.find_programs] Session token not found or expired');
           }
         }
         
@@ -1138,8 +1147,8 @@ export const skiClubProTools = {
       }
     }
     
-    // No credentials - return static fallback data
-    console.log('[scp.find_programs] No credentials provided, returning static data');
+    // No credentials or session token - return static fallback data
+    console.log('[scp.find_programs] No credential_id or session_token; returning static data');
     const availablePrograms = getAvailablePrograms(orgRef);
     const fallbackPrograms = availablePrograms.map(mapping => ({
       id: mapping.text_ref,
