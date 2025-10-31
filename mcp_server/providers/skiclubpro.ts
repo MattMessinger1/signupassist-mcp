@@ -686,7 +686,7 @@ export const skiClubProTools = {
     };
   },
 
-  'scp.check_payment_method': async (args: { mandate_id: string; plan_execution_id?: string }): Promise<ProviderResponse> => {
+  'scp.check_payment_method': async (args: { mandate_jws?: string; plan_execution_id?: string }): Promise<ProviderResponse> => {
     // Stub implementation - returns expected format for edge function
     return {
       success: true,
@@ -695,7 +695,7 @@ export const skiClubProTools = {
         payment_method: 'valid',
         card_last_four: '4242',
         card_type: 'visa',
-        mandate_id: args.mandate_id
+        mandate_jws: args.mandate_jws
       },
       meta: {
         security_note: "Payment details are secure with the provider. We never see your full card number.",
@@ -1217,13 +1217,13 @@ export const skiClubProTools = {
     user_jwt: string;
     org_ref: string;
     force_login?: boolean;
-    mandate_id?: string;
+    mandate_jws?: string;
     plan_execution_id?: string;
   }) => {
     return await auditToolCall(
       {
         tool: 'scp.list_children',
-        mandate_id: args.mandate_id || '',
+        mandate_jws: args.mandate_jws,
         plan_execution_id: args.plan_execution_id || null
       },
       args,
@@ -1267,7 +1267,7 @@ export const skiClubProTools = {
               orgRef,
               undefined,
               undefined,
-              { tool_name: 'scp.list_children', mandate_id: args.mandate_id }
+              { tool_name: 'scp.list_children', mandate_jws: args.mandate_jws }
             );
           }
           
