@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.74.0';
+import { SignJWT } from 'https://esm.sh/jose@5.10.0';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -37,51 +38,89 @@ Deno.serve(async (req) => {
 
     console.log(`[create-mandate] Creating ${mandate_tier} mandate for user ${user.id}`);
 
-    // Call MCP server to create mandate
-    const mcpServerUrl = Deno.env.get('MCP_SERVER_URL');
-    if (!mcpServerUrl) {
-      throw new Error('MCP_SERVER_URL not configured');
+    // Get mandate signing key
+    const mandateSigningKey = Deno.env.get('MANDATE_SIGNING_KEY');
+    if (!mandateSigningKey) {
+      throw new Error('MANDATE_SIGNING_KEY not configured');
     }
 
-    const mcpAccessToken = Deno.env.get('MCP_ACCESS_TOKEN');
-    if (!mcpAccessToken) {
-      throw new Error('MCP_ACCESS_TOKEN not configured');
-    }
+    // Calculate validity period
+    const validDurationMinutes = valid_duration_minutes || 1440; // Default 24 hours
+    const now = new Date();
+    const validFrom = now.toISOString();
+    const validUntil = new Date(now.getTime() + validDurationMinutes * 60 * 1000).toISOString();
 
-    // Invoke scp.create_mandate through the MCP server with proper authentication
-    const mcpResponse = await fetch(`${mcpServerUrl}/tools/call`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${mcpAccessToken}`, // Use MCP access token
-      },
-      body: JSON.stringify({
-        tool: 'scp.create_mandate',
-        args: {
-          user_jwt: token, // Pass user JWT for mandate signing
-          provider,
-          org_ref,
-          scope,
-          mandate_tier,
-          valid_duration_minutes: valid_duration_minutes || 1440,
-          child_id,
-          program_ref,
-          max_amount_cents
-        }
+    // Create mandate payload
+    const mandatePayload = {
+      user_id: user.id,
+      provider,
+      org_ref,
+      scope: Array.isArray(scope) ? scope : [scope],
+      mandate_tier,
+      child_id,
+      program_ref,
+      max_amount_cents,
+      valid_from: validFrom,
+      valid_until: validUntil,
+      credential_type: 'jws'
+    };
+
+    // Sign mandate JWS
+    const keyBuffer = Buffer.from(mandateSigningKey, 'base64');
+    const jwk = {
+      kty: 'oct',
+      k: keyBuffer.toString('base64url'),
+    };
+    
+    const secret = await crypto.subtle.importKey(
+      'raw',
+      keyBuffer,
+      { name: 'HMAC', hash: 'SHA-256' },
+      false,
+      ['sign']
+    );
+
+    const jws_token = await new SignJWT(mandatePayload)
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setIssuer('signupassist-platform')
+      .setAudience('signupassist-mcp')
+      .setExpirationTime(validUntil)
+      .sign(secret);
+
+    // Store mandate in database for audit trail
+    const { data: mandateRecord, error: insertError } = await supabase
+      .from('mandates')
+      .insert({
+        user_id: user.id,
+        provider,
+        scope: Array.isArray(scope) ? scope : [scope],
+        jws_compact: jws_token,
+        child_id,
+        program_ref,
+        max_amount_cents,
+        valid_from: validFrom,
+        valid_until: validUntil,
+        status: 'active',
+        credential_type: 'jws'
       })
-    });
+      .select()
+      .single();
 
-    if (!mcpResponse.ok) {
-      const errorText = await mcpResponse.text();
-      console.error('[create-mandate] MCP error:', errorText);
-      throw new Error(`MCP mandate creation failed: ${errorText}`);
+    if (insertError) {
+      console.error('[create-mandate] Database insert error:', insertError);
+      throw new Error(`Failed to store mandate: ${insertError.message}`);
     }
 
-    const mcpResult = await mcpResponse.json();
-    console.log('[create-mandate] Mandate created:', mcpResult.mandate_id);
+    console.log('[create-mandate] ✅ Mandate created and signed:', mandateRecord.id);
 
     return new Response(
-      JSON.stringify(mcpResult),
+      JSON.stringify({
+        success: true,
+        mandate_id: mandateRecord.id,
+        jws_token, // Return the signed JWS token
+        valid_until: validUntil
+      }),
       { 
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

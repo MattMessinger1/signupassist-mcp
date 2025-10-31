@@ -118,6 +118,7 @@ export async function verifyMandate(
     });
 
     const mandatePayload = payload as unknown as MandatePayload;
+    console.log('[mandates] ✅ Verified mandate for', mandatePayload.provider, 'with scopes:', mandatePayload.scope);
 
     // Ensure credential_type is set (for backward compatibility)
     if (!mandatePayload.credential_type) {
@@ -154,6 +155,7 @@ export async function verifyMandate(
       verified: true,
     };
   } catch (error) {
+    console.error('[mandates] ❌ Mandate verification failed:', error);
     if (error instanceof Error) {
       throw error;
     }

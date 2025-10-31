@@ -83,14 +83,14 @@ export function LoginCredentialDialog({
 
       console.log('[LoginCredentialDialog] Mandate created:', mandateResult.mandate_id);
 
-      // Step 2: Call browserbase login with mandate_id
+      // Step 2: Call browserbase login with signed JWS token
       const { data, error } = await supabase.functions.invoke('start-browserbase-login', {
         body: {
           provider,
           org_ref: orgRef,
           email,
           password,
-          mandate_id: mandateResult.mandate_id
+          mandate_id: mandateResult.jws_token // ✅ Pass the signed JWS token, not the UUID
         }
       });
 
