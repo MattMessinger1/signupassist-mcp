@@ -1147,7 +1147,7 @@ export const skiClubProTools = {
         console.log('[scp.find_programs] Navigating to programs page...');
         // ✅ Program Locator: Navigate to actual program form page
         console.log('[scp.find_programs] Locating program page...');
-        const programPageUrl = await locateProgramPage(session.page, baseUrl, args.program_name);
+        const programPageUrl = await locateProgramPage(session.page, baseUrl, args.query);
         await session.page.waitForSelector('form input, form select', { timeout: 10000 }).catch(() => {
           console.warn('[scp.find_programs] No form elements found, continuing anyway...');
         });
