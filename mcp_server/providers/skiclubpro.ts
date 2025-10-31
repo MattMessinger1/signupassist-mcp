@@ -1082,25 +1082,8 @@ export const skiClubProTools = {
         
         // ✅ Navigate to programs page before extraction
         console.log('[scp.find_programs] Navigating to programs page...');
-        try {
-          const { NavigationResolver } = await import('../../providers/skiclubpro/lib/NavigationResolver.js');
-          const navigator = new NavigationResolver(orgRef);
-          const navigated = await navigator.navigateToPrograms(session.page, baseUrl);
-          
-          if (navigated) {
-            console.log('[scp.find_programs] ✓ Successfully navigated via link click');
-          } else {
-            console.log('[scp.find_programs] ✓ Navigated via direct URL');
-          }
-          
-          // Wait for page to settle
-          await navigator.waitForPageReady(session.page);
-          console.log('[scp.find_programs] ✓ Programs page loaded');
-          
-        } catch (navError) {
-          console.warn('[scp.find_programs] Navigation failed, trying direct URL fallback:', navError);
-          await session.page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
-        }
+        await session.page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
+        console.log('[scp.find_programs] ✓ Navigated to programs page');
         
         // ✅ Three-Pass Extractor: AI-powered program extraction
         console.log('[scp.find_programs] ✓ Login verified, running Three-Pass Extractor...');
