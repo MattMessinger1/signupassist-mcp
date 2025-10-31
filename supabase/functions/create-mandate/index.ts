@@ -114,7 +114,8 @@ Deno.serve(async (req) => {
       JSON.stringify({
         success: true,
         mandate_id: mandateRecord.id,
-        jws_token, // Return the signed JWS token
+        mandate_jws: jws_token, // Return the signed JWS token
+        jws_token, // Keep for backwards compatibility
         valid_until: validUntil
       }),
       { 
