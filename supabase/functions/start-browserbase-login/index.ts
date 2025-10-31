@@ -99,7 +99,7 @@ Deno.serve(async (req) => {
           org_ref,
           user_jwt: token, // Pass user JWT for authentication
           user_id: user.id,
-          mandate_id, // Forward mandate_id for verification
+          mandate_jws: mandate_id, // ✅ Rename to mandate_jws for MCP verification
           return_session_data: true
         }
       })
@@ -210,7 +210,7 @@ Deno.serve(async (req) => {
               session_token: mcpResult.session_token,
               credential_id: credentialId,
               user_jwt: token,
-              mandate_id
+              mandate_jws: mandate_id // ✅ Rename to mandate_jws for MCP verification
             }
           })
         });
