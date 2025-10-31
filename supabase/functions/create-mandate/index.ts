@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
       .setIssuedAt()
       .setIssuer('signupassist-platform')
       .setAudience('signupassist-mcp')
-      .setExpirationTime(validUntil)
+      .setExpirationTime(`${validDurationMinutes}m`)
       .sign(secret);
 
     // Store mandate in database for audit trail
