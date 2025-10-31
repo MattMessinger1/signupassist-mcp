@@ -576,6 +576,116 @@ class AIOrchestrator {
           
           return this.handleProgramSelection("Show programs", sessionId);
 
+        case "view_category":
+          // User clicked a category card, show filtered programs
+          const category = payload.category;
+          const programIds = payload.programIds || [];
+          
+          // Retrieve full program list from context
+          const allPrograms = context.availablePrograms || [];
+          const filteredPrograms = allPrograms.filter((p: any) => 
+            programIds.includes(p.id)
+          );
+          
+          if (filteredPrograms.length === 0) {
+            return this.formatResponse(
+              `Hmm, I couldn't find programs in that category. Let's try viewing all programs.`,
+              undefined,
+              [{ label: "View All Programs", action: "view_all_programs", variant: "accent" }],
+              {}
+            );
+          }
+          
+          // Show 5-7 programs from this category
+          const displayPrograms = filteredPrograms.slice(0, 7);
+          const cards = this.buildProgramCards(displayPrograms);
+          
+          const moreCount = filteredPrograms.length - displayPrograms.length;
+          const message = moreCount > 0
+            ? `Here are ${displayPrograms.length} ${category} programs (${moreCount} more available) 👇`
+            : `Here are all ${displayPrograms.length} ${category} programs 👇`;
+          
+          return this.formatResponse(
+            message,
+            cards,
+            moreCount > 0 
+              ? [{ label: `Show ${moreCount} More ${category}`, action: "view_more_programs", variant: "outline" }]
+              : undefined,
+            { 
+              currentCategory: category,
+              displayedProgramIds: displayPrograms.map((p: any) => p.id),
+              remainingProgramIds: filteredPrograms.slice(7).map((p: any) => p.id)
+            }
+          );
+
+        case "view_all_programs":
+          // Show all programs without categorization
+          const allProgs = context.availablePrograms || [];
+          const allCards = this.buildProgramCards(allProgs.slice(0, 10));
+          
+          return this.formatResponse(
+            `Here are the first 10 programs (${allProgs.length} total) 👇`,
+            allCards,
+            allProgs.length > 10 
+              ? [{ label: "Show More", action: "view_more_programs", variant: "outline" }]
+              : undefined,
+            {}
+          );
+
+        case "view_more_programs":
+          // Load next batch of programs from current category or all programs
+          const displayed = context.displayedProgramIds || [];
+          const remaining = context.remainingProgramIds || [];
+          
+          if (remaining.length === 0) {
+            return this.formatResponse(
+              "✅ You've seen all available programs!",
+              undefined,
+              [{ label: "Back to Categories", action: "back_to_categories", variant: "accent" }],
+              {}
+            );
+          }
+          
+          const allProgsForMore = context.availablePrograms || [];
+          const nextBatch = allProgsForMore
+            .filter((p: any) => remaining.includes(p.id))
+            .slice(0, 7);
+          
+          const moreCards = this.buildProgramCards(nextBatch);
+          const stillRemaining = remaining.length - nextBatch.length;
+          
+          return this.formatResponse(
+            `Here are ${nextBatch.length} more programs ${stillRemaining > 0 ? `(${stillRemaining} remaining)` : ""} 👇`,
+            moreCards,
+            stillRemaining > 0
+              ? [{ label: `Show ${stillRemaining} More`, action: "view_more_programs", variant: "outline" }]
+              : undefined,
+            {
+              displayedProgramIds: [...displayed, ...nextBatch.map((p: any) => p.id)],
+              remainingProgramIds: remaining.slice(7)
+            }
+          );
+
+        case "back_to_categories":
+          // Return to category view
+          const categorySummary = context.programSummary;
+          if (!categorySummary) {
+            return this.formatResponse(
+              "Let's reload the programs.",
+              undefined,
+              [{ label: "Reload Programs", action: "check_programs", variant: "accent" }],
+              {}
+            );
+          }
+          
+          const catCards = this.buildCategoryCards(categorySummary.categories);
+          return this.formatResponse(
+            "Here are the program categories again 👇",
+            catCards,
+            undefined,
+            { showingCategories: true }
+          );
+
         case "reset":
         case "retry_search":
         case "retry_programs":
@@ -996,6 +1106,115 @@ class AIOrchestrator {
   }
 
   /**
+   * Summarize and categorize a large list of programs using AI
+   * Groups programs by type (Lessons, Teams, Events, Memberships)
+   * Returns category summary with representative examples
+   * 
+   * @param programs - Array of program objects
+   * @returns Promise resolving to category summary
+   */
+  private async summarizePrograms(programs: any[]): Promise<{
+    categories: Array<{
+      name: string;
+      count: number;
+      examples: string[];
+      programIds: string[];
+    }>;
+  }> {
+    try {
+      // Prepare simplified program data for AI (avoid token bloat)
+      const simplifiedPrograms = programs.slice(0, 50).map(p => ({
+        name: p.name || p.title,
+        id: p.id,
+        price: p.price
+      }));
+
+      const completion = await this.openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `Analyze these programs and group them into categories like:
+- Lessons (beginner, intermediate, advanced classes)
+- Race Teams (competitive programs, BART, masters)
+- Events (clinics, camps, special events)
+- Memberships (season passes, family memberships)
+
+Return JSON: {
+  "categories": [
+    {
+      "name": "Lessons",
+      "count": 20,
+      "examples": ["First Flight", "Second Flight"],
+      "programIds": ["id1", "id2", ...]
+    }
+  ]
+}`
+          },
+          {
+            role: "user",
+            content: JSON.stringify(simplifiedPrograms)
+          }
+        ],
+        response_format: { type: "json_object" }
+      });
+
+      let text = completion.choices[0]?.message?.content || '{"categories":[]}';
+      text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/s, '').trim();
+      const result = JSON.parse(text);
+      
+      Logger.info('[AI Summarizer] Categorized programs', {
+        inputCount: programs.length,
+        categoryCount: result.categories?.length || 0
+      });
+      
+      return result;
+    } catch (error: any) {
+      Logger.error('[AI Summarizer] Failed:', error.message);
+      // Fallback: return all programs in one generic category
+      return {
+        categories: [{
+          name: "Programs",
+          count: programs.length,
+          examples: programs.slice(0, 3).map(p => p.name || p.title),
+          programIds: programs.map(p => p.id)
+        }]
+      };
+    }
+  }
+
+  /**
+   * Build category summary cards (for 10+ programs)
+   * Shows high-level categories instead of individual programs
+   * 
+   * @param categories - Array of category objects
+   * @returns Array of CardSpec objects
+   */
+  private buildCategoryCards(categories: Array<{
+    name: string;
+    count: number;
+    examples: string[];
+    programIds: string[];
+  }>): CardSpec[] {
+    return categories.map(cat => ({
+      title: `${cat.name} (${cat.count})`,
+      subtitle: `Examples: ${cat.examples.slice(0, 2).join(", ")}`,
+      description: `${cat.count} ${cat.name.toLowerCase()} available`,
+      metadata: { 
+        category: cat.name, 
+        programIds: cat.programIds 
+      },
+      buttons: [
+        { 
+          label: `View ${cat.name}`, 
+          action: "view_category", 
+          variant: "accent" as const 
+        }
+      ]
+    }));
+  }
+
+  /**
    * Build confirmation card for final registration
    * Displays summary before submission
    * 
@@ -1322,11 +1541,11 @@ class AIOrchestrator {
 
   /**
    * Handle program selection step (Step 5: Program Discovery)
-   * Retrieves and displays available programs as cards
+   * Uses smart filtering: show all if < 10, categorize if >= 10
    * 
    * @param userMessage - User's input
    * @param sessionId - Session identifier
-   * @returns Promise resolving to OrchestratorResponse with program carousel
+   * @returns Promise resolving to OrchestratorResponse with program carousel or categories
    */
   private async handleProgramSelection(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
     const context = await this.getContext(sessionId);
@@ -1349,15 +1568,34 @@ class AIOrchestrator {
         );
       }
       
-      const message = `Perfect! Here are the available programs at **${provider}** this season 👇`;
-      const cards = this.buildProgramCards(programs);
+      // Store full program list in context for later filtering
+      await this.updateContext(sessionId, { availablePrograms: programs });
       
-      return this.formatResponse(
-        message,
-        cards,
-        undefined,
-        { availablePrograms: programs }
-      );
+      // SMART FILTERING LOGIC
+      if (programs.length < 10) {
+        // Small list: Show all programs directly
+        const message = `Perfect! Here are the ${programs.length} programs available at **${provider}** 👇`;
+        const cards = this.buildProgramCards(programs);
+        
+        return this.formatResponse(message, cards, undefined, {});
+      } else {
+        // Large list: Summarize by category
+        Logger.info(`[ProgramSelection] Large list detected (${programs.length} programs), running AI summarizer...`);
+        
+        const summary = await this.summarizePrograms(programs);
+        const message = `I found **${programs.length} programs** at ${provider}. Here's a quick overview by category 👇`;
+        const cards = this.buildCategoryCards(summary.categories);
+        
+        return this.formatResponse(
+          message,
+          cards,
+          undefined,
+          { 
+            programSummary: summary,
+            showingCategories: true 
+          }
+        );
+      }
     } catch (error: any) {
       Logger.error("Program discovery failed:", error.message);
       return this.formatResponse(
