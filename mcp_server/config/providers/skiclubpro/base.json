@@ -2,16 +2,14 @@
   "selectorProfiles": {
     "skiclubpro-registration": {
       "container": [
-        "tr.views-row",
-        "tr",
-        "table.registration-listing tr"
+        "table.registration-listing tr",
+        "table tr:has(td.views-field.views-field-title span.h5)",
+        "tr.views-row"
       ],
       "title": [
         "td.views-field.views-field-title span.h5",
         "td.views-field.views-field-title div span",
-        "td.views-field-title a",
-        "h5",
-        "h4"
+        "td.views-field-title a"
       ],
       "price": [
         "td.views-field.views-field-price_number",

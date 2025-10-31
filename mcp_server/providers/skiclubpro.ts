@@ -654,27 +654,26 @@ async function locateProgramPage(page: any, baseUrl: string, programName?: strin
   for (const path of listPaths) {
     const url = `${baseUrl}${path}`;
     try {
-      await page.goto(url, { waitUntil: 'networkidle' });
-      await page.waitForTimeout(3000); // Let JS render
       console.log(`[ProgramLocator] Checking ${url} for programs...`);
-
-      // Find visible program rows
-      const rows = await page.locator('tr, .views-row').all();
+      await page.goto(url);
+      // ✅ Wait for SkiClubPro listing table to render
+      await page.waitForSelector("td.views-field.views-field-title span.h5", { timeout: 15000 });
+      const rows = await page.locator("table tr, tr.views-row").all();
       console.log(`[ProgramLocator] Found ${rows.length} potential program rows`);
       
       for (const row of rows) {
-        const text = (await row.textContent())?.toLowerCase() || '';
+        const text = (await row.textContent())?.toLowerCase() || "";
         if (!programName || text.includes(programName.toLowerCase())) {
-          // Look for Register or Read Description link
-          const registerLink = row.locator('a:has-text("Register"), a:has-text("Read Description")').first();
-          const linkCount = await registerLink.count();
-          
-          if (linkCount > 0) {
-            const href = await registerLink.getAttribute('href');
+          const registerLink = await row.locator(
+            "a:has-text('Register'), a:has-text('Read Description')"
+          ).first();
+
+          if (await registerLink.count()) {
+            const href = await registerLink.getAttribute("href");
             if (href) {
               const dest = new URL(href, baseUrl).toString();
               console.log(`[ProgramLocator] Found program link → ${dest}`);
-              await page.goto(dest, { waitUntil: 'networkidle' });
+              await page.goto(dest);
               return dest;
             }
           }
@@ -685,25 +684,7 @@ async function locateProgramPage(page: any, baseUrl: string, programName?: strin
     }
   }
   
-  // Fallback: try direct ID pattern if no link found
-  console.warn('[ProgramLocator] No program link found via listing, trying fallback patterns...');
-  const fallbackPatterns = [
-    `${baseUrl}/registration/1/register`,
-    `${baseUrl}/programs/1/register`,
-    `${baseUrl}/classes/1/register`,
-  ];
-  
-  for (const fallback of fallbackPatterns) {
-    try {
-      await page.goto(fallback, { waitUntil: 'networkidle' });
-      console.log(`[ProgramLocator] Fallback succeeded: ${fallback}`);
-      return fallback;
-    } catch (e) {
-      // Continue to next fallback
-    }
-  }
-  
-  console.warn('[ProgramLocator] All fallbacks failed; staying on current page');
+  console.warn("[ProgramLocator] No program link found; staying on registration listing for extraction");
   return page.url();
 }
 
@@ -1148,13 +1129,18 @@ export const skiClubProTools = {
         // ✅ Program Locator: Navigate to actual program form page
         console.log('[scp.find_programs] Locating program page...');
         const programPageUrl = await locateProgramPage(session.page, baseUrl, args.query);
-        await session.page.waitForSelector('form input, form select', { timeout: 10000 }).catch(() => {
-          console.warn('[scp.find_programs] No form elements found, continuing anyway...');
-        });
-        console.log(`[scp.find_programs] ✓ Located program form: ${programPageUrl}`);
+        
+        // Force desktop viewport to avoid mobile card view
+        await session.page.setViewportSize({ width: 1280, height: 900 });
+
+        // Ensure listing table fully loaded
+        await session.page.waitForSelector("td.views-field.views-field-title span.h5", { timeout: 15000 });
+        const count = await session.page.locator("td.views-field.views-field-title span.h5").count();
+        console.log("[DEBUG] Program title cell count:", count);
+
+        console.log("[scp.find_programs] ✓ Program table loaded; running extractor");
         
         // ✅ Three-Pass Extractor: AI-powered program extraction
-        console.log('[scp.find_programs] ✓ Running Three-Pass Extractor...');
         
         let scrapedPrograms: any[] = [];
         try {
