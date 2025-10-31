@@ -451,17 +451,64 @@ class SignupAssistMCPServer {
           try {
             const { message, sessionId, action, payload, userLocation, userJwt } = JSON.parse(body);
             
-            // Check if orchestrator is available
+            // Check if orchestrator is available - if not, provide mock responses
             if (!this.orchestrator) {
-              res.writeHead(503, { 
+              console.warn('[Orchestrator] AI Orchestrator unavailable - using mock responses');
+              
+              // Simple mock responses for testing UI without OpenAI
+              let mockResult;
+              
+              if (action === 'provider_selected' || action === 'confirm_provider') {
+                mockResult = {
+                  message: "Great! I'll connect to your account to check available programs.",
+                  cards: [{
+                    title: "Connect Account",
+                    description: "To continue, please log in to your account.",
+                    buttons: [{
+                      label: "Connect Account",
+                      action: "show_login_dialog",
+                      variant: "accent"
+                    }]
+                  }],
+                  contextUpdates: { 
+                    step: 'login',
+                    provider: payload?.provider || 'skiclubpro',
+                    orgRef: payload?.orgRef 
+                  }
+                };
+              } else if (message && message.toLowerCase().includes('blackhawk')) {
+                mockResult = {
+                  message: "I found **Blackhawk Ski Club** in Middleton, WI. Is that the one you mean?",
+                  cards: [{
+                    title: "Blackhawk Ski Club",
+                    subtitle: "Middleton, WI",
+                    buttons: [{
+                      label: "Yes, that's it",
+                      action: "confirm_provider",
+                      variant: "accent"
+                    }, {
+                      label: "Show me others",
+                      action: "show_alternatives",
+                      variant: "outline"
+                    }]
+                  }]
+                };
+              } else {
+                mockResult = {
+                  message: "⚠️ Mock mode: OPENAI_API_KEY not configured.\n\nTo enable full AI orchestration, set OPENAI_API_KEY in your Railway environment variables.\n\nFor now, try typing 'blackhawk' to test the mock flow.",
+                  cta: [{
+                    label: "Documentation",
+                    action: "view_docs",
+                    variant: "outline"
+                  }]
+                };
+              }
+              
+              res.writeHead(200, { 
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*'
               });
-              res.end(JSON.stringify({ 
-                error: 'AI Orchestrator unavailable', 
-                details: 'OPENAI_API_KEY not configured. Set it in Railway environment variables.',
-                message: '⚠️ The AI orchestrator is not available. Please configure the OPENAI_API_KEY environment variable in Railway.'
-              }));
+              res.end(JSON.stringify(mockResult));
               return;
             }
             
