@@ -1,0 +1,29 @@
+{
+  "selectorProfiles": {
+    "skiclubpro-registration": {
+      "container": [
+        "tr.views-row",
+        "tr",
+        "table.registration-listing tr"
+      ],
+      "title": [
+        "td.views-field.views-field-title span.h5",
+        "td.views-field.views-field-title div span",
+        "td.views-field-title a",
+        "h5",
+        "h4"
+      ],
+      "price": [
+        "td.views-field.views-field-price_number",
+        "td.views-field.views-field-price",
+        "td.price",
+        "span[class*='price']"
+      ],
+      "cta": [
+        "a:has-text('Read Description')",
+        "a:has-text('Register')",
+        "button:has-text('Register')"
+      ]
+    }
+  }
+}

@@ -1085,7 +1085,9 @@ export const skiClubProTools = {
         await session.page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
         console.log('[scp.find_programs] ✓ Navigated to programs page');
         
-        // ✅ Three-Pass Extractor: AI-powered program extraction
+        // ✅ Three-Pass Extractor: AI-powered program extraction with selector profile
+        const selectorProfileId = "skiclubpro-registration";
+        console.log(`[scp.find_programs] Using selector profile: ${selectorProfileId}`);
         console.log('[scp.find_programs] ✓ Login verified, running Three-Pass Extractor...');
         
         let scrapedPrograms: any[] = [];
@@ -1098,9 +1100,16 @@ export const skiClubProTools = {
             throw new Error('OPENAI_API_KEY not configured for AI extraction');
           }
           
-          // Run the Three-Pass Extractor using the active session
+          // Run the Three-Pass Extractor using the active session with selector profile
           const page = session.page;
-          scrapedPrograms = await runThreePassExtractor(page, orgRef, 'skiclubpro');
+          const html = await page.content();
+          const screenshot = await page.screenshot({ fullPage: true });
+          
+          scrapedPrograms = await runThreePassExtractor(page, orgRef, 'skiclubpro', { 
+            selectorProfileId,
+            html,
+            screenshot 
+          });
           
           console.log(`[scp.find_programs] ✅ Extracted ${scrapedPrograms.length} programs via Three-Pass Extractor`);
           
