@@ -40,7 +40,7 @@ export interface DiscoverRequiredFieldsArgs {
   credential_id: string;
   user_jwt: string;
   org_ref?: string;
-  mandate_id?: string;
+  mandate_jws?: string;
   plan_execution_id?: string;
   plan_id?: string;
   user_id?: string;
@@ -152,7 +152,7 @@ async function ensureLoggedIn(
   password?: string,
   auditParams?: { 
     tool_name?: string; 
-    mandate_id?: string;
+    mandate_jws?: string;
     plan_id?: string;
     plan_execution_id?: string;
     session_token?: string;
@@ -244,7 +244,7 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
   return await auditToolCall(
     {
       tool: 'scp.discover_required_fields',
-      mandate_id: args.mandate_id || '',
+      mandate_jws: args.mandate_jws,
       plan_execution_id: args.plan_execution_id || null
     },
     args,
@@ -288,7 +288,7 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
             undefined,
             { 
               tool_name: 'scp.discover_required_fields (prereqs)', 
-              mandate_id: args.mandate_id,
+              mandate_jws: args.mandate_jws,
               plan_id: args.plan_id,
               plan_execution_id: args.plan_execution_id,
               session_token: args.session_token
@@ -362,7 +362,7 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           undefined,
           { 
             tool_name: 'scp.discover_required_fields (program)', 
-            mandate_id: args.mandate_id,
+            mandate_jws: args.mandate_jws,
             plan_id: args.plan_id,
             plan_execution_id: args.plan_execution_id,
             session_token: args.session_token
@@ -713,13 +713,13 @@ export const skiClubProTools = {
     org_ref?: string; 
     email?: string; 
     password?: string; 
-    mandate_id?: string; 
+    mandate_jws?: string; 
     plan_execution_id?: string 
   }) => {
     return await auditToolCall(
       {
         tool: 'scp.login',
-        mandate_id: args.mandate_id || '',
+        mandate_jws: args.mandate_jws,
         plan_execution_id: args.plan_execution_id || null
       },
       args,
@@ -786,7 +786,7 @@ export const skiClubProTools = {
             orgRef,
             args.email,
             args.password,
-            { tool_name: 'scp.find_programs', mandate_id: args.mandate_id }
+            { tool_name: 'scp.find_programs', mandate_jws: args.mandate_jws }
           );
           
           console.log("✅ DEBUG: ensureLoggedIn result:", loginProof);
