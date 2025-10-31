@@ -655,24 +655,27 @@ async function locateProgramPage(page: any, baseUrl: string, programName?: strin
     const url = `${baseUrl}${path}`;
     try {
       console.log(`[ProgramLocator] Checking ${url} for programs...`);
-      await page.goto(url);
-      // ✅ Wait for SkiClubPro listing table to render
-      await page.waitForSelector("td.views-field.views-field-title span.h5", { timeout: 15000 });
-      const rows = await page.locator("table tr, tr.views-row").all();
+      await page.goto(url, { waitUntil: "domcontentloaded" });
+      
+      // ✅ Wait until Register buttons appear (ensures table is fully loaded)
+      await page.waitForSelector("a.btn.btn-secondary.btn-sm:has-text('Register')", { timeout: 20000 });
+      const rows = await page.locator("table tr").all();
       console.log(`[ProgramLocator] Found ${rows.length} potential program rows`);
       
       for (const row of rows) {
-        const text = (await row.textContent())?.toLowerCase() || "";
-        if (!programName || text.includes(programName.toLowerCase())) {
-          const registerLink = await row.locator(
-            "a:has-text('Register'), a:has-text('Read Description')"
-          ).first();
-
-          if (await registerLink.count()) {
-            const href = await registerLink.getAttribute("href");
-            if (href) {
-              const dest = new URL(href, baseUrl).toString();
-              console.log(`[ProgramLocator] Found program link → ${dest}`);
+        const title = await row.locator("td.views-field.views-field-title span.h5").textContent().catch(() => "");
+        const price = await row.locator("td.views-field.views-field-price_number").textContent().catch(() => "");
+        const link = row.locator("a.btn.btn-secondary.btn-sm:has-text('Register')");
+        
+        if (await link.count()) {
+          const href = await link.getAttribute("href");
+          if (href) {
+            const dest = new URL(href, baseUrl).toString();
+            console.log(`[ProgramLocator] ${title?.trim()} — ${price?.trim()} → ${dest}`);
+            
+            // If programName filter is set and matches, navigate to it
+            if (!programName || title?.toLowerCase().includes(programName.toLowerCase())) {
+              console.log(`[ProgramLocator] Found matching program, navigating to → ${dest}`);
               await page.goto(dest);
               return dest;
             }
@@ -1133,11 +1136,8 @@ export const skiClubProTools = {
         // Force desktop viewport to avoid mobile card view
         await session.page.setViewportSize({ width: 1280, height: 900 });
 
-        // Ensure listing table fully loaded
-        await session.page.waitForSelector("td.views-field.views-field-title span.h5", { timeout: 15000 });
-        const count = await session.page.locator("td.views-field.views-field-title span.h5").count();
-        console.log("[DEBUG] Program title cell count:", count);
-
+        // Ensure listing table fully loaded (wait for Register buttons)
+        await session.page.waitForSelector("a.btn.btn-secondary.btn-sm:has-text('Register')", { timeout: 20000 });
         console.log("[scp.find_programs] ✓ Program table loaded; running extractor");
         
         // ✅ Three-Pass Extractor: AI-powered program extraction

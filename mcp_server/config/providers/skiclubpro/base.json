@@ -2,7 +2,7 @@
   "selectorProfiles": {
     "skiclubpro-registration": {
       "container": [
-        "table.registration-listing tr",
+        "table tr:has(a.btn.btn-secondary.btn-sm)",
         "table tr:has(td.views-field.views-field-title span.h5)",
         "tr.views-row"
       ],
@@ -14,13 +14,13 @@
       "price": [
         "td.views-field.views-field-price_number",
         "td.views-field.views-field-price",
-        "td.price",
         "span[class*='price']"
       ],
       "cta": [
-        "a:has-text('Read Description')",
-        "a:has-text('Register')",
-        "button:has-text('Register')"
+        "a.btn.btn-secondary.btn-sm:has-text('Register')",
+        "a:has-text('Waiting list')",
+        "a:has-text('Sold Out')",
+        "a:has-text('Read Description')"
       ]
     }
   }
