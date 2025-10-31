@@ -1,6 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.74.0';
 import { SignJWT } from 'https://esm.sh/jose@5.10.0';
-import { decode as base64Decode } from 'https://deno.land/std@0.224.0/encoding/base64.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -67,7 +66,7 @@ Deno.serve(async (req) => {
     };
 
     // Sign mandate JWS using Deno-compatible crypto
-    const keyBytes = base64Decode(mandateSigningKey);
+    const keyBytes = Uint8Array.from(atob(mandateSigningKey), c => c.charCodeAt(0));
     
     const secret = await crypto.subtle.importKey(
       'raw',
