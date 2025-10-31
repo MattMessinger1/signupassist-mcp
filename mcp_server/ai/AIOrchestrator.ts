@@ -307,10 +307,12 @@ class AIOrchestrator {
       ...existing, 
       ...updates 
     };
-    Logger.info(`[Context Updated] ${sessionId}`, updates);
-    Logger.info(`[Audit] Context updated`, await this.getContext(sessionId));
-    this.logContext(sessionId);
-    this.logContextSnapshot(sessionId);
+    
+    // Single consolidated log instead of 3-4 separate calls
+    Logger.info(`[Context Updated] ${sessionId}`, {
+      updates,
+      fullContext: this.sessions[sessionId]
+    });
     
     // PHASE 2: Persist to Supabase
     const userId = extractUserIdFromJWT(this.sessions[sessionId]?.user_jwt);
