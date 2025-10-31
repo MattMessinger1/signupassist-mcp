@@ -15,7 +15,8 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 // Types
 export interface AuditContext {
   plan_execution_id: string | null;
-  mandate_id: string;
+  mandate_id?: string;  // UUID for database lookup (legacy)
+  mandate_jws?: string; // JWS token for direct verification (preferred)
   tool: string;
 }
 
@@ -229,20 +230,33 @@ export async function auditToolCall<T>(
     } else if (requiredScope) {
       // Verify mandate if required scope is provided
       try {
-        // Get the mandate from database
-        const { data: mandate, error } = await supabase
-          .from('mandates')
-          .select('jws_compact')
-          .eq('id', context.mandate_id)
-          .eq('status', 'active')
-          .single();
+        let jwsToken: string;
+        
+        // Prefer mandate_jws (direct JWS token) over mandate_id (database lookup)
+        if (context.mandate_jws) {
+          console.log('[audit] Using mandate_jws for direct verification');
+          jwsToken = context.mandate_jws;
+        } else if (context.mandate_id) {
+          console.log('[audit] Looking up mandate in database using mandate_id');
+          // Get the mandate from database
+          const { data: mandate, error } = await supabase
+            .from('mandates')
+            .select('jws_compact')
+            .eq('id', context.mandate_id)
+            .eq('status', 'active')
+            .single();
 
-        if (error || !mandate) {
-          throw new Error('Mandate not found or inactive');
+          if (error || !mandate) {
+            throw new Error('Mandate not found or inactive');
+          }
+          
+          jwsToken = mandate.jws_compact;
+        } else {
+          throw new Error('No mandate provided (mandate_jws or mandate_id required)');
         }
 
-        // Verify the mandate
-        await verifyMandate(mandate.jws_compact, requiredScope);
+        // Verify the mandate JWS token
+        await verifyMandate(jwsToken, requiredScope);
       } catch (mandateError) {
         // Log denial and abort
         if (auditId) {
