@@ -644,6 +644,69 @@ async function listChildren(page: Page, base: string): Promise<Array<{ id?: stri
   return children;
 }
 
+/**
+ * Program Locator: Navigate from listing page to program form page
+ * Based on proven patterns from old repos
+ */
+async function locateProgramPage(page: any, baseUrl: string, programName?: string): Promise<string> {
+  const listPaths = ['/registration', '/programs', '/classes'];
+  
+  for (const path of listPaths) {
+    const url = `${baseUrl}${path}`;
+    try {
+      await page.goto(url, { waitUntil: 'networkidle' });
+      await page.waitForTimeout(3000); // Let JS render
+      console.log(`[ProgramLocator] Checking ${url} for programs...`);
+
+      // Find visible program rows
+      const rows = await page.locator('tr, .views-row').all();
+      console.log(`[ProgramLocator] Found ${rows.length} potential program rows`);
+      
+      for (const row of rows) {
+        const text = (await row.textContent())?.toLowerCase() || '';
+        if (!programName || text.includes(programName.toLowerCase())) {
+          // Look for Register or Read Description link
+          const registerLink = row.locator('a:has-text("Register"), a:has-text("Read Description")').first();
+          const linkCount = await registerLink.count();
+          
+          if (linkCount > 0) {
+            const href = await registerLink.getAttribute('href');
+            if (href) {
+              const dest = new URL(href, baseUrl).toString();
+              console.log(`[ProgramLocator] Found program link → ${dest}`);
+              await page.goto(dest, { waitUntil: 'networkidle' });
+              return dest;
+            }
+          }
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[ProgramLocator] Failed to check ${url}:`, e.message);
+    }
+  }
+  
+  // Fallback: try direct ID pattern if no link found
+  console.warn('[ProgramLocator] No program link found via listing, trying fallback patterns...');
+  const fallbackPatterns = [
+    `${baseUrl}/registration/1/register`,
+    `${baseUrl}/programs/1/register`,
+    `${baseUrl}/classes/1/register`,
+  ];
+  
+  for (const fallback of fallbackPatterns) {
+    try {
+      await page.goto(fallback, { waitUntil: 'networkidle' });
+      console.log(`[ProgramLocator] Fallback succeeded: ${fallback}`);
+      return fallback;
+    } catch (e) {
+      // Continue to next fallback
+    }
+  }
+  
+  console.warn('[ProgramLocator] All fallbacks failed; staying on current page');
+  return page.url();
+}
+
 export const skiClubProTools = {
   'scp.discover_required_fields': scpDiscoverRequiredFields,
 
@@ -1082,11 +1145,16 @@ export const skiClubProTools = {
         
         // ✅ Navigate to programs page before extraction
         console.log('[scp.find_programs] Navigating to programs page...');
-        await session.page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
-        console.log('[scp.find_programs] ✓ Navigated to programs page');
+        // ✅ Program Locator: Navigate to actual program form page
+        console.log('[scp.find_programs] Locating program page...');
+        const programPageUrl = await locateProgramPage(session.page, baseUrl, args.program_name);
+        await session.page.waitForSelector('form input, form select', { timeout: 10000 }).catch(() => {
+          console.warn('[scp.find_programs] No form elements found, continuing anyway...');
+        });
+        console.log(`[scp.find_programs] ✓ Located program form: ${programPageUrl}`);
         
         // ✅ Three-Pass Extractor: AI-powered program extraction
-        console.log('[scp.find_programs] ✓ Login verified, running Three-Pass Extractor...');
+        console.log('[scp.find_programs] ✓ Running Three-Pass Extractor...');
         
         let scrapedPrograms: any[] = [];
         try {
