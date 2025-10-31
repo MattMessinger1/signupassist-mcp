@@ -101,6 +101,21 @@ export enum FlowStep {
     credential_id?: string;
     credentials?: { [provider: string]: { id: string; credential_id: string } };
     pendingLogin?: { provider: string; orgRef: string };
+    
+    // Smart Program Filtering Properties
+    availablePrograms?: any[];
+    displayedProgramIds?: string[];
+    remainingProgramIds?: string[];
+    programSummary?: {
+      categories: Array<{
+        name: string;
+        count: number;
+        examples: string[];
+        programIds: string[];
+      }>;
+    };
+    showingCategories?: boolean;
+    currentCategory?: string;
   }
 
 /**
