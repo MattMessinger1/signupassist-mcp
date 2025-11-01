@@ -2,6 +2,6 @@
  * SkiClubPro Provider Library Exports
  */
 
-export { UrlBuilder } from './UrlBuilder';
-export { SelectorResolver } from './SelectorResolver';
-export { NavigationResolver } from './NavigationResolver';
+export { UrlBuilder } from './UrlBuilder.js';
+export { SelectorResolver } from './SelectorResolver.js';
+export { NavigationResolver } from './NavigationResolver.js';
