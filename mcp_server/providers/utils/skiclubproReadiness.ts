@@ -4,7 +4,7 @@ import type { Page } from "playwright-core";
  * Wait for SkiClubPro program listing page to be ready
  * Ensures registration table and interactive buttons are fully loaded
  */
-export async function waitForSkiClubProReady(page: Page, retries: number = 2): Promise<boolean> {
+export async function waitForSkiClubProReady(page: Page, retries: number = 2): Promise<void> {
   await page.setViewportSize({ width: 1280, height: 900 });
 
   for (let attempt = 1; attempt <= retries; attempt++) {
@@ -26,7 +26,7 @@ export async function waitForSkiClubProReady(page: Page, retries: number = 2): P
 
     if (result) {
       console.log(`[SCP Ready] ✅ Page ready via ${result}`);
-      return true;
+      return;
     }
 
     console.warn(`[SCP Ready] Attempt ${attempt} timed out, reloading page...`);
