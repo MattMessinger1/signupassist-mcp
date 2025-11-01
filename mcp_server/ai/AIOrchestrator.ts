@@ -641,7 +641,7 @@ class AIOrchestrator {
         case "intent_camp":
         case "intent_race":
         case "intent_private":
-          // Parse intent from action
+          // Parse intent from action and directly trigger field probe
           const intentCategory = action.replace("intent_", "") as any;
           
           await this.updateContext(sessionId, {
@@ -649,15 +649,7 @@ class AIOrchestrator {
             step: FlowStep.FIELD_PROBE
           });
           
-          return this.formatResponse(
-            `Got it — I'll look for ${intentCategory} programs. One moment while I check what information is needed...`,
-            undefined,
-            [{ label: "Analyze Form", action: "run_field_probe", variant: "accent" }],
-            {}
-          );
-        
-        case "run_field_probe":
-          // Trigger the field probe
+          // Directly call handleFieldProbe (no extra click needed)
           return this.handleFieldProbe("", sessionId);
 
         case "view_category":
