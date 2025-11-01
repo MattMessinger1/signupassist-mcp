@@ -19,7 +19,7 @@ import { getOrgOverride } from '../prereqs/providers.js';
 import type { ProviderResponse } from './types.js';
 import { PROMPT_VERSION } from '../ai/AIOrchestrator.js';
 import { getReadiness } from './utils/pageReadinessRegistry.js';
-import { UrlBuilder } from '../../providers/skiclubpro/lib/UrlBuilder.js';
+import { UrlBuilder } from '../providers/skiclubpro/lib/UrlBuilder.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -331,23 +331,6 @@ async function ensureLoggedIn(
   console.timeEnd('[login] total');
   console.log(`DEBUG: Logged in as ${creds.email}`);
   return { email: creds.email, login_status: 'success' };
-    }
-  }
-  
-  // Fallback: small additional wait for slow cookies (6s)
-  console.time('[login] fallback-wait');
-  await page.waitForTimeout(6000);
-  console.timeEnd('[login] fallback-wait');
-  
-  const hasCookie = await hasAuthCookie(page);
-  console.timeEnd('[login] total');
-  
-  if (hasCookie) {
-    console.log('DEBUG: Logged in as', creds.email, '(fallback path)');
-    return { email: creds.email, login_status: 'success' };
-  }
-
-  throw new Error('Login timeout: auth not established within time limit');
 }
 
 /**
