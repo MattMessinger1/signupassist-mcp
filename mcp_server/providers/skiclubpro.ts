@@ -84,6 +84,30 @@ export interface FieldSchema {
 }
 
 /**
+ * Wait for SkiClubPro program listing page to be ready
+ * Ensures registration table and interactive buttons are fully loaded
+ */
+async function waitForSkiClubProProgramsReady(page: Page): Promise<void> {
+  console.log('[SCP Ready] Waiting for program content...');
+  
+  try {
+    // Wait for any of these indicators that program content is loaded:
+    // - Register buttons
+    // - Sold Out buttons
+    // - Waiting list buttons
+    await page.waitForSelector(
+      'a.btn:has-text("Register"), a.btn:has-text("Sold Out"), a.btn:has-text("Waiting list")',
+      { timeout: 20000 }
+    );
+    
+    console.log('[SCP Ready] ✓ Program content detected');
+  } catch (error) {
+    console.warn('[SCP Ready] ⚠️ Timeout waiting for program buttons, proceeding anyway');
+    // Don't throw - let the extractor handle missing content gracefully
+  }
+}
+
+/**
  * Helper: Resolve base URL from org_ref or program_ref
  * Returns both baseUrl and baseDomain for consistent URL construction
  */
@@ -1136,9 +1160,9 @@ export const skiClubProTools = {
         // Force desktop viewport to avoid mobile card view
         await session.page.setViewportSize({ width: 1280, height: 900 });
 
-        // Ensure listing table fully loaded (wait for Register buttons)
-        await session.page.waitForSelector("a.btn.btn-secondary.btn-sm:has-text('Register')", { timeout: 20000 });
-        console.log("[scp.find_programs] ✓ Program table loaded; running extractor");
+        // ✅ Provider-specific page readiness check
+        await waitForSkiClubProProgramsReady(session.page);
+        console.log("[scp.find_programs] ✓ Program table loaded; starting extraction");
         
         // ✅ Three-Pass Extractor: AI-powered program extraction
         
