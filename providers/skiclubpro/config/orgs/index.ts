@@ -7,6 +7,7 @@ import { OrgConfig } from '../../types';
 
 export const ORG_CONFIGS: Record<string, OrgConfig> = {
   'blackhawk-ski-club': BLACKHAWK_CONFIG,
+  'blackhawk-ski': BLACKHAWK_CONFIG, // Alias for backward compatibility
   // Add more org configs here as needed
 };
 

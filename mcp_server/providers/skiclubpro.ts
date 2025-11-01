@@ -11,7 +11,7 @@ import { storeSession, generateToken, getSession } from '../lib/sessionManager.j
 import { captureScreenshotEvidence } from '../lib/evidence.js';
 import { getAvailablePrograms } from '../config/program_mapping.js';
 import { createClient } from '@supabase/supabase-js';
-import { loginWithCredentials, logoutIfLoggedIn } from '../lib/login.js';
+import { loginWithCredentials, logoutIfLoggedIn, ProviderLoginConfig } from '../lib/login.js';
 import { skiClubProConfig } from '../config/skiclubproConfig.js';
 import { saveSessionState, restoreSessionState, generateSessionKey } from '../lib/session.js';
 import { runChecks, buildBaseUrl } from '../prereqs/registry.js';
@@ -19,6 +19,7 @@ import { getOrgOverride } from '../prereqs/providers.js';
 import type { ProviderResponse } from './types.js';
 import { PROMPT_VERSION } from '../ai/AIOrchestrator.js';
 import { getReadiness } from './utils/pageReadinessRegistry.js';
+import { UrlBuilder } from '../../providers/skiclubpro/lib/UrlBuilder.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -306,68 +307,30 @@ async function ensureLoggedIn(
   console.log('DEBUG: Using credentials from cred-get:', creds.email);
   console.log('DEBUG: Attempting login to SkiClubPro at:', baseUrl);
   
-  // Enable speed mode to block heavy resources
-  await enableSpeedMode(page);
+  // Use UrlBuilder to resolve the correct login URL for this organization
+  const urlBuilder = new UrlBuilder(orgRef);
+  const loginUrl = urlBuilder.login(orgRef);
   
-  // Navigate quickly without waiting for full networkidle
-  console.time('[login] navigate');
-  await page.goto(`${baseUrl}/user/login?destination=/dashboard`, { 
-    waitUntil: 'domcontentloaded', 
-    timeout: 12000 
-  });
-  console.timeEnd('[login] navigate');
+  console.log(`DEBUG: Resolved login URL via UrlBuilder: ${loginUrl}`);
   
-  // Wait for login form to be visible first
-  console.time('[login] form-wait');
-  await page.waitForSelector('form#user-login, form.user-login-form, form[action*="user/login"]', { 
-    timeout: 10000,
-    state: 'visible'
-  });
-  console.timeEnd('[login] form-wait');
-  
-  // Fill form using Drupal standard selectors with humanization delays
-  console.time('[login] fill');
-  await page.waitForSelector('#edit-name, input[name="name"]', { 
-    timeout: 8000,
-    state: 'visible'
-  });
-  
-  // Import humanPause for realistic delays
-  const { humanPause } = await import('../lib/humanize.js');
-  
-  await page.fill('#edit-name, input[name="name"]', creds.email);
-  await humanPause(300, 800); // Human-like pause between fields
-  
-  await page.fill('#edit-pass, input[name="pass"]', creds.password);
-  await humanPause(400, 900); // Human-like pause before submit
-  console.timeEnd('[login] fill');
-  
-  // Submit and immediately start racing for success signals
-  console.time('[login] submit');
-  await page.click('#edit-submit, form#user-login button[type="submit"], form#user-login input[type="submit"]');
-  console.timeEnd('[login] submit');
-  
-  // FAST SUCCESS RACE (10s budget)
-  console.time('[login] cookie-race');
-  try {
-    const success = await Promise.race([
-      waitForAuthCookie(page, 10000),
-      probeUserEndpoint(page, 10000),
-      waitForLoginError(page, 8000).then(() => Promise.reject(new Error('Login error detected')))
-    ]);
-    
-    console.timeEnd('[login] cookie-race');
-    
-    if (success) {
-      console.timeEnd('[login] total');
-      console.log('DEBUG: Logged in as', creds.email, '(fast path)');
-      return { email: creds.email, login_status: 'success' };
-    }
-  } catch (error) {
-    console.timeEnd('[login] cookie-race');
-    if (error.message === 'Login error detected') {
-      console.timeEnd('[login] total');
-      throw new Error('Invalid credentials - login failed');
+  // Use the comprehensive login library with full anti-bot support
+  const loginConfig: ProviderLoginConfig = {
+    loginUrl,
+    selectors: {
+      username: ['#edit-name', 'input[name="name"]'],
+      password: ['#edit-pass', 'input[name="pass"]'],
+      submit: ['#edit-submit', 'button[type="submit"]', 'input[type="submit"]']
+    },
+    postLoginCheck: ['a:has-text("Log out")', 'a:has-text("Logout")'],
+    timeout: 30000 // Use 30s timeout for anti-bot measures
+  };
+
+  // Call the proven login function that handles all anti-bot measures
+  await loginWithCredentials(page, loginConfig, creds);
+
+  console.timeEnd('[login] total');
+  console.log(`DEBUG: Logged in as ${creds.email}`);
+  return { email: creds.email, login_status: 'success' };
     }
   }
   
