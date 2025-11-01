@@ -218,7 +218,6 @@ function ChatTestHarnessContent() {
     fetchIPLocation();
   }, []);
 
-
   // ============= Logging =============
 
   const addLog = (level: LogLevel, category: LogCategory, message: string, data?: any) => {
@@ -364,6 +363,25 @@ function ChatTestHarnessContent() {
       setIsProcessing(false);
     }
   };
+
+  // ============= postMessage Listener for LoginCredentialDialog =============
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Security: In production, validate event.origin
+      if (event.data?.type === 'credentials_submitted') {
+        console.log('[HARNESS] Received credentials_submitted from LoginCredentialDialog:', event.data.payload);
+        
+        // Forward to orchestrator via handleCardAction
+        handleCardAction('credentials_submitted', event.data.payload);
+      }
+    };
+    
+    window.addEventListener('message', handleMessage);
+    
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [handleCardAction]); // Dependency on handleCardAction
 
   // ============= Flow Handlers =============
 
