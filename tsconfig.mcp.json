@@ -7,7 +7,7 @@
     "**/*.test.tsx"
   ],
   "compilerOptions": {
-    "outDir": "dist/mcp_server",
+    "outDir": "dist",
     "module": "ESNext",
     "target": "ES2022",
     "moduleResolution": "node",
