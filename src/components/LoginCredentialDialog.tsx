@@ -133,11 +133,6 @@ export function LoginCredentialDialog({
           setEmail("");
           setPassword("");
           
-          // Trigger success callback before closing
-          if (onSuccess) {
-            onSuccess();
-          }
-          
           // Close dialog
           onOpenChange(false);
         }, 2000);
