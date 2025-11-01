@@ -5,26 +5,27 @@ import type { Page } from "playwright-core";
  * Ensures registration table and interactive buttons are fully loaded
  */
 export async function waitForSkiClubProReady(page: Page): Promise<void> {
-  // Force desktop viewport to avoid mobile card view
   await page.setViewportSize({ width: 1280, height: 900 });
-  console.log("[SCP Ready] Waiting for program table to load...");
+  console.log("[SCP Ready] Waiting for program table or Register buttons...");
 
-  try {
-    // Wait for program content indicators:
-    // - Register/Sold Out/Waiting list buttons
-    // - Multiple program rows or cards
-    await page.waitForFunction(() => {
-      const html = document.body.innerHTML;
-      return (
-        html.includes("Register") ||
-        html.includes("Sold Out") ||
-        html.includes("Waiting list") ||
-        document.querySelectorAll("td.views-field-title, .views-row, .program").length > 5
-      );
-    }, { timeout: 30000 });
-    
-    console.log("[SCP Ready] ✓ Program content detected");
-  } catch {
-    throw new Error("[SCP Ready] Timeout: no program content after 30s");
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      await page.waitForFunction(() => {
+        const html = document.body.innerHTML;
+        return (
+          html.includes("Register") ||
+          html.includes("View Details") ||
+          html.includes("Sold Out") ||
+          html.includes("Waiting list") ||
+          document.querySelectorAll("td.views-field-title, .views-row, .program, table tr").length > 5
+        );
+      }, { timeout: 20000 });
+      console.log(`[SCP Ready] ✓ Program content detected (attempt ${attempt})`);
+      return;
+    } catch {
+      console.warn(`[SCP Ready] Attempt ${attempt} timed out, reloading page...`);
+      await page.reload();
+    }
   }
+  throw new Error("[SCP Ready] Timeout: no program content after retries");
 }
