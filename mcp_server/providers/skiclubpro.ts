@@ -140,7 +140,124 @@ function safeDecodeJWT(token?: string): Record<string, any> | null {
 }
 
 /**
- * Helper: Ensure user is logged in using dynamic base URL with optional session caching
+ * Enable speed mode: block heavy resources during login/navigation
+ */
+async function enableSpeedMode(page: Page) {
+  await page.route('**/*', route => {
+    const t = route.request().resourceType();
+    if (t === 'image' || t === 'media' || t === 'font' || t === 'stylesheet' || t === 'beacon') {
+      return route.abort();
+    }
+    const url = route.request().url();
+    if (/\b(googletagmanager|google-analytics|facebook|doubleclick|hotjar|clarity)\b/i.test(url)) {
+      return route.abort();
+    }
+    return route.continue();
+  });
+  await page.setViewportSize({ width: 1280, height: 900 });
+}
+
+/**
+ * Check if auth cookie exists
+ */
+async function hasAuthCookie(page: Page): Promise<boolean> {
+  const cookies = await page.context().cookies();
+  return cookies.some(c => /S?SESS/i.test(c.name));
+}
+
+/**
+ * Wait for Drupal auth cookie to appear
+ */
+function waitForAuthCookie(page: Page, timeout = 10000): Promise<boolean> {
+  return page.waitForFunction(() => {
+    return document.cookie.includes('SSESS') || document.cookie.includes('SESS');
+  }, { timeout }).then(() => true).catch(() => false);
+}
+
+/**
+ * Probe /user endpoint to check if authenticated
+ */
+function probeUserEndpoint(page: Page, timeout = 10000): Promise<boolean> {
+  return page.waitForFunction(async () => {
+    try { 
+      const r = await fetch('/user', { credentials: 'include' }); 
+      return r.ok; 
+    } catch { 
+      return false; 
+    }
+  }, { timeout }).then(() => true).catch(() => false);
+}
+
+/**
+ * Wait for login error message
+ */
+function waitForLoginError(page: Page, timeout = 8000): Promise<void> {
+  return page.waitForSelector('.messages--error, .alert-danger, .user-login-error', { timeout });
+}
+
+/**
+ * Try to resume existing provider session
+ */
+async function tryResumeProviderSession(userId: string, orgRef: string): Promise<{ isValid: true; session_token: string } | { isValid: false }> {
+  try {
+    const sessionKey = generateSessionKey(userId, orgRef);
+    const existing = await getSession(sessionKey);
+    
+    if (!existing?.session_token) {
+      return { isValid: false as const };
+    }
+
+    console.log('[tryResumeProviderSession] Found existing session, validating...');
+    
+    // Restore session and validate
+    const state = await restoreSessionState(existing.session_token);
+    if (!state?.context) {
+      console.log('[tryResumeProviderSession] Session state invalid');
+      return { isValid: false as const };
+    }
+
+    // Launch session to validate cookies
+    const session = await launchBrowserbaseSession();
+    try {
+      const hasCookie = await hasAuthCookie(session.page);
+      if (!hasCookie) {
+        console.log('[tryResumeProviderSession] No auth cookie found');
+        await closeBrowserbaseSession(session);
+        return { isValid: false as const };
+      }
+
+      // Quick probe to verify session works
+      const ok = await session.page.evaluate(async () => {
+        try {
+          const r = await fetch('/user', { method: 'GET', credentials: 'include' });
+          return r.ok;
+        } catch {
+          return false;
+        }
+      });
+
+      await closeBrowserbaseSession(session);
+
+      if (ok) {
+        console.log('[tryResumeProviderSession] ✓ Session valid');
+        return { isValid: true as const, session_token: existing.session_token };
+      }
+      
+      console.log('[tryResumeProviderSession] Session probe failed');
+      return { isValid: false as const };
+    } catch (error) {
+      await closeBrowserbaseSession(session);
+      console.error('[tryResumeProviderSession] Validation error:', error);
+      return { isValid: false as const };
+    }
+  } catch (error) {
+    console.error('[tryResumeProviderSession] Error:', error);
+    return { isValid: false as const };
+  }
+}
+
+/**
+ * Helper: Ensure user is logged in using dynamic base URL with FAST login detection
  */
 async function ensureLoggedIn(
   session: any, 
@@ -159,15 +276,15 @@ async function ensureLoggedIn(
     session_token?: string;
   }
 ) {
+  console.time('[login] total');
+  
   // Handle both authentication methods
   let creds;
   
   if (credential_id) {
-    // Use stored credential
     console.log(`[ensureLoggedIn] Using stored credential_id=${credential_id}`);
     creds = await lookupCredentialsById(credential_id, user_jwt);
   } else if (email && password) {
-    // Use provided credentials directly
     console.log(`[ensureLoggedIn] Using provided credentials for email=${email}`);
     creds = { email, password };
   } else {
@@ -179,11 +296,67 @@ async function ensureLoggedIn(
   console.log('DEBUG: Using credentials from cred-get:', creds.email);
   console.log('DEBUG: Attempting login to SkiClubPro at:', baseUrl);
   
-  await page.goto(`${baseUrl}/user/login`, { waitUntil: 'networkidle' });
-  await loginWithCredentials(page, skiClubProConfig, creds, session.browser);
+  // Enable speed mode to block heavy resources
+  await enableSpeedMode(page);
   
-  console.log('DEBUG: Logged in as', creds.email);
-  return { email: creds.email, login_status: 'success' };
+  // Navigate quickly without waiting for full networkidle
+  console.time('[login] navigate');
+  await page.goto(`${baseUrl}/user/login?destination=/dashboard`, { 
+    waitUntil: 'domcontentloaded', 
+    timeout: 12000 
+  });
+  console.timeEnd('[login] navigate');
+  
+  // Fill form
+  console.time('[login] fill');
+  await page.waitForSelector('input[name="name"], input[type="email"]', { timeout: 8000 });
+  await page.fill('input[name="name"], input[type="email"]', creds.email);
+  await page.fill('input[name="pass"], input[type="password"]', creds.password);
+  console.timeEnd('[login] fill');
+  
+  // Submit and immediately start racing for success signals
+  console.time('[login] submit');
+  await page.click('form#user-login button[type="submit"], form#user-login input[type="submit"]');
+  console.timeEnd('[login] submit');
+  
+  // FAST SUCCESS RACE (10s budget)
+  console.time('[login] cookie-race');
+  try {
+    const success = await Promise.race([
+      waitForAuthCookie(page, 10000),
+      probeUserEndpoint(page, 10000),
+      waitForLoginError(page, 8000).then(() => Promise.reject(new Error('Login error detected')))
+    ]);
+    
+    console.timeEnd('[login] cookie-race');
+    
+    if (success) {
+      console.timeEnd('[login] total');
+      console.log('DEBUG: Logged in as', creds.email, '(fast path)');
+      return { email: creds.email, login_status: 'success' };
+    }
+  } catch (error) {
+    console.timeEnd('[login] cookie-race');
+    if (error.message === 'Login error detected') {
+      console.timeEnd('[login] total');
+      throw new Error('Invalid credentials - login failed');
+    }
+  }
+  
+  // Fallback: small additional wait for slow cookies (6s)
+  console.time('[login] fallback-wait');
+  await page.waitForTimeout(6000);
+  console.timeEnd('[login] fallback-wait');
+  
+  const hasCookie = await hasAuthCookie(page);
+  console.timeEnd('[login] total');
+  
+  if (hasCookie) {
+    console.log('DEBUG: Logged in as', creds.email, '(fallback path)');
+    return { email: creds.email, login_status: 'success' };
+  }
+
+  throw new Error('Login timeout: auth not established within time limit');
 }
 
 /**
@@ -805,15 +978,37 @@ export const skiClubProTools = {
             userId = jwtPayload.sub;
           }
           
-          console.log(`DEBUG: Starting real login for org: ${orgRef}, baseUrl: ${baseUrl}, baseDomain: ${baseDomain}`);
+          console.log(`DEBUG: Starting login for org: ${orgRef}, baseUrl: ${baseUrl}`);
+          
+          // FAST-PATH: Check for reusable session first
+          console.log('[scp.login] Checking for reusable session...');
+          const resumed = await tryResumeProviderSession(userId, orgRef);
+          if (resumed.isValid) {
+            console.log('[scp.login] ✓ Reusing existing session, skipping login');
+            console.table({
+              action: 'session_reused',
+              user_id: userId,
+              org_ref: orgRef,
+              total_time: '~2s'
+            });
+            
+            return {
+              success: true,
+              session_token: resumed.session_token,
+              email: 'reused-session',
+              login_status: 'success',
+              cached: true,
+              timestamp: new Date().toISOString(),
+              message: 'Reused existing valid session'
+            };
+          }
+          
+          console.log('[scp.login] No valid session found, proceeding with fresh login');
           
           // Launch Browserbase session
           session = await launchBrowserbaseSession();
           console.log(`DEBUG: Browserbase session launched: ${session.sessionId}`);
           
-          // 🧠 Lovable Debug Mode – Diagnose ensureLoggedIn call safely
-          console.log("🧠 Running safe login diagnostics...");
-          console.log("📡 Checking inputs to ensureLoggedIn...");
           console.log("DEBUG: calling ensureLoggedIn with:", {
             credential_id: args.credential_id,
             user_jwt: args.user_jwt ? "[present]" : "[missing]",
@@ -822,9 +1017,7 @@ export const skiClubProTools = {
             orgRef,
           });
 
-          console.log("⚙️ Running ensureLoggedIn()...");
-          
-          // Perform login using existing infrastructure
+          // Perform login using FAST infrastructure
           const loginProof = await ensureLoggedIn(
             session,
             args.credential_id,
@@ -834,21 +1027,12 @@ export const skiClubProTools = {
             orgRef,
             args.email,
             args.password,
-            { tool_name: 'scp.find_programs', mandate_jws: args.mandate_jws }
+            { tool_name: 'scp.login', mandate_jws: args.mandate_jws }
           );
           
           console.log("✅ DEBUG: ensureLoggedIn result:", loginProof);
-          
-          // 💡 Summary
-          if (!args.user_jwt) {
-            console.log("💡 Summary: JWT was missing, but login proof returned successfully — likely safe to continue.");
-            console.log("💡 If this fails again, try passing a dummy user_jwt in the smoke test call.");
-          } else {
-            console.log("💡 Summary: JWT was present, login completed successfully.");
-          }
-          
           console.log('DEBUG: Login successful, proof:', loginProof);
-          console.log(`[scp.login] ✅ Login successful for ${orgRef} using credential ${args.credential_id}`);
+          console.log(`[scp.login] ✅ Login successful for ${orgRef}`);
           
           // Capture screenshot as evidence (if we have a plan_execution_id)
           if (args.plan_execution_id) {
@@ -861,10 +1045,22 @@ export const skiClubProTools = {
           const cached = typeof loginProof === 'object' && 'cached' in loginProof ? loginProof.cached : false;
           const url = typeof loginProof === 'object' && 'url' in loginProof ? loginProof.url : undefined;
           
-          // Store session for reuse (5 min TTL) instead of closing immediately
+          // Store session for reuse (5 min TTL)
           const sessionToken = generateToken();
-          storeSession(sessionToken, session, 300000); // 5 minutes
-          console.log(`[scp.login] Session stored with token: ${sessionToken} for reuse in subsequent steps`);
+          await storeSession(sessionToken, session, 300000); // 5 minutes
+          
+          // Save session state for potential reuse
+          const sessionKey = generateSessionKey(userId, orgRef);
+          await saveSessionState(sessionKey, {
+            sessionId: session.sessionId,
+            session_token: sessionToken,
+            userId,
+            orgRef,
+            baseUrl,
+            createdAt: Date.now()
+          });
+          
+          console.log(`[scp.login] Session stored with token: ${sessionToken} for reuse`);
           
           return {
             success: true,
