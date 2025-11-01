@@ -45,10 +45,10 @@ WORKDIR /app
 
 # Copy production package.json
 COPY package.production.json package.json
-COPY package-lock.json ./
 
-# Install ONLY production dependencies (fast, no playwright/typescript)
-RUN npm ci --production
+# Copy node_modules from builder stage and prune dev dependencies
+COPY --from=builder /app/node_modules ./node_modules
+RUN npm prune --production
 
 # Copy built backend code from builder stage
 COPY --from=builder /app/dist ./dist
