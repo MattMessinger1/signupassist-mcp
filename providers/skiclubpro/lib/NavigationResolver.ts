@@ -3,7 +3,7 @@
  */
 
 import { Page } from 'playwright-core';
-import { SelectorResolver } from './SelectorResolver';
+import { SelectorResolver } from './SelectorResolver.js';
 
 export class NavigationResolver {
   private selectorResolver: SelectorResolver;

@@ -2,9 +2,9 @@
  * UrlBuilder - Handles URL construction for different org patterns
  */
 
-import { UrlPattern, ProviderConfig, OrgConfig } from '../types';
-import { SKICLUBPRO_DEFAULTS } from '../config/defaults';
-import { getOrgConfig } from '../config/orgs';
+import { UrlPattern, ProviderConfig, OrgConfig } from '../types.js';
+import { SKICLUBPRO_DEFAULTS } from '../config/defaults.js';
+import { getOrgConfig } from '../config/orgs/index.js';
 
 export class UrlBuilder {
   private providerConfig: ProviderConfig;

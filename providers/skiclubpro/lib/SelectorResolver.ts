@@ -2,9 +2,9 @@
  * SelectorResolver - Merges provider defaults, org overrides, and generic fallbacks
  */
 
-import { SelectorSet, ProviderConfig, OrgConfig } from '../types';
-import { SKICLUBPRO_DEFAULTS } from '../config/defaults';
-import { getOrgConfig } from '../config/orgs';
+import { SelectorSet, ProviderConfig, OrgConfig } from '../types.js';
+import { SKICLUBPRO_DEFAULTS } from '../config/defaults.js';
+import { getOrgConfig } from '../config/orgs/index.js';
 
 export class SelectorResolver {
   private providerConfig: ProviderConfig;
