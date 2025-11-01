@@ -317,16 +317,27 @@ async function ensureLoggedIn(
   });
   console.timeEnd('[login] navigate');
   
-  // Fill form
+  // Wait for login form to be visible first
+  console.time('[login] form-wait');
+  await page.waitForSelector('form#user-login, form.user-login-form, form[action*="user/login"]', { 
+    timeout: 10000,
+    state: 'visible'
+  });
+  console.timeEnd('[login] form-wait');
+  
+  // Fill form using Drupal standard selectors
   console.time('[login] fill');
-  await page.waitForSelector('input[name="name"], input[type="email"]', { timeout: 8000 });
-  await page.fill('input[name="name"], input[type="email"]', creds.email);
-  await page.fill('input[name="pass"], input[type="password"]', creds.password);
+  await page.waitForSelector('#edit-name, input[name="name"]', { 
+    timeout: 8000,
+    state: 'visible'
+  });
+  await page.fill('#edit-name, input[name="name"]', creds.email);
+  await page.fill('#edit-pass, input[name="pass"]', creds.password);
   console.timeEnd('[login] fill');
   
   // Submit and immediately start racing for success signals
   console.time('[login] submit');
-  await page.click('form#user-login button[type="submit"], form#user-login input[type="submit"]');
+  await page.click('#edit-submit, form#user-login button[type="submit"], form#user-login input[type="submit"]');
   console.timeEnd('[login] submit');
   
   // FAST SUCCESS RACE (10s budget)
