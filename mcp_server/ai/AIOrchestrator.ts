@@ -611,9 +611,10 @@ class AIOrchestrator {
           });
           
           // PHASE 1: Log credential submission
-          if (userId && credential_id) {
+          const credentialUserId = extractUserIdFromJWT(context.user_jwt);
+          if (credentialUserId && credential_id) {
             await logAudit({
-              user_id: userId,
+              user_id: credentialUserId,
               action: 'credentials_submitted',
               provider: context.provider?.orgRef,
               org_ref: context.provider?.orgRef,
