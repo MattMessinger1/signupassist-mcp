@@ -2,7 +2,7 @@
  * SkiClubPro Default Provider Configuration
  */
 
-import { ProviderConfig } from '../types';
+import { ProviderConfig } from '../types.js';
 
 export const SKICLUBPRO_DEFAULTS: ProviderConfig = {
   name: 'SkiClubPro',

@@ -2,7 +2,7 @@
  * Blackhawk Ski Club Organization Configuration
  */
 
-import { OrgConfig } from '../../types';
+import { OrgConfig } from '../../types.js';
 
 export const BLACKHAWK_CONFIG: OrgConfig = {
   orgRef: 'blackhawk-ski-club',

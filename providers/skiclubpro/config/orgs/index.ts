@@ -2,8 +2,8 @@
  * Organization-specific configurations
  */
 
-import { BLACKHAWK_CONFIG } from './blackhawk';
-import { OrgConfig } from '../../types';
+import { BLACKHAWK_CONFIG } from './blackhawk.js';
+import { OrgConfig } from '../../types.js';
 
 export const ORG_CONFIGS: Record<string, OrgConfig> = {
   'blackhawk-ski-club': BLACKHAWK_CONFIG,
