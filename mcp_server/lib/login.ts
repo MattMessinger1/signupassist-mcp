@@ -135,14 +135,17 @@ export async function loginWithCredentials(
 
   console.log("DEBUG Navigating to login page:", config.loginUrl);
   
-  // Navigate explicitly to Drupal login with destination - wait for network idle for JS-heavy pages
-  await page.goto(config.loginUrl, { waitUntil: 'networkidle', timeout });
-  await page.waitForLoadState('networkidle');
+  // Navigate to login page - use domcontentloaded for faster initial load
+  await page.goto(config.loginUrl, { waitUntil: 'domcontentloaded', timeout });
   
   console.log(`DEBUG Page load state: ${page.url()}`);
   
-  // Extra wait for JS initialization - wait 1200ms after networkidle
-  await page.waitForTimeout(1200);
+  // Only wait if form not immediately visible
+  const formReady = await page.locator('#edit-name, input[name="name"]').isVisible().catch(() => false);
+  if (!formReady) {
+    console.log("DEBUG Form not ready, waiting for JS initialization...");
+    await page.waitForTimeout(800);
+  }
 
   // Quick check if already logged in - but verify by checking the current URL
   // Don't trust cookie existence alone, as cookies can be expired
@@ -294,36 +297,28 @@ export async function loginWithCredentials(
   const submitTime = Date.now();
   
   try {
-    const success = await Promise.race([
-      // Success detection: poll for cookie/URL/text
-      (async () => {
-        for (let i = 0; i < 12; i++) {
-          if (await isLoggedIn(page)) {
-            console.log(`DEBUG ✓ Login success detected (iteration ${i + 1})`);
-            return true;
-          }
-          await humanPause(300, 900);
-        }
-        return false;
-      })(),
+    // Fast cookie detection - check every 300ms for up to 8s
+    await Promise.race([
+      page.waitForFunction(() => {
+        return document.cookie.includes('SESS') || document.cookie.includes('SSESS');
+      }, { timeout: 8000 }),
       
-      // Error detection: wait for Drupal error messages
-      (async () => {
-        await page.waitForSelector('.messages--error, .messages--warning, div[role="alert"]', { 
-          timeout: 12000 
-        }).catch(() => {});
-        
-        const errorMsg = await page.locator('.messages--error, .messages--warning, div[role="alert"]')
-          .innerText()
-          .catch(() => '');
-        
-        if (errorMsg) {
-          console.log(`DEBUG ✗ Drupal error message: ${errorMsg.trim()}`);
-          throw new Error(`Login failed: ${errorMsg.trim()}`);
-        }
-        return false;
-      })()
+      // Error detection (keep this for failures)
+      page.waitForSelector('.messages--error, .messages--warning, div[role="alert"]', { timeout: 8000 })
+        .then(async () => {
+          const msg = await page.locator('.messages--error').innerText().catch(() => '');
+          if (msg) {
+            console.log(`DEBUG ✗ Drupal error message: ${msg.trim()}`);
+            throw new Error(`Login failed: ${msg.trim()}`);
+          }
+        })
     ]);
+    
+    // Verify login
+    const success = await isLoggedIn(page);
+    if (!success) {
+      throw new Error('Auth cookie appeared but login verification failed');
+    }
 
     const responseTime = Date.now() - submitTime;
     console.log(`DEBUG Form response took ${responseTime}ms`);
@@ -332,51 +327,18 @@ export async function loginWithCredentials(
       let url = page.url();
       const hasCookie = await hasDrupalSessCookie(page);
       
-      // CRITICAL: Handle Antibot blocking JavaScript redirects
-      // If session exists but we're still on login page, follow Drupal redirect
+      // Handle Drupal redirect if session exists but still on login page
       if (url.includes('/user/login') && hasCookie) {
-        console.log('DEBUG ⚠ Session created but redirect blocked - following Drupal redirect...');
+        console.log('DEBUG Session cookie present but still on login page - following redirect...');
         
-        // Extract destination from URL params or default to /dashboard
         const urlObj = new URL(url);
         const destination = urlObj.searchParams.get('destination') || '/dashboard';
-        const redirectUrl = `${urlObj.origin}/user/login?destination=${destination}`;
+        const redirectUrl = `${urlObj.origin}${destination}`;
         
-        console.log(`DEBUG Following Drupal redirect chain: ${redirectUrl}`);
+        await page.goto(redirectUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
         
-        try {
-          // Wait for network activity to settle, then let the site redirect naturally
-          await page.waitForTimeout(2000);
-          
-          // Follow the same redirect chain the browser would use
-          await page.goto(redirectUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
-          
-          // Verify if redirected successfully
-          if (page.url().includes('/user/login')) {
-            // As fallback, trigger post-login AJAX redirect by clicking any dashboard link if present
-            const dashboardLink = await page.$('a[href*="dashboard"]');
-            if (dashboardLink) {
-              console.log('DEBUG Clicking dashboard link to trigger redirect...');
-              await dashboardLink.click();
-            }
-          }
-          
-          await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
-          
-          url = page.url();
-          
-          // Final verification
-          if (url.includes('/dashboard')) {
-            console.log('DEBUG ✓ Login redirect completed successfully to:', url);
-          } else if (!url.includes('/user/login')) {
-            console.log('DEBUG ✓ Login redirect completed to:', url);
-          } else {
-            throw new Error('Login succeeded but redirect not completed');
-          }
-        } catch (e) {
-          console.log('DEBUG ✗ Drupal redirect failed:', e);
-          throw new Error('Login succeeded but unable to complete redirect chain');
-        }
+        url = page.url();
+        console.log(`DEBUG ✓ Redirected to: ${url}`);
       }
       
       const title = await page.title();
@@ -404,27 +366,7 @@ export async function loginWithCredentials(
         /welcome to (blackhawk|[\w\s]+) ski club/i.test(bodyText) ||
         /dashboard|my-account|profile/i.test(currentUrl);
       
-      if (!looksLoggedIn) {
-        console.log('DEBUG ⚠ Login verification uncertain, retrying once...');
-        
-        // Retry once - navigate to home/dashboard to confirm
-        await humanPause(1000, 2000);
-        try {
-          const baseUrl = new URL(currentUrl).origin;
-          await page.goto(`${baseUrl}/dashboard`, { waitUntil: 'networkidle', timeout: 10000 }).catch(() => 
-            page.goto(`${baseUrl}/user`, { waitUntil: 'networkidle', timeout: 10000 })
-          );
-          
-          // Re-evaluate after navigation
-          const retryLoggedIn = await isLoggedIn(page);
-          if (retryLoggedIn) {
-            console.log('DEBUG ✓ Login verified after retry - authenticated session verified');
-            return { url: page.url(), title: await page.title(), verified: true };
-          }
-        } catch (e) {
-          console.log('DEBUG Retry navigation failed:', e);
-        }
-      } else {
+      if (looksLoggedIn) {
         // Looks logged in despite no explicit success signal
         console.log('DEBUG ✓ Login appears successful based on page indicators - authenticated session verified');
         return { url: currentUrl, title: pageTitle, verified: true };
