@@ -987,7 +987,7 @@ export const skiClubProTools = {
           
           // FAST-PATH: Check for reusable session first
           console.log('[scp.login] Checking for reusable session...');
-          const resumed = await tryResumeProviderSession(userId, credentialId, orgRef);
+          const resumed = await tryResumeProviderSession(userId, args.credential_id, orgRef);
           if (resumed.isValid) {
             console.log('[scp.login] ✓ Reusing existing session, skipping login');
             console.table({
@@ -1055,7 +1055,7 @@ export const skiClubProTools = {
           await storeSession(sessionToken, session, 300000); // 5 minutes
           
           // Save session state for potential reuse
-          const sessionKey = generateSessionKey(userId, credentialId, orgRef);
+          const sessionKey = generateSessionKey(userId, args.credential_id, orgRef);
           await saveSessionState(session.page, sessionKey);
           
           console.log(`[scp.login] Session stored with token: ${sessionToken} for reuse`);
