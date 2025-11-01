@@ -191,7 +191,7 @@ function probeUserEndpoint(page: Page, timeout = 10000): Promise<boolean> {
 /**
  * Wait for login error message
  */
-function waitForLoginError(page: Page, timeout = 8000): Promise<void> {
+function waitForLoginError(page: Page, timeout = 8000): Promise<ElementHandle<HTMLElement | SVGElement>> {
   return page.waitForSelector('.messages--error, .alert-danger, .user-login-error', { timeout });
 }
 
@@ -203,31 +203,36 @@ async function tryResumeProviderSession(userId: string, orgRef: string): Promise
     const sessionKey = generateSessionKey(userId, orgRef);
     const existing = await getSession(sessionKey);
     
-    if (!existing?.session_token) {
+    if (!existing?.newToken) {
       return { isValid: false as const };
     }
 
     console.log('[tryResumeProviderSession] Found existing session, validating...');
     
-    // Restore session and validate
-    const state = await restoreSessionState(existing.session_token);
-    if (!state?.context) {
-      console.log('[tryResumeProviderSession] Session state invalid');
-      return { isValid: false as const };
-    }
-
-    // Launch session to validate cookies
-    const session = await launchBrowserbaseSession();
+    // Get stored session data
+    const { session } = existing;
+    
+    // Launch new browser session and try to restore state
+    const newSession = await launchBrowserbaseSession();
     try {
-      const hasCookie = await hasAuthCookie(session.page);
+      // Try to restore session state
+      const restored = await restoreSessionState(newSession.page, sessionKey);
+      if (!restored) {
+        console.log('[tryResumeProviderSession] Could not restore session state');
+        await closeBrowserbaseSession(newSession);
+        return { isValid: false as const };
+      }
+
+      // Check for auth cookie
+      const hasCookie = await hasAuthCookie(newSession.page);
       if (!hasCookie) {
         console.log('[tryResumeProviderSession] No auth cookie found');
-        await closeBrowserbaseSession(session);
+        await closeBrowserbaseSession(newSession);
         return { isValid: false as const };
       }
 
       // Quick probe to verify session works
-      const ok = await session.page.evaluate(async () => {
+      const ok = await newSession.page.evaluate(async () => {
         try {
           const r = await fetch('/user', { method: 'GET', credentials: 'include' });
           return r.ok;
@@ -236,17 +241,17 @@ async function tryResumeProviderSession(userId: string, orgRef: string): Promise
         }
       });
 
-      await closeBrowserbaseSession(session);
-
       if (ok) {
         console.log('[tryResumeProviderSession] ✓ Session valid');
-        return { isValid: true as const, session_token: existing.session_token };
+        // Keep session open and return token
+        return { isValid: true as const, session_token: existing.newToken };
       }
       
       console.log('[tryResumeProviderSession] Session probe failed');
+      await closeBrowserbaseSession(newSession);
       return { isValid: false as const };
     } catch (error) {
-      await closeBrowserbaseSession(session);
+      await closeBrowserbaseSession(newSession);
       console.error('[tryResumeProviderSession] Validation error:', error);
       return { isValid: false as const };
     }
@@ -1051,14 +1056,7 @@ export const skiClubProTools = {
           
           // Save session state for potential reuse
           const sessionKey = generateSessionKey(userId, orgRef);
-          await saveSessionState(sessionKey, {
-            sessionId: session.sessionId,
-            session_token: sessionToken,
-            userId,
-            orgRef,
-            baseUrl,
-            createdAt: Date.now()
-          });
+          await saveSessionState(session.page, sessionKey);
           
           console.log(`[scp.login] Session stored with token: ${sessionToken} for reuse`);
           
