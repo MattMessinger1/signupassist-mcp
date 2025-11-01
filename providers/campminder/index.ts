@@ -38,7 +38,7 @@ class CampMinderService {
   }
 }
 
-export const campminder Tools = [
+export const campminderTools = [
   {
     name: 'campminder_login',
     description: 'Login to CampMinder system',
