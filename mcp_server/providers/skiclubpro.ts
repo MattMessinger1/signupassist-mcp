@@ -19,7 +19,7 @@ import { getOrgOverride } from '../prereqs/providers.js';
 import type { ProviderResponse } from './types.js';
 import { PROMPT_VERSION } from '../ai/AIOrchestrator.js';
 import { getReadiness } from './utils/pageReadinessRegistry.js';
-import { UrlBuilder } from '../../providers/skiclubpro/lib/UrlBuilder.js';
+import { UrlBuilder } from '../../providers/skiclubpro/lib/index.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
