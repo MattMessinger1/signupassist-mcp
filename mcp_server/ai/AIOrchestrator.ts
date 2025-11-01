@@ -1716,10 +1716,10 @@ Return JSON: {
     });
     
     try {
-      // Call new MCP tool: scp.program_field_probe
-      const result = await this.callTool("program_field_probe", {
+      // Call MCP tool: scp.program_field_probe with cookies from Session A
+      const result = await this.callTool("scp.program_field_probe", {
         org_ref: context.provider?.orgRef,
-        cookies: context.provider_cookies,
+        cookies: context.provider_cookies,  // Pass cookies from Session A
         intent: context.programIntent,
         user_jwt: context.user_jwt,
       });
