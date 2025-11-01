@@ -1,6 +1,6 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["mcp_server/**/*.ts", "mcp_server/**/*.tsx"],
+  "include": ["mcp_server/**/*.ts", "mcp_server/**/*.tsx", "providers/**/*.ts"],
   "exclude": [
     "mcp_server/tests",
     "**/*.test.ts",

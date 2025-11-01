@@ -16,6 +16,7 @@ RUN npm ci
 # Copy TypeScript configs and source for BACKEND
 COPY tsconfig.json tsconfig.mcp.json ./
 COPY mcp_server ./mcp_server
+COPY providers ./providers
 COPY mcp ./mcp
 
 # Build backend TypeScript to dist/
