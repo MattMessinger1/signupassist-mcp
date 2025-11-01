@@ -2,7 +2,7 @@
  * SkiClubPro Provider - MCP Tools for SkiClubPro automation
  */
 
-import { Page } from 'playwright-core';
+import { Page, ElementHandle } from 'playwright-core';
 import { verifyMandate } from '../lib/mandates.js';
 import { auditToolCall } from '../middleware/audit.js';
 import { lookupCredentialsById } from '../lib/credentials.js';
@@ -198,10 +198,10 @@ function waitForLoginError(page: Page, timeout = 8000): Promise<ElementHandle<HT
 /**
  * Try to resume existing provider session
  */
-async function tryResumeProviderSession(userId: string, orgRef: string): Promise<{ isValid: true; session_token: string } | { isValid: false }> {
+async function tryResumeProviderSession(userId: string, credentialId: string, orgRef: string): Promise<{ isValid: true; session_token: string } | { isValid: false }> {
   try {
-    const sessionKey = generateSessionKey(userId, orgRef);
-    const existing = await getSession(sessionKey);
+    const sessionKey = generateSessionKey(userId, credentialId, orgRef);
+    const existing = await getSession();
     
     if (!existing?.newToken) {
       return { isValid: false as const };
@@ -987,7 +987,7 @@ export const skiClubProTools = {
           
           // FAST-PATH: Check for reusable session first
           console.log('[scp.login] Checking for reusable session...');
-          const resumed = await tryResumeProviderSession(userId, orgRef);
+          const resumed = await tryResumeProviderSession(userId, credentialId, orgRef);
           if (resumed.isValid) {
             console.log('[scp.login] ✓ Reusing existing session, skipping login');
             console.table({
@@ -1055,7 +1055,7 @@ export const skiClubProTools = {
           await storeSession(sessionToken, session, 300000); // 5 minutes
           
           // Save session state for potential reuse
-          const sessionKey = generateSessionKey(userId, orgRef);
+          const sessionKey = generateSessionKey(userId, credentialId, orgRef);
           await saveSessionState(session.page, sessionKey);
           
           console.log(`[scp.login] Session stored with token: ${sessionToken} for reuse`);
