@@ -364,25 +364,6 @@ function ChatTestHarnessContent() {
     }
   };
 
-  // ============= postMessage Listener for LoginCredentialDialog =============
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      // Security: In production, validate event.origin
-      if (event.data?.type === 'credentials_submitted') {
-        console.log('[HARNESS] Received credentials_submitted from LoginCredentialDialog:', event.data.payload);
-        
-        // Forward to orchestrator via handleCardAction
-        handleCardAction('credentials_submitted', event.data.payload);
-      }
-    };
-    
-    window.addEventListener('message', handleMessage);
-    
-    return () => {
-      window.removeEventListener('message', handleMessage);
-    };
-  }, [handleCardAction]); // Dependency on handleCardAction
-
   // ============= Flow Handlers =============
 
   /**
@@ -910,10 +891,14 @@ function ChatTestHarnessContent() {
           provider={loginDialogData.provider}
           orgName={loginDialogData.orgName}
           orgRef={loginDialogData.orgRef}
-          onSuccess={() => {
+          onSuccess={(credentialData) => {
             setShowLoginDialog(false);
-            addLog("success", "system", "Credentials stored successfully");
-            addAssistantMessage("✅ Account connected! Let me find available programs for you...");
+            addLog("success", "system", "Credentials stored successfully", credentialData);
+            
+            // Forward credentials to orchestrator
+            if (credentialData) {
+              handleCardAction('credentials_submitted', credentialData);
+            }
           }}
         />
       )}

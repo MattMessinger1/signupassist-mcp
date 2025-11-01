@@ -13,7 +13,7 @@ interface LoginCredentialDialogProps {
   provider: string;
   orgName: string;
   orgRef: string;
-  onSuccess?: () => void;
+  onSuccess?: (credentialData?: { credential_id: string; cookies: any[] }) => void;
 }
 
 export function LoginCredentialDialog({
@@ -119,15 +119,12 @@ export function LoginCredentialDialog({
         
         setLoginStatus(data);
         
-        // Notify orchestrator with credential_id AND cookies
-        if (data.credential_id && window.parent) {
-          window.parent.postMessage({
-            type: 'credentials_submitted',
-            payload: {
-              credential_id: data.credential_id,
-              cookies: data.cookies || []  // Pass cookies from Session A
-            }
-          }, '*');
+        // Notify parent component directly with credential_id AND cookies
+        if (onSuccess && data.credential_id) {
+          onSuccess({
+            credential_id: data.credential_id,
+            cookies: data.cookies || []  // Pass cookies from Session A
+          });
         }
         
         // Wait a moment to show success message before closing
