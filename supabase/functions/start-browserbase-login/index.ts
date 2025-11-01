@@ -224,6 +224,8 @@ Deno.serve(async (req) => {
               status: 'success',
               message: 'Login successful ✅',
               credential_stored: !!credentialId,
+              credential_id: credentialId,
+              cookies: mcpResult.cookies || [],
               next_step: 'manual_program_selection'
             }),
             { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
