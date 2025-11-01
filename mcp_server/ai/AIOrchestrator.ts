@@ -78,6 +78,8 @@ Stay consistent with SignupAssist's Design DNA: friendly, concise, secure.
 export enum FlowStep {
   PROVIDER_SEARCH = 3,
   LOGIN = 4,
+  INTENT_CAPTURE = 4.5,
+  FIELD_PROBE = 4.7,
   PROGRAM_SELECTION = 5,
   PREREQUISITE_CHECK = 6,
   CONFIRMATION = 7,
@@ -116,6 +118,36 @@ export enum FlowStep {
     };
     showingCategories?: boolean;
     currentCategory?: string;
+    
+    // Intent Capture & Field Probe Properties
+    programIntent?: {
+      category?: "lessons" | "membership" | "camp" | "race" | "private";
+      day_pref?: "weekend" | "weekday" | null;
+      time_pref?: "morning" | "afternoon" | "evening" | null;
+      level?: "beginner" | "intermediate" | "advanced" | null;
+      keywords?: string[];
+    };
+    extractedFields?: {
+      fields: Array<{
+        id: string;
+        label: string;
+        type: string;
+        required: boolean;
+        options?: Array<{ value: string; label: string }>;
+        group?: string;
+        confidence: number;
+      }>;
+      target_url?: string;
+      screenshot?: string;
+      meta?: {
+        discovered_at: string;
+        strategy: string;
+        readiness: string;
+      };
+    };
+    field_probe_run_id?: string;
+    provider_session_token?: string;
+    provider_cookies?: any;
   }
 
 /**
@@ -569,12 +601,13 @@ class AIOrchestrator {
 
         case "credentials_submitted":
           // Handle callback after user enters credentials
-          const { credential_id } = payload;
+          const { credential_id, cookies } = payload;
           
           await this.updateContext(sessionId, {
             credential_id,
+            provider_cookies: cookies || [],  // Store cookies from Session A
             loginCompleted: true,
-            step: FlowStep.PROGRAM_SELECTION
+            step: FlowStep.INTENT_CAPTURE
           });
           
           // PHASE 1: Log credential submission
@@ -589,7 +622,43 @@ class AIOrchestrator {
             });
           }
           
-          return this.handleProgramSelection("Show programs", sessionId);
+          // NEW: Ask for program intent instead of showing programs
+          return this.formatResponse(
+            `✅ You're securely logged in to ${context.provider?.name}. To tailor what I pull next, which type of program are you interested in?`,
+            undefined,
+            [
+              { label: "Ski Lessons", action: "intent_lessons", variant: "outline" },
+              { label: "Membership", action: "intent_membership", variant: "outline" },
+              { label: "Camps", action: "intent_camp", variant: "outline" },
+              { label: "Race Team", action: "intent_race", variant: "outline" },
+              { label: "Private Lesson", action: "intent_private", variant: "outline" },
+            ],
+            {}
+          );
+        
+        case "intent_lessons":
+        case "intent_membership":
+        case "intent_camp":
+        case "intent_race":
+        case "intent_private":
+          // Parse intent from action
+          const intentCategory = action.replace("intent_", "") as any;
+          
+          await this.updateContext(sessionId, {
+            programIntent: { category: intentCategory },
+            step: FlowStep.FIELD_PROBE
+          });
+          
+          return this.formatResponse(
+            `Got it — I'll look for ${intentCategory} programs. One moment while I check what information is needed...`,
+            undefined,
+            [{ label: "Analyze Form", action: "run_field_probe", variant: "accent" }],
+            {}
+          );
+        
+        case "run_field_probe":
+          // Trigger the field probe
+          return this.handleFieldProbe("", sessionId);
 
         case "view_category":
           // User clicked a category card, show filtered programs
@@ -766,7 +835,8 @@ class AIOrchestrator {
       'find_programs': 'scp.get_programs',
       'check_prerequisites': 'scp.check_prerequisites',
       'discover_fields': 'scp.discover_required_fields',
-      'submit_registration': 'scp.submit_registration'
+      'submit_registration': 'scp.submit_registration',
+      'program_field_probe': 'scp.program_field_probe'
     };
 
     const mcpToolName = mcpToolMapping[toolName];
@@ -1376,6 +1446,10 @@ Return JSON: {
         return await this.handleProviderSearch(userMessage, sessionId);
       case "login":
         return await this.handleLoginStep(userMessage, sessionId);
+      case "intent_capture":
+        return await this.handleIntentCapture(userMessage, sessionId);
+      case "field_probe":
+        return await this.handleFieldProbe(userMessage, sessionId);
       case "program_selection":
         return await this.handleProgramSelection(userMessage, sessionId);
       case "prerequisite_check":
@@ -1552,6 +1626,134 @@ Return JSON: {
         loginInitiatedAt: new Date().toISOString()
       }
     );
+  }
+
+  /**
+   * Handle intent capture step (Step 4.5: Ask what type of program)
+   * Parses natural language input into structured intent
+   */
+  private async handleIntentCapture(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
+    const context = await this.getContext(sessionId);
+    
+    // If user typed something instead of clicking buttons, parse it
+    if (userMessage.trim()) {
+      const intent: any = { keywords: [] };
+      const lower = userMessage.toLowerCase();
+      
+      // Category detection
+      if (/lesson|class|instruction/.test(lower)) intent.category = "lessons";
+      if (/member/.test(lower)) intent.category = "membership";
+      if (/camp/.test(lower)) intent.category = "camp";
+      if (/race|team|competitive/.test(lower)) intent.category = "race";
+      if (/private/.test(lower)) intent.category = "private";
+      
+      // Day preference
+      if (/weekend|saturday|sunday/.test(lower)) intent.day_pref = "weekend";
+      if (/weekday|weeknight/.test(lower)) intent.day_pref = "weekday";
+      
+      // Time preference
+      if (/morning/.test(lower)) intent.time_pref = "morning";
+      if (/afternoon/.test(lower)) intent.time_pref = "afternoon";
+      if (/evening/.test(lower)) intent.time_pref = "evening";
+      
+      // Level
+      if (/beginner|never|first/.test(lower)) intent.level = "beginner";
+      if (/intermediate/.test(lower)) intent.level = "intermediate";
+      if (/advanced|expert/.test(lower)) intent.level = "advanced";
+      
+      // Extract keywords
+      intent.keywords = userMessage.split(/\s+/).filter(w => w.length > 3);
+      
+      await this.updateContext(sessionId, {
+        programIntent: intent,
+        step: FlowStep.FIELD_PROBE
+      });
+      
+      const readable = intent.category || "programs";
+      return this.formatResponse(
+        `Got it — I'll look for ${readable}. Checking what information is needed...`,
+        undefined,
+        [{ label: "Continue", action: "run_field_probe", variant: "accent" }],
+        {}
+      );
+    }
+    
+    // Otherwise show buttons (same as credentials_submitted response)
+    return this.formatResponse(
+      `To tailor what I pull next, which type of program are you interested in?`,
+      undefined,
+      [
+        { label: "Ski Lessons", action: "intent_lessons", variant: "outline" },
+        { label: "Membership", action: "intent_membership", variant: "outline" },
+        { label: "Camps", action: "intent_camp", variant: "outline" },
+        { label: "Race Team", action: "intent_race", variant: "outline" },
+        { label: "Private Lesson", action: "intent_private", variant: "outline" },
+      ],
+      {}
+    );
+  }
+
+  /**
+   * Handle field probe step (Step 4.7: Extract form fields via Three-Pass Extractor)
+   * Opens new browser session (Session B), navigates to relevant form, extracts fields
+   */
+  private async handleFieldProbe(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
+    const context = await this.getContext(sessionId);
+    
+    if (!context.programIntent) {
+      return this.formatResponse(
+        "I need to know what type of program you're interested in first.",
+        undefined,
+        [{ label: "Tell Me More", action: "back_to_intent", variant: "accent" }],
+        {}
+      );
+    }
+    
+    this.logAction("tool_invocation", { 
+      toolName: "program_field_probe", 
+      sessionId, 
+      intent: context.programIntent 
+    });
+    
+    try {
+      // Call new MCP tool: scp.program_field_probe
+      const result = await this.callTool("program_field_probe", {
+        org_ref: context.provider?.orgRef,
+        cookies: context.provider_cookies,
+        intent: context.programIntent,
+        user_jwt: context.user_jwt,
+      });
+      
+      if (!result.success) {
+        throw new Error(result.error || "Field probe failed");
+      }
+      
+      // Store extracted fields
+      await this.updateContext(sessionId, {
+        extractedFields: result.extractor,
+        field_probe_run_id: result.run_id,
+        step: FlowStep.PROGRAM_SELECTION  // STOP HERE - don't proceed further
+      });
+      
+      const fieldCount = result.extractor?.programs?.length || 0;
+      const category = context.programIntent.category || "program";
+      
+      return this.formatResponse(
+        `🔎 I scanned ${context.provider?.name} for a ${category} form and found ${fieldCount} programs. Ready when you are!`,
+        undefined,
+        [{ label: "Continue", action: "check_programs", variant: "accent" }],
+        { extractedFields: result.extractor }
+      );
+      
+    } catch (error: any) {
+      Logger.error(`[handleFieldProbe] Failed:`, error);
+      return this.formatResponse(
+        "I had trouble extracting the form fields. Let's try a different approach.",
+        undefined,
+        [{ label: "Retry", action: "run_field_probe", variant: "accent" }],
+        {}
+      );
+    }
   }
 
   /**

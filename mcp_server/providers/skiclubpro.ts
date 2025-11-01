@@ -839,6 +839,32 @@ async function locateProgramPage(page: any, baseUrl: string, programName?: strin
   return page.url();
 }
 
+/**
+ * Get candidate registration paths based on user intent
+ * Returns prioritized list of URLs to check for forms
+ */
+function getCandidatePathsForIntent(intent?: {
+  category?: string;
+  [key: string]: any;
+}): string[] {
+  if (!intent?.category) {
+    return ['/registration', '/programs', '/classes'];
+  }
+  
+  switch (intent.category) {
+    case 'membership':
+      return ['/membership', '/join', '/registration'];
+    case 'lessons':
+    case 'private':
+      return ['/registration', '/programs', '/classes'];
+    case 'camp':
+    case 'race':
+      return ['/camps', '/teams', '/programs', '/registration'];
+    default:
+      return ['/registration', '/programs', '/classes'];
+  }
+}
+
 export const skiClubProTools = {
   'scp.discover_required_fields': scpDiscoverRequiredFields,
 
@@ -1024,27 +1050,25 @@ export const skiClubProTools = {
           const cached = typeof loginProof === 'object' && 'cached' in loginProof ? loginProof.cached : false;
           const url = typeof loginProof === 'object' && 'url' in loginProof ? loginProof.url : undefined;
           
-          // Store session for reuse (5 min TTL)
-          const sessionToken = generateToken();
-          await storeSession(sessionToken, session, 300000); // 5 minutes
+          // Extract cookies BEFORE closing Session A
+          const cookies = await session.page.context().cookies();
+          console.log(`[scp.login] Extracted ${cookies.length} cookies for Session B`);
           
-          // Save session state for potential reuse (only if credential_id provided)
-          if (args.credential_id) {
-            const sessionKey = generateSessionKey(userId, args.credential_id, orgRef);
-            await saveSessionState(session.page, sessionKey);
-            console.log(`[scp.login] Session stored with token: ${sessionToken} for reuse`);
-          } else {
-            console.log(`[scp.login] Session stored with token: ${sessionToken} (no credential_id for reuse)`);
-          }
+          // Close Session A immediately
+          console.log('[scp.login] Closing Session A...');
+          await closeBrowserbaseSession(session);
+          console.log('[scp.login] ✅ Session A closed');
           
           return {
             success: true,
-            session_id: session.sessionId,
-            session_token: sessionToken,
+            run_id: crypto.randomUUID(),
+            login_status: 'success',
             message: 'Login successful via Browserbase',
-            email: email || url || 'logged in',
+            email: email || 'logged in',
             cached: cached,
             url: url || baseUrl,
+            cookies: cookies,
+            session_closed: true,
             timestamp: new Date().toISOString()
           };
           
@@ -1059,6 +1083,115 @@ export const skiClubProTools = {
       },
       'scp:authenticate' // Required scope for mandate verification
     );
+  },
+
+  'scp.program_field_probe': async (args: {
+    org_ref: string;
+    cookies: any[];
+    intent?: {
+      category?: string;
+      day_pref?: string;
+      time_pref?: string;
+      level?: string;
+      keywords?: string[];
+    };
+    user_jwt?: string;
+  }): Promise<any> => {
+    const runId = crypto.randomUUID();
+    console.log(`[scp.program_field_probe] Starting Session B run_id=${runId}`);
+    
+    let session: any = null;
+    
+    try {
+      // Launch Session B (field extraction only)
+      console.log('[scp.program_field_probe] Launching Browserbase session (Session B)...');
+      session = await launchBrowserbaseSession();
+      const page = session.page;
+      
+      // Inject cookies from Session A
+      console.log(`[scp.program_field_probe] Injecting ${args.cookies.length} cookies from Session A...`);
+      await session.context.addCookies(args.cookies);
+      console.log('[scp.program_field_probe] ✅ Authentication restored');
+      
+      const { baseUrl } = resolveBaseUrl({ org_ref: args.org_ref });
+      
+      // Navigate to registration page (authenticated)
+      const candidatePaths = getCandidatePathsForIntent(args.intent);
+      let targetUrl = '';
+      
+      for (const path of candidatePaths) {
+        const url = `${baseUrl}${path}`;
+        console.log(`[scp.program_field_probe] Checking ${url}...`);
+        
+        try {
+          await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 10000 });
+          
+          // Wait for page readiness
+          const readiness = getReadiness('skiclubpro');
+          await readiness(page, 2);
+          
+          console.log(`[scp.program_field_probe] ✅ Page ready at ${url}`);
+          targetUrl = url;
+          break;
+          
+        } catch (err: any) {
+          console.log(`[scp.program_field_probe] Page not ready at ${url}:`, err.message);
+        }
+      }
+      
+      if (!targetUrl) {
+        throw new Error('Could not find ready program page');
+      }
+      
+      // Run Three-Pass Extractor
+      console.log('[scp.program_field_probe] Running Three-Pass Extractor...');
+      const { runThreePassExtractor } = await import('../lib/threePassExtractor.js');
+      
+      if (!process.env.OPENAI_API_KEY) {
+        throw new Error('OPENAI_API_KEY not configured');
+      }
+      
+      const extractedData = await runThreePassExtractor(page, args.org_ref, 'skiclubpro');
+      console.log(`[scp.program_field_probe] ✅ Extracted ${extractedData.length} programs`);
+      
+      // Capture screenshot
+      const screenshot = await page.screenshot({ fullPage: true });
+      
+      // Close Session B
+      console.log('[scp.program_field_probe] Closing Session B...');
+      await closeBrowserbaseSession(session);
+      console.log('[scp.program_field_probe] ✅ Session B closed');
+      
+      return {
+        success: true,
+        run_id: runId,
+        target_url: targetUrl,
+        extractor: {
+          programs: extractedData,
+          meta: {
+            discovered_at: new Date().toISOString(),
+            strategy: 'three-pass',
+            readiness: 'affirmative'
+          }
+        },
+        screenshot: screenshot.toString('base64')
+      };
+      
+    } catch (error: any) {
+      console.error(`[scp.program_field_probe] Failed:`, error);
+      
+      if (session) {
+        await closeBrowserbaseSession(session).catch(err => 
+          console.warn('[scp.program_field_probe] Error closing session:', err)
+        );
+      }
+      
+      return {
+        success: false,
+        run_id: runId,
+        error: error.message
+      };
+    }
   },
 
   'scp.register': async (args: any): Promise<ProviderResponse> => {

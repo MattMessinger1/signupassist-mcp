@@ -123,7 +123,15 @@ export async function loginWithCredentials(
   config: ProviderLoginConfig, 
   creds: { email: string; password: string },
   browser?: Browser
-) {
+): Promise<{
+  url?: string;
+  title?: string;
+  verified?: boolean;
+  email?: string;
+  login_status: 'success' | 'failed';
+  cookies?: any[];
+  session_closed?: boolean;
+}> {
   const startTime = Date.now();
   const timeout = config.timeout || 30000;
   
@@ -147,13 +155,21 @@ export async function loginWithCredentials(
     await page.waitForTimeout(800);
   }
 
-  // Quick check if already logged in - but verify by checking the current URL
-  // Don't trust cookie existence alone, as cookies can be expired
-  const currentUrl = page.url();
-  if (await isLoggedIn(page) && !currentUrl.includes('/user/login')) {
-    console.log("DEBUG Already logged in and verified (not on login page), skipping login flow");
-    return { url: page.url(), title: await page.title() };
-  }
+    // Quick check if already logged in - but verify by checking the current URL
+    // Don't trust cookie existence alone, as cookies can be expired
+    const currentUrl = page.url();
+    if (await isLoggedIn(page) && !currentUrl.includes('/user/login')) {
+      console.log("DEBUG Already logged in and verified (not on login page), skipping login flow");
+      const cookies = await page.context().cookies();
+      return { 
+        url: page.url(), 
+        title: await page.title(),
+        email: creds.email,
+        login_status: 'success',
+        cookies: cookies,
+        session_closed: true
+      };
+    }
   
   // If we have a cookie but are still on login page, the session is expired
   if (await isLoggedIn(page) && currentUrl.includes('/user/login')) {
@@ -374,7 +390,38 @@ export async function loginWithCredentials(
       console.log(`DEBUG - Session cookie: ${hasCookie ? 'present' : 'absent'}`);
       console.log(`DEBUG - Login duration: ${duration_ms}ms`);
       
-      return { url, title, verified: true };
+      // Extract cookies for Session B reuse
+      const cookies = await page.context().cookies();
+      console.log(`DEBUG Extracted ${cookies.length} cookies for Session B reuse`);
+      
+      // Force navigation to dashboard if still on login page
+      if (url.includes('/user/login')) {
+        const urlObj = new URL(url);
+        const destination = urlObj.searchParams.get('destination') || '/dashboard';
+        const dashboardUrl = `${urlObj.origin}${destination}`;
+        
+        console.log(`DEBUG Navigating to dashboard: ${dashboardUrl}`);
+        await page.goto(dashboardUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+        
+        await Promise.race([
+          page.waitForSelector('a:has-text("Log out")', { timeout: 5000 }),
+          page.waitForFunction(() => !window.location.href.includes('/user/login'), { timeout: 5000 }),
+        ]).catch(() => console.log('DEBUG Dashboard indicators timeout (non-fatal)'));
+        
+        console.log(`DEBUG ✓ Dashboard loaded: ${page.url()}`);
+      }
+      
+      console.log('DEBUG ✓ Session A complete - ready to close');
+      
+      return { 
+        url, 
+        title, 
+        verified: true, 
+        email: creds.email,
+        login_status: 'success',
+        cookies: cookies,
+        session_closed: true
+      };
     } else {
       // No success signal detected - gather comprehensive diagnostics
       const currentUrl = page.url();
@@ -393,7 +440,17 @@ export async function loginWithCredentials(
       if (looksLoggedIn) {
         // Looks logged in despite no explicit success signal
         console.log('DEBUG ✓ Login appears successful based on page indicators - authenticated session verified');
-        return { url: currentUrl, title: pageTitle, verified: true };
+        const cookies = await page.context().cookies();
+        console.log(`DEBUG Extracted ${cookies.length} cookies for Session B reuse`);
+        return { 
+          url: currentUrl, 
+          title: pageTitle, 
+          verified: true,
+          email: creds.email,
+          login_status: 'success',
+          cookies: cookies,
+          session_closed: true
+        };
       }
       
       // Get page snippets for debugging

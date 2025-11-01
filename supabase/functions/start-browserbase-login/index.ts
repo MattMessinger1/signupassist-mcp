@@ -243,6 +243,7 @@ Deno.serve(async (req) => {
             credential_id: credentialId,
             programs: programsResult.data?.programs || [],
             session_token: mcpResult.session_token,
+            cookies: mcpResult.cookies || [],  // Pass cookies from Session A
             next_step: 'program_selection'
           }),
           { 
@@ -259,6 +260,7 @@ Deno.serve(async (req) => {
           message: 'Login successful ✅',
           credential_stored: !!credentialId,
           credential_id: credentialId,
+          cookies: mcpResult.cookies || [],  // Pass cookies from Session A
           next_step: 'Session token missing - please try again'
         }),
         { 

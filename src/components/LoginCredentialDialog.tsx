@@ -119,6 +119,17 @@ export function LoginCredentialDialog({
         
         setLoginStatus(data);
         
+        // Notify orchestrator with credential_id AND cookies
+        if (data.credential_id && window.parent) {
+          window.parent.postMessage({
+            type: 'credentials_submitted',
+            payload: {
+              credential_id: data.credential_id,
+              cookies: data.cookies || []  // Pass cookies from Session A
+            }
+          }, '*');
+        }
+        
         // Wait a moment to show success message before closing
         setTimeout(() => {
           // Clear form
