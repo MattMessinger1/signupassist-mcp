@@ -1128,7 +1128,7 @@ export const skiClubProTools = {
           
           // Wait for page readiness
           const readiness = getReadiness('skiclubpro');
-          await readiness(page, 2);
+          await readiness(page);
           
           console.log(`[scp.program_field_probe] ✅ Page ready at ${url}`);
           targetUrl = url;
