@@ -325,14 +325,21 @@ async function ensureLoggedIn(
   });
   console.timeEnd('[login] form-wait');
   
-  // Fill form using Drupal standard selectors
+  // Fill form using Drupal standard selectors with humanization delays
   console.time('[login] fill');
   await page.waitForSelector('#edit-name, input[name="name"]', { 
     timeout: 8000,
     state: 'visible'
   });
+  
+  // Import humanPause for realistic delays
+  const { humanPause } = await import('../lib/humanize.js');
+  
   await page.fill('#edit-name, input[name="name"]', creds.email);
+  await humanPause(300, 800); // Human-like pause between fields
+  
   await page.fill('#edit-pass, input[name="pass"]', creds.password);
+  await humanPause(400, 900); // Human-like pause before submit
   console.timeEnd('[login] fill');
   
   // Submit and immediately start racing for success signals

@@ -48,8 +48,8 @@ export async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
     // Connect Playwright to Browserbase using the connectUrl
     const browser = await chromium.connectOverCDP(session.connectUrl);
     
-    // Create stealth context (handles ANTIBOT_ENABLED internally)
-    const context = await createStealthContext(browser);
+    // Create stealth context (FORCE ENABLE for SkiClubPro anti-bot protection)
+    const context = await createStealthContext(browser, { forceEnable: true });
     const page = await context.newPage();
 
     console.log('[Browserbase] ✓ Connected to session:', session.id);

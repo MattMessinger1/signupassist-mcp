@@ -7,6 +7,7 @@ import { Browser, BrowserContext } from 'playwright-core';
 
 export interface StealthOptions {
   userAgent?: string;
+  forceEnable?: boolean;
 }
 
 /**
@@ -19,10 +20,10 @@ export async function createStealthContext(
   browser: Browser,
   opts: StealthOptions = {}
 ): Promise<BrowserContext> {
-  const antibotEnabled = process.env.ANTIBOT_ENABLED === 'true';
+  const antibotEnabled = process.env.ANTIBOT_ENABLED === 'true' || opts.forceEnable === true;
   
   if (!antibotEnabled) {
-    console.log('[Antibot] ANTIBOT_ENABLED=false, using standard context');
+    console.log('[Antibot] ANTIBOT_ENABLED=false and forceEnable=false, using standard context');
     return browser.contexts()[0] || await browser.newContext();
   }
   
