@@ -292,33 +292,57 @@ export async function loginWithCredentials(
     await page.press(passSel, 'Enter').catch(() => {});
   }
 
-  // Race between success signals and error messages
+  // Check for success indicators first, then error messages
   console.log("DEBUG Waiting for login result...");
   const submitTime = Date.now();
   
   try {
-    // Fast cookie detection - check every 300ms for up to 8s
-    await Promise.race([
+    // Check for SUCCESS indicators with multiple signals
+    const loginResult = await Promise.race([
+      // Success signal 1: Session cookie appears
       page.waitForFunction(() => {
         return document.cookie.includes('SESS') || document.cookie.includes('SSESS');
-      }, { timeout: 8000 }),
+      }, { timeout: 8000 }).then(() => 'cookie'),
       
-      // Error detection (keep this for failures)
+      // Success signal 2: URL changes away from login page
+      page.waitForFunction(() => !window.location.href.includes('/user/login'), { timeout: 8000 })
+        .then(() => 'url'),
+      
+      // Success signal 3: Logout link appears
+      page.waitForSelector('a:has-text("Log out"), a:has-text("Sign out")', { timeout: 8000 })
+        .then(() => 'logout'),
+      
+      // Failure signal: Error message appears
       page.waitForSelector('.messages--error, .messages--warning, div[role="alert"]', { timeout: 8000 })
         .then(async () => {
-          const msg = await page.locator('.messages--error').innerText().catch(() => '');
-          if (msg) {
-            console.log(`DEBUG ✗ Drupal error message: ${msg.trim()}`);
-            throw new Error(`Login failed: ${msg.trim()}`);
-          }
+          const msg = await page.locator('.messages--error, .messages--warning, div[role="alert"]').first().innerText().catch(() => '');
+          console.log(`DEBUG ✗ Error message detected: ${msg.trim()}`);
+          throw new Error(`Login failed: ${msg.trim() || 'Unknown error message appeared'}`);
         })
-    ]);
+    ]).catch((error: any) => {
+      // If all promises timeout, check if we're actually logged in anyway
+      if (error.name === 'TimeoutError') {
+        console.log('DEBUG Timeout waiting for explicit signals - checking login status directly...');
+        return 'timeout';
+      }
+      throw error;
+    });
     
-    // Verify login
-    const success = await isLoggedIn(page);
-    if (!success) {
-      throw new Error('Auth cookie appeared but login verification failed');
+    console.log(`DEBUG Login detection result: ${loginResult}`);
+    
+    // If we got a success signal, verify it
+    if (loginResult !== 'timeout') {
+      const success = await isLoggedIn(page);
+      if (!success) {
+        console.log('DEBUG ⚠ Success signal detected but verification failed - checking page state...');
+        // Fall through to comprehensive check below
+      } else {
+        console.log(`DEBUG ✓ Login verified via ${loginResult} signal`);
+      }
     }
+    
+    // Verify login state with comprehensive check
+    const success = await isLoggedIn(page);
 
     const responseTime = Date.now() - submitTime;
     console.log(`DEBUG Form response took ${responseTime}ms`);
