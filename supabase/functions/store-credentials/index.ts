@@ -119,7 +119,7 @@ serve(async (req) => {
     try {
       const { data, error } = await supabase
         .from('stored_credentials')
-        .upsert([payload], { onConflict: 'user_id,alias', ignoreDuplicates: false })
+        .upsert([payload], { onConflict: 'user_id,provider', ignoreDuplicates: false })
         .select('id, user_id, provider, alias, created_at')
       
       // Temporarily remove .single() for full visibility

@@ -74,14 +74,13 @@ Deno.serve(async (req) => {
       throw new Error('MCP_ACCESS_TOKEN not configured');
     }
 
-    // Check for existing credential
+    // Check for existing credential using the actual unique constraint
     const { data: existingCred } = await supabase
       .from('stored_credentials')
       .select('id')
       .eq('user_id', user.id)
       .eq('provider', provider)
-      .ilike('alias', `%${org_ref}%`)
-      .single();
+      .maybeSingle();
 
     console.log(`[BrowserbaseLogin] Existing credential lookup: ${existingCred ? existingCred.id : 'none'}`);
 
@@ -153,7 +152,7 @@ Deno.serve(async (req) => {
         const { data: storeResult, error: storeError } = await supabase.functions.invoke('store-credentials', {
           body: {
             alias: `${org_ref}-account`,
-            provider_slug: provider,
+            provider: provider,
             email,
             password,
             user_id: user.id
