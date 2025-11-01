@@ -198,7 +198,12 @@ function waitForLoginError(page: Page, timeout = 8000): Promise<ElementHandle<HT
 /**
  * Try to resume existing provider session
  */
-async function tryResumeProviderSession(userId: string, credentialId: string, orgRef: string): Promise<{ isValid: true; session_token: string } | { isValid: false }> {
+async function tryResumeProviderSession(userId: string, credentialId: string | undefined, orgRef: string): Promise<{ isValid: true; session_token: string } | { isValid: false }> {
+  // Skip if no credential_id (first-time login with email+password)
+  if (!credentialId) {
+    return { isValid: false };
+  }
+  
   try {
     const sessionKey = generateSessionKey(userId, credentialId, orgRef);
     const existing = await getSession();
@@ -985,19 +990,20 @@ export const skiClubProTools = {
           
           console.log(`DEBUG: Starting login for org: ${orgRef}, baseUrl: ${baseUrl}`);
           
-          // FAST-PATH: Check for reusable session first
-          console.log('[scp.login] Checking for reusable session...');
-          const resumed = await tryResumeProviderSession(userId, args.credential_id, orgRef);
-          if (resumed.isValid) {
-            console.log('[scp.login] ✓ Reusing existing session, skipping login');
-            console.table({
-              action: 'session_reused',
-              user_id: userId,
-              org_ref: orgRef,
-              total_time: '~2s'
-            });
-            
-            return {
+          // FAST-PATH: Check for reusable session first (only if credential_id provided)
+          if (args.credential_id) {
+            console.log('[scp.login] Checking for reusable session...');
+            const resumed = await tryResumeProviderSession(userId, args.credential_id, orgRef);
+            if (resumed.isValid) {
+              console.log('[scp.login] ✓ Reusing existing session, skipping login');
+              console.table({
+                action: 'session_reused',
+                user_id: userId,
+                org_ref: orgRef,
+                total_time: '~2s'
+              });
+              
+              return {
               success: true,
               session_token: resumed.session_token,
               email: 'reused-session',
@@ -1007,8 +1013,12 @@ export const skiClubProTools = {
               message: 'Reused existing valid session'
             };
           }
+            console.log('[scp.login] No reusable session, proceeding with login...');
+          } else {
+            console.log('[scp.login] First-time login (no credential_id), skipping session reuse');
+          }
           
-          console.log('[scp.login] No valid session found, proceeding with fresh login');
+          console.log('[scp.login] Proceeding with fresh login');
           
           // Launch Browserbase session
           session = await launchBrowserbaseSession();
@@ -1054,11 +1064,14 @@ export const skiClubProTools = {
           const sessionToken = generateToken();
           await storeSession(sessionToken, session, 300000); // 5 minutes
           
-          // Save session state for potential reuse
-          const sessionKey = generateSessionKey(userId, args.credential_id, orgRef);
-          await saveSessionState(session.page, sessionKey);
-          
-          console.log(`[scp.login] Session stored with token: ${sessionToken} for reuse`);
+          // Save session state for potential reuse (only if credential_id provided)
+          if (args.credential_id) {
+            const sessionKey = generateSessionKey(userId, args.credential_id, orgRef);
+            await saveSessionState(session.page, sessionKey);
+            console.log(`[scp.login] Session stored with token: ${sessionToken} for reuse`);
+          } else {
+            console.log(`[scp.login] Session stored with token: ${sessionToken} (no credential_id for reuse)`);
+          }
           
           return {
             success: true,
