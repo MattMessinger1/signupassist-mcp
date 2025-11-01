@@ -28,6 +28,10 @@ import { skiClubProTools } from './providers/skiclubpro.js';
 // import { daysmartTools } from '../providers/daysmart/index';
 // import { campminderTools } from '../providers/campminder/index';
 
+// Import page readiness registry and helpers
+import { registerReadiness } from './providers/utils/pageReadinessRegistry.js';
+import { waitForSkiClubProReady } from './providers/utils/skiclubproReadiness.js';
+
 // Import prereqs registry
 import { registerAllProviders } from './prereqs/providers.js';
 
@@ -103,6 +107,14 @@ class SignupAssistMCPServer {
   }
 
   private registerTools() {
+    // 🔔 Register page readiness helpers for each provider
+    // REMINDER FOR FUTURE PROVIDERS:
+    // Each time you add a new provider (e.g., campminder, leagueapps),
+    // 1. Create mcp_server/providers/utils/<providerId>Readiness.ts
+    // 2. Implement waitFor<ProviderName>Ready(page: Page)
+    // 3. Register it here using registerReadiness("<id>", fn)
+    registerReadiness("scp", waitForSkiClubProReady);
+    
     // Register SkiClubPro tools
     Object.entries(skiClubProTools).forEach(([name, handler]) => {
       this.tools.set(name, {

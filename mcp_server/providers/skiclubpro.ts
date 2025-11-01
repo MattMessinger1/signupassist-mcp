@@ -18,6 +18,7 @@ import { runChecks, buildBaseUrl } from '../prereqs/registry.js';
 import { getOrgOverride } from '../prereqs/providers.js';
 import type { ProviderResponse } from './types.js';
 import { PROMPT_VERSION } from '../ai/AIOrchestrator.js';
+import { getReadiness } from './utils/pageReadinessRegistry.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -81,30 +82,6 @@ export interface FieldSchema {
     categories: string[];
     discovered_at: string;
   };
-}
-
-/**
- * Wait for SkiClubPro program listing page to be ready
- * Ensures registration table and interactive buttons are fully loaded
- */
-async function waitForSkiClubProProgramsReady(page: Page): Promise<void> {
-  console.log('[SCP Ready] Waiting for program content...');
-  
-  try {
-    // Wait for any of these indicators that program content is loaded:
-    // - Register buttons
-    // - Sold Out buttons
-    // - Waiting list buttons
-    await page.waitForSelector(
-      'a.btn:has-text("Register"), a.btn:has-text("Sold Out"), a.btn:has-text("Waiting list")',
-      { timeout: 20000 }
-    );
-    
-    console.log('[SCP Ready] ✓ Program content detected');
-  } catch (error) {
-    console.warn('[SCP Ready] ⚠️ Timeout waiting for program buttons, proceeding anyway');
-    // Don't throw - let the extractor handle missing content gracefully
-  }
 }
 
 /**
@@ -1157,11 +1134,9 @@ export const skiClubProTools = {
         console.log('[scp.find_programs] Locating program page...');
         const programPageUrl = await locateProgramPage(session.page, baseUrl, args.query);
         
-        // Force desktop viewport to avoid mobile card view
-        await session.page.setViewportSize({ width: 1280, height: 900 });
-
         // ✅ Provider-specific page readiness check
-        await waitForSkiClubProProgramsReady(session.page);
+        const ensureReady = getReadiness("scp");
+        await ensureReady(session.page);
         console.log("[scp.find_programs] ✓ Program table loaded; starting extraction");
         
         // ✅ Three-Pass Extractor: AI-powered program extraction
