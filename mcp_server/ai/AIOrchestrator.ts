@@ -388,7 +388,7 @@ class AIOrchestrator {
    * @param text - User's message text
    * @returns Detected intent category or null
    */
-  private parseIntentFromText(text: string): string | null {
+  private parseIntentFromText(text: string): "lessons" | "membership" | "camp" | "race" | "private" | null {
     const normalized = text.toLowerCase().trim();
     
     // Define keyword mappings for each intent category
