@@ -606,10 +606,17 @@ class AIOrchestrator {
       });
       
       // Return grouped cards response
+      // Map CTAChip[] to CTASpec[] format
+      const ctaSpecs: CTASpec[] = (cardsPayload.cta?.options || []).map(chip => ({
+        label: chip.label,
+        action: chip.payload.intent,
+        variant: "outline" as const
+      }));
+      
       return {
         message: programsReadyMsg,
         cards: [],
-        cta: cardsPayload.cta?.options || [],
+        cta: ctaSpecs,
         contextUpdates: {},
         componentType: "cards-grouped",
         componentPayload: cardsPayload
