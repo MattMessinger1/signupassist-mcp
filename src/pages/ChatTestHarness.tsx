@@ -847,13 +847,35 @@ function ChatTestHarnessContent() {
       }
       
       addLog("info", "extractor", "✅ User JWT obtained for credential lookup");
-      addAssistantMessage("🔍 Running Three-Pass Extractor on Blackhawk Ski Club...");
       
-      // ✅ FIX: Pass user_jwt to enable lookupCredentialsById()
+      // FIX: Perform login first to get session_token (prevents double login)
+      addLog("info", "extractor", "🔐 Performing login to get session token...");
+      addAssistantMessage("🔐 Logging in to get session token (prevents double login)...");
+      
+      const loginResult = await callMCPTool('scp.login', {
+        org_ref: 'blackhawk-ski',
+        credential_id: credentialId,
+        user_jwt: userJwt
+      });
+      
+      if (!loginResult.success) {
+        addLog("error", "extractor", `Login failed: ${loginResult.error}`);
+        addAssistantMessage(`❌ Login failed: ${loginResult.error}. Check logs for details.`);
+        setIsProcessing(false);
+        return;
+      }
+      
+      const sessionToken = loginResult.session_token;
+      addLog("info", "extractor", `✅ Login successful, session_token: ${sessionToken}`);
+      
+      // Now call find_programs with session_token (should reuse session, no double login)
+      addAssistantMessage("🔍 Running Three-Pass Extractor (reusing login session)...");
+      
       const result = await callMCPTool('scp.find_programs', {
         org_ref: 'blackhawk-ski',
         credential_id: credentialId,
         user_jwt: userJwt,  // CRITICAL: Required for credential decryption
+        session_token: sessionToken,  // CRITICAL: Reuse session to prevent double login
         query: '',
         category: 'all'
       });

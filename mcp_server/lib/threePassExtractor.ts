@@ -26,6 +26,10 @@ export interface ProgramData {
  * Pass 2: Extract structured data
  * Pass 3: AI-powered validation and normalization
  */
+const MODEL_VISION = "gpt-5-2025-08-07";
+const MODEL_TEXT = "gpt-5-mini-2025-08-07";
+const MODEL_VALIDATE = "gpt-5-mini-2025-08-07";
+
 export async function runThreePassExtractor(
   page: Page,
   orgRef: string,
@@ -33,6 +37,7 @@ export async function runThreePassExtractor(
 ): Promise<ProgramData[]> {
   
   console.log('[ThreePassExtractor] Starting extraction...');
+  console.log('[ExtractorModels]', { MODEL_VISION, MODEL_TEXT, MODEL_VALIDATE });
   
   // Check API key BEFORE instantiation
   const apiKey = process.env.OPENAI_API_KEY;
@@ -43,7 +48,6 @@ export async function runThreePassExtractor(
   }
   
   const openai = new OpenAI({ apiKey });
-  console.log('[ThreePassExtractor] Using model: gpt-5-2025-08-07 (vision), gpt-5-mini-2025-08-07 (text)');
   
   try {
     const pageURL = page.url();

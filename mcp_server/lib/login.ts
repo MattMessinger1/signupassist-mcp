@@ -129,7 +129,8 @@ export async function loginWithCredentials(
   page: Page, 
   config: ProviderLoginConfig, 
   creds: { email: string; password: string },
-  browser?: Browser
+  browser?: Browser,
+  postLoginUrl?: string  // Optional: Force navigation after login
 ): Promise<{
   url?: string;
   title?: string;
@@ -412,6 +413,18 @@ export async function loginWithCredentials(
         console.log('DEBUG ⚠️ No session cookie found in extracted cookies');
       }
       
+      // Force navigation to desired page if specified (don't trust ?destination=)
+      if (postLoginUrl) {
+        console.log(`[Login] Forcing navigation to: ${postLoginUrl}`);
+        await page.goto(postLoginUrl, { waitUntil: 'networkidle', timeout: 30000 });
+        
+        // Wait for page to be ready (import dynamically to avoid circular dependency)
+        const { waitForSkiClubProReady } = await import('../providers/utils/skiclubproReadiness.js');
+        await waitForSkiClubProReady(page, 2);
+        
+        url = page.url();
+        console.log(`[Login] ✅ Navigation complete: ${url}`);
+      }
       
       console.log('DEBUG ✓ Session A complete - ready to close');
       

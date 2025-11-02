@@ -6,11 +6,27 @@ import { UrlPattern, ProviderConfig, OrgConfig } from '../types.js';
 import { SKICLUBPRO_DEFAULTS } from '../config/defaults.js';
 import { getOrgConfig } from '../config/orgs/index.js';
 
+/**
+ * Resolve base URL for an organization
+ * Single source of truth - prevents URL inconsistencies
+ */
+export function resolveBaseUrl(org_ref: string): string {
+  // FIX: Single consistent URL per org (no hyphen flipping)
+  if (org_ref === "blackhawk-ski" || org_ref === "blackhawk-ski-club") {
+    return "https://blackhawk.skiclubpro.team";
+  }
+  
+  // Default pattern for other orgs
+  return `https://${org_ref}.skiclubpro.team`;
+}
+
 export class UrlBuilder {
   private providerConfig: ProviderConfig;
   private orgConfig?: OrgConfig;
+  private baseUrl: string;
 
   constructor(orgRef: string, providerConfig?: ProviderConfig) {
+    this.baseUrl = resolveBaseUrl(orgRef);
     this.providerConfig = providerConfig || SKICLUBPRO_DEFAULTS;
     this.orgConfig = getOrgConfig(orgRef);
   }
@@ -22,7 +38,7 @@ export class UrlBuilder {
     if (this.orgConfig?.customDomain) {
       return `https://${this.orgConfig.customDomain}/dashboard`;
     }
-    return this.providerConfig.urls.dashboard(orgRef);
+    return `${this.baseUrl}/dashboard`;
   }
 
   /**
@@ -32,7 +48,7 @@ export class UrlBuilder {
     if (this.orgConfig?.customDomain) {
       return `https://${this.orgConfig.customDomain}/registration`;
     }
-    return this.providerConfig.urls.programs(orgRef);
+    return `${this.baseUrl}/registration`;
   }
 
   /**
@@ -42,7 +58,7 @@ export class UrlBuilder {
     if (this.orgConfig?.customDomain) {
       return `https://${this.orgConfig.customDomain}/registration/${programId}`;
     }
-    return this.providerConfig.urls.registration(orgRef, programId);
+    return `${this.baseUrl}/registration/${programId}`;
   }
 
   /**
@@ -52,7 +68,7 @@ export class UrlBuilder {
     if (this.orgConfig?.customDomain) {
       return `https://${this.orgConfig.customDomain}/cart/checkout`;
     }
-    return this.providerConfig.urls.payment(orgRef);
+    return `${this.baseUrl}/cart/checkout`;
   }
 
   /**
@@ -60,8 +76,8 @@ export class UrlBuilder {
    */
   login(orgRef: string): string {
     if (this.orgConfig?.customDomain) {
-      return `https://${this.orgConfig.customDomain}/user/login?destination=/dashboard`;
+      return `https://${this.orgConfig.customDomain}/user/login?destination=/registration`;
     }
-    return this.providerConfig.urls.login(orgRef);
+    return `${this.baseUrl}/user/login?destination=/registration`;
   }
 }

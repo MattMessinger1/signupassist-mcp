@@ -13,25 +13,37 @@ type ManagedSession = {
 
 const sessions = new Map<string, ManagedSession>();
 
+// Environment configuration
+const SESSION_CACHE_ENABLED = process.env.SESSION_CACHE_ENABLED === 'true';
+const SESSION_TTL_MS = parseInt(process.env.SESSION_TTL_MS || '300000'); // 5 min default
+
+console.log(`[SessionManager] Caching: ${SESSION_CACHE_ENABLED ? 'ENABLED' : 'DISABLED'}, TTL: ${SESSION_TTL_MS}ms`);
+
 /**
  * Get a session - either reuse existing or create new
- * Returns session and token for optional chaining
+ * Returns session and token for optional chaining, or null if caching disabled
  */
-export async function getSession(token?: string): Promise<{ session: BrowserbaseSession; newToken: string }> {
+export async function getSession(token?: string): Promise<{ session: BrowserbaseSession; newToken: string } | null> {
+  if (!SESSION_CACHE_ENABLED) {
+    console.log('[SessionManager] Session caching disabled, skipping reuse');
+    return null;
+  }
+  
   if (!token) {
-    const session = await launchBrowserbaseSession();
-    const newToken = generateToken();
-    return { session, newToken };
+    console.log('[SessionManager] No token provided, cannot reuse');
+    return null;
   }
 
   const managed = sessions.get(token);
   if (!managed || Date.now() > managed.expiresAt) {
+    if (managed) {
+      console.log('[SessionManager] Session expired, removing from cache');
+    }
     sessions.delete(token);
-    const session = await launchBrowserbaseSession();
-    const newToken = generateToken();
-    return { session, newToken };
+    return null;
   }
   
+  console.log('[SessionManager] ✅ Reusing existing session:', token);
   return { session: managed.session, newToken: token };
 }
 
@@ -48,15 +60,21 @@ export async function releaseSession(token: string, session: BrowserbaseSession)
 }
 
 /**
- * Store session for potential reuse (default 60s TTL)
+ * Store session for potential reuse (uses configured TTL)
  * FIX 3: Support storing storageState path for auth preservation
  */
-export function storeSession(token: string, session: BrowserbaseSession, ttlMs = 60000, statePath?: string): string {
+export function storeSession(token: string, session: BrowserbaseSession, ttlMs = SESSION_TTL_MS, statePath?: string): string {
+  if (!SESSION_CACHE_ENABLED) {
+    console.log('[SessionManager] Session caching disabled, not storing');
+    return token;
+  }
+  
   sessions.set(token, { 
     session, 
     expiresAt: Date.now() + ttlMs,
     statePath
   });
+  console.log('[SessionManager] 📦 Stored session:', token, 'expires in', ttlMs, 'ms');
   return token;
 }
 

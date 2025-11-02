@@ -1028,7 +1028,11 @@ export const skiClubProTools = {
             orgRef,
           });
 
-          // Perform login using FAST infrastructure
+          // Build registration URL for post-login navigation
+          const urlBuilder = new UrlBuilder(orgRef);
+          const registrationUrl = urlBuilder.programs(orgRef);
+          
+          // Perform login using FAST infrastructure with forced navigation
           const loginProof = await ensureLoggedIn(
             session,
             args.credential_id,
@@ -1408,7 +1412,7 @@ export const skiClubProTools = {
         const override = getOrgOverride(orgRef);
         const baseUrl = buildBaseUrl(orgRef, override.customDomain);
         
-        // Try to restore session if token provided
+        // FIX: Try to restore session if token provided
         if (sessionToken) {
           console.log(`[scp.find_programs] 🔄 Attempting to reuse session from token: ${sessionToken}`);
           const restored = await getSession(sessionToken);
@@ -1416,6 +1420,17 @@ export const skiClubProTools = {
             session = restored.session;
             sessionToken = restored.newToken;
             console.log(`[scp.find_programs] ✅ Successfully reused session (no new login needed)`);
+            
+            // Ensure we're on /registration
+            const urlBuilder = new UrlBuilder(orgRef);
+            const programsUrl = urlBuilder.programs(orgRef);
+            await session.page.goto(programsUrl, { waitUntil: 'networkidle', timeout: 30000 });
+            
+            // Wait for page readiness
+            const readinessFn = getReadiness('skiclubpro');
+            await readinessFn(session.page);
+            
+            console.log(`[scp.find_programs] ✅ Navigated to programs page with existing session`);
           } else {
             console.log('[scp.find_programs] ⚠️ Session token not found or expired - will create new session');
           }
@@ -1426,18 +1441,32 @@ export const skiClubProTools = {
           console.log('[scp.find_programs] Launching new Browserbase session...');
           session = await launchBrowserbaseSession();
         
-        // Login with credentials directly to programs page (skip dashboard)
+          // Login with credentials and force navigation to /registration
           console.log('[scp.find_programs] Logging in...');
           const credentials = await lookupCredentialsById(args.credential_id, args.user_jwt);
           const urlBuilder = new UrlBuilder(orgRef);
+          const loginUrl = urlBuilder.login(orgRef);
           const programsUrl = urlBuilder.programs(orgRef);
-          const loginUrl = `${baseUrl}/user/login?destination=${new URL(programsUrl).pathname}`;
-          console.log(`[scp.find_programs] Login destination: ${loginUrl}`);
-          await session.page.goto(loginUrl, { waitUntil: 'networkidle' });
-          await loginWithCredentials(session.page, skiClubProConfig, credentials, session.browser);
+          
+          console.log(`[scp.find_programs] Login URL: ${loginUrl}`);
+          console.log(`[scp.find_programs] Post-login target: ${programsUrl}`);
+          
+          // Use config-based login with forced navigation
+          const loginConfig: ProviderLoginConfig = {
+            loginUrl,
+            selectors: {
+              username: ['#edit-name', 'input[name="name"]'],
+              password: ['#edit-pass', 'input[name="pass"]'],
+              submit: ['#edit-submit', 'button[type="submit"]', 'input[type="submit"]']
+            },
+            postLoginCheck: ['a:has-text("Log out")', 'a:has-text("Logout")'],
+            timeout: 30000
+          };
+          
+          await loginWithCredentials(session.page, loginConfig, credentials, session.browser, programsUrl);
           console.log(`[scp.find_programs] ✅ Login complete, landed at: ${session.page.url()}`);
           
-          // FIX 3: Store authenticated session state (includes httpOnly cookies)
+          // Store authenticated session state (includes httpOnly cookies)
           sessionToken = generateToken();
           const statePath = `/tmp/session-${sessionToken}.json`;
           await session.context.storageState({ path: statePath });

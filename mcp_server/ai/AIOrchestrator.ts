@@ -917,11 +917,31 @@ class AIOrchestrator {
           // Handle callback after user enters credentials
           const { credential_id, cookies } = payload;
           
-          // FIX: Preserve provider and user_jwt in context before auto-discovery
+          // Login first to get session_token
+          console.log('[credentials_submitted] Performing login to get session token...');
+          const loginResult = await this.callTool('scp.login', {
+            credential_id,
+            org_ref: context.provider?.orgRef || 'blackhawk-ski',
+            user_jwt: context.user_jwt ?? userJwt
+          });
+          
+          if (!loginResult.success) {
+            return this.formatResponse(
+              `❌ Login failed: ${loginResult.error || 'Unknown error'}. Please try again.`,
+              undefined,
+              [{ label: "Retry Login", action: "show_credentials_card", variant: "accent" }],
+              {}
+            );
+          }
+          
+          console.log('[credentials_submitted] Login successful, session_token:', loginResult.session_token);
+          
+          // FIX: Preserve provider, user_jwt, and session_token in context before auto-discovery
           await this.updateContext(sessionId, {
             provider: context.provider || { name: 'Blackhawk Ski Club', orgRef: 'blackhawk-ski' },
             user_jwt: context.user_jwt ?? userJwt,  // Preserve JWT from parameter or context
             credential_id,
+            session_token: loginResult.session_token,  // Store session token for reuse
             provider_cookies: cookies || [],
             loginCompleted: true,
             step: FlowStep.PROGRAM_SELECTION  // Skip INTENT_CAPTURE
