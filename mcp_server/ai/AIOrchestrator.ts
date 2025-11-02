@@ -623,9 +623,13 @@ class AIOrchestrator {
             });
           }
           
+          // Add defensive check for provider name
+          const providerName = context.provider?.name || "your provider";
+          console.log(`[credentials_submitted] Returning intent chips for provider: ${providerName}`);
+          
           // NEW: Ask for program intent instead of showing programs
           return this.formatResponse(
-            `✅ You're securely logged in to ${context.provider?.name}. To tailor what I pull next, which type of program are you interested in?`,
+            `✅ You're securely logged in to ${providerName}. To tailor what I pull next, which type of program are you interested in?`,
             undefined,
             [
               { label: "Ski Lessons", action: "intent_lessons", variant: "outline" },

@@ -537,16 +537,34 @@ class SignupAssistMCPServer {
             if (action) {
               // Card action (button click)
               console.log(`[Orchestrator] handleAction: ${action}`, { hasJwt: !!userJwt });
-              result = await this.orchestrator.handleAction(action, payload || {}, sessionId, userJwt);
+              
+              try {
+                result = await this.orchestrator.handleAction(action, payload || {}, sessionId, userJwt);
+                console.log(`[Orchestrator] handleAction result:`, result ? 'success' : 'null/undefined');
+                
+                if (!result) {
+                  throw new Error(`handleAction returned ${result} for action: ${action}`);
+                }
+              } catch (actionError: any) {
+                console.error(`[Orchestrator] handleAction error for ${action}:`, actionError);
+                throw actionError; // Re-throw to outer catch
+              }
             } else if (message) {
               // Text message
               console.log(`[Orchestrator] generateResponse: ${message}`, { hasLocation: !!userLocation, hasJwt: !!userJwt });
               result = await this.orchestrator.generateResponse(message, sessionId, userLocation, userJwt);
+              console.log(`[Orchestrator] generateResponse result:`, result ? 'success' : 'null/undefined');
+              
+              if (!result) {
+                throw new Error(`generateResponse returned ${result}`);
+              }
             } else {
               res.writeHead(400, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: 'Missing message or action' }));
               return;
             }
+
+            console.log(`[Orchestrator] Sending response:`, JSON.stringify(result).substring(0, 200));
 
             res.writeHead(200, { 
               'Content-Type': 'application/json',
