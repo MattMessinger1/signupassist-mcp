@@ -87,11 +87,12 @@ export enum FlowStep {
     formAnswers?: Record<string, any>;
     conversationHistory?: Array<{ role: string; content: string }>;
     loginCompleted?: boolean;
-    confirmed?: boolean;
-    user_jwt?: string;
-    credential_id?: string;
-    credentials?: { [provider: string]: { id: string; credential_id: string } };
-    pendingLogin?: { provider: string; orgRef: string };
+  confirmed?: boolean;
+  user_jwt?: string;
+  credential_id?: string;
+  session_token?: string;  // Browser session token for reuse
+  credentials?: { [provider: string]: { id: string; credential_id: string } };
+  pendingLogin?: { provider: string; orgRef: string };
     
     // Smart Program Filtering Properties
     availablePrograms?: any[];
