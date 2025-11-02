@@ -86,6 +86,7 @@ export async function groupProgramsByTheme(
   }
 
   console.log(`[ProgramGrouping] Classifying ${programs.length} programs into themes...`);
+  console.log('[ProgramGrouping] Using model: gpt-5-mini-2025-08-08 (semantic grouping)');
 
   const response = await openai.chat.completions.create({
     model: 'gpt-5-mini-2025-08-07',  // Reasoning capability for semantic grouping accuracy

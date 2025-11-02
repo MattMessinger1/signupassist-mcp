@@ -1463,10 +1463,21 @@ export const skiClubProTools = {
         
         // ✅ Wait for page to be fully ready with program table loaded
         console.log('[scp.find_programs] Waiting for page readiness...');
-        const { waitForSkiClubProReady } = await import('./utils/skiclubproReadiness.js');
-        await waitForSkiClubProReady(session.page);
-        console.log('[scp.find_programs] ✅ Page ready, starting extraction...');
-        console.log(`[scp.find_programs] Current URL: ${currentUrl}`);
+        try {
+          const { waitForSkiClubProReady } = await import('./utils/skiclubproReadiness.js');
+          await waitForSkiClubProReady(session.page);
+          console.log('[scp.find_programs] ✅ Page ready, starting extraction...');
+        } catch (timeoutError: any) {
+          console.error('[scp.find_programs] ❌ Page readiness timeout:', timeoutError.message);
+          return {
+            success: false,
+            error: 'Page readiness timeout',
+            timeout: true,
+            message: 'The page took too long to load program listings. This might be temporary.',
+            timestamp: new Date().toISOString()
+          };
+        }
+        console.log(`[scp.find_programs] Current URL: ${session.page.url()}`);
         
         // ✅ Three-Pass Extractor: AI-powered program extraction
         

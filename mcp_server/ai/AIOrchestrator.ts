@@ -549,6 +549,27 @@ class AIOrchestrator {
       if (!result.success) {
         Logger.error('[handleAutoProgramDiscovery] Tool error:', result.error);
         
+        // Check for timeout specifically
+        if ((result as any).timeout) {
+          Logger.warn('[handleAutoProgramDiscovery] Page readiness timeout detected');
+          const timeoutMsg = getMessageForState("program_discovery_error", {
+            provider_name: providerName
+          });
+          
+          // Store retry count in context
+          const retryCount = (context as any).discovery_retry_count || 0;
+          await this.updateContext(sessionId, { 
+            discovery_retry_count: retryCount + 1 
+          } as any);
+          
+          return this.formatResponse(
+            timeoutMsg,
+            [],
+            [{ label: "Retry Now", action: "retry_program_discovery", variant: "accent" }],
+            {}
+          );
+        }
+        
         if (result.error?.includes('session') || result.error?.includes('login')) {
           const sessionExpiredMsg = getMessageForState("session_expired", {
             provider_name: providerName
@@ -589,6 +610,8 @@ class AIOrchestrator {
       // Group programs using the grouping module
       const { groupProgramsByTheme } = await import('../lib/programGrouping.js');
       const groupedResult = await groupProgramsByTheme(programs, 4);
+      
+      Logger.info(`[handleAutoProgramDiscovery] ✅ ${programs.length} programs found, grouped into ${groupedResult.groups.length} themes`);
       
       // Build UI payload using card payload builder
       const cardsPayload = buildGroupedCardsPayload(groupedResult.groups, 4);
@@ -915,7 +938,9 @@ class AIOrchestrator {
           }
           
           const providerName = context.provider?.name || "your provider";
+          const hasSessionToken = !!context.provider_session_token;
           console.log(`[credentials_submitted] Auto-triggering program discovery for: ${providerName}`);
+          console.log(`[credentials_submitted] ${hasSessionToken ? '✅ Reusing session from token' : '🔁 New session will be created'}`);
           
           // Use V2 post-login message
           const postLoginMessage = getMessageForState("post_login_v2", { 
@@ -938,6 +963,12 @@ class AIOrchestrator {
             
           } catch (error: any) {
             Logger.error('[credentials_submitted] Auto-discovery failed:', error);
+            
+            // Store retry count
+            const retryCount = (context as any).discovery_retry_count || 0;
+            await this.updateContext(sessionId, { 
+              discovery_retry_count: retryCount + 1 
+            } as any);
             
             // Return error with retry option
             const errorMsg = getMessageForState("program_discovery_error", {
@@ -1121,13 +1152,40 @@ class AIOrchestrator {
 
         case "retry_program_discovery":
           // User clicked retry after auto-discovery failed
+          const retryCount = (context as any).discovery_retry_count || 0;
+          const MAX_RETRIES = 2;
+          
+          // Check if max retries exceeded
+          if (retryCount >= MAX_RETRIES) {
+            Logger.warn(`[retry_program_discovery] Max retries (${MAX_RETRIES}) exceeded`);
+            return this.formatResponse(
+              `I've tried a few times but the page isn't loading properly. Let's reconnect to make sure we have a fresh session.`,
+              [],
+              [{ label: "Reconnect", action: "connect_account", variant: "accent" }],
+              { discovery_retry_count: 0 }
+            );
+          }
+          
+          // Add 5-second delay before retry (simulated with immediate execution + message)
+          Logger.info(`[retry_program_discovery] Retry attempt ${retryCount + 1}/${MAX_RETRIES}`);
+          
           try {
             const retryResult = await this.handleAutoProgramDiscovery(sessionId);
+            
+            // Reset retry count on success
+            await this.updateContext(sessionId, { discovery_retry_count: 0 } as any);
+            
             return retryResult;
           } catch (error: any) {
             const errorMsg = getMessageForState("program_discovery_error", {
               provider_name: context.provider?.name
             });
+            
+            // Increment retry count
+            await this.updateContext(sessionId, { 
+              discovery_retry_count: retryCount + 1 
+            } as any);
+            
             return this.formatResponse(
               errorMsg,
               [],

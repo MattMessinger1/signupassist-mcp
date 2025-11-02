@@ -100,8 +100,8 @@ export function getSessionExpiredMessage(vars: MessageVariables): string {
 export function getPostLoginMessageV2(vars: MessageVariables): string {
   const providerName = vars.provider_name || "your provider";
   return `🎿 Great news — you're securely logged in to ${providerName}!
-I'm now pulling all available programs and organizing them by theme (Lessons, Camps, Race Team…) so it's quick to browse. ⏳
-(Your login session is active; SignupAssist never stores your password or payment info.)`;
+I'll now take you straight to your programs page and pull everything that's open for registration. ⏳
+(No need to log in again — your secure session is still active.)`;
 }
 
 /**
@@ -113,7 +113,8 @@ export function getProgramsReadyMessageV2(vars: MessageVariables): string {
   const providerName = vars.provider_name || "your provider";
   const total = vars.counts?.total || 0;
   return `✅ I found ${total} program${total !== 1 ? 's' : ''} at ${providerName}.
-Here's a quick view grouped by theme. Each card shows the name, schedule, and price — just tap one to learn more or enroll.`;
+They're grouped by theme so you can scan easily — Lessons, Camps, Race Team, and more.
+(Your session remains active for a few minutes, so you can explore freely.)`;
 }
 
 /**
@@ -123,8 +124,9 @@ Here's a quick view grouped by theme. Each card shows the name, schedule, and pr
  */
 export function getProgramDiscoveryErrorMessage(vars: MessageVariables): string {
   const providerName = vars.provider_name || "your provider";
-  return `Hmm — I couldn't reach the program listings just now. It might be a temporary issue on ${providerName}'s site.
-Let's retry in a few seconds ⏳ (you won't need to log in again).`;
+  return `Hmm — I couldn't reach the program listings on ${providerName} just now.
+It looks like the page took too long to load. Let's try again in a few seconds ⏳.
+(You're still logged in; I'll reuse your session.)`;
 }
 
 /**

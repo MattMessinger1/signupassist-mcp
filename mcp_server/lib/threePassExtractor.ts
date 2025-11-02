@@ -36,6 +36,7 @@ export async function runThreePassExtractor(
 ): Promise<ProgramData[]> {
   
   console.log('[ThreePassExtractor] Starting extraction...');
+  console.log('[ThreePassExtractor] Using model: gpt-5-2025-08-07 (vision), gpt-5-mini-2025-08-07 (text)');
   
   try {
     // Capture page state

@@ -1,28 +1,41 @@
 /**
  * Tool Guidance for AIOrchestrator
  * 
- * TOOL_GUIDANCE__AUTO_PROGRAM_DISCOVERY
+ * TOOL_GUIDANCE__AUTO_PROGRAM_DISCOVERY_V2
  * 
  * Goal: After successful provider login, automatically fetch and display programs.
  * Do NOT prompt the user for intent — immediately call scp.find_programs.
  * 
  * Flow:
  * 1. credentials_submitted triggers handleAutoProgramDiscovery()
- * 2. Call scp.find_programs with { org_ref, session_token, category: "all" }
- * 3. If session_token is missing/expired, scp.find_programs will handle re-login
- * 4. Navigate directly to /registration (skip dashboard)
- * 5. Extract programs using runThreePassExtractor
- * 6. Group programs using groupProgramsByTheme (Lessons, Camps, Race Team, Other)
- * 7. Limit to 4 cards per group
+ * 2. Reuse existing session token — never start new login unless session expired
+ * 3. Call scp.find_programs with { org_ref, session_token, category: "all" }
+ * 4. Force navigation to /registration (skip dashboard redirect)
+ * 5. Wait for page readiness with timeout handling
+ * 6. Extract programs using runThreePassExtractor
+ *    - Vision pass: gpt-5-2025-08-07 (multimodal)
+ *    - Text extraction: gpt-5-mini-2025-08-07
+ * 7. Group programs using groupProgramsByTheme (gpt-5-mini-2025-08-07)
+ *    - Themes: Lessons, Camps, Race Team, Other
+ *    - Limit: 4 cards per group
  * 8. Return: message → grouped cards → CTA chips
  * 
  * Error handling:
+ * - Page readiness timeout: Return timeout error with auto-retry option
  * - Session expired: Prompt to reconnect
  * - No programs: Offer to search other providers
- * - Extraction error: Retry with timeout
+ * - Max retries (2): Offer manual reconnect
  * 
- * Why: Eliminates friction, follows Design DNA (predictable rhythm), and
- * maintains security transparency.
+ * Expected Log Sequence:
+ * 1️⃣ ✅ Reusing session from token (or 🔁 New session will be created)
+ * 2️⃣ Navigated to: /registration (or Already on programs page)
+ * 3️⃣ Extractor model: gpt-5-2025-08-07 (vision), gpt-5-mini-2025-08-07 (text)
+ * 4️⃣ Programs found: >0
+ * 5️⃣ Classified into N theme groups
+ * 6️⃣ Assistant shows grouped cards (no intent prompt)
+ * 
+ * Why: Eliminates friction, follows Design DNA (predictable rhythm), 
+ * maintains security transparency, and handles timeouts gracefully.
  */
 
 export interface SessionReuseConfig {
