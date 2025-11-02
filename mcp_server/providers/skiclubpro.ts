@@ -1414,15 +1414,16 @@ export const skiClubProTools = {
           console.log('[scp.find_programs] Launching new Browserbase session...');
           session = await launchBrowserbaseSession();
         
-        // Login with credentials (only if new session)
+        // Login with credentials directly to programs page (skip dashboard)
           console.log('[scp.find_programs] Logging in...');
           const credentials = await lookupCredentialsById(args.credential_id, args.user_jwt);
-          await session.page.goto(`${baseUrl}/user/login`, { waitUntil: 'networkidle' });
+          const urlBuilder = new UrlBuilder(orgRef);
+          const programsUrl = urlBuilder.programs(orgRef);
+          const loginUrl = `${baseUrl}/user/login?destination=${new URL(programsUrl).pathname}`;
+          console.log(`[scp.find_programs] Login destination: ${loginUrl}`);
+          await session.page.goto(loginUrl, { waitUntil: 'networkidle' });
           await loginWithCredentials(session.page, skiClubProConfig, credentials, session.browser);
-          
-          // Wait for post-login redirect to settle (Drupal redirects to /dashboard)
-          await session.page.waitForLoadState('networkidle');
-          console.log(`[scp.find_programs] ✅ Login complete, page settled at: ${session.page.url()}`);
+          console.log(`[scp.find_programs] ✅ Login complete, landed at: ${session.page.url()}`);
           
           // Store session for reuse
           sessionToken = generateToken();
@@ -1443,13 +1444,8 @@ export const skiClubProTools = {
           };
         }
         
-        // ✅ Navigate to the correct programs listing page using UrlBuilder
-        console.log('[scp.find_programs] Navigating to programs listing page...');
-        const urlBuilder = new UrlBuilder(orgRef);
-        const programsUrl = urlBuilder.programs(orgRef);
-        console.log(`[scp.find_programs] Programs URL: ${programsUrl}`);
-        
-        await session.page.goto(programsUrl, { waitUntil: 'domcontentloaded' });
+        // Already on programs page from login redirect - no need to navigate again
+        console.log('[scp.find_programs] ✅ Already on programs page from login redirect');
         
         // ✅ Wait for page to be fully ready with program table loaded
         console.log('[scp.find_programs] Waiting for page readiness...');
