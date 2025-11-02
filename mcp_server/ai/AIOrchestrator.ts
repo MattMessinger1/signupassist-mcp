@@ -536,12 +536,12 @@ class AIOrchestrator {
     Logger.info(`[handleAutoProgramDiscovery] Starting auto-discovery for ${providerName}`);
     
     try {
-      // Call scp.find_programs with session token (category: "all")
+      // FIX: Pass session_token and user_jwt to enable credential lookup and session reuse
       const result = await this.callTool('scp.find_programs', {
         credential_id: context.credential_id,
-        session_token: context.provider_session_token,
+        session_token: context.provider_session_token,  // Reuse existing session if available
         org_ref: context.provider.orgRef,
-        user_jwt: context.user_jwt,
+        user_jwt: context.user_jwt,  // CRITICAL: Required for lookupCredentialsById()
         category: "all"  // Auto-discovery fetches all programs
       });
       
@@ -917,7 +917,11 @@ class AIOrchestrator {
           // Handle callback after user enters credentials
           const { credential_id, cookies } = payload;
           
+          // FIX: Preserve provider, org_ref, and user_jwt in context before auto-discovery
           await this.updateContext(sessionId, {
+            provider: context.provider || { name: 'Blackhawk Ski Club', orgRef: 'blackhawk-ski' },
+            org_ref: context.provider?.orgRef || 'blackhawk-ski',
+            user_jwt: context.user_jwt ?? req?.body?.user_jwt,  // Preserve JWT from login
             credential_id,
             provider_cookies: cookies || [],
             loginCompleted: true,

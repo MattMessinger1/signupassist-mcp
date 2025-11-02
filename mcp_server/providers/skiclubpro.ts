@@ -1369,6 +1369,18 @@ export const skiClubProTools = {
       user_jwt: !!args.user_jwt
     });
     
+    // FIX: Add early validation for user_jwt when credential_id is provided
+    if (args.credential_id && !args.user_jwt) {
+      const errorMsg = 'Missing user_jwt: orchestrator must pass valid JWT for credential lookup';
+      console.error('[scp.find_programs]', errorMsg);
+      return {
+        success: false,
+        login_status: 'failed',
+        error: errorMsg,
+        timestamp: new Date().toISOString()
+      };
+    }
+    
     // If credentials or session token provided, use live Browserbase scraping
     if (args.credential_id || args.session_token) {
       console.log('[scp.find_programs] Using live Browserbase scraping');
