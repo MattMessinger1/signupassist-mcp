@@ -912,6 +912,23 @@ function ChatTestHarnessContent() {
           </Button>
 
           <Button 
+            onClick={() => {
+              setLoginDialogData({
+                provider: 'skiclubpro',
+                orgName: 'Blackhawk Ski Club',
+                orgRef: 'blackhawk-ski'
+              });
+              setShowLoginDialog(true);
+            }} 
+            disabled={isProcessing}
+            size="sm"
+            variant="outline"
+            className="gap-2"
+          >
+            🔐 Store Credentials
+          </Button>
+
+          <Button 
             onClick={runExtractorTest} 
             disabled={isProcessing}
             size="sm"
