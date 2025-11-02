@@ -23,6 +23,8 @@ export interface ChatMessage {
   timestamp: Date;
   componentType?: "confirmation" | "carousel" | "form" | "status" | "cards" | "cards-grouped" | "test-comparison";
   componentData?: any;
+  role?: "user" | "assistant";
+  content?: string;
 }
 
 interface MessageBubbleProps {
@@ -46,7 +48,7 @@ export function MessageBubble({
   message, 
   onAction 
 }: MessageBubbleProps) {
-  const isUser = message.sender === "user";
+  const isUser = message.sender === "user" || message.role === "user";
 
   // Handle card button clicks
   const handleCardButtonClick = (action: string, payload: any) => {
@@ -80,12 +82,14 @@ export function MessageBubble({
         )}
         
         {/* Main message text with formatting */}
-        <div 
-          className="text-sm leading-relaxed whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none"
-          dangerouslySetInnerHTML={{ 
-            __html: renderFormattedText(message.text)
-          }}
-        />
+        {(message.text || message.content) && (
+          <div 
+            className="text-sm leading-relaxed whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none"
+            dangerouslySetInnerHTML={{ 
+              __html: renderFormattedText(message.text || message.content || '')
+            }}
+          />
+        )}
         
         {/* Interactive Components */}
         {/* Render cards from orchestrator response */}

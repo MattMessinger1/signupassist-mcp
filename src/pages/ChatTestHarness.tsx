@@ -767,41 +767,118 @@ function ChatTestHarnessContent() {
 
   // ============= Three-Pass Extractor Test =============
 
+  /**
+   * Convert extractor output to ChatGPT SDK grouped cards format
+   * Follows Design DNA: Message → Cards → CTA
+   */
+  const formatProgramsAsCards = (programs: any[]) => {
+    return {
+      type: "cards-grouped",
+      groups: [
+        {
+          title: "Available Programs",
+          cards: programs.map(p => ({
+            title: p.title,
+            subtitle: [p.schedule, p.age_range].filter(Boolean).join(' • '),
+            caption: [p.price, p.skill_level].filter(Boolean).join(' • '),
+            body: p.description || p.brief || '',
+            actions: [
+              {
+                type: "postback",
+                label: p.status === 'waitlist' ? 'Join Waitlist' : 'Choose',
+                payload: {
+                  action: 'select_program',
+                  program_id: p.id || p.program_id,
+                  program_ref: p.program_ref
+                }
+              }
+            ]
+          }))
+        }
+      ],
+      cta_chips: [
+        {
+          label: "Show All Programs",
+          payload: { action: 'show_all' }
+        }
+      ]
+    };
+  };
+
   const runExtractorTest = async () => {
     addLog("info", "extractor", "🧪 Starting Three-Pass Extractor test...");
     setIsProcessing(true);
     
     try {
+      const userId = await supabase.auth.getUser().then(r => r.data.user?.id);
+      
+      // 🔍 Look up stored credential
+      const { data: creds } = await supabase
+        .from('stored_credentials')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('provider', 'skiclubpro')
+        .limit(1);
+      
+      if (!creds || creds.length === 0) {
+        addLog("error", "extractor", "No credential found - user must store credentials first");
+        addAssistantMessage("⚠️ Please click **🔐 Store Credentials** first to test the extractor with your login.");
+        toast({
+          title: "❌ No Credentials",
+          description: "Store credentials first using the 🔐 button",
+          variant: "destructive"
+        });
+        setIsProcessing(false);
+        return;
+      }
+      
+      const credentialId = creds[0].id;
+      addLog("info", "extractor", `Found credential: ${credentialId}`);
+      
       addAssistantMessage("🔍 Running Three-Pass Extractor on Blackhawk Ski Club...");
       
-      const userId = await supabase.auth.getUser().then(r => r.data.user?.id);
-      addLog("info", "extractor", `Using user_id: ${userId}`);
-      
+      // 🔧 Pass credential_id instead of user_id
       const result = await callMCPTool('scp.find_programs', {
         org_ref: 'blackhawk-ski',
+        credential_id: credentialId,
         query: '',
-        user_id: userId
+        category: 'all'
       });
       
       addLog("info", "extractor", `MCP Response: ${JSON.stringify(result, null, 2)}`);
       
-      // Check if we got programs in data (even if login failed and used fallback)
+      // Check if we got programs in data
       if (result.data?.programs && result.data.programs.length > 0) {
         const programs = result.data.programs;
-        addLog("success", "extractor", `✅ Found ${programs.length} programs (login_status: ${result.login_status || 'N/A'})`);
+        addLog("success", "extractor", `✅ Found ${programs.length} programs (login_status: ${result.login_status || 'success'})`);
         
-        // Display results in chat
-        let resultText = `✅ **Three-Pass Extractor Results**\n\nFound ${programs.length} programs:\n\n`;
-        programs.forEach((prog: any, i: number) => {
-          resultText += `**${i + 1}. ${prog.title}**\n`;
-          resultText += `- Price: ${prog.price || 'N/A'}\n`;
-          resultText += `- Schedule: ${prog.schedule || 'N/A'}\n`;
-          resultText += `- Ages: ${prog.age_range || 'N/A'}\n`;
-          resultText += `- Level: ${prog.skill_level || 'N/A'}\n`;
-          resultText += `- Status: ${prog.status || 'N/A'}\n\n`;
-        });
+        // 🎨 Format as SDK-compliant cards
+        const cardsPayload = formatProgramsAsCards(programs);
         
-        addAssistantMessage(resultText);
+        // Display assistant message
+        addAssistantMessage(
+          `✅ Found ${programs.length} programs at Blackhawk Ski Club.\n\n` +
+          `I've organized them below — tap any card to explore or enroll. ` +
+          `(Your login session stays active; no extra logins.)`
+        );
+        
+        // 🆕 Add grouped cards to messages
+        setMessages(prev => [
+          ...prev,
+          {
+            id: `cards-${Date.now()}`,
+            sender: 'assistant' as const,
+            text: '',
+            timestamp: new Date(),
+            componentType: 'cards-grouped' as const,
+            componentData: cardsPayload
+          }
+        ]);
+        
+        // Also log plain text summary for debugging
+        addLog("info", "extractor", programs.map((p: any, i: number) => 
+          `${i + 1}. ${p.title} - ${p.price || 'N/A'}`
+        ).join('\n'));
         
         toast({
           title: "✅ Extractor Test Passed",
