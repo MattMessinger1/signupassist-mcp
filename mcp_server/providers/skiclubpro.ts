@@ -805,8 +805,14 @@ async function locateProgramPage(page: any, baseUrl: string, programName?: strin
       console.log(`[ProgramLocator] Checking ${url} for programs...`);
       await page.goto(url, { waitUntil: "domcontentloaded" });
       
-      // ✅ Wait until Register buttons appear (ensures table is fully loaded)
-      await page.waitForSelector("a.btn.btn-secondary.btn-sm:has-text('Register')", { timeout: 20000 });
+      // ✅ Check if Register buttons exist (non-blocking)
+      const registerButtons = await page.locator("a.btn.btn-secondary.btn-sm:has-text('Register')").count();
+      
+      if (registerButtons === 0) {
+        console.log(`[ProgramLocator] No Register buttons found on ${url} - staying on current page for Three-Pass Extractor`);
+        return page.url(); // Stay here, let AI extractor handle it
+      }
+      
       const rows = await page.locator("table tr").all();
       console.log(`[ProgramLocator] Found ${rows.length} potential program rows`);
       
@@ -831,7 +837,7 @@ async function locateProgramPage(page: any, baseUrl: string, programName?: strin
         }
       }
     } catch (e: any) {
-      console.warn(`[ProgramLocator] Failed to check ${url}:`, e.message);
+      console.log(`[ProgramLocator] Could not load ${url}: ${e.message} - trying next path`);
     }
   }
   
@@ -1392,14 +1398,14 @@ export const skiClubProTools = {
         
         // Try to restore session if token provided
         if (sessionToken) {
-          console.log(`[scp.find_programs] Attempting to reuse session from token: ${sessionToken}`);
+          console.log(`[scp.find_programs] 🔄 Attempting to reuse session from token: ${sessionToken}`);
           const restored = await getSession(sessionToken);
           if (restored && restored.session) {
             session = restored.session;
             sessionToken = restored.newToken;
-            console.log(`[scp.find_programs] Reusing session from token: ${sessionToken}`);
+            console.log(`[scp.find_programs] ✅ Successfully reused session (no new login needed)`);
           } else {
-            console.log('[scp.find_programs] Session token not found or expired');
+            console.log('[scp.find_programs] ⚠️ Session token not found or expired - will create new session');
           }
         }
         
@@ -1417,7 +1423,7 @@ export const skiClubProTools = {
           // Store session for reuse
           sessionToken = generateToken();
           storeSession(sessionToken, session, 300000); // 5 min TTL
-          console.log(`[scp.find_programs] ✓ Session stored with token: ${sessionToken}`);
+          console.log(`[scp.find_programs] 💾 Session stored with token: ${sessionToken} (valid for 5 min)`);
         }
         
         const loginResult = { login_status: 'success' };
@@ -1435,14 +1441,23 @@ export const skiClubProTools = {
         
         // ✅ Navigate to programs page before extraction
         console.log('[scp.find_programs] Navigating to programs page...');
-        // ✅ Program Locator: Navigate to actual program form page
-        console.log('[scp.find_programs] Locating program page...');
-        const programPageUrl = await locateProgramPage(session.page, baseUrl, args.query);
+        
+        let programPageUrl = session.page.url(); // Default to current page
+        
+        try {
+          // ✅ Program Locator: Navigate to actual program form page
+          console.log('[scp.find_programs] Locating program page...');
+          programPageUrl = await locateProgramPage(session.page, baseUrl, args.query);
+          console.log(`[scp.find_programs] ✓ Located program page: ${programPageUrl}`);
+        } catch (locatorError: any) {
+          console.warn('[scp.find_programs] ⚠️ Program locator failed, proceeding with current page:', locatorError.message);
+          // Continue with current page - Three-Pass Extractor can handle any page structure
+        }
         
         // ✅ Provider-specific page readiness check
         const ensureReady = getReadiness("scp");
         await ensureReady(session.page);
-        console.log("[scp.find_programs] ✓ Program table loaded; starting extraction");
+        console.log("[scp.find_programs] ✓ Page ready; starting Three-Pass Extractor");
         
         // ✅ Three-Pass Extractor: AI-powered program extraction
         
