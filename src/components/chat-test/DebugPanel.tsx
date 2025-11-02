@@ -52,7 +52,7 @@ export function DebugPanel({ logs, isVisible, onToggle, onClear }: DebugPanelPro
           </Button>
         </div>
       </div>
-      <ScrollArea className="h-64">
+      <ScrollArea className="h-48">
         <div className="p-4 font-mono text-xs space-y-1">
           {logs.length === 0 ? (
             <div className="text-muted-foreground italic">No logs yet...</div>

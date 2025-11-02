@@ -122,7 +122,7 @@ function ChatTestHarnessContent() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isDemoRunning, setIsDemoRunning] = useState(false);
   const [debugLogs, setDebugLogs] = useState<LogEntry[]>([]);
-  const [showDebugPanel, setShowDebugPanel] = useState(true);
+  const [showDebugPanel, setShowDebugPanel] = useState(false); // Start collapsed for more space
   const [healthCheckResult, setHealthCheckResult] = useState<MCPHealthCheckResult | null>(null);
   const [isCheckingHealth, setIsCheckingHealth] = useState(false);
   const [testTracker] = useState(() => new TestComparisonTracker());
@@ -223,11 +223,8 @@ function ChatTestHarnessContent() {
 
   // ============= Initial Welcome Message =============
   useEffect(() => {
-    addLog("info", "system", "Initializing chat test harness...");
-    
     // Add welcome message only if messages array is empty
     setMessages(prev => {
-      console.log('[ChatTestHarness] Setting welcome message. Previous messages:', prev.length);
       if (prev.length === 0) {
         const welcomeMessage: ChatMessage = {
           id: "welcome-1",
@@ -235,18 +232,11 @@ function ChatTestHarnessContent() {
           text: "Hello! I can assist you with program sign-ups. How can I help today?",
           timestamp: new Date(),
         };
-        console.log('[ChatTestHarness] Adding welcome message:', welcomeMessage);
         return [welcomeMessage];
       }
-      console.log('[ChatTestHarness] Welcome already exists, skipping');
       return prev;
     });
   }, [addLog]);
-  
-  // Debug: Log messages changes
-  useEffect(() => {
-    console.log('[ChatTestHarness] Messages state updated:', messages.length, messages);
-  }, [messages]);
 
   // ============= Message Helpers =============
 
