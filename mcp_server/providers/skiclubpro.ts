@@ -1439,13 +1439,22 @@ export const skiClubProTools = {
           };
         }
         
-        // ✅ Start extraction from current page (dashboard)
-        console.log('[scp.find_programs] Starting extraction from current page...');
+        // ✅ Navigate to the correct programs listing page using UrlBuilder
+        console.log('[scp.find_programs] Navigating to programs listing page...');
+        const urlBuilder = new UrlBuilder(orgRef);
+        const programsUrl = urlBuilder.programs(orgRef);
+        console.log(`[scp.find_programs] Programs URL: ${programsUrl}`);
+        
+        await session.page.goto(programsUrl, { waitUntil: 'domcontentloaded' });
+        
+        // ✅ Wait for page to be fully ready with program table loaded
+        console.log('[scp.find_programs] Waiting for page readiness...');
+        const { waitForSkiClubProReady } = await import('./utils/skiclubproReadiness.js');
+        await waitForSkiClubProReady(session.page);
+        console.log('[scp.find_programs] ✅ Page ready, starting extraction...');
+        
         const currentUrl = session.page.url();
         console.log(`[scp.find_programs] Current URL: ${currentUrl}`);
-        
-        // ✅ Three-Pass Extractor is AI-powered and page-agnostic - no readiness check needed
-        console.log("[scp.find_programs] Starting Three-Pass Extractor (AI-powered, no readiness check needed)");
         
         // ✅ Three-Pass Extractor: AI-powered program extraction
         
@@ -1465,12 +1474,9 @@ export const skiClubProTools = {
           
           console.log(`[scp.find_programs] ✅ Extracted ${scrapedPrograms.length} programs from ${page.url()}`);
           
-          // Fallback: If no programs found on current page, try /programs
+          // Log warning if no programs found (should not happen after navigating to correct URL)
           if (scrapedPrograms.length === 0) {
-            console.log('[scp.find_programs] No programs found on current page, trying /programs page...');
-            await page.goto(`${baseUrl}/programs`, { waitUntil: 'domcontentloaded' });
-            scrapedPrograms = await runThreePassExtractor(page, orgRef, 'skiclubpro');
-            console.log(`[scp.find_programs] ✅ Extracted ${scrapedPrograms.length} programs from /programs`);
+            console.warn('[scp.find_programs] ⚠️ No programs found - this is unexpected after navigating to programs listing page');
           }
           
         } catch (extractorError) {

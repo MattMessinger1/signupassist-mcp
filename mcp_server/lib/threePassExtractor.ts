@@ -89,14 +89,14 @@ async function identifyProgramContainers(
     messages: [
       {
         role: 'system',
-        content: 'You are an expert at identifying program listing cards on web pages. Your task is to find EVERY SINGLE program card visible in the screenshot. Count them carefully - if you see 5 cards, return 5 containers. If you see 10 cards, return 10 containers. Do not skip any programs, even if they look similar. Return the exact count of program cards you observe.'
+        content: 'You are an expert at identifying program listing cards on web pages. Your task is to find EVERY SINGLE program card visible in the screenshot. CRITICAL: Programs are often displayed as TABLE ROWS - look for rows with program information. Count them carefully - if you see 5 rows, return 5 containers. If you see 10 rows, return 10 containers. Do not skip any programs, even if they look similar. Return the exact count of program cards/rows you observe.'
       },
       {
         role: 'user',
         content: [
           {
             type: 'text',
-            text: 'Count and identify EVERY program listing card in this screenshot. Each program typically has a title, price (like $25.00 or $0.00), and a Register or Waiting List button. Look for repeating card/row patterns. Return one container entry for EACH program you see - do not combine or skip any. Be thorough and precise in your count.'
+            text: 'Count and identify EVERY program listing in this screenshot. IMPORTANT: Look for TABLE ROWS as the primary pattern - each row typically has: program title, dates/times, price (like $25.00 or $0.00), and a "Register" or "Waiting List" button. Also look for card-based layouts. Examples of what to look for: <tr> elements, rows with .btn.btn-secondary buttons, repeating horizontal sections with program details. Return one container entry for EACH program row/card you see - do not combine or skip any. Be thorough and precise in your count.'
           },
           {
             type: 'image_url',
