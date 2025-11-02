@@ -155,10 +155,21 @@ export function getSelectionAckMessage(vars: MessageVariables): string {
 }
 
 /**
+ * ASSISTANT__MANDATE_RECOVERY
+ * 
+ * Shown when mandate verification fails and user needs to reconnect
+ */
+export function getMandateRecoveryMessage(vars: MessageVariables): string {
+  const providerName = vars.provider_name || "your provider";
+  
+  return `🔐 I wasn't able to verify your secure connection with ${providerName} just now. Let's reconnect safely — I'll generate a fresh authorization and keep your data protected.`;
+}
+
+/**
  * Helper to select the appropriate message based on flow state
  */
 export function getMessageForState(
-  state: "post_login" | "post_login_v2" | "loading" | "programs_ready" | "programs_ready_v2" | "no_programs" | "error" | "program_discovery_error" | "session_expired" | "confirmation" | "selection_ack",
+  state: "post_login" | "post_login_v2" | "loading" | "programs_ready" | "programs_ready_v2" | "no_programs" | "error" | "program_discovery_error" | "session_expired" | "confirmation" | "selection_ack" | "mandate_recovery",
   vars: MessageVariables = {}
 ): string {
   switch (state) {
@@ -184,6 +195,8 @@ export function getMessageForState(
       return getConfirmationMessage(vars);
     case "selection_ack":
       return getSelectionAckMessage(vars);
+    case "mandate_recovery":
+      return getMandateRecoveryMessage(vars);
     default:
       return "Let me know how I can help!";
   }

@@ -903,6 +903,36 @@ class AIOrchestrator {
             {}
           );
 
+        case "reconnect_login": {
+          console.log('[handleAction] User requested secure reconnection');
+          
+          // Clear old mandate and session
+          await this.updateContext(sessionId, {
+            mandate_jws: undefined,
+            mandate_id: undefined,
+            session_token: undefined,
+            loginCompleted: false
+          } as any);
+          
+          // Return to login step
+          return {
+            message: "Let's get you reconnected securely. I'll need your login credentials again.",
+            cards: [{
+              title: "🔐 Secure Login",
+              description: "Your credentials are encrypted and never stored by SignupAssist.",
+              buttons: [{
+                label: "Enter Credentials",
+                action: "show_credentials_card",
+                variant: "accent" as const
+              }]
+            }],
+            contextUpdates: {
+              step: FlowStep.LOGIN,
+              pendingLogin: context.provider
+            }
+          };
+        }
+
         case "cancel_registration":
         case "cancel":
           // User cancelled, polite acknowledgement
@@ -1266,11 +1296,42 @@ class AIOrchestrator {
    * @param args - Arguments to pass to the tool
    * @returns Promise resolving to tool execution result
    */
-  async callTool(toolName: string, args: Record<string, any>): Promise<any> {
+  async callTool(toolName: string, args: Record<string, any>, sessionId?: string): Promise<any> {
     const cacheKey = `${toolName}-${JSON.stringify(args)}`;
     if (this.isCacheValid(cacheKey)) {
       Logger.info(`Cache hit for ${cacheKey}`);
       return this.getFromCache(cacheKey).value;
+    }
+
+    // ======= MANDATE ENFORCEMENT =======
+    const isProtectedTool = [
+      'scp.login',
+      'scp.find_programs',
+      'scp.register',
+      'scp.pay',
+      'scp.discover_required_fields'
+    ].includes(toolName);
+    
+    if (isProtectedTool && sessionId) {
+      try {
+        // Step 1: Ensure mandate present
+        await this.ensureMandatePresent(sessionId, toolName);
+        
+        // Step 2: Attach mandate to args
+        args = this.attachMandateToArgs(sessionId, args);
+        
+        console.log('[Orchestrator] 🔒 Protected tool call with mandate:', toolName);
+      } catch (mandateError: any) {
+        console.error('[Orchestrator] ❌ Mandate enforcement failed:', mandateError);
+        
+        // Return user-friendly error instead of throwing
+        return {
+          success: false,
+          error: 'mandate_verification_failed',
+          message: '🔐 Unable to verify authorization. Let\'s reconnect securely.',
+          recovery_action: 'reconnect_login'
+        };
+      }
     }
 
     // PHASE 3: Real MCP HTTP endpoint integration
@@ -1315,6 +1376,34 @@ class AIOrchestrator {
         }
 
         const result = await response.json();
+        
+        // Check for mandate expiry in response
+        if (result.error && typeof result.error === 'string' && 
+            (result.error.includes('Mandate') || result.error.includes('mandate')) && 
+            (result.error.includes('expired') || result.error.includes('verification failed')) &&
+            sessionId) {
+          console.log('[Orchestrator] 🔄 Mandate expired during call, retrying once...');
+          
+          // Force refresh mandate
+          await this.updateContext(sessionId, { mandate_jws: undefined, mandate_id: undefined } as any);
+          await this.ensureMandatePresent(sessionId, toolName);
+          
+          // Retry once
+          args = this.attachMandateToArgs(sessionId, args);
+          const retryResponse = await fetch(`${MCP_SERVER_URL}/tools/call`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              tool: mcpToolName,
+              args
+            })
+          });
+          
+          const retryResult = await retryResponse.json();
+          this.saveToCache(cacheKey, retryResult);
+          return retryResult;
+        }
+        
         this.saveToCache(cacheKey, result);
         Logger.info(`[MCP] Tool ${mcpToolName} succeeded`);
         return result;
@@ -1545,6 +1634,97 @@ class AIOrchestrator {
       Logger.error("[orchestrator] Failed to lookup credentials:", error);
       return null;
     }
+  }
+
+  // ============= Mandate Enforcement Methods =============
+
+  /**
+   * Ensure a valid mandate exists in context, creating one if needed
+   */
+  private async ensureMandatePresent(sessionId: string, toolName?: string): Promise<void> {
+    const context = await this.getContext(sessionId);
+    
+    // Check if we have a mandate_jws in context
+    if (context.mandate_jws) {
+      // Verify it's still valid
+      try {
+        const { verifyMandate } = await import('../lib/mandates.js');
+        await verifyMandate(
+          context.mandate_jws,
+          'scp:authenticate', // Basic scope check
+          { now: new Date() }
+        );
+        console.log('[Orchestrator] ✅ Existing mandate valid');
+        return; // Mandate is good
+      } catch (err) {
+        console.log('[Orchestrator] 🔄 Existing mandate expired, refreshing...');
+        // Fall through to create new one
+      }
+    }
+    
+    // No valid mandate - create one
+    if (!context.user_jwt) {
+      throw new Error('Cannot create mandate: user_jwt missing from context');
+    }
+    
+    if (!context.provider?.orgRef) {
+      throw new Error('Cannot create mandate: provider not selected');
+    }
+    
+    // Extract user_id from JWT
+    const userId = extractUserIdFromJWT(context.user_jwt);
+    if (!userId) {
+      throw new Error('Cannot create mandate: invalid user_jwt');
+    }
+    
+    // Get tool-specific scopes
+    const { getScopesForTool, MANDATE_SCOPES, createOrRefreshMandate } = await import('../lib/mandates.js');
+    const requiredScopes = getScopesForTool(toolName || '') || [
+      MANDATE_SCOPES.AUTHENTICATE,
+      MANDATE_SCOPES.READ_LISTINGS
+    ];
+    
+    // Import Supabase client
+    const { createClient } = await import('@supabase/supabase-js');
+    const supabaseUrl = process.env.SUPABASE_URL!;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    // Create/refresh mandate
+    const { mandate_id, mandate_jws } = await createOrRefreshMandate(
+      supabase,
+      userId,
+      'skiclubpro',
+      context.provider.orgRef,
+      requiredScopes,
+      {
+        childId: context.child?.id,
+        programRef: context.program?.id,
+        maxAmountCents: 50000 // $500 default cap
+      }
+    );
+    
+    // Store in context
+    await this.updateContext(sessionId, {
+      mandate_id,
+      mandate_jws
+    } as any);
+    
+    console.log('[Orchestrator] ✅ Mandate created and stored in context');
+  }
+
+  /**
+   * Attach mandate to tool arguments
+   */
+  private attachMandateToArgs(sessionId: string, args: any): any {
+    const context = this.sessions[sessionId];
+    
+    return {
+      ...args,
+      mandate_id: context?.mandate_id,
+      mandate_jws: context?.mandate_jws,
+      user_jwt: context?.user_jwt
+    };
   }
 
   /**

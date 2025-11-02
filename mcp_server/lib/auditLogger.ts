@@ -99,6 +99,47 @@ export async function logToneChange(entry: ToneChangeEntry): Promise<void> {
 }
 
 /**
+ * Log mandate-specific events for audit trail
+ */
+export async function logMandateEvent(entry: {
+  user_id: string;
+  action: 'created' | 'refreshed' | 'expired' | 'verified' | 'denied';
+  mandate_id?: string;
+  provider: string;
+  scopes: string[];
+  reason?: string;
+}): Promise<void> {
+  console.log('[MandateAudit]', entry.action, ':', entry.mandate_id || 'new');
+
+  if (!supabase) {
+    console.warn('[MandateAudit] Supabase not configured, skipping database insert');
+    return;
+  }
+
+  try {
+    const { error } = await supabase
+      .from('mandate_audit')
+      .insert({
+        user_id: entry.user_id,
+        action: entry.action,
+        provider: entry.provider,
+        metadata: {
+          mandate_id: entry.mandate_id,
+          scopes: entry.scopes,
+          reason: entry.reason,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+    if (error) {
+      console.error('[MandateAudit] Failed to insert mandate audit log:', error);
+    }
+  } catch (err) {
+    console.error('[MandateAudit] Unexpected error:', err);
+  }
+}
+
+/**
  * Helper to extract user_id from JWT token
  */
 export function extractUserIdFromJWT(jwt?: string): string | null {

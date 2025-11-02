@@ -336,8 +336,40 @@ function ChatTestHarnessContent() {
     console.log(`[HARNESS] Card action triggered: ${action}`, payload);
     addLog("info", "user", `Card action: ${action}`, { payload });
     
+    // Handle mandate recovery action
+    if (action === "reconnect_login") {
+      console.log('[ChatTest] Triggering secure reconnection flow');
+      
+      // Clear stored mandate from frontend if any
+      localStorage.removeItem('mandate_token');
+      
+      addLog("info", "system", "🔐 Initiating secure reconnection");
+      
+      setIsProcessing(true);
+      try {
+        const response = await sendAction('reconnect_login', {}, sessionId, getUserJwt());
+        
+        if (response.message) {
+          addAssistantMessage(
+            response.message,
+            response.cards ? "cards" : undefined,
+            { cards: response.cards, cta: response.cta }
+          );
+        }
+        
+        if (response.contextUpdates) {
+          setState(prev => ({ ...prev, ...response.contextUpdates }));
+        }
+      } catch (error: any) {
+        handleError(error.message);
+      } finally {
+        setIsProcessing(false);
+      }
+      return;
+    }
+    
     // Handle special actions that need UI dialogs
-    if (action === "show_login_dialog" || action === "connect_account") {
+    if (action === "show_login_dialog" || action === "connect_account" || action === "show_credentials_card") {
       console.log('[HARNESS] Opening login dialog with payload:', payload);
       setLoginDialogData({
         provider: payload.provider || 'skiclubpro',

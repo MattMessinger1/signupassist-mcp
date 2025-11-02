@@ -163,6 +163,118 @@ export async function verifyMandate(
   }
 }
 
+// ============= Mandate Scope Configuration =============
+
+export const MANDATE_SCOPES = {
+  AUTHENTICATE: 'scp:authenticate',
+  READ_LISTINGS: 'scp:read:listings',
+  REGISTER: 'scp:register',
+  PAY: 'scp:pay',
+  DISCOVER_FIELDS: 'scp:discover:fields'
+} as const;
+
+export const SCOPE_REQUIREMENTS: Record<string, string[]> = {
+  'scp.login': [MANDATE_SCOPES.AUTHENTICATE],
+  'scp.find_programs': [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.READ_LISTINGS],
+  'scp.discover_required_fields': [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.DISCOVER_FIELDS],
+  'scp.register': [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.REGISTER],
+  'scp.pay': [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.PAY]
+};
+
+export function getScopesForTool(toolName: string): string[] {
+  return SCOPE_REQUIREMENTS[toolName] || [];
+}
+
+// ============= Mandate Auto-Renewal =============
+
+/**
+ * Create or refresh a mandate for a user
+ * Reuses existing active mandates with matching scopes, or creates new ones
+ */
+export async function createOrRefreshMandate(
+  supabase: any,
+  userId: string,
+  provider: string,
+  orgRef: string,
+  scopes: string[],
+  options: {
+    childId?: string;
+    programRef?: string;
+    maxAmountCents?: number;
+    validDurationMinutes?: number;
+  } = {}
+): Promise<{ mandate_id: string; mandate_jws: string }> {
+  // Check for existing active mandate with matching scopes
+  const { data: existing } = await supabase
+    .from('mandates')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('provider', provider)
+    .eq('status', 'active')
+    .gt('valid_until', new Date().toISOString())
+    .single();
+  
+  // If found and scopes match, return it
+  if (existing && scopes.every(s => existing.scope.includes(s))) {
+    console.log('[Mandates] ✅ Reusing existing mandate:', existing.id);
+    return {
+      mandate_id: existing.id,
+      mandate_jws: existing.jws_compact
+    };
+  }
+  
+  // Otherwise create new mandate
+  console.log('[Mandates] 🔄 Creating new mandate for', provider);
+  
+  const validDurationMinutes = options.validDurationMinutes || 1440; // 24 hours default
+  const now = new Date();
+  const validFrom = now.toISOString();
+  const validUntil = new Date(now.getTime() + validDurationMinutes * 60 * 1000).toISOString();
+  
+  const payload: MandatePayload = {
+    mandate_id: crypto.randomUUID(),
+    user_id: userId,
+    provider,
+    scope: scopes,
+    valid_from: validFrom,
+    valid_until: validUntil,
+    time_period: `${validDurationMinutes}m`,
+    credential_type: 'jws',
+    child_id: options.childId,
+    program_ref: options.programRef,
+    max_amount_cents: options.maxAmountCents
+  };
+  
+  const jws = await issueMandate(payload);
+  
+  // Store in database
+  const { data: mandate, error } = await supabase
+    .from('mandates')
+    .insert({
+      user_id: userId,
+      provider,
+      scope: scopes,
+      jws_compact: jws,
+      child_id: options.childId,
+      program_ref: options.programRef,
+      max_amount_cents: options.maxAmountCents,
+      valid_from: validFrom,
+      valid_until: validUntil,
+      status: 'active',
+      credential_type: 'jws'
+    })
+    .select()
+    .single();
+  
+  if (error) throw new Error(`Failed to store mandate: ${error.message}`);
+  
+  console.log('[Mandates] ✅ New mandate created:', mandate.id);
+  return {
+    mandate_id: mandate.id,
+    mandate_jws: jws
+  };
+}
+
 /**
  * Utility function to hash JSON objects for audit trail
  */

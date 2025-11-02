@@ -217,52 +217,70 @@ export async function auditToolCall<T>(
       auditId = await logToolCallStart(context, args);
     }
     
-    // ======= SMOKE TEST BYPASS =======
-    // Bypass mandate verification for local smoke tests.
-    // WARNING: Keep this only in local/dev/testing environments. Remove before production.
-    if (
+    // ======= PRODUCTION MANDATE ENFORCEMENT =======
+    // Only bypass in explicit test environments
+    const isTestEnvironment = 
       process.env.NODE_ENV === 'test' ||
-      context.plan_execution_id === '00000000-0000-0000-0000-000000000002' ||
-      process.env.BYPASS_MANDATE === '1'
-    ) {
-      console.log('[audit] Skipping mandate verification (smoke test mode)');
-      // Continue without mandate verification
-    } else if (requiredScope) {
-      // Verify mandate if required scope is provided
-      try {
-        let jwsToken: string;
-        
-        // Prefer mandate_jws (direct JWS token) over mandate_id (database lookup)
-        if (context.mandate_jws) {
-          console.log('[audit] Using mandate_jws for direct verification');
-          jwsToken = context.mandate_jws;
-        } else if (context.mandate_id) {
-          console.log('[audit] Looking up mandate in database using mandate_id');
-          // Get the mandate from database
-          const { data: mandate, error } = await supabase
-            .from('mandates')
-            .select('jws_compact')
-            .eq('id', context.mandate_id)
-            .eq('status', 'active')
-            .single();
+      process.env.PLAYWRIGHT_TEST === '1' ||
+      context.plan_execution_id?.startsWith('test-');
 
-          if (error || !mandate) {
-            throw new Error('Mandate not found or inactive');
+    if (isTestEnvironment) {
+      console.log('[audit] ⚠️ Skipping mandate verification (test environment)');
+    } else if (requiredScope) {
+      // Production mandate enforcement with retry logic
+      let attemptCount = 0;
+      const MAX_ATTEMPTS = 2;
+      
+      while (attemptCount < MAX_ATTEMPTS) {
+        try {
+          let jwsToken: string;
+          
+          // Prefer mandate_jws over mandate_id
+          if (context.mandate_jws) {
+            jwsToken = context.mandate_jws;
+          } else if (context.mandate_id) {
+            console.log('[audit] Looking up mandate in database using mandate_id');
+            const { data: mandate, error } = await supabase
+              .from('mandates')
+              .select('jws_compact')
+              .eq('id', context.mandate_id)
+              .eq('status', 'active')
+              .single();
+            
+            if (error || !mandate) {
+              throw new Error('Mandate not found or inactive');
+            }
+            
+            jwsToken = mandate.jws_compact;
+          } else {
+            throw new Error('No mandate provided (mandate_jws or mandate_id required)');
           }
           
-          jwsToken = mandate.jws_compact;
-        } else {
-          throw new Error('No mandate provided (mandate_jws or mandate_id required)');
+          // Verify mandate
+          await verifyMandate(jwsToken, requiredScope);
+          
+          console.log('[audit] ✅ Mandate verified successfully');
+          break; // Success, exit retry loop
+          
+        } catch (mandateError: any) {
+          attemptCount++;
+          
+          if (attemptCount >= MAX_ATTEMPTS) {
+            // Final failure - log and throw
+            if (auditId) {
+              await logToolCallFinish(auditId, { 
+                error: mandateError.message,
+                attempts: attemptCount 
+              }, 'denied');
+            }
+            
+            console.error('[audit] ❌ Mandate verification failed after', attemptCount, 'attempts');
+            throw new Error(`Mandate verification failed: ${mandateError.message}`);
+          }
+          
+          console.log('[audit] 🔄 Mandate verification failed, attempt', attemptCount, 'of', MAX_ATTEMPTS);
+          // Orchestrator will handle renewal on retry
         }
-
-        // Verify the mandate JWS token
-        await verifyMandate(jwsToken, requiredScope);
-      } catch (mandateError) {
-        // Log denial and abort
-        if (auditId) {
-          await logToolCallFinish(auditId, { error: mandateError.message }, 'denied');
-        }
-        throw new Error(`Mandate verification failed: ${mandateError.message}`);
       }
     }
 
