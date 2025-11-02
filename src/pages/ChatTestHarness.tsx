@@ -227,17 +227,26 @@ function ChatTestHarnessContent() {
     
     // Add welcome message only if messages array is empty
     setMessages(prev => {
+      console.log('[ChatTestHarness] Setting welcome message. Previous messages:', prev.length);
       if (prev.length === 0) {
-        return [{
+        const welcomeMessage: ChatMessage = {
           id: "welcome-1",
-          sender: "assistant",
+          sender: "assistant" as const,
           text: "Hello! I can assist you with program sign-ups. How can I help today?",
           timestamp: new Date(),
-        }];
+        };
+        console.log('[ChatTestHarness] Adding welcome message:', welcomeMessage);
+        return [welcomeMessage];
       }
+      console.log('[ChatTestHarness] Welcome already exists, skipping');
       return prev;
     });
   }, [addLog]);
+  
+  // Debug: Log messages changes
+  useEffect(() => {
+    console.log('[ChatTestHarness] Messages state updated:', messages.length, messages);
+  }, [messages]);
 
   // ============= Message Helpers =============
 
