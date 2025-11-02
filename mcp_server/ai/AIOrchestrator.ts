@@ -804,17 +804,17 @@ class AIOrchestrator {
           
           const moreCount = filteredPrograms.length - displayPrograms.length;
           const message = moreCount > 0
-            ? `Here are ${displayPrograms.length} ${category} programs (${moreCount} more available) 👇`
-            : `Here are all ${displayPrograms.length} ${category} programs 👇`;
+            ? `Here are ${displayPrograms.length} ${viewCategory} programs (${moreCount} more available) 👇`
+            : `Here are all ${displayPrograms.length} ${viewCategory} programs 👇`;
           
           return this.formatResponse(
             message,
             cards,
             moreCount > 0 
-              ? [{ label: `Show ${moreCount} More ${category}`, action: "view_more_programs", variant: "outline" }]
+              ? [{ label: `Show ${moreCount} More ${viewCategory}`, action: "view_more_programs", variant: "outline" }]
               : undefined,
             { 
-              currentCategory: category,
+              currentCategory: viewCategory,
               displayedProgramIds: displayPrograms.map((p: any) => p.id),
               remainingProgramIds: filteredPrograms.slice(7).map((p: any) => p.id)
             }
