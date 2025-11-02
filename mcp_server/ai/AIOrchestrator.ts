@@ -1024,76 +1024,29 @@ class AIOrchestrator {
       }
     }
 
-    // Stubbed tools - for local development when MCP not available
-    const tools: Record<string, Function> = {
-      search_provider: async ({ name, location, userCoords }: any) => {
-        try {
-          Logger.info("[search_provider] Starting search", { name, location, hasCoords: !!userCoords });
-          
-          const cacheKey = `provider-${name}-${location || ""}-${userCoords ? `${userCoords.lat},${userCoords.lng}` : ""}`;
-          if (this.isCacheValid(cacheKey)) {
-            Logger.info("[search_provider] Cache hit", { name, location, hasCoords: !!userCoords });
-            return this.getFromCache(cacheKey).value;
-          }
-
-          // Try local first
-          Logger.info("[search_provider] Checking local providers...");
-          const local = await lookupLocalProvider(name);
-          if (local) {
-            Logger.info("[search_provider] ✅ Found locally:", local.name);
-            this.saveToCache(cacheKey, [local]);
-            return [local];
-          }
-          Logger.info("[search_provider] Not found locally, trying Google API...");
-
-          // Try Google API
-          const googleResults = await googlePlacesSearch(name, location, userCoords);
-          Logger.info("[search_provider] Google API returned", { count: googleResults.length });
-
-          if (googleResults.length) {
-            Logger.info("[search_provider] ✅ Found via Google", { count: googleResults.length, hasDistances: !!googleResults[0]?.distance });
-            this.saveToCache(cacheKey, googleResults);
-            return googleResults;
-          }
-
-          Logger.warn("[search_provider] No results found");
-          return [];
-          
-        } catch (error: any) {
-          Logger.error("[search_provider] ERROR:", {
-            message: error.message,
-            stack: error.stack?.split('\n')[0],
-            name, 
-            location, 
-            hasCoords: !!userCoords
-          });
-          throw error; // Re-throw so orchestrator can handle it
-        }
-      },
-      find_programs: async ({ provider }: any) => [
-        { name: "Beginner Ski Class – Saturdays", id: "prog1" },
-        { name: "Intermediate Ski Class – Sundays", id: "prog2" },
-      ],
-      check_prerequisites: async () => ({ membership: "ok", payment: "ok" }),
-    };
-
-    const tool = tools[toolName];
-    if (!tool) {
-      Logger.error(`Unknown tool: ${toolName}`);
-      throw new Error(`Unknown tool: ${toolName}`);
+    // Get tool from MCP registry (not hardcoded stubs!)
+    const toolDef = this.tools.get(toolName);
+    
+    if (!toolDef) {
+      const availableTools = Array.from(this.tools.keys()).join(', ');
+      Logger.error(`Unknown tool: ${toolName}`, { 
+        requested: toolName,
+        available: availableTools 
+      });
+      throw new Error(`Unknown tool: ${toolName}. Available: ${availableTools}`);
     }
 
     try {
       Logger.info(`Calling tool: ${toolName}`, this.sanitize(args));
       Logger.info(`[Audit] Tool call`, { toolName, args: this.sanitize(args) });
       
-      // PHASE 5: Add retry logic with exponential backoff
-      const result = await this.withRetry(() => tool(args), 3);
+      // Call the actual MCP tool handler with retry logic
+      const result = await this.withRetry(() => toolDef.handler(args), 3);
       this.saveToCache(cacheKey, result);
       Logger.info(`Tool ${toolName} succeeded.`);
       return result;
     } catch (error: any) {
-      Logger.error(`Tool ${toolName} failed:`, error.message);
+      Logger.error(`Tool ${toolName} failed:`, error);
       throw error;
     }
   }
