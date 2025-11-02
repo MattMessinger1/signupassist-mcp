@@ -80,8 +80,19 @@ class SignupAssistMCPServer {
       console.log('[STARTUP] AIOrchestrator module loaded successfully');
       console.log('[STARTUP] AIOrchestrator type:', typeof AIOrchestrator);
       
-      this.orchestrator = new AIOrchestrator();
-      console.log('✅ AIOrchestrator initialized');
+      // Pass MCP tool caller to orchestrator
+      const mcpToolCaller = async (toolName: string, args: any) => {
+        if (!this.tools.has(toolName)) {
+          const availableTools = Array.from(this.tools.keys()).join(', ');
+          throw new Error(`Unknown MCP tool: ${toolName}. Available: ${availableTools}`);
+        }
+        const tool = this.tools.get(toolName);
+        return await tool.handler(args);
+      };
+      
+      this.orchestrator = new AIOrchestrator(mcpToolCaller);
+      console.log('✅ AIOrchestrator initialized with MCP tool access');
+      console.log(`✅ Available MCP tools: ${Array.from(this.tools.keys()).join(', ')}`);
     } catch (error) {
       console.error('❌ WARNING: AIOrchestrator failed to load - server will start without it');
       console.error('Error:', error);
