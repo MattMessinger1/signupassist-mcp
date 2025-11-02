@@ -6,10 +6,6 @@
 import { Page } from 'playwright-core';
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
-
 export interface ProgramData {
   id: string;
   program_ref: string;
@@ -36,6 +32,16 @@ export async function runThreePassExtractor(
 ): Promise<ProgramData[]> {
   
   console.log('[ThreePassExtractor] Starting extraction...');
+  
+  // Check API key BEFORE instantiation
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    const error = 'OPENAI_API_KEY environment variable is not set. Configure it in Railway project variables.';
+    console.error(`[ThreePassExtractor] ❌ ${error}`);
+    throw new Error(error);
+  }
+  
+  const openai = new OpenAI({ apiKey });
   console.log('[ThreePassExtractor] Using model: gpt-5-2025-08-07 (vision), gpt-5-mini-2025-08-07 (text)');
   
   try {

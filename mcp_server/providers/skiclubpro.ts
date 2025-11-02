@@ -1483,13 +1483,16 @@ export const skiClubProTools = {
         
         let scrapedPrograms: any[] = [];
         try {
-          // Import the extractor
-          const { runThreePassExtractor } = await import('../lib/threePassExtractor.js');
-          
-          // Verify OpenAI API key is configured
+          // Verify OpenAI API key is configured BEFORE importing
           if (!process.env.OPENAI_API_KEY) {
-            throw new Error('OPENAI_API_KEY not configured for AI extraction');
+            console.error('[scp.find_programs] ❌ OPENAI_API_KEY not configured');
+            console.error('[scp.find_programs] Set OPENAI_API_KEY in Railway project variables');
+            throw new Error('OPENAI_API_KEY not configured for AI extraction. Set it in Railway environment variables.');
           }
+          
+          // Import the extractor (will now succeed)
+          console.log('[scp.find_programs] ✅ OpenAI API key detected, importing extractor...');
+          const { runThreePassExtractor } = await import('../lib/threePassExtractor.js');
           
           // Run the Three-Pass Extractor on current page
           const page = session.page;
@@ -1503,7 +1506,11 @@ export const skiClubProTools = {
           }
           
         } catch (extractorError) {
-          console.error('[scp.find_programs] ❌ Three-Pass Extractor failed:', extractorError);
+          console.error('[scp.find_programs] ❌ Three-Pass Extractor failed');
+          console.error('[scp.find_programs] Error:', extractorError instanceof Error ? extractorError.message : extractorError);
+          if (extractorError instanceof Error && extractorError.stack) {
+            console.error('[scp.find_programs] Stack:', extractorError.stack.split('\n').slice(0, 5).join('\n'));
+          }
           // Continue with empty array if extraction fails
           scrapedPrograms = [];
         }

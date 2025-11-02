@@ -10,10 +10,6 @@
 import OpenAI from 'openai';
 import type { ProgramData } from './threePassExtractor.js';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
-
 /**
  * Program theme categories
  */
@@ -86,6 +82,16 @@ export async function groupProgramsByTheme(
   }
 
   console.log(`[ProgramGrouping] Classifying ${programs.length} programs into themes...`);
+  
+  // Check API key BEFORE instantiation
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    const error = 'OPENAI_API_KEY environment variable is not set. Configure it in Railway project variables.';
+    console.error(`[ProgramGrouping] ❌ ${error}`);
+    throw new Error(error);
+  }
+  
+  const openai = new OpenAI({ apiKey });
   console.log('[ProgramGrouping] Using model: gpt-5-mini-2025-08-08 (semantic grouping)');
 
   const response = await openai.chat.completions.create({
