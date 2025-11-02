@@ -380,13 +380,16 @@ export async function loginWithCredentials(
         
         console.log(`DEBUG Attempting redirect to: ${dashboardUrl}`);
         
-        // ✅ Use networkidle instead of domcontentloaded to ensure redirect completes
+        // Use domcontentloaded since networkidle never triggers on sites with analytics
         await page.goto(dashboardUrl, { 
-          waitUntil: 'networkidle', 
-          timeout: 15000 
+          waitUntil: 'domcontentloaded',
+          timeout: 8000
         }).catch(async (navError) => {
-          console.log(`DEBUG Navigation to dashboard failed: ${navError.message}, trying reload...`);
-          await page.reload({ waitUntil: 'networkidle', timeout: 15000 });
+          console.log(`DEBUG Navigation to dashboard failed: ${navError.message}`);
+          // Fallback: Force navigation via JavaScript
+          console.log(`DEBUG Fallback: setting window.location.href directly`);
+          await page.evaluate((url) => window.location.href = url, dashboardUrl);
+          await page.waitForTimeout(2000);
         });
         
         url = page.url();
@@ -424,15 +427,24 @@ export async function loginWithCredentials(
         
         console.log(`DEBUG Second attempt: navigating to ${dashboardUrl}`);
         
-        // ✅ Try harder with longer timeout and networkidle wait
+        // Second attempt: use domcontentloaded + window.location.replace() fallback
         await page.goto(dashboardUrl, { 
-          waitUntil: 'networkidle', 
-          timeout: 20000 
+          waitUntil: 'domcontentloaded',
+          timeout: 10000
         }).catch(async (navError) => {
           console.log(`DEBUG Second navigation failed: ${navError.message}`);
-          // Last resort: try page.evaluate() to change location
-          await page.evaluate((url) => window.location.href = url, dashboardUrl);
-          await page.waitForTimeout(2000);
+          console.log(`DEBUG Fallback: using window.location.replace()`);
+          // Use replace() to prevent back-button issues
+          await page.evaluate((url) => window.location.replace(url), dashboardUrl);
+          await page.waitForTimeout(3000);
+        });
+        
+        // CRITICAL: Wait for actual dashboard content to appear
+        console.log(`DEBUG Waiting for dashboard content to load...`);
+        await page.waitForSelector('a:has-text("Register"), .view-content, table.views-table', {
+          timeout: 8000
+        }).catch((err) => {
+          console.log(`DEBUG ⚠️ Dashboard content not detected: ${err.message}`);
         });
         
         // ✅ Verify we actually left the login page
@@ -446,7 +458,7 @@ export async function loginWithCredentials(
         
         // ✅ If STILL on login page, throw error
         if (finalUrl.includes('/user/login')) {
-          throw new Error('Failed to navigate to dashboard after login - stuck on login page');
+          throw new Error('Failed to navigate to dashboard after login - stuck on login page. Cookies may be invalid or site requires manual verification.');
         }
         
         console.log(`DEBUG ✓ Dashboard loaded: ${finalUrl}`);
