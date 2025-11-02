@@ -107,15 +107,22 @@ async function pageHasLogoutOrDashboard(page: Page): Promise<boolean> {
 }
 
 async function isLoggedIn(page: Page): Promise<boolean> {
-  const hasCookie = await hasDrupalSessCookie(page);
-  const hasLoggedInIndicators = await pageHasLogoutOrDashboard(page);
+  // FIX 2: Require real Drupal auth cookie (SSESS*), not just any session cookie
+  const context = page.context();
+  const cookies = await context.cookies();
   
-  // Log verification details for debugging
-  if (hasCookie || hasLoggedInIndicators) {
-    console.log(`DEBUG ✓ Login verified - Cookie: ${hasCookie}, Page indicators: ${hasLoggedInIndicators}`);
-  }
+  // Look for Drupal session cookie (SSESS* or similar)
+  const hasDrupalAuth = cookies.some(c => /^SSESS/i.test(c.name));
   
-  return hasCookie || hasLoggedInIndicators;
+  // Check for logout link (indicates authenticated UI)
+  const hasLogoutLink = await page.locator('a[href*="/user/logout"]').count() > 0;
+  
+  // Check we're not stuck on login page
+  const offLoginPage = !page.url().includes('/user/login');
+  
+  console.log(`DEBUG Login detection: auth_cookie=${hasDrupalAuth}, logout_link=${hasLogoutLink}, off_login=${offLoginPage}`);
+  
+  return hasDrupalAuth || (hasLogoutLink && offLoginPage);
 }
 
 export async function loginWithCredentials(
@@ -266,6 +273,18 @@ export async function loginWithCredentials(
   await page.type(passSel, creds.password, { delay: jitter(35, 95) });
   
   await humanPause(300, 700);
+
+  // FIX 1: Override Drupal's destination field to force post-login redirect
+  const currentPageUrl = new URL(page.url());
+  if (currentPageUrl.pathname.includes('/user/login')) {
+    const destInput = page.locator('input[name="destination"]');
+    const destCount = await destInput.count();
+    if (destCount > 0) {
+      const desiredDest = currentPageUrl.searchParams.get('destination') || '/registration';
+      await destInput.fill(desiredDest);
+      console.log(`DEBUG ✓ Overrode destination field to: ${desiredDest}`);
+    }
+  }
 
   // Check if Antibot key is populated before submit
   console.log("DEBUG Checking Antibot key before submit...");

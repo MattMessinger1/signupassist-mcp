@@ -8,6 +8,7 @@ import { launchBrowserbaseSession, closeBrowserbaseSession, BrowserbaseSession }
 type ManagedSession = {
   session: BrowserbaseSession;
   expiresAt: number;
+  statePath?: string; // FIX 3: Store path to Playwright storageState for proper auth
 };
 
 const sessions = new Map<string, ManagedSession>();
@@ -48,11 +49,13 @@ export async function releaseSession(token: string, session: BrowserbaseSession)
 
 /**
  * Store session for potential reuse (default 60s TTL)
+ * FIX 3: Support storing storageState path for auth preservation
  */
-export function storeSession(token: string, session: BrowserbaseSession, ttlMs = 60000): string {
+export function storeSession(token: string, session: BrowserbaseSession, ttlMs = 60000, statePath?: string): string {
   sessions.set(token, { 
     session, 
-    expiresAt: Date.now() + ttlMs 
+    expiresAt: Date.now() + ttlMs,
+    statePath
   });
   return token;
 }

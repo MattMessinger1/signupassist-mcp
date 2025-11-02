@@ -1425,9 +1425,11 @@ export const skiClubProTools = {
           await loginWithCredentials(session.page, skiClubProConfig, credentials, session.browser);
           console.log(`[scp.find_programs] ✅ Login complete, landed at: ${session.page.url()}`);
           
-          // Store session for reuse
+          // FIX 3: Store authenticated session state (includes httpOnly cookies)
           sessionToken = generateToken();
-          storeSession(sessionToken, session, 300000); // 5 min TTL
+          const statePath = `/tmp/session-${sessionToken}.json`;
+          await session.context.storageState({ path: statePath });
+          storeSession(sessionToken, session, 300000, statePath); // 5 min TTL with storageState
           console.log(`[scp.find_programs] 💾 Session stored with token: ${sessionToken} (valid for 5 min)`);
         }
         
@@ -1444,8 +1446,20 @@ export const skiClubProTools = {
           };
         }
         
-        // Already on programs page from login redirect - no need to navigate again
-        console.log('[scp.find_programs] ✅ Already on programs page from login redirect');
+        // FIX 4: Ensure we're on /registration after login (don't assume redirect)
+        await session.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+        const currentUrl = session.page.url();
+        console.log(`[scp.find_programs] After login, current URL: ${currentUrl}`);
+        
+        if (!currentUrl.includes('/registration')) {
+          console.log('[scp.find_programs] Navigating to programs page...');
+          const urlBuilder = new UrlBuilder(orgRef);
+          const programsUrl = urlBuilder.programs(orgRef);
+          await session.page.goto(programsUrl, { waitUntil: 'domcontentloaded' });
+          console.log(`[scp.find_programs] ✅ Navigated to: ${programsUrl}`);
+        } else {
+          console.log('[scp.find_programs] ✅ Already on programs page from login redirect');
+        }
         
         // ✅ Wait for page to be fully ready with program table loaded
         console.log('[scp.find_programs] Waiting for page readiness...');
