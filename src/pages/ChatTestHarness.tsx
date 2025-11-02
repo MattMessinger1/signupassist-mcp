@@ -774,15 +774,21 @@ function ChatTestHarnessContent() {
     try {
       addAssistantMessage("🔍 Running Three-Pass Extractor on Blackhawk Ski Club...");
       
+      const userId = await supabase.auth.getUser().then(r => r.data.user?.id);
+      addLog("info", "extractor", `Using user_id: ${userId}`);
+      
       const result = await callMCPTool('scp.find_programs', {
         org_ref: 'blackhawk-ski',
         query: '',
-        user_id: await supabase.auth.getUser().then(r => r.data.user?.id)
+        user_id: userId
       });
       
-      if (result.success && result.data?.programs) {
+      addLog("info", "extractor", `MCP Response: ${JSON.stringify(result, null, 2)}`);
+      
+      // Check if we got programs in data (even if login failed and used fallback)
+      if (result.data?.programs && result.data.programs.length > 0) {
         const programs = result.data.programs;
-        addLog("success", "extractor", `✅ Extracted ${programs.length} programs`);
+        addLog("success", "extractor", `✅ Found ${programs.length} programs (login_status: ${result.login_status || 'N/A'})`);
         
         // Display results in chat
         let resultText = `✅ **Three-Pass Extractor Results**\n\nFound ${programs.length} programs:\n\n`;
@@ -802,14 +808,19 @@ function ChatTestHarnessContent() {
           description: `Successfully extracted ${programs.length} programs`,
         });
       } else {
-        throw new Error('No programs returned from extractor');
+        const errorMsg = result.error || result.login_status || "No programs in response";
+        addLog("error", "extractor", `Extractor failed: ${errorMsg}`, result);
+        addAssistantMessage(`❌ Extractor test failed: ${errorMsg}\n\nFull response:\n\`\`\`json\n${JSON.stringify(result, null, 2)}\n\`\`\``);
+        throw new Error(errorMsg);
       }
     } catch (error) {
       console.error("[Extractor Test] Error:", error);
       addLog("error", "extractor", "Extractor test failed", { 
         error: error instanceof Error ? error.message : "Unknown error" 
       });
-      addAssistantMessage(`❌ Extractor test failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+      if (!(error instanceof Error && error.message.includes("Extractor failed"))) {
+        addAssistantMessage(`❌ Extractor test failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+      }
       
       toast({
         title: "❌ Extractor Test Failed",
