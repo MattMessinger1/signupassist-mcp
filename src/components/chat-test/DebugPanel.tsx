@@ -7,7 +7,7 @@ export interface LogEntry {
   id: string;
   timestamp: Date;
   level: "info" | "success" | "error" | "warning" | "debug";
-  category: "user" | "tool" | "assistant" | "system" | "mcp" | "orchestrator" | "test" | "tone";
+  category: "user" | "tool" | "assistant" | "system" | "mcp" | "orchestrator" | "test" | "tone" | "extractor";
   message: string;
   data?: any;
 }
@@ -93,6 +93,7 @@ function LogLine({ log }: { log: LogEntry }) {
     orchestrator: "[ORCH]",
     test: "[TEST]",
     tone: "[TONE]",
+    extractor: "[EXTRACT]",
   };
 
   const timestamp = log.timestamp.toLocaleTimeString("en-US", {

@@ -765,6 +765,62 @@ function ChatTestHarnessContent() {
     }
   };
 
+  // ============= Three-Pass Extractor Test =============
+
+  const runExtractorTest = async () => {
+    addLog("info", "extractor", "🧪 Starting Three-Pass Extractor test...");
+    setIsProcessing(true);
+    
+    try {
+      addAssistantMessage("🔍 Running Three-Pass Extractor on Blackhawk Ski Club...");
+      
+      const result = await callMCPTool('scp.find_programs', {
+        org_ref: 'blackhawk-ski',
+        query: '',
+        user_id: await supabase.auth.getUser().then(r => r.data.user?.id)
+      });
+      
+      if (result.success && result.data?.programs) {
+        const programs = result.data.programs;
+        addLog("success", "extractor", `✅ Extracted ${programs.length} programs`);
+        
+        // Display results in chat
+        let resultText = `✅ **Three-Pass Extractor Results**\n\nFound ${programs.length} programs:\n\n`;
+        programs.forEach((prog: any, i: number) => {
+          resultText += `**${i + 1}. ${prog.title}**\n`;
+          resultText += `- Price: ${prog.price || 'N/A'}\n`;
+          resultText += `- Schedule: ${prog.schedule || 'N/A'}\n`;
+          resultText += `- Ages: ${prog.age_range || 'N/A'}\n`;
+          resultText += `- Level: ${prog.skill_level || 'N/A'}\n`;
+          resultText += `- Status: ${prog.status || 'N/A'}\n\n`;
+        });
+        
+        addAssistantMessage(resultText);
+        
+        toast({
+          title: "✅ Extractor Test Passed",
+          description: `Successfully extracted ${programs.length} programs`,
+        });
+      } else {
+        throw new Error('No programs returned from extractor');
+      }
+    } catch (error) {
+      console.error("[Extractor Test] Error:", error);
+      addLog("error", "extractor", "Extractor test failed", { 
+        error: error instanceof Error ? error.message : "Unknown error" 
+      });
+      addAssistantMessage(`❌ Extractor test failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+      
+      toast({
+        title: "❌ Extractor Test Failed",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // ============= Health Check =============
 
   const runHealthCheck = async () => {
@@ -842,6 +898,16 @@ function ChatTestHarnessContent() {
           >
             <Activity className="h-4 w-4" />
             {isCheckingHealth ? "Checking..." : "Test Connection"}
+          </Button>
+
+          <Button 
+            onClick={runExtractorTest} 
+            disabled={isProcessing}
+            size="sm"
+            variant="default"
+            className="gap-2"
+          >
+            🔍 Test Extractor
           </Button>
           
           {healthCheckResult && (
