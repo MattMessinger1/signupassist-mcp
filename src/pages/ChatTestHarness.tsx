@@ -223,20 +223,20 @@ function ChatTestHarnessContent() {
 
   // ============= Initial Welcome Message =============
   useEffect(() => {
-    // Prevent duplicate initialization on remount (React StrictMode)
-    if (welcomeShownRef.current) return;
-    welcomeShownRef.current = true;
-    
     addLog("info", "system", "Initializing chat test harness...");
     
-    // Add welcome message
-    const welcomeMessage: ChatMessage = {
-      id: "welcome-1",
-      sender: "assistant",
-      text: "Hello! I can assist you with program sign-ups. How can I help today?",
-      timestamp: new Date(),
-    };
-    setMessages([welcomeMessage]);
+    // Add welcome message only if messages array is empty
+    setMessages(prev => {
+      if (prev.length === 0) {
+        return [{
+          id: "welcome-1",
+          sender: "assistant",
+          text: "Hello! I can assist you with program sign-ups. How can I help today?",
+          timestamp: new Date(),
+        }];
+      }
+      return prev;
+    });
   }, [addLog]);
 
   // ============= Message Helpers =============
