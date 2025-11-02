@@ -1612,7 +1612,7 @@ class AIOrchestrator {
       }));
 
       const completion = await this.openai.chat.completions.create({
-        model: "gpt-5-mini",
+        model: "gpt-5-turbo",  // Reasoning capability for flow accuracy
         messages: [
           {
             role: "system",
@@ -1756,7 +1756,7 @@ Return JSON: {
   private async aiParseProviderInput(userInput: string): Promise<ParsedProviderInput> {
     try {
       const completion = await this.openai.chat.completions.create({
-        model: "gpt-5-mini",
+        model: "gpt-5-turbo",  // Validation capability for key consistency
         messages: [
           { 
             role: "system", 

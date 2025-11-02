@@ -88,7 +88,7 @@ export async function groupProgramsByTheme(
   console.log(`[ProgramGrouping] Classifying ${programs.length} programs into themes...`);
 
   const response = await openai.chat.completions.create({
-    model: 'gpt-5-mini',
+    model: 'gpt-5-turbo',  // Reasoning capability for semantic grouping accuracy
     messages: [
       {
         role: 'system',

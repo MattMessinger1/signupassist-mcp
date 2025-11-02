@@ -87,7 +87,7 @@ async function identifyProgramContainers(
   const base64Image = screenshot.toString('base64');
   
   const response = await openai.chat.completions.create({
-    model: 'gpt-5',
+    model: 'gpt-5-vision',  // Vision-structured capability for OCR precision
     messages: [
       {
         role: 'system',
@@ -172,7 +172,7 @@ async function extractProgramData(
 ): Promise<Partial<ProgramData>[]> {
   
   const response = await openai.chat.completions.create({
-    model: 'gpt-5-mini',
+    model: 'gpt-5-turbo',  // Structured-json capability for field completeness
     messages: [
       {
         role: 'system',
