@@ -1414,11 +1414,15 @@ export const skiClubProTools = {
           console.log('[scp.find_programs] Launching new Browserbase session...');
           session = await launchBrowserbaseSession();
         
-          // Login with credentials (only if new session)
+        // Login with credentials (only if new session)
           console.log('[scp.find_programs] Logging in...');
           const credentials = await lookupCredentialsById(args.credential_id, args.user_jwt);
           await session.page.goto(`${baseUrl}/user/login`, { waitUntil: 'networkidle' });
           await loginWithCredentials(session.page, skiClubProConfig, credentials, session.browser);
+          
+          // Wait for post-login redirect to settle (Drupal redirects to /dashboard)
+          await session.page.waitForLoadState('networkidle');
+          console.log(`[scp.find_programs] ✅ Login complete, page settled at: ${session.page.url()}`);
           
           // Store session for reuse
           sessionToken = generateToken();
