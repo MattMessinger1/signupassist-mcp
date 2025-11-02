@@ -76,6 +76,8 @@ export async function runThreePassExtractor(
 
 /**
  * Pass 1: Use OpenAI Vision to identify program containers
+ * 
+ * EXTRACTOR_PROMPT__PROGRAMS_ONLY (Pass 1)
  */
 async function identifyProgramContainers(
   screenshot: Buffer,
@@ -89,14 +91,22 @@ async function identifyProgramContainers(
     messages: [
       {
         role: 'system',
-        content: 'You are an expert at identifying program listing cards on web pages. Your task is to find EVERY SINGLE program card visible in the screenshot. CRITICAL: Programs are often displayed as TABLE ROWS - look for rows with program information. Count them carefully - if you see 5 rows, return 5 containers. If you see 10 rows, return 10 containers. Do not skip any programs, even if they look similar. Return the exact count of program cards/rows you observe.'
+        content: `Context: You will extract programs/classes that a parent can enroll in from the provider's registration page (e.g., SkiClubPro). Treat this page as the canonical list.
+
+Pass 1 — Identify Program Containers (Vision)
+
+From the screenshot, identify all visible program containers (cards, rows, or list items) likely to correspond to individual programs. Typical cues: a program title, a session/season, date/time, age range, price/fee, and a Register button or link.
+
+DO NOT extract prerequisites, waivers, or payment fields. This extractor is for program discovery only.
+
+Output: an ordered list of program containers with DOM hints (CSS/XPath snippets) for each container.`
       },
       {
         role: 'user',
         content: [
           {
             type: 'text',
-            text: 'Count and identify EVERY program listing in this screenshot. IMPORTANT: Look for TABLE ROWS as the primary pattern - each row typically has: program title, dates/times, price (like $25.00 or $0.00), and a "Register" or "Waiting List" button. Also look for card-based layouts. Examples of what to look for: <tr> elements, rows with .btn.btn-secondary buttons, repeating horizontal sections with program details. Return one container entry for EACH program row/card you see - do not combine or skip any. Be thorough and precise in your count.'
+            text: 'Identify all visible program containers (cards, rows, or list items) from the screenshot. Look for program titles, schedules, dates, ages, prices, and Register/Join buttons. Return a container for each distinct program offering.'
           },
           {
             type: 'image_url',
@@ -152,6 +162,8 @@ async function identifyProgramContainers(
 
 /**
  * Pass 2: Extract structured program data from HTML
+ * 
+ * EXTRACTOR_PROMPT__PROGRAMS_ONLY (Pass 2)
  */
 async function extractProgramData(
   html: string,
@@ -164,11 +176,25 @@ async function extractProgramData(
     messages: [
       {
         role: 'system',
-        content: 'You are an expert at extracting structured program data from HTML. Your job is to extract the EXACT text visible on the page - do not rephrase, summarize, or invent any information. Copy program titles, prices, and details word-for-word as they appear in the HTML. If the HTML says "Nordic Kids Parent Tot Sunday", return exactly that - not "Beginner Ski Class" or any other interpretation.'
+        content: `Pass 2 — Extract Program Fields (HTML to structured)
+
+For each container, extract these fields when present (leave null if missing; never invent values):
+- program_id (stable hash/slug derived from title+dates)
+- title (short, readable)
+- brief (1‑sentence summary or level, if available)
+- age_range (e.g., "Ages 7–10")
+- schedule (dates and day/time; keep it concise)
+- season (e.g., "2025 Winter", if present)
+- price (numeric + currency symbol if shown, e.g., "$180")
+- status ("open", "waitlist", "full", "closed", if shown)
+- cta_label (e.g., "Register", "Join Waitlist")
+- cta_href (absolute URL if available)
+
+Extract the EXACT text visible - do not rephrase, summarize, or invent information. Copy program titles, prices, and details word-for-word as they appear.`
       },
       {
         role: 'user',
-        content: `Extract EXACTLY ${containers.length} programs from this HTML. Return the exact program titles, prices, and details as they appear - do not paraphrase or invent programs. If you cannot find ${containers.length} programs in the HTML, return fewer rather than making up fake ones. Copy the text verbatim.\n\nHTML:\n${html.slice(0, 50000)}`
+        content: `Extract programs from this HTML. Return exactly what you see - do not paraphrase or invent programs. If you cannot find programs in the HTML, return an empty array rather than making up fake ones.\n\nHTML:\n${html.slice(0, 50000)}`
       }
     ],
     tools: [{
@@ -184,13 +210,19 @@ async function extractProgramData(
               items: {
                 type: 'object',
                 properties: {
-                  title: { type: 'string', description: 'Program title' },
-                  description: { type: 'string', description: 'Program description' },
-                  schedule: { type: 'string', description: 'Date and time information' },
-                  age_range: { type: 'string', description: 'Age range or grade level' },
+                  program_id: { type: 'string', description: 'Stable slug derived from title+dates' },
+                  title: { type: 'string', description: 'Program title (≤60 chars)' },
+                  brief: { type: 'string', description: '1-sentence summary or level (≤90 chars)' },
+                  description: { type: 'string', description: 'Longer program description if available' },
+                  age_range: { type: 'string', description: 'Age range (e.g., "Ages 7–10")' },
+                  schedule: { type: 'string', description: 'Dates and day/time in compact format' },
+                  season: { type: 'string', description: 'Season (e.g., "2025 Winter")' },
                   skill_level: { type: 'string', description: 'Skill level (beginner, intermediate, advanced)' },
-                  price: { type: 'string', description: 'Price information' },
-                  program_ref: { type: 'string', description: 'Program ID or reference code' }
+                  price: { type: 'string', description: 'Price with currency symbol (e.g., "$180")' },
+                  status: { type: 'string', enum: ['open', 'waitlist', 'full', 'closed'], description: 'Program status' },
+                  cta_label: { type: 'string', description: 'Call-to-action button label' },
+                  cta_href: { type: 'string', description: 'Absolute URL for registration' },
+                  program_ref: { type: 'string', description: 'Program ID or reference code from provider' }
                 },
                 required: ['title']
               }
@@ -215,6 +247,14 @@ async function extractProgramData(
 
 /**
  * Pass 3: Validate and normalize program data
+ * 
+ * EXTRACTOR_PROMPT__PROGRAMS_ONLY (Pass 3)
+ * 
+ * - Ensure program_id is URL‑safe and stable.
+ * - Normalize currency formatting (e.g., "$180").
+ * - Trim whitespace; keep title ≤ 60 chars, brief ≤ 90 chars.
+ * - If multiple dates/times exist, choose a compact human‑readable summary for schedule.
+ * - Do not drop records unless clearly not a program (e.g., newsletter signup).
  */
 function validateAndNormalize(
   programs: Partial<ProgramData>[],
@@ -222,17 +262,29 @@ function validateAndNormalize(
 ): ProgramData[] {
   
   return programs.map((prog, index) => {
-    const programRef = prog.program_ref || prog.title?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || `program-${index}`;
+    // Generate stable, URL-safe program_id
+    const rawId = prog.program_id || prog.title?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || `program-${index}`;
+    const programRef = rawId.slice(0, 60).replace(/^-+|-+$/g, ''); // Max 60 chars, trim dashes
+    
+    // Normalize title and brief
+    const title = (prog.title || 'Untitled Program').slice(0, 60).trim();
+    const brief = prog.description?.slice(0, 90).trim() || '';
+    
+    // Normalize price formatting
+    let price = prog.price || 'See website';
+    if (price && !price.startsWith('$') && /\d/.test(price)) {
+      price = `$${price}`;
+    }
     
     return {
       id: programRef,
-      program_ref: programRef,
-      title: prog.title || 'Untitled Program',
-      description: prog.description || 'See website for details',
-      schedule: prog.schedule || 'See website for dates',
-      age_range: prog.age_range || 'All ages',
-      skill_level: prog.skill_level || 'All levels',
-      price: prog.price || 'See website',
+      program_ref: prog.program_ref || programRef,
+      title,
+      description: brief || 'See website for details',
+      schedule: prog.schedule?.trim() || 'See website for dates',
+      age_range: prog.age_range?.trim() || 'All ages',
+      skill_level: prog.skill_level?.trim() || 'All levels',
+      price,
       actual_id: programRef,
       org_ref: orgRef
     };
