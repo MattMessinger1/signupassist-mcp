@@ -3,8 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "mcp:start": "node dist/mcp_server/index.js",
-    "build:frontend": "vite build"
+    "build:backend": "tsc -p tsconfig.mcp.json",
+    "build:frontend": "vite build",
+    "build": "npm run build:backend && npm run build:frontend",
+    "mcp:start": "node dist/mcp_server/index.js"
   },
   "dependencies": {
     "@browserbasehq/sdk": "^2.6.0",
