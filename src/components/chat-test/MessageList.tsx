@@ -59,9 +59,26 @@ export function MessageList({
     }
   }, [messages, isProcessing]);
 
+  // Debug: Log messages to console
+  console.log('[MessageList] Rendering with messages:', messages.length, messages);
+
   return (
     <ScrollArea className="flex-1 px-4 py-6" ref={scrollRef}>
       <div className="max-w-3xl mx-auto space-y-6">
+        {/* Debug info - REMOVE AFTER FIXING */}
+        <div className="bg-yellow-100 border-2 border-yellow-500 p-4 text-black">
+          <div className="font-bold">DEBUG INFO:</div>
+          <div>Messages count: {messages.length}</div>
+          <div>MCP Connected: {mcpConnected ? 'YES' : 'NO'}</div>
+          <div>Is Processing: {isProcessing ? 'YES' : 'NO'}</div>
+          {messages.length > 0 && (
+            <div className="mt-2">
+              <div>First message ID: {messages[0].id}</div>
+              <div>First message text: {messages[0].text.substring(0, 50)}</div>
+            </div>
+          )}
+        </div>
+        
         {!mcpConnected && <ConnectionWarning />}
         
         {messages.map((message) => (
