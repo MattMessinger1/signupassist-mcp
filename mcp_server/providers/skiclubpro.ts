@@ -1444,10 +1444,8 @@ export const skiClubProTools = {
         const currentUrl = session.page.url();
         console.log(`[scp.find_programs] Current URL: ${currentUrl}`);
         
-        // ✅ Provider-specific page readiness check
-        const ensureReady = getReadiness("scp");
-        await ensureReady(session.page);
-        console.log("[scp.find_programs] ✓ Page ready; starting Three-Pass Extractor");
+        // ✅ Three-Pass Extractor is AI-powered and page-agnostic - no readiness check needed
+        console.log("[scp.find_programs] Starting Three-Pass Extractor (AI-powered, no readiness check needed)");
         
         // ✅ Three-Pass Extractor: AI-powered program extraction
         
@@ -1471,7 +1469,6 @@ export const skiClubProTools = {
           if (scrapedPrograms.length === 0) {
             console.log('[scp.find_programs] No programs found on current page, trying /programs page...');
             await page.goto(`${baseUrl}/programs`, { waitUntil: 'domcontentloaded' });
-            await ensureReady(page);
             scrapedPrograms = await runThreePassExtractor(page, orgRef, 'skiclubpro');
             console.log(`[scp.find_programs] ✅ Extracted ${scrapedPrograms.length} programs from /programs`);
           }
