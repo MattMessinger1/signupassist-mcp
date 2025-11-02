@@ -917,11 +917,10 @@ class AIOrchestrator {
           // Handle callback after user enters credentials
           const { credential_id, cookies } = payload;
           
-          // FIX: Preserve provider, org_ref, and user_jwt in context before auto-discovery
+          // FIX: Preserve provider and user_jwt in context before auto-discovery
           await this.updateContext(sessionId, {
             provider: context.provider || { name: 'Blackhawk Ski Club', orgRef: 'blackhawk-ski' },
-            org_ref: context.provider?.orgRef || 'blackhawk-ski',
-            user_jwt: context.user_jwt ?? req?.body?.user_jwt,  // Preserve JWT from login
+            user_jwt: context.user_jwt ?? userJwt,  // Preserve JWT from parameter or context
             credential_id,
             provider_cookies: cookies || [],
             loginCompleted: true,
