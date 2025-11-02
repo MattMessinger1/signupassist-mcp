@@ -835,12 +835,25 @@ function ChatTestHarnessContent() {
       const credentialId = creds[0].id;
       addLog("info", "extractor", `Found credential: ${credentialId}`);
       
+      // ✅ Get user's JWT token for credential lookup
+      const { data: { session } } = await supabase.auth.getSession();
+      const userJwt = session?.access_token;
+      
+      if (!userJwt) {
+        addLog("error", "extractor", "No active session - please log in");
+        addAssistantMessage("⚠️ Please log in to run the extractor test.");
+        setIsProcessing(false);
+        return;
+      }
+      
+      addLog("info", "extractor", "✅ User JWT obtained for credential lookup");
       addAssistantMessage("🔍 Running Three-Pass Extractor on Blackhawk Ski Club...");
       
-      // 🔧 Pass credential_id instead of user_id
+      // ✅ FIX: Pass user_jwt to enable lookupCredentialsById()
       const result = await callMCPTool('scp.find_programs', {
         org_ref: 'blackhawk-ski',
         credential_id: credentialId,
+        user_jwt: userJwt,  // CRITICAL: Required for credential decryption
         query: '',
         category: 'all'
       });
