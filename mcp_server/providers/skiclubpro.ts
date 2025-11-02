@@ -1466,8 +1466,6 @@ export const skiClubProTools = {
         const { waitForSkiClubProReady } = await import('./utils/skiclubproReadiness.js');
         await waitForSkiClubProReady(session.page);
         console.log('[scp.find_programs] ✅ Page ready, starting extraction...');
-        
-        const currentUrl = session.page.url();
         console.log(`[scp.find_programs] Current URL: ${currentUrl}`);
         
         // ✅ Three-Pass Extractor: AI-powered program extraction
