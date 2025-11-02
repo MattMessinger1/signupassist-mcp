@@ -263,7 +263,7 @@ function validateAndNormalize(
   
   return programs.map((prog, index) => {
     // Generate stable, URL-safe program_id
-    const rawId = prog.program_id || prog.title?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || `program-${index}`;
+    const rawId = (prog as any).program_id || prog.title?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || `program-${index}`;
     const programRef = rawId.slice(0, 60).replace(/^-+|-+$/g, ''); // Max 60 chars, trim dashes
     
     // Normalize title and brief
