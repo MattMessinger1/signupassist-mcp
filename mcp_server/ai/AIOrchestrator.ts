@@ -282,6 +282,21 @@ class AIOrchestrator {
       // Debug logging for flow visibility
       Logger.info(`🧭 Flow Step: ${step}`, { sessionId, context, hasLocation: !!userLocation });
       
+      // Parse intent from text if we're at INTENT_CAPTURE step
+      if (context.step === FlowStep.INTENT_CAPTURE && userMessage.trim()) {
+        const intentCategory = this.parseIntentFromText(userMessage);
+        if (intentCategory) {
+          Logger.info(`[Intent Parsed] "${userMessage}" → ${intentCategory}`);
+          await this.updateContext(sessionId, {
+            programIntent: { category: intentCategory },
+            step: FlowStep.FIELD_PROBE
+          });
+          // Jump directly to field probe
+          this.logInteraction(sessionId, "user", userMessage);
+          return this.handleFieldProbe("", sessionId);
+        }
+      }
+      
       this.logInteraction(sessionId, "user", userMessage);
       const result = await this.handleStep(step, userMessage, sessionId);
       
@@ -364,6 +379,35 @@ class AIOrchestrator {
     // PHASE 2: Persist to Supabase
     const userId = extractUserIdFromJWT(this.sessions[sessionId]?.user_jwt);
     await saveSessionToDB(sessionId, this.sessions[sessionId], userId || undefined);
+  }
+
+  /**
+   * Parse program intent from user text message
+   * Detects keywords to categorize user's program interest
+   * 
+   * @param text - User's message text
+   * @returns Detected intent category or null
+   */
+  private parseIntentFromText(text: string): string | null {
+    const normalized = text.toLowerCase().trim();
+    
+    // Define keyword mappings for each intent category
+    const intentPatterns = [
+      { keywords: ["lesson", "class", "instruction", "learn"], category: "lessons" },
+      { keywords: ["membership", "member", "join", "enroll"], category: "membership" },
+      { keywords: ["camp", "summer", "week"], category: "camp" },
+      { keywords: ["race", "racing", "team", "competition"], category: "race" },
+      { keywords: ["private", "1-on-1", "one on one", "individual"], category: "private" },
+    ];
+    
+    // Check each pattern for matches
+    for (const pattern of intentPatterns) {
+      if (pattern.keywords.some(kw => normalized.includes(kw))) {
+        return pattern.category;
+      }
+    }
+    
+    return null; // No clear intent detected
   }
 
   /**
@@ -625,37 +669,17 @@ class AIOrchestrator {
           
           // Add defensive check for provider name
           const providerName = context.provider?.name || "your provider";
-          console.log(`[credentials_submitted] Returning intent chips for provider: ${providerName}`);
+          console.log(`[credentials_submitted] Asking for intent via text for provider: ${providerName}`);
           
-          // NEW: Ask for program intent instead of showing programs
+          // Ask for program intent via text (no buttons)
           return this.formatResponse(
-            `✅ You're securely logged in to ${providerName}. To tailor what I pull next, which type of program are you interested in?`,
+            `✅ You're securely logged in to ${providerName}. To tailor what I pull next, which type of program are you interested in? (e.g., ski lessons, membership, camps, race team, private lessons)`,
             undefined,
-            [
-              { label: "Ski Lessons", action: "intent_lessons", variant: "outline" },
-              { label: "Membership", action: "intent_membership", variant: "outline" },
-              { label: "Camps", action: "intent_camp", variant: "outline" },
-              { label: "Race Team", action: "intent_race", variant: "outline" },
-              { label: "Private Lesson", action: "intent_private", variant: "outline" },
-            ],
+            undefined,
             {}
           );
         
-        case "intent_lessons":
-        case "intent_membership":
-        case "intent_camp":
-        case "intent_race":
-        case "intent_private":
-          // Parse intent from action and directly trigger field probe
-          const intentCategory = action.replace("intent_", "") as any;
-          
-          await this.updateContext(sessionId, {
-            programIntent: { category: intentCategory },
-            step: FlowStep.FIELD_PROBE
-          });
-          
-          // Directly call handleFieldProbe (no extra click needed)
-          return this.handleFieldProbe("", sessionId);
+        // Removed intent button handlers - now using text-based intent parsing
 
         case "view_category":
           // User clicked a category card, show filtered programs
