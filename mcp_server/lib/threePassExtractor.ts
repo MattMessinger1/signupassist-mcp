@@ -59,6 +59,7 @@ export async function runThreePassExtractor(
     console.log('[ThreePassExtractor] Pass 2: Extracting program data...');
     const extractedPrograms = await extractProgramData(pageHTML, containers, orgRef);
     console.log(`[ThreePassExtractor] Pass 2: Extracted ${extractedPrograms.length} programs`);
+    console.log('[ThreePassExtractor] Pass 2: Programs extracted:', extractedPrograms.map(p => p.title).join(', '));
     
     // PASS 3: Validate and normalize
     console.log('[ThreePassExtractor] Pass 3: Validating and normalizing...');
@@ -84,18 +85,18 @@ async function identifyProgramContainers(
   const base64Image = screenshot.toString('base64');
   
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-5',
     messages: [
       {
         role: 'system',
-        content: 'You are an expert at identifying program listing cards on web pages. Analyze the screenshot and identify all program cards or listings. Return their approximate positions and any visible CSS selectors.'
+        content: 'You are an expert at identifying program listing cards on web pages. Your task is to find EVERY SINGLE program card visible in the screenshot. Count them carefully - if you see 5 cards, return 5 containers. If you see 10 cards, return 10 containers. Do not skip any programs, even if they look similar. Return the exact count of program cards you observe.'
       },
       {
         role: 'user',
         content: [
           {
             type: 'text',
-            text: 'Identify all program listing cards on this page. Look for cards that contain program titles, dates, prices, or registration information.'
+            text: 'Count and identify EVERY program listing card in this screenshot. Each program typically has a title, price (like $25.00 or $0.00), and a Register or Waiting List button. Look for repeating card/row patterns. Return one container entry for EACH program you see - do not combine or skip any. Be thorough and precise in your count.'
           },
           {
             type: 'image_url',
@@ -159,15 +160,15 @@ async function extractProgramData(
 ): Promise<Partial<ProgramData>[]> {
   
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o',
+    model: 'gpt-5-mini',
     messages: [
       {
         role: 'system',
-        content: 'You are an expert at extracting structured program data from HTML. Extract program titles, descriptions, schedules, age ranges, skill levels, and prices from the provided HTML.'
+        content: 'You are an expert at extracting structured program data from HTML. Your job is to extract the EXACT text visible on the page - do not rephrase, summarize, or invent any information. Copy program titles, prices, and details word-for-word as they appear in the HTML. If the HTML says "Nordic Kids Parent Tot Sunday", return exactly that - not "Beginner Ski Class" or any other interpretation.'
       },
       {
         role: 'user',
-        content: `Extract program information from this HTML. We identified ${containers.length} program containers. Extract all program details you can find.\n\nHTML:\n${html.slice(0, 50000)}`
+        content: `Extract EXACTLY ${containers.length} programs from this HTML. Return the exact program titles, prices, and details as they appear - do not paraphrase or invent programs. If you cannot find ${containers.length} programs in the HTML, return fewer rather than making up fake ones. Copy the text verbatim.\n\nHTML:\n${html.slice(0, 50000)}`
       }
     ],
     tools: [{
