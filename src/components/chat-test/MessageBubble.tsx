@@ -13,6 +13,7 @@ import { ConfirmationCard } from "./ConfirmationCard";
 import { OptionsCarousel } from "./OptionsCarousel";
 import { InlineChatForm } from "./InlineChatForm";
 import { StatusChip } from "./StatusChip";
+import { Loader2 } from "lucide-react";
 
 export interface ChatMessage {
   id: string;
@@ -69,6 +70,14 @@ export function MessageBubble({
             : "bg-muted text-foreground"
         )}
       >
+        {/* Loading state */}
+        {message.componentData?.loading && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span>🔍 Pulling relevant listings...</span>
+          </div>
+        )}
+        
         {/* Main message text with formatting */}
         <div 
           className="text-sm leading-relaxed whitespace-pre-wrap prose prose-sm dark:prose-invert max-w-none"

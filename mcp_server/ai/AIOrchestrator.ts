@@ -289,11 +289,11 @@ class AIOrchestrator {
           Logger.info(`[Intent Parsed] "${userMessage}" → ${intentCategory}`);
           await this.updateContext(sessionId, {
             programIntent: { category: intentCategory },
-            step: FlowStep.FIELD_PROBE
+            step: FlowStep.PROGRAM_SELECTION
           });
-          // Jump directly to field probe
           this.logInteraction(sessionId, "user", userMessage);
-          return this.handleFieldProbe("", sessionId);
+          // Trigger program search via Three-Pass Extractor
+          return this.handleProgramSearch(intentCategory, sessionId);
         }
       }
       
@@ -379,6 +379,102 @@ class AIOrchestrator {
     // PHASE 2: Persist to Supabase
     const userId = extractUserIdFromJWT(this.sessions[sessionId]?.user_jwt);
     await saveSessionToDB(sessionId, this.sessions[sessionId], userId || undefined);
+  }
+
+  /**
+   * Search for programs using Three-Pass Extractor
+   * Calls scp.find_programs and formats results as cards
+   */
+  private async handleProgramSearch(
+    intentCategory: string,
+    sessionId: string
+  ): Promise<OrchestratorResponse> {
+    const context = await this.getContext(sessionId);
+    
+    // Validate we have credentials and provider
+    if (!context.credential_id) {
+      return this.formatResponse(
+        "I need your login credentials first. Let me get those set up.",
+        [],
+        [{ label: "Connect Account", action: "connect_account", variant: "accent" }],
+        {}
+      );
+    }
+    
+    if (!context.provider?.orgRef) {
+      return this.formatResponse(
+        "I'm not sure which provider to search. Can you tell me which organization?",
+        [],
+        [],
+        {}
+      );
+    }
+    
+    // Show loading state
+    Logger.info(`[handleProgramSearch] Fetching ${intentCategory} programs for ${context.provider.name}`);
+    
+    try {
+      // Call scp.find_programs tool
+      const result = await this.callTool('scp.find_programs', {
+        credential_id: context.credential_id,
+        session_token: context.provider_session_token,
+        org_ref: context.provider.orgRef,
+        user_jwt: context.user_jwt,
+        category: intentCategory
+      });
+      
+      if (!result.success || !result.data?.programs || result.data.programs.length === 0) {
+        return this.formatResponse(
+          `I couldn't find any ${intentCategory} programs at ${context.provider.name} right now. Would you like to try a different category?`,
+          [],
+          [],
+          {}
+        );
+      }
+      
+      // Store session token for next steps
+      if (result.session_token) {
+        await this.updateContext(sessionId, { 
+          provider_session_token: result.session_token 
+        } as any);
+      }
+      
+      // Format programs as cards with selection buttons
+      const programCards = result.data.programs.slice(0, 5).map((program: any) => ({
+        title: program.title,
+        description: `${program.schedule || ''} • ${program.age_range || ''} • ${program.price || ''}`,
+        metadata: { 
+          program_ref: program.program_ref,
+          program_id: program.id 
+        },
+        buttons: [{
+          label: "Select This Program",
+          action: "select_program",
+          variant: "accent"
+        }]
+      }));
+      
+      await this.updateContext(sessionId, {
+        availablePrograms: result.data.programs,
+        step: FlowStep.PROGRAM_SELECTION
+      });
+      
+      return this.formatResponse(
+        `🎿 Found ${result.data.programs.length} ${intentCategory} programs at ${context.provider.name}. Here are the top options:`,
+        programCards,
+        [],
+        {}
+      );
+      
+    } catch (error: any) {
+      Logger.error('[handleProgramSearch] Failed:', error);
+      return this.formatResponse(
+        "I had trouble fetching the program listings. Let's try again.",
+        [],
+        [{ label: "Retry", action: "retry_program_search", variant: "accent" }],
+        {}
+      );
+    }
   }
 
   /**
@@ -790,6 +886,31 @@ class AIOrchestrator {
             undefined,
             { showingCategories: true }
           );
+
+        case "select_program":
+          const { program_ref, program_id } = payload || {};
+          
+          if (!program_ref && !program_id) {
+            return this.formatResponse(
+              "I'm not sure which program you selected. Can you try again?",
+              [],
+              [],
+              {}
+            );
+          }
+          
+          await this.updateContext(sessionId, {
+            selectedProgram: program_ref || program_id,
+            step: FlowStep.FIELD_PROBE
+          });
+          
+          // Now discover required fields for the selected program
+          return this.handleFieldProbe(program_ref || program_id, sessionId);
+        
+        case "retry_program_search":
+          const ctx = await this.getContext(sessionId);
+          const category = ctx.programIntent?.category || "lessons";
+          return this.handleProgramSearch(category, sessionId);
 
         case "reset":
         case "retry_search":

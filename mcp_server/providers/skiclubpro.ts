@@ -1479,7 +1479,36 @@ export const skiClubProTools = {
         }
         
         // Programs already in expected format from Three-Pass Extractor
-        const programs = scrapedPrograms;
+        let programs = scrapedPrograms;
+        
+        // Filter by category if provided
+        if (args.category) {
+          console.log(`[scp.find_programs] Filtering programs by category: ${args.category}`);
+          const categoryLower = args.category.toLowerCase();
+          programs = programs.filter(p => {
+            const title = p.title?.toLowerCase() || '';
+            const desc = p.description?.toLowerCase() || '';
+            
+            // Match category keywords
+            if (categoryLower === 'lessons') {
+              return title.includes('lesson') || title.includes('class') || desc.includes('instruction');
+            }
+            if (categoryLower === 'membership') {
+              return title.includes('member') || desc.includes('membership');
+            }
+            if (categoryLower === 'camp') {
+              return title.includes('camp') || desc.includes('summer');
+            }
+            if (categoryLower === 'race') {
+              return title.includes('race') || title.includes('team');
+            }
+            if (categoryLower === 'private') {
+              return title.includes('private');
+            }
+            return true;
+          });
+          console.log(`[scp.find_programs] Filtered to ${programs.length} programs matching "${args.category}"`);
+        }
         
         console.log(`[scp.find_programs] ✓ Successfully scraped ${programs.length} programs`);
         
