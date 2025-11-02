@@ -82,7 +82,7 @@ export enum FlowStep {
     step?: FlowStep;
     provider?: { name: string; orgRef: string };
     program?: { name: string; id: string };
-    child?: { name: string; birthdate?: string };
+    child?: { name: string; id?: string; birthdate?: string };
     prerequisites?: Record<string, "ok" | "required" | "missing">;
     formAnswers?: Record<string, any>;
     conversationHistory?: Array<{ role: string; content: string }>;
@@ -91,6 +91,8 @@ export enum FlowStep {
   user_jwt?: string;
   credential_id?: string;
   session_token?: string;  // Browser session token for reuse
+  mandate_id?: string;  // Mandate ID for audit trail
+  mandate_jws?: string;  // Mandate JWS token for verification
   credentials?: { [provider: string]: { id: string; credential_id: string } };
   pendingLogin?: { provider: string; orgRef: string };
     
