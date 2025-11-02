@@ -261,7 +261,7 @@ class AIOrchestrator {
    * @param userLocation - Optional GPS coordinates {lat, lng} for location-based filtering
    * @returns Promise resolving to OrchestratorResponse with cards
    */
-  async generateResponse(userMessage: string, sessionId: string, userLocation?: {lat: number, lng: number}, userJwt?: string): Promise<OrchestratorResponse> {
+  async generateResponse(userMessage: string, sessionId: string, userLocation?: {lat: number, lng: number}, userJwt?: string, mandateInfo?: { mandate_jws?: string; mandate_id?: string }): Promise<OrchestratorResponse> {
     try {
       const context = await this.getContext(sessionId);
       // Store userLocation and JWT in context for tool calls
@@ -270,6 +270,13 @@ class AIOrchestrator {
       }
       if (userJwt) {
         await this.updateContext(sessionId, { user_jwt: userJwt } as any);
+      }
+      // Store mandate in context if provided
+      if (mandateInfo?.mandate_jws || mandateInfo?.mandate_id) {
+        await this.updateContext(sessionId, {
+          mandate_jws: mandateInfo.mandate_jws,
+          mandate_id: mandateInfo.mandate_id
+        } as any);
       }
       const step = this.determineStep(userMessage, context);
       
@@ -528,25 +535,25 @@ class AIOrchestrator {
    * @param sessionId - Current session identifier
    * @returns OrchestratorResponse with grouped program cards
    */
-  private async handleAutoProgramDiscovery(sessionId: string): Promise<OrchestratorResponse> {
-    const context = await this.getContext(sessionId);
+  private async handleAutoProgramDiscovery(sessionId: string, context?: SessionContext, userJwt?: string): Promise<OrchestratorResponse> {
+    const ctx = context || await this.getContext(sessionId);
     
-    if (!context.provider) {
+    if (!ctx.provider) {
       throw new Error("Provider context missing for auto-discovery");
     }
     
-    const providerName = context.provider.name;
+    const providerName = ctx.provider.name;
     Logger.info(`[handleAutoProgramDiscovery] Starting auto-discovery for ${providerName}`);
     
     try {
-      // FIX: Pass session_token and user_jwt to enable credential lookup and session reuse
+      // FIX: Pass session_token, user_jwt, and sessionId to enable credential lookup and session reuse
       const result = await this.callTool('scp.find_programs', {
-        credential_id: context.credential_id,
-        session_token: context.provider_session_token,  // Reuse existing session if available
-        org_ref: context.provider.orgRef,
-        user_jwt: context.user_jwt,  // CRITICAL: Required for lookupCredentialsById()
+        credential_id: ctx.credential_id,
+        session_token: ctx.session_token,  // Reuse existing session if available
+        org_ref: ctx.provider.orgRef,
+        user_jwt: ctx.user_jwt || userJwt,  // CRITICAL: Required for lookupCredentialsById()
         category: "all"  // Auto-discovery fetches all programs
-      });
+      }, sessionId);
       
       // Handle errors
       if (!result.success) {
@@ -560,7 +567,7 @@ class AIOrchestrator {
           });
           
           // Store retry count in context
-          const retryCount = (context as any).discovery_retry_count || 0;
+          const retryCount = (ctx as any).discovery_retry_count || 0;
           await this.updateContext(sessionId, { 
             discovery_retry_count: retryCount + 1 
           } as any);
@@ -731,12 +738,19 @@ class AIOrchestrator {
    * @param sessionId - Session identifier
    * @returns Promise resolving to next OrchestratorResponse
    */
-  async handleAction(action: string, payload: any, sessionId: string, userJwt?: string): Promise<OrchestratorResponse> {
+  async handleAction(action: string, payload: any, sessionId: string, userJwt?: string, mandateInfo?: { mandate_jws?: string; mandate_id?: string }): Promise<OrchestratorResponse> {
     const context = await this.getContext(sessionId);
     
     // Store JWT in context if provided
     if (userJwt) {
       await this.updateContext(sessionId, { user_jwt: userJwt } as any);
+    }
+    // Store mandate in context if provided
+    if (mandateInfo?.mandate_jws || mandateInfo?.mandate_id) {
+      await this.updateContext(sessionId, {
+        mandate_jws: mandateInfo.mandate_jws,
+        mandate_id: mandateInfo.mandate_id
+      } as any);
     }
     
     this.logAction("card_action", { action, sessionId, currentStep: context.step });
@@ -950,13 +964,24 @@ class AIOrchestrator {
           // Handle callback after user enters credentials
           const { credential_id, cookies } = payload;
           
+          // Check if we already have a valid session token
+          if (context.session_token) {
+            console.log('[credentials_submitted] ✅ Reusing existing session_token, skipping login');
+            
+            // Skip to program discovery
+            const providerName = context.provider?.name || "your provider";
+            console.log(`[credentials_submitted] Auto-triggering program discovery for: ${providerName}`);
+            
+            return this.handleAutoProgramDiscovery(sessionId, context, userJwt);
+          }
+          
           // Login first to get session_token
           console.log('[credentials_submitted] Performing login to get session token...');
           const loginResult = await this.callTool('scp.login', {
             credential_id,
             org_ref: context.provider?.orgRef || 'blackhawk-ski',
             user_jwt: context.user_jwt ?? userJwt
-          });
+          }, sessionId);
           
           if (!loginResult.success) {
             return this.formatResponse(
@@ -1005,7 +1030,7 @@ class AIOrchestrator {
           
           // Immediately trigger program discovery (no user input required)
           try {
-            const discoveryResult = await this.handleAutoProgramDiscovery(sessionId);
+            const discoveryResult = await this.handleAutoProgramDiscovery(sessionId, context, userJwt);
             
             // Return combined response: post-login message + discovery results
             return {

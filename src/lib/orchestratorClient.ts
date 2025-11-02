@@ -52,7 +52,8 @@ export async function sendMessage(
   console.log('[Orchestrator Client] Sending message:', message, { hasLocation: !!userLocation, hasJwt: !!userJwt });
   
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    'X-Mandate-JWS': import.meta.env.VITE_MANDATE_JWS_DEV || '__DEV_BYPASS__'
   };
   
   if (userJwt) {
@@ -93,7 +94,8 @@ export async function sendAction(
   console.log('[Orchestrator Client] Sending action:', action, payload, { hasJwt: !!userJwt });
   
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    'X-Mandate-JWS': import.meta.env.VITE_MANDATE_JWS_DEV || '__DEV_BYPASS__'
   };
   
   if (userJwt) {

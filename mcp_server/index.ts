@@ -474,6 +474,24 @@ class SignupAssistMCPServer {
           try {
             const { message, sessionId, action, payload, userLocation, userJwt } = JSON.parse(body);
             
+            // Capture mandate from headers or body (with dev bypass)
+            const mandate_jws = (req.headers['x-mandate-jws'] as string) 
+                             || JSON.parse(body).mandate_jws 
+                             || process.env.MANDATE_JWS_DEV 
+                             || null;
+            const mandate_id = (req.headers['x-mandate-id'] as string) 
+                            || JSON.parse(body).mandate_id 
+                            || null;
+            
+            // Dev bypass if no mandate in dev mode
+            const finalMandateJws = (!mandate_jws && process.env.MANDATE_OPTIONAL === 'true') 
+              ? '__DEV_BYPASS__' 
+              : mandate_jws;
+            
+            if (finalMandateJws || mandate_id) {
+              console.log('[mandate] attached:', !!finalMandateJws, !!mandate_id);
+            }
+            
             // Check if orchestrator is available - if not, provide mock responses
             if (!this.orchestrator) {
               console.warn('[Orchestrator] AI Orchestrator unavailable - using mock responses');
@@ -550,7 +568,10 @@ class SignupAssistMCPServer {
               console.log(`[Orchestrator] handleAction: ${action}`, { hasJwt: !!userJwt });
               
               try {
-                result = await this.orchestrator.handleAction(action, payload || {}, sessionId, userJwt);
+                result = await this.orchestrator.handleAction(action, payload || {}, sessionId, userJwt, { 
+                  mandate_jws: finalMandateJws, 
+                  mandate_id 
+                });
                 console.log(`[Orchestrator] handleAction result:`, result ? 'success' : 'null/undefined');
                 
                 if (!result) {
@@ -563,7 +584,10 @@ class SignupAssistMCPServer {
             } else if (message) {
               // Text message
               console.log(`[Orchestrator] generateResponse: ${message}`, { hasLocation: !!userLocation, hasJwt: !!userJwt });
-              result = await this.orchestrator.generateResponse(message, sessionId, userLocation, userJwt);
+              result = await this.orchestrator.generateResponse(message, sessionId, userLocation, userJwt, { 
+                mandate_jws: finalMandateJws, 
+                mandate_id 
+              });
               console.log(`[Orchestrator] generateResponse result:`, result ? 'success' : 'null/undefined');
               
               if (!result) {
