@@ -53,19 +53,19 @@ export function getProgramsReadyMessage(vars: MessageVariables): string {
 }
 
 /**
- * ASSISTANT__NO_PROGRAMS_FOUND
+ * ASSISTANT__NO_PROGRAMS_FALLBACK (Block 9)
  * 
  * Fallback when no programs are discovered
  */
 export function getNoProgramsMessage(vars: MessageVariables): string {
   const providerName = vars.provider_name || "your provider";
   
-  return `🤔 I couldn't find any active programs at ${providerName} right now. This could mean:
-• The season hasn't opened yet
-• Programs are sold out
-• The registration page is temporarily unavailable
+  return `I couldn't find open programs at ${providerName} right now. That usually means signups haven't opened yet or everything's full.
 
-Would you like me to check again, or can I help with something else?`;
+• Want me to check a different category or nearby club?
+• I can also keep an eye out and let you know when new sessions appear.
+
+(Your login is still active—we won't ask you to re‑enter it.)`;
 }
 
 /**
@@ -80,14 +80,16 @@ export function getErrorRecoveryMessage(vars: MessageVariables): string {
 }
 
 /**
- * ASSISTANT__SESSION_EXPIRED
+ * ASSISTANT__SESSION_EXPIRED (Block 10)
  * 
- * Message when session token is invalid/expired
+ * Message when session token is invalid/expired - gentle recovery
  */
 export function getSessionExpiredMessage(vars: MessageVariables): string {
   const providerName = vars.provider_name || "your provider";
   
-  return `Looks like your ${providerName} login expired. Let's reconnect securely—I'll just need you to log in again, and we'll pick up right where we left off.`;
+  return `Hmm, it looks like your provider login expired. Let's reconnect securely and I'll fetch the programs again. 🔐
+
+(You'll sign in directly with ${providerName}; we don't store your password.)`;
 }
 
 /**
@@ -103,10 +105,23 @@ export function getConfirmationMessage(vars: MessageVariables): string {
 }
 
 /**
+ * ASSISTANT__ACK_SELECTION (Block 12)
+ * 
+ * Post‑selection acknowledgement (after user taps a card)
+ */
+export function getSelectionAckMessage(vars: MessageVariables): string {
+  const programTitle = vars.program_name || "this program";
+  
+  return `Great choice! I'll pull the registration details for "${programTitle}." If anything's required before sign‑up (like membership or a waiver), I'll let you know and help you through it. 🙌
+
+(We'll confirm everything before submitting anything.)`;
+}
+
+/**
  * Helper to select the appropriate message based on flow state
  */
 export function getMessageForState(
-  state: "post_login" | "loading" | "programs_ready" | "no_programs" | "error" | "session_expired" | "confirmation",
+  state: "post_login" | "loading" | "programs_ready" | "no_programs" | "error" | "session_expired" | "confirmation" | "selection_ack",
   vars: MessageVariables = {}
 ): string {
   switch (state) {
@@ -124,6 +139,8 @@ export function getMessageForState(
       return getSessionExpiredMessage(vars);
     case "confirmation":
       return getConfirmationMessage(vars);
+    case "selection_ack":
+      return getSelectionAckMessage(vars);
     default:
       return "Let me know how I can help!";
   }

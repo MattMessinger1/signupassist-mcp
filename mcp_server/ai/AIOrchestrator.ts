@@ -7,6 +7,7 @@ import { logAudit, extractUserIdFromJWT, logToneChange } from "../lib/auditLogge
 import { loadSessionFromDB, saveSessionToDB } from "../lib/sessionPersistence.js";
 import { shouldReuseSession, getProgramCategory, TOOL_WORKFLOW, SESSION_REUSE_CONFIG } from "./toolGuidance.js";
 import { getMessageForState } from "./messageTemplates.js";
+import { buildGroupedCardsPayload, buildSimpleCardsFromGrouped } from "./cardPayloadBuilder.js";
 
 /**
  * Prompt version tracking for tone changes
@@ -934,13 +935,43 @@ class AIOrchestrator {
             );
           }
           
+          // Find the program name from context for acknowledgement
+          const selectedProgramData = context.availablePrograms?.find(
+            (p: any) => p.id === program_ref || p.id === program_id || p.program_ref === program_ref
+          );
+          const programName = selectedProgramData?.title || "this program";
+          
           await this.updateContext(sessionId, {
             selectedProgram: program_ref || program_id,
             step: FlowStep.FIELD_PROBE
           });
           
-          // Now discover required fields for the selected program
-          return this.handleFieldProbe(program_ref || program_id, sessionId);
+          // Use template: ASSISTANT__ACK_SELECTION (Block 12)
+          const ackMessage = getMessageForState("selection_ack", {
+            program_name: programName
+          });
+          
+          // Show acknowledgement before proceeding to field probe
+          // The actual field probe will happen on next interaction or automatically
+          return this.formatResponse(
+            ackMessage,
+            undefined,
+            [{ label: "Continue", action: "continue_to_field_probe", variant: "accent" }],
+            {}
+          );
+        
+        case "continue_to_field_probe":
+          // Proceed with field discovery after acknowledgement
+          const selectedProg = context.selectedProgram;
+          if (!selectedProg) {
+            return this.formatResponse(
+              "I'm not sure which program to proceed with. Can you select one again?",
+              [],
+              [],
+              {}
+            );
+          }
+          return this.handleFieldProbe(selectedProg, sessionId);
         
       case "retry_program_search":
         const ctx = await this.getContext(sessionId);
