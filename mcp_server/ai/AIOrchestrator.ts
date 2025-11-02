@@ -1042,6 +1042,11 @@ class AIOrchestrator {
       Logger.info(`Tool ${toolName} succeeded.`);
       return result;
     } catch (error: any) {
+      // If tool not found in MCP registry, try fallback
+      if (error.message && error.message.includes('Unknown MCP tool')) {
+        Logger.info(`Tool ${toolName} not in MCP registry, using fallback`);
+        return this.callToolFallback(toolName, args);
+      }
       Logger.error(`Tool ${toolName} failed:`, error);
       throw error;
     }
