@@ -23,7 +23,7 @@
  * - Modular UI components in components/chat-test/
  */
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
@@ -135,6 +135,16 @@ function ChatTestHarnessContent() {
     orgRef: string;
   } | null>(null);
 
+  // Mount guard to prevent duplicate initialization
+  const welcomeShownRef = useRef(false);
+
+  // ============= Logging =============
+  // Define addLog early with useCallback for stable reference
+  const addLog = useCallback((level: LogLevel, category: LogCategory, message: string, data?: any) => {
+    const entry = createLogEntry(level, category, message, data);
+    setDebugLogs(prev => [...prev, entry]);
+  }, []);
+
   // Get JWT helper
   const getUserJwt = (): string | undefined => {
     if (!session?.access_token) {
@@ -209,10 +219,14 @@ function ChatTestHarnessContent() {
     };
     
     fetchIPLocation();
-  }, []);
+  }, [addLog]);
 
   // ============= Initial Welcome Message =============
   useEffect(() => {
+    // Prevent duplicate initialization on remount (React StrictMode)
+    if (welcomeShownRef.current) return;
+    welcomeShownRef.current = true;
+    
     addLog("info", "system", "Initializing chat test harness...");
     
     // Add welcome message
@@ -223,14 +237,7 @@ function ChatTestHarnessContent() {
       timestamp: new Date(),
     };
     setMessages([welcomeMessage]);
-  }, []);
-
-  // ============= Logging =============
-
-  const addLog = (level: LogLevel, category: LogCategory, message: string, data?: any) => {
-    const entry = createLogEntry(level, category, message, data);
-    setDebugLogs(prev => [...prev, entry]);
-  };
+  }, [addLog]);
 
   // ============= Message Helpers =============
 
