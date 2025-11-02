@@ -1341,18 +1341,19 @@ export const skiClubProTools = {
     }
   },
 
-  'scp.find_programs': async (args: {
-    org_ref?: string; 
-    query?: string; 
-    mandate_id?: string; 
-    plan_execution_id?: string; 
-    plan_id?: string;
-    credential_id?: string; 
-    user_jwt?: string; 
-    user_id?: string;
-    session_token?: string;
-    force_login?: boolean 
-  }): Promise<ProviderResponse<{ programs: any[] }>> => {
+    'scp.find_programs': async (args: {
+      org_ref?: string; 
+      query?: string; 
+      mandate_id?: string; 
+      plan_execution_id?: string; 
+      plan_id?: string;
+      credential_id?: string; 
+      user_jwt?: string; 
+      user_id?: string;
+      session_token?: string;
+      force_login?: boolean;
+      category?: string;
+    }): Promise<ProviderResponse<{ programs: any[] }>> => {
     const orgRef = args.org_ref || 'blackhawk-ski-club';
     
     console.log('[scp.find_programs] Incoming args:', {

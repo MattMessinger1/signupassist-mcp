@@ -118,6 +118,7 @@ export enum FlowStep {
     };
     showingCategories?: boolean;
     currentCategory?: string;
+    selectedProgram?: string;
     
     // Intent Capture & Field Probe Properties
     programIntent?: {
@@ -779,7 +780,7 @@ class AIOrchestrator {
 
         case "view_category":
           // User clicked a category card, show filtered programs
-          const category = payload.category;
+          const viewCategory = payload.category;
           const programIds = payload.programIds || [];
           
           // Retrieve full program list from context
@@ -907,10 +908,10 @@ class AIOrchestrator {
           // Now discover required fields for the selected program
           return this.handleFieldProbe(program_ref || program_id, sessionId);
         
-        case "retry_program_search":
-          const ctx = await this.getContext(sessionId);
-          const category = ctx.programIntent?.category || "lessons";
-          return this.handleProgramSearch(category, sessionId);
+      case "retry_program_search":
+        const ctx = await this.getContext(sessionId);
+        const retryCategory = ctx.programIntent?.category || "lessons";
+        return this.handleProgramSearch(retryCategory, sessionId);
 
         case "reset":
         case "retry_search":
