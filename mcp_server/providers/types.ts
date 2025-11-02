@@ -81,6 +81,12 @@ export interface ProviderResponse<T = any> {
   error?: ParentFriendlyError | string; // string for legacy compatibility
   
   /**
+   * Additional response metadata
+   */
+  message?: string;
+  timeout?: boolean;
+  
+  /**
    * Timestamp of the operation
    */
   timestamp?: string;
