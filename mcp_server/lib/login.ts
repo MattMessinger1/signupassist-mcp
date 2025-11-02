@@ -367,33 +367,9 @@ export async function loginWithCredentials(
       let url = page.url();
       const hasCookie = await hasDrupalSessCookie(page);
       
-      // Handle Drupal redirect if session exists but still on login page
-      if (url.includes('/user/login') && hasCookie) {
-        console.log('DEBUG Session cookie present but still on login page - following redirect...');
-        
-        // ✅ WAIT for cookies to be fully persisted in context
-        await page.waitForTimeout(500);
-        
-        const urlObj = new URL(url);
-        const destination = urlObj.searchParams.get('destination') || '/dashboard';
-        const dashboardUrl = `${urlObj.origin}${destination}`;
-        
-        console.log(`DEBUG Attempting redirect to: ${dashboardUrl}`);
-        
-        // Use domcontentloaded since networkidle never triggers on sites with analytics
-        await page.goto(dashboardUrl, { 
-          waitUntil: 'domcontentloaded',
-          timeout: 8000
-        }).catch(async (navError) => {
-          console.log(`DEBUG Navigation to dashboard failed: ${navError.message}`);
-          // Fallback: Force navigation via JavaScript
-          console.log(`DEBUG Fallback: setting window.location.href directly`);
-          await page.evaluate((url) => window.location.href = url, dashboardUrl);
-          await page.waitForTimeout(2000);
-        });
-        
-        url = page.url();
-        console.log(`DEBUG ✓ After navigation, URL is: ${url}`);
+      // If still on login page with valid session, that's okay - the extractor will handle navigation
+      if (url.includes('/user/login')) {
+        console.log(`DEBUG Still on login page but session cookie present - proceeding`);
       }
       
       const title = await page.title();
@@ -417,52 +393,6 @@ export async function loginWithCredentials(
         console.log('DEBUG ⚠️ No session cookie found in extracted cookies');
       }
       
-      // Force navigation to dashboard if still on login page
-      if (url.includes('/user/login')) {
-        console.log('DEBUG ⚠️ Still on login page after redirect attempt');
-        
-        const urlObj = new URL(url);
-        const destination = urlObj.searchParams.get('destination') || '/dashboard';
-        const dashboardUrl = `${urlObj.origin}${destination}`;
-        
-        console.log(`DEBUG Second attempt: navigating to ${dashboardUrl}`);
-        
-        // Second attempt: use domcontentloaded + window.location.replace() fallback
-        await page.goto(dashboardUrl, { 
-          waitUntil: 'domcontentloaded',
-          timeout: 10000
-        }).catch(async (navError) => {
-          console.log(`DEBUG Second navigation failed: ${navError.message}`);
-          console.log(`DEBUG Fallback: using window.location.replace()`);
-          // Use replace() to prevent back-button issues
-          await page.evaluate((url) => window.location.replace(url), dashboardUrl);
-          await page.waitForTimeout(3000);
-        });
-        
-        // CRITICAL: Wait for actual dashboard content to appear
-        console.log(`DEBUG Waiting for dashboard content to load...`);
-        await page.waitForSelector('a:has-text("Register"), .view-content, table.views-table', {
-          timeout: 8000
-        }).catch((err) => {
-          console.log(`DEBUG ⚠️ Dashboard content not detected: ${err.message}`);
-        });
-        
-        // ✅ Verify we actually left the login page
-        await page.waitForFunction(
-          () => !window.location.href.includes('/user/login'),
-          { timeout: 5000 }
-        ).catch(() => console.log('DEBUG ⚠️ Verification timeout - may still be on login page'));
-        
-        const finalUrl = page.url();
-        console.log(`DEBUG ✓ Final URL after forced navigation: ${finalUrl}`);
-        
-        // ✅ If STILL on login page, throw error
-        if (finalUrl.includes('/user/login')) {
-          throw new Error('Failed to navigate to dashboard after login - stuck on login page. Cookies may be invalid or site requires manual verification.');
-        }
-        
-        console.log(`DEBUG ✓ Dashboard loaded: ${finalUrl}`);
-      }
       
       console.log('DEBUG ✓ Session A complete - ready to close');
       
