@@ -21,9 +21,10 @@ export interface ProgramData {
 
 /**
  * Run the Three-Pass Extractor on the current page
+ * Pass 0: Preflight check (NEW)
  * Pass 1: Identify program containers
  * Pass 2: Extract structured data
- * Pass 3: Validate and normalize
+ * Pass 3: AI-powered validation and normalization
  */
 export async function runThreePassExtractor(
   page: Page,
@@ -45,17 +46,30 @@ export async function runThreePassExtractor(
   console.log('[ThreePassExtractor] Using model: gpt-5-2025-08-07 (vision), gpt-5-mini-2025-08-07 (text)');
   
   try {
-    // Capture page state
-    const screenshot = await page.screenshot({ fullPage: true });
-    const pageHTML = await page.content();
     const pageURL = page.url();
-    
     console.log(`[ThreePassExtractor] Analyzing ${pageURL}`);
     
+    // PASS 0: Preflight check (non-blocking)
+    console.log('[ThreePassExtractor] Pass 0: Preflight check...');
+    const preflight = await preflightCheck(page, openai);
+    if (!preflight.ok) {
+      console.warn(`[ThreePassExtractor] ⚠️ Preflight warning: ${preflight.reason}`);
+      if (preflight.should_go_to) {
+        console.log(`[ThreePassExtractor] 💡 Suggestion: navigate to ${preflight.should_go_to}`);
+      }
+      // Continue anyway - extractor is resilient
+    } else {
+      console.log('[ThreePassExtractor] ✅ Preflight passed');
+    }
+    
+    // Capture page state
+    const screenshot = await page.screenshot({ fullPage: false }); // Upper section only
+    const pageHTML = await page.content();
+    
     // PASS 1: Identify program containers using Vision
-    console.log('[ThreePassExtractor] Pass 1: Identifying program containers...');
-    const containers = await identifyProgramContainers(screenshot, pageHTML, openai);
-    console.log(`[ThreePassExtractor] Pass 1: Identified ${containers.length} program containers`);
+    console.log('[ThreePassExtractor] Pass 1: Identifying containers...');
+    const containers = await identifyProgramContainers(screenshot, pageHTML, pageURL, openai);
+    console.log(`[ThreePassExtractor] Pass 1: Found ${containers.length} containers`);
     
     if (containers.length === 0) {
       console.warn('[ThreePassExtractor] No program containers found');
@@ -64,16 +78,28 @@ export async function runThreePassExtractor(
     
     // PASS 2: Extract structured data from HTML
     console.log('[ThreePassExtractor] Pass 2: Extracting program data...');
-    const extractedPrograms = await extractProgramData(pageHTML, containers, orgRef, openai);
+    const baseUrl = new URL(pageURL).origin;
+    const extractedPrograms = await extractProgramData(pageHTML, containers, baseUrl, openai);
     console.log(`[ThreePassExtractor] Pass 2: Extracted ${extractedPrograms.length} programs`);
-    console.log('[ThreePassExtractor] Pass 2: Programs extracted:', extractedPrograms.map(p => p.title).join(', '));
     
-    // PASS 3: Validate and normalize
+    // PASS 3: AI-powered validation and normalization
     console.log('[ThreePassExtractor] Pass 3: Validating and normalizing...');
-    const validatedPrograms = validateAndNormalize(extractedPrograms, orgRef);
-    console.log(`[ThreePassExtractor] Pass 3: Validated ${validatedPrograms.length} programs`);
+    const result = await validateAndNormalize(extractedPrograms, orgRef, pageURL, openai);
+    console.log(`[ThreePassExtractor] Pass 3: Final ${result.programs.length} programs`);
     
-    return validatedPrograms;
+    // Map to ProgramData format
+    return result.programs.map((p: any) => ({
+      id: p.program_id,
+      program_ref: p.program_id,
+      title: p.title,
+      description: p.brief || 'See website for details',
+      schedule: p.schedule || 'TBD',
+      age_range: p.age_range || 'All ages',
+      skill_level: 'All levels',
+      price: p.price || 'See website',
+      actual_id: p.program_id,
+      org_ref: orgRef
+    }));
     
   } catch (error) {
     console.error('[ThreePassExtractor] Extraction failed:', error);
@@ -82,45 +108,113 @@ export async function runThreePassExtractor(
 }
 
 /**
+ * Pass 0: Preflight check - validate we're on the right page
+ */
+async function preflightCheck(
+  page: Page,
+  openai: OpenAI
+): Promise<{ ok: boolean; reason?: string; should_go_to?: string }> {
+  
+  const url = page.url();
+  const html = await page.content();
+  
+  const response = await openai.chat.completions.create({
+    model: 'gpt-5-2025-08-07',
+    messages: [
+      {
+        role: 'system',
+        content: `You are validating that we are on a provider's programs listing page.
+
+Return JSON with:
+{
+  "ok": boolean,                     // true if this appears to be the registration/programs list
+  "reason": string | null,           // short reason if not ok
+  "should_go_to": string | null      // if not ok, suggested path (e.g., "/registration")
+}
+
+Rules:
+- ok = true if the HTML includes strong cues like "Register", "Join Waitlist", or repeated program rows/cards.
+- If url does not include "/registration", suggest should_go_to="/registration".
+- No prose. JSON only.`
+      },
+      {
+        role: 'user',
+        content: `url: ${url}\n\nhtml: ${html.slice(0, 200000)}`
+      }
+    ],
+    tools: [{
+      type: 'function',
+      function: {
+        name: 'preflight_check',
+        description: 'Validate page readiness',
+        parameters: {
+          type: 'object',
+          properties: {
+            ok: { type: 'boolean' },
+            reason: { type: 'string' },
+            should_go_to: { type: 'string' }
+          },
+          required: ['ok']
+        }
+      }
+    }],
+    tool_choice: { type: 'function', function: { name: 'preflight_check' } }
+  });
+  
+  const toolCall = response.choices[0].message.tool_calls?.[0];
+  if (!toolCall || toolCall.type !== 'function') {
+    return { ok: false, reason: 'No response from preflight' };
+  }
+  
+  return JSON.parse(toolCall.function.arguments);
+}
+
+/**
  * Pass 1: Use OpenAI Vision to identify program containers
- * 
- * EXTRACTOR_PROMPT__PROGRAMS_ONLY (Pass 1)
  */
 async function identifyProgramContainers(
   screenshot: Buffer,
   html: string,
+  url: string,
   openai: OpenAI
-): Promise<Array<{ selector: string; index: number }>> {
+): Promise<Array<{ id: string; hint: string; confidence: number }>> {
   
   const base64Image = screenshot.toString('base64');
   
   const response = await openai.chat.completions.create({
-    model: 'gpt-5-2025-08-07',  // Vision-structured capability for OCR precision (multimodal)
+    model: 'gpt-5-2025-08-07',
     messages: [
-      {
-        role: 'system',
-        content: `Context: You will extract programs/classes that a parent can enroll in from the provider's registration page (e.g., SkiClubPro). Treat this page as the canonical list.
-
-Pass 1 — Identify Program Containers (Vision)
-
-From the screenshot, identify all visible program containers (cards, rows, or list items) likely to correspond to individual programs. Typical cues: a program title, a session/season, date/time, age range, price/fee, and a Register button or link.
-
-DO NOT extract prerequisites, waivers, or payment fields. This extractor is for program discovery only.
-
-Output: an ordered list of program containers with DOM hints (CSS/XPath snippets) for each container.`
-      },
       {
         role: 'user',
         content: [
           {
             type: 'text',
-            text: 'Identify all visible program containers (cards, rows, or list items) from the screenshot. Look for program titles, schedules, dates, ages, prices, and Register/Join buttons. Return a container for each distinct program offering.'
+            text: `Find all visible containers that represent individual programs/classes.
+
+Cues:
+- A program/card row usually shows: title, schedule/dates, age range, price, and a Register/Join/Full button/link.
+- Ignore navigation bars, filters, search inputs, footers, banners, ads, cookie bars.
+
+Return JSON ONLY:
+{
+  "containers": [
+    {
+      "id": "p1",
+      "hint": "css=.views-row:nth(1)  .registration-list-item  .program-row  .card",
+      "confidence": 0.0
+    }
+  ]
+}
+
+Constraints:
+- Max 30 containers.
+- Order is top-to-bottom.
+- Confidence in [0,1].
+- No prose.`
           },
           {
             type: 'image_url',
-            image_url: {
-              url: `data:image/png;base64,${base64Image}`
-            }
+            image_url: { url: `data:image/png;base64,${base64Image}` }
           }
         ]
       }
@@ -129,7 +223,7 @@ Output: an ordered list of program containers with DOM hints (CSS/XPath snippets
       type: 'function',
       function: {
         name: 'identify_program_containers',
-        description: 'Return the identified program containers',
+        description: 'Return identified program containers',
         parameters: {
           type: 'object',
           properties: {
@@ -138,16 +232,11 @@ Output: an ordered list of program containers with DOM hints (CSS/XPath snippets
               items: {
                 type: 'object',
                 properties: {
-                  selector: {
-                    type: 'string',
-                    description: 'CSS selector or class name visible on the card'
-                  },
-                  index: {
-                    type: 'number',
-                    description: 'Position index on the page'
-                  }
+                  id: { type: 'string' },
+                  hint: { type: 'string' },
+                  confidence: { type: 'number', minimum: 0, maximum: 1 }
                 },
-                required: ['index']
+                required: ['id', 'confidence']
               }
             }
           },
@@ -170,47 +259,56 @@ Output: an ordered list of program containers with DOM hints (CSS/XPath snippets
 
 /**
  * Pass 2: Extract structured program data from HTML
- * 
- * EXTRACTOR_PROMPT__PROGRAMS_ONLY (Pass 2)
  */
 async function extractProgramData(
   html: string,
-  containers: Array<{ selector: string; index: number }>,
-  orgRef: string,
+  containers: Array<{ id: string; hint: string; confidence: number }>,
+  baseUrl: string,
   openai: OpenAI
-): Promise<Partial<ProgramData>[]> {
+): Promise<any[]> {
   
   const response = await openai.chat.completions.create({
-    model: 'gpt-5-mini-2025-08-07',  // Structured-json capability for field completeness
+    model: 'gpt-5-mini-2025-08-07',
     messages: [
       {
         role: 'system',
-        content: `Pass 2 — Extract Program Fields (HTML to structured)
+        content: `Extract a single program/class from the provided container HTML.
 
-For each container, extract these fields when present (leave null if missing; never invent values):
-- program_id (stable hash/slug derived from title+dates)
-- title (short, readable)
-- brief (1‑sentence summary or level, if available)
-- age_range (e.g., "Ages 7–10")
-- schedule (dates and day/time; keep it concise)
-- season (e.g., "2025 Winter", if present)
-- price (numeric + currency symbol if shown, e.g., "$180")
-- status ("open", "waitlist", "full", "closed", if shown)
-- cta_label (e.g., "Register", "Join Waitlist")
-- cta_href (absolute URL if available)
+Return JSON ONLY:
+{
+  "programs": [
+    {
+      "program_id": "stable-slug-from-title-and-schedule",
+      "title": "≤ 60 chars",
+      "brief": "≤ 90 chars or null",
+      "schedule": "dates / day / time in 1 compact line or null",
+      "age_range": "e.g., Ages 7–10 or null",
+      "season": "e.g., Winter 2025 or null",
+      "price": "$123" | "Free" | null,
+      "status": "open" | "waitlist" | "full" | "closed" | null,
+      "cta_label": "Register | Join Waitlist | Details | null",
+      "cta_href": "absolute URL or null"
+    }
+  ]
+}
 
-Extract the EXACT text visible - do not rephrase, summarize, or invent information. Copy program titles, prices, and details word-for-word as they appear.`
+Rules:
+- Populate fields only from visible text. If missing, set null.
+- Normalize status to lower-case canonical values.
+- Build program_id as a URL-safe slug from title+schedule (lowercase, hyphens).
+- Resolve relative links to absolute using base_url.
+- No prose. JSON only.`
       },
       {
         role: 'user',
-        content: `Extract programs from this HTML. Return exactly what you see - do not paraphrase or invent programs. If you cannot find programs in the HTML, return an empty array rather than making up fake ones.\n\nHTML:\n${html.slice(0, 50000)}`
+        content: `base_url: ${baseUrl}\n\ncontainer_html: ${html.slice(0, 50000)}`
       }
     ],
     tools: [{
       type: 'function',
       function: {
         name: 'extract_program_data',
-        description: 'Return the extracted program data',
+        description: 'Extract program fields',
         parameters: {
           type: 'object',
           properties: {
@@ -219,19 +317,17 @@ Extract the EXACT text visible - do not rephrase, summarize, or invent informati
               items: {
                 type: 'object',
                 properties: {
-                  program_id: { type: 'string', description: 'Stable slug derived from title+dates' },
-                  title: { type: 'string', description: 'Program title (≤60 chars)' },
-                  brief: { type: 'string', description: '1-sentence summary or level (≤90 chars)' },
-                  description: { type: 'string', description: 'Longer program description if available' },
-                  age_range: { type: 'string', description: 'Age range (e.g., "Ages 7–10")' },
-                  schedule: { type: 'string', description: 'Dates and day/time in compact format' },
-                  season: { type: 'string', description: 'Season (e.g., "2025 Winter")' },
-                  skill_level: { type: 'string', description: 'Skill level (beginner, intermediate, advanced)' },
-                  price: { type: 'string', description: 'Price with currency symbol (e.g., "$180")' },
-                  status: { type: 'string', enum: ['open', 'waitlist', 'full', 'closed'], description: 'Program status' },
-                  cta_label: { type: 'string', description: 'Call-to-action button label' },
-                  cta_href: { type: 'string', description: 'Absolute URL for registration' },
-                  program_ref: { type: 'string', description: 'Program ID or reference code from provider' }
+                  program_id: { type: 'string' },
+                  title: { type: 'string' },
+                  brief: { type: 'string' },
+                  schedule: { type: 'string' },
+                  age_range: { type: 'string' },
+                  season: { type: 'string' },
+                  price: { type: 'string' },
+                  status: { type: 'string', enum: ['open', 'waitlist', 'full', 'closed'] },
+                  cta_label: { type: 'string' },
+                  cta_href: { type: 'string' },
+                  program_ref: { type: 'string' }
                 },
                 required: ['title']
               }
@@ -255,47 +351,97 @@ Extract the EXACT text visible - do not rephrase, summarize, or invent informati
 }
 
 /**
- * Pass 3: Validate and normalize program data
- * 
- * EXTRACTOR_PROMPT__PROGRAMS_ONLY (Pass 3)
- * 
- * - Ensure program_id is URL‑safe and stable.
- * - Normalize currency formatting (e.g., "$180").
- * - Trim whitespace; keep title ≤ 60 chars, brief ≤ 90 chars.
- * - If multiple dates/times exist, choose a compact human‑readable summary for schedule.
- * - Do not drop records unless clearly not a program (e.g., newsletter signup).
+ * Pass 3: AI-powered validation and normalization
  */
-function validateAndNormalize(
-  programs: Partial<ProgramData>[],
-  orgRef: string
-): ProgramData[] {
+async function validateAndNormalize(
+  programs: any[],
+  orgRef: string,
+  sourceUrl: string,
+  openai: OpenAI
+): Promise<any> {
   
-  return programs.map((prog, index) => {
-    // Generate stable, URL-safe program_id
-    const rawId = (prog as any).program_id || prog.title?.toLowerCase().replace(/[^a-z0-9]+/g, '-') || `program-${index}`;
-    const programRef = rawId.slice(0, 60).replace(/^-+|-+$/g, ''); // Max 60 chars, trim dashes
-    
-    // Normalize title and brief
-    const title = (prog.title || 'Untitled Program').slice(0, 60).trim();
-    const brief = prog.description?.slice(0, 90).trim() || '';
-    
-    // Normalize price formatting
-    let price = prog.price || 'See website';
-    if (price && !price.startsWith('$') && /\d/.test(price)) {
-      price = `$${price}`;
-    }
-    
-    return {
-      id: programRef,
-      program_ref: prog.program_ref || programRef,
-      title,
-      description: brief || 'See website for details',
-      schedule: prog.schedule?.trim() || 'See website for dates',
-      age_range: prog.age_range?.trim() || 'All ages',
-      skill_level: prog.skill_level?.trim() || 'All levels',
-      price,
-      actual_id: programRef,
-      org_ref: orgRef
-    };
+  const response = await openai.chat.completions.create({
+    model: 'gpt-5-mini-2025-08-07',
+    messages: [
+      {
+        role: 'system',
+        content: `You will receive an array of program records. Clean, deduplicate, and normalize.
+
+Steps:
+1) Drop any record that lacks both title AND schedule.
+2) De-dupe by identical (title + schedule), prefer the one that has a price/status/cta.
+3) price: keep "$123" or "Free" exactly; strip other characters.
+4) status: map to one of ["open","waitlist","full","closed"]; default "open" if ambiguous.
+5) Trim whitespace on all fields; ensure "program_id" is a URL-safe slug (lowercase; hyphens).
+6) Keep strings short: title ≤60, brief ≤90, schedule ≤120.
+7) Sort by original appearance order if available; else by title asc.
+
+Return JSON ONLY:
+{
+  "programs": [ …final records… ],
+  "metadata": {
+    "org_ref": "...",
+    "source_url": "...",
+    "timestamp": 0
+  }
+}`
+      },
+      {
+        role: 'user',
+        content: `programs: ${JSON.stringify(programs)}\norg_ref: ${orgRef}\nsource_url: ${sourceUrl}`
+      }
+    ],
+    tools: [{
+      type: 'function',
+      function: {
+        name: 'validate_and_normalize',
+        description: 'Clean and normalize programs',
+        parameters: {
+          type: 'object',
+          properties: {
+            programs: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  program_id: { type: 'string' },
+                  title: { type: 'string' },
+                  brief: { type: 'string' },
+                  schedule: { type: 'string' },
+                  age_range: { type: 'string' },
+                  season: { type: 'string' },
+                  price: { type: 'string' },
+                  status: { type: 'string' },
+                  cta_label: { type: 'string' },
+                  cta_href: { type: 'string' }
+                },
+                required: ['program_id', 'title']
+              }
+            },
+            metadata: {
+              type: 'object',
+              properties: {
+                org_ref: { type: 'string' },
+                source_url: { type: 'string' },
+                timestamp: { type: 'number' }
+              },
+              required: ['org_ref', 'source_url', 'timestamp']
+            }
+          },
+          required: ['programs', 'metadata']
+        }
+      }
+    }],
+    tool_choice: { type: 'function', function: { name: 'validate_and_normalize' } }
   });
+  
+  const toolCall = response.choices[0].message.tool_calls?.[0];
+  if (!toolCall || toolCall.type !== 'function') {
+    return { 
+      programs: [], 
+      metadata: { org_ref: orgRef, source_url: sourceUrl, timestamp: Date.now() } 
+    };
+  }
+  
+  return JSON.parse(toolCall.function.arguments);
 }
