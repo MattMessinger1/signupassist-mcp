@@ -472,15 +472,16 @@ class SignupAssistMCPServer {
         req.on('data', (chunk) => (body += chunk));
         req.on('end', async () => {
           try {
-            const { message, sessionId, action, payload, userLocation, userJwt } = JSON.parse(body);
+            const parsedBody = JSON.parse(body);
+            const { message, sessionId, action, payload, userLocation, userJwt } = parsedBody;
             
             // Capture mandate from headers or body (with dev bypass)
             const mandate_jws = (req.headers['x-mandate-jws'] as string) 
-                             || JSON.parse(body).mandate_jws 
+                             || parsedBody.mandate_jws 
                              || process.env.MANDATE_JWS_DEV 
                              || null;
             const mandate_id = (req.headers['x-mandate-id'] as string) 
-                            || JSON.parse(body).mandate_id 
+                            || parsedBody.mandate_id 
                             || null;
             
             // Dev bypass if no mandate in dev mode
