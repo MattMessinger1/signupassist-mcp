@@ -10,6 +10,7 @@
 
 import { cn } from "@/lib/utils";
 import { ConfirmationCard } from "./ConfirmationCard";
+import { GroupedProgramCards } from "./GroupedProgramCards";
 import { OptionsCarousel } from "./OptionsCarousel";
 import { InlineChatForm } from "./InlineChatForm";
 import { StatusChip } from "./StatusChip";
@@ -20,7 +21,7 @@ export interface ChatMessage {
   sender: "user" | "assistant";
   text: string;
   timestamp: Date;
-  componentType?: "confirmation" | "carousel" | "form" | "status" | "cards" | "test-comparison";
+  componentType?: "confirmation" | "carousel" | "form" | "status" | "cards" | "cards-grouped" | "test-comparison";
   componentData?: any;
 }
 
@@ -116,6 +117,16 @@ export function MessageBubble({
                 {JSON.stringify(message.componentData.testComparison.mcp, null, 2)}
               </pre>
             </div>
+          </div>
+        )}
+
+        {/* Grouped Program Cards */}
+        {message.componentType === "cards-grouped" && message.componentData && (
+          <div className="mt-3">
+            <GroupedProgramCards
+              payload={message.componentData}
+              onAction={onAction}
+            />
           </div>
         )}
 
