@@ -54,7 +54,7 @@ export async function runThreePassExtractor(
     
     // PASS 1: Identify program containers using Vision
     console.log('[ThreePassExtractor] Pass 1: Identifying program containers...');
-    const containers = await identifyProgramContainers(screenshot, pageHTML);
+    const containers = await identifyProgramContainers(screenshot, pageHTML, openai);
     console.log(`[ThreePassExtractor] Pass 1: Identified ${containers.length} program containers`);
     
     if (containers.length === 0) {
@@ -64,7 +64,7 @@ export async function runThreePassExtractor(
     
     // PASS 2: Extract structured data from HTML
     console.log('[ThreePassExtractor] Pass 2: Extracting program data...');
-    const extractedPrograms = await extractProgramData(pageHTML, containers, orgRef);
+    const extractedPrograms = await extractProgramData(pageHTML, containers, orgRef, openai);
     console.log(`[ThreePassExtractor] Pass 2: Extracted ${extractedPrograms.length} programs`);
     console.log('[ThreePassExtractor] Pass 2: Programs extracted:', extractedPrograms.map(p => p.title).join(', '));
     
@@ -88,7 +88,8 @@ export async function runThreePassExtractor(
  */
 async function identifyProgramContainers(
   screenshot: Buffer,
-  html: string
+  html: string,
+  openai: OpenAI
 ): Promise<Array<{ selector: string; index: number }>> {
   
   const base64Image = screenshot.toString('base64');
@@ -175,7 +176,8 @@ Output: an ordered list of program containers with DOM hints (CSS/XPath snippets
 async function extractProgramData(
   html: string,
   containers: Array<{ selector: string; index: number }>,
-  orgRef: string
+  orgRef: string,
+  openai: OpenAI
 ): Promise<Partial<ProgramData>[]> {
   
   const response = await openai.chat.completions.create({
