@@ -93,6 +93,41 @@ export function getSessionExpiredMessage(vars: MessageVariables): string {
 }
 
 /**
+ * ASSISTANT__POST_LOGIN_STATUS_V2
+ * 
+ * Updated post-login message (more concise, auto-discovery announcement)
+ */
+export function getPostLoginMessageV2(vars: MessageVariables): string {
+  const providerName = vars.provider_name || "your provider";
+  return `🎿 Great news — you're securely logged in to ${providerName}!
+I'm now pulling all available programs and organizing them by theme (Lessons, Camps, Race Team…) so it's quick to browse. ⏳
+(Your login session is active; SignupAssist never stores your password or payment info.)`;
+}
+
+/**
+ * ASSISTANT__PROGRAMS_READY_V2
+ * 
+ * Updated programs-ready message
+ */
+export function getProgramsReadyMessageV2(vars: MessageVariables): string {
+  const providerName = vars.provider_name || "your provider";
+  const total = vars.counts?.total || 0;
+  return `✅ I found ${total} program${total !== 1 ? 's' : ''} at ${providerName}.
+Here's a quick view grouped by theme. Each card shows the name, schedule, and price — just tap one to learn more or enroll.`;
+}
+
+/**
+ * ASSISTANT__PROGRAM_DISCOVERY_ERROR
+ * 
+ * Error message for discovery failures
+ */
+export function getProgramDiscoveryErrorMessage(vars: MessageVariables): string {
+  const providerName = vars.provider_name || "your provider";
+  return `Hmm — I couldn't reach the program listings just now. It might be a temporary issue on ${providerName}'s site.
+Let's retry in a few seconds ⏳ (you won't need to log in again).`;
+}
+
+/**
  * ASSISTANT__CONFIRMATION_NEEDED
  * 
  * Pre-action confirmation request (before enrollment/payment)
@@ -121,20 +156,26 @@ export function getSelectionAckMessage(vars: MessageVariables): string {
  * Helper to select the appropriate message based on flow state
  */
 export function getMessageForState(
-  state: "post_login" | "loading" | "programs_ready" | "no_programs" | "error" | "session_expired" | "confirmation" | "selection_ack",
+  state: "post_login" | "post_login_v2" | "loading" | "programs_ready" | "programs_ready_v2" | "no_programs" | "error" | "program_discovery_error" | "session_expired" | "confirmation" | "selection_ack",
   vars: MessageVariables = {}
 ): string {
   switch (state) {
     case "post_login":
       return getPostLoginMessage(vars);
+    case "post_login_v2":
+      return getPostLoginMessageV2(vars);
     case "loading":
       return getLoadingMessage();
     case "programs_ready":
       return getProgramsReadyMessage(vars);
+    case "programs_ready_v2":
+      return getProgramsReadyMessageV2(vars);
     case "no_programs":
       return getNoProgramsMessage(vars);
     case "error":
       return getErrorRecoveryMessage(vars);
+    case "program_discovery_error":
+      return getProgramDiscoveryErrorMessage(vars);
     case "session_expired":
       return getSessionExpiredMessage(vars);
     case "confirmation":

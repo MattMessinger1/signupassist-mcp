@@ -1,29 +1,28 @@
 /**
  * Tool Guidance for AIOrchestrator
  * 
- * TOOL_GUIDANCE__SESSION_REUSE_AND_FIND_PROGRAMS
+ * TOOL_GUIDANCE__AUTO_PROGRAM_DISCOVERY
  * 
- * Goal: After successful provider login, do not re‑prompt for intent. 
- * Immediately fetch programs in the same authenticated session.
+ * Goal: After successful provider login, automatically fetch and display programs.
+ * Do NOT prompt the user for intent — immediately call scp.find_programs.
  * 
- * If a valid session_token exists, call scp.find_programs with:
- * { org_ref, session_token, category: "lessons" | "all" } (category optional).
+ * Flow:
+ * 1. credentials_submitted triggers handleAutoProgramDiscovery()
+ * 2. Call scp.find_programs with { org_ref, session_token, category: "all" }
+ * 3. If session_token is missing/expired, scp.find_programs will handle re-login
+ * 4. Navigate directly to /registration (skip dashboard)
+ * 5. Extract programs using runThreePassExtractor
+ * 6. Group programs using groupProgramsByTheme (Lessons, Camps, Race Team, Other)
+ * 7. Limit to 4 cards per group
+ * 8. Return: message → grouped cards → CTA chips
  * 
- * If session_token is missing/expired, call scp.login with saved credentials, 
- * capture the new session_token, then call scp.find_programs.
+ * Error handling:
+ * - Session expired: Prompt to reconnect
+ * - No programs: Offer to search other providers
+ * - Extraction error: Retry with timeout
  * 
- * scp.find_programs must navigate directly to /registration for the org and wait for readiness; 
- * do not route via dashboard.
- * 
- * Once on /registration, call the extractor (runThreePassExtractor) to get structured program rows.
- * 
- * Return raw programs[] to the LLM, then run the GROUPING prompt to bucket into themes 
- * and pick the top 4 per group (soonest start or most relevant first).
- * 
- * Compose "message → grouped cards → CTA".
- * 
- * Why: minimizes re‑login and keeps the chat rhythm predictable while honoring 
- * the Design DNA (chat‑native flow and safe transparency).
+ * Why: Eliminates friction, follows Design DNA (predictable rhythm), and
+ * maintains security transparency.
  */
 
 export interface SessionReuseConfig {

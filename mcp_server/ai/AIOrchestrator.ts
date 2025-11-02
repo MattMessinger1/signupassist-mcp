@@ -15,29 +15,35 @@ import { buildGroupedCardsPayload, buildSimpleCardsFromGrouped } from "./cardPay
 export const PROMPT_VERSION = "v1.0.0";
 
 /**
+ * SYSTEM__POST_LOGIN_PROGRAM_DISCOVERY
+ * 
  * Production System Prompt - Single source of truth for SignupAssist tone and behavior
  * This prompt defines the voice parents hear and ensures consistent Design DNA compliance
- * 
- * SYSTEM__PROGRAM_DISCOVERY
  */
 const PRODUCTION_SYSTEM_PROMPT = `
-You are SignupAssist, a friendly, efficient assistant that helps parents find and enroll in programs at their selected provider.
+You are SignupAssist — a friendly, efficient helper that automates program discovery for families.
 
-Always follow our chat rhythm: short assistant message → cards (grouped) → clear next step CTA. Keep language parent‑friendly, concise, and transparent about security. Never collect more data than needed. If an action could make changes (e.g., payment later), ask for explicit confirmation first.
+After the user successfully logs in to their provider account (e.g. Blackhawk Ski Club), do not ask what they want next.
 
-After login: immediately reuse the active session to fetch programs from the provider's registration page. Do not ask the user to restate their intent.
+Instead, immediately:
+1. Confirm their secure login in a friendly way.
+2. Reassure that their data is safe.
+3. Inform them that you're fetching programs now.
+4. Automatically call the scp.find_programs tool using their current session token.
+5. Display grouped program results (Lessons, Camps, Race Team, Other).
 
-When listing programs: group them by obvious themes (e.g., Lessons, Camps/Clinics, Race Team/Events). Show at most 4 cards per group at a time so it's not overwhelming.
+Follow the predictable rhythm: Assistant text → grouped cards → CTA chips.
 
-Tone: warm, practical, encouraging. Use a light emoji occasionally.
+Tone: friendly, concise, parent-first, secure.
 
-Security line: reassure that the user is logged in with the provider and that SignupAssist does not store card numbers.
+Example behavior:
+• Don't ask, "Which type of program?"
+• Do say, "🎿 You're logged in! Let's pull the programs for you right now…"
+• After extraction, show the top 3-4 per group as cards.
 
-Error tone: polite, actionable, "let's fix it together."
+Security reminder: Always restate that personal and payment data stay with the provider; SignupAssist only coordinates securely.
 
-Output discipline: 
-1) assistant message string
-2) UI payload with grouped cards and a simple CTA
+Error rule: If program discovery fails, say "Hmm, I couldn't reach the programs page just now — let's retry" instead of reverting to the intent question.
 
 (Design principles: chat‑native, predictable message→card→CTA, explicit confirmations, security context, audit‑friendly tone.)
 `;
@@ -174,6 +180,8 @@ interface OrchestratorResponse {
     security_note?: string;
     next_actions?: string[];
   };
+  componentType?: "cards-grouped" | "cards-simple";  // NEW: UI component type
+  componentPayload?: any;       // NEW: Structured payload for GroupedProgramCards
 }
 
 /**
@@ -268,17 +276,17 @@ class AIOrchestrator {
       // Debug logging for flow visibility
       Logger.info(`🧭 Flow Step: ${step}`, { sessionId, context, hasLocation: !!userLocation });
       
-      // Parse intent from text if we're at INTENT_CAPTURE step
+      // NOTE: Intent parsing is now deprecated - auto-discovery handles this
+      // Keeping this block for backward compatibility only
       if (context.step === FlowStep.INTENT_CAPTURE && userMessage.trim()) {
         const intentCategory = this.parseIntentFromText(userMessage);
         if (intentCategory) {
-          Logger.info(`[Intent Parsed] "${userMessage}" → ${intentCategory}`);
+          Logger.info(`[Intent Parsed - Legacy] "${userMessage}" → ${intentCategory}`);
           await this.updateContext(sessionId, {
             programIntent: { category: intentCategory },
             step: FlowStep.PROGRAM_SELECTION
           });
           this.logInteraction(sessionId, "user", userMessage);
-          // Trigger program search via Three-Pass Extractor
           return this.handleProgramSearch(intentCategory, sessionId);
         }
       }
@@ -505,6 +513,111 @@ class AIOrchestrator {
         [{ label: "Retry", action: "retry_program_search", variant: "accent" }],
         {}
       );
+    }
+  }
+
+  /**
+   * TOOL_CALL__FIND_PROGRAMS_AUTO
+   * 
+   * Automatically discover and display grouped programs after login
+   * Called immediately after credentials_submitted without user prompt
+   * 
+   * @param sessionId - Current session identifier
+   * @returns OrchestratorResponse with grouped program cards
+   */
+  private async handleAutoProgramDiscovery(sessionId: string): Promise<OrchestratorResponse> {
+    const context = await this.getContext(sessionId);
+    
+    if (!context.provider) {
+      throw new Error("Provider context missing for auto-discovery");
+    }
+    
+    const providerName = context.provider.name;
+    Logger.info(`[handleAutoProgramDiscovery] Starting auto-discovery for ${providerName}`);
+    
+    try {
+      // Call scp.find_programs with session token (category: "all")
+      const result = await this.callTool('scp.find_programs', {
+        credential_id: context.credential_id,
+        session_token: context.provider_session_token,
+        org_ref: context.provider.orgRef,
+        user_jwt: context.user_jwt,
+        category: "all"  // Auto-discovery fetches all programs
+      });
+      
+      // Handle errors
+      if (!result.success) {
+        Logger.error('[handleAutoProgramDiscovery] Tool error:', result.error);
+        
+        if (result.error?.includes('session') || result.error?.includes('login')) {
+          const sessionExpiredMsg = getMessageForState("session_expired", {
+            provider_name: providerName
+          });
+          return this.formatResponse(
+            sessionExpiredMsg,
+            [],
+            [{ label: "Reconnect", action: "connect_account", variant: "accent" }],
+            {}
+          );
+        }
+        
+        throw new Error(result.error || "Program discovery failed");
+      }
+      
+      // Store session token for future use
+      if (result.session_token) {
+        await this.updateContext(sessionId, { 
+          provider_session_token: result.session_token 
+        } as any);
+      }
+      
+      const programs = result.data?.programs || [];
+      
+      // Handle empty results
+      if (programs.length === 0) {
+        const noProgramsMsg = getMessageForState("no_programs", {
+          provider_name: providerName
+        });
+        return this.formatResponse(
+          noProgramsMsg,
+          [],
+          [{ label: "Search Other Providers", action: "retry_search", variant: "accent" }],
+          {}
+        );
+      }
+      
+      // Group programs using the grouping module
+      const { groupProgramsByTheme } = await import('../lib/programGrouping.js');
+      const groupedResult = await groupProgramsByTheme(programs, 4);
+      
+      // Build UI payload using card payload builder
+      const cardsPayload = buildGroupedCardsPayload(groupedResult.groups, 4);
+      
+      // Store programs in context
+      await this.updateContext(sessionId, {
+        availablePrograms: programs,
+        step: FlowStep.PROGRAM_SELECTION
+      });
+      
+      // Use V2 programs-ready message
+      const programsReadyMsg = getMessageForState("programs_ready_v2", {
+        provider_name: providerName,
+        counts: { total: programs.length, by_theme: groupedResult.counts.by_theme }
+      });
+      
+      // Return grouped cards response
+      return {
+        message: programsReadyMsg,
+        cards: [],
+        cta: cardsPayload.cta?.options || [],
+        contextUpdates: {},
+        componentType: "cards-grouped",
+        componentPayload: cardsPayload
+      };
+      
+    } catch (error: any) {
+      Logger.error('[handleAutoProgramDiscovery] Failed:', error);
+      throw error; // Re-throw to be caught by credentials_submitted handler
     }
   }
 
@@ -776,12 +889,12 @@ class AIOrchestrator {
           
           await this.updateContext(sessionId, {
             credential_id,
-            provider_cookies: cookies || [],  // Store cookies from Session A
+            provider_cookies: cookies || [],
             loginCompleted: true,
-            step: FlowStep.INTENT_CAPTURE
+            step: FlowStep.PROGRAM_SELECTION  // Skip INTENT_CAPTURE
           });
           
-          // PHASE 1: Log credential submission
+          // Audit logging
           const credentialUserId = extractUserIdFromJWT(context.user_jwt);
           if (credentialUserId && credential_id) {
             await logAudit({
@@ -794,22 +907,43 @@ class AIOrchestrator {
             });
           }
           
-          // Add defensive check for provider name
           const providerName = context.provider?.name || "your provider";
-          console.log(`[credentials_submitted] Post-login flow for provider: ${providerName}`);
+          console.log(`[credentials_submitted] Auto-triggering program discovery for: ${providerName}`);
           
-          // Use template: ASSISTANT__POST_LOGIN_STATUS
-          const postLoginMessage = getMessageForState("post_login", { 
+          // Use V2 post-login message
+          const postLoginMessage = getMessageForState("post_login_v2", { 
             provider_name: providerName 
           });
           
-          // Ask for program intent via text (no buttons)
-          return this.formatResponse(
-            postLoginMessage + "\n\nWhich type of program are you interested in? (e.g., ski lessons, membership, camps, race team, private lessons)",
-            undefined,
-            undefined,
-            {}
-          );
+          // Immediately trigger program discovery (no user input required)
+          try {
+            const discoveryResult = await this.handleAutoProgramDiscovery(sessionId);
+            
+            // Return combined response: post-login message + discovery results
+            return {
+              message: postLoginMessage + "\n\n" + discoveryResult.message,
+              cards: discoveryResult.cards,
+              cta: discoveryResult.cta,
+              contextUpdates: discoveryResult.contextUpdates,
+              componentType: discoveryResult.componentType,
+              componentPayload: discoveryResult.componentPayload
+            };
+            
+          } catch (error: any) {
+            Logger.error('[credentials_submitted] Auto-discovery failed:', error);
+            
+            // Return error with retry option
+            const errorMsg = getMessageForState("program_discovery_error", {
+              provider_name: providerName
+            });
+            
+            return this.formatResponse(
+              postLoginMessage + "\n\n" + errorMsg,
+              [],
+              [{ label: "Retry", action: "retry_program_discovery", variant: "accent" }],
+              {}
+            );
+          }
         
         // Removed intent button handlers - now using text-based intent parsing
 
@@ -977,6 +1111,23 @@ class AIOrchestrator {
         const ctx = await this.getContext(sessionId);
         const retryCategory = ctx.programIntent?.category || "lessons";
         return this.handleProgramSearch(retryCategory, sessionId);
+
+        case "retry_program_discovery":
+          // User clicked retry after auto-discovery failed
+          try {
+            const retryResult = await this.handleAutoProgramDiscovery(sessionId);
+            return retryResult;
+          } catch (error: any) {
+            const errorMsg = getMessageForState("program_discovery_error", {
+              provider_name: context.provider?.name
+            });
+            return this.formatResponse(
+              errorMsg,
+              [],
+              [{ label: "Try Again", action: "retry_program_discovery", variant: "accent" }],
+              {}
+            );
+          }
 
         case "reset":
         case "retry_search":
