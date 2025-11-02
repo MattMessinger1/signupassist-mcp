@@ -6,6 +6,7 @@ import type { Provider } from "../utils/providerSearch.js";
 import { logAudit, extractUserIdFromJWT, logToneChange } from "../lib/auditLogger.js";
 import { loadSessionFromDB, saveSessionToDB } from "../lib/sessionPersistence.js";
 import { shouldReuseSession, getProgramCategory, TOOL_WORKFLOW, SESSION_REUSE_CONFIG } from "./toolGuidance.js";
+import { getMessageForState } from "./messageTemplates.js";
 
 /**
  * Prompt version tracking for tone changes
@@ -368,6 +369,7 @@ class AIOrchestrator {
   /**
    * Search for programs using Three-Pass Extractor
    * Calls scp.find_programs and formats results as cards
+   * Now uses message templates for consistent parent-friendly communication
    */
   private async handleProgramSearch(
     intentCategory: string,
@@ -394,7 +396,9 @@ class AIOrchestrator {
       );
     }
     
-    // Show loading state
+    // Use template: ASSISTANT__LOADING_STATUS
+    const loadingMessage = getMessageForState("loading");
+    Logger.info(`[handleProgramSearch] ${loadingMessage}`);
     Logger.info(`[handleProgramSearch] Fetching ${intentCategory} programs for ${context.provider.name}`);
     
     try {
@@ -407,11 +411,44 @@ class AIOrchestrator {
         category: intentCategory
       });
       
-      if (!result.success || !result.data?.programs || result.data.programs.length === 0) {
+      // Check for session expiration or login errors
+      if (!result.success) {
+        Logger.error('[handleProgramSearch] Tool returned error:', result.error);
+        
+        if (result.error?.includes('session') || result.error?.includes('login')) {
+          const sessionExpiredMsg = getMessageForState("session_expired", {
+            provider_name: context.provider.name
+          });
+          return this.formatResponse(
+            sessionExpiredMsg,
+            [],
+            [{ label: "Reconnect", action: "connect_account", variant: "accent" }],
+            {}
+          );
+        }
+        
+        // Generic error
+        const errorMsg = getMessageForState("error", {
+          provider_name: context.provider.name
+        });
         return this.formatResponse(
-          `I couldn't find any ${intentCategory} programs at ${context.provider.name} right now. Would you like to try a different category?`,
+          errorMsg,
           [],
+          [{ label: "Retry", action: "retry_program_search", variant: "accent" }],
+          {}
+        );
+      }
+      
+      const programs = result.data?.programs || [];
+      
+      if (programs.length === 0) {
+        const noProgramsMsg = getMessageForState("no_programs", {
+          provider_name: context.provider.name
+        });
+        return this.formatResponse(
+          noProgramsMsg,
           [],
+          [{ label: "Try Again", action: "retry_program_search", variant: "accent" }],
           {}
         );
       }
@@ -424,7 +461,7 @@ class AIOrchestrator {
       }
       
       // Format programs as cards with selection buttons
-      const programCards = result.data.programs.slice(0, 5).map((program: any) => ({
+      const programCards = programs.slice(0, 5).map((program: any) => ({
         title: program.title,
         description: `${program.schedule || ''} • ${program.age_range || ''} • ${program.price || ''}`,
         metadata: { 
@@ -439,12 +476,18 @@ class AIOrchestrator {
       }));
       
       await this.updateContext(sessionId, {
-        availablePrograms: result.data.programs,
+        availablePrograms: programs,
         step: FlowStep.PROGRAM_SELECTION
       });
       
+      // Use template: ASSISTANT__PROGRAMS_READY
+      const programsReadyMsg = getMessageForState("programs_ready", {
+        provider_name: context.provider.name,
+        counts: { total: programs.length }
+      });
+      
       return this.formatResponse(
-        `🎿 Found ${result.data.programs.length} ${intentCategory} programs at ${context.provider.name}. Here are the top options:`,
+        programsReadyMsg,
         programCards,
         [],
         {}
@@ -452,8 +495,11 @@ class AIOrchestrator {
       
     } catch (error: any) {
       Logger.error('[handleProgramSearch] Failed:', error);
+      const errorMsg = getMessageForState("error", {
+        provider_name: context.provider?.name
+      });
       return this.formatResponse(
-        "I had trouble fetching the program listings. Let's try again.",
+        errorMsg,
         [],
         [{ label: "Retry", action: "retry_program_search", variant: "accent" }],
         {}
@@ -749,11 +795,16 @@ class AIOrchestrator {
           
           // Add defensive check for provider name
           const providerName = context.provider?.name || "your provider";
-          console.log(`[credentials_submitted] Asking for intent via text for provider: ${providerName}`);
+          console.log(`[credentials_submitted] Post-login flow for provider: ${providerName}`);
+          
+          // Use template: ASSISTANT__POST_LOGIN_STATUS
+          const postLoginMessage = getMessageForState("post_login", { 
+            provider_name: providerName 
+          });
           
           // Ask for program intent via text (no buttons)
           return this.formatResponse(
-            `✅ You're securely logged in to ${providerName}. To tailor what I pull next, which type of program are you interested in? (e.g., ski lessons, membership, camps, race team, private lessons)`,
+            postLoginMessage + "\n\nWhich type of program are you interested in? (e.g., ski lessons, membership, camps, race team, private lessons)",
             undefined,
             undefined,
             {}
