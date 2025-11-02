@@ -392,7 +392,7 @@ class AIOrchestrator {
     const normalized = text.toLowerCase().trim();
     
     // Define keyword mappings for each intent category
-    const intentPatterns = [
+    const intentPatterns: Array<{ keywords: string[], category: "lessons" | "membership" | "camp" | "race" | "private" }> = [
       { keywords: ["lesson", "class", "instruction", "learn"], category: "lessons" },
       { keywords: ["membership", "member", "join", "enroll"], category: "membership" },
       { keywords: ["camp", "summer", "week"], category: "camp" },
