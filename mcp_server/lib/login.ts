@@ -371,14 +371,26 @@ export async function loginWithCredentials(
       if (url.includes('/user/login') && hasCookie) {
         console.log('DEBUG Session cookie present but still on login page - following redirect...');
         
+        // ✅ WAIT for cookies to be fully persisted in context
+        await page.waitForTimeout(500);
+        
         const urlObj = new URL(url);
         const destination = urlObj.searchParams.get('destination') || '/dashboard';
-        const redirectUrl = `${urlObj.origin}${destination}`;
+        const dashboardUrl = `${urlObj.origin}${destination}`;
         
-        await page.goto(redirectUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+        console.log(`DEBUG Attempting redirect to: ${dashboardUrl}`);
+        
+        // ✅ Use networkidle instead of domcontentloaded to ensure redirect completes
+        await page.goto(dashboardUrl, { 
+          waitUntil: 'networkidle', 
+          timeout: 15000 
+        }).catch(async (navError) => {
+          console.log(`DEBUG Navigation to dashboard failed: ${navError.message}, trying reload...`);
+          await page.reload({ waitUntil: 'networkidle', timeout: 15000 });
+        });
         
         url = page.url();
-        console.log(`DEBUG ✓ Redirected to: ${url}`);
+        console.log(`DEBUG ✓ After navigation, URL is: ${url}`);
       }
       
       const title = await page.title();
@@ -394,21 +406,50 @@ export async function loginWithCredentials(
       const cookies = await page.context().cookies();
       console.log(`DEBUG Extracted ${cookies.length} cookies for Session B reuse`);
       
+      // ✅ Log session cookie specifically
+      const sessionCookie = cookies.find(c => /S?SESS|PHPSESSID/i.test(c.name));
+      if (sessionCookie) {
+        console.log(`DEBUG Session cookie: ${sessionCookie.name}=${sessionCookie.value.substring(0, 20)}...`);
+      } else {
+        console.log('DEBUG ⚠️ No session cookie found in extracted cookies');
+      }
+      
       // Force navigation to dashboard if still on login page
       if (url.includes('/user/login')) {
+        console.log('DEBUG ⚠️ Still on login page after redirect attempt');
+        
         const urlObj = new URL(url);
         const destination = urlObj.searchParams.get('destination') || '/dashboard';
         const dashboardUrl = `${urlObj.origin}${destination}`;
         
-        console.log(`DEBUG Navigating to dashboard: ${dashboardUrl}`);
-        await page.goto(dashboardUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+        console.log(`DEBUG Second attempt: navigating to ${dashboardUrl}`);
         
-        await Promise.race([
-          page.waitForSelector('a:has-text("Log out")', { timeout: 5000 }),
-          page.waitForFunction(() => !window.location.href.includes('/user/login'), { timeout: 5000 }),
-        ]).catch(() => console.log('DEBUG Dashboard indicators timeout (non-fatal)'));
+        // ✅ Try harder with longer timeout and networkidle wait
+        await page.goto(dashboardUrl, { 
+          waitUntil: 'networkidle', 
+          timeout: 20000 
+        }).catch(async (navError) => {
+          console.log(`DEBUG Second navigation failed: ${navError.message}`);
+          // Last resort: try page.evaluate() to change location
+          await page.evaluate((url) => window.location.href = url, dashboardUrl);
+          await page.waitForTimeout(2000);
+        });
         
-        console.log(`DEBUG ✓ Dashboard loaded: ${page.url()}`);
+        // ✅ Verify we actually left the login page
+        await page.waitForFunction(
+          () => !window.location.href.includes('/user/login'),
+          { timeout: 5000 }
+        ).catch(() => console.log('DEBUG ⚠️ Verification timeout - may still be on login page'));
+        
+        const finalUrl = page.url();
+        console.log(`DEBUG ✓ Final URL after forced navigation: ${finalUrl}`);
+        
+        // ✅ If STILL on login page, throw error
+        if (finalUrl.includes('/user/login')) {
+          throw new Error('Failed to navigate to dashboard after login - stuck on login page');
+        }
+        
+        console.log(`DEBUG ✓ Dashboard loaded: ${finalUrl}`);
       }
       
       console.log('DEBUG ✓ Session A complete - ready to close');
