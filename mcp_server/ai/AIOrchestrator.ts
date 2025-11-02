@@ -1036,19 +1036,29 @@ class AIOrchestrator {
       Logger.info(`Calling MCP tool: ${toolName}`, this.sanitize(args));
       Logger.info(`[Audit] Tool call`, { toolName, args: this.sanitize(args) });
       
-      // Call the actual MCP tool through the server with retry logic
-      const result = await this.withRetry(() => this.mcpToolCaller!(toolName, args), 3);
+      // Try calling the tool once to check if it exists
+      const result = await this.mcpToolCaller!(toolName, args);
       this.saveToCache(cacheKey, result);
       Logger.info(`Tool ${toolName} succeeded.`);
       return result;
     } catch (error: any) {
-      // If tool not found in MCP registry, try fallback
+      // If tool not found in MCP registry, immediately use fallback (don't retry)
       if (error.message && error.message.includes('Unknown MCP tool')) {
         Logger.info(`Tool ${toolName} not in MCP registry, using fallback`);
         return this.callToolFallback(toolName, args);
       }
-      Logger.error(`Tool ${toolName} failed:`, error);
-      throw error;
+      
+      // For other errors (network, etc.), retry with exponential backoff
+      Logger.warn(`Tool ${toolName} failed, retrying...`, error.message);
+      try {
+        const result = await this.withRetry(() => this.mcpToolCaller!(toolName, args), 3);
+        this.saveToCache(cacheKey, result);
+        Logger.info(`Tool ${toolName} succeeded after retry.`);
+        return result;
+      } catch (retryError: any) {
+        Logger.error(`Tool ${toolName} failed permanently:`, retryError);
+        throw retryError;
+      }
     }
   }
 

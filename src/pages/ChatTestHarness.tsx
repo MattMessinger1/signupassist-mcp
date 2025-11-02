@@ -113,14 +113,7 @@ function ChatTestHarnessContent() {
   const [sessionId] = useState(() => `session-${Date.now()}-${Math.random().toString(36).substring(7)}`);
 
   // State
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: "1",
-      sender: "assistant",
-      text: "Hello! I can assist you with program sign-ups. How can I help today?",
-      timestamp: new Date(),
-    }
-  ]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [state, setState] = useState<ConversationState>({
     orgRef: DEFAULT_PROVIDER.defaultOrg,
   });
@@ -216,6 +209,20 @@ function ChatTestHarnessContent() {
     };
     
     fetchIPLocation();
+  }, []);
+
+  // ============= Initial Welcome Message =============
+  useEffect(() => {
+    addLog("info", "system", "Initializing chat test harness...");
+    
+    // Add welcome message
+    const welcomeMessage: ChatMessage = {
+      id: "welcome-1",
+      sender: "assistant",
+      text: "Hello! I can assist you with program sign-ups. How can I help today?",
+      timestamp: new Date(),
+    };
+    setMessages([welcomeMessage]);
   }, []);
 
   // ============= Logging =============
