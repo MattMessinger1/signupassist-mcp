@@ -232,9 +232,9 @@ class AIOrchestrator {
     });
 
     // Model configuration
-    // gpt-4o = best general-purpose model (May 2024)
-    // gpt-4o-mini = cheaper/faster alternative
-    this.model = process.env.OPENAI_MODEL || "gpt-4o";
+    // gpt-5 = flagship model for complex reasoning and orchestration
+    // gpt-5-mini = faster, more cost-efficient for simple tasks
+    this.model = process.env.OPENAI_MODEL || "gpt-5";
     this.temperature = Number(process.env.OPENAI_TEMPERATURE || 0.3);
 
     // Use the production system prompt as the single source of truth
@@ -1391,7 +1391,7 @@ class AIOrchestrator {
       }));
 
       const completion = await this.openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: "gpt-5-mini",
         messages: [
           {
             role: "system",
@@ -1535,7 +1535,7 @@ Return JSON: {
   private async aiParseProviderInput(userInput: string): Promise<ParsedProviderInput> {
     try {
       const completion = await this.openai.chat.completions.create({
-        model: "gpt-4o-mini",
+        model: "gpt-5-mini",
         messages: [
           { 
             role: "system", 
