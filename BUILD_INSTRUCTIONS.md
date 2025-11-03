@@ -44,7 +44,7 @@ npm run build:check
 ## TypeScript Configuration
 
 ### tsconfig.mcp.json
-Production build configuration with strict type checking:
+Production build configuration with CI-friendly settings:
 
 ```json
 {
@@ -54,11 +54,17 @@ Production build configuration with strict type checking:
     "moduleResolution": "node",
     "outDir": "dist",
     "rootDir": ".",
-    "strict": true,                              // Enable all strict checks
+    
+    // CI-Friendly Settings (ENABLED)
     "skipLibCheck": true,                        // Skip type checking of .d.ts files (prevents CI breakages)
     "noErrorTruncation": true,                   // Full error messages in logs
+    "forceConsistentCasingInFileNames": true,    // Cross-platform compatibility
+    
+    // Strict Settings (DISABLED - Enable incrementally)
+    // See docs/INCREMENTAL_STRICT_MODE.md for migration plan
+    "strict": false,                             // ~35 type errors need fixing first
+    
     "esModuleInterop": true,
-    "forceConsistentCasingInFileNames": true,
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
     "noEmitOnError": true                        // Fail build on type errors
@@ -80,24 +86,20 @@ Production build configuration with strict type checking:
 
 ### Key Settings Explained
 
-#### `strict: true`
-Enables all strict type-checking options:
-- `noImplicitAny`: Errors on expressions with implied `any` type
-- `strictNullChecks`: `null` and `undefined` must be explicitly handled
-- `strictFunctionTypes`: Stricter function type checking
-- `strictPropertyInitialization`: Class properties must be initialized
-
-**Why**: Catches type errors early and prevents runtime issues.
-
-#### `skipLibCheck: true`
+#### `skipLibCheck: true` ✅
 Skips type checking of declaration files (`.d.ts`) from `node_modules`.
 
 **Why**: Prevents CI breakages from third-party library type changes (e.g., Playwright, Browserbase).
 
-#### `noErrorTruncation: true`
+#### `noErrorTruncation: true` ✅
 Displays full error messages without truncation.
 
 **Why**: Makes Railway logs and CI output more readable for debugging.
+
+#### `strict: false` ⏸️
+Disables all strict type-checking options temporarily.
+
+**Why**: Enabling strict mode revealed 35 type errors in existing code. These need to be fixed incrementally before enabling strict mode. See [INCREMENTAL_STRICT_MODE.md](docs/INCREMENTAL_STRICT_MODE.md) for the migration plan.
 
 #### `noEmitOnError: true`
 Prevents emitting JavaScript files if type errors exist.
