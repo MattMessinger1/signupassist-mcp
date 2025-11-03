@@ -1,11 +1,12 @@
 import type { Page } from "playwright-core";
 
 // Signature for all readiness checkers
-export type PageReadinessFn = (page: Page) => Promise<void>;
+export type PageReadinessFn = (page: Page) => Promise<boolean>;
 
 // Default no-op readiness
 export const defaultReadiness: PageReadinessFn = async () => {
   console.log("[Readiness] Default: no waiting required");
+  return true;
 };
 
 // The registry
