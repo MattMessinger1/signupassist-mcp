@@ -406,17 +406,60 @@ async function ensureLoggedIn(
   const waitUntilMode = process.env.SKICLUBPRO_USE_DOMCONTENTLOADED === "false" ? "load" : "domcontentloaded";
   await page.goto(loginUrl, { waitUntil: waitUntilMode });
   
-  // Wait for form elements
-  await page.waitForSelector('input[type=email], input[name*=email]');
-  await page.waitForSelector('input[type=password], input[name*=pass]');
-  
-  // Fill in credentials with human-like typing
-  const emailEl = await page.locator('input[type=email], input[name*=email]').first();
-  const passEl = await page.locator('input[type=password], input[name*=pass]').first();
+  // PACK-L1: Robust Drupal login-field detection
+  // 1) Gate on any of the expected "we can proceed" signals
+  const SEEN = await Promise.race([
+    page.waitForSelector('form.user-login-form, #user-login, #edit-name, input[name="name"], input[id*="edit-name"], input[name*="mail"], input[type="email"]', { timeout: 15000 }).then(() => 'login'),
+    page.waitForSelector('a[href*="/user/logout"], .user-logged-in', { timeout: 15000 }).then(() => 'logged-in'),
+    page.waitForSelector('input[name*="antibot_key"], [name="antibot_key"]', { timeout: 15000 }).then(() => 'antibot'),
+    page.waitForSelector('text=/Just a moment|Access denied|403/i', { timeout: 15000 }).then(() => 'challenge'),
+  ].map(p => p.catch(() => null)));
+
+  if (SEEN === 'logged-in') {
+    // Already authenticated; go straight to /registration
+    console.log('[ensureLoggedIn] PACK-L1: Already logged in, navigating to registration');
+    await page.goto(`${baseUrl}/registration`, { waitUntil: 'domcontentloaded' });
+    console.timeEnd('[login] total');
+    return { email: creds.email, login_status: 'success' };
+  } else if (SEEN === 'challenge') {
+    // Soft-handle interstitials (Cloudflare or similar)
+    console.log('[ensureLoggedIn] PACK-L1: Challenge detected, waiting and reloading');
+    await page.waitForTimeout(3000);
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 12000 });
+  }
+
+  // 2) Resolve actual login inputs (username+password) the site uses
+  const USER_SEL = [
+    'input[type="email"]',
+    'input[name*="mail"]',
+    'input[name="name"]',
+    '#edit-name',
+    'input[id*="edit-name"]',
+    'input[autocomplete="username"]',
+    'input[type="text"][name*="user"]'
+  ].join(',');
+
+  const PASS_SEL = [
+    'input[type="password"]',
+    'input[name="pass"]',
+    '#edit-pass',
+    'input[id*="edit-pass"]',
+    'input[autocomplete="current-password"]'
+  ].join(',');
+
+  // Wait for either username and password inputs to exist
+  console.log('[ensureLoggedIn] PACK-L1: Waiting for login fields');
+  await page.waitForSelector(USER_SEL, { timeout: 20000 });
+  await page.waitForSelector(PASS_SEL, { timeout: 20000 });
+
+  const userEl = page.locator(USER_SEL).first();
+  const passEl = page.locator(PASS_SEL).first();
   const submitBtn = await page.locator('#edit-submit, button[type="submit"], input[type="submit"]').first();
   
-  await emailEl.type(creds.email, { delay: 70 + Math.floor(Math.random() * 40) });
-  await passEl.type(creds.password, { delay: 70 + Math.floor(Math.random() * 40) });
+  // PACK-L1: Humane typing with fill
+  console.log('[ensureLoggedIn] PACK-L1: Filling credentials');
+  await userEl.fill(creds.email, { timeout: 10000 });
+  await passEl.fill(creds.password, { timeout: 10000 });
   
   // Wait for anti-bot measures
   console.log('[login] Waiting for anti-bot measures...');
