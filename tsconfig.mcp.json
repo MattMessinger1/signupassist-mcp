@@ -1,19 +1,29 @@
 {
-  "extends": "./tsconfig.json",
-  "include": ["mcp_server/**/*.ts", "mcp_server/**/*.tsx", "providers/**/*.ts"],
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "outDir": "dist",
+    "rootDir": ".",
+    "strict": true,
+    "skipLibCheck": true,
+    "noErrorTruncation": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "noEmitOnError": true
+  },
+  "include": [
+    "mcp_server/**/*",
+    "providers/**/*",
+    "core/**/*"
+  ],
   "exclude": [
+    "node_modules",
+    "dist",
     "mcp_server/tests",
     "**/*.test.ts",
     "**/*.test.tsx"
-  ],
-  "compilerOptions": {
-    "rootDir": ".",
-    "outDir": "dist",
-    "module": "ESNext",
-    "target": "ES2022",
-    "moduleResolution": "node",
-    "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true,
-    "noEmitOnError": true
-  }
+  ]
 }

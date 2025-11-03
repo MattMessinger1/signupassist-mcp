@@ -16,7 +16,7 @@ import { skiClubProConfig } from '../config/skiclubproConfig.js';
 import { saveSessionState, restoreSessionState, generateSessionKey } from '../lib/session.js';
 import { runChecks, buildBaseUrl } from '../prereqs/registry.js';
 import { getOrgOverride } from '../prereqs/providers.js';
-import type { ProviderResponse } from './types.js';
+import type { ProviderResponse } from '../types.js';
 import { PROMPT_VERSION } from '../ai/AIOrchestrator.js';
 import { getReadiness } from './utils/pageReadinessRegistry.js';
 import { UrlBuilder } from '../../providers/skiclubpro/lib/index.js';

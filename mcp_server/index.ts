@@ -5,6 +5,17 @@
  * Railway rebuild trigger: 2025-10-28 - Added scp.create_mandate tool
  */
 
+// ============================================================================
+// Type Exports - Single Source of Truth
+// ============================================================================
+// All types are centrally defined in ./types.ts and re-exported here
+// Import types from mcp_server/types throughout the codebase
+export * from './types.js';
+
+// ============================================================================
+// Core Imports
+// ============================================================================
+
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {

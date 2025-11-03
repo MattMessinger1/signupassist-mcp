@@ -4,7 +4,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import type { SessionContext } from '../ai/AIOrchestrator.js';
+import type { SessionContext } from '../types.js';
 
 const supabaseUrl = process.env.SUPABASE_URL || process.env.SB_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SB_SERVICE_ROLE_KEY || '';
