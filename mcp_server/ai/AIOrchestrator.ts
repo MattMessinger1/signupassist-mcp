@@ -80,21 +80,26 @@ export enum FlowStep {
    */
   export interface SessionContext {
     step?: FlowStep;
-    provider?: { name: string; orgRef: string };
+    userLocation?: { lat: number; lng: number };
+    provider?: { name: string; orgRef: string; source?: string; city?: string; state?: string };
+    providerSearchResults?: any[];
     program?: { name: string; id: string };
     child?: { name: string; id?: string; birthdate?: string };
+    children?: Array<{ id: string; name: string; birthdate?: string }>;
     prerequisites?: Record<string, "ok" | "required" | "missing">;
     formAnswers?: Record<string, any>;
     conversationHistory?: Array<{ role: string; content: string }>;
     loginCompleted?: boolean;
-  confirmed?: boolean;
-  user_jwt?: string;
-  credential_id?: string;
-  session_token?: string;  // Browser session token for reuse
-  mandate_id?: string;  // Mandate ID for audit trail
-  mandate_jws?: string;  // Mandate JWS token for verification
-  credentials?: { [provider: string]: { id: string; credential_id: string } };
-  pendingLogin?: { provider: string; orgRef: string };
+    confirmed?: boolean;
+    user_jwt?: string;
+    credential_id?: string;
+    session_token?: string;  // Browser session token for reuse
+    mandate_id?: string;  // Mandate ID for audit trail
+    mandate_jws?: string;  // Mandate JWS token for verification
+    credentials?: { [provider: string]: { id: string; credential_id: string } };
+    pendingLogin?: { provider: string; orgRef: string };
+    discovery_retry_count?: number;
+    provider_cookies?: any[];
     
     // Smart Program Filtering Properties
     availablePrograms?: any[];
@@ -140,7 +145,6 @@ export enum FlowStep {
     };
     field_probe_run_id?: string;
     provider_session_token?: string;
-    provider_cookies?: any;
   }
 
 /**
@@ -535,157 +539,111 @@ class AIOrchestrator {
    * @param sessionId - Current session identifier
    * @returns OrchestratorResponse with grouped program cards
    */
-  private async handleAutoProgramDiscovery(sessionId: string, context?: SessionContext, userJwt?: string): Promise<OrchestratorResponse> {
-    const ctx = context || await this.getContext(sessionId);
-    
-    // Defensive checks for required context
-    if (!ctx.provider) {
-      Logger.error('[handleAutoProgramDiscovery] Missing provider context');
-      return this.formatResponse(
-        "⚠️ Provider information is missing. Please select a provider first.",
-        undefined,
-        [{ label: "Search Providers", action: "retry_search", variant: "accent" }],
-        {}
-      );
-    }
-    
-    if (!ctx.provider.orgRef) {
-      Logger.error('[handleAutoProgramDiscovery] Missing orgRef in provider context');
-      return this.formatResponse(
-        "⚠️ Provider organization reference is missing. Please select a provider again.",
-        undefined,
-        [{ label: "Search Providers", action: "retry_search", variant: "accent" }],
-        {}
-      );
-    }
-    
-    if (!ctx.credential_id && !ctx.session_token) {
-      Logger.error('[handleAutoProgramDiscovery] Missing credential_id and session_token');
-      return this.formatResponse(
-        "⚠️ Authentication required. Please connect your account first.",
-        undefined,
-        [{ label: "Connect Account", action: "connect_account", variant: "accent" }],
-        {}
-      );
-    }
-    
-    const providerName = ctx.provider.name;
-    Logger.info(`[handleAutoProgramDiscovery] Starting auto-discovery for ${providerName}`);
-    
-    try {
-      // FIX: Pass session_token, user_jwt, and sessionId to enable credential lookup and session reuse
-      const result = await this.callTool('scp.find_programs', {
+  /**
+   * Handle credential submission without double-login
+   * Reuses session_token if available, otherwise performs login
+   */
+  private async handleAction_credentials_submitted(ctx: SessionContext, payload: any, sessionId?: string): Promise<OrchestratorResponse> {
+    ctx.provider_cookies = payload?.cookies ? Object.values(payload.cookies) : ctx.provider_cookies;
+    ctx.credential_id = payload?.credential_id ?? ctx.credential_id;
+
+    const mandate_jws = ctx.mandate_jws ?? process.env.DEV_MANDATE_JWS;
+
+    if (ctx.session_token) {
+      Logger.info("[orchestrator] Reusing existing session_token; skipping login");
+    } else {
+      Logger.info("[orchestrator] Performing login to obtain session_token…");
+      const loginRes = await this.callTool("scp.login", {
         credential_id: ctx.credential_id,
-        session_token: ctx.session_token,  // Reuse existing session if available
-        org_ref: ctx.provider.orgRef,
-        user_jwt: ctx.user_jwt || userJwt,  // CRITICAL: Required for lookupCredentialsById()
-        category: "all"  // Auto-discovery fetches all programs
+        org_ref: ctx?.provider?.orgRef ?? "blackhawk-ski",
+        user_jwt: ctx.user_jwt,
+        mandate_jws,
+        destination: process.env.SKICLUBPRO_LOGIN_GOTO_DEST || "/registration"
       }, sessionId);
-      
-      // Handle errors
-      if (!result.success) {
-        Logger.error('[handleAutoProgramDiscovery] Tool error:', result.error);
-        
-        // Check for timeout specifically
-        if ((result as any).timeout) {
-          Logger.warn('[handleAutoProgramDiscovery] Page readiness timeout detected');
-          const timeoutMsg = getMessageForState("program_discovery_error", {
-            provider_name: providerName
-          });
-          
-          // Store retry count in context
-          const retryCount = (ctx as any).discovery_retry_count || 0;
-          await this.updateContext(sessionId, { 
-            discovery_retry_count: retryCount + 1 
-          } as any);
-          
-          return this.formatResponse(
-            timeoutMsg,
-            [],
-            [{ label: "Retry Now", action: "retry_program_discovery", variant: "accent" }],
-            {}
-          );
-        }
-        
-        if (result.error?.includes('session') || result.error?.includes('login')) {
-          const sessionExpiredMsg = getMessageForState("session_expired", {
-            provider_name: providerName
-          });
-          return this.formatResponse(
-            sessionExpiredMsg,
-            [],
-            [{ label: "Reconnect", action: "connect_account", variant: "accent" }],
-            {}
-          );
-        }
-        
-        throw new Error(result.error || "Program discovery failed");
-      }
-      
-      // Store session token for future use
-      if (result.session_token) {
-        await this.updateContext(sessionId, { 
-          provider_session_token: result.session_token 
-        } as any);
-      }
-      
-      const programs = result.data?.programs || [];
-      
-      // Handle empty results
-      if (programs.length === 0) {
-        const noProgramsMsg = getMessageForState("no_programs", {
-          provider_name: providerName
-        });
-        return this.formatResponse(
-          noProgramsMsg,
-          [],
-          [{ label: "Search Other Providers", action: "retry_search", variant: "accent" }],
-          {}
-        );
-      }
-      
-      // Group programs using the grouping module
-      const { groupProgramsByTheme } = await import('../lib/programGrouping.js');
-      const groupedResult = await groupProgramsByTheme(programs, 4);
-      
-      Logger.info(`[handleAutoProgramDiscovery] ✅ ${programs.length} programs found, grouped into ${groupedResult.groups.length} themes`);
-      
-      // Build UI payload using card payload builder
-      const cardsPayload = buildGroupedCardsPayload(groupedResult.groups, 4);
-      
-      // Store programs in context
-      await this.updateContext(sessionId, {
-        availablePrograms: programs,
-        step: FlowStep.PROGRAM_SELECTION
-      });
-      
-      // Use V2 programs-ready message
-      const programsReadyMsg = getMessageForState("programs_ready_v2", {
-        provider_name: providerName,
-        counts: { total: programs.length, by_theme: groupedResult.counts.by_theme }
-      });
-      
-      // Return grouped cards response
-      // Map CTAChip[] to CTASpec[] format
-      const ctaSpecs: CTASpec[] = (cardsPayload.cta?.options || []).map(chip => ({
-        label: chip.label,
-        action: chip.payload.intent,
-        variant: "outline" as const
-      }));
-      
-      return {
-        message: programsReadyMsg,
-        cards: [],
-        cta: ctaSpecs,
-        contextUpdates: {},
-        componentType: "cards-grouped",
-        componentPayload: cardsPayload
-      };
-      
-    } catch (error: any) {
-      Logger.error('[handleAutoProgramDiscovery] Failed:', error);
-      throw error; // Re-throw to be caught by credentials_submitted handler
+
+      if (!loginRes?.session_token) throw new Error("Login did not return session_token");
+      ctx.session_token = loginRes.session_token;
+      ctx.loginCompleted = true;
     }
+
+    return await this.handleAutoProgramDiscovery(ctx, { mandate_jws }, sessionId);
+  }
+
+  /**
+   * Handle automatic program discovery after login
+   * Always passes session_token to avoid creating new sessions
+   */
+  private async handleAutoProgramDiscovery(ctx: SessionContext, extras?: { mandate_jws?: string }, sessionId?: string): Promise<OrchestratorResponse> {
+    if (!ctx?.provider?.orgRef) throw new Error("Provider context missing for auto-discovery");
+    
+    const args = {
+      org_ref: ctx.provider.orgRef,
+      session_token: ctx.session_token,            // <<< critical
+      category: "all",
+      user_jwt: ctx.user_jwt,
+      mandate_jws: extras?.mandate_jws ?? process.env.DEV_MANDATE_JWS,
+      credential_id: ctx.credential_id             // fallback if token missing
+    };
+    
+    const res = await this.callTool("scp.find_programs", args, sessionId);
+    if (res?.session_token) ctx.session_token = res.session_token;
+    
+    // Return the result from presentProgramsAsCards
+    return await this.presentProgramsAsCards(ctx, res?.programs_by_theme || {});
+  }
+
+  /**
+   * Handle extractor test action
+   */
+  private async handleAction_run_extractor_test(ctx: SessionContext, sessionId?: string): Promise<OrchestratorResponse> {
+    const args = {
+      org_ref: ctx?.provider?.orgRef ?? "blackhawk-ski",
+      session_token: ctx.session_token,
+      category: "all",
+      mandate_jws: ctx.mandate_jws ?? process.env.DEV_MANDATE_JWS
+    };
+    
+    const res = await this.callTool("scp.find_programs", args, sessionId);
+    if (res?.session_token) ctx.session_token = res.session_token;
+    
+    return await this.presentProgramsAsCards(ctx, res?.programs_by_theme || {});
+  }
+
+  /**
+   * Present programs as grouped cards
+   */
+  private async presentProgramsAsCards(ctx: SessionContext, themed: Record<string, any[]>): Promise<OrchestratorResponse> {
+    const groups = Object.entries(themed).filter(([_, arr]) => (arr?.length || 0) > 0);
+    
+    if (!groups.length) {
+      return {
+        message: "Hmm — I couldn't find any open programs right now. Want me to check another category or date?",
+        uiPayload: { type: "message" },
+        cards: [],
+        contextUpdates: {}
+      };
+    }
+
+    const cards = groups.flatMap(([theme, progs]) => {
+      const header = { title: `${theme}`, subtitle: "Programs", isHeader: true };
+      const set = progs.slice(0, 12).map((p) => ({
+        title: p.title,
+        subtitle: [p.schedule, p.price].filter(Boolean).join(" • "),
+        metadata: { programRef: p.program_ref || p.id, orgRef: p.org_ref, theme },
+        buttons: [
+          { label: "Details", action: "view_program", payload: { program_ref: p.program_ref || p.id } },
+          { label: "Register", action: "start_registration", variant: "accent" as const, payload: { program_ref: p.program_ref || p.id } }
+        ]
+      }));
+      return [header, ...set];
+    });
+
+    return {
+      message: "✅ I sorted the programs by theme so it's easy to browse.",
+      cards,
+      uiPayload: { type: "cards" },
+      contextUpdates: {}
+    };
   }
 
   /**
@@ -990,108 +948,12 @@ class AIOrchestrator {
           );
 
         case "credentials_submitted":
-          // Handle callback after user enters credentials
-          const { credential_id, cookies } = payload;
-          
-          // Check if we already have a valid session token
-          if (context.session_token) {
-            console.log('[credentials_submitted] ✅ Reusing existing session_token, skipping login');
-            
-            // Skip to program discovery
-            const providerName = context.provider?.name || "your provider";
-            console.log(`[credentials_submitted] Auto-triggering program discovery for: ${providerName}`);
-            
-            return this.handleAutoProgramDiscovery(sessionId, context, userJwt);
-          }
-          
-          // Login first to get session_token
-          console.log('[credentials_submitted] Performing login to get session token...');
-          const loginResult = await this.callTool('scp.login', {
-            credential_id,
-            org_ref: context.provider?.orgRef || 'blackhawk-ski-club',
-            user_jwt: context.user_jwt ?? userJwt
-          }, sessionId);
-          
-          if (!loginResult.success) {
-            return this.formatResponse(
-              `❌ Login failed: ${loginResult.error || 'Unknown error'}. Please try again.`,
-              undefined,
-              [{ label: "Retry Login", action: "show_credentials_card", variant: "accent" }],
-              {}
-            );
-          }
-          
-          console.log('[credentials_submitted] Login successful, session_token:', loginResult.session_token);
-          
-          // FIX: Preserve provider, user_jwt, and session_token in context before auto-discovery
-          await this.updateContext(sessionId, {
-            provider: context.provider || { name: 'Blackhawk Ski Club', orgRef: 'blackhawk-ski-club' },
-            user_jwt: context.user_jwt ?? userJwt,  // Preserve JWT from parameter or context
-            credential_id,
-            session_token: loginResult.session_token,  // Store session token for reuse
-            provider_cookies: cookies || [],
-            loginCompleted: true,
-            step: FlowStep.PROGRAM_SELECTION  // Skip INTENT_CAPTURE
-          });
-          
-          // Audit logging
-          const credentialUserId = extractUserIdFromJWT(context.user_jwt);
-          if (credentialUserId && credential_id) {
-            await logAudit({
-              user_id: credentialUserId,
-              action: 'credentials_submitted',
-              provider: context.provider?.orgRef,
-              org_ref: context.provider?.orgRef,
-              credential_id,
-              metadata: { sessionId }
-            });
-          }
-          
-          const providerName = context.provider?.name || "your provider";
-          const hasSessionToken = !!context.provider_session_token;
-          console.log(`[credentials_submitted] Auto-triggering program discovery for: ${providerName}`);
-          console.log(`[credentials_submitted] ${hasSessionToken ? '✅ Reusing session from token' : '🔁 New session will be created'}`);
-          
-          // Use V2 post-login message
-          const postLoginMessage = getMessageForState("post_login_v2", { 
-            provider_name: providerName 
-          });
-          
-          // Immediately trigger program discovery (no user input required)
-          try {
-            const discoveryResult = await this.handleAutoProgramDiscovery(sessionId, context, userJwt);
-            
-            // Return combined response: post-login message + discovery results
-            return {
-              message: postLoginMessage + "\n\n" + discoveryResult.message,
-              cards: discoveryResult.cards,
-              cta: discoveryResult.cta,
-              contextUpdates: discoveryResult.contextUpdates,
-              componentType: discoveryResult.componentType,
-              componentPayload: discoveryResult.componentPayload
-            };
-            
-          } catch (error: any) {
-            Logger.error('[credentials_submitted] Auto-discovery failed:', error);
-            
-            // Store retry count
-            const retryCount = (context as any).discovery_retry_count || 0;
-            await this.updateContext(sessionId, { 
-              discovery_retry_count: retryCount + 1 
-            } as any);
-            
-            // Return error with retry option
-            const errorMsg = getMessageForState("program_discovery_error", {
-              provider_name: providerName
-            });
-            
-            return this.formatResponse(
-              postLoginMessage + "\n\n" + errorMsg,
-              [],
-              [{ label: "Retry", action: "retry_program_discovery", variant: "accent" }],
-              {}
-            );
-          }
+          // Delegate to new action handler
+          return await this.handleAction_credentials_submitted(context, payload, sessionId);
+
+        case "run_extractor_test":
+          // Delegate to extractor test handler
+          return await this.handleAction_run_extractor_test(context, sessionId);
         
         // Removed intent button handlers - now using text-based intent parsing
 
