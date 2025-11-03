@@ -538,8 +538,35 @@ class AIOrchestrator {
   private async handleAutoProgramDiscovery(sessionId: string, context?: SessionContext, userJwt?: string): Promise<OrchestratorResponse> {
     const ctx = context || await this.getContext(sessionId);
     
+    // Defensive checks for required context
     if (!ctx.provider) {
-      throw new Error("Provider context missing for auto-discovery");
+      Logger.error('[handleAutoProgramDiscovery] Missing provider context');
+      return this.formatResponse(
+        "⚠️ Provider information is missing. Please select a provider first.",
+        undefined,
+        [{ label: "Search Providers", action: "retry_search", variant: "accent" }],
+        {}
+      );
+    }
+    
+    if (!ctx.provider.orgRef) {
+      Logger.error('[handleAutoProgramDiscovery] Missing orgRef in provider context');
+      return this.formatResponse(
+        "⚠️ Provider organization reference is missing. Please select a provider again.",
+        undefined,
+        [{ label: "Search Providers", action: "retry_search", variant: "accent" }],
+        {}
+      );
+    }
+    
+    if (!ctx.credential_id && !ctx.session_token) {
+      Logger.error('[handleAutoProgramDiscovery] Missing credential_id and session_token');
+      return this.formatResponse(
+        "⚠️ Authentication required. Please connect your account first.",
+        undefined,
+        [{ label: "Connect Account", action: "connect_account", variant: "accent" }],
+        {}
+      );
     }
     
     const providerName = ctx.provider.name;
@@ -823,24 +850,26 @@ class AIOrchestrator {
           if (existingCred) {
             console.log(`[orchestrator] Retrieved credential_id=${existingCred.id} for ${payload.provider}`);
             
-            // Store credential in context
+            // Store credential and provider context at top level for auto-discovery
             await this.updateContext(sessionId, {
+              credential_id: existingCred.id, // Store at top level for handleAutoProgramDiscovery
               credentials: {
                 [payload.provider]: {
                   id: existingCred.id,
                   credential_id: existingCred.id
                 }
               },
+              provider: currentContext.provider || { 
+                name: payload.provider, 
+                orgRef: payload.orgRef 
+              },
               loginCompleted: true,
               step: FlowStep.PROGRAM_SELECTION
             });
             
-            return this.formatResponse(
-              `✅ Your ${payload.orgRef} account is already connected! Let's check available programs.`,
-              undefined,
-              [{ label: "View Programs", action: "check_programs", variant: "accent" }],
-              {}
-            );
+            // Auto-trigger program discovery immediately (no button click needed)
+            console.log(`[orchestrator] Auto-triggering program discovery for existing credentials`);
+            return this.handleAutoProgramDiscovery(sessionId, undefined, currentContext.user_jwt);
           }
           
           // Store pending login info for credential collection
