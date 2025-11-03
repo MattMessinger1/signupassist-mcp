@@ -1585,6 +1585,19 @@ export const skiClubProTools = {
         await waitForSkiClubProReady(session.page);
         console.log('[scp.find_programs] ✅ PACK-05: Page ready for extraction');
         
+        // PACK-08: Optional noise-cut after listings load
+        if (process.env.SKICLUBPRO_BLOCK_ANALYTICS_ON_LISTING === 'true') {
+          await session.page.route('**/*', (route: any) => {
+            const url = route.request().url();
+            if (/hotjar|segment|google-analytics|doubleclick/.test(url)) {
+              console.log('[scp.find_programs] PACK-08: Blocking analytics request:', url);
+              return route.abort();
+            }
+            return route.continue();
+          });
+          console.log('[scp.find_programs] ✅ PACK-08: Analytics blocking enabled');
+        }
+        
         // PACK-05 Step 4: Run Programs-Only Three-Pass Extractor
         console.log('[scp.find_programs] PACK-05: Running programs-only extractor');
         
