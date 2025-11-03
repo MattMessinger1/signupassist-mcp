@@ -393,93 +393,111 @@ async function ensureLoggedIn(
   
   const { page } = session;
 
+  // PACK-L4: Diagnostic helper for failure scenarios
+  const onFailDump = async (tag = 'login-fail') => {
+    try {
+      const snap = `/tmp/${tag}-${Date.now()}.png`;
+      await page.screenshot({ path: snap, fullPage: true }).catch(() => {});
+      const title = await page.title().catch(() => '');
+      const url = page.url();
+      const bodyText = await page.evaluate(() => document.body?.innerText?.slice(0, 500) || '');
+      console.warn(`[diag] title="${title}" url=${url}\n${bodyText}`);
+    } catch {}
+  };
+
   console.log('DEBUG: Using credentials from cred-get:', creds.email);
   console.log('DEBUG: Attempting login to SkiClubPro at:', baseUrl);
   
-  // Build login URL with destination parameter for fast-path
-  const dest = process.env.SKICLUBPRO_LOGIN_GOTO_DEST || "/registration";
-  const loginUrl = `${baseUrl.replace(/\/$/, "")}/user/login?destination=${encodeURIComponent(dest)}`;
-  
-  console.log(`DEBUG: Login URL with destination: ${loginUrl}`);
-  
-  // Navigate to login page
-  const waitUntilMode = process.env.SKICLUBPRO_USE_DOMCONTENTLOADED === "false" ? "load" : "domcontentloaded";
-  await page.goto(loginUrl, { waitUntil: waitUntilMode });
-  
-  // PACK-L1: Robust Drupal login-field detection
-  // 1) Gate on any of the expected "we can proceed" signals
-  const SEEN = await Promise.race([
-    page.waitForSelector('form.user-login-form, #user-login, #edit-name, input[name="name"], input[id*="edit-name"], input[name*="mail"], input[type="email"]', { timeout: 15000 }).then(() => 'login'),
-    page.waitForSelector('a[href*="/user/logout"], .user-logged-in', { timeout: 15000 }).then(() => 'logged-in'),
-    page.waitForSelector('input[name*="antibot_key"], [name="antibot_key"]', { timeout: 15000 }).then(() => 'antibot'),
-    page.waitForSelector('text=/Just a moment|Access denied|403/i', { timeout: 15000 }).then(() => 'challenge'),
-  ].map(p => p.catch(() => null)));
+  try {
+    // Build login URL with destination parameter for fast-path
+    const dest = process.env.SKICLUBPRO_LOGIN_GOTO_DEST || "/registration";
+    const loginUrl = `${baseUrl.replace(/\/$/, "")}/user/login?destination=${encodeURIComponent(dest)}`;
+    
+    console.log(`DEBUG: Login URL with destination: ${loginUrl}`);
+    
+    // Navigate to login page
+    const waitUntilMode = process.env.SKICLUBPRO_USE_DOMCONTENTLOADED === "false" ? "load" : "domcontentloaded";
+    await page.goto(loginUrl, { waitUntil: waitUntilMode });
+    
+    // PACK-L1: Robust Drupal login-field detection
+    // 1) Gate on any of the expected "we can proceed" signals
+    const SEEN = await Promise.race([
+      page.waitForSelector('form.user-login-form, #user-login, #edit-name, input[name="name"], input[id*="edit-name"], input[name*="mail"], input[type="email"]', { timeout: 15000 }).then(() => 'login'),
+      page.waitForSelector('a[href*="/user/logout"], .user-logged-in', { timeout: 15000 }).then(() => 'logged-in'),
+      page.waitForSelector('input[name*="antibot_key"], [name="antibot_key"]', { timeout: 15000 }).then(() => 'antibot'),
+      page.waitForSelector('text=/Just a moment|Access denied|403/i', { timeout: 15000 }).then(() => 'challenge'),
+    ].map(p => p.catch(() => null)));
 
-  if (SEEN === 'logged-in') {
-    // Already authenticated; go straight to /registration
-    console.log('[ensureLoggedIn] PACK-L1: Already logged in, navigating to registration');
-    await page.goto(`${baseUrl}/registration`, { waitUntil: 'domcontentloaded' });
+    if (SEEN === 'logged-in') {
+      // Already authenticated; go straight to /registration
+      console.log('[ensureLoggedIn] PACK-L1: Already logged in, navigating to registration');
+      await page.goto(`${baseUrl}/registration`, { waitUntil: 'domcontentloaded' });
+      console.timeEnd('[login] total');
+      return { email: creds.email, login_status: 'success' };
+    } else if (SEEN === 'challenge') {
+      // Soft-handle interstitials (Cloudflare or similar)
+      console.log('[ensureLoggedIn] PACK-L1: Challenge detected, waiting and reloading');
+      await page.waitForTimeout(3000);
+      await page.reload({ waitUntil: 'domcontentloaded', timeout: 12000 });
+    }
+
+    // 2) Resolve actual login inputs (username+password) the site uses
+    const USER_SEL = [
+      'input[type="email"]',
+      'input[name*="mail"]',
+      'input[name="name"]',
+      '#edit-name',
+      'input[id*="edit-name"]',
+      'input[autocomplete="username"]',
+      'input[type="text"][name*="user"]'
+    ].join(',');
+
+    const PASS_SEL = [
+      'input[type="password"]',
+      'input[name="pass"]',
+      '#edit-pass',
+      'input[id*="edit-pass"]',
+      'input[autocomplete="current-password"]'
+    ].join(',');
+
+    // Wait for either username and password inputs to exist
+    console.log('[ensureLoggedIn] PACK-L1: Waiting for login fields');
+    await page.waitForSelector(USER_SEL, { timeout: 20000 });
+    await page.waitForSelector(PASS_SEL, { timeout: 20000 });
+
+    const userEl = page.locator(USER_SEL).first();
+    const passEl = page.locator(PASS_SEL).first();
+    const submitBtn = await page.locator('#edit-submit, button[type="submit"], input[type="submit"]').first();
+    
+    // PACK-L1: Humane typing with fill
+    console.log('[ensureLoggedIn] PACK-L1: Filling credentials');
+    await userEl.fill(creds.email, { timeout: 10000 });
+    await passEl.fill(creds.password, { timeout: 10000 });
+    
+    // Wait for anti-bot measures
+    console.log('[login] Waiting for anti-bot measures...');
+    await waitForDrupalAntibot(page);
+    await waitForDrupalTokensStable(page);
+    
+    // Submit form
+    await submitBtn.click({ delay: 30 });
+    
+    // Fast-path probe: immediately navigate to registration after brief pause
+    console.log('[login] Fast-path: navigating to registration...');
+    await page.waitForTimeout(250);
+    await page.goto(`${baseUrl.replace(/\/$/, "")}/registration`, { 
+      waitUntil: "domcontentloaded", 
+      timeout: 8000 
+    });
+  
     console.timeEnd('[login] total');
+    console.log(`DEBUG: Logged in as ${creds.email}`);
     return { email: creds.email, login_status: 'success' };
-  } else if (SEEN === 'challenge') {
-    // Soft-handle interstitials (Cloudflare or similar)
-    console.log('[ensureLoggedIn] PACK-L1: Challenge detected, waiting and reloading');
-    await page.waitForTimeout(3000);
-    await page.reload({ waitUntil: 'domcontentloaded', timeout: 12000 });
+  } catch (err) {
+    // PACK-L4: Capture diagnostic info on failure
+    await onFailDump();
+    throw err;
   }
-
-  // 2) Resolve actual login inputs (username+password) the site uses
-  const USER_SEL = [
-    'input[type="email"]',
-    'input[name*="mail"]',
-    'input[name="name"]',
-    '#edit-name',
-    'input[id*="edit-name"]',
-    'input[autocomplete="username"]',
-    'input[type="text"][name*="user"]'
-  ].join(',');
-
-  const PASS_SEL = [
-    'input[type="password"]',
-    'input[name="pass"]',
-    '#edit-pass',
-    'input[id*="edit-pass"]',
-    'input[autocomplete="current-password"]'
-  ].join(',');
-
-  // Wait for either username and password inputs to exist
-  console.log('[ensureLoggedIn] PACK-L1: Waiting for login fields');
-  await page.waitForSelector(USER_SEL, { timeout: 20000 });
-  await page.waitForSelector(PASS_SEL, { timeout: 20000 });
-
-  const userEl = page.locator(USER_SEL).first();
-  const passEl = page.locator(PASS_SEL).first();
-  const submitBtn = await page.locator('#edit-submit, button[type="submit"], input[type="submit"]').first();
-  
-  // PACK-L1: Humane typing with fill
-  console.log('[ensureLoggedIn] PACK-L1: Filling credentials');
-  await userEl.fill(creds.email, { timeout: 10000 });
-  await passEl.fill(creds.password, { timeout: 10000 });
-  
-  // Wait for anti-bot measures
-  console.log('[login] Waiting for anti-bot measures...');
-  await waitForDrupalAntibot(page);
-  await waitForDrupalTokensStable(page);
-  
-  // Submit form
-  await submitBtn.click({ delay: 30 });
-  
-  // Fast-path probe: immediately navigate to registration after brief pause
-  console.log('[login] Fast-path: navigating to registration...');
-  await page.waitForTimeout(250);
-  await page.goto(`${baseUrl.replace(/\/$/, "")}/registration`, { 
-    waitUntil: "domcontentloaded", 
-    timeout: 8000 
-  });
-  
-  console.timeEnd('[login] total');
-  console.log(`DEBUG: Logged in as ${creds.email}`);
-  return { email: creds.email, login_status: 'success' };
 }
 
 /**
