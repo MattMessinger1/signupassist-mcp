@@ -1,285 +1,91 @@
 /**
- * Programs-Only Three-Pass Extractor for Program Discovery
- * Optimized version that focuses solely on program listings
+ * PACK-06: Real Three-Pass Extractor (Programs)
+ * Streamlined AI-powered extraction using OpenAI JSON mode
  */
 
-import { Page } from 'playwright-core';
-import OpenAI from 'openai';
+import OpenAI from "openai";
 
-export interface ProgramData {
-  id: string;
-  program_ref: string;
-  title: string;
-  description: string;
-  schedule: string;
-  age_range: string;
-  skill_level: string;
-  price: string;
-  actual_id: string;
-  org_ref: string;
-}
+type Models = { vision: string; extractor: string; validator: string; };
 
 interface ExtractorConfig {
-  models: {
-    vision: string;
-    extractor: string;
-    validator: string;
-  };
-  scope: 'program_list';
-  selectors: {
-    container: string[];
-    title: string[];
-    price: string[];
-    schedule: string[];
+  models: Models;
+  scope: "program_list";
+  selectors: { 
+    container: string[]; 
+    title: string[]; 
+    price: string[]; 
+    schedule: string[]; 
   };
 }
 
-/**
- * Run the Programs-Only Three-Pass Extractor on the current page
- * Pass 1: Vision-based container identification
- * Pass 2: HTML extraction with AI assistance
- * Pass 3: Validation and normalization
- */
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+
 export async function runThreePassExtractorForPrograms(
-  page: Page,
+  page: any, 
   orgRef: string,
-  config: ExtractorConfig
-): Promise<ProgramData[]> {
+  opts: ExtractorConfig
+) {
+  console.log('[PACK-06 Extractor] Starting programs-only extraction');
+  console.log('[PACK-06 Models]', opts.models);
   
-  console.log('[ProgramsExtractor] Starting extraction...');
-  console.log('[ExtractorModels]', config.models);
+  // PASS 1: Candidate nodes (selector-first; screenshot kept for future vision boosts)
+  console.log('[PACK-06 Pass 1] Finding candidate nodes via selectors');
+  const candidates = await page.$$(opts.selectors.container.join(","));
+  const snippets: { id: number; html: string }[] = [];
   
-  // Check API key
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY environment variable is not set');
+  for (let i = 0; i < candidates.length; i++) {
+    const html = await candidates[i].evaluate((el: HTMLElement) => el.outerHTML);
+    if (html?.trim()) snippets.push({ id: i, html });
   }
   
-  const openai = new OpenAI({ apiKey });
-  
-  try {
-    const pageURL = page.url();
-    console.log(`[ProgramsExtractor] Analyzing ${pageURL}`);
-    
-    // Capture page state
-    const screenshot = await page.screenshot({ fullPage: false });
-    const pageHTML = await page.content();
-    
-    // PASS 1: Identify program containers using Vision
-    console.log('[ProgramsExtractor] Pass 1: Identifying containers...');
-    const containers = await identifyProgramContainers(
-      screenshot,
-      pageHTML,
-      config.selectors,
-      openai,
-      config.models.vision
-    );
-    console.log(`[ProgramsExtractor] Pass 1: Found ${containers.length} containers`);
-    
-    if (containers.length === 0) {
-      console.warn('[ProgramsExtractor] No program containers found');
-      return [];
-    }
-    
-    // PASS 2: Extract structured data from HTML
-    console.log('[ProgramsExtractor] Pass 2: Extracting program data...');
-    const baseUrl = new URL(pageURL).origin;
-    const extractedPrograms = await extractProgramData(
-      pageHTML,
-      containers,
-      config.selectors,
-      baseUrl,
-      openai,
-      config.models.extractor
-    );
-    console.log(`[ProgramsExtractor] Pass 2: Extracted ${extractedPrograms.length} programs`);
-    
-    // PASS 3: AI-powered validation and normalization
-    console.log('[ProgramsExtractor] Pass 3: Validating and normalizing...');
-    const result = await validateAndNormalize(
-      extractedPrograms,
-      orgRef,
-      openai,
-      config.models.validator
-    );
-    console.log(`[ProgramsExtractor] Pass 3: Final ${result.programs.length} programs`);
-    
-    // Map to ProgramData format
-    return result.programs.map((p: any) => ({
-      id: p.program_id,
-      program_ref: p.program_id,
-      title: p.title,
-      description: p.brief || 'See website for details',
-      schedule: p.schedule || 'TBD',
-      age_range: p.ages || 'All Ages',
-      skill_level: p.level || 'All Levels',
-      price: p.price || 'Contact for pricing',
-      actual_id: p.program_id,
-      org_ref: orgRef
-    }));
-    
-  } catch (error) {
-    console.error('[ProgramsExtractor] ❌ Extraction failed:', error);
-    throw error;
-  }
-}
-
-/**
- * Pass 1: Identify program containers using Vision AI
- */
-async function identifyProgramContainers(
-  screenshot: Buffer,
-  pageHTML: string,
-  selectors: ExtractorConfig['selectors'],
-  openai: OpenAI,
-  model: string
-): Promise<string[]> {
-  
-  const base64Image = screenshot.toString('base64');
-  
-  const prompt = `You are analyzing a ski club program listing page. 
-Identify CSS selectors for program containers.
-
-Expected elements in each container:
-- Program title/name
-- Price or fee information
-- Schedule/dates/times
-- Age range or skill level
-
-Common patterns: ${selectors.container.join(', ')}
-
-Return ONLY a JSON array of CSS selector strings, e.g.:
-["table.views-table tr", ".program-card", ".views-row"]`;
-
-  const response = await openai.chat.completions.create({
-    model,
-    max_completion_tokens: 500,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: prompt },
-          { 
-            type: 'image_url', 
-            image_url: { url: `data:image/png;base64,${base64Image}` }
-          }
-        ]
-      }
-    ]
-  });
-
-  const content = response.choices[0].message.content || '[]';
-  try {
-    const selectors = JSON.parse(content);
-    return Array.isArray(selectors) ? selectors : [];
-  } catch {
-    console.warn('[ProgramsExtractor] Failed to parse Vision response, using defaults');
-    return selectors.container;
-  }
-}
-
-/**
- * Pass 2: Extract structured data from HTML
- */
-async function extractProgramData(
-  pageHTML: string,
-  containerSelectors: string[],
-  fieldSelectors: ExtractorConfig['selectors'],
-  baseUrl: string,
-  openai: OpenAI,
-  model: string
-): Promise<any[]> {
-  
-  const prompt = `Extract program data from this HTML.
-
-Container selectors: ${containerSelectors.join(', ')}
-Title selectors: ${fieldSelectors.title.join(', ')}
-Price selectors: ${fieldSelectors.price.join(', ')}
-Schedule selectors: ${fieldSelectors.schedule.join(', ')}
-
-For each program, extract:
-- program_id (unique identifier or slug)
-- title
-- price (with currency symbol)
-- schedule (dates/times)
-- ages (age range if available)
-- level (skill level if available)
-- brief (short description if available)
-- link (registration URL if available, relative to ${baseUrl})
-
-Return a JSON array of program objects.`;
-
-  const response = await openai.chat.completions.create({
-    model,
-    max_completion_tokens: 4000,
-    messages: [
-      {
-        role: 'system',
-        content: 'You are an HTML parser. Return only valid JSON arrays.'
-      },
-      {
-        role: 'user',
-        content: `${prompt}\n\nHTML:\n${pageHTML.substring(0, 50000)}`
-      }
-    ]
-  });
-
-  const content = response.choices[0].message.content || '[]';
-  try {
-    const programs = JSON.parse(content);
-    return Array.isArray(programs) ? programs : [];
-  } catch {
-    console.warn('[ProgramsExtractor] Failed to parse extraction response');
+  console.log(`[PACK-06 Pass 1] Found ${snippets.length} candidate snippets`);
+  if (!snippets.length) {
+    console.warn('[PACK-06] No program containers found');
     return [];
   }
-}
 
-/**
- * Pass 3: Validate and normalize extracted data
- */
-async function validateAndNormalize(
-  programs: any[],
-  orgRef: string,
-  openai: OpenAI,
-  model: string
-): Promise<{ programs: any[] }> {
+  // PASS 2: Extraction (strict JSON)
+  console.log('[PACK-06 Pass 2] Extracting program data with AI');
+  const extracted = await callOpenAI_JSON(opts.models.extractor, {
+    role: "You extract SKI PROGRAM LISTINGS from HTML snippets (each snippet = one row/card). " +
+          "Return { items: [{ id, title, description, price, schedule, age_range, skill_level, status, " +
+          "program_ref (kebab slug from title + org), org_ref }] }. " +
+          "Never invent; blank if missing.",
+    input: { orgRef, snippets }
+  });
   
-  if (programs.length === 0) {
-    return { programs: [] };
-  }
+  console.log(`[PACK-06 Pass 2] Extracted ${extracted?.items?.length || 0} raw programs`);
 
-  const prompt = `Validate and normalize this program data for ${orgRef}.
-
-Rules:
-1. Ensure each program has a unique program_id
-2. Standardize price formats (e.g., "$150", "$200/session")
-3. Normalize schedule formats
-4. Fill missing ages/level with sensible defaults
-5. Remove duplicates (same title + price)
-6. Sort by: lessons first, then camps, then other programs
-
-Return JSON: { "programs": [...] }`;
-
-  const response = await openai.chat.completions.create({
-    model,
-    max_completion_tokens: 4000,
-    messages: [
-      {
-        role: 'system',
-        content: 'You are a data validator. Return only valid JSON.'
-      },
-      {
-        role: 'user',
-        content: `${prompt}\n\nData:\n${JSON.stringify(programs, null, 2)}`
-      }
-    ]
+  // PASS 3: Validation/Normalization
+  console.log('[PACK-06 Pass 3] Validating and normalizing');
+  const normalized = await callOpenAI_JSON(opts.models.validator, {
+    role: "Normalize and validate. Output { programs:[...] }. " +
+          `Rules: ensure title exists; drop empties; program_ref unique kebab-case; org_ref === "${orgRef}";` +
+          ' normalize price like "$175 per session" -> "$175/session"; trim whitespace.',
+    input: extracted
   });
 
-  const content = response.choices[0].message.content || '{"programs":[]}';
-  try {
-    return JSON.parse(content);
-  } catch {
-    console.warn('[ProgramsExtractor] Failed to parse validation response, returning raw data');
-    return { programs };
+  const finalPrograms = normalized?.programs || normalized?.items || [];
+  console.log(`[PACK-06 Pass 3] Final ${finalPrograms.length} validated programs`);
+  
+  return finalPrograms;
+}
+
+async function callOpenAI_JSON(model: string, payload: { role: string; input: any }) {
+  const res = await openai.chat.completions.create({
+    model,
+    temperature: 0.1,
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: payload.role },
+      { role: "user", content: JSON.stringify(payload.input) }
+    ]
+  });
+  const content = res.choices?.[0]?.message?.content ?? "{}";
+  try { 
+    return JSON.parse(content); 
+  } catch (err) {
+    console.error('[PACK-06] JSON parse error:', err);
+    return {};
   }
 }
