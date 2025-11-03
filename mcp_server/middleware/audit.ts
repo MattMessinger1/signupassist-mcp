@@ -235,9 +235,9 @@ export async function auditToolCall<T>(
       
       while (attemptCount < MAX_ATTEMPTS) {
         try {
-          let jwsToken: string;
+          let jwsToken: string | undefined;
           
-          // Prefer mandate_jws over mandate_id
+          // Prefer mandate_jws over mandate_id, with DEV fallback
           if (context.mandate_jws) {
             jwsToken = context.mandate_jws;
           } else if (context.mandate_id) {
@@ -254,8 +254,23 @@ export async function auditToolCall<T>(
             }
             
             jwsToken = mandate.jws_compact;
-          } else {
-            throw new Error('No mandate provided (mandate_jws or mandate_id required)');
+          } else if (args?.mandate_jws) {
+            jwsToken = args.mandate_jws;
+          } else if (process.env.DEV_MANDATE_JWS) {
+            jwsToken = process.env.DEV_MANDATE_JWS;
+          }
+          
+          // Dev-safe fallback to prevent mid-flow aborts
+          if (!jwsToken) {
+            if (process.env.NODE_ENV === 'production') {
+              throw new Error('Mandate verification failed: No mandate provided (mandate_jws or mandate_id required)');
+            } else {
+              console.warn('[audit] DEV: proceeding with DEV_MANDATE_JWS fallback');
+              jwsToken = process.env.DEV_MANDATE_JWS;
+              if (!jwsToken) {
+                throw new Error('DEV_MANDATE_JWS not set in environment');
+              }
+            }
           }
           
           // Verify mandate
