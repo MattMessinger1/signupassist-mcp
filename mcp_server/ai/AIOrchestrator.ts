@@ -827,7 +827,10 @@ class AIOrchestrator {
             
             // Auto-trigger program discovery immediately (no button click needed)
             console.log(`[orchestrator] Auto-triggering program discovery for existing credentials`);
-            return this.handleAutoProgramDiscovery(sessionId, undefined, currentContext.user_jwt);
+            
+            // Get fresh context after update
+            const updatedContext = await this.getContext(sessionId);
+            return this.handleAutoProgramDiscovery(updatedContext, undefined, sessionId);
           }
           
           // Store pending login info for credential collection
@@ -1142,7 +1145,7 @@ class AIOrchestrator {
           Logger.info(`[retry_program_discovery] Retry attempt ${retryCount + 1}/${MAX_RETRIES}`);
           
           try {
-            const retryResult = await this.handleAutoProgramDiscovery(sessionId);
+            const retryResult = await this.handleAutoProgramDiscovery(context, undefined, sessionId);
             
             // Reset retry count on success
             await this.updateContext(sessionId, { discovery_retry_count: 0 } as any);

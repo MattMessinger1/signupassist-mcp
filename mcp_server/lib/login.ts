@@ -420,7 +420,7 @@ export async function loginWithCredentials(
         
         // Wait for page to be ready (import dynamically to avoid circular dependency)
         const { waitForSkiClubProReady } = await import('../providers/utils/skiclubproReadiness.js');
-        await waitForSkiClubProReady(page, 2);
+        await waitForSkiClubProReady(page);
         
         url = page.url();
         console.log(`[Login] ✅ Navigation complete: ${url}`);
