@@ -1477,19 +1477,22 @@ export const skiClubProTools = {
       user_jwt?: string; 
       user_id?: string;
       session_token?: string;
+      mandate_jws?: string;
       force_login?: boolean;
       category?: string;
-    }): Promise<ProviderResponse<{ programs: any[] }>> => {
+    }): Promise<ProviderResponse<{ programs: any[]; programs_by_theme?: Record<string, any[]>; session_token?: string }>> => {
     const orgRef = args.org_ref || 'blackhawk-ski-club';
+    const category = args.category || 'all';
     
-    console.log('[scp.find_programs] Incoming args:', {
+    console.log('[scp.find_programs] PACK-05: Incoming args:', {
       org_ref: args.org_ref,
       credential_id: args.credential_id,
       session_token: args.session_token,
+      category,
       user_jwt: !!args.user_jwt
     });
     
-    // FIX: Add early validation for user_jwt when credential_id is provided
+    // Validate user_jwt when credential_id is provided
     if (args.credential_id && !args.user_jwt) {
       const errorMsg = 'Missing user_jwt: orchestrator must pass valid JWT for credential lookup';
       console.error('[scp.find_programs]', errorMsg);
@@ -1503,10 +1506,10 @@ export const skiClubProTools = {
     
     // If credentials or session token provided, use live Browserbase scraping
     if (args.credential_id || args.session_token) {
-      console.log('[scp.find_programs] Using live Browserbase scraping');
+      console.log('[scp.find_programs] Using live Browserbase scraping with PACK-05');
       
       let session: any = null;
-      let sessionToken = args.session_token;
+      let token = args.session_token;
       
       try {
         // Verify mandate includes required scope
@@ -1528,138 +1531,105 @@ export const skiClubProTools = {
         const override = getOrgOverride(orgRef);
         const baseUrl = buildBaseUrl(orgRef, override.customDomain);
         
-        // FIX: Try to restore session if token provided
-        if (sessionToken) {
-          console.log(`[scp.find_programs] 🔄 Attempting to reuse session from token: ${sessionToken}`);
-          const restored = await getSession(sessionToken);
-          if (restored && restored.session) {
+        // PACK-05 Step 1: Restore session by token first
+        if (token) {
+          console.log(`[scp.find_programs] 🔄 PACK-05: Restoring session from token: ${token}`);
+          const restored = await getSession(token);
+          if (restored?.session) {
             session = restored.session;
-            sessionToken = restored.newToken;
-            console.log(`[scp.find_programs] ✅ Successfully reused session (no new login needed)`);
-            
-            // Ensure we're on /registration
-            const urlBuilder = new UrlBuilder(orgRef);
-            const programsUrl = urlBuilder.programs(orgRef);
-            await session.page.goto(programsUrl, { waitUntil: 'networkidle', timeout: 30000 });
-            
-            // Wait for page readiness
-            const readinessFn = getReadiness('skiclubpro');
-            await readinessFn(session.page);
-            
-            console.log(`[scp.find_programs] ✅ Navigated to programs page with existing session`);
+            token = restored.newToken || token;
+            console.log(`[scp.find_programs] ✅ PACK-05: Session restored successfully`);
           } else {
-            console.log('[scp.find_programs] ⚠️ Session token not found or expired - will create new session');
+            console.log('[scp.find_programs] ⚠️ PACK-05: Session restore failed, will login');
           }
         }
         
-        // If no session restored, launch new one and login
+        // PACK-05 Step 2: Fallback to single login if restore failed
         if (!session) {
-          console.log('[scp.find_programs] Launching new Browserbase session...');
+          console.log('[scp.find_programs] PACK-05: No session - performing fresh login');
           session = await launchBrowserbaseSession();
-        
-          // Login with credentials and force navigation to /registration
-          console.log('[scp.find_programs] Logging in...');
-          const credentials = await lookupCredentialsById(args.credential_id, args.user_jwt);
-          const urlBuilder = new UrlBuilder(orgRef);
-          const loginUrl = urlBuilder.login(orgRef);
-          const programsUrl = urlBuilder.programs(orgRef);
           
-          console.log(`[scp.find_programs] Login URL: ${loginUrl}`);
-          console.log(`[scp.find_programs] Post-login target: ${programsUrl}`);
+          await ensureLoggedIn(
+            session,
+            args.credential_id,
+            args.user_jwt,
+            baseUrl,
+            args.user_id || 'system',
+            orgRef,
+            undefined,
+            undefined,
+            { tool_name: 'scp.find_programs', mandate_jws: args.mandate_jws }
+          );
           
-          // Use config-based login with forced navigation
-          const loginConfig: ProviderLoginConfig = {
-            loginUrl,
-            selectors: {
-              username: ['#edit-name', 'input[name="name"]'],
-              password: ['#edit-pass', 'input[name="pass"]'],
-              submit: ['#edit-submit', 'button[type="submit"]', 'input[type="submit"]']
-            },
-            postLoginCheck: ['a:has-text("Log out")', 'a:has-text("Logout")'],
-            timeout: 30000
-          };
+          // Extract cookies and generate token
+          const cookies = await session.page.context().cookies();
+          token = generateToken();
+          const statePath = `/tmp/session-${token}.json`;
           
-          await loginWithCredentials(session.page, loginConfig, credentials, session.browser, programsUrl);
-          console.log(`[scp.find_programs] ✅ Login complete, landed at: ${session.page.url()}`);
-          
-          // Store authenticated session state (includes httpOnly cookies)
-          sessionToken = generateToken();
-          const statePath = `/tmp/session-${sessionToken}.json`;
+          console.log('[scp.find_programs] PACK-05: Persisting session state...');
           await session.context.storageState({ path: statePath });
-          storeSession(sessionToken, session, 300000, statePath); // 5 min TTL with storageState
-          console.log(`[scp.find_programs] 💾 Session stored with token: ${sessionToken} (valid for 5 min)`);
+          
+          const ttlMs = Number(process.env.SESSION_CACHE_TTL_MS || 300000);
+          storeSession(token, session, ttlMs, statePath);
+          console.log(`[scp.find_programs] ✅ PACK-05: Fresh login completed with token: ${token}`);
         }
         
-        const loginResult = { login_status: 'success' };
-        
-        // ✅ Check login result
-        if (loginResult.login_status === 'failed') {
-          console.error('[scp.find_programs] Login failed');
-          return { 
-            success: false,
-            login_status: 'failed', 
-            error: 'Login failed - unable to authenticate. Try again with hard reset.',
-            timestamp: new Date().toISOString()
-          };
-        }
-        
-        // FIX 4: Ensure we're on /registration after login (don't assume redirect)
-        await session.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-        const currentUrl = session.page.url();
-        console.log(`[scp.find_programs] After login, current URL: ${currentUrl}`);
-        
-        if (!currentUrl.includes('/registration')) {
-          console.log('[scp.find_programs] Navigating to programs page...');
-          const urlBuilder = new UrlBuilder(orgRef);
-          const programsUrl = urlBuilder.programs(orgRef);
-          await session.page.goto(programsUrl, { waitUntil: 'domcontentloaded' });
-          console.log(`[scp.find_programs] ✅ Navigated to: ${programsUrl}`);
-        } else {
-          console.log('[scp.find_programs] ✅ Already on programs page from login redirect');
-        }
-        
-        // ✅ Wait for page to load (advisory only - extractor is resilient)
-        console.log('[scp.find_programs] Waiting for page load...');
-        await session.page.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {
-          console.warn('[scp.find_programs] Page load timeout (non-blocking)');
+        // PACK-05 Step 3: Navigate to /registration + wait for readiness
+        console.log('[scp.find_programs] PACK-05: Navigating to /registration');
+        await session.page.goto(`${baseUrl.replace(/\/$/, '')}/registration`, { 
+          waitUntil: 'domcontentloaded', 
+          timeout: 8000 
         });
-        console.log(`[scp.find_programs] Current URL: ${session.page.url()}`);
         
-        // ✅ Three-Pass Extractor: AI-powered program extraction
+        const { waitForSkiClubProReady } = await import('./utils/skiclubproReadiness.js');
+        await waitForSkiClubProReady(session.page);
+        console.log('[scp.find_programs] ✅ PACK-05: Page ready for extraction');
         
-        let scrapedPrograms: any[] = [];
-        try {
-          // Verify OpenAI API key is configured BEFORE importing
-          if (!process.env.OPENAI_API_KEY) {
-            console.error('[scp.find_programs] ❌ OPENAI_API_KEY not configured');
-            console.error('[scp.find_programs] Set OPENAI_API_KEY in Railway project variables');
-            throw new Error('OPENAI_API_KEY not configured for AI extraction. Set it in Railway environment variables.');
-          }
-          
-          // Import the extractor (will now succeed)
-          console.log('[scp.find_programs] ✅ OpenAI API key detected, importing extractor...');
-          const { runThreePassExtractor } = await import('../lib/threePassExtractor.js');
-          
-          // Run the Three-Pass Extractor on current page
-          const page = session.page;
-          scrapedPrograms = await runThreePassExtractor(page, orgRef, 'skiclubpro');
-          
-          console.log(`[scp.find_programs] ✅ Extracted ${scrapedPrograms.length} programs from ${page.url()}`);
-          
-          // Log warning if no programs found (should not happen after navigating to correct URL)
-          if (scrapedPrograms.length === 0) {
-            console.warn('[scp.find_programs] ⚠️ No programs found - this is unexpected after navigating to programs listing page');
-          }
-          
-        } catch (extractorError) {
-          console.error('[scp.find_programs] ❌ Three-Pass Extractor failed');
-          console.error('[scp.find_programs] Error:', extractorError instanceof Error ? extractorError.message : extractorError);
-          if (extractorError instanceof Error && extractorError.stack) {
-            console.error('[scp.find_programs] Stack:', extractorError.stack.split('\n').slice(0, 5).join('\n'));
-          }
-          // Continue with empty array if extraction fails
-          scrapedPrograms = [];
+        // PACK-05 Step 4: Run Programs-Only Three-Pass Extractor
+        console.log('[scp.find_programs] PACK-05: Running programs-only extractor');
+        
+        if (!process.env.OPENAI_API_KEY) {
+          throw new Error('OPENAI_API_KEY not configured');
         }
+        
+        // Import programs-only extractor
+        const { runThreePassExtractorForPrograms } = await import('../lib/threePassExtractor.programs.js');
+        
+        const scrapedPrograms = await runThreePassExtractorForPrograms(session.page, orgRef, {
+          models: {
+            vision: process.env.OPENAI_MODEL_PROGRAM_VISION || 'gpt-5-2025-08-07',
+            extractor: process.env.OPENAI_MODEL_PROGRAM_EXTRACTOR || 'gpt-5-mini-2025-08-07',
+            validator: process.env.OPENAI_MODEL_PROGRAM_VALIDATOR || 'gpt-5-mini-2025-08-07'
+          },
+          scope: 'program_list',
+          selectors: {
+            container: ['.view-registrations .views-row', 'table.views-table tr', '.program-card'],
+            title: ['.views-field-title', 'h3', '.title'],
+            price: ['.views-field-field-price', '.price', 'td:has-text("$")'],
+            schedule: ['.views-field-field-schedule', '.schedule', 'td:has-text("AM")', 'td:has-text("PM")']
+          }
+        });
+        
+        console.log(`[scp.find_programs] ✅ PACK-05: Extracted ${scrapedPrograms.length} programs`);
+        
+        // PACK-05 Step 5: Group by theme
+        console.log('[scp.find_programs] PACK-05: Grouping programs by theme');
+        const determineTheme = (p: any) => {
+          const t = `${p.title} ${p.description || ''}`.toLowerCase();
+          if (t.includes('lesson') || t.includes('class')) return 'Lessons & Classes';
+          if (t.includes('camp') || t.includes('clinic')) return 'Camps & Clinics';
+          if (t.includes('race') || t.includes('team')) return 'Races & Teams';
+          if (t.includes('private')) return 'Private Lessons';
+          return 'Other Programs';
+        };
+        
+        const programs_by_theme = scrapedPrograms.reduce((acc: any, p: any) => {
+          const theme = determineTheme(p);
+          (acc[theme] ||= []).push(p);
+          return acc;
+        }, {});
+        
+        console.log('[scp.find_programs] ✅ PACK-05: Grouped into themes:', Object.keys(programs_by_theme));
         
         // Capture screenshot evidence if plan execution exists
         if (args.plan_execution_id) {
@@ -1672,47 +1642,14 @@ export const skiClubProTools = {
           }
         }
         
-        // Programs already in expected format from Three-Pass Extractor
-        let programs = scrapedPrograms;
-        
-        // Filter by category if provided
-        if (args.category) {
-          console.log(`[scp.find_programs] Filtering programs by category: ${args.category}`);
-          const categoryLower = args.category.toLowerCase();
-          programs = programs.filter(p => {
-            const title = p.title?.toLowerCase() || '';
-            const desc = p.description?.toLowerCase() || '';
-            
-            // Match category keywords
-            if (categoryLower === 'lessons') {
-              return title.includes('lesson') || title.includes('class') || desc.includes('instruction');
-            }
-            if (categoryLower === 'membership') {
-              return title.includes('member') || desc.includes('membership');
-            }
-            if (categoryLower === 'camp') {
-              return title.includes('camp') || desc.includes('summer');
-            }
-            if (categoryLower === 'race') {
-              return title.includes('race') || title.includes('team');
-            }
-            if (categoryLower === 'private') {
-              return title.includes('private');
-            }
-            return true;
-          });
-          console.log(`[scp.find_programs] Filtered to ${programs.length} programs matching "${args.category}"`);
-        }
-        
-        console.log(`[scp.find_programs] ✓ Successfully scraped ${programs.length} programs`);
-        
+        // PACK-05 Step 6: Return grouped programs + token
+        console.log(`[scp.find_programs] ✅ PACK-05 Complete - returning ${scrapedPrograms.length} programs with token`);
         return {
           success: true,
+          session_token: token,
+          programs: scrapedPrograms,
+          programs_by_theme,
           login_status: 'success',
-          session_token: sessionToken,
-          data: {
-            programs
-          },
           timestamp: new Date().toISOString()
         };
         
