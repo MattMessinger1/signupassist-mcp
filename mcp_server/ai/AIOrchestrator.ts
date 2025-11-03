@@ -1008,7 +1008,7 @@ class AIOrchestrator {
           console.log('[credentials_submitted] Performing login to get session token...');
           const loginResult = await this.callTool('scp.login', {
             credential_id,
-            org_ref: context.provider?.orgRef || 'blackhawk-ski',
+            org_ref: context.provider?.orgRef || 'blackhawk-ski-club',
             user_jwt: context.user_jwt ?? userJwt
           }, sessionId);
           
@@ -1025,7 +1025,7 @@ class AIOrchestrator {
           
           // FIX: Preserve provider, user_jwt, and session_token in context before auto-discovery
           await this.updateContext(sessionId, {
-            provider: context.provider || { name: 'Blackhawk Ski Club', orgRef: 'blackhawk-ski' },
+            provider: context.provider || { name: 'Blackhawk Ski Club', orgRef: 'blackhawk-ski-club' },
             user_jwt: context.user_jwt ?? userJwt,  // Preserve JWT from parameter or context
             credential_id,
             session_token: loginResult.session_token,  // Store session token for reuse

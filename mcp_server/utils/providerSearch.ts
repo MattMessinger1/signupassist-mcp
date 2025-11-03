@@ -22,7 +22,7 @@ const knownProviders: Record<string, Provider> = {
     name: "Blackhawk Ski Club",
     city: "Middleton",
     state: "WI",
-    orgRef: "blackhawk-ski",
+    orgRef: "blackhawk-ski-club",
     source: "local",
   },
 };
