@@ -197,6 +197,95 @@ function waitForLoginError(page: Page, timeout = 8000): Promise<ElementHandle<HT
 }
 
 /**
+ * Wait for Drupal antibot key to be generated
+ */
+async function waitForDrupalAntibot(
+  page: Page, 
+  { 
+    maxWaitMs = Number(process.env.SKICLUBPRO_ANTIBOT_MAX_WAIT_MS || 12000), 
+    requireKey = (process.env.SKICLUBPRO_ANTIBOT_REQUIRE_KEY !== "false") 
+  } = {}
+): Promise<boolean> {
+  const start = Date.now();
+  const keySel = 'input[name*="antibot_key"], input[type="hidden"][name="antibot_key"]';
+  
+  if (!requireKey) {
+    console.log('[antibot] Key check disabled via env');
+    return true;
+  }
+  
+  while (Date.now() - start < maxWaitMs) {
+    try {
+      const keyVal = await page.$eval(keySel, (el: any) => el.value || "").catch(() => "");
+      if (keyVal && keyVal.length >= 20) {
+        console.log('[antibot] ✓ Key generated');
+        return true;
+      }
+    } catch {
+      // Element not found, continue waiting
+    }
+    await page.waitForTimeout(250);
+  }
+  
+  console.warn('[antibot] Timeout waiting for key');
+  return false;
+}
+
+/**
+ * Wait for Drupal form tokens to stabilize (stop changing)
+ */
+async function waitForDrupalTokensStable(
+  page: Page, 
+  { 
+    maxWaitMs = 6000, 
+    stableMs = Number(process.env.SKICLUBPRO_TOKENS_STABLE_MS || 400) 
+  } = {}
+): Promise<boolean> {
+  const getToken = async (selector: string) => {
+    try {
+      return await page.$eval(selector, (el: any) => el.value || "").catch(() => "");
+    } catch {
+      return "";
+    }
+  };
+  
+  let lastTokens = { 
+    form_build_id: await getToken('input[name="form_build_id"]'), 
+    form_token: await getToken('input[name="form_token"]') 
+  };
+  let lastChangeTime = Date.now();
+  const start = Date.now();
+  
+  while (Date.now() - start < maxWaitMs) {
+    await page.waitForTimeout(200);
+    
+    const currentTokens = { 
+      form_build_id: await getToken('input[name="form_build_id"]'), 
+      form_token: await getToken('input[name="form_token"]') 
+    };
+    
+    // If tokens changed, reset the stability timer
+    if (currentTokens.form_build_id !== lastTokens.form_build_id || 
+        currentTokens.form_token !== lastTokens.form_token) {
+      lastTokens = currentTokens;
+      lastChangeTime = Date.now();
+      console.log('[tokens] Changed, waiting for stability...');
+    }
+    
+    // Check if tokens have been stable long enough
+    if (Date.now() - lastChangeTime >= stableMs && 
+        currentTokens.form_build_id && 
+        currentTokens.form_token) {
+      console.log('[tokens] ✓ Stable');
+      return true;
+    }
+  }
+  
+  console.warn('[tokens] Timeout waiting for stability');
+  return false;
+}
+
+/**
  * Try to resume existing provider session
  */
 async function tryResumeProviderSession(userId: string, credentialId: string | undefined, orgRef: string): Promise<{ isValid: true; session_token: string } | { isValid: false }> {
@@ -307,27 +396,44 @@ async function ensureLoggedIn(
   console.log('DEBUG: Using credentials from cred-get:', creds.email);
   console.log('DEBUG: Attempting login to SkiClubPro at:', baseUrl);
   
-  // Use UrlBuilder to resolve the correct login URL for this organization
-  const urlBuilder = new UrlBuilder(orgRef);
-  const loginUrl = urlBuilder.login(orgRef);
+  // Build login URL with destination parameter for fast-path
+  const dest = process.env.SKICLUBPRO_LOGIN_GOTO_DEST || "/registration";
+  const loginUrl = `${baseUrl.replace(/\/$/, "")}/user/login?destination=${encodeURIComponent(dest)}`;
   
-  console.log(`DEBUG: Resolved login URL via UrlBuilder: ${loginUrl}`);
+  console.log(`DEBUG: Login URL with destination: ${loginUrl}`);
   
-  // Use the comprehensive login library with full anti-bot support
-  const loginConfig: ProviderLoginConfig = {
-    loginUrl,
-    selectors: {
-      username: ['#edit-name', 'input[name="name"]'],
-      password: ['#edit-pass', 'input[name="pass"]'],
-      submit: ['#edit-submit', 'button[type="submit"]', 'input[type="submit"]']
-    },
-    postLoginCheck: ['a:has-text("Log out")', 'a:has-text("Logout")'],
-    timeout: 30000 // Use 30s timeout for anti-bot measures
-  };
-
-  // Call the proven login function that handles all anti-bot measures
-  await loginWithCredentials(page, loginConfig, creds);
-
+  // Navigate to login page
+  const waitUntilMode = process.env.SKICLUBPRO_USE_DOMCONTENTLOADED === "false" ? "load" : "domcontentloaded";
+  await page.goto(loginUrl, { waitUntil: waitUntilMode });
+  
+  // Wait for form elements
+  await page.waitForSelector('input[type=email], input[name*=email]');
+  await page.waitForSelector('input[type=password], input[name*=pass]');
+  
+  // Fill in credentials with human-like typing
+  const emailEl = await page.locator('input[type=email], input[name*=email]').first();
+  const passEl = await page.locator('input[type=password], input[name*=pass]').first();
+  const submitBtn = await page.locator('#edit-submit, button[type="submit"], input[type="submit"]').first();
+  
+  await emailEl.type(creds.email, { delay: 70 + Math.floor(Math.random() * 40) });
+  await passEl.type(creds.password, { delay: 70 + Math.floor(Math.random() * 40) });
+  
+  // Wait for anti-bot measures
+  console.log('[login] Waiting for anti-bot measures...');
+  await waitForDrupalAntibot(page);
+  await waitForDrupalTokensStable(page);
+  
+  // Submit form
+  await submitBtn.click({ delay: 30 });
+  
+  // Fast-path probe: immediately navigate to registration after brief pause
+  console.log('[login] Fast-path: navigating to registration...');
+  await page.waitForTimeout(250);
+  await page.goto(`${baseUrl.replace(/\/$/, "")}/registration`, { 
+    waitUntil: "domcontentloaded", 
+    timeout: 8000 
+  });
+  
   console.timeEnd('[login] total');
   console.log(`DEBUG: Logged in as ${creds.email}`);
   return { email: creds.email, login_status: 'success' };
@@ -1060,17 +1166,28 @@ export const skiClubProTools = {
           const cached = typeof loginProof === 'object' && 'cached' in loginProof ? loginProof.cached : false;
           const url = typeof loginProof === 'object' && 'url' in loginProof ? loginProof.url : undefined;
           
-          // Extract cookies BEFORE closing Session A
+          // Extract cookies BEFORE persisting session
           const cookies = await session.page.context().cookies();
-          console.log(`[scp.login] Extracted ${cookies.length} cookies for Session B`);
+          console.log(`[scp.login] Extracted ${cookies.length} cookies`);
           
-          // Close Session A immediately
-          console.log('[scp.login] Closing Session A...');
-          await closeBrowserbaseSession(session);
-          console.log('[scp.login] ✅ Session A closed');
+          // Generate and store session token for reuse
+          const sessionToken = generateToken();
+          const statePath = `/tmp/session-${sessionToken}.json`;
+          
+          console.log('[scp.login] Persisting session state...');
+          await session.context.storageState({ path: statePath });
+          
+          // Store session with TTL from env or default 5 minutes
+          const ttlMs = Number(process.env.SESSION_CACHE_TTL_MS || 300000);
+          storeSession(sessionToken, session, ttlMs, statePath);
+          console.log(`[scp.login] ✅ Session stored with token: ${sessionToken}`);
+          
+          // IMPORTANT: Do NOT close session - it's stored for reuse
+          // The session will be cleaned up automatically after TTL expires
           
           return {
             success: true,
+            session_token: sessionToken,
             run_id: crypto.randomUUID(),
             login_status: 'success',
             message: 'Login successful via Browserbase',
@@ -1078,7 +1195,6 @@ export const skiClubProTools = {
             cached: cached,
             url: url || baseUrl,
             cookies: cookies,
-            session_closed: true,
             timestamp: new Date().toISOString()
           };
           
