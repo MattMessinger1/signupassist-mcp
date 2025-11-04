@@ -1831,8 +1831,9 @@ class AIOrchestrator {
         price: p.price
       }));
 
-      const completion = await callOpenAI_JSON({
+      const result = await callOpenAI_JSON({
         model: "gpt-5-mini-2025-08-07",
+        useResponsesAPI: false, // Use Chat Completions for JSON responses
         system: `Analyze these programs and group them into categories like:
 - Lessons (beginner, intermediate, advanced classes)
 - Race Teams (competitive programs, BART, masters)
@@ -1851,10 +1852,6 @@ Return JSON: {
 }`,
         user: simplifiedPrograms
       });
-
-      let text = completion.choices[0]?.message?.content || '{"categories":[]}';
-      text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/s, '').trim();
-      const result = JSON.parse(text);
       
       Logger.info('[AI Summarizer] Categorized programs', {
         inputCount: programs.length,
@@ -1968,6 +1965,7 @@ Return JSON: {
     try {
       const parsed = await callOpenAI_JSON({
         model: "gpt-5-mini-2025-08-07",
+        useResponsesAPI: false, // Use Chat Completions for JSON responses
         system: "Extract provider name and city from input. Return JSON with 'name' and 'city' fields. If city is not mentioned, omit the city field.",
         user: userInput
       });
