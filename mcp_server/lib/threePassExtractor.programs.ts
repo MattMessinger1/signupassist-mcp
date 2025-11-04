@@ -229,7 +229,7 @@ Return JSON with items array. Each item needs:
 Keep values as displayed, do not invent data.`,
           data: { orgRef, snippets: batch },
           schema: ExtractionSchema,
-          maxTokens: 2500 // Increased to prevent truncation
+          maxTokens: 5000 // Increased to ensure no truncation for 17 programs
         });
         
         const batchItems = extracted?.items ?? [];
@@ -262,7 +262,7 @@ Keep values as displayed, do not invent data.`,
 Return validated programs array.`,
       data: { programs: allExtractedItems },
       schema: ValidationSchema,
-      maxTokens: 3000 // Increased to prevent truncation
+      maxTokens: 10000 // Increased to handle all 49 programs safely
     });
 
     const finalPrograms = normalized?.programs || [];

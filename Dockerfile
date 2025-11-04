@@ -2,8 +2,8 @@
 FROM node:20-alpine AS builder
 
 # Force rebuild toggle — updated automatically by Lovable or CLI
-# Last rebuild: 2025-11-04 20:22:00 UTC - JSON parsing fix with retry logic
-ARG BUILD_TAG=20251104-202200
+# Last rebuild: 2025-11-04 20:25:00 UTC - Increased token limits to 5K/10K
+ARG BUILD_TAG=20251104-202500
 LABEL build-tag=$BUILD_TAG
 
 WORKDIR /app
