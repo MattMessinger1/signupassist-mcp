@@ -1,5 +1,37 @@
 # Railway Deployment Guide
 
+## 🧪 Testing Mode: Disable Auto-Deploy
+
+**During live testing or AI Orchestrator tuning, prevent Railway from auto-deploying on every git push.**
+
+### Quick Toggle (Railway Dashboard)
+1. Go to Railway dashboard: https://railway.app
+2. Select your `signupassist-mcp-production` service
+3. Navigate to **Settings** → **Deployments** tab
+4. Toggle **OFF** the **"Auto Deploy on Git Push"** option
+5. ✅ Railway will now only deploy when you manually click "Deploy"
+
+### When to Disable Auto-Deploy
+- During live testing sessions
+- When tuning AI Orchestrator prompts or flows
+- When making rapid iterative changes
+- When you need a stable environment for QA
+
+### When to Re-Enable Auto-Deploy
+- After testing is complete
+- For production deployments
+- When you want continuous deployment
+
+### Environment Variable Control (Optional)
+Add this to your Railway environment variables:
+```
+RAILWAY_AUTO_DEPLOY=false
+```
+
+This serves as documentation for the current deployment mode.
+
+---
+
 ## Quick Fix for CORS Issue
 
 The CORS headers have been updated in `mcp_server/index.ts` to include `X-Mandate-JWS`. To deploy this fix to Railway:

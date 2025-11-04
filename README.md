@@ -31,6 +31,16 @@ This approach aligns with the **Responsible Delegate Mode (RDM)** vision: moving
   npm run mcp:start
   ```
 
+## Deployment & Testing
+
+### Railway Deployment
+See [RAILWAY_DEPLOY.md](./RAILWAY_DEPLOY.md) for complete deployment instructions.
+
+### Testing Mode
+During QA sessions or AI Orchestrator tuning, you can disable auto-deploy to prevent Railway from redeploying mid-test:
+- Quick toggle in Railway Dashboard: Settings → Deployments → Turn OFF "Auto Deploy on Git Push"
+- See [docs/TESTING_MODE.md](./docs/TESTING_MODE.md) for detailed testing workflow
+
 ## Contributing
 
 Future contributors should extend the `lib/login.ts` and `lib/formHelpers.ts` modules to:

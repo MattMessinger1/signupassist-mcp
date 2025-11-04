@@ -32,6 +32,13 @@ RUN npx tsc -p tsconfig.mcp.json --noEmit
 # Build backend TypeScript to dist/ (clean build)
 RUN rm -rf dist && npx tsc -p tsconfig.mcp.json
 
+# Check deployment mode
+RUN if [ "$RAILWAY_AUTO_DEPLOY" = "false" ]; then \
+      echo "🧪 Auto-deploy disabled for testing mode"; \
+    else \
+      echo "🚀 Auto-deploy enabled for production"; \
+    fi
+
 # Verify AIOrchestrator was built
 RUN ls -la dist/mcp_server/ai/ || echo "⚠️ AI folder not built"
 

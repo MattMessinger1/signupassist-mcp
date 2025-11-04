@@ -5,5 +5,8 @@
     "healthcheckMaxRetries": 20,
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 3
+  },
+  "build": {
+    "buildCommand": "echo '🔍 Checking deployment mode...' && if [ \"$RAILWAY_AUTO_DEPLOY\" = \"false\" ]; then echo '🧪 Auto-deploy disabled for testing mode'; else echo '🚀 Auto-deploy enabled for production'; fi"
   }
 }
