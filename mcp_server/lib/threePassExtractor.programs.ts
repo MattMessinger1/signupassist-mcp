@@ -77,7 +77,8 @@ const ValidationSchema = {
 
 /**
  * Step 3: Strict JSON extraction helper
- * Uses json_schema with strict:true and temperature:0 for deterministic output
+ * Uses Chat Completions API with json_schema strict mode and temperature:0
+ * Note: Responses API doesn't support json_schema, only Chat Completions does
  */
 async function callStrictExtraction(opts: {
   model: string;
@@ -89,27 +90,26 @@ async function callStrictExtraction(opts: {
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
   
   try {
-    const res = await openai.responses.create({
+    // Use Chat Completions API (not Responses) for json_schema support
+    const res = await openai.chat.completions.create({
       model: opts.model,
       temperature: 0, // Force deterministic
-      max_output_tokens: opts.maxTokens || 2000,
-      text: {
-        format: {
-          type: "json_schema",
-          json_schema: {
-            name: "ProgramExtraction",
-            schema: opts.schema,
-            strict: true
-          }
+      max_tokens: opts.maxTokens || 2000,
+      response_format: {
+        type: "json_schema",
+        json_schema: {
+          name: "ProgramExtraction",
+          schema: opts.schema,
+          strict: true
         }
       },
-      input: [
+      messages: [
         { role: "system", content: opts.system },
         { role: "user", content: JSON.stringify(opts.data) }
       ]
     });
     
-    const text = (res as any).output_text ?? (res as any).output?.[0]?.content?.[0]?.text;
+    const text = res.choices?.[0]?.message?.content || "{}";
     return JSON.parse(text); // Schema mode should guarantee valid JSON
   } catch (err: any) {
     console.error("[threePassExtractor] Strict extraction failed:", err.message);
