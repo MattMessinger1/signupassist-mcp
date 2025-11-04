@@ -31,6 +31,21 @@ export function supportsCustomTemperature(model: string): boolean {
 }
 
 /**
+ * Newer OpenAI models use max_completion_tokens instead of max_tokens
+ * in the Chat Completions API
+ */
+function requiresCompletionTokensParam(model: string): boolean {
+  const newerModelPatterns = [
+    /^gpt-5/i,           // All GPT-5 variants
+    /^gpt-4\.1/i,        // GPT-4.1 family
+    /^o3/i,              // O3 reasoning models
+    /^o4/i,              // O4 reasoning models
+  ];
+  
+  return newerModelPatterns.some(pattern => pattern.test(model));
+}
+
+/**
  * Safe JSON parser with automatic cleanup and retry
  * Prevents crashes from malformed JSON responses
  */
@@ -81,9 +96,18 @@ export function buildOpenAIBody(opts: {
     // Chat Completions parameter family
     body.messages = messages;
     body.response_format = { type: "json_object" as const };
+    
     if (maxTokens) {
-      body.max_tokens = maxTokens;
+      // Newer models require max_completion_tokens, legacy models use max_tokens
+      if (requiresCompletionTokensParam(model)) {
+        body.max_completion_tokens = maxTokens;
+        console.log(`[openaiHelpers] Using max_completion_tokens for ${model}`);
+      } else {
+        body.max_tokens = maxTokens;
+        console.log(`[openaiHelpers] Using max_tokens for ${model}`);
+      }
     }
+    
     if (tools) {
       body.tools = tools;
     }

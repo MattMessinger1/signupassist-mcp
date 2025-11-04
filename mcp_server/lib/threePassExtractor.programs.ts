@@ -97,10 +97,17 @@ async function callStrictExtraction(opts: {
   
   try {
     // Use Chat Completions API (not Responses) for json_schema support
+    const maxTokens = opts.maxTokens || 2000;
+    
+    // Use correct token parameter based on model
+    const tokenParam = opts.model.match(/^(gpt-5|gpt-4\.1|o3|o4)/i)
+      ? { max_completion_tokens: maxTokens }
+      : { max_tokens: maxTokens };
+    
     const res = await openai.chat.completions.create({
       model: opts.model,
       temperature: 0, // Force deterministic
-      max_tokens: opts.maxTokens || 2000,
+      ...tokenParam,
       response_format: {
         type: "json_schema",
         json_schema: {
