@@ -4,8 +4,7 @@
  */
 
 import { Page } from 'playwright-core';
-import OpenAI from 'openai';
-import { sanitizeModelParams } from './openaiHelpers.js';
+import { openai, MODELS, withModel } from './oai.js';
 
 export interface ProgramData {
   id: string;
@@ -27,10 +26,6 @@ export interface ProgramData {
  * Pass 2: Extract structured data
  * Pass 3: AI-powered validation and normalization
  */
-const MODEL_VISION = "gpt-5-2025-08-07";
-const MODEL_TEXT = "gpt-5-mini-2025-08-07";
-const MODEL_VALIDATE = "gpt-5-mini-2025-08-07";
-
 export async function runThreePassExtractor(
   page: Page,
   orgRef: string,
@@ -38,17 +33,7 @@ export async function runThreePassExtractor(
 ): Promise<ProgramData[]> {
   
   console.log('[ThreePassExtractor] Starting extraction...');
-  console.log('[ExtractorModels]', { MODEL_VISION, MODEL_TEXT, MODEL_VALIDATE });
-  
-  // Check API key BEFORE instantiation
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    const error = 'OPENAI_API_KEY environment variable is not set. Configure it in Railway project variables.';
-    console.error(`[ThreePassExtractor] ❌ ${error}`);
-    throw new Error(error);
-  }
-  
-  const openai = new OpenAI({ apiKey });
+  console.log('[ExtractorModels]', { vision: MODELS.vision, extractor: MODELS.extractor, validator: MODELS.validator });
   
   try {
     const pageURL = page.url();
@@ -56,7 +41,7 @@ export async function runThreePassExtractor(
     
     // PASS 0: Preflight check (non-blocking)
     console.log('[ThreePassExtractor] Pass 0: Preflight check...');
-    const preflight = await preflightCheck(page, openai);
+    const preflight = await preflightCheck(page);
     if (!preflight.ok) {
       console.warn(`[ThreePassExtractor] ⚠️ Preflight warning: ${preflight.reason}`);
       if (preflight.should_go_to) {
@@ -73,7 +58,7 @@ export async function runThreePassExtractor(
     
     // PASS 1: Identify program containers using Vision
     console.log('[ThreePassExtractor] Pass 1: Identifying containers...');
-    const containers = await identifyProgramContainers(screenshot, pageHTML, pageURL, openai);
+    const containers = await identifyProgramContainers(screenshot, pageHTML, pageURL);
     console.log(`[ThreePassExtractor] Pass 1: Found ${containers.length} containers`);
     
     if (containers.length === 0) {
@@ -84,12 +69,12 @@ export async function runThreePassExtractor(
     // PASS 2: Extract structured data from HTML
     console.log('[ThreePassExtractor] Pass 2: Extracting program data...');
     const baseUrl = new URL(pageURL).origin;
-    const extractedPrograms = await extractProgramData(pageHTML, containers, baseUrl, openai);
+    const extractedPrograms = await extractProgramData(pageHTML, containers, baseUrl);
     console.log(`[ThreePassExtractor] Pass 2: Extracted ${extractedPrograms.length} programs`);
     
     // PASS 3: AI-powered validation and normalization
     console.log('[ThreePassExtractor] Pass 3: Validating and normalizing...');
-    const result = await validateAndNormalize(extractedPrograms, orgRef, pageURL, openai);
+    const result = await validateAndNormalize(extractedPrograms, orgRef, pageURL);
     console.log(`[ThreePassExtractor] Pass 3: Final ${result.programs.length} programs`);
     
     // Map to ProgramData format
@@ -116,20 +101,15 @@ export async function runThreePassExtractor(
  * Pass 0: Preflight check - validate we're on the right page
  */
 async function preflightCheck(
-  page: Page,
-  openai: OpenAI
+  page: Page
 ): Promise<{ ok: boolean; reason?: string; should_go_to?: string }> {
   
   const url = page.url();
   const html = await page.content();
   
-  const sanitizedParams = sanitizeModelParams('gpt-5-2025-08-07', {
-    model: 'gpt-5-2025-08-07'
-  });
-  
-  const response = await openai.chat.completions.create({
-    ...sanitizedParams,
-    messages: [
+  const response = await openai.chat.completions.create(
+    withModel(MODELS.extractor, {
+      messages: [
       {
         role: 'system',
         content: `You are validating that we are on a provider's programs listing page.
@@ -167,8 +147,9 @@ Rules:
         }
       }
     }],
-    tool_choice: { type: 'function', function: { name: 'preflight_check' } }
-  });
+    tool_choice: { type: 'function', function: { name: 'preflight_check' } },
+    temperature: 0.1
+  }));
   
   const toolCall = response.choices[0].message.tool_calls?.[0];
   if (!toolCall || toolCall.type !== 'function') {
@@ -184,19 +165,14 @@ Rules:
 async function identifyProgramContainers(
   screenshot: Buffer,
   html: string,
-  url: string,
-  openai: OpenAI
+  url: string
 ): Promise<Array<{ id: string; hint: string; confidence: number }>> {
   
   const base64Image = screenshot.toString('base64');
   
-  const sanitizedParams = sanitizeModelParams('gpt-5-2025-08-07', {
-    model: 'gpt-5-2025-08-07'
-  });
-  
-  const response = await openai.chat.completions.create({
-    ...sanitizedParams,
-    messages: [
+  const response = await openai.chat.completions.create(
+    withModel(MODELS.vision, {
+      messages: [
       {
         role: 'user',
         content: [
@@ -258,7 +234,7 @@ Constraints:
       }
     }],
     tool_choice: { type: 'function', function: { name: 'identify_program_containers' } }
-  });
+  }));
   
   const toolCall = response.choices[0].message.tool_calls?.[0];
   if (!toolCall || toolCall.type !== 'function') {
@@ -276,17 +252,12 @@ Constraints:
 async function extractProgramData(
   html: string,
   containers: Array<{ id: string; hint: string; confidence: number }>,
-  baseUrl: string,
-  openai: OpenAI
+  baseUrl: string
 ): Promise<any[]> {
   
-  const sanitizedParams = sanitizeModelParams('gpt-5-mini-2025-08-07', {
-    model: 'gpt-5-mini-2025-08-07'
-  });
-  
-  const response = await openai.chat.completions.create({
-    ...sanitizedParams,
-    messages: [
+  const response = await openai.chat.completions.create(
+    withModel(MODELS.extractor, {
+      messages: [
       {
         role: 'system',
         content: `Extract a single program/class from the provided container HTML.
@@ -354,8 +325,9 @@ Rules:
         }
       }
     }],
-    tool_choice: { type: 'function', function: { name: 'extract_program_data' } }
-  });
+    tool_choice: { type: 'function', function: { name: 'extract_program_data' } },
+    temperature: 0.1
+  }));
   
   const toolCall = response.choices[0].message.tool_calls?.[0];
   if (!toolCall || toolCall.type !== 'function') {
@@ -373,17 +345,12 @@ Rules:
 async function validateAndNormalize(
   programs: any[],
   orgRef: string,
-  sourceUrl: string,
-  openai: OpenAI
+  sourceUrl: string
 ): Promise<any> {
   
-  const sanitizedParams = sanitizeModelParams('gpt-5-mini-2025-08-07', {
-    model: 'gpt-5-mini-2025-08-07'
-  });
-  
-  const response = await openai.chat.completions.create({
-    ...sanitizedParams,
-    messages: [
+  const response = await openai.chat.completions.create(
+    withModel(MODELS.validator, {
+      messages: [
       {
         role: 'system',
         content: `You will receive an array of program records. Clean, deduplicate, and normalize.
@@ -453,8 +420,9 @@ Return JSON ONLY:
         }
       }
     }],
-    tool_choice: { type: 'function', function: { name: 'validate_and_normalize' } }
-  });
+    tool_choice: { type: 'function', function: { name: 'validate_and_normalize' } },
+    temperature: 0.1
+  }));
   
   const toolCall = response.choices[0].message.tool_calls?.[0];
   if (!toolCall || toolCall.type !== 'function') {
