@@ -6,7 +6,8 @@
     "build:backend": "tsc -p tsconfig.mcp.json",
     "build:frontend": "vite build",
     "build": "npm run build:backend && npm run build:frontend",
-    "mcp:start": "node dist/mcp_server/index.js"
+    "mcp:start": "node dist/mcp_server/index.js",
+    "rebuild:clean": "rm -rf dist node_modules && npm ci && npx tsc -p tsconfig.mcp.json && echo '✅ Clean build complete — ready for Railway redeploy.'"
   },
   "dependencies": {
     "@browserbasehq/sdk": "^2.6.0",

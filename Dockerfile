@@ -1,10 +1,16 @@
 # ============= BUILD STAGE =============
 FROM node:20-alpine AS builder
 
+# Force rebuild toggle — updated automatically by Lovable or CLI
+ARG BUILD_TAG=initial
+LABEL build-tag=$BUILD_TAG
+
 WORKDIR /app
 
 # Skip Playwright browser downloads to speed up build
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+
+RUN echo "🏗️ Building with BUILD_TAG=$BUILD_TAG"
 
 # Copy all package files
 COPY package.production.json package.json

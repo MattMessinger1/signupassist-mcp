@@ -36,6 +36,14 @@ This approach aligns with the **Responsible Delegate Mode (RDM)** vision: moving
 ### Railway Deployment
 See [RAILWAY_DEPLOY.md](./RAILWAY_DEPLOY.md) for complete deployment instructions.
 
+### Force Clean Build
+If you encounter stale cache or module resolution errors:
+```bash
+npm run rebuild:clean
+git add . && git commit -m "force clean build $(date +%Y%m%d-%H%M%S)" && git push
+```
+See [docs/FORCE_CLEAN_BUILD.md](./docs/FORCE_CLEAN_BUILD.md) for details.
+
 ### Testing Mode
 During QA sessions or AI Orchestrator tuning, you can disable auto-deploy to prevent Railway from redeploying mid-test:
 - Quick toggle in Railway Dashboard: Settings → Deployments → Turn OFF "Auto Deploy on Git Push"

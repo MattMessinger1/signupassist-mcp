@@ -32,6 +32,28 @@ This serves as documentation for the current deployment mode.
 
 ---
 
+## 🏗️ Force Clean Build (No Cache)
+
+**Use when encountering stale cache issues or module resolution errors.**
+
+### Quick Command
+```bash
+npm run rebuild:clean
+git add .
+git commit -m "force clean Railway build $(date +%Y%m%d-%H%M%S)"
+git push origin main
+```
+
+### When to Use Force Clean Build
+- Module not found errors (e.g., `/app/dist/mcp_server/lib/openaiHelpers`)
+- Stale cached files causing incorrect behavior
+- After major refactoring or file renames
+- Build artifacts from previous versions interfering
+
+See [docs/FORCE_CLEAN_BUILD.md](./docs/FORCE_CLEAN_BUILD.md) for detailed instructions.
+
+---
+
 ## Quick Fix for CORS Issue
 
 The CORS headers have been updated in `mcp_server/index.ts` to include `X-Mandate-JWS`. To deploy this fix to Railway:
