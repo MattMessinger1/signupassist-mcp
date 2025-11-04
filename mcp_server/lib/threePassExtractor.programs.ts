@@ -22,24 +22,27 @@ interface ExtractorConfig {
 // Step 3: JSON Schema definitions for strict mode
 const ExtractionSchema = {
   type: "object",
+  description: "Root object containing extracted program items from HTML snippets.",
   properties: {
     items: {
       type: "array",
+      description: "Array of program items extracted from HTML.",
       items: {
         type: "object",
+        description: "A single program item with all extracted fields.",
         properties: {
-          id: { type: "number" },
-          title: { type: "string" },
-          description: { type: "string" },
-          price: { type: "string" },
-          schedule: { type: "string" },
-          age_range: { type: "string" },
-          skill_level: { type: "string" },
-          status: { type: "string" },
-          program_ref: { type: "string" },
-          org_ref: { type: "string" }
+          id: { type: "number", description: "Numeric index from snippet." },
+          title: { type: "string", description: "Program title or name." },
+          description: { type: "string", description: "Full program description text." },
+          price: { type: "string", description: "Price as displayed in the source." },
+          schedule: { type: "string", description: "Schedule dates or times." },
+          age_range: { type: "string", description: "Age range for participants." },
+          skill_level: { type: "string", description: "Skill level requirement." },
+          status: { type: "string", description: "Availability status." },
+          program_ref: { type: "string", description: "Kebab-case slug reference." },
+          org_ref: { type: "string", description: "Organization reference identifier." }
         },
-        required: ["id", "title", "program_ref", "org_ref"],
+        required: ["id", "title", "description", "price", "schedule", "age_range", "skill_level", "status", "program_ref", "org_ref"],
         additionalProperties: false
       }
     }
@@ -50,23 +53,26 @@ const ExtractionSchema = {
 
 const ValidationSchema = {
   type: "object",
+  description: "Root object containing validated and normalized programs.",
   properties: {
     programs: {
       type: "array",
+      description: "Array of validated program objects.",
       items: {
         type: "object",
+        description: "A validated program with normalized fields.",
         properties: {
-          title: { type: "string" },
-          program_ref: { type: "string" },
-          price: { type: "string" },
-          schedule: { type: "string" },
-          age_range: { type: "string" },
-          skill_level: { type: "string" },
-          status: { type: "string" },
-          description: { type: "string" },
-          org_ref: { type: "string" }
+          title: { type: "string", description: "Validated program title." },
+          program_ref: { type: "string", description: "Valid kebab-case slug." },
+          price: { type: "string", description: "Normalized price format." },
+          schedule: { type: "string", description: "Schedule information." },
+          age_range: { type: "string", description: "Age range for program." },
+          skill_level: { type: "string", description: "Required skill level." },
+          status: { type: "string", description: "Program availability." },
+          description: { type: "string", description: "Program description." },
+          org_ref: { type: "string", description: "Organization reference." }
         },
-        required: ["title", "program_ref", "org_ref"],
+        required: ["title", "program_ref", "price", "schedule", "age_range", "skill_level", "status", "description", "org_ref"],
         additionalProperties: false
       }
     }
