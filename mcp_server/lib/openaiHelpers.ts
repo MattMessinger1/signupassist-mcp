@@ -1,6 +1,7 @@
 /**
  * OpenAI API Helper - Temperature-safe calls for all models
  * Automatically handles models that don't support custom temperature values
+ * Correctly branches Responses API vs Chat Completions parameter families
  */
 
 import OpenAI from "openai";
@@ -11,7 +12,8 @@ const FIXED_TEMP_PATTERNS = [
   /^gpt-5-mini($|[-.])/i,
   /^gpt-5-vision($|[-.])/i,
   /^o3($|[-.])/i,
-  /^o4-mini($|[-.])/i
+  /^o4-mini($|[-.])/i,
+  /vision-preview/i  // Vision models don't support custom temperature
 ];
 
 // Allow ops to force-list via env (CSV)
@@ -20,40 +22,59 @@ const FIXED_TEMP_EXTRA = (process.env.OPENAI_FIXED_TEMP_MODELS || "")
   .map(s => s.trim())
   .filter(Boolean);
 
-function isFixedTemp(model: string): boolean {
-  if (FIXED_TEMP_EXTRA.includes(model)) return true;
-  return FIXED_TEMP_PATTERNS.some(re => re.test(model));
+/**
+ * Check if a model supports custom temperature parameter
+ */
+export function supportsCustomTemperature(model: string): boolean {
+  if (FIXED_TEMP_EXTRA.includes(model)) return false;
+  return !FIXED_TEMP_PATTERNS.some(re => re.test(model));
 }
 
-// Remove params some models don't support; also map tokens key for Responses vs Chat
-export function sanitizeModelParams(model: string, params: Record<string, any>) {
-  const p = { ...params };
+/**
+ * Build the correct request body for OpenAI API calls
+ * Branches by apiFamily to use the correct parameter structure
+ */
+export function buildOpenAIBody(opts: {
+  model: string;
+  apiFamily: "responses" | "chat";
+  messages: Array<{ role: string; content: any }>;
+  maxTokens?: number;
+  temperature?: number;
+  tools?: any[];
+  tool_choice?: any;
+}): any {
+  const { model, apiFamily, messages, maxTokens, temperature, tools, tool_choice } = opts;
+  
+  const body: any = { model };
 
-  // Temperature: drop or coerce when the model has fixed temp
-  if (isFixedTemp(model)) {
-    delete p.temperature;  // let server default to 1
+  // Add temperature only if the model supports it
+  if (temperature !== undefined && supportsCustomTemperature(model)) {
+    body.temperature = temperature;
+  }
+
+  if (apiFamily === "responses") {
+    // Responses API parameter family
+    body.input = messages;
+    body.text = { format: { type: "json" } };
+    if (maxTokens) {
+      body.max_output_tokens = maxTokens;
+    }
   } else {
-    // Optional: allow env to set a default for non-fixed models
-    const envTemp = process.env.OPENAI_TEMPERATURE;
-    if (envTemp && p.temperature === undefined) {
-      p.temperature = Number(envTemp);
+    // Chat Completions parameter family
+    body.messages = messages;
+    body.response_format = { type: "json_object" as const };
+    if (maxTokens) {
+      body.max_tokens = maxTokens;
+    }
+    if (tools) {
+      body.tools = tools;
+    }
+    if (tool_choice) {
+      body.tool_choice = tool_choice;
     }
   }
 
-  // Normalize tokens key depending on endpoint (Responses vs Chat)
-  if (p.useResponsesAPI) {
-    if (p.max_tokens && !p.max_output_tokens) {
-      p.max_output_tokens = p.max_tokens;
-    }
-    delete p.max_tokens;
-  } else {
-    if (p.max_output_tokens && !p.max_tokens) {
-      p.max_tokens = p.max_output_tokens;
-    }
-    delete p.max_output_tokens;
-  }
-
-  return p;
+  return body;
 }
 
 // Generic JSON call that works with either Responses API or Chat Completions
@@ -75,43 +96,25 @@ export async function callOpenAI_JSON(opts: {
     useResponsesAPI = process.env.OPENAI_USE_RESPONSES !== "false"
   } = opts;
 
-  const baseParams: Record<string, any> = {
-    model,
-    temperature,
-    max_output_tokens: maxTokens,
-    useResponsesAPI
-  };
+  const messages = [
+    { role: "system", content: system },
+    { role: "user", content: JSON.stringify(user) }
+  ];
 
-  const params = sanitizeModelParams(model, baseParams);
+  const apiFamily = useResponsesAPI ? "responses" : "chat";
+  const body = buildOpenAIBody({ model, apiFamily, messages, maxTokens, temperature });
 
   try {
     if (useResponsesAPI) {
       // Responses API (preferred)
-      const res = await openai.responses.create({
-        model: params.model,
-        input: [
-          { role: "system", content: system },
-          { role: "user", content: JSON.stringify(user) }
-        ],
-        text: { format: { type: "json" } },
-        max_output_tokens: params.max_output_tokens
-      } as any);
+      const res = await openai.responses.create(body as any);
       
       // In SDK v4, safest is output_text for JSON and then parse
       const text = (res as any).output_text ?? (res as any).output?.[0]?.content?.[0]?.text;
       return text ? JSON.parse(text) : {};
     } else {
       // Chat Completions fallback
-      const res = await openai.chat.completions.create({
-        model: params.model,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: JSON.stringify(user) }
-        ],
-        temperature: params.temperature,
-        max_tokens: params.max_tokens,
-        response_format: { type: "json_object" as const }
-      });
+      const res = await openai.chat.completions.create(body);
       const text = res.choices?.[0]?.message?.content || "{}";
       return JSON.parse(text);
     }
@@ -128,27 +131,21 @@ export async function callOpenAI_JSON(opts: {
     if (isTempIssue) {
       console.warn('[openaiHelpers] Temperature issue detected, retrying without temperature...');
       
-      // Retry with temp removed and default tokens
+      // Rebuild body without temperature
+      const retryBody = buildOpenAIBody({ 
+        model, 
+        apiFamily, 
+        messages, 
+        maxTokens, 
+        temperature: undefined 
+      });
+      
       if (useResponsesAPI) {
-        const res = await openai.responses.create({
-          model,
-          input: [
-            { role: "system", content: system },
-            { role: "user", content: JSON.stringify(user) }
-          ],
-          text: { format: { type: "json" } }
-        } as any);
+        const res = await openai.responses.create(retryBody as any);
         const text = (res as any).output_text ?? (res as any).output?.[0]?.content?.[0]?.text;
         return text ? JSON.parse(text) : {};
       } else {
-        const res = await openai.chat.completions.create({
-          model,
-          messages: [
-            { role: "system", content: system },
-            { role: "user", content: JSON.stringify(user) }
-          ],
-          response_format: { type: "json_object" as const }
-        });
+        const res = await openai.chat.completions.create(retryBody);
         const text = res.choices?.[0]?.message?.content || "{}";
         return JSON.parse(text);
       }

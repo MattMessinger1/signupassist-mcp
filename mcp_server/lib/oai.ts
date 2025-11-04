@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import { supportsCustomTemperature } from "./openaiHelpers";
 
 export const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
@@ -10,13 +11,13 @@ export const MODELS = {
   grouper:   process.env.OPENAI_MODEL_PROGRAM_GROUPER   || process.env.OPENAI_MODEL_PROGRAM_VALIDATOR || "gpt-4o-mini",
 };
 
-/** Some models only accept the default temp (1). */
-const FIXED_TEMP = /(^(gpt-5|o3|o4|gpt-o3)\b)/i;
-
-/** Add the model field and strip temperature if the model doesn't allow it. */
+/** 
+ * Add the model field and strip temperature if the model doesn't allow it.
+ * Uses the centralized supportsCustomTemperature helper.
+ */
 export function withModel<T extends Record<string, any>>(model: string, body: T): T & { model: string } {
   const b: any = { ...body };
-  if (b.temperature !== undefined && FIXED_TEMP.test(model)) {
+  if (b.temperature !== undefined && !supportsCustomTemperature(model)) {
     delete b.temperature; // avoid 400 "Unsupported value: 'temperature'..."
   }
   return { ...b, model };
