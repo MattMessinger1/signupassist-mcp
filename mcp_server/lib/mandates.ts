@@ -1,10 +1,23 @@
 /**
  * Mandate Signing & Verification Utility
  * Provides functions to issue and verify signed mandate tokens (JWS)
+ * PACK-B: Unified signing with clear error messages and scope verification
  */
 
-import { SignJWT, jwtVerify, importJWK } from 'jose';
+import { createSecretKey } from "crypto";
+import { SignJWT, jwtVerify } from "jose";
 import { createHash } from 'crypto';
+
+// PACK-B: Environment-driven configuration
+const ALG = process.env.MANDATE_SIGNING_ALG || "HS256";
+const SECRET = process.env.MANDATE_SIGNING_SECRET || process.env.MANDATE_SIGNING_KEY || "";
+const ISS = process.env.MANDATE_ISSUER || "signupassist-platform";
+const AUD = process.env.MANDATE_AUDIENCE || "signupassist-mcp";
+const DEFAULT_SCOPES = (process.env.MANDATE_DEFAULT_SCOPES || "scp:authenticate,scp:read:listings")
+  .split(",")
+  .map(s => s.trim())
+  .filter(Boolean);
+const TTL_MIN = Number(process.env.MANDATE_TTL_MINUTES || 1440);
 
 // Types
 export interface MandatePayload {
@@ -31,136 +44,124 @@ export interface VerificationContext {
 }
 
 /**
- * Issues a signed mandate token (JWS or VC) from the given payload
+ * Get the signing key (supports both MANDATE_SIGNING_SECRET and legacy MANDATE_SIGNING_KEY)
+ */
+function getKey() {
+  if (!SECRET) {
+    throw new Error("MANDATE_SIGNING_SECRET or MANDATE_SIGNING_KEY not set");
+  }
+  
+  // If the secret looks like base64 (legacy format), decode it
+  if (SECRET.match(/^[A-Za-z0-9+/=]+$/)) {
+    try {
+      const keyBuffer = Buffer.from(SECRET, 'base64');
+      return createSecretKey(keyBuffer);
+    } catch {
+      // Fall back to raw string
+      return createSecretKey(Buffer.from(SECRET));
+    }
+  }
+  
+  // Use raw string as secret
+  return createSecretKey(Buffer.from(SECRET));
+}
+
+/**
+ * PACK-B: Create a mandate with unified signing and clear scopes
+ */
+export async function createMandate(
+  userId: string, 
+  provider: "skiclubpro", 
+  extraScopes: string[] = []
+): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  const scopes = Array.from(new Set([...DEFAULT_SCOPES, ...extraScopes]));
+  
+  const jws = await new SignJWT({
+    mandate_id: crypto.randomUUID(),
+    user_id: userId,
+    provider,
+    scope: scopes,
+    valid_from: new Date().toISOString(),
+    valid_until: new Date(Date.now() + TTL_MIN * 60_000).toISOString(),
+    time_period: `${TTL_MIN}m`,
+    credential_type: "jws",
+    max_amount_cents: 50000
+  })
+    .setProtectedHeader({ alg: ALG })
+    .setIssuedAt()
+    .setIssuer(ISS)
+    .setAudience(AUD)
+    .setExpirationTime(`${TTL_MIN}m`)
+    .sign(getKey());
+  
+  return jws;
+}
+
+/**
+ * PACK-B: Verify mandate with multiple required scopes and clear error messages
+ */
+export async function verifyMandate(
+  jws: string, 
+  requiredScopes: string | string[]
+): Promise<VerifiedMandate> {
+  // Normalize to array
+  const scopesArray = Array.isArray(requiredScopes) ? requiredScopes : [requiredScopes];
+  
+  try {
+    const { payload } = await jwtVerify(jws, getKey(), { 
+      issuer: ISS, 
+      audience: AUD 
+    });
+    
+    const granted = new Set<string>((payload as any).scope || []);
+    
+    // Check all required scopes
+    for (const s of scopesArray) {
+      if (!granted.has(s)) {
+        const msg = `Mandate missing required scope: ${s}`;
+        const err: any = new Error(msg);
+        err.code = "ERR_SCOPE_MISSING";
+        throw err;
+      }
+    }
+    
+    const mandatePayload = payload as unknown as MandatePayload;
+    console.log('[mandates] ✅ Verified mandate for', mandatePayload.provider, 'with scopes:', mandatePayload.scope);
+    
+    return {
+      ...mandatePayload,
+      verified: true,
+    };
+  } catch (e: any) {
+    // PACK-B: Surface clear error messages instead of generic "Invalid Compact JWS"
+    if (e.code === 'ERR_SCOPE_MISSING') {
+      throw e;
+    }
+    
+    // Add context to JWT verification errors
+    const contextMsg = `[MandateVerify] ${e.message || 'Verification failed'}`;
+    const err: any = new Error(contextMsg);
+    err.code = e.code || 'ERR_MANDATE_INVALID';
+    err.cause = e;
+    throw err;
+  }
+}
+
+/**
+ * Legacy issueMandate for backward compatibility - wraps createMandate
  */
 export async function issueMandate(
   payload: MandatePayload, 
   options: { credential_type?: 'jws' | 'vc' } = {}
 ): Promise<string> {
-  const credentialType = options.credential_type || 'jws';
-  const mandatePayload = { ...payload, credential_type: credentialType };
-
-  if (credentialType === 'vc') {
-    // VC implementation placeholder
-    return JSON.stringify({ vc: 'not-implemented', ...mandatePayload });
+  if (options.credential_type === 'vc') {
+    return JSON.stringify({ vc: 'not-implemented', ...payload });
   }
-  const signingKey = process.env.MANDATE_SIGNING_KEY;
-  if (!signingKey) {
-    throw new Error('MANDATE_SIGNING_KEY environment variable is required');
-  }
-
-  try {
-    // Decode the base64 signing key
-    const keyBuffer = Buffer.from(signingKey, 'base64');
-    
-    // Create JWK from the raw key
-    const jwk = {
-      kty: 'oct',
-      k: keyBuffer.toString('base64url'),
-    };
-
-    const secret = await importJWK(jwk, 'HS256');
-
-    // Create and sign JWT
-    const jwt = await new SignJWT(mandatePayload)
-      .setProtectedHeader({ alg: 'HS256' })
-      .setIssuedAt()
-      .setIssuer('signupassist-platform')
-      .setAudience('signupassist-mcp')
-      .setExpirationTime(mandatePayload.time_period)
-      .sign(secret);
-
-    return jwt;
-  } catch (error) {
-    throw new Error(`Failed to issue mandate: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
-}
-
-/**
- * Verifies a mandate JWS token and checks constraints
- */
-export async function verifyMandate(
-  jws: string, 
-  requiredScope: string, 
-  context: VerificationContext = {}
-): Promise<VerifiedMandate> {
-  const signingKey = process.env.MANDATE_SIGNING_KEY;
-  if (!signingKey) {
-    throw new Error('MANDATE_SIGNING_KEY environment variable is required');
-  }
-
-  try {
-    // Check if this is a VC credential (not implemented yet)
-    try {
-      const parsed = JSON.parse(jws);
-      if (parsed.vc === 'not-implemented') {
-        throw new Error('VC verification not yet implemented');
-      }
-    } catch (e) {
-      // Not JSON, continue with JWS verification
-    }
-
-    // Decode the base64 signing key
-    const keyBuffer = Buffer.from(signingKey, 'base64');
-    
-    // Create JWK from the raw key
-    const jwk = {
-      kty: 'oct',
-      k: keyBuffer.toString('base64url'),
-    };
-
-    const secret = await importJWK(jwk, 'HS256');
-
-    // Verify JWT signature and decode payload
-    const { payload } = await jwtVerify(jws, secret, {
-      issuer: 'signupassist-platform',
-      audience: 'signupassist-mcp',
-    });
-
-    const mandatePayload = payload as unknown as MandatePayload;
-    console.log('[mandates] ✅ Verified mandate for', mandatePayload.provider, 'with scopes:', mandatePayload.scope);
-
-    // Ensure credential_type is set (for backward compatibility)
-    if (!mandatePayload.credential_type) {
-      mandatePayload.credential_type = 'jws';
-    }
-
-    // Check validity window
-    const now = context.now || new Date();
-    const validFrom = new Date(mandatePayload.valid_from);
-    const validUntil = new Date(mandatePayload.valid_until);
-
-    if (now < validFrom) {
-      throw new Error('Mandate is not yet valid');
-    }
-
-    if (now > validUntil) {
-      throw new Error('Mandate has expired');
-    }
-
-    // Check required scope
-    if (!mandatePayload.scope.includes(requiredScope)) {
-      throw new Error(`Mandate does not include required scope: ${requiredScope}`);
-    }
-
-    // Check amount constraint if provided
-    if (context.amount_cents !== undefined && mandatePayload.max_amount_cents !== undefined) {
-      if (context.amount_cents > mandatePayload.max_amount_cents) {
-        throw new Error(`Amount ${context.amount_cents} cents exceeds mandate limit of ${mandatePayload.max_amount_cents} cents`);
-      }
-    }
-
-    return {
-      ...mandatePayload,
-      verified: true,
-    };
-  } catch (error) {
-    console.error('[mandates] ❌ Mandate verification failed:', error);
-    if (error instanceof Error) {
-      throw error;
-    }
-    throw new Error(`Failed to verify mandate: ${error}`);
-  }
+  
+  // Extract extra scopes beyond defaults
+  const extraScopes = payload.scope.filter(s => !DEFAULT_SCOPES.includes(s));
+  return createMandate(payload.user_id, payload.provider as "skiclubpro", extraScopes);
 }
 
 // ============= Mandate Scope Configuration =============

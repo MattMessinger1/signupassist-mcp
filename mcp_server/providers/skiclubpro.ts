@@ -1568,11 +1568,12 @@ export const skiClubProTools = {
       let token = args.session_token;
       
       try {
-        // Verify mandate includes required scope
-        if (args.mandate_id) {
+        // PACK-B: Verify mandate includes required scopes
+        if (args.mandate_jws) {
           try {
-            await verifyMandate(args.mandate_id, 'scp:read:listings');
-          } catch (mandateError) {
+            await verifyMandate(args.mandate_jws, ['scp:read:listings']);
+            console.log('[scp.find_programs] ✅ Mandate verified with scp:read:listings scope');
+          } catch (mandateError: any) {
             console.error('[scp.find_programs] Mandate verification failed:', mandateError);
             return { 
               success: false,

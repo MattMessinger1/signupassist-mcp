@@ -1560,27 +1560,45 @@ class AIOrchestrator {
   // ============= Mandate Enforcement Methods =============
 
   /**
-   * Ensure a valid mandate exists in context, creating one if needed
+   * PACK-B: Ensure a valid mandate exists with required scopes
+   * Creates new mandate if missing or refreshes if insufficient scopes
    */
   private async ensureMandatePresent(sessionId: string, toolName?: string): Promise<void> {
     const context = await this.getContext(sessionId);
     
+    // Determine required scopes for the tool
+    const { MANDATE_SCOPES } = await import('../lib/mandates.js');
+    let requiredScopes: string[] = [MANDATE_SCOPES.AUTHENTICATE];
+    
+    // PACK-B: Explicit scope requirements per tool
+    if (toolName === 'scp.find_programs') {
+      requiredScopes = [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.READ_LISTINGS];
+    } else if (toolName === 'scp.discover_required_fields') {
+      requiredScopes = [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.DISCOVER_FIELDS];
+    } else if (toolName === 'scp.register') {
+      requiredScopes = [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.REGISTER];
+    } else if (toolName === 'scp.pay') {
+      requiredScopes = [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.PAY];
+    }
+    
     // Check if we have a mandate_jws in context
     if (context.mandate_jws) {
-      // Verify it's still valid
+      // PACK-B: Verify it has required scopes
       try {
         const { verifyMandate } = await import('../lib/mandates.js');
-        await verifyMandate(
-          context.mandate_jws,
-          'scp:authenticate', // Basic scope check
-          { now: new Date() }
-        );
-        console.log('[Orchestrator] ✅ Existing mandate valid');
+        await verifyMandate(context.mandate_jws, requiredScopes);
+        console.log('[Orchestrator] ✅ Existing mandate valid with required scopes:', requiredScopes);
         return; // Mandate is good
-      } catch (err) {
-        console.log('[Orchestrator] 🔄 Existing mandate expired, refreshing...');
-        // Fall through to create new one
+      } catch (err: any) {
+        if (err.code === 'ERR_SCOPE_MISSING') {
+          console.log('[Orchestrator] 🔄 Mandate missing required scopes, refreshing...', err.message);
+        } else {
+          console.log('[Orchestrator] 🔄 Mandate verification failed, refreshing...', err.message);
+        }
+        // Fall through to create new one with required scopes
       }
+    } else {
+      console.log('[Orchestrator] No mandate in context; creating one with scopes:', requiredScopes);
     }
     
     // No valid mandate - create one
@@ -1598,40 +1616,17 @@ class AIOrchestrator {
       throw new Error('Cannot create mandate: invalid user_jwt');
     }
     
-    // Get tool-specific scopes
-    const { getScopesForTool, MANDATE_SCOPES, createOrRefreshMandate } = await import('../lib/mandates.js');
-    const requiredScopes = getScopesForTool(toolName || '') || [
-      MANDATE_SCOPES.AUTHENTICATE,
-      MANDATE_SCOPES.READ_LISTINGS
-    ];
-    
-    // Import Supabase client
-    const { createClient } = await import('@supabase/supabase-js');
-    const supabaseUrl = process.env.SUPABASE_URL!;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    
-    // Create/refresh mandate
-    const { mandate_id, mandate_jws } = await createOrRefreshMandate(
-      supabase,
-      userId,
-      'skiclubpro',
-      context.provider.orgRef,
-      requiredScopes,
-      {
-        childId: context.child?.id,
-        programRef: context.program?.id,
-        maxAmountCents: 50000 // $500 default cap
-      }
-    );
+    // PACK-B: Use new createMandate helper
+    const { createMandate } = await import('../lib/mandates.js');
+    const extraScopes = requiredScopes.filter(s => s !== MANDATE_SCOPES.AUTHENTICATE);
+    const mandate_jws = await createMandate(userId, 'skiclubpro', extraScopes);
     
     // Store in context
     await this.updateContext(sessionId, {
-      mandate_id,
       mandate_jws
     } as any);
     
-    console.log('[Orchestrator] ✅ Mandate created and stored in context');
+    console.log('[Orchestrator] ✅ Mandate created with scopes:', requiredScopes);
   }
 
   /**
