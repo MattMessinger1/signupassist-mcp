@@ -19,11 +19,18 @@ COPY mcp_server ./mcp_server
 COPY providers ./providers
 COPY mcp ./mcp
 
+# --- Ensure full lib coverage ---
+COPY mcp_server/lib ./mcp_server/lib
+COPY mcp_server/types.ts ./mcp_server/
+
 # Clear any cached dist folder and ensure fresh compile
 RUN rm -rf dist && mkdir -p dist
 
-# Build backend TypeScript to dist/
-RUN npx tsc -p tsconfig.mcp.json
+# Pre-deploy type and import verification
+RUN npx tsc -p tsconfig.mcp.json --noEmit
+
+# Build backend TypeScript to dist/ (clean build)
+RUN rm -rf dist && npx tsc -p tsconfig.mcp.json
 
 # Verify AIOrchestrator was built
 RUN ls -la dist/mcp_server/ai/ || echo "⚠️ AI folder not built"
