@@ -55,7 +55,7 @@ export function buildOpenAIBody(opts: {
   if (apiFamily === "responses") {
     // Responses API parameter family
     body.input = messages;
-    body.text = { format: { type: "json" } };
+    body.text = { format: { type: "json_object" } };
     if (maxTokens) {
       body.max_output_tokens = maxTokens;
     }
