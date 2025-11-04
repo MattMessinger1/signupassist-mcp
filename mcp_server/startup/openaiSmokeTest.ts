@@ -8,7 +8,7 @@
  */
 
 import OpenAI from "openai";
-import { buildOpenAIBody, supportsCustomTemperature } from "../lib/openaiHelpers";
+import { buildOpenAIBody, supportsCustomTemperature } from "../lib/openaiHelpers.js";
 
 const SMOKE_TEST_TIMEOUT = 10000; // 10 seconds
 

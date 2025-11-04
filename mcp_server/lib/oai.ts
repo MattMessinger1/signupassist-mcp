@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { supportsCustomTemperature } from "./openaiHelpers";
+import { supportsCustomTemperature } from "./openaiHelpers.js";
 
 export const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 

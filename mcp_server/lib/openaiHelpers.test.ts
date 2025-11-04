@@ -4,7 +4,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { buildOpenAIBody, supportsCustomTemperature } from './openaiHelpers';
+import { buildOpenAIBody, supportsCustomTemperature } from './openaiHelpers.js';
 
 describe('buildOpenAIBody', () => {
   const baseMessages = [
