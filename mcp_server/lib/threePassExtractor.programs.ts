@@ -1,9 +1,9 @@
 /**
  * PACK-06: Real Three-Pass Extractor (Programs)
- * Streamlined AI-powered extraction using OpenAI JSON mode
+ * Streamlined AI-powered extraction using OpenAI JSON mode with strict schema validation
  */
 
-import { callOpenAI_JSON } from "./openaiHelpers.js";
+import OpenAI from "openai";
 import { MODELS } from "./oai.js";
 
 type Models = { vision: string; extractor: string; validator: string; };
@@ -19,7 +19,103 @@ interface ExtractorConfig {
   };
 }
 
-// OpenAI client now managed by helper
+// Step 3: JSON Schema definitions for strict mode
+const ExtractionSchema = {
+  type: "object",
+  properties: {
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "number" },
+          title: { type: "string" },
+          description: { type: "string" },
+          price: { type: "string" },
+          schedule: { type: "string" },
+          age_range: { type: "string" },
+          skill_level: { type: "string" },
+          status: { type: "string" },
+          program_ref: { type: "string" },
+          org_ref: { type: "string" }
+        },
+        required: ["id", "title", "program_ref", "org_ref"],
+        additionalProperties: false
+      }
+    }
+  },
+  required: ["items"],
+  additionalProperties: false
+};
+
+const ValidationSchema = {
+  type: "object",
+  properties: {
+    programs: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          program_ref: { type: "string" },
+          price: { type: "string" },
+          schedule: { type: "string" },
+          age_range: { type: "string" },
+          skill_level: { type: "string" },
+          status: { type: "string" },
+          description: { type: "string" },
+          org_ref: { type: "string" }
+        },
+        required: ["title", "program_ref", "org_ref"],
+        additionalProperties: false
+      }
+    }
+  },
+  required: ["programs"],
+  additionalProperties: false
+};
+
+/**
+ * Step 3: Strict JSON extraction helper
+ * Uses json_schema with strict:true and temperature:0 for deterministic output
+ */
+async function callStrictExtraction(opts: {
+  model: string;
+  system: string;
+  data: any;
+  schema: any;
+  maxTokens?: number;
+}) {
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+  
+  try {
+    const res = await openai.responses.create({
+      model: opts.model,
+      temperature: 0, // Force deterministic
+      max_output_tokens: opts.maxTokens || 2000,
+      text: {
+        format: {
+          type: "json_schema",
+          json_schema: {
+            name: "ProgramExtraction",
+            schema: opts.schema,
+            strict: true
+          }
+        }
+      },
+      input: [
+        { role: "system", content: opts.system },
+        { role: "user", content: JSON.stringify(opts.data) }
+      ]
+    });
+    
+    const text = (res as any).output_text ?? (res as any).output?.[0]?.content?.[0]?.text;
+    return JSON.parse(text); // Schema mode should guarantee valid JSON
+  } catch (err: any) {
+    console.error("[threePassExtractor] Strict extraction failed:", err.message);
+    throw err;
+  }
+}
 
 export async function runThreePassExtractorForPrograms(
   page: any, 
@@ -53,48 +149,63 @@ export async function runThreePassExtractorForPrograms(
     return [];
   }
 
-  // PASS 2: Extraction (strict JSON)
-  console.log('[PACK-06 Pass 2] Extracting program data with AI');
-  const extracted = await callOpenAI_JSON({
-    model: models.extractor,
-    system: `You are extracting SKI PROGRAM LISTINGS from provided HTML snippets (each snippet is one row/card).
-Return a JSON object { items: [...] } where each item has:
-- id (from input)
-- title (string)
-- description (string or "")
-- price (string or "")
-- schedule (string or "")
-- age_range (string or "")
-- skill_level (string or "")
-- status (string or "")
-- program_ref (string; derive a stable slug from title + orgRef)
-- org_ref (string; echo '${orgRef}')
-Rules:
-- Keep values as displayed (do not invent).
-- If a field is missing, set to "".`,
-    user: { orgRef, snippets },
-    maxTokens: 1500
-  });
-  
-  const extractedItems = extracted?.items ?? extracted ?? [];
-  console.log(`[PACK-06 Pass 2] Extracted ${extractedItems.length} raw programs`);
+  // Step 4: Wrap extraction in try-catch for graceful fallback
+  try {
+    // PASS 2: Extraction (strict JSON schema mode)
+    console.log('[PACK-06 Pass 2] Extracting program data with strict schema');
+    const extracted = await callStrictExtraction({
+      model: models.extractor,
+      system: `Extract SKI PROGRAM LISTINGS from HTML snippets. Each snippet is one program card/row.
+Return JSON with items array. Each item needs:
+- id (number from snippet index)
+- title (exact text)
+- description (full text or "")
+- price (as shown or "")
+- schedule (dates/times or "")
+- age_range (ages or "")
+- skill_level (level or "")
+- status (availability or "")
+- program_ref (kebab-case slug from title)
+- org_ref (echo the orgRef)
+Keep values as displayed, do not invent data.`,
+      data: { orgRef, snippets },
+      schema: ExtractionSchema,
+      maxTokens: 2500 // Increased to prevent truncation
+    });
+    
+    const extractedItems = extracted?.items ?? [];
+    console.log(`[PACK-06 Pass 2] Extracted ${extractedItems.length} raw programs`);
+    
+    if (extractedItems.length === 0) {
+      console.warn('[PACK-06] No items extracted, returning empty array');
+      return [];
+    }
 
-  // PASS 3: Validation/Normalization
-  console.log('[PACK-06 Pass 3] Validating and normalizing');
-  const normalized = await callOpenAI_JSON({
-    model: models.validator,
-    system: `Normalize and validate each program object:
-- Ensure title exists; drop entries with empty title.
-- Ensure program_ref is kebab-case unique slug.
-- Coalesce price formats like "$175 per session" into "$175/session".
-- Trim whitespace; ensure org_ref === '${orgRef}'.
-Return { programs: [...] }.`,
-    user: { programs: extractedItems },
-    maxTokens: 800
-  });
+    // PASS 3: Validation/Normalization (strict JSON schema mode)
+    console.log('[PACK-06 Pass 3] Validating and normalizing');
+    const normalized = await callStrictExtraction({
+      model: models.validator,
+      system: `Normalize and validate program objects:
+- Ensure title exists; drop if empty
+- Ensure program_ref is valid kebab-case slug
+- Normalize price formats (e.g., "$175 per session" → "$175/session")
+- Trim whitespace
+- Ensure org_ref matches '${orgRef}'
+Return validated programs array.`,
+      data: { programs: extractedItems },
+      schema: ValidationSchema,
+      maxTokens: 2000
+    });
 
-  const finalPrograms = normalized?.programs || [];
-  console.log(`[PACK-06 Pass 3] Final ${finalPrograms.length} validated programs`);
-  
-  return finalPrograms;
+    const finalPrograms = normalized?.programs || [];
+    console.log(`[PACK-06 Pass 3] Final ${finalPrograms.length} validated programs`);
+    
+    return finalPrograms;
+    
+  } catch (err: any) {
+    // Step 4: Graceful fallback on complete failure
+    console.error('[PACK-06] Extraction failed completely:', err.message);
+    console.warn('[PACK-06] Returning empty programs array as fallback');
+    return []; // Don't crash the entire mandate flow
+  }
 }

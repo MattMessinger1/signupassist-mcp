@@ -103,6 +103,7 @@ export async function callOpenAI_JSON(opts: {
   maxTokens?: number;
   temperature?: number;
   useResponsesAPI?: boolean; // default true
+  _retryCount?: number; // Internal retry counter
 }) {
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
   const {
@@ -111,7 +112,8 @@ export async function callOpenAI_JSON(opts: {
     user,
     maxTokens = 1200,
     temperature,
-    useResponsesAPI = process.env.OPENAI_USE_RESPONSES !== "false"
+    useResponsesAPI = process.env.OPENAI_USE_RESPONSES !== "false",
+    _retryCount = 0
   } = opts;
 
   const messages = [
@@ -129,15 +131,47 @@ export async function callOpenAI_JSON(opts: {
       
       // In SDK v4, safest is output_text for JSON and then parse
       const text = (res as any).output_text ?? (res as any).output?.[0]?.content?.[0]?.text;
+      
+      // Step 1: Add diagnostic logging
+      console.log(`[openaiHelpers] Raw response length: ${text?.length || 0} chars`);
+      console.log(`[openaiHelpers] First 500 chars: ${text?.substring(0, 500)}`);
+      console.log(`[openaiHelpers] Last 200 chars: ${text?.substring(text?.length - 200)}`);
+      
       const data = safeJSONParse(text);
-      if (!data) throw new Error("OpenAI returned invalid JSON; will retry...");
+      if (!data) {
+        console.error(`[openaiHelpers] ❌ Full invalid response:\n${text}`);
+        
+        // Step 2: Implement real retry logic
+        if (_retryCount < 1) {
+          console.warn(`[openaiHelpers] Retrying API call (attempt ${_retryCount + 2})...`);
+          await new Promise(r => setTimeout(r, 1000)); // 1 sec backoff
+          return callOpenAI_JSON({ ...opts, _retryCount: _retryCount + 1 });
+        }
+        
+        throw new Error("OpenAI returned invalid JSON after 2 attempts");
+      }
       return data;
     } else {
       // Chat Completions fallback
       const res = await openai.chat.completions.create(body);
       const text = res.choices?.[0]?.message?.content || "{}";
+      
+      console.log(`[openaiHelpers] Raw response length: ${text?.length || 0} chars`);
+      console.log(`[openaiHelpers] First 500 chars: ${text?.substring(0, 500)}`);
+      console.log(`[openaiHelpers] Last 200 chars: ${text?.substring(text?.length - 200)}`);
+      
       const data = safeJSONParse(text);
-      if (!data) throw new Error("OpenAI returned invalid JSON; will retry...");
+      if (!data) {
+        console.error(`[openaiHelpers] ❌ Full invalid response:\n${text}`);
+        
+        if (_retryCount < 1) {
+          console.warn(`[openaiHelpers] Retrying API call (attempt ${_retryCount + 2})...`);
+          await new Promise(r => setTimeout(r, 1000));
+          return callOpenAI_JSON({ ...opts, _retryCount: _retryCount + 1 });
+        }
+        
+        throw new Error("OpenAI returned invalid JSON after 2 attempts");
+      }
       return data;
     }
   } catch (err: any) {
