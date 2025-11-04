@@ -8,6 +8,8 @@ import { MODELS } from "./oai.js";
 
 type Models = { vision: string; extractor: string; validator: string; };
 
+const BATCH_SIZE = 17; // Process 17 programs per batch (3 batches for 49 programs)
+
 interface ExtractorConfig {
   models?: Models;
   scope: "program_list";
@@ -80,6 +82,17 @@ const ValidationSchema = {
   required: ["programs"],
   additionalProperties: false
 };
+
+/**
+ * Split array into chunks of specified size
+ */
+function chunkArray<T>(array: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < array.length; i += size) {
+    chunks.push(array.slice(i, i + size));
+  }
+  return chunks;
+}
 
 /**
  * Step 3: Strict JSON extraction helper
@@ -164,11 +177,22 @@ export async function runThreePassExtractorForPrograms(
 
   // Step 4: Wrap extraction in try-catch for graceful fallback
   try {
-    // PASS 2: Extraction (strict JSON schema mode)
-    console.log('[PACK-06 Pass 2] Extracting program data with strict schema');
-    const extracted = await callStrictExtraction({
-      model: models.extractor,
-      system: `Extract SKI PROGRAM LISTINGS from HTML snippets. Each snippet is one program card/row.
+    // PASS 2: Extraction (batched for reliability)
+    console.log('[PACK-06 Pass 2] Extracting program data with strict schema (batched)');
+    
+    const batches = chunkArray(snippets, BATCH_SIZE);
+    console.log(`[PACK-06 Pass 2] Processing ${batches.length} batches of ${BATCH_SIZE} programs`);
+    
+    let allExtractedItems: any[] = [];
+    
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      console.log(`[PACK-06 Pass 2] Batch ${i + 1}/${batches.length}: Extracting ${batch.length} programs`);
+      
+      try {
+        const extracted = await callStrictExtraction({
+          model: models.extractor,
+          system: `Extract SKI PROGRAM LISTINGS from HTML snippets. Each snippet is one program card/row.
 Return JSON with items array. Each item needs:
 - id (number from snippet index)
 - title (exact text)
@@ -181,16 +205,25 @@ Return JSON with items array. Each item needs:
 - program_ref (kebab-case slug from title)
 - org_ref (echo the orgRef)
 Keep values as displayed, do not invent data.`,
-      data: { orgRef, snippets },
-      schema: ExtractionSchema,
-      maxTokens: 2500 // Increased to prevent truncation
-    });
+          data: { orgRef, snippets: batch },
+          schema: ExtractionSchema,
+          maxTokens: 1500 // Smaller batch = smaller token need
+        });
+        
+        const batchItems = extracted?.items ?? [];
+        console.log(`[PACK-06 Pass 2] Batch ${i + 1}: Extracted ${batchItems.length} programs`);
+        allExtractedItems = allExtractedItems.concat(batchItems);
+        
+      } catch (err: any) {
+        console.error(`[PACK-06 Pass 2] Batch ${i + 1} failed:`, err.message);
+        // Continue with other batches
+      }
+    }
     
-    const extractedItems = extracted?.items ?? [];
-    console.log(`[PACK-06 Pass 2] Extracted ${extractedItems.length} raw programs`);
+    console.log(`[PACK-06 Pass 2] Total extracted: ${allExtractedItems.length} programs from ${snippets.length} snippets`);
     
-    if (extractedItems.length === 0) {
-      console.warn('[PACK-06] No items extracted, returning empty array');
+    if (allExtractedItems.length === 0) {
+      console.warn('[PACK-06] No items extracted from any batch, returning empty array');
       return [];
     }
 
@@ -205,7 +238,7 @@ Keep values as displayed, do not invent data.`,
 - Trim whitespace
 - Ensure org_ref matches '${orgRef}'
 Return validated programs array.`,
-      data: { programs: extractedItems },
+      data: { programs: allExtractedItems },
       schema: ValidationSchema,
       maxTokens: 2000
     });
