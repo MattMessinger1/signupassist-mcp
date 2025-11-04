@@ -31,6 +31,24 @@ export function supportsCustomTemperature(model: string): boolean {
 }
 
 /**
+ * Safe JSON parser with automatic cleanup and retry
+ * Prevents crashes from malformed JSON responses
+ */
+function safeJSONParse<T = any>(text: string): T | null {
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    console.warn("[openaiHelpers] JSON parse failed, trimming + retrying...");
+    const fixed = text.replace(/[\u0000-\u001F\u007F-\u009F]/g, "").trim();
+    try { 
+      return JSON.parse(fixed); 
+    } catch { 
+      return null; 
+    }
+  }
+}
+
+/**
  * Build the correct request body for OpenAI API calls
  * Branches by apiFamily to use the correct parameter structure
  */
@@ -111,12 +129,16 @@ export async function callOpenAI_JSON(opts: {
       
       // In SDK v4, safest is output_text for JSON and then parse
       const text = (res as any).output_text ?? (res as any).output?.[0]?.content?.[0]?.text;
-      return text ? JSON.parse(text) : {};
+      const data = safeJSONParse(text);
+      if (!data) throw new Error("OpenAI returned invalid JSON; will retry...");
+      return data;
     } else {
       // Chat Completions fallback
       const res = await openai.chat.completions.create(body);
       const text = res.choices?.[0]?.message?.content || "{}";
-      return JSON.parse(text);
+      const data = safeJSONParse(text);
+      if (!data) throw new Error("OpenAI returned invalid JSON; will retry...");
+      return data;
     }
   } catch (err: any) {
     // If model rejects temperature again for any reason, strip & retry once
@@ -143,11 +165,15 @@ export async function callOpenAI_JSON(opts: {
       if (useResponsesAPI) {
         const res = await openai.responses.create(retryBody as any);
         const text = (res as any).output_text ?? (res as any).output?.[0]?.content?.[0]?.text;
-        return text ? JSON.parse(text) : {};
+        const data = safeJSONParse(text);
+        if (!data) throw new Error("OpenAI returned invalid JSON after retry");
+        return data;
       } else {
         const res = await openai.chat.completions.create(retryBody);
         const text = res.choices?.[0]?.message?.content || "{}";
-        return JSON.parse(text);
+        const data = safeJSONParse(text);
+        if (!data) throw new Error("OpenAI returned invalid JSON after retry");
+        return data;
       }
     }
 
