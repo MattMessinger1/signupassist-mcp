@@ -5,6 +5,7 @@
 
 import OpenAI from "openai";
 import { MODELS } from "./oai.js";
+import { safeJSONParse } from "./openaiHelpers.js";
 
 type Models = { vision: string; extractor: string; validator: string; };
 
@@ -105,7 +106,9 @@ async function callStrictExtraction(opts: {
   data: any;
   schema: any;
   maxTokens?: number;
+  _retryCount?: number;
 }) {
+  const { _retryCount = 0 } = opts;
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
   
   try {
@@ -136,7 +139,26 @@ async function callStrictExtraction(opts: {
     });
     
     const text = res.choices?.[0]?.message?.content || "{}";
-    return JSON.parse(text); // Schema mode should guarantee valid JSON
+    
+    // Diagnostic logging
+    console.log(`[threePassExtractor] Response length: ${text?.length || 0}`);
+    console.log(`[threePassExtractor] Last 200 chars: ${text?.substring(Math.max(0, text.length - 200))}`);
+    
+    const parsed = safeJSONParse(text);
+    
+    // Retry logic for invalid JSON
+    if (!parsed && _retryCount < 2) {
+      console.warn(`[threePassExtractor] Retrying extraction (attempt ${_retryCount + 2}/3)...`);
+      await new Promise(r => setTimeout(r, 1000));
+      return callStrictExtraction({ ...opts, _retryCount: _retryCount + 1 });
+    }
+    
+    if (!parsed) {
+      console.error('[threePassExtractor] Invalid JSON response after 3 attempts:', text?.substring(0, 500));
+      throw new Error('OpenAI returned invalid JSON after 3 attempts');
+    }
+    
+    return parsed;
   } catch (err: any) {
     console.error("[threePassExtractor] Strict extraction failed:", err.message);
     throw err;
@@ -207,7 +229,7 @@ Return JSON with items array. Each item needs:
 Keep values as displayed, do not invent data.`,
           data: { orgRef, snippets: batch },
           schema: ExtractionSchema,
-          maxTokens: 1500 // Smaller batch = smaller token need
+          maxTokens: 2500 // Increased to prevent truncation
         });
         
         const batchItems = extracted?.items ?? [];
@@ -240,7 +262,7 @@ Keep values as displayed, do not invent data.`,
 Return validated programs array.`,
       data: { programs: allExtractedItems },
       schema: ValidationSchema,
-      maxTokens: 2000
+      maxTokens: 3000 // Increased to prevent truncation
     });
 
     const finalPrograms = normalized?.programs || [];
