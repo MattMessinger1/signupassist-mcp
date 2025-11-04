@@ -745,6 +745,11 @@ console.log('[STARTUP] Registering prerequisite checkers...');
 registerAllProviders();
 console.log('[STARTUP] Prerequisite checkers registered');
 
+// Log build info for deployment verification
+console.info(
+  `[BUILD] Commit: ${process.env.RAILWAY_GIT_COMMIT_SHA || "dev"} | Built at: ${new Date().toISOString()}`
+);
+
 console.log('[STARTUP] Creating SignupAssistMCPServer instance...');
 const server = new SignupAssistMCPServer();
 

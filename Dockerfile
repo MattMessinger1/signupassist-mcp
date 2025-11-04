@@ -19,6 +19,9 @@ COPY mcp_server ./mcp_server
 COPY providers ./providers
 COPY mcp ./mcp
 
+# Clear any cached dist folder and ensure fresh compile
+RUN rm -rf dist && mkdir -p dist
+
 # Build backend TypeScript to dist/
 RUN npx tsc -p tsconfig.mcp.json
 
