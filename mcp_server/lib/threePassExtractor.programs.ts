@@ -4,11 +4,12 @@
  */
 
 import { callOpenAI_JSON } from "./openaiHelpers.js";
+import { MODELS } from "./oai.js";
 
 type Models = { vision: string; extractor: string; validator: string; };
 
 interface ExtractorConfig {
-  models: Models;
+  models?: Models;
   scope: "program_list";
   selectors: { 
     container: string[]; 
@@ -26,7 +27,15 @@ export async function runThreePassExtractorForPrograms(
   opts: ExtractorConfig
 ) {
   console.log('[PACK-06 Extractor] Starting programs-only extraction');
-  console.log('[PACK-06 Models]', opts.models);
+  
+  // Use centralized MODELS as defaults
+  const models = {
+    vision: opts.models?.vision || MODELS.vision,
+    extractor: opts.models?.extractor || MODELS.extractor,
+    validator: opts.models?.validator || MODELS.validator
+  };
+  
+  console.log('[PACK-06 Models]', models);
   
   // PASS 1: Candidate nodes (selector-first; screenshot kept for future vision boosts)
   console.log('[PACK-06 Pass 1] Finding candidate nodes via selectors');
@@ -47,7 +56,7 @@ export async function runThreePassExtractorForPrograms(
   // PASS 2: Extraction (strict JSON)
   console.log('[PACK-06 Pass 2] Extracting program data with AI');
   const extracted = await callOpenAI_JSON({
-    model: opts.models.extractor,
+    model: models.extractor,
     system: `You are extracting SKI PROGRAM LISTINGS from provided HTML snippets (each snippet is one row/card).
 Return a JSON object { items: [...] } where each item has:
 - id (from input)
@@ -73,7 +82,7 @@ Rules:
   // PASS 3: Validation/Normalization
   console.log('[PACK-06 Pass 3] Validating and normalizing');
   const normalized = await callOpenAI_JSON({
-    model: opts.models.validator,
+    model: models.validator,
     system: `Normalize and validate each program object:
 - Ensure title exists; drop entries with empty title.
 - Ensure program_ref is kebab-case unique slug.
