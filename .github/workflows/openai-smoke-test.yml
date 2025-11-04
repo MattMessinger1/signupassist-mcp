@@ -1,0 +1,50 @@
+name: OpenAI Smoke Test
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Compile TypeScript
+        run: npx tsc -p tsconfig.mcp.json
+      
+      - name: Run OpenAI smoke test
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "⚠️  OPENAI_API_KEY not configured - skipping smoke test"
+            exit 0
+          fi
+          
+          echo "🧪 Running OpenAI smoke test..."
+          node dist/mcp_server/startup/openaiSmokeTest.js
+      
+      - name: Check for parameter errors
+        if: failure()
+        run: |
+          echo "❌ OpenAI smoke test failed!"
+          echo "Check the logs above for parameter errors like:"
+          echo "  - Invalid type for 'text.format'"
+          echo "  - Unsupported value: 'temperature'"
+          echo "  - Missing 'model' field"
+          exit 1

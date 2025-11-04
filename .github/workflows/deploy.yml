@@ -23,6 +23,18 @@ jobs:
       - name: Verify TypeScript compiles
         run: npx tsc -p tsconfig.mcp.json --noEmit
       
+      - name: Run OpenAI smoke test
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "⚠️  OPENAI_API_KEY not configured - skipping smoke test"
+          else
+            echo "🧪 Running OpenAI smoke test before deploy..."
+            npx tsc -p tsconfig.mcp.json
+            node dist/mcp_server/startup/openaiSmokeTest.js || echo "⚠️  Smoke test failed but continuing deploy"
+          fi
+      
       - name: Trigger Railway Deploy
         if: success()
         run: |

@@ -5,6 +5,11 @@
  * Railway rebuild trigger: 2025-10-28 - Added scp.create_mandate tool
  */
 
+// Print build info banner on startup
+console.info(
+  `[BUILD] Commit: ${process.env.RAILWAY_GIT_COMMIT_SHA || "dev"} | Built at: ${new Date().toISOString()}`
+);
+
 // ============================================================================
 // Type Exports - Single Source of Truth
 // ============================================================================
@@ -45,6 +50,9 @@ import { waitForSkiClubProReady } from './providers/utils/skiclubproReadiness.js
 
 // Import prereqs registry
 import { registerAllProviders } from './prereqs/providers.js';
+
+// Import OpenAI smoke test
+import { runOpenAISmokeTests } from './startup/openaiSmokeTest.js';
 
 // Type-only import for AIOrchestrator (safe - doesn't execute module code)
 import type AIOrchestrator from './ai/AIOrchestrator.js';
@@ -756,6 +764,14 @@ const server = new SignupAssistMCPServer();
 console.log('[STARTUP] Initializing AIOrchestrator asynchronously...');
 await server.initializeOrchestrator();
 console.log('[STARTUP] AIOrchestrator initialization complete');
+
+// Run OpenAI smoke tests to verify API configuration
+console.log('[STARTUP] Running OpenAI smoke tests...');
+try {
+  await runOpenAISmokeTests({ failFast: false });
+} catch (error) {
+  console.warn('[STARTUP] OpenAI smoke tests failed (non-fatal):', error);
+}
 
 console.log('[STARTUP] NODE_ENV:', process.env.NODE_ENV);
 console.log('[STARTUP] PORT:', process.env.PORT);
