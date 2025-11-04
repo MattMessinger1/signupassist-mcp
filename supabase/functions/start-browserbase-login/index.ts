@@ -84,25 +84,40 @@ Deno.serve(async (req) => {
 
     console.log(`[BrowserbaseLogin] Existing credential lookup: ${existingCred ? existingCred.id : 'none'}`);
 
-    // Invoke provider's login through the MCP server (dynamic tool name)
-    const mcpResponse = await fetch(`${mcpServerUrl}/tools/call`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${mcpAccessToken}`, // Use MCP access token, not user JWT
-      },
-      body: JSON.stringify({
-        tool: getToolName(provider, 'login'),
-        args: {
-          ...(existingCred?.id ? { credential_id: existingCred.id } : { email, password }), // Use stored credential_id OR email+password
-          org_ref,
-          user_jwt: token, // Pass user JWT for authentication
-          user_id: user.id,
-          mandate_jws: mandate_id, // ✅ Rename to mandate_jws for MCP verification
-          return_session_data: true
-        }
-      })
-    });
+    // Invoke provider's login through the MCP server (dynamic tool name) with timeout guard
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+    
+    let mcpResponse;
+    try {
+      mcpResponse = await fetch(`${mcpServerUrl}/tools/call`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${mcpAccessToken}`, // Use MCP access token, not user JWT
+        },
+        body: JSON.stringify({
+          tool: getToolName(provider, 'login'),
+          args: {
+            ...(existingCred?.id ? { credential_id: existingCred.id } : { email, password }), // Use stored credential_id OR email+password
+            org_ref,
+            user_jwt: token, // Pass user JWT for authentication
+            user_id: user.id,
+            mandate_jws: mandate_id, // ✅ Rename to mandate_jws for MCP verification
+            return_session_data: true
+          }
+        }),
+        signal: controller.signal
+      });
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        throw new Error('Login request timed out - please try again');
+      }
+      throw err;
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!mcpResponse.ok) {
       const errorText = await mcpResponse.text();
@@ -196,23 +211,50 @@ Deno.serve(async (req) => {
           mandate_id
         });
         
-        const programsResponse = await fetch(`${mcpServerUrl}/tools/call`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${mcpAccessToken}`,
-          },
-          body: JSON.stringify({
-            tool: findProgramsTool,
-            args: {
-              org_ref,
-              session_token: mcpResult.session_token,
-              credential_id: credentialId,
-              user_jwt: token,
-              mandate_jws: mandate_id // ✅ Rename to mandate_jws for MCP verification
-            }
-          })
-        });
+        const programsController = new AbortController();
+        const programsTimeoutId = setTimeout(() => programsController.abort(), 60000); // 60s timeout
+        
+        let programsResponse;
+        try {
+          programsResponse = await fetch(`${mcpServerUrl}/tools/call`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${mcpAccessToken}`,
+            },
+            body: JSON.stringify({
+              tool: findProgramsTool,
+              args: {
+                org_ref,
+                session_token: mcpResult.session_token,
+                credential_id: credentialId,
+                user_jwt: token,
+                mandate_jws: mandate_id // ✅ Rename to mandate_jws for MCP verification
+              }
+            }),
+            signal: programsController.signal
+          });
+        } catch (err) {
+          clearTimeout(programsTimeoutId);
+          if (err.name === 'AbortError') {
+            console.error('[BrowserbaseLogin] Programs fetch timed out');
+            // Fall back to success-but-no-programs response
+            return new Response(
+              JSON.stringify({
+                status: 'success',
+                message: 'Login successful ✅',
+                credential_stored: !!credentialId,
+                credential_id: credentialId,
+                cookies: mcpResult.cookies || [],
+                next_step: 'manual_program_selection'
+              }),
+              { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+            );
+          }
+          throw err;
+        } finally {
+          clearTimeout(programsTimeoutId);
+        }
         
         console.log('[EdgeFunction] Received programsResponse status:', programsResponse.status);
         
