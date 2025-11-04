@@ -7,8 +7,7 @@
  * and output grouped lists.
  */
 
-import OpenAI from 'openai';
-import { sanitizeModelParams } from './openaiHelpers.js';
+import { openai, MODELS, withModel } from './oai.js';
 import type { ProgramData } from './threePassExtractor.js';
 
 /**
@@ -83,24 +82,10 @@ export async function groupProgramsByTheme(
   }
 
   console.log(`[ProgramGrouping] Classifying ${programs.length} programs into themes...`);
-  
-  // Check API key BEFORE instantiation
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    const error = 'OPENAI_API_KEY environment variable is not set. Configure it in Railway project variables.';
-    console.error(`[ProgramGrouping] ❌ ${error}`);
-    throw new Error(error);
-  }
-  
-  const openai = new OpenAI({ apiKey });
-  console.log('[ProgramGrouping] Using model: gpt-5-mini-2025-08-08 (semantic grouping)');
+  console.log(`[ProgramGrouping] Using model: ${MODELS.grouper}`);
 
-  const sanitizedParams = sanitizeModelParams('gpt-5-mini-2025-08-07', {
-    model: 'gpt-5-mini-2025-08-07'
-  });
-
-  const response = await openai.chat.completions.create({
-    ...sanitizedParams,
+  const response = await openai.chat.completions.create(
+    withModel(MODELS.grouper, {
     messages: [
       {
         role: 'system',
@@ -126,6 +111,7 @@ Do not fabricate values. If a field is missing (e.g., price), keep it null. Keep
         content: `Classify these programs into themes and rank them:\n\n${JSON.stringify(programs, null, 2)}`
       }
     ],
+    temperature: 0.1,
     tools: [{
       type: 'function',
       function: {
@@ -178,7 +164,7 @@ Do not fabricate values. If a field is missing (e.g., price), keep it null. Keep
       }
     }],
     tool_choice: { type: 'function', function: { name: 'group_programs_by_theme' } }
-  });
+  }));
 
   const toolCall = response.choices[0].message.tool_calls?.[0];
   if (!toolCall || toolCall.type !== 'function') {
