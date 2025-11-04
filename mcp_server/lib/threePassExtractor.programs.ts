@@ -3,7 +3,7 @@
  * Streamlined AI-powered extraction using OpenAI JSON mode
  */
 
-import OpenAI from "openai";
+import { callOpenAI_JSON } from "./openaiHelpers.js";
 
 type Models = { vision: string; extractor: string; validator: string; };
 
@@ -18,7 +18,7 @@ interface ExtractorConfig {
   };
 }
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+// OpenAI client now managed by helper
 
 export async function runThreePassExtractorForPrograms(
   page: any, 
@@ -46,46 +46,46 @@ export async function runThreePassExtractorForPrograms(
 
   // PASS 2: Extraction (strict JSON)
   console.log('[PACK-06 Pass 2] Extracting program data with AI');
-  const extracted = await callOpenAI_JSON(opts.models.extractor, {
-    role: "You extract SKI PROGRAM LISTINGS from HTML snippets (each snippet = one row/card). " +
-          "Return { items: [{ id, title, description, price, schedule, age_range, skill_level, status, " +
-          "program_ref (kebab slug from title + org), org_ref }] }. " +
-          "Never invent; blank if missing.",
-    input: { orgRef, snippets }
+  const extracted = await callOpenAI_JSON({
+    model: opts.models.extractor,
+    system: `You are extracting SKI PROGRAM LISTINGS from provided HTML snippets (each snippet is one row/card).
+Return a JSON object { items: [...] } where each item has:
+- id (from input)
+- title (string)
+- description (string or "")
+- price (string or "")
+- schedule (string or "")
+- age_range (string or "")
+- skill_level (string or "")
+- status (string or "")
+- program_ref (string; derive a stable slug from title + orgRef)
+- org_ref (string; echo '${orgRef}')
+Rules:
+- Keep values as displayed (do not invent).
+- If a field is missing, set to "".`,
+    user: { orgRef, snippets },
+    maxTokens: 1500
   });
   
-  console.log(`[PACK-06 Pass 2] Extracted ${extracted?.items?.length || 0} raw programs`);
+  const extractedItems = extracted?.items ?? extracted ?? [];
+  console.log(`[PACK-06 Pass 2] Extracted ${extractedItems.length} raw programs`);
 
   // PASS 3: Validation/Normalization
   console.log('[PACK-06 Pass 3] Validating and normalizing');
-  const normalized = await callOpenAI_JSON(opts.models.validator, {
-    role: "Normalize and validate. Output { programs:[...] }. " +
-          `Rules: ensure title exists; drop empties; program_ref unique kebab-case; org_ref === "${orgRef}";` +
-          ' normalize price like "$175 per session" -> "$175/session"; trim whitespace.',
-    input: extracted
+  const normalized = await callOpenAI_JSON({
+    model: opts.models.validator,
+    system: `Normalize and validate each program object:
+- Ensure title exists; drop entries with empty title.
+- Ensure program_ref is kebab-case unique slug.
+- Coalesce price formats like "$175 per session" into "$175/session".
+- Trim whitespace; ensure org_ref === '${orgRef}'.
+Return { programs: [...] }.`,
+    user: { programs: extractedItems },
+    maxTokens: 800
   });
 
-  const finalPrograms = normalized?.programs || normalized?.items || [];
+  const finalPrograms = normalized?.programs || [];
   console.log(`[PACK-06 Pass 3] Final ${finalPrograms.length} validated programs`);
   
   return finalPrograms;
-}
-
-async function callOpenAI_JSON(model: string, payload: { role: string; input: any }) {
-  const res = await openai.chat.completions.create({
-    model,
-    temperature: 0.1,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: payload.role },
-      { role: "user", content: JSON.stringify(payload.input) }
-    ]
-  });
-  const content = res.choices?.[0]?.message?.content ?? "{}";
-  try { 
-    return JSON.parse(content); 
-  } catch (err) {
-    console.error('[PACK-06] JSON parse error:', err);
-    return {};
-  }
 }
