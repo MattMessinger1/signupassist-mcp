@@ -27,6 +27,9 @@ jobs:
       - name: Compile TypeScript
         run: npx tsc -p tsconfig.mcp.json
       
+      - name: Run unit tests
+        run: npx vitest run mcp_server/lib/openaiHelpers.test.ts --reporter=verbose
+      
       - name: Run OpenAI smoke test
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
