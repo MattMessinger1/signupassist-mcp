@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import Logger from "../utils/logger.js";
+import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
 import { parseProviderInput, ParsedProviderInput } from "../utils/parseInput.js";
 import { lookupLocalProvider, googlePlacesSearch } from "../utils/providerSearch.js";
 import type { Provider } from "../utils/providerSearch.js";
@@ -1830,12 +1831,9 @@ class AIOrchestrator {
         price: p.price
       }));
 
-      const completion = await this.openai.chat.completions.create({
-        model: "gpt-5-mini-2025-08-07",  // Reasoning capability for flow accuracy
-        messages: [
-          {
-            role: "system",
-            content: `Analyze these programs and group them into categories like:
+      const completion = await callOpenAI_JSON({
+        model: "gpt-5-mini-2025-08-07",
+        system: `Analyze these programs and group them into categories like:
 - Lessons (beginner, intermediate, advanced classes)
 - Race Teams (competitive programs, BART, masters)
 - Events (clinics, camps, special events)
@@ -1850,14 +1848,8 @@ Return JSON: {
       "programIds": ["id1", "id2", ...]
     }
   ]
-}`
-          },
-          {
-            role: "user",
-            content: JSON.stringify(simplifiedPrograms)
-          }
-        ],
-        response_format: { type: "json_object" }
+}`,
+        user: simplifiedPrograms
       });
 
       let text = completion.choices[0]?.message?.content || '{"categories":[]}';
@@ -1974,21 +1966,11 @@ Return JSON: {
    */
   private async aiParseProviderInput(userInput: string): Promise<ParsedProviderInput> {
     try {
-      const completion = await this.openai.chat.completions.create({
-        model: "gpt-5-mini-2025-08-07",  // Validation capability for key consistency
-        messages: [
-          { 
-            role: "system", 
-            content: "Extract provider name and city from input. Return JSON with 'name' and 'city' fields. If city is not mentioned, omit the city field." 
-          },
-          { role: "user", content: userInput }
-        ],
-        response_format: { type: "json_object" }
+      const parsed = await callOpenAI_JSON({
+        model: "gpt-5-mini-2025-08-07",
+        system: "Extract provider name and city from input. Return JSON with 'name' and 'city' fields. If city is not mentioned, omit the city field.",
+        user: userInput
       });
-      let text = completion.choices[0]?.message?.content || "{}";
-      // Strip markdown code blocks even with json_object mode (OpenAI bug workaround)
-      text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/s, '').trim();
-      const parsed = JSON.parse(text);
       return { raw: userInput, name: parsed.name || userInput, city: parsed.city };
     } catch (error) {
       Logger.warn("[AI Parser] Failed, falling back to heuristic parser:", error);

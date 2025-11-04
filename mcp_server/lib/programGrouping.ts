@@ -8,6 +8,7 @@
  */
 
 import OpenAI from 'openai';
+import { sanitizeModelParams } from './openaiHelpers.js';
 import type { ProgramData } from './threePassExtractor.js';
 
 /**
@@ -94,8 +95,12 @@ export async function groupProgramsByTheme(
   const openai = new OpenAI({ apiKey });
   console.log('[ProgramGrouping] Using model: gpt-5-mini-2025-08-08 (semantic grouping)');
 
+  const sanitizedParams = sanitizeModelParams('gpt-5-mini-2025-08-07', {
+    model: 'gpt-5-mini-2025-08-07'
+  });
+
   const response = await openai.chat.completions.create({
-    model: 'gpt-5-mini-2025-08-07',  // Reasoning capability for semantic grouping accuracy
+    ...sanitizedParams,
     messages: [
       {
         role: 'system',

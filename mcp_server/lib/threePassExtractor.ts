@@ -5,6 +5,7 @@
 
 import { Page } from 'playwright-core';
 import OpenAI from 'openai';
+import { sanitizeModelParams } from './openaiHelpers.js';
 
 export interface ProgramData {
   id: string;
@@ -122,8 +123,12 @@ async function preflightCheck(
   const url = page.url();
   const html = await page.content();
   
+  const sanitizedParams = sanitizeModelParams('gpt-5-2025-08-07', {
+    model: 'gpt-5-2025-08-07'
+  });
+  
   const response = await openai.chat.completions.create({
-    model: 'gpt-5-2025-08-07',
+    ...sanitizedParams,
     messages: [
       {
         role: 'system',
@@ -185,8 +190,12 @@ async function identifyProgramContainers(
   
   const base64Image = screenshot.toString('base64');
   
+  const sanitizedParams = sanitizeModelParams('gpt-5-2025-08-07', {
+    model: 'gpt-5-2025-08-07'
+  });
+  
   const response = await openai.chat.completions.create({
-    model: 'gpt-5-2025-08-07',
+    ...sanitizedParams,
     messages: [
       {
         role: 'user',
@@ -271,8 +280,12 @@ async function extractProgramData(
   openai: OpenAI
 ): Promise<any[]> {
   
+  const sanitizedParams = sanitizeModelParams('gpt-5-mini-2025-08-07', {
+    model: 'gpt-5-mini-2025-08-07'
+  });
+  
   const response = await openai.chat.completions.create({
-    model: 'gpt-5-mini-2025-08-07',
+    ...sanitizedParams,
     messages: [
       {
         role: 'system',
@@ -364,8 +377,12 @@ async function validateAndNormalize(
   openai: OpenAI
 ): Promise<any> {
   
+  const sanitizedParams = sanitizeModelParams('gpt-5-mini-2025-08-07', {
+    model: 'gpt-5-mini-2025-08-07'
+  });
+  
   const response = await openai.chat.completions.create({
-    model: 'gpt-5-mini-2025-08-07',
+    ...sanitizedParams,
     messages: [
       {
         role: 'system',
