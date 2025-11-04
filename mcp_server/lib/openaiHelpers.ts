@@ -49,7 +49,7 @@ function requiresCompletionTokensParam(model: string): boolean {
  * Safe JSON parser with automatic cleanup and retry
  * Prevents crashes from malformed JSON responses
  */
-function safeJSONParse<T = any>(text: string): T | null {
+export function safeJSONParse<T = any>(text: string): T | null {
   try {
     return JSON.parse(text);
   } catch (err) {
