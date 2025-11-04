@@ -93,7 +93,7 @@ export async function callOpenAI_JSON(opts: {
           { role: "system", content: system },
           { role: "user", content: JSON.stringify(user) }
         ],
-        response_format: { type: "json_object" },
+        text: { format: "json" },
         max_output_tokens: params.max_output_tokens
       } as any);
       
@@ -136,7 +136,7 @@ export async function callOpenAI_JSON(opts: {
             { role: "system", content: system },
             { role: "user", content: JSON.stringify(user) }
           ],
-          response_format: { type: "json_object" }
+          text: { format: "json" }
         } as any);
         const text = (res as any).output_text ?? (res as any).output?.[0]?.content?.[0]?.text;
         return text ? JSON.parse(text) : {};
