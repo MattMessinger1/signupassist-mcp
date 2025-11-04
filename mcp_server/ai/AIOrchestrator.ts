@@ -1298,6 +1298,17 @@ class AIOrchestrator {
 
         const result = await response.json();
         
+        // PACK-C: Check for tool failure before claiming success
+        if (result?.error) {
+          Logger.error(`[MCP] Tool ${mcpToolName} returned error: ${result.error}`);
+          throw new Error(result.error);
+        }
+        
+        if (result?.success === false) {
+          Logger.error(`[MCP] Tool ${mcpToolName} returned success=false`);
+          throw new Error(`Tool ${mcpToolName} returned success=false`);
+        }
+        
         // Check for mandate expiry in response
         if (result.error && typeof result.error === 'string' && 
             (result.error.includes('Mandate') || result.error.includes('mandate')) && 
@@ -1321,6 +1332,15 @@ class AIOrchestrator {
           });
           
           const retryResult = await retryResponse.json();
+          
+          // PACK-C: Check retry result too
+          if (retryResult?.error) {
+            throw new Error(retryResult.error);
+          }
+          if (retryResult?.success === false) {
+            throw new Error(`Tool ${mcpToolName} returned success=false on retry`);
+          }
+          
           this.saveToCache(cacheKey, retryResult);
           return retryResult;
         }
@@ -1351,6 +1371,18 @@ class AIOrchestrator {
       
       // Try calling the tool once to check if it exists
       const result = await this.mcpToolCaller!(toolName, args);
+      
+      // PACK-C: Check for tool failure before claiming success
+      if (result?.error) {
+        Logger.error(`[ToolError] ${toolName}: ${result.error}`);
+        throw new Error(result.error);
+      }
+      
+      if (result?.success === false) {
+        Logger.error(`[ToolError] ${toolName} returned success=false`);
+        throw new Error(`Tool ${toolName} returned success=false`);
+      }
+      
       this.saveToCache(cacheKey, result);
       Logger.info(`Tool ${toolName} succeeded.`);
       return result;
@@ -1365,6 +1397,15 @@ class AIOrchestrator {
       Logger.warn(`Tool ${toolName} failed, retrying...`, error.message);
       try {
         const result = await this.withRetry(() => this.mcpToolCaller!(toolName, args), 3);
+        
+        // PACK-C: Check retry result too
+        if (result?.error) {
+          throw new Error(result.error);
+        }
+        if (result?.success === false) {
+          throw new Error(`Tool ${toolName} returned success=false after retry`);
+        }
+        
         this.saveToCache(cacheKey, result);
         Logger.info(`Tool ${toolName} succeeded after retry.`);
         return result;
