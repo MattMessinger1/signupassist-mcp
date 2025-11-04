@@ -2,6 +2,7 @@
 FROM node:20-alpine AS builder
 
 # Force rebuild toggle — updated automatically by Lovable or CLI
+# Last rebuild: 2025-11-04 20:15:00 UTC - Deploy batching fix
 ARG BUILD_TAG=initial
 LABEL build-tag=$BUILD_TAG
 
