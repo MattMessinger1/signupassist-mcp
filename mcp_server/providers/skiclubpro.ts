@@ -20,6 +20,7 @@ import type { ProviderResponse } from '../types.js';
 import { PROMPT_VERSION } from '../ai/AIOrchestrator.js';
 import { getReadiness } from './utils/pageReadinessRegistry.js';
 import { UrlBuilder } from '../../providers/skiclubpro/lib/index.js';
+import { resolveBaseUrl } from './utils/resolveBaseUrl.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -86,10 +87,9 @@ export interface FieldSchema {
 }
 
 /**
- * Helper: Resolve base URL from org_ref or program_ref
- * Returns both baseUrl and baseDomain for consistent URL construction
+ * Helper: Extract org_ref from args (supports multiple input patterns)
  */
-function resolveBaseUrl(args: any): { baseUrl: string; baseDomain: string } {
+function extractOrgRef(args: any): string {
   // Extract org_ref from args (could be in different places)
   let orgRef = args?.org_ref || 'blackhawk-ski-club';
   
@@ -102,16 +102,7 @@ function resolveBaseUrl(args: any): { baseUrl: string; baseDomain: string } {
     }
   }
   
-  // CRITICAL FIX: Map 'blackhawk-ski-club' to 'blackhawk' for correct domain
-  // The actual domain is blackhawk.skiclubpro.team NOT blackhawk-ski-club.skiclubpro.team
-  const baseDomain = (orgRef === 'blackhawk-ski-club') 
-    ? 'blackhawk.skiclubpro.team' 
-    : `${orgRef.replace(/[^a-z0-9-]/g, '').toLowerCase()}.skiclubpro.team`;
-  
-  const baseUrl = `https://${baseDomain}`;
-  
-  console.log(`DEBUG: Corrected base URL: ${baseUrl} (from org_ref: ${orgRef}, domain: ${baseDomain})`);
-  return { baseUrl, baseDomain };
+  return orgRef;
 }
 
 /**
@@ -564,11 +555,14 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
     },
     args,
     async () => {
-      // Resolve base URL and domain from org_ref or program_ref
-      const { baseUrl, baseDomain } = resolveBaseUrl(args);
-      
       // Extract org_ref for field discovery
-      const orgRef = args?.org_ref || 'blackhawk-ski-club';
+      const orgRef = extractOrgRef(args);
+      
+      // Resolve base URL using centralized utility (prevents domain duplication)
+      const baseUrl = resolveBaseUrl(orgRef);
+      
+      // Extract domain for legacy functions that need it
+      const baseDomain = baseUrl.replace(/^https?:\/\//, '');
       
       // Extract user_id from JWT for session caching
       const userId = args.user_jwt ? JSON.parse(atob(args.user_jwt.split('.')[1])).sub : 'anonymous';
@@ -1137,7 +1131,8 @@ export const skiClubProTools = {
           }
           
           const orgRef = args.org_ref || 'blackhawk-ski-club';
-          const { baseUrl, baseDomain } = resolveBaseUrl({ org_ref: orgRef });
+          const baseUrl = resolveBaseUrl(orgRef);
+          const baseDomain = baseUrl.replace(/^https?:\/\//, '');
           
           // --- Hardened JWT handling (Lovable update) ---
           const jwtPayload = safeDecodeJWT(args.user_jwt);
@@ -1300,7 +1295,7 @@ export const skiClubProTools = {
       await session.context.addCookies(args.cookies);
       console.log('[scp.program_field_probe] ✅ Authentication restored');
       
-      const { baseUrl } = resolveBaseUrl({ org_ref: args.org_ref });
+      const baseUrl = resolveBaseUrl(args.org_ref || 'blackhawk-ski-club');
       
       // Navigate to registration page (authenticated)
       const candidatePaths = getCandidatePathsForIntent(args.intent);
@@ -1588,9 +1583,8 @@ export const skiClubProTools = {
           }
         }
         
-        // Get base URL for organization
-        const override = getOrgOverride(orgRef);
-        const baseUrl = buildBaseUrl(orgRef, override.customDomain);
+        // Get base URL for organization (using centralized utility)
+        const baseUrl = resolveBaseUrl(orgRef);
         
         // PACK-05 Step 1: Restore session by token first
         if (token) {
@@ -1831,7 +1825,8 @@ export const skiClubProTools = {
           if (!args.user_jwt) throw new Error('user_jwt is required');
           
           const orgRef = args.org_ref || 'blackhawk-ski-club';
-          const { baseUrl, baseDomain } = resolveBaseUrl({ org_ref: orgRef });
+          const baseUrl = resolveBaseUrl(orgRef);
+          const baseDomain = baseUrl.replace(/^https?:\/\//, '');
           
           console.log(`[scp.login] Using unified domain: ${baseDomain}, baseUrl: ${baseUrl}`);
           
@@ -1914,8 +1909,7 @@ export const skiClubProTools = {
       if (!args.user_jwt) throw new Error('user_jwt is required');
       
       const orgRef = args.org_ref || 'blackhawk-ski-club';
-      const override = getOrgOverride(orgRef);
-      const baseUrl = buildBaseUrl(orgRef, override.customDomain);
+      const baseUrl = resolveBaseUrl(orgRef);
       
       console.log(`[scp:check_prerequisites] Starting checks for org: ${orgRef} (no mandate required)`);
       
