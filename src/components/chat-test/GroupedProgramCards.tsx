@@ -23,6 +23,9 @@ interface ProgramCard {
   caption?: string;
   body?: string;
   actions: CardAction[];
+  isHeader?: boolean;
+  program_ref?: string;
+  org_ref?: string;
 }
 
 interface CardGroup {
@@ -50,12 +53,27 @@ interface GroupedProgramCardsProps {
 }
 
 export function GroupedProgramCards({ payload, onAction }: GroupedProgramCardsProps) {
-  const handleAction = (action: CardAction) => {
+  const handleAction = (action: CardAction, card: ProgramCard) => {
     if (action.type === "link" && action.href) {
       window.open(action.href, "_blank");
     } else if (action.type === "postback" && action.payload && onAction) {
-      onAction("postback", action.payload);
+      // Enhance payload with card metadata for view_program action
+      const enhancedPayload = {
+        ...action.payload,
+        program_ref: card.program_ref,
+        org_ref: card.org_ref,
+      };
+      onAction("postback", enhancedPayload);
     }
+  };
+  
+  // Map category labels to design labels
+  const mapCategoryLabel = (title: string): string => {
+    const labelMap: Record<string, string> = {
+      "Races & Teams": "Race Team & Events",
+      "Other Programs": "Other"
+    };
+    return labelMap[title] || title;
   };
 
   const handleChipClick = (chip: CTAChip) => {
@@ -75,66 +93,75 @@ export function GroupedProgramCards({ payload, onAction }: GroupedProgramCardsPr
     <div className="space-y-6 w-full">
       {visibleGroups.map((group, groupIdx) => (
         <div key={groupIdx} className="space-y-3">
-          <h3 className="text-lg font-semibold text-foreground">{group.title}</h3>
+          <h3 className="text-lg font-semibold text-foreground">{mapCategoryLabel(group.title)}</h3>
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {group.cards.slice(0, 4).map((card, cardIdx) => (
-              <Card key={cardIdx} className="flex flex-col hover:shadow-lg transition-shadow">
-                <CardHeader>
-                  <CardTitle className="text-base">{card.title}</CardTitle>
-                  {card.subtitle && (
-                    <CardDescription className="text-sm">
-                      {card.subtitle}
-                    </CardDescription>
-                  )}
-                </CardHeader>
-                
-                {(card.body || card.caption) && (
-                  <CardContent className="flex-1">
-                    {card.body && (
-                      <p className="text-sm text-muted-foreground mb-2">{card.body}</p>
+            {group.cards.slice(0, 4).map((card, cardIdx) => {
+              // Skip header cards in rendering
+              if (card.isHeader) {
+                return null;
+              }
+              
+              return (
+                <Card key={cardIdx} className="flex flex-col hover:shadow-lg transition-shadow">
+                  <CardHeader>
+                    <CardTitle className="text-base">{card.title}</CardTitle>
+                    {card.subtitle && (
+                      <CardDescription className="text-sm">
+                        {card.subtitle}
+                      </CardDescription>
                     )}
-                    {card.caption && (
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        {card.caption.split('•').map((part, i) => (
-                          <span key={i} className="flex items-center gap-1">
-                            {i > 0 && <span>•</span>}
-                            {part.trim().startsWith('$') ? (
-                              <Badge variant="secondary">{part.trim()}</Badge>
-                            ) : (
-                              <span>{part.trim()}</span>
-                            )}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </CardContent>
-                )}
-                
-                <CardFooter className="flex gap-2">
-                  {card.actions.map((action, actionIdx) => (
-                    <Button
-                      key={actionIdx}
-                      variant={action.type === "link" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => handleAction(action)}
-                      className="flex-1"
-                    >
-                      {action.type === "link" ? (
-                        <>
-                          {action.label}
-                          <ExternalLink className="ml-1 h-3 w-3" />
-                        </>
-                      ) : (
-                        <>
-                          <Info className="mr-1 h-3 w-3" />
-                          {action.label}
-                        </>
+                  </CardHeader>
+                  
+                  {(card.body || card.caption) && (
+                    <CardContent className="flex-1">
+                      {card.body && (
+                        <p className="text-sm text-muted-foreground mb-2">{card.body}</p>
                       )}
-                    </Button>
-                  ))}
-                </CardFooter>
-              </Card>
-            ))}
+                      {card.caption && (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          {card.caption.split('•').map((part, i) => (
+                            <span key={i} className="flex items-center gap-1">
+                              {i > 0 && <span>•</span>}
+                              {part.trim().startsWith('$') ? (
+                                <Badge variant="secondary">{part.trim()}</Badge>
+                              ) : (
+                                <span>{part.trim()}</span>
+                              )}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </CardContent>
+                  )}
+                  
+                  {!card.isHeader && card.actions && card.actions.length > 0 && (
+                    <CardFooter className="flex gap-2">
+                      {card.actions.map((action, actionIdx) => (
+                        <Button
+                          key={actionIdx}
+                          variant={action.type === "link" ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => handleAction(action, card)}
+                          className="flex-1"
+                        >
+                          {action.type === "link" ? (
+                            <>
+                              {action.label}
+                              <ExternalLink className="ml-1 h-3 w-3" />
+                            </>
+                          ) : (
+                            <>
+                              <Info className="mr-1 h-3 w-3" />
+                              {action.label}
+                            </>
+                          )}
+                        </Button>
+                      ))}
+                    </CardFooter>
+                  )}
+                </Card>
+              );
+            })}
           </div>
         </div>
       ))}

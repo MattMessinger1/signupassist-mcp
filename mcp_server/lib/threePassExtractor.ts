@@ -281,6 +281,8 @@ Return JSON ONLY:
 }
 
 Rules:
+- SKIP any row that is a header, label, or contains only "Confirm" / "Select" / "Day(s)" / "Age" / "Price".
+- Only extract rows that represent an actual program with a meaningful title and details.
 - Populate fields only from visible text. If missing, set null.
 - Normalize status to lower-case canonical values.
 - Build program_id as a URL-safe slug from title+schedule (lowercase, hyphens).

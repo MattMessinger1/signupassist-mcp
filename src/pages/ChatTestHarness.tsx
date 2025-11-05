@@ -43,6 +43,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, XCircle, Activity } from "lucide-react";
 import { sendMessage, sendAction, overridePrompt } from "@/lib/orchestratorClient";
+import { parseIntent } from "@/lib/intentParser";
 import { supabase } from "@/integrations/supabase/client";
 import {
   DEFAULT_PROVIDER,
@@ -62,6 +63,8 @@ interface ConversationState {
   prerequisitesComplete?: boolean;
   availablePrograms?: any[];
   step?: string; // Current flow step
+  category?: string; // Activity category from intent
+  childAge?: number; // Child age from intent
 }
 
 // ============= Main Component =============
@@ -503,8 +506,30 @@ function ChatTestHarnessContent() {
     setIsProcessing(true);
 
     try {
-      // Call orchestrator instead of direct tools
-      const response = await sendMessage(userInput, sessionId, userLocation || undefined, getUserJwt());
+      // Parse intent from user message
+      const intent = parseIntent(userInput);
+      
+      console.log('[HARNESS] Parsed intent:', intent);
+      addLog("info", "system", "Intent parsed", intent);
+      
+      // Update state with extracted intent
+      if (intent.hasIntent) {
+        setState(prev => ({
+          ...prev,
+          category: intent.category || prev.category,
+          childAge: intent.childAge || prev.childAge,
+        }));
+      }
+      
+      // Call orchestrator with intent parameters
+      const response = await sendMessage(
+        userInput, 
+        sessionId, 
+        userLocation || undefined, 
+        getUserJwt(),
+        intent.category || state.category,
+        intent.childAge || state.childAge
+      );
       
       console.log('[HARNESS] Orchestrator response:', response);
       

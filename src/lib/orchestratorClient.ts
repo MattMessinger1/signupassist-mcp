@@ -37,19 +37,28 @@ export interface OrchestratorResponse {
  * @param message - User's text input
  * @param sessionId - Unique session identifier
  * @param userLocation - Optional GPS coordinates for location-based filtering
+ * @param category - Optional activity category (lessons, camps, races) for targeted search
+ * @param childAge - Optional child age for age-based filtering
  * @returns Promise resolving to orchestrator response with cards
  */
 export async function sendMessage(
   message: string,
   sessionId: string,
   userLocation?: {lat: number, lng: number},
-  userJwt?: string
+  userJwt?: string,
+  category?: string,
+  childAge?: number
 ): Promise<OrchestratorResponse> {
   if (!ORCHESTRATOR_BASE) {
     throw new Error('MCP Server URL not configured. Please set VITE_MCP_BASE_URL in your .env file.');
   }
   
-  console.log('[Orchestrator Client] Sending message:', message, { hasLocation: !!userLocation, hasJwt: !!userJwt });
+  console.log('[Orchestrator Client] Sending message:', message, { 
+    hasLocation: !!userLocation, 
+    hasJwt: !!userJwt,
+    category,
+    childAge
+  });
   
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -63,7 +72,14 @@ export async function sendMessage(
   const res = await fetch(`${ORCHESTRATOR_BASE}/orchestrator/chat`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ message, sessionId, userLocation, userJwt }),
+    body: JSON.stringify({ 
+      message, 
+      sessionId, 
+      userLocation, 
+      userJwt,
+      category,
+      childAge
+    }),
   });
 
   if (!res.ok) {
