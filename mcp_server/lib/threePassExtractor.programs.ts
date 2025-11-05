@@ -39,15 +39,16 @@ const ExtractionSchema = {
           id: { type: "number", description: "Numeric index from snippet." },
           title: { type: "string", description: "Program title or name." },
           description: { type: "string", description: "Full program description text." },
-          price: { type: "string", description: "Price as displayed in the source." },
+          price: { type: "string", description: "Price as displayed in the source (whitespace stripped)." },
           schedule: { type: "string", description: "Schedule dates or times." },
           age_range: { type: "string", description: "Age range for participants." },
           skill_level: { type: "string", description: "Skill level requirement." },
-          status: { type: "string", description: "Availability status." },
-          program_ref: { type: "string", description: "Kebab-case slug reference." },
-          org_ref: { type: "string", description: "Organization reference identifier." }
+          status: { type: "string", description: "Availability status (Open, Register, Waitlist, Full, Closed, Sold Out, Restricted, TBD, -, or empty)." },
+          program_ref: { type: "string", description: "Kebab-case slug reference (letters, digits, hyphens only)." },
+          org_ref: { type: "string", description: "Organization reference identifier." },
+          cta_href: { type: "string", description: "Absolute URL to register/details page if visible, else empty string." }
         },
-        required: ["id", "title", "description", "price", "schedule", "age_range", "skill_level", "status", "program_ref", "org_ref"],
+        required: ["id", "title", "description", "price", "schedule", "age_range", "skill_level", "status", "program_ref", "org_ref", "cta_href"],
         additionalProperties: false
       }
     }
@@ -75,9 +76,10 @@ const ValidationSchema = {
           skill_level: { type: "string", description: "Required skill level." },
           status: { type: "string", description: "Program availability." },
           description: { type: "string", description: "Program description." },
-          org_ref: { type: "string", description: "Organization reference." }
+          org_ref: { type: "string", description: "Organization reference." },
+          cta_href: { type: "string", description: "Absolute URL to register/details page." }
         },
-        required: ["title", "program_ref", "price", "schedule", "age_range", "skill_level", "status", "description", "org_ref"],
+        required: ["title", "program_ref", "price", "schedule", "age_range", "skill_level", "status", "description", "org_ref", "cta_href"],
         additionalProperties: false
       }
     }
@@ -224,25 +226,35 @@ export async function runThreePassExtractorForPrograms(
         try {
           const extracted = await callStrictExtraction({
             model: models.extractor,
-            system: `Extract SKI PROGRAM LISTINGS from HTML snippets. Each snippet is one program card/row.
-Return JSON with items array. Each item needs:
-- id (number from snippet index)
-- title (exact text)
-- description (full text or "")
-- price (as shown or "")
-- schedule (dates/times or "")
-- age_range (ages or "")
-- skill_level (level or "")
-- status (availability or "")
-- program_ref (kebab-case slug from title)
-- org_ref (echo the orgRef)
-Keep values as displayed, do not invent data.`,
+            system: `You extract REAL program listings from HTML snippets. Some snippets may be headers or containers—skip those entirely.
+
+For each real program, output fields with normalization:
+- title: exact program name text
+- description: full text or ""
+- price: as displayed (strip whitespace), or ""
+- schedule: dates/times as displayed, or ""
+- age_range: as displayed, or ""
+- skill_level: as displayed, or ""
+- status: one of ["Open","Register","Waitlist","Full","Closed","Sold Out","Restricted","TBD","-"] or ""
+- program_ref: kebab-case slug of title (letters/digits/hyphens)
+- org_ref: provided constant
+- cta_href: absolute URL to the program's register/details page if visible, else ""
+
+Rules:
+- If a snippet is a header row, column label (e.g., "Confirm"), or contains no program data, OUTPUT NOTHING for it.
+- Do NOT invent values. If a field is not present, use "".
+- Deduplicate by program_ref (keep the first).
+- Return strict JSON: {"items":[{...}, ...]} only.`,
             data: { orgRef, snippets: batch },
             schema: ExtractionSchema,
             maxTokens: 8000 // Phase 2: Increased for batch size 30
           });
           
-          const batchItems = extracted?.items ?? [];
+          // Phase 1 Part 4: Micro-validator to drop blanks and invalid entries
+          const batchItems = (extracted?.items ?? []).filter(p => 
+            p.title?.trim() && 
+            !p.title.match(/Confirm|Select|Choose|Register|Sign Up|Add to Cart/i)
+          );
           console.log(`[PACK-06 Pass 2] Batch ${i + 1}: Extracted ${batchItems.length} programs`);
           return batchItems;
           
@@ -268,13 +280,15 @@ Keep values as displayed, do not invent data.`,
     console.log('[PACK-06 Pass 3] Validating and normalizing');
     const normalized = await callStrictExtraction({
       model: models.validator,
-      system: `Normalize and validate program objects:
-- Ensure title exists; drop if empty
-- Ensure program_ref is valid kebab-case slug
-- Normalize price formats (e.g., "$175 per session" → "$175/session")
-- Trim whitespace
+      system: `Validate and deduplicate program objects:
+- Drop programs with empty or invalid title
+- Ensure program_ref is valid kebab-case slug (letters, digits, hyphens only)
+- Deduplicate by program_ref (keep the first occurrence)
 - Ensure org_ref matches '${orgRef}'
-Return validated programs array.`,
+- Ensure all required fields exist (use "" for missing optional fields)
+- Trim whitespace from all string fields
+- Ensure cta_href is present (empty string if not applicable)
+Return validated programs array in strict JSON format.`,
       data: { programs: allExtractedItems },
       schema: ValidationSchema,
       maxTokens: 10000 // Increased to handle all 49 programs safely
