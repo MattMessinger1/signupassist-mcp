@@ -4,12 +4,14 @@
  */
 
 import OpenAI from "openai";
+import pLimit from "p-limit";
 import { MODELS } from "./oai.js";
 import { safeJSONParse } from "./openaiHelpers.js";
 
 type Models = { vision: string; extractor: string; validator: string; };
 
-const BATCH_SIZE = 17; // Process 17 programs per batch (3 batches for 49 programs)
+// Phase 2 Optimization: Raise batch ceiling from 17 → 30 for faster extraction
+const BATCH_SIZE = parseInt(process.env.BATCH_SIZE || '30', 10);
 
 interface ExtractorConfig {
   models?: Models;
@@ -211,16 +213,18 @@ export async function runThreePassExtractorForPrograms(
     const batches = chunkArray(snippets, BATCH_SIZE);
     console.log(`[PACK-06 Pass 2] Processing ${batches.length} batches of ${BATCH_SIZE} programs`);
     
-    let allExtractedItems: any[] = [];
+    // Phase 1 Optimization: Parallelize batch processing with pLimit(3) for 2-3× speed-up
+    const limit = pLimit(3); // Safe concurrency for GPT-4.x models
+    const startTime = Date.now();
     
-    for (let i = 0; i < batches.length; i++) {
-      const batch = batches[i];
-      console.log(`[PACK-06 Pass 2] Batch ${i + 1}/${batches.length}: Extracting ${batch.length} programs`);
-      
-      try {
-        const extracted = await callStrictExtraction({
-          model: models.extractor,
-          system: `Extract SKI PROGRAM LISTINGS from HTML snippets. Each snippet is one program card/row.
+    const batchPromises = batches.map((batch, i) => 
+      limit(async () => {
+        console.log(`[PACK-06 Pass 2] Batch ${i + 1}/${batches.length}: Extracting ${batch.length} programs`);
+        
+        try {
+          const extracted = await callStrictExtraction({
+            model: models.extractor,
+            system: `Extract SKI PROGRAM LISTINGS from HTML snippets. Each snippet is one program card/row.
 Return JSON with items array. Each item needs:
 - id (number from snippet index)
 - title (exact text)
@@ -233,22 +237,27 @@ Return JSON with items array. Each item needs:
 - program_ref (kebab-case slug from title)
 - org_ref (echo the orgRef)
 Keep values as displayed, do not invent data.`,
-          data: { orgRef, snippets: batch },
-          schema: ExtractionSchema,
-          maxTokens: 5000 // Increased to ensure no truncation for 17 programs
-        });
-        
-        const batchItems = extracted?.items ?? [];
-        console.log(`[PACK-06 Pass 2] Batch ${i + 1}: Extracted ${batchItems.length} programs`);
-        allExtractedItems = allExtractedItems.concat(batchItems);
-        
-      } catch (err: any) {
-        console.error(`[PACK-06 Pass 2] Batch ${i + 1} failed:`, err.message);
-        // Continue with other batches
-      }
-    }
+            data: { orgRef, snippets: batch },
+            schema: ExtractionSchema,
+            maxTokens: 8000 // Phase 2: Increased for batch size 30
+          });
+          
+          const batchItems = extracted?.items ?? [];
+          console.log(`[PACK-06 Pass 2] Batch ${i + 1}: Extracted ${batchItems.length} programs`);
+          return batchItems;
+          
+        } catch (err: any) {
+          console.error(`[PACK-06 Pass 2] Batch ${i + 1} failed:`, err.message);
+          return []; // Return empty array on failure, continue with other batches
+        }
+      })
+    );
     
-    console.log(`[PACK-06 Pass 2] Total extracted: ${allExtractedItems.length} programs from ${snippets.length} snippets`);
+    const allBatchResults = await Promise.all(batchPromises);
+    const allExtractedItems = allBatchResults.flat();
+    
+    const elapsedMs = Date.now() - startTime;
+    console.log(`[PACK-06 Pass 2] Total extracted: ${allExtractedItems.length} programs from ${snippets.length} snippets in ${elapsedMs}ms`);
     
     if (allExtractedItems.length === 0) {
       console.warn('[PACK-06] No items extracted from any batch, returning empty array');

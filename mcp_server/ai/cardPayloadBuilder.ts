@@ -95,6 +95,42 @@ function filterByAge<T extends { age_range?: string }>(
 }
 
 /**
+ * Phase 1 Optimization: Soft ranking logic for intent-based sorting
+ * Programs matching category or age get higher rank scores
+ */
+function rankPrograms<T extends { age_range?: string; title?: string; description?: string }>(
+  programs: T[],
+  intent: { category?: string; childAge?: number }
+): Array<T & { _rank: number }> {
+  return programs.map(p => {
+    let rank = 0;
+    
+    // +2 points if category matches (check title/description for category keywords)
+    if (intent.category && intent.category !== 'all') {
+      const searchText = `${p.title || ''} ${p.description || ''}`.toLowerCase();
+      const categoryLower = intent.category.toLowerCase();
+      if (searchText.includes(categoryLower)) {
+        rank += 2;
+      }
+    }
+    
+    // +1 point if age matches
+    if (intent.childAge && p.age_range) {
+      const ageMatch = p.age_range.match(/(\d+)[\s-]+(\d+)/);
+      if (ageMatch) {
+        const minAge = parseInt(ageMatch[1], 10);
+        const maxAge = parseInt(ageMatch[2], 10);
+        if (intent.childAge >= minAge && intent.childAge <= maxAge) {
+          rank += 1;
+        }
+      }
+    }
+    
+    return { ...p, _rank: rank };
+  }).sort((a, b) => b._rank - a._rank);
+}
+
+/**
  * Build grouped cards payload from classified programs
  * 
  * Guidelines for rendering:
@@ -107,11 +143,18 @@ function filterByAge<T extends { age_range?: string }>(
 export function buildGroupedCardsPayload(
   groups: ProgramGroup[],
   maxCardsPerGroup: number = 4,
-  childAge?: number
+  childAge?: number,
+  category?: string
 ): GroupedCardsPayload {
   
+  // Phase 1 Optimization: Apply soft ranking before filtering
+  const rankedGroups = groups.map(group => ({
+    ...group,
+    programs: rankPrograms(group.programs, { category, childAge })
+  }));
+  
   // Quick Win #3: Apply age filtering before building cards
-  const filteredGroups = groups.map(group => ({
+  const filteredGroups = rankedGroups.map(group => ({
     ...group,
     programs: filterByAge(group.programs, childAge)
   }));
