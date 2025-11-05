@@ -652,18 +652,35 @@ Example follow-up (only when needed):
    * Reuses session_token if available, otherwise performs login
    */
   private async handleAction_credentials_submitted(ctx: SessionContext, payload: any, sessionId?: string): Promise<OrchestratorResponse> {
+    // Quick Win #5: credentials_submitted NO-OP - don't re-login if already successful
+    if (ctx.login_status === "success" && ctx.session_token) {
+      Logger.info("[orchestrator] credentials_submitted NO-OP: already logged in successfully");
+      return await this.handleAutoProgramDiscovery(ctx, { mandate_jws: ctx.mandate_jws }, sessionId);
+    }
+    
     ctx.provider_cookies = payload?.cookies ? Object.values(payload.cookies) : ctx.provider_cookies;
     ctx.credential_id = payload?.credential_id ?? ctx.credential_id;
 
     const mandate_jws = ctx.mandate_jws ?? process.env.DEV_MANDATE_JWS;
+    
+    // Quick Win #5: Idempotent login guard - check session validity before calling login
+    const targetOrg = ctx?.provider?.orgRef ?? "blackhawk-ski";
+    const now = Date.now();
+    const sessionTTL = ctx.session_ttl_ms || 300000; // Default 5 min
+    const validToken = 
+      ctx.session_token &&
+      ctx.org_ref === targetOrg &&
+      ctx.session_issued_at &&
+      now - ctx.session_issued_at < sessionTTL - 30000; // 30s buffer
 
-    if (ctx.session_token) {
-      Logger.info("[orchestrator] Reusing existing session_token; skipping login");
+    if (validToken) {
+      Logger.info("[orchestrator] Valid session_token exists; skipping login");
+      ctx.login_status = "success";
     } else {
       Logger.info("[orchestrator] Performing login to obtain session_token…");
       const loginRes = await this.callTool("scp.login", {
         credential_id: ctx.credential_id,
-        org_ref: ctx?.provider?.orgRef ?? "blackhawk-ski",
+        org_ref: targetOrg,
         user_jwt: ctx.user_jwt,
         mandate_jws,
         destination: process.env.SKICLUBPRO_LOGIN_GOTO_DEST || "/registration"
@@ -671,6 +688,10 @@ Example follow-up (only when needed):
 
       if (!loginRes?.session_token) throw new Error("Login did not return session_token");
       ctx.session_token = loginRes.session_token;
+      ctx.session_issued_at = Date.now();
+      ctx.session_ttl_ms = sessionTTL;
+      ctx.org_ref = targetOrg;
+      ctx.login_status = "success";
       ctx.loginCompleted = true;
     }
 
@@ -1820,8 +1841,10 @@ Example follow-up (only when needed):
       requiredScopes = [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.PAY];
     }
     
-    // Check if we have a mandate_jws in context
-    if (context.mandate_jws) {
+    // Quick Win #5: Mandate reuse - check if mandate is still valid
+    const mandateValid = context.mandate_jws && context.mandate_valid_until && Date.now() < context.mandate_valid_until;
+    
+    if (mandateValid) {
       // PACK-B: Verify it has required scopes
       try {
         const { verifyMandate } = await import('../lib/mandates.js');
@@ -1836,6 +1859,8 @@ Example follow-up (only when needed):
         }
         // Fall through to create new one with required scopes
       }
+    } else if (context.mandate_jws && !mandateValid) {
+      console.log('[Orchestrator] 🔄 Mandate expired, creating new one with scopes:', requiredScopes);
     } else {
       console.log('[Orchestrator] No mandate in context; creating one with scopes:', requiredScopes);
     }
@@ -1860,9 +1885,14 @@ Example follow-up (only when needed):
     const extraScopes = requiredScopes.filter(s => s !== MANDATE_SCOPES.AUTHENTICATE);
     const mandate_jws = await createMandate(userId, 'skiclubpro', extraScopes);
     
+    // Calculate mandate expiration (default 5 minutes)
+    const mandateTTL = 5 * 60 * 1000; // 5 minutes in ms
+    const mandate_valid_until = Date.now() + mandateTTL;
+    
     // Store in context
     await this.updateContext(sessionId, {
-      mandate_jws
+      mandate_jws,
+      mandate_valid_until
     } as any);
     
     console.log('[Orchestrator] ✅ Mandate created with scopes:', requiredScopes);
