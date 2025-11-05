@@ -10,7 +10,7 @@
  * falls back to regex-based parsing if AI fails.
  */
 
-import { parseIntentWithAI } from "./aiIntentParser.js";
+import { parseIntentWithAI, type ExtendedIntent } from "./aiIntentParser.js";
 import Logger from "../utils/logger.js";
 
 export interface ParsedIntent {
@@ -18,7 +18,14 @@ export interface ParsedIntent {
   category?: string;
   childAge?: number;
   hasIntent: boolean;
+  isNewUser?: boolean;          // NEW: Detected "I'm new" signals
+  userType?: 'first_time_parent' | 'returning_user' | 'unknown'; // NEW: User classification
+  rawEmail?: string;            // NEW: Raw email input
+  normalizedEmail?: string;     // NEW: Normalized email
 }
+
+// Re-export ExtendedIntent for backward compatibility
+export type { ExtendedIntent };
 
 // Cache to avoid duplicate API calls (TTL: 5 minutes)
 const intentCache = new Map<string, { result: ParsedIntent; expires: number }>();

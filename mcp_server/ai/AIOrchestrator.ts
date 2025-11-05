@@ -9,7 +9,8 @@ import { loadSessionFromDB, saveSessionToDB } from "../lib/sessionPersistence.js
 import { shouldReuseSession, getProgramCategory, TOOL_WORKFLOW, SESSION_REUSE_CONFIG } from "./toolGuidance.js";
 import { getMessageForState } from "./messageTemplates.js";
 import { buildGroupedCardsPayload, buildSimpleCardsFromGrouped } from "./cardPayloadBuilder.js";
-import { parseIntent, buildIntentQuestion, filterByAge, type ParsedIntent } from "../lib/intentParser.js";
+import { parseIntent, buildIntentQuestion, filterByAge, type ParsedIntent, type ExtendedIntent } from "../lib/intentParser.js";
+import { normalizeEmailWithAI, generatePersonalizedMessage } from "../lib/aiIntentParser.js";
 import { singleFlight } from "../utils/singleflight.js";
 
 /**
@@ -137,8 +138,10 @@ export enum FlowStep {
     // Quick Win #1: Intent capture fields
     category?: string;      // Activity category: "lessons", "camps", "races", "all"
     childAge?: number;      // Child's age for filtering programs
-    partialIntent?: ParsedIntent; // Stores incomplete intent across turns
+    partialIntent?: ExtendedIntent; // Stores incomplete intent across turns (includes new user signals)
     lastQuestionType?: 'age' | 'category' | 'provider';  // Context-aware parsing: tracks last missing intent question
+    userType?: 'first_time_parent' | 'returning_user' | 'unknown'; // NEW: User classification for personalized messaging
+    isNewUser?: boolean;    // NEW: Detected "I'm new" signals → trigger account creation flow proactively
     
     // Quick Win #5: Session reuse tracking
     org_ref?: string;       // Organization reference for session validation
