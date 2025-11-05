@@ -356,6 +356,17 @@ class AIOrchestrator {
             return this.formatResponse(emergencyQuestion, undefined, undefined, {});
           }
         }
+        
+        // Intent is complete! If we have partialIntent.provider but not context.provider,
+        // we need to do a provider search to get the full provider object
+        if (intent?.provider && !context.provider) {
+          Logger.info('[Intent Complete] Converting partial intent to provider object', { 
+            sessionId, 
+            partialProvider: intent.provider 
+          });
+          // Search for the provider to get full details (name, orgRef, etc.)
+          return await this.handleProviderSearch(intent.provider, sessionId);
+        }
       }
       
       const step = this.determineStep(userMessage, context);
@@ -2453,9 +2464,13 @@ Return JSON: {
    * @returns Step identifier string (provider_search, login, program_selection, etc.)
    */
   private determineStep(userMessage: string, context: Record<string, any>): string {
-    if (!context.provider) return "provider_search";
-    if (context.provider && !context.loginCompleted) return "login";
-    if (context.provider && !context.program) return "program_selection";
+    // When FEATURE_INTENT_UPFRONT is enabled, check partialIntent first
+    const FEATURE_INTENT_UPFRONT = process.env.FEATURE_INTENT_UPFRONT === "true";
+    const hasProvider = context.provider || (FEATURE_INTENT_UPFRONT && context.partialIntent?.provider);
+    
+    if (!hasProvider) return "provider_search";
+    if (hasProvider && !context.loginCompleted) return "login";
+    if (hasProvider && !context.program) return "program_selection";
     if (context.program && !context.prerequisites) return "prerequisite_check";
     if (context.program && context.prerequisites && !context.formAnswers) return "form_fill";
     if (context.formAnswers && !context.confirmed) return "confirmation";
