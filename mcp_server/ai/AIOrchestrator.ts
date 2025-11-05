@@ -102,6 +102,10 @@ export enum FlowStep {
     discovery_retry_count?: number;
     provider_cookies?: any[];
     
+    // Quick Win #1: Intent capture fields
+    category?: string;      // Activity category: "lessons", "camps", "races", "all"
+    childAge?: number;      // Child's age for filtering programs
+    
     // Smart Program Filtering Properties
     availablePrograms?: any[];
     displayedProgramIds?: string[];
@@ -171,6 +175,7 @@ interface CTASpec {
   label: string;
   action: string;
   variant?: "accent" | "outline";
+  payload?: any;  // Quick Win #5: Support payload for view_program actions
 }
 
 /**

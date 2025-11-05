@@ -30,6 +30,8 @@ export interface GroupedProgram {
   status: "open" | "waitlist" | "full" | "closed";
   cta_label: string;
   cta_href?: string;
+  program_ref?: string;  // Quick Win #5: Program reference for details lookup
+  org_ref?: string;      // Quick Win #5: Organization reference for details lookup
 }
 
 export interface ProgramGroup {

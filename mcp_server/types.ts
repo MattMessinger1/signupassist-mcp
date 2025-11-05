@@ -35,6 +35,10 @@ export interface SessionContext {
   mandate_jws?: string;
   mandate_id?: string;
   children?: Child[];
+  
+  // Quick Win #1: Intent capture fields
+  category?: string;      // Activity category: "lessons", "camps", "races", "all"
+  childAge?: number;      // Child's age for filtering programs
 }
 
 // ============================================================================
