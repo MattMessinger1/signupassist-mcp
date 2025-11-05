@@ -58,6 +58,7 @@ export function parseIntent(message: string): ParsedIntent {
   
   // Age detection
   const agePatterns = [
+    /^\s*(\d{1,2})\s*$/,  // Standalone number (e.g., "9", "10") - MUST be first for context-aware parsing
     /(\d+)[\s-]?year[\s-]?old/i,
     /age[s]?\s+(\d+)/i,
     /(\d+)\s+years?\s+old/i,

@@ -138,6 +138,7 @@ export enum FlowStep {
     category?: string;      // Activity category: "lessons", "camps", "races", "all"
     childAge?: number;      // Child's age for filtering programs
     partialIntent?: ParsedIntent; // Stores incomplete intent across turns
+    lastQuestionType?: 'age' | 'category' | 'provider';  // Context-aware parsing: tracks last missing intent question
     
     // Quick Win #5: Session reuse tracking
     org_ref?: string;       // Organization reference for session validation
@@ -461,27 +462,56 @@ class AIOrchestrator {
       return null;
     }
     
+    // Context-aware fallback: if last question was about age and user typed a standalone number
+    let contextAge: number | undefined;
+    if (context.lastQuestionType === 'age') {
+      const ageMatch = userMessage.match(/^\s*(\d{1,2})\s*$/);
+      if (ageMatch) {
+        const age = parseInt(ageMatch[1], 10);
+        if (age >= 3 && age <= 18) {
+          contextAge = age;
+          Logger.info(`[Context-Aware Age] ${sessionId}: Extracted age ${age} from standalone number`);
+        }
+      }
+    }
+    
     // Merge new intent with existing partial intent
     const newIntent = parseIntent(userMessage);
     const mergedIntent: ParsedIntent = {
-      hasIntent: newIntent.hasIntent || !!context.partialIntent?.hasIntent,
+      hasIntent: newIntent.hasIntent || !!context.partialIntent?.hasIntent || !!contextAge,
       provider: newIntent.provider || context.partialIntent?.provider,
       category: newIntent.category || context.partialIntent?.category,
-      childAge: newIntent.childAge || context.partialIntent?.childAge
+      childAge: contextAge || newIntent.childAge || context.partialIntent?.childAge
     };
     
-    // Store merged intent
-    await this.updateContext(sessionId, { 
+    // Store merged intent and clear lastQuestionType if we got an answer
+    const updates: any = { 
       partialIntent: mergedIntent,
       category: mergedIntent.category,
       childAge: mergedIntent.childAge
-    });
+    };
+    
+    if (contextAge || newIntent.hasIntent) {
+      updates.lastQuestionType = undefined; // Clear after successful extraction
+    }
+    
+    await this.updateContext(sessionId, updates);
     
     // Build question for missing parts
     const question = buildIntentQuestion(mergedIntent);
     
     if (question) {
-      Logger.info(`[Missing Intent] ${sessionId}`, { mergedIntent, question });
+      // Track what type of question we're asking for context-aware parsing
+      const questionLower = question.toLowerCase();
+      if (questionLower.includes("child's age")) {
+        await this.updateContext(sessionId, { lastQuestionType: 'age' });
+      } else if (questionLower.includes('type of activity') || questionLower.includes('category')) {
+        await this.updateContext(sessionId, { lastQuestionType: 'category' });
+      } else if (questionLower.includes('provider')) {
+        await this.updateContext(sessionId, { lastQuestionType: 'provider' });
+      }
+      
+      Logger.info(`[Missing Intent] ${sessionId}`, { mergedIntent, question, lastQuestionType: context.lastQuestionType });
       return question;
     }
     

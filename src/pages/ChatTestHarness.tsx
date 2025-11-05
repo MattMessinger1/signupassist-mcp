@@ -153,6 +153,7 @@ function ChatTestHarnessContent() {
     orgName: string;
     orgRef: string;
   } | null>(null);
+  const [lastQuestionType, setLastQuestionType] = useState<'age' | 'category' | 'provider' | null>(null);
 
   // Mount guard to prevent duplicate initialization
   const welcomeShownRef = useRef(false);
@@ -291,6 +292,15 @@ function ChatTestHarnessContent() {
       `Assistant message: ${text.substring(0, 100)}${text.length > 100 ? "..." : ""}`,
       componentType ? { componentType, hasData: !!componentData } : undefined
     );
+    
+    // Track when assistant asks about age for context-aware parsing
+    const lowerText = text.toLowerCase();
+    if (lowerText.includes("child's age") || lowerText.includes("childs age")) {
+      setLastQuestionType('age');
+      console.log('[HARNESS] Context: Last question was about AGE');
+    } else if (lowerText.includes('reset') || lowerText.includes('start over')) {
+      setLastQuestionType(null);
+    }
     
     // Tone validation (Design DNA compliance check)
     const toneContext = determineToneContext(text, stepName);
@@ -551,8 +561,27 @@ function ChatTestHarnessContent() {
       // Parse intent from user message
       const intent = parseIntent(userInput);
       
+      // Context-aware fallback: if last question was about age and user typed a standalone number
+      if (!intent.childAge && lastQuestionType === 'age') {
+        const ageMatch = userInput.match(/^\s*(\d{1,2})\s*$/);
+        if (ageMatch) {
+          const age = parseInt(ageMatch[1], 10);
+          if (age >= 3 && age <= 18) {
+            intent.childAge = age;
+            intent.hasIntent = true;
+            console.log('[HARNESS] Context-aware age extraction:', age);
+            addLog("success", "system", `Context-aware age extraction: ${age}`, { age });
+          }
+        }
+      }
+      
       console.log('[HARNESS] Parsed intent:', intent);
       addLog("info", "system", "Intent parsed", intent);
+      
+      // Clear lastQuestionType after processing response
+      if (intent.hasIntent) {
+        setLastQuestionType(null);
+      }
       
       // Update state with extracted intent
       if (intent.hasIntent) {
