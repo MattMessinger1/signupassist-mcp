@@ -183,7 +183,13 @@ export async function runThreePassExtractorForPrograms(
   
   // PASS 1: Candidate nodes (selector-first; screenshot kept for future vision boosts)
   console.log('[PACK-06 Pass 1] Finding candidate nodes via selectors');
-  const candidates = await page.$$(opts.selectors.container.join(","));
+  
+  // Quick Win #4: Use tbody selector to exclude header rows
+  const containerSelector = opts.selectors.container
+    .map(sel => sel.includes('table.views-table') ? 'table.views-table > tbody > tr' : sel)
+    .join(',');
+  
+  const candidates = await page.$$(containerSelector);
   const snippets: { id: number; html: string }[] = [];
   
   for (let i = 0; i < candidates.length; i++) {

@@ -7,6 +7,7 @@
  * - Message → Grouped Cards → CTA chips
  * - Max 4 cards per group on first render
  * - Hide groups with zero items
+ * - Filter by child age when provided (Quick Win #3)
  */
 
 import type { GroupedProgram, ProgramGroup } from '../lib/programGrouping.js';
@@ -18,6 +19,8 @@ export interface CardAction {
   payload?: {
     intent: string;
     program_id?: string;
+    program_ref?: string;
+    org_ref?: string;
     theme?: string;
   };
 }
@@ -28,6 +31,9 @@ export interface ProgramCard {
   caption: string;
   body: string;
   actions: CardAction[];
+  program_ref?: string;
+  org_ref?: string;
+  isHeader?: boolean;
 }
 
 export interface CardGroup {
@@ -53,6 +59,42 @@ export interface GroupedCardsPayload {
 }
 
 /**
+ * Filter programs by age range (Quick Win #3)
+ */
+function filterByAge<T extends { age_range?: string }>(
+  programs: T[],
+  childAge?: number
+): T[] {
+  if (!childAge) {
+    return programs; // No filtering if age not provided
+  }
+  
+  return programs.filter(program => {
+    if (!program.age_range) {
+      return true; // Include programs without age restriction
+    }
+    
+    // Parse age range like "Ages 7-10" or "7-10 years"
+    const ageMatch = program.age_range.match(/(\d+)[\s-]+(\d+)/);
+    if (ageMatch) {
+      const minAge = parseInt(ageMatch[1], 10);
+      const maxAge = parseInt(ageMatch[2], 10);
+      return childAge >= minAge && childAge <= maxAge;
+    }
+    
+    // Parse single age like "Age 8" or "8 years"
+    const singleMatch = program.age_range.match(/(\d+)/);
+    if (singleMatch) {
+      const targetAge = parseInt(singleMatch[1], 10);
+      return childAge === targetAge;
+    }
+    
+    // Include if can't parse (avoid false negatives)
+    return true;
+  });
+}
+
+/**
  * Build grouped cards payload from classified programs
  * 
  * Guidelines for rendering:
@@ -60,14 +102,22 @@ export interface GroupedCardsPayload {
  * - If a group has zero items, hide that group
  * - For long lists, let users tap "Show more …" to request the next page for that theme
  * - Keep the visual rhythm: assistant message → grouped cards → CTA chips
+ * - Filter by child age when provided (Quick Win #3)
  */
 export function buildGroupedCardsPayload(
   groups: ProgramGroup[],
-  maxCardsPerGroup: number = 4
+  maxCardsPerGroup: number = 4,
+  childAge?: number
 ): GroupedCardsPayload {
   
+  // Quick Win #3: Apply age filtering before building cards
+  const filteredGroups = groups.map(group => ({
+    ...group,
+    programs: filterByAge(group.programs, childAge)
+  }));
+  
   // Filter out empty groups and limit cards per group
-  const nonEmptyGroups = groups
+  const nonEmptyGroups = filteredGroups
     .filter(group => group.programs.length > 0)
     .map(group => ({
       title: group.theme,
@@ -77,7 +127,7 @@ export function buildGroupedCardsPayload(
     }));
 
   // Build CTA chips for groups with more than maxCardsPerGroup items
-  const ctaChips: CTAChip[] = groups
+  const ctaChips: CTAChip[] = filteredGroups
     .filter(group => group.programs.length > maxCardsPerGroup)
     .map(group => ({
       label: `Show more ${group.theme}`,
@@ -88,7 +138,7 @@ export function buildGroupedCardsPayload(
     }));
 
   // Add navigation chips for all non-empty themes
-  const themeChips: CTAChip[] = groups
+  const themeChips: CTAChip[] = filteredGroups
     .filter(group => group.programs.length > 0)
     .map(group => ({
       label: `Show ${group.theme}`,
@@ -110,6 +160,7 @@ export function buildGroupedCardsPayload(
 
 /**
  * Build a single program card from structured data
+ * Quick Win #5: Add program_ref and org_ref to card metadata
  */
 function buildProgramCard(program: GroupedProgram): ProgramCard {
   // Build subtitle: schedule • age_range (if present)
@@ -132,6 +183,7 @@ function buildProgramCard(program: GroupedProgram): ProgramCard {
   // Build actions: primary CTA + details button
   const actions: CardAction[] = [];
   
+  // Quick Win #5: Make Register a direct link to cta_href
   if (program.cta_href) {
     actions.push({
       type: "link",
@@ -140,12 +192,15 @@ function buildProgramCard(program: GroupedProgram): ProgramCard {
     });
   }
   
+  // Quick Win #5: Wire Details button with program_ref and org_ref
   actions.push({
     type: "postback",
     label: "Details",
     payload: {
-      intent: "program_details",
-      program_id: program.program_id
+      intent: "view_program",
+      program_id: program.program_id,
+      program_ref: program.program_ref || program.program_id,
+      org_ref: program.org_ref
     }
   });
 
@@ -154,7 +209,10 @@ function buildProgramCard(program: GroupedProgram): ProgramCard {
     subtitle,
     caption,
     body: program.brief || '',
-    actions
+    actions,
+    program_ref: program.program_ref || program.program_id,
+    org_ref: program.org_ref,
+    isHeader: false
   };
 }
 

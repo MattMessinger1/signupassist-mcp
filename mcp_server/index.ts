@@ -492,7 +492,7 @@ class SignupAssistMCPServer {
         req.on('end', async () => {
           try {
             const parsedBody = JSON.parse(body);
-            const { message, sessionId, action, payload, userLocation, userJwt } = parsedBody;
+            const { message, sessionId, action, payload, userLocation, userJwt, category, childAge } = parsedBody;
             
             // Capture mandate from headers or body (with dev bypass)
             const mandate_jws = (req.headers['x-mandate-jws'] as string) 
@@ -602,8 +602,19 @@ class SignupAssistMCPServer {
                 throw actionError; // Re-throw to outer catch
               }
             } else if (message) {
+              // Quick Win #1: Capture intent parameters (category, childAge) from request
+              if (category || childAge) {
+                console.log(`[Orchestrator] Updating context with intent:`, { category, childAge });
+                await this.orchestrator.updateContext(sessionId, { category, childAge } as any);
+              }
+              
               // Text message
-              console.log(`[Orchestrator] generateResponse: ${message}`, { hasLocation: !!userLocation, hasJwt: !!userJwt });
+              console.log(`[Orchestrator] generateResponse: ${message}`, { 
+                hasLocation: !!userLocation, 
+                hasJwt: !!userJwt,
+                category,
+                childAge 
+              });
               result = await this.orchestrator.generateResponse(message, sessionId, userLocation, userJwt, { 
                 mandate_jws: finalMandateJws, 
                 mandate_id 

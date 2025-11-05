@@ -387,6 +387,21 @@ function ChatTestHarnessContent() {
       return;
     }
     
+    // Quick Win #5: Handle view_program action
+    if (action === "postback" && payload?.intent === "view_program") {
+      console.log('[HARNESS] View program details:', payload);
+      addLog("info", "system", "Opening program details", payload);
+      
+      // TODO: Implement modal with scp.program_field_probe
+      toast({
+        title: "Program Details",
+        description: `Viewing details for: ${payload.program_ref || payload.program_id}`,
+      });
+      
+      setIsProcessing(false);
+      return;
+    }
+    
     // Handle special actions that need UI dialogs
     if (action === "show_login_dialog" || action === "connect_account" || action === "show_credentials_card") {
       console.log('[HARNESS] Opening login dialog with payload:', payload);

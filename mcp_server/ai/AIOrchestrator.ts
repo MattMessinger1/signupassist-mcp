@@ -612,9 +612,41 @@ class AIOrchestrator {
 
   /**
    * Present programs as grouped cards
+   * Quick Win #3: Filter by child age before building cards
    */
   private async presentProgramsAsCards(ctx: SessionContext, themed: Record<string, any[]>): Promise<OrchestratorResponse> {
-    const groups = Object.entries(themed).filter(([_, arr]) => (arr?.length || 0) > 0);
+    // Quick Win #3: Apply age filtering if childAge is in context
+    const filterByAge = (programs: any[], childAge?: number) => {
+      if (!childAge) return programs;
+      
+      return programs.filter(p => {
+        if (!p.age_range) return true; // Include if no age restriction
+        
+        const ageMatch = p.age_range.match(/(\d+)[\s-]+(\d+)/);
+        if (ageMatch) {
+          const minAge = parseInt(ageMatch[1], 10);
+          const maxAge = parseInt(ageMatch[2], 10);
+          return childAge >= minAge && childAge <= maxAge;
+        }
+        
+        const singleMatch = p.age_range.match(/(\d+)/);
+        if (singleMatch) {
+          return childAge === parseInt(singleMatch[1], 10);
+        }
+        
+        return true; // Include if can't parse
+      });
+    };
+    
+    // Filter programs by age if childAge is present
+    const filteredThemed = Object.fromEntries(
+      Object.entries(themed).map(([theme, progs]) => [
+        theme,
+        filterByAge(progs, ctx.childAge)
+      ])
+    );
+    
+    const groups = Object.entries(filteredThemed).filter(([_, arr]) => (arr?.length || 0) > 0);
     
     if (!groups.length) {
       return {
@@ -632,15 +664,17 @@ class AIOrchestrator {
         subtitle: [p.schedule, p.price].filter(Boolean).join(" • "),
         metadata: { programRef: p.program_ref || p.id, orgRef: p.org_ref, theme },
         buttons: [
-          { label: "Details", action: "view_program", payload: { program_ref: p.program_ref || p.id } },
-          { label: "Register", action: "start_registration", variant: "accent" as const, payload: { program_ref: p.program_ref || p.id } }
+          { label: "Details", action: "view_program", payload: { program_ref: p.program_ref || p.id, org_ref: p.org_ref } },
+          { label: "Register", action: "start_registration", variant: "accent" as const, payload: { program_ref: p.program_ref || p.id, org_ref: p.org_ref } }
         ]
       }));
       return [header, ...set];
     });
 
     return {
-      message: "✅ I sorted the programs by theme so it's easy to browse.",
+      message: ctx.childAge 
+        ? `✅ I found programs for age ${ctx.childAge}, sorted by theme.`
+        : "✅ I sorted the programs by theme so it's easy to browse.",
       cards,
       uiPayload: { type: "cards" },
       contextUpdates: {}
