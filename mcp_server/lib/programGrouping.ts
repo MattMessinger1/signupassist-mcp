@@ -23,15 +23,17 @@ export interface GroupedProgram {
   program_id: string;
   title: string;
   brief: string;
+  description?: string;  // Added for Prompt D body text fallback
   age_range: string;
   schedule: string;
   season?: string;
   price: string;
-  status: "open" | "waitlist" | "full" | "closed";
+  status: string;  // Prompt C: "Open"|"Register"|"Waitlist"|"Full"|"Closed"|"Sold Out"|"Restricted"|"TBD"|"-"|""
   cta_label: string;
-  cta_href?: string;
+  cta_href?: string;  // Prompt C: absolute URL to register/details page
   program_ref?: string;  // Quick Win #5: Program reference for details lookup
   org_ref?: string;      // Quick Win #5: Organization reference for details lookup
+  _rank?: number;  // Phase 1: Ranking score for soft intent filtering
 }
 
 export interface ProgramGroup {
