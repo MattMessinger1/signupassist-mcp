@@ -497,12 +497,23 @@ class AIOrchestrator {
     
     // Merge new intent with existing partial intent
     const newIntent = parseIntent(userMessage);
+    
+    Logger.info('[Intent Parsing Debug]', {
+      sessionId,
+      userMessage,
+      contextAge,
+      newIntent,
+      existingPartialIntent: context.partialIntent
+    });
+    
     const mergedIntent: ParsedIntent = {
       hasIntent: newIntent.hasIntent || !!context.partialIntent?.hasIntent || !!contextAge,
       provider: newIntent.provider || context.partialIntent?.provider,
       category: newIntent.category || context.partialIntent?.category,
       childAge: contextAge || newIntent.childAge || context.partialIntent?.childAge
     };
+    
+    Logger.info('[Intent Merged]', { sessionId, mergedIntent });
     
     // Store merged intent and clear lastQuestionType if we got an answer
     const updates: any = { 

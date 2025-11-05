@@ -78,6 +78,9 @@ export function parseIntent(message: string): ParsedIntent {
     }
   }
   
+  console.log('[parseIntent] Input:', message);
+  console.log('[parseIntent] Output:', intent);
+  
   return intent;
 }
 
