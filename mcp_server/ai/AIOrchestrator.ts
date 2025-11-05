@@ -9,7 +9,7 @@ import { loadSessionFromDB, saveSessionToDB } from "../lib/sessionPersistence.js
 import { shouldReuseSession, getProgramCategory, TOOL_WORKFLOW, SESSION_REUSE_CONFIG } from "./toolGuidance.js";
 import { getMessageForState } from "./messageTemplates.js";
 import { buildGroupedCardsPayload, buildSimpleCardsFromGrouped } from "./cardPayloadBuilder.js";
-import { parseIntent, buildIntentQuestion, filterByAge, type ParsedIntent } from "../../src/lib/intentParser.js";
+import { parseIntent, buildIntentQuestion, filterByAge, type ParsedIntent } from "../lib/intentParser.js";
 
 /**
  * Prompt version tracking for tone changes
