@@ -387,16 +387,43 @@ function ChatTestHarnessContent() {
       return;
     }
     
-    // Quick Win #5: Handle view_program action
+    // Quick Win #5: Handle view_program action - call scp.program_field_probe
     if (action === "postback" && payload?.intent === "view_program") {
       console.log('[HARNESS] View program details:', payload);
-      addLog("info", "system", "Opening program details", payload);
+      addLog("info", "system", "Fetching program details...", payload);
       
-      // TODO: Implement modal with scp.program_field_probe
-      toast({
-        title: "Program Details",
-        description: `Viewing details for: ${payload.program_ref || payload.program_id}`,
-      });
+      try {
+        const response = await sendAction(
+          "view_program",
+          {
+            program_ref: payload.program_ref,
+            org_ref: payload.org_ref
+          },
+          sessionId,
+          getUserJwt()
+        );
+        
+        // Add assistant response with program details
+        if (response.message) {
+          addAssistantMessage(
+            response.message,
+            response.cards ? "cards" : undefined,
+            { cards: response.cards, cta: response.cta }
+          );
+        }
+        
+        // Log any cards returned (form fields, etc.)
+        if (response.cards && response.cards.length > 0) {
+          addLog("info", "system", `Loaded ${response.cards.length} detail cards`);
+        }
+      } catch (error: any) {
+        console.error('[HARNESS] Failed to load program details:', error);
+        toast({
+          title: "Error",
+          description: error.message || "Failed to load program details",
+          variant: "destructive"
+        });
+      }
       
       setIsProcessing(false);
       return;

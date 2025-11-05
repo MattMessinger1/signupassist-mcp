@@ -577,10 +577,11 @@ class AIOrchestrator {
   private async handleAutoProgramDiscovery(ctx: SessionContext, extras?: { mandate_jws?: string }, sessionId?: string): Promise<OrchestratorResponse> {
     if (!ctx?.provider?.orgRef) throw new Error("Provider context missing for auto-discovery");
     
+    // Quick Win #2: Use category from context if provided
     const args = {
       org_ref: ctx.provider.orgRef,
       session_token: ctx.session_token,            // <<< critical
-      category: "all",
+      category: ctx.category || "all",              // <<< Use intent category
       user_jwt: ctx.user_jwt,
       mandate_jws: extras?.mandate_jws ?? process.env.DEV_MANDATE_JWS,
       credential_id: ctx.credential_id             // fallback if token missing
@@ -1200,6 +1201,61 @@ class AIOrchestrator {
               errorMsg,
               [],
               [{ label: "Try Again", action: "retry_program_discovery", variant: "accent" }],
+              {}
+            );
+          }
+
+        case "view_program":
+          // Quick Win #5: Handle view_program action - call scp.program_field_probe
+          const { program_ref: progRef, org_ref: orgRef } = payload || {};
+          
+          if (!progRef || !orgRef) {
+            return this.formatResponse(
+              "I'm not sure which program you want to view. Can you try again?",
+              undefined,
+              undefined,
+              {}
+            );
+          }
+          
+          Logger.info(`[view_program] Fetching details for program_ref=${progRef}, org_ref=${orgRef}`);
+          
+          try {
+            // Call scp.program_field_probe to get program details
+            const result = await this.callTool("scp.program_field_probe", {
+              org_ref: orgRef,
+              program_ref: progRef,
+              session_token: context.session_token,
+              cookies: context.provider_cookies || [],
+              credential_id: context.credential_id
+            }, sessionId);
+            
+            if (result && result.fields) {
+              // Build a description from the extracted fields
+              const fieldDescriptions = result.fields.map((f: any) => 
+                `**${f.label || f.name}**: ${f.type || 'text'}`
+              ).join('\n');
+              
+              return this.formatResponse(
+                `📋 **Program Registration Form**\n\nRequired fields:\n${fieldDescriptions}`,
+                undefined,
+                [{ label: "Start Registration", action: "select_program", variant: "accent", payload: { program_ref: progRef, org_ref: orgRef } }],
+                {}
+              );
+            } else {
+              return this.formatResponse(
+                "I found the program but couldn't extract its registration details. Would you like to try again?",
+                undefined,
+                [{ label: "Try Again", action: "view_program", variant: "accent", payload: { program_ref: progRef, org_ref: orgRef } }],
+                {}
+              );
+            }
+          } catch (error: any) {
+            Logger.error(`[view_program] Failed to probe program fields:`, error);
+            return this.formatResponse(
+              `⚠️ I couldn't load the program details. ${error.message || 'Please try again.'}`,
+              undefined,
+              [{ label: "Retry", action: "view_program", variant: "accent", payload: { program_ref: progRef, org_ref: orgRef } }],
               {}
             );
           }
