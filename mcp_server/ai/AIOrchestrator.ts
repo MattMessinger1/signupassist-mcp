@@ -336,6 +336,26 @@ class AIOrchestrator {
           Logger.info(`[Intent Question] ${sessionId}: ${intentQuestion}`);
           return this.formatResponse(intentQuestion, undefined, undefined, {});
         }
+        
+        // SAFETY CHECK: Verify intent is actually complete before proceeding
+        const context = await this.getContext(sessionId);
+        const intent = context.partialIntent;
+        
+        if (!intent?.provider || !intent?.category || !intent?.childAge) {
+          Logger.warn('[Intent Incomplete] checkAndRequestMissingIntent returned null but intent incomplete', { 
+            sessionId, 
+            intent,
+            missing: {
+              provider: !intent?.provider,
+              category: !intent?.category,
+              childAge: !intent?.childAge
+            }
+          });
+          const emergencyQuestion = buildIntentQuestion(intent || { hasIntent: false });
+          if (emergencyQuestion) {
+            return this.formatResponse(emergencyQuestion, undefined, undefined, {});
+          }
+        }
       }
       
       const step = this.determineStep(userMessage, context);
@@ -513,6 +533,22 @@ class AIOrchestrator {
       
       Logger.info(`[Missing Intent] ${sessionId}`, { mergedIntent, question, lastQuestionType: context.lastQuestionType });
       return question;
+    }
+    
+    // SAFETY CHECK: Verify all required fields are actually present before returning null
+    if (!mergedIntent.provider || !mergedIntent.category || !mergedIntent.childAge) {
+      Logger.warn('[Intent Bug] buildIntentQuestion returned null but fields still missing', { 
+        sessionId, 
+        mergedIntent,
+        missing: {
+          provider: !mergedIntent.provider,
+          category: !mergedIntent.category,
+          childAge: !mergedIntent.childAge
+        }
+      });
+      // Build emergency question
+      const emergencyQuestion = buildIntentQuestion(mergedIntent) || "Could you tell me which provider you'd like to use?";
+      return emergencyQuestion;
     }
     
     // Intent is complete! Log and proceed
