@@ -39,6 +39,7 @@ export interface SessionContext {
   // Quick Win #1: Intent capture fields
   category?: string;      // Activity category: "lessons", "camps", "races", "all"
   childAge?: number;      // Child's age for filtering programs
+  partialIntent?: { provider?: string; category?: string; childAge?: number; hasIntent: boolean }; // Stores incomplete intent across turns
   
   // Quick Win #5: Session reuse tracking
   org_ref?: string;       // Organization reference for session validation

@@ -9,6 +9,7 @@ import { loadSessionFromDB, saveSessionToDB } from "../lib/sessionPersistence.js
 import { shouldReuseSession, getProgramCategory, TOOL_WORKFLOW, SESSION_REUSE_CONFIG } from "./toolGuidance.js";
 import { getMessageForState } from "./messageTemplates.js";
 import { buildGroupedCardsPayload, buildSimpleCardsFromGrouped } from "./cardPayloadBuilder.js";
+import { parseIntent, buildIntentQuestion, filterByAge, type ParsedIntent } from "../../src/lib/intentParser.js";
 
 /**
  * Prompt version tracking for tone changes
@@ -24,6 +25,12 @@ export const PROMPT_VERSION = "v1.0.0";
 const PRODUCTION_SYSTEM_PROMPT = `
 You are SignupAssist — a friendly, efficient helper that automates program discovery for families.
 You orchestrate tools. Follow these rules strictly.
+
+UPFRONT INTENT CAPTURE:
+- On first user message (when context is empty), parse for provider, category (lessons/camps/races), and child age.
+- If any are missing, ask ONE combined question for all missing pieces using the checkAndRequestMissingIntent method.
+- Do not proceed to provider search until all intent is captured.
+- Once complete, immediately proceed to auto-discovery with the full intent.
 
 SESSION REUSE (do NOT relogin unnecessarily):
 - If context.session_token exists, context.org_ref matches the target provider,
@@ -127,6 +134,7 @@ export enum FlowStep {
     // Quick Win #1: Intent capture fields
     category?: string;      // Activity category: "lessons", "camps", "races", "all"
     childAge?: number;      // Child's age for filtering programs
+    partialIntent?: ParsedIntent; // Stores incomplete intent across turns
     
     // Quick Win #5: Session reuse tracking
     org_ref?: string;       // Organization reference for session validation
@@ -313,6 +321,19 @@ class AIOrchestrator {
           mandate_id: mandateInfo.mandate_id
         } as any);
       }
+      
+      // Feature flag: Upfront intent capture
+      const FEATURE_INTENT_UPFRONT = process.env.FEATURE_INTENT_UPFRONT === "true";
+      
+      // Check for missing intent on first turn (before provider search)
+      if (FEATURE_INTENT_UPFRONT) {
+        const intentQuestion = await this.checkAndRequestMissingIntent(userMessage, sessionId);
+        if (intentQuestion) {
+          Logger.info(`[Intent Question] ${sessionId}: ${intentQuestion}`);
+          return this.formatResponse(intentQuestion, undefined, undefined, {});
+        }
+      }
+      
       const step = this.determineStep(userMessage, context);
       
       // Audit logging for responsible delegate trail
@@ -418,6 +439,52 @@ class AIOrchestrator {
     // PHASE 2: Persist to Supabase
     const userId = extractUserIdFromJWT(this.sessions[sessionId]?.user_jwt);
     await saveSessionToDB(sessionId, this.sessions[sessionId], userId || undefined);
+  }
+
+  /**
+   * Check and request missing intent upfront
+   * Parses user message for provider, category, and child age
+   * Returns a question if any required intent is missing
+   * 
+   * @param userMessage - User's input text
+   * @param sessionId - Session identifier
+   * @returns Question text if intent incomplete, null if complete
+   */
+  async checkAndRequestMissingIntent(userMessage: string, sessionId: string): Promise<string | null> {
+    const context = await this.getContext(sessionId);
+    
+    // Skip if we've already confirmed a provider or we're past initial discovery
+    if (context.provider?.orgRef || context.loginCompleted || context.step && context.step > FlowStep.PROVIDER_SEARCH) {
+      return null;
+    }
+    
+    // Merge new intent with existing partial intent
+    const newIntent = parseIntent(userMessage);
+    const mergedIntent: ParsedIntent = {
+      hasIntent: newIntent.hasIntent || !!context.partialIntent?.hasIntent,
+      provider: newIntent.provider || context.partialIntent?.provider,
+      category: newIntent.category || context.partialIntent?.category,
+      childAge: newIntent.childAge || context.partialIntent?.childAge
+    };
+    
+    // Store merged intent
+    await this.updateContext(sessionId, { 
+      partialIntent: mergedIntent,
+      category: mergedIntent.category,
+      childAge: mergedIntent.childAge
+    });
+    
+    // Build question for missing parts
+    const question = buildIntentQuestion(mergedIntent);
+    
+    if (question) {
+      Logger.info(`[Missing Intent] ${sessionId}`, { mergedIntent, question });
+      return question;
+    }
+    
+    // Intent is complete! Log and proceed
+    Logger.info(`[Intent Complete] ${sessionId}`, { mergedIntent });
+    return null;
   }
 
   /**
