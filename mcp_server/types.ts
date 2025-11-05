@@ -39,6 +39,13 @@ export interface SessionContext {
   // Quick Win #1: Intent capture fields
   category?: string;      // Activity category: "lessons", "camps", "races", "all"
   childAge?: number;      // Child's age for filtering programs
+  
+  // Quick Win #5: Session reuse tracking
+  org_ref?: string;       // Organization reference for session validation
+  session_issued_at?: number;  // Timestamp when session was created
+  session_ttl_ms?: number;     // Session time-to-live in milliseconds
+  login_status?: string;       // Login status tracking
+  mandate_valid_until?: number; // Mandate expiration timestamp
 }
 
 // ============================================================================

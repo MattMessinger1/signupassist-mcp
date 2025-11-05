@@ -4,7 +4,7 @@
  */
 
 import OpenAI from "openai";
-import pLimit from "p-limit";
+import { default as pLimit } from "p-limit";
 import { MODELS } from "./oai.js";
 import { safeJSONParse } from "./openaiHelpers.js";
 

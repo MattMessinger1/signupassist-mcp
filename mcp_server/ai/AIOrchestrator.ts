@@ -449,11 +449,13 @@ Example follow-up (only when needed):
 "Great—what's your child's age, and which activity/provider do you have in mind?"`;
 
     try {
-      const response = await this.callOpenAI([
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage }
-      ], {
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const response = await openai.chat.completions.create({
         model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage }
+        ],
         temperature: 0.3,
         max_tokens: 200
       });
