@@ -6,8 +6,12 @@
  * - Activity category (lessons, camps, race team, etc.)
  * - Child age
  * 
- * This enables targeted scraping and age-based filtering.
+ * Uses AI-powered parsing with OpenAI for better natural language handling,
+ * falls back to regex-based parsing if AI fails.
  */
+
+import { parseIntentWithAI } from "./aiIntentParser.js";
+import Logger from "../utils/logger.js";
 
 export interface ParsedIntent {
   provider?: string;
@@ -16,12 +20,60 @@ export interface ParsedIntent {
   hasIntent: boolean;
 }
 
+// Cache to avoid duplicate API calls (TTL: 5 minutes)
+const intentCache = new Map<string, { result: ParsedIntent; expires: number }>();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 /**
- * Parse user message for provider, activity, and child age
+ * Main intent parser - tries AI first, falls back to regex
  * @param message - User's natural language input
  * @returns Structured intent object
  */
-export function parseIntent(message: string): ParsedIntent {
+export async function parseIntent(message: string): Promise<ParsedIntent> {
+  // Check cache first
+  const cacheKey = message.toLowerCase().trim();
+  const cached = intentCache.get(cacheKey);
+  
+  if (cached && Date.now() < cached.expires) {
+    Logger.info('[Intent Cache] Hit for:', message);
+    return cached.result;
+  }
+
+  // Try AI parser first
+  try {
+    const result = await parseIntentWithAI(message);
+    
+    // Cache successful result
+    intentCache.set(cacheKey, {
+      result,
+      expires: Date.now() + CACHE_TTL
+    });
+    
+    return result;
+    
+  } catch (error: any) {
+    Logger.warn('[Intent Parser] AI failed, falling back to regex:', error.message);
+    
+    // Fallback to regex parser
+    const regexResult = parseIntentRegex(message);
+    
+    // Cache regex result too (avoid repeated fallbacks)
+    intentCache.set(cacheKey, {
+      result: regexResult,
+      expires: Date.now() + CACHE_TTL
+    });
+    
+    return regexResult;
+  }
+}
+
+/**
+ * Regex-based intent parser (fallback)
+ * Kept for fallback when AI parser fails or API is unavailable
+ * @param message - User's natural language input
+ * @returns Structured intent object
+ */
+export function parseIntentRegex(message: string): ParsedIntent {
   const lowerMessage = message.toLowerCase();
   const intent: ParsedIntent = { hasIntent: false };
   
@@ -78,8 +130,8 @@ export function parseIntent(message: string): ParsedIntent {
     }
   }
   
-  console.log('[parseIntent] Input:', message);
-  console.log('[parseIntent] Output:', intent);
+  console.log('[parseIntentRegex] Input:', message);
+  console.log('[parseIntentRegex] Output:', intent);
   
   return intent;
 }

@@ -507,7 +507,7 @@ class AIOrchestrator {
     }
     
     // Merge new intent with existing partial intent
-    const newIntent = parseIntent(userMessage);
+    const newIntent = await parseIntent(userMessage);
     
     Logger.info('[Intent Parsing Debug]', {
       sessionId,
