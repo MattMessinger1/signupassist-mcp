@@ -2,8 +2,8 @@
 FROM node:20-alpine AS builder
 
 # Force rebuild toggle — updated automatically by Lovable or CLI
-# Last rebuild: 2025-11-04 20:25:00 UTC - Increased token limits to 5K/10K
-ARG BUILD_TAG=20251104-202500
+# Last rebuild: 2025-11-05 20:35:00 UTC - Force clean build to fix p-limit import and SessionContext types
+ARG BUILD_TAG=20251105-203500
 LABEL build-tag=$BUILD_TAG
 
 WORKDIR /app
