@@ -44,7 +44,7 @@ export interface SessionContext {
   org_ref?: string;       // Organization reference for session validation
   session_issued_at?: number;  // Timestamp when session was created
   session_ttl_ms?: number;     // Session time-to-live in milliseconds
-  login_status?: string;       // Login status tracking
+  login_status?: "pending" | "success" | "failed";  // Login status tracking (strict type)
   mandate_valid_until?: number; // Mandate expiration timestamp
 }
 

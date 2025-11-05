@@ -128,6 +128,9 @@ export enum FlowStep {
     category?: string;      // Activity category: "lessons", "camps", "races", "all"
     childAge?: number;      // Child's age for filtering programs
     
+    // Quick Win #5: Session reuse tracking
+    org_ref?: string;       // Organization reference for session validation
+    
     // Smart Program Filtering Properties
     availablePrograms?: any[];
     displayedProgramIds?: string[];
