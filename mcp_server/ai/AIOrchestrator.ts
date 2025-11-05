@@ -396,6 +396,86 @@ class AIOrchestrator {
   }
 
   /**
+   * Parse user intent (provider + activity + age) using AI
+   * Implements Prompt A: First-turn Intent extraction
+   * 
+   * @param userMessage - Raw user input
+   * @returns Structured intent or follow-up question
+   */
+  async parseUserIntent(userMessage: string): Promise<{
+    intent?: { provider: string; category: string; age: number };
+    followUpQuestion?: string;
+    needsMoreInfo: boolean;
+  }> {
+    const systemPrompt = `You are a setup assistant. Parse the user's free text for three fields:
+- provider (e.g., "Blackhawk Ski Club")
+- activity/category (e.g., "ski lessons", "race team", "math tutoring")
+- child's age or age range
+
+If any of the three are missing, ask ONE concise follow-up that requests all missing items in a single question.
+Do NOT ask if all three are already present. Never ask more than one follow-up.
+
+When all are known, write a compact JSON intent:
+{"provider":"...", "category":"lessons|teams|other|unknown", "age": 8}
+
+Category mapping:
+- "lesson", "class", "clinic", "private" → "lessons"
+- "team", "race", "league" → "teams"
+- anything else → "other"
+
+Example follow-up (only when needed):
+"Great—what's your child's age, and which activity/provider do you have in mind?"`;
+
+    try {
+      const response = await this.callOpenAI([
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage }
+      ], {
+        model: "gpt-4o-mini",
+        temperature: 0.3,
+        max_tokens: 200
+      });
+
+      const content = response.choices[0]?.message?.content?.trim() || "";
+      
+      // Try to parse as JSON first (complete intent)
+      const jsonMatch = content.match(/\{[^}]+\}/);
+      if (jsonMatch) {
+        try {
+          const parsed = JSON.parse(jsonMatch[0]);
+          if (parsed.provider && parsed.category && parsed.age) {
+            Logger.info(`[Intent Parsed] provider="${parsed.provider}" category="${parsed.category}" age=${parsed.age}`);
+            return {
+              intent: {
+                provider: parsed.provider,
+                category: parsed.category,
+                age: typeof parsed.age === 'number' ? parsed.age : parseInt(parsed.age, 10)
+              },
+              needsMoreInfo: false
+            };
+          }
+        } catch (e) {
+          // Not valid JSON, treat as follow-up question
+        }
+      }
+
+      // Otherwise, it's a follow-up question
+      Logger.info(`[Intent Incomplete] AI asks: "${content}"`);
+      return {
+        followUpQuestion: content,
+        needsMoreInfo: true
+      };
+    } catch (error) {
+      Logger.error("parseUserIntent failed:", error);
+      // Fallback to generic follow-up
+      return {
+        followUpQuestion: "Could you tell me which provider, what type of activity, and your child's age?",
+        needsMoreInfo: true
+      };
+    }
+  }
+
+  /**
    * Search for programs using Three-Pass Extractor
    * Calls scp.find_programs and formats results as cards
    * Now uses message templates for consistent parent-friendly communication
