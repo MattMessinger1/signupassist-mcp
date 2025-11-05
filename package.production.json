@@ -61,6 +61,7 @@
     "lucide-react": "^0.544.0",
     "next-themes": "^0.3.0",
     "openai": "^6.4.0",
+    "p-limit": "^7.2.0",
     "playwright-core": "^1.55.1",
     "react": "^18.2.0",
     "react-day-picker": "^9.11.1",

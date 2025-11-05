@@ -2,8 +2,8 @@
 FROM node:20-alpine AS builder
 
 # Force rebuild toggle — updated automatically by Lovable or CLI
-# Last rebuild: 2025-11-05 20:35:00 UTC - Force clean build to fix p-limit import and SessionContext types
-ARG BUILD_TAG=20251105-203500
+# Last rebuild: 2025-11-05 20:37:00 UTC - Added p-limit to package.production.json
+ARG BUILD_TAG=20251105-203700
 LABEL build-tag=$BUILD_TAG
 
 WORKDIR /app
