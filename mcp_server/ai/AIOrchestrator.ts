@@ -10,6 +10,7 @@ import { shouldReuseSession, getProgramCategory, TOOL_WORKFLOW, SESSION_REUSE_CO
 import { getMessageForState } from "./messageTemplates.js";
 import { buildGroupedCardsPayload, buildSimpleCardsFromGrouped } from "./cardPayloadBuilder.js";
 import { parseIntent, buildIntentQuestion, filterByAge, type ParsedIntent } from "../lib/intentParser.js";
+import { singleFlight } from "../utils/singleflight.js";
 
 /**
  * Prompt version tracking for tone changes
@@ -39,12 +40,14 @@ SESSION REUSE (do NOT relogin unnecessarily):
 - Only call scp.login if no valid token, provider changed, or a session restore fails.
 
 MANDATES:
-- If context.mandate_jws exists and now < context.mandate_valid_until, reuse it.
-- If expired or missing, call scp.create_mandate (NOT scp.login).
+- If context.mandate_jws exists and now < context.mandate_valid_until - 60000 (60s grace), reuse it.
+- Only refresh if expired or near-expiry within 60s grace period.
+- Call scp.create_mandate (NOT scp.login) to refresh.
 
 CREDENTIALS-SUBMITTED EVENTS:
 - If context.login_status === "success" and a valid session_token exists, 
   treat "credentials_submitted" as NO-OP (do not call scp.login again).
+- Use single-flight guard to ensure at most one login per {user_id, org_ref} at a time.
 
 ANTI-BOT:
 - If anti-bot waits exceed 7s, instruct the tool to fast-path navigate to the destination immediately.
@@ -750,13 +753,18 @@ Example follow-up (only when needed):
       ctx.login_status = "success";
     } else {
       Logger.info("[orchestrator] Performing login to obtain session_token…");
-      const loginRes = await this.callTool("scp.login", {
-        credential_id: ctx.credential_id,
-        org_ref: targetOrg,
-        user_jwt: ctx.user_jwt,
-        mandate_jws,
-        destination: process.env.SKICLUBPRO_LOGIN_GOTO_DEST || "/registration"
-      }, sessionId);
+      
+      // Single-flight guard: ensure at most one login per {user_id, org_ref} at a time
+      const loginKey = `login:${extractUserIdFromJWT(ctx.user_jwt)}:${targetOrg}`;
+      const loginRes = await singleFlight(loginKey, async () => {
+        return await this.callTool("scp.login", {
+          credential_id: ctx.credential_id,
+          org_ref: targetOrg,
+          user_jwt: ctx.user_jwt,
+          mandate_jws,
+          destination: process.env.SKICLUBPRO_LOGIN_GOTO_DEST || "/registration"
+        }, sessionId);
+      });
 
       if (!loginRes?.session_token) throw new Error("Login did not return session_token");
       ctx.session_token = loginRes.session_token;
@@ -1961,8 +1969,11 @@ Example follow-up (only when needed):
       requiredScopes = [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.PAY];
     }
     
-    // Quick Win #5: Mandate reuse - check if mandate is still valid
-    const mandateValid = context.mandate_jws && context.mandate_valid_until && Date.now() < context.mandate_valid_until;
+    // Quick Win #5: Mandate reuse - check if mandate is still valid WITH GRACE PERIOD
+    const MANDATE_GRACE_MS = 60_000; // 60s buffer to prevent expiry during operations
+    const mandateValid = context.mandate_jws 
+      && context.mandate_valid_until 
+      && Date.now() < (context.mandate_valid_until - MANDATE_GRACE_MS);
     
     if (mandateValid) {
       // PACK-B: Verify it has required scopes

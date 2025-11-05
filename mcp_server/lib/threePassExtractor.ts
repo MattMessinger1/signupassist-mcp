@@ -5,6 +5,7 @@
 
 import { Page } from 'playwright-core';
 import { openai, MODELS, withModel } from './oai.js';
+import pLimit from 'p-limit';
 
 export interface ProgramData {
   id: string;
@@ -248,8 +249,45 @@ Constraints:
 
 /**
  * Pass 2: Extract structured program data from HTML
+ * Now with parallel batch processing for speed
  */
 async function extractProgramData(
+  html: string,
+  containers: Array<{ id: string; hint: string; confidence: number }>,
+  baseUrl: string
+): Promise<any[]> {
+  
+  // Batch containers into groups to stay under token limits
+  // ~10-12 containers per batch is safe for most pages
+  const BATCH_SIZE = 10;
+  const batches: typeof containers[] = [];
+  for (let i = 0; i < containers.length; i += BATCH_SIZE) {
+    batches.push(containers.slice(i, i + BATCH_SIZE));
+  }
+  
+  console.log(`[Pass 2] Processing ${containers.length} containers in ${batches.length} batches`);
+  
+  // Parallel extraction with concurrency limit (3 concurrent API calls)
+  const limit = pLimit(3);
+  
+  const allPrograms = await Promise.all(
+    batches.map((batch, idx) => 
+      limit(async () => {
+        console.log(`[Pass 2] Batch ${idx + 1}/${batches.length}: Processing ${batch.length} containers`);
+        const programs = await extractBatch(html, batch, baseUrl);
+        console.log(`[Pass 2] Batch ${idx + 1}/${batches.length}: Extracted ${programs.length} programs`);
+        return programs;
+      })
+    )
+  );
+  
+  return allPrograms.flat();
+}
+
+/**
+ * Extract a single batch of program containers
+ */
+async function extractBatch(
   html: string,
   containers: Array<{ id: string; hint: string; confidence: number }>,
   baseUrl: string
@@ -260,7 +298,7 @@ async function extractProgramData(
       messages: [
       {
         role: 'system',
-        content: `Extract a single program/class from the provided container HTML.
+        content: `Extract programs from the provided HTML container snippets.
 
 Return JSON ONLY:
 {
@@ -280,14 +318,24 @@ Return JSON ONLY:
   ]
 }
 
-Rules:
-- SKIP any row that is a header, label, or contains only "Confirm" / "Select" / "Day(s)" / "Age" / "Price".
-- Only extract rows that represent an actual program with a meaningful title and details.
-- Populate fields only from visible text. If missing, set null.
-- Normalize status to lower-case canonical values.
-- Build program_id as a URL-safe slug from title+schedule (lowercase, hyphens).
-- Resolve relative links to absolute using base_url.
-- No prose. JSON only.`
+CRITICAL RULES - Skip Non-Programs:
+- SKIP any row that is a TABLE HEADER (contains only "Day", "Age", "Price", "Status", etc.)
+- SKIP any row that is NAVIGATION/ACTION (only contains "Confirm", "Select", "Cancel", "Back")
+- SKIP any row with EMPTY or WHITESPACE-ONLY cells
+- ONLY extract rows that represent ACTUAL PROGRAMS with:
+  * A meaningful program title (not generic labels like "Program Name" or "Class Title")
+  * At least 2 populated fields (title + schedule/price/age)
+  * A registration link or clear status indicator
+
+Field Population Rules:
+- Populate fields ONLY from visible text in the HTML
+- If a field is missing or unclear, set to null
+- Normalize status to lowercase: "open" | "waitlist" | "full" | "closed"
+- Build program_id as a URL-safe slug from title+schedule (lowercase, hyphens only)
+- Resolve relative links to absolute using base_url
+- Keep descriptions brief (≤90 chars)
+
+No prose. JSON only.`
       },
       {
         role: 'user',
@@ -333,7 +381,7 @@ Rules:
   
   const toolCall = response.choices[0].message.tool_calls?.[0];
   if (!toolCall || toolCall.type !== 'function') {
-    console.warn('[ThreePassExtractor] Pass 2: No tool call returned');
+    console.warn('[ThreePassExtractor] Pass 2 Batch: No tool call returned');
     return [];
   }
   

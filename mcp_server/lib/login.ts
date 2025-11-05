@@ -151,16 +151,26 @@ export async function loginWithCredentials(
 
   console.log("DEBUG Navigating to login page:", config.loginUrl);
   
-  // Navigate to login page - use domcontentloaded for faster initial load
-  await page.goto(config.loginUrl, { waitUntil: 'domcontentloaded', timeout });
+  // Navigate to login page with anti-bot timeout cap
+  const ANTIBOT_MAX_WAIT_MS = 6500; // 6.5s cap for anti-bot waits
+  try {
+    await page.goto(config.loginUrl, { waitUntil: 'domcontentloaded', timeout: ANTIBOT_MAX_WAIT_MS });
+  } catch (timeoutError: any) {
+    // Anti-bot fast-path: If initial load times out, proceed anyway
+    console.log('[Login] Fast-path: Anti-bot timeout on initial load, proceeding...');
+  }
   
   console.log(`DEBUG Page load state: ${page.url()}`);
   
-  // Only wait if form not immediately visible
+  // Only wait if form not immediately visible - with timeout cap
   const formReady = await page.locator('#edit-name, input[name="name"]').isVisible().catch(() => false);
   if (!formReady) {
-    console.log("DEBUG Form not ready, waiting for JS initialization...");
-    await page.waitForTimeout(800);
+    console.log("DEBUG Form not ready, waiting for JS initialization (capped at 3s)...");
+    try {
+      await page.waitForLoadState('networkidle', { timeout: 3000 });
+    } catch {
+      console.log('[Login] Fast-path: Networkidle timeout, proceeding with form submission...');
+    }
   }
 
     // Quick check if already logged in - but verify by checking the current URL
