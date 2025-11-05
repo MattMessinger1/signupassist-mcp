@@ -733,8 +733,29 @@ Example follow-up (only when needed):
       mandate_jws: ctx.mandate_jws ?? process.env.DEV_MANDATE_JWS
     };
     
-    const res = await this.callTool("scp.find_programs", args, sessionId);
+    const startMs = Date.now();
+    let res = await this.callTool("scp.find_programs", args, sessionId);
+    
+    // Quick Win #6: Category fallback - if category-scoped results are empty, retry with "all"
+    if (args.category !== "all" && (!res?.programs_by_theme || Object.keys(res.programs_by_theme).length === 0)) {
+      Logger.info(`[orchestrator] Category "${args.category}" yielded zero results, retrying with "all"`);
+      args.category = "all";
+      res = await this.callTool("scp.find_programs", args, sessionId);
+    }
+    
     if (res?.session_token) ctx.session_token = res.session_token;
+    
+    // Quick Win #7: Metrics logging
+    const extractionMs = Date.now() - startMs;
+    const numItems = res?.metadata?.items_extracted || Object.values(res?.programs_by_theme || {}).flat().length;
+    Logger.info('[metrics]', {
+      flow: 'program_discovery',
+      org_ref: ctx?.provider?.orgRef,
+      category: args.category,
+      child_age: ctx.childAge,
+      extraction_ms: extractionMs,
+      items: numItems
+    });
     
     return await this.presentProgramsAsCards(ctx, res?.programs_by_theme || {});
   }
@@ -768,6 +789,7 @@ Example follow-up (only when needed):
     };
     
     // Filter programs by age if childAge is present
+    const allPrograms = Object.values(themed).flat();
     const filteredThemed = Object.fromEntries(
       Object.entries(themed).map(([theme, progs]) => [
         theme,
@@ -776,6 +798,32 @@ Example follow-up (only when needed):
     );
     
     const groups = Object.entries(filteredThemed).filter(([_, arr]) => (arr?.length || 0) > 0);
+    
+    // Quick Win #7: Age filter fallback - if filtering yields zero results, show unfiltered with note
+    if (ctx.childAge && groups.length === 0 && allPrograms.length > 0) {
+      Logger.info(`[orchestrator] Age ${ctx.childAge} filter yielded zero results, showing all programs with note`);
+      const allGroups = Object.entries(themed).filter(([_, arr]) => (arr?.length || 0) > 0);
+      const cards = allGroups.flatMap(([theme, progs]) => {
+        const header = { title: `${theme}`, subtitle: "Programs", isHeader: true };
+        const set = progs.slice(0, 12).map((p) => ({
+          title: p.title,
+          subtitle: [p.schedule, p.price].filter(Boolean).join(" • "),
+          metadata: { programRef: p.program_ref || p.id, orgRef: p.org_ref, theme },
+          buttons: [
+            { label: "Details", action: "view_program", payload: { program_ref: p.program_ref || p.id, org_ref: p.org_ref } },
+            { label: "Register", action: "start_registration", variant: "accent" as const, payload: { program_ref: p.program_ref || p.id, org_ref: p.org_ref } }
+          ]
+        }));
+        return [header, ...set];
+      });
+      
+      return {
+        message: `We couldn't find programs specifically for age ${ctx.childAge}, but here are all available programs:`,
+        cards,
+        uiPayload: { type: "cards" },
+        contextUpdates: {}
+      };
+    }
     
     if (!groups.length) {
       return {

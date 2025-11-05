@@ -209,6 +209,46 @@ export async function runThreePassExtractorForPrograms(
 
   // Step 4: Wrap extraction in try-catch for graceful fallback
   try {
+    // Quick Win #6: Single-pass extraction (when GPT-5.1 is validated)
+    const FEATURE_SINGLE_PASS = process.env.FEATURE_SINGLE_PASS === 'true';
+    
+    if (FEATURE_SINGLE_PASS && models.extractor === 'gpt-5.1') {
+      console.log('[PACK-06 Single-Pass] Using combined extraction + validation (GPT-5.1)');
+      const startTime = Date.now();
+      
+      const result = await callStrictExtraction({
+        model: models.extractor,
+        system: `You extract and validate REAL program listings from HTML snippets in ONE pass.
+
+For each real program, output normalized fields:
+- title: exact program name text
+- description: full text or ""
+- price: as displayed (strip whitespace), or ""
+- schedule: dates/times as displayed, or ""
+- age_range: as displayed, or ""
+- skill_level: as displayed, or ""
+- status: one of ["Open","Register","Waitlist","Full","Closed","Sold Out","Restricted","TBD","-"] or ""
+- program_ref: kebab-case slug of title (letters/digits/hyphens)
+- org_ref: provided constant
+- cta_href: absolute URL to the program's register/details page if visible, else ""
+
+Rules:
+- Skip header rows, column labels, or non-program elements entirely.
+- Do NOT invent values. If a field is missing, use "".
+- Deduplicate by program_ref (keep first occurrence).
+- Normalize status values strictly.
+- Return strict JSON: {"items":[{...}, ...]} only.`,
+        data: { orgRef, snippets },
+        schema: ValidationSchema,
+        maxTokens: 16000
+      });
+      
+      const validated = result?.items ?? [];
+      const elapsedMs = Date.now() - startTime;
+      console.log(`[PACK-06 Single-Pass] Extracted ${validated.length} programs in ${elapsedMs}ms`);
+      return validated;
+    }
+    
     // PASS 2: Extraction (batched for reliability)
     console.log('[PACK-06 Pass 2] Extracting program data with strict schema (batched)');
     
