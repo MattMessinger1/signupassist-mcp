@@ -184,24 +184,68 @@ export function filterByAge<T extends { age_range?: string }>(
 
 /**
  * Format combined question for missing intent parts
+ * Pre-login Intent Gate: concise one-turn follow-up with chips
  * @param intent - Currently parsed intent
- * @returns Question text to ask user
+ * @returns Question text to ask user, or null if all present
  */
 export function buildIntentQuestion(intent: ParsedIntent): string | null {
-  const missing: string[] = [];
+  const missing: { type: string; question: string; chips?: string[] }[] = [];
   
-  if (!intent.provider) missing.push('which provider (e.g., Blackhawk Ski Club)');
-  if (!intent.category) missing.push('what type of activity (lessons, camps, or race team)');
-  if (!intent.childAge) missing.push("your child's age");
+  if (!intent.provider) {
+    missing.push({ 
+      type: 'provider', 
+      question: "Which provider or club?" 
+    });
+  }
+  
+  if (!intent.category) {
+    missing.push({ 
+      type: 'category', 
+      question: "Looking for Lessons/Classes or Race Team/Events?",
+      chips: ["Lessons", "Team/Events", "Not sure"]
+    });
+  }
+  
+  if (!intent.childAge) {
+    missing.push({ 
+      type: 'age', 
+      question: "What's your child's age?" 
+    });
+  }
   
   if (missing.length === 0) {
-    return null; // No question needed
+    return null; // All intent present
   }
   
+  // Build concise single-turn question for all missing pieces
   if (missing.length === 1) {
-    return `Could you tell me ${missing[0]}?`;
+    return missing[0].question;
   }
   
-  const lastItem = missing.pop();
-  return `Could you tell me ${missing.join(', ')}, and ${lastItem}?`;
+  if (missing.length === 2) {
+    return `${missing[0].question} And ${missing[1].question.toLowerCase()}`;
+  }
+  
+  // All three missing
+  return `${missing[0].question} ${missing[1].question} And ${missing[2].question.toLowerCase()}`;
+}
+
+/**
+ * Check if user is declining to provide intent
+ * @param message - User's response
+ * @returns true if user is declining
+ */
+export function isIntentDeclined(message: string): boolean {
+  const declinePatterns = [
+    /prefer\s+not/i,
+    /skip/i,
+    /don't\s+know/i,
+    /not\s+sure/i,
+    /can't\s+say/i,
+    /just\s+show/i,
+    /show\s+all/i,
+    /continue\s+anyway/i,
+  ];
+  
+  return declinePatterns.some(pattern => pattern.test(message));
 }

@@ -479,13 +479,14 @@ class AIOrchestrator {
   }
 
   /**
-   * Check and request missing intent upfront
+   * Check and request missing intent upfront (Pre-login Intent Gate)
    * Parses user message for provider, category, and child age
    * Returns a question if any required intent is missing
+   * Handles user declining with best-effort defaults
    * 
    * @param userMessage - User's input text
    * @param sessionId - Session identifier
-   * @returns Question text if intent incomplete, null if complete
+   * @returns Question text if intent incomplete, null if complete or declined
    */
   async checkAndRequestMissingIntent(userMessage: string, sessionId: string): Promise<string | null> {
     const context = await this.getContext(sessionId);
@@ -493,6 +494,23 @@ class AIOrchestrator {
     // Skip if we've already confirmed a provider or we're past initial discovery
     if (context.provider?.orgRef || context.loginCompleted || context.step && context.step > FlowStep.PROVIDER_SEARCH) {
       return null;
+    }
+    
+    // Import isIntentDeclined helper
+    const { isIntentDeclined } = await import("../lib/intentParser.js");
+    
+    // Check if user is declining to provide more info
+    if (isIntentDeclined(userMessage)) {
+      Logger.info(`[Intent Declined] ${sessionId}: User declined, using defaults`);
+      await this.updateContext(sessionId, {
+        partialIntent: {
+          ...context.partialIntent,
+          category: context.partialIntent?.category || 'all',
+          hasIntent: true
+        },
+        category: context.partialIntent?.category || 'all'
+      });
+      return null; // Proceed with defaults
     }
     
     // Context-aware fallback: if last question was about age and user typed a standalone number
@@ -508,7 +526,7 @@ class AIOrchestrator {
       }
     }
     
-    // Merge new intent with existing partial intent
+    // Merge new intent with existing partial intent (uses OpenAI via parseIntent)
     const newIntent = await parseIntent(userMessage);
     
     Logger.info('[Intent Parsing Debug]', {
@@ -541,17 +559,17 @@ class AIOrchestrator {
     
     await this.updateContext(sessionId, updates);
     
-    // Build question for missing parts
+    // Build question for missing parts (concise one-turn format)
     const question = buildIntentQuestion(mergedIntent);
     
     if (question) {
       // Track what type of question we're asking for context-aware parsing
       const questionLower = question.toLowerCase();
-      if (questionLower.includes("child's age")) {
+      if (questionLower.includes("child's age") || questionLower.includes("age?")) {
         await this.updateContext(sessionId, { lastQuestionType: 'age' });
-      } else if (questionLower.includes('type of activity') || questionLower.includes('category')) {
+      } else if (questionLower.includes('lessons') || questionLower.includes('team')) {
         await this.updateContext(sessionId, { lastQuestionType: 'category' });
-      } else if (questionLower.includes('provider')) {
+      } else if (questionLower.includes('provider') || questionLower.includes('club')) {
         await this.updateContext(sessionId, { lastQuestionType: 'provider' });
       }
       
@@ -571,11 +589,12 @@ class AIOrchestrator {
         }
       });
       // Build emergency question
-      const emergencyQuestion = buildIntentQuestion(mergedIntent) || "Could you tell me which provider you'd like to use?";
+      const emergencyQuestion = buildIntentQuestion(mergedIntent) || "Which provider or club?";
       return emergencyQuestion;
     }
     
-    // Intent is complete! Log and proceed
+    // Intent is complete! No need to return confirmation message here - 
+    // the orchestrator will handle the next step and confirm naturally
     Logger.info(`[Intent Complete] ${sessionId}`, { mergedIntent });
     return null;
   }
