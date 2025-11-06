@@ -40,6 +40,8 @@ export interface SessionContext {
   category?: string;      // Activity category: "lessons", "camps", "races", "all"
   childAge?: number;      // Child's age for filtering programs
   partialIntent?: { provider?: string; category?: string; childAge?: number; hasIntent: boolean }; // Stores incomplete intent across turns
+  targetProgram?: { program_ref: string; confidence: number }; // HIGH INTENT: Likely target program for fast-path
+  intentStrength?: "low" | "medium" | "high"; // Intent strength classification for optimization
   
   // Quick Win #5: Session reuse tracking
   org_ref?: string;       // Organization reference for session validation

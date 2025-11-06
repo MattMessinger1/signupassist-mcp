@@ -22,6 +22,8 @@ export interface ParsedIntent {
   userType?: 'first_time_parent' | 'returning_user' | 'unknown'; // NEW: User classification
   rawEmail?: string;            // NEW: Raw email input
   normalizedEmail?: string;     // NEW: Normalized email
+  targetProgram?: { program_ref: string; confidence: number }; // HIGH INTENT: Likely target program
+  intentStrength?: "low" | "medium" | "high"; // Intent classification for fast-path optimization
 }
 
 // Re-export ExtendedIntent for backward compatibility
@@ -260,4 +262,133 @@ export function isIntentDeclined(message: string): boolean {
   ];
   
   return declinePatterns.some(pattern => pattern.test(message));
+}
+
+/**
+ * Program mapping for fast-path intent targeting
+ */
+export interface ProgramMapping {
+  program_ref: string;
+  ageMin: number;
+  ageMax: number;
+  category: string;
+  provider: string;
+  keywords: string[]; // e.g., ["beginner", "saturday", "morning"]
+  confidence: number; // 0.0-1.0 based on historical accuracy
+  season?: string; // "winter" | "spring" | "summer" | "fall"
+}
+
+/**
+ * Program mappings for high-intent fast-path targeting
+ * Built from audit logs and updated quarterly
+ */
+export const PROGRAM_MAPPINGS: ProgramMapping[] = [
+  // Blackhawk Ski Club
+  {
+    program_ref: "309",
+    ageMin: 6,
+    ageMax: 12,
+    category: "lessons",
+    provider: "blackhawk-ski-club",
+    keywords: ["nordic", "wednesday", "kids"],
+    confidence: 0.9,
+    season: "winter"
+  },
+  {
+    program_ref: "310",
+    ageMin: 4,
+    ageMax: 8,
+    category: "lessons",
+    provider: "blackhawk-ski-club",
+    keywords: ["beginner", "saturday", "morning"],
+    confidence: 0.85,
+    season: "winter"
+  },
+  {
+    program_ref: "311",
+    ageMin: 8,
+    ageMax: 14,
+    category: "lessons",
+    provider: "blackhawk-ski-club",
+    keywords: ["intermediate", "sunday", "afternoon"],
+    confidence: 0.8,
+    season: "winter"
+  }
+];
+
+/**
+ * Classify intent strength based on message signals
+ * @param intent - Parsed intent object
+ * @param message - Original user message
+ * @returns Intent strength: "low" | "medium" | "high"
+ */
+export function classifyIntentStrength(intent: ParsedIntent, message: string): "low" | "medium" | "high" {
+  let score = 0;
+  const lowerMessage = message.toLowerCase();
+  
+  // Strong signals (+2 points each)
+  if (intent.provider && intent.category && intent.childAge) score += 2;
+  if (/sign.*up|register|enroll|book/i.test(message)) score += 2;
+  if (/\b(today|now|asap|soon)\b/i.test(message)) score += 1;
+  
+  // Medium signals (+1 point each)
+  if (intent.provider && intent.childAge) score += 1;
+  if (intent.provider && intent.category) score += 1;
+  if (/\bmy (son|daughter|child|kid)\b/i.test(message)) score += 1;
+  
+  // Keyword match signals
+  const hasSpecificKeywords = PROGRAM_MAPPINGS.some(mapping => 
+    mapping.keywords.some(keyword => lowerMessage.includes(keyword))
+  );
+  if (hasSpecificKeywords) score += 1;
+  
+  // Classification thresholds
+  if (score >= 4) return "high";
+  if (score >= 2) return "medium";
+  return "low";
+}
+
+/**
+ * Pick most likely program based on intent
+ * @param intent - Parsed intent with provider, category, and childAge
+ * @returns Target program with confidence, or null if no good match
+ */
+export function pickLikelyProgram(intent: ParsedIntent): { program_ref: string; confidence: number } | null {
+  if (!intent.provider || !intent.childAge) {
+    return null; // Need at minimum provider and age
+  }
+  
+  // Filter mappings by provider and age
+  const candidates = PROGRAM_MAPPINGS.filter(mapping => {
+    const providerMatch = mapping.provider === intent.provider;
+    const ageMatch = intent.childAge! >= mapping.ageMin && intent.childAge! <= mapping.ageMax;
+    const categoryMatch = !intent.category || intent.category === 'all' || mapping.category === intent.category;
+    
+    return providerMatch && ageMatch && categoryMatch;
+  });
+  
+  if (candidates.length === 0) {
+    return null; // No matches
+  }
+  
+  // If single match, return it
+  if (candidates.length === 1) {
+    return {
+      program_ref: candidates[0].program_ref,
+      confidence: candidates[0].confidence
+    };
+  }
+  
+  // Multiple matches: pick highest confidence
+  const best = candidates.reduce((prev, current) => 
+    current.confidence > prev.confidence ? current : prev
+  );
+  
+  // Reduce confidence if multiple similar matches (ambiguous)
+  const adjustedConfidence = best.confidence * 0.9;
+  
+  return {
+    program_ref: best.program_ref,
+    confidence: adjustedConfidence
+  };
 }
