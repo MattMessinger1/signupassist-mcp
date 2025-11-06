@@ -7,7 +7,7 @@ import OpenAI from "openai";
 import { default as pLimit } from "p-limit";
 import { MODELS } from "./oai.js";
 import { safeJSONParse } from "./openaiHelpers.js";
-import { canonicalizeSnippet } from "./extractionUtils.js";
+import { canonicalizeSnippet, validateAndDedupePrograms } from "./extractionUtils.js";
 
 export interface ProgramData {
   id: string;
@@ -357,7 +357,11 @@ Return validated programs array in strict JSON format.`,
     const finalPrograms = normalized?.programs || [];
     console.log(`[PACK-06 Pass 3] Final ${finalPrograms.length} validated programs`);
     
-    return finalPrograms;
+    // Step 1e: Apply final validation and deduplication
+    const cleanedPrograms = validateAndDedupePrograms(finalPrograms);
+    console.log(`[PACK-06 Post-validation] ${cleanedPrograms.length} programs after filtering and deduplication`);
+    
+    return cleanedPrograms;
     
   } catch (err: any) {
     // Step 4: Graceful fallback on complete failure
