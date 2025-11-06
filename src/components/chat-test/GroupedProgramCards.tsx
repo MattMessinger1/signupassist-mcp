@@ -57,13 +57,15 @@ export function GroupedProgramCards({ payload, onAction }: GroupedProgramCardsPr
     if (action.type === "link" && action.href) {
       window.open(action.href, "_blank");
     } else if (action.type === "postback" && action.payload && onAction) {
-      // Enhance payload with card metadata for view_program action
+      // Extract intent from payload and use as action name
+      const actionName = action.payload.intent || "unknown_action";
       const enhancedPayload = {
         ...action.payload,
-        program_ref: card.program_ref,
-        org_ref: card.org_ref,
+        program_ref: card.program_ref || action.payload.program_ref,
+        org_ref: card.org_ref || action.payload.org_ref,
       };
-      onAction("postback", enhancedPayload);
+      // Pass the intent as the action name
+      onAction(actionName, enhancedPayload);
     }
   };
   

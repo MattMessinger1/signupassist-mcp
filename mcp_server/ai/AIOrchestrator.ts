@@ -1570,6 +1570,10 @@ Example follow-up (only when needed):
             );
           }
 
+        case "start_registration":
+          // Map to select_program logic for registration flow
+          return this.handleAction("select_program", payload, sessionId);
+
         case "view_program":
           // Quick Win #5: Handle view_program action - call scp.program_field_probe
           const { program_ref: progRef, org_ref: orgRef } = payload || {};
