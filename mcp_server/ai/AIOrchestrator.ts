@@ -967,7 +967,17 @@ Example follow-up (only when needed):
     }
     
     const res = await this.callTool("scp.find_programs", args, sessionId);
-    if (res?.session_token) ctx.session_token = res.session_token;
+    
+    // Phase C: Persist session token if refreshed during discovery
+    if (res?.session_token) {
+      await this.updateContext(sessionId, {
+        session_token: res.session_token,
+        session_token_expires_at: Date.now() + (ctx.session_ttl_ms || 300000)
+      });
+      
+      // Refresh context reference
+      ctx = await this.getContext(sessionId);
+    }
     
     // Phase 2: Validate fast-path result
     const programs = res?.programs_by_theme || {};
@@ -1045,7 +1055,15 @@ Example follow-up (only when needed):
       res = await this.callTool("scp.find_programs", args, sessionId);
     }
     
-    if (res?.session_token) ctx.session_token = res.session_token;
+    if (res?.session_token) {
+      await this.updateContext(sessionId, {
+        session_token: res.session_token,
+        session_token_expires_at: Date.now() + (ctx.session_ttl_ms || 300000)
+      });
+      
+      // Refresh context reference
+      ctx = await this.getContext(sessionId);
+    }
     
     // Quick Win #7: Metrics logging
     const extractionMs = Date.now() - startMs;
