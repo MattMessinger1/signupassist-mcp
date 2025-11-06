@@ -170,6 +170,18 @@ export function filterByAge<T extends { age_range?: string }>(
       return childAge >= minAge && childAge <= maxAge;
     }
     
+    // Parse plus notation like "Ages 13+" or "13+ years"
+    const plusMatch = program.age_range.match(/(\d+)\+/);
+    if (plusMatch) {
+      const minAge = parseInt(plusMatch[1], 10);
+      return childAge >= minAge;
+    }
+    
+    // Parse teen programs (ages 13-19)
+    if (/teen(s)?/i.test(program.age_range)) {
+      return childAge >= 13 && childAge <= 19;
+    }
+    
     // Parse single age like "Age 8" or "8 years"
     const singleMatch = program.age_range.match(/(\d+)/);
     if (singleMatch) {
