@@ -2,8 +2,8 @@
 FROM node:20-alpine AS builder
 
 # Force rebuild toggle — updated automatically by Lovable or CLI
-# Last rebuild: 2025-11-05 20:37:00 UTC - Added p-limit to package.production.json
-ARG BUILD_TAG=20251105-203700
+# Last rebuild: 2025-11-06 - Provider cache optimization + force clean build
+ARG BUILD_TAG=20251106-cache-optimization
 LABEL build-tag=$BUILD_TAG
 
 WORKDIR /app
