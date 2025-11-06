@@ -76,8 +76,41 @@ export function canonicalizeSnippet(html: string): string {
  * @returns Validated and deduplicated program array
  */
 export function validateAndDedupePrograms(items: ProgramData[]): ProgramData[] {
-  // TODO: Implement in Step 1c
-  return items;
+  // 1. Filter out items without titles
+  let validated = items.filter(item => item.title && item.title.trim().length > 0);
+  
+  // 2. Normalize status to whitelist values
+  validated = validated.map(item => {
+    const status = item.status?.trim() || '';
+    
+    // Check if status is in the whitelist (case-insensitive)
+    const normalizedStatus = VALID_STATUSES.find(
+      validStatus => validStatus.toLowerCase() === status.toLowerCase()
+    );
+    
+    return {
+      ...item,
+      status: normalizedStatus || '-' // Default to '-' if not in whitelist
+    };
+  });
+  
+  // 3. Deduplicate by program_ref (keep first occurrence)
+  const seen = new Set<string>();
+  const deduplicated = validated.filter(item => {
+    if (!item.program_ref) {
+      // Keep items without program_ref (shouldn't happen, but be safe)
+      return true;
+    }
+    
+    if (seen.has(item.program_ref)) {
+      return false; // Skip duplicates
+    }
+    
+    seen.add(item.program_ref);
+    return true;
+  });
+  
+  return deduplicated;
 }
 
 /**
