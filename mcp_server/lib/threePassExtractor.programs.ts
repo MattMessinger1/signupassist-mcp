@@ -9,6 +9,7 @@ import { MODELS } from "./oai.js";
 import { safeJSONParse } from "./openaiHelpers.js";
 import { canonicalizeSnippet, validateAndDedupePrograms } from "./extractionUtils.js";
 import { sha1, getCached, setCached } from "../utils/extractionCache.js";
+import { logOncePer } from "../utils/logDebouncer.js";
 
 export interface ProgramData {
   id: string;
@@ -169,7 +170,11 @@ async function callStrictExtraction(opts: {
     
     // Retry logic for invalid JSON
     if (!parsed && _retryCount < 2) {
-      console.warn(`[threePassExtractor] Retrying extraction (attempt ${_retryCount + 2}/3)...`);
+      logOncePer(
+        `extraction-retry-${model}`,
+        5000,
+        () => console.warn(`[threePassExtractor] Retrying extraction (attempt ${_retryCount + 2}/3)...`)
+      );
       await new Promise(r => setTimeout(r, 1000));
       return callStrictExtraction({ ...opts, _retryCount: _retryCount + 1 });
     }
@@ -238,7 +243,11 @@ export async function runThreePassExtractorForPrograms(
   const cachedResult = await getCached(cacheKey);
   
   if (cachedResult) {
-    console.log(`[PACK-06 Cache] Hit! Returning ${cachedResult.length} cached programs`);
+    logOncePer(
+      `cache-hit-${orgRef}`,
+      3000,
+      () => console.log(`[PACK-06 Cache] Hit! Returning ${cachedResult.length} cached programs`)
+    );
     return cachedResult;
   }
   
