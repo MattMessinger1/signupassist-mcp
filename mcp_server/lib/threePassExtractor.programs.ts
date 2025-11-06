@@ -7,6 +7,7 @@ import OpenAI from "openai";
 import { default as pLimit } from "p-limit";
 import { MODELS } from "./oai.js";
 import { safeJSONParse } from "./openaiHelpers.js";
+import { canonicalizeSnippet } from "./extractionUtils.js";
 
 export interface ProgramData {
   id: string;
@@ -213,7 +214,11 @@ export async function runThreePassExtractorForPrograms(
   
   for (let i = 0; i < candidates.length; i++) {
     const html = await candidates[i].evaluate((el: HTMLElement) => el.outerHTML);
-    if (html?.trim()) snippets.push({ id: i, html });
+    if (html?.trim()) {
+      // Step 1d: Canonicalize snippet to reduce token usage before LLM extraction
+      const canonicalHtml = canonicalizeSnippet(html);
+      snippets.push({ id: i, html: canonicalHtml });
+    }
   }
   
   console.log(`[PACK-06 Pass 1] Found ${snippets.length} candidate snippets`);
