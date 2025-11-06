@@ -475,7 +475,7 @@ async function ensureLoggedIn(
     // Wait for anti-bot measures
     console.log('[login] Waiting for anti-bot measures...');
     // Phase 3: Pass session reuse flag for adaptive delays
-    const isSessionReuse = !!session_token; // Session token present = reusing session
+    const isSessionReuse = !!config.storageState; // storageState present = reusing session
     await waitForDrupalAntibot(page, { isSessionReuse });
     await waitForDrupalTokensStable(page);
     
