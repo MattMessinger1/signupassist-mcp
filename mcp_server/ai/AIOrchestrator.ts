@@ -2216,21 +2216,6 @@ Example follow-up (only when needed):
   private async ensureMandatePresent(sessionId: string, toolName?: string): Promise<void> {
     const context = await this.getContext(sessionId);
     
-    // Phase D: Skip mandate re-auth if session is still valid
-    const now = Date.now();
-    const sessionValid = context.session_token 
-      && context.session_token_expires_at 
-      && now < context.session_token_expires_at - 30000; // 30s grace
-    
-    const mandateValid = context.mandate_jws 
-      && context.mandate_valid_until 
-      && now < context.mandate_valid_until - 60000; // 60s grace
-    
-    if (sessionValid && mandateValid) {
-      Logger.info('[mandate] ✅ Reusing valid session + mandate, skipping re-auth');
-      return; // Don't call scp.login
-    }
-    
     // Determine required scopes for the tool
     const { MANDATE_SCOPES } = await import('../lib/mandates.js');
     let requiredScopes: string[] = [MANDATE_SCOPES.AUTHENTICATE];
@@ -2246,19 +2231,26 @@ Example follow-up (only when needed):
       requiredScopes = [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.PAY];
     }
     
+    // Phase D: Check if session is still valid (for session reuse optimization)
+    const now = Date.now();
+    const sessionValid = context.session_token 
+      && context.session_token_expires_at 
+      && now < context.session_token_expires_at - 30000; // 30s grace
+    
     // Quick Win #5: Mandate reuse - check if mandate is still valid WITH GRACE PERIOD
     const MANDATE_GRACE_MS = 60_000; // 60s buffer to prevent expiry during operations
     const mandateValid = context.mandate_jws 
       && context.mandate_valid_until 
       && Date.now() < (context.mandate_valid_until - MANDATE_GRACE_MS);
     
-    if (mandateValid) {
+    // Phase D: If both session and mandate are valid, verify scopes and potentially skip re-auth
+    if (sessionValid && mandateValid) {
       // PACK-B: Verify it has required scopes
       try {
         const { verifyMandate } = await import('../lib/mandates.js');
         await verifyMandate(context.mandate_jws, requiredScopes);
-        console.log('[Orchestrator] ✅ Existing mandate valid with required scopes:', requiredScopes);
-        return; // Mandate is good
+        Logger.info('[mandate] ✅ Reusing valid session + mandate with correct scopes, skipping re-auth');
+        return; // Mandate is good with correct scopes
       } catch (err: any) {
         if (err.code === 'ERR_SCOPE_MISSING') {
           console.log('[Orchestrator] 🔄 Mandate missing required scopes, refreshing...', err.message);
