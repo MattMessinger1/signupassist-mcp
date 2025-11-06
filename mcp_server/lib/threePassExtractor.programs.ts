@@ -8,6 +8,21 @@ import { default as pLimit } from "p-limit";
 import { MODELS } from "./oai.js";
 import { safeJSONParse } from "./openaiHelpers.js";
 
+export interface ProgramData {
+  id: string;
+  program_ref: string;
+  title: string;
+  description: string;
+  schedule: string;
+  age_range: string;
+  skill_level: string;
+  price: string;
+  actual_id: string;
+  org_ref: string;
+  status?: string;
+  cta_href?: string;
+}
+
 type Models = { vision: string; extractor: string; validator: string; };
 
 // Phase 2 Optimization: Raise batch ceiling from 17 → 30 for faster extraction

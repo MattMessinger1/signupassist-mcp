@@ -1327,13 +1327,26 @@ export const skiClubProTools = {
       
       // Run Three-Pass Extractor
       console.log('[scp.program_field_probe] Running Three-Pass Extractor...');
-      const { runThreePassExtractor } = await import('../lib/threePassExtractor.js');
+      const { runThreePassExtractorForPrograms } = await import('../lib/threePassExtractor.programs.js');
       
       if (!process.env.OPENAI_API_KEY) {
         throw new Error('OPENAI_API_KEY not configured');
       }
       
-      const extractedData = await runThreePassExtractor(page, args.org_ref, 'skiclubpro');
+      const extractedData = await runThreePassExtractorForPrograms(page, args.org_ref, {
+        models: {
+          vision: process.env.OPENAI_MODEL_PROGRAM_VISION || 'gpt-4o',
+          extractor: process.env.OPENAI_MODEL_PROGRAM_EXTRACTOR || 'gpt-4o-mini',
+          validator: process.env.OPENAI_MODEL_PROGRAM_VALIDATOR || 'gpt-4o-mini'
+        },
+        scope: 'program_list',
+        selectors: {
+          container: ['.program-row', '[data-program]', 'tr[data-id]'],
+          title: ['.program-title', 'h3', 'h4'],
+          price: ['.price', '.cost'],
+          schedule: ['.schedule', '.dates']
+        }
+      });
       console.log(`[scp.program_field_probe] ✅ Extracted ${extractedData.length} programs`);
       
       // Capture screenshot

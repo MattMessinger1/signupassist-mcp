@@ -8,7 +8,7 @@
  */
 
 import { openai, MODELS, withModel } from './oai.js';
-import type { ProgramData } from './threePassExtractor.js';
+import type { ProgramData } from './threePassExtractor.programs.js';
 
 /**
  * Program theme categories
