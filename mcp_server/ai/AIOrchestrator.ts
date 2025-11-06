@@ -1840,6 +1840,16 @@ Example follow-up (only when needed):
         // Step 2: Attach mandate to args
         args = this.attachMandateToArgs(sessionId, args);
         
+        // Phase E: Auto-inject session_token if available and fresh
+        const ctx = await this.getContext(sessionId);
+        if (ctx.session_token && ctx.session_token_expires_at) {
+          const now = Date.now();
+          if (now < ctx.session_token_expires_at - 30000) {
+            args.session_token = ctx.session_token;
+            Logger.info('[callTool] 🔁 Injecting persisted session token');
+          }
+        }
+        
         console.log('[Orchestrator] 🔒 Protected tool call with mandate:', toolName);
       } catch (mandateError: any) {
         console.error('[Orchestrator] ❌ Mandate enforcement failed:', mandateError);
@@ -2205,6 +2215,21 @@ Example follow-up (only when needed):
    */
   private async ensureMandatePresent(sessionId: string, toolName?: string): Promise<void> {
     const context = await this.getContext(sessionId);
+    
+    // Phase D: Skip mandate re-auth if session is still valid
+    const now = Date.now();
+    const sessionValid = context.session_token 
+      && context.session_token_expires_at 
+      && now < context.session_token_expires_at - 30000; // 30s grace
+    
+    const mandateValid = context.mandate_jws 
+      && context.mandate_valid_until 
+      && now < context.mandate_valid_until - 60000; // 60s grace
+    
+    if (sessionValid && mandateValid) {
+      Logger.info('[mandate] ✅ Reusing valid session + mandate, skipping re-auth');
+      return; // Don't call scp.login
+    }
     
     // Determine required scopes for the tool
     const { MANDATE_SCOPES } = await import('../lib/mandates.js');
