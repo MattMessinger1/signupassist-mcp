@@ -9,7 +9,7 @@ import { loadSessionFromDB, saveSessionToDB } from "../lib/sessionPersistence.js
 import { shouldReuseSession, getProgramCategory, TOOL_WORKFLOW, SESSION_REUSE_CONFIG } from "./toolGuidance.js";
 import { getMessageForState } from "./messageTemplates.js";
 import { buildGroupedCardsPayload, buildSimpleCardsFromGrouped } from "./cardPayloadBuilder.js";
-import { parseIntent, buildIntentQuestion, filterByAge, type ParsedIntent, type ExtendedIntent } from "../lib/intentParser.js";
+import { parseIntent, buildIntentQuestion, filterByAge, classifyIntentStrength, pickLikelyProgram, type ParsedIntent, type ExtendedIntent } from "../lib/intentParser.js";
 import { normalizeEmailWithAI, generatePersonalizedMessage } from "../lib/aiIntentParser.js";
 import { singleFlight } from "../utils/singleflight.js";
 
@@ -549,11 +549,24 @@ class AIOrchestrator {
     
     Logger.info('[Intent Merged]', { sessionId, mergedIntent });
     
-    // Store merged intent and clear lastQuestionType if we got an answer
+    // Phase 2: Classify intent strength and pick likely program for fast-path
+    const intentStrength = classifyIntentStrength(mergedIntent, userMessage);
+    const targetProgram = intentStrength === "high" ? pickLikelyProgram(mergedIntent) : null;
+    
+    Logger.info('[Intent Classification]', { 
+      sessionId, 
+      intentStrength, 
+      targetProgram,
+      fastPathEligible: !!(intentStrength === "high" && targetProgram && targetProgram.confidence >= 0.75)
+    });
+    
+    // Store merged intent with strength and target program
     const updates: any = { 
       partialIntent: mergedIntent,
       category: mergedIntent.category,
-      childAge: mergedIntent.childAge
+      childAge: mergedIntent.childAge,
+      intentStrength,
+      targetProgram
     };
     
     if (contextAge || newIntent.hasIntent) {
@@ -907,8 +920,23 @@ Example follow-up (only when needed):
       return await this.presentProgramsAsCards(ctx, cachedPrograms);
     }
     
+    // Phase 2: Check for high-intent fast-path eligibility
+    const isHighIntent = ctx.intentStrength === "high";
+    const hasTargetProgram = !!ctx.targetProgram;
+    const highConfidence = (ctx.targetProgram?.confidence ?? 0) >= 0.75;
+    const fastPathEligible = isHighIntent && hasTargetProgram && highConfidence;
+    
+    Logger.info('[Fast-Path Check]', {
+      sessionId,
+      isHighIntent,
+      hasTargetProgram,
+      targetProgram: ctx.targetProgram?.program_ref,
+      confidence: ctx.targetProgram?.confidence,
+      fastPathEligible
+    });
+    
     // Quick Win #2: Use category from context if provided
-    const args = {
+    const args: any = {
       org_ref: ctx.provider.orgRef,
       session_token: ctx.session_token,            // <<< critical
       category: ctx.category || "all",              // <<< Use intent category
@@ -917,15 +945,61 @@ Example follow-up (only when needed):
       credential_id: ctx.credential_id             // fallback if token missing
     };
     
+    // Phase 2: Add fast-path parameters if eligible
+    if (fastPathEligible) {
+      args.filter_program_ref = ctx.targetProgram!.program_ref;
+      args.filter_mode = "single";
+      args.fallback_to_full = true; // Enable fallback if target not found
+      
+      Logger.info('[Fast-Path Enabled]', {
+        sessionId,
+        targetRef: args.filter_program_ref,
+        confidence: ctx.targetProgram!.confidence
+      });
+    }
+    
     const res = await this.callTool("scp.find_programs", args, sessionId);
     if (res?.session_token) ctx.session_token = res.session_token;
     
-    // Phase 3: Cache programs for reuse (15 min TTL)
+    // Phase 2: Validate fast-path result
     const programs = res?.programs_by_theme || {};
+    const programCount = Object.values(programs).flat().length;
+    
+    if (fastPathEligible && programCount === 0) {
+      // Fast-path failed to find target program - retry with full scrape
+      Logger.warn('[Fast-Path Failed] Target program not found, falling back to full scrape', {
+        sessionId,
+        targetRef: ctx.targetProgram!.program_ref
+      });
+      
+      // Retry without fast-path params
+      const fallbackArgs = { ...args };
+      delete fallbackArgs.filter_program_ref;
+      delete fallbackArgs.filter_mode;
+      delete fallbackArgs.fallback_to_full;
+      
+      const fallbackRes = await this.callTool("scp.find_programs", fallbackArgs, sessionId);
+      if (fallbackRes?.session_token) ctx.session_token = fallbackRes.session_token;
+      
+      const fallbackPrograms = fallbackRes?.programs_by_theme || {};
+      
+      // Cache fallback result
+      if (Object.keys(fallbackPrograms).length > 0) {
+        if (!ctx.cache) ctx.cache = {};
+        ctx.cache[cacheKey] = fallbackPrograms;
+        console.log(`[handleAutoProgramDiscovery] 📦 Cached ${Object.keys(fallbackPrograms).length} program themes (fallback)`);
+      }
+      
+      return await this.presentProgramsAsCards(ctx, fallbackPrograms);
+    }
+    
+    // Phase 3: Cache programs for reuse (15 min TTL)
     if (Object.keys(programs).length > 0) {
       if (!ctx.cache) ctx.cache = {};
       ctx.cache[cacheKey] = programs;
-      console.log(`[handleAutoProgramDiscovery] 📦 Cached ${Object.keys(programs).length} program themes`);
+      
+      const scrapeType = fastPathEligible ? "fast-path" : "full";
+      console.log(`[handleAutoProgramDiscovery] 📦 Cached ${Object.keys(programs).length} program themes (${scrapeType})`);
     }
     
     // Return the result from presentProgramsAsCards
