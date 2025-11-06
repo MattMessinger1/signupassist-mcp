@@ -1601,13 +1601,15 @@ export const skiClubProTools = {
         const baseUrl = resolveBaseUrl(orgRef);
         
         // PACK-05 Step 1: Restore session by token first
+        let restoredStatePath: string | undefined;
         if (token) {
           console.log(`[scp.find_programs] 🔄 PACK-05: Restoring session from token: ${token}`);
           const restored = await getSession(token);
           if (restored?.session) {
             session = restored.session;
             token = restored.newToken || token;
-            console.log(`[scp.find_programs] ✅ PACK-05: Session restored successfully`);
+            restoredStatePath = restored.statePath;
+            console.log(`[scp.find_programs] ✅ PACK-05: Session restored successfully with statePath: ${restoredStatePath}`);
           } else {
             console.log('[scp.find_programs] ⚠️ PACK-05: Session restore failed, will login');
           }
@@ -1616,7 +1618,10 @@ export const skiClubProTools = {
         // PACK-05 Step 2: Fallback to single login if restore failed
         if (!session) {
           console.log('[scp.find_programs] PACK-05: No session - performing fresh login');
-          session = await launchBrowserbaseSession();
+          // Launch with storageState if we have one from restored session
+          session = await launchBrowserbaseSession({ 
+            storageStatePath: restoredStatePath 
+          });
           
           await ensureLoggedIn(
             session,

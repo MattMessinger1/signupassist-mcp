@@ -8,6 +8,7 @@ import { Browser, BrowserContext } from 'playwright-core';
 export interface StealthOptions {
   userAgent?: string;
   forceEnable?: boolean;
+  storageState?: string | { cookies: any[]; origins: any[] };
 }
 
 /**
@@ -35,12 +36,25 @@ export async function createStealthContext(
   
   // CRITICAL: Always create a NEW context when antibot is enabled
   // Do NOT reuse browser.contexts()[0] which is the default CDP context
-  const context = await browser.newContext({
+  const contextOptions: any = {
     userAgent,
     viewport: { width: 1920, height: 1080 },
     locale: 'en-US',
     timezoneId: 'America/New_York'
-  });
+  };
+  
+  // Load storageState if provided for session reuse
+  if (opts.storageState) {
+    if (typeof opts.storageState === 'string') {
+      contextOptions.storageState = opts.storageState;
+      console.log('[Antibot] Loading storageState from path:', opts.storageState);
+    } else {
+      contextOptions.storageState = opts.storageState;
+      console.log('[Antibot] Loading storageState from object');
+    }
+  }
+  
+  const context = await browser.newContext(contextOptions);
   
   // Hide webdriver flag via addInitScript
   await context.addInitScript(() => {

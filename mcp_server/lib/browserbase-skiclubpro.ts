@@ -24,8 +24,11 @@ export interface BrowserbaseSession {
 /**
  * Launch a new Browserbase session via Supabase Edge Function
  * 🧠 Now handled securely through launch-browserbase edge function
+ * @param options - Optional configuration including storageStatePath for session reuse
  */
-export async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
+export async function launchBrowserbaseSession(options?: {
+  storageStatePath?: string;
+}): Promise<BrowserbaseSession> {
   try {
     console.log('[Browserbase] Launching session via Supabase Edge Function...');
     
@@ -49,7 +52,11 @@ export async function launchBrowserbaseSession(): Promise<BrowserbaseSession> {
     const browser = await chromium.connectOverCDP(session.connectUrl);
     
     // Create stealth context (FORCE ENABLE for SkiClubPro anti-bot protection)
-    const context = await createStealthContext(browser, { forceEnable: true });
+    // Load storageState if provided for session reuse
+    const context = await createStealthContext(browser, { 
+      forceEnable: true,
+      storageState: options?.storageStatePath
+    });
     const page = await context.newPage();
 
     console.log('[Browserbase] ✓ Connected to session:', session.id);

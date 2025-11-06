@@ -21,9 +21,9 @@ console.log(`[SessionManager] Caching: ${SESSION_CACHE_ENABLED ? 'ENABLED' : 'DI
 
 /**
  * Get a session - either reuse existing or create new
- * Returns session and token for optional chaining, or null if caching disabled
+ * Returns session, token, and statePath for optional chaining, or null if caching disabled
  */
-export async function getSession(token?: string): Promise<{ session: BrowserbaseSession; newToken: string } | null> {
+export async function getSession(token?: string): Promise<{ session: BrowserbaseSession; newToken: string; statePath?: string } | null> {
   if (!SESSION_CACHE_ENABLED) {
     console.log('[SessionManager] Session caching disabled, skipping reuse');
     return null;
@@ -44,7 +44,7 @@ export async function getSession(token?: string): Promise<{ session: Browserbase
   }
   
   console.log('[SessionManager] ✅ Reusing existing session:', token);
-  return { session: managed.session, newToken: token };
+  return { session: managed.session, newToken: token, statePath: managed.statePath };
 }
 
 /**
