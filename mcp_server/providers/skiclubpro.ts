@@ -189,14 +189,21 @@ function waitForLoginError(page: Page, timeout = 8000): Promise<ElementHandle<HT
 
 /**
  * Wait for Drupal antibot key to be generated
+ * Phase 3: Dynamic tuning based on session reuse
  */
 async function waitForDrupalAntibot(
   page: Page, 
   { 
-    maxWaitMs = Number(process.env.SKICLUBPRO_ANTIBOT_MAX_WAIT_MS || 12000), 
-    requireKey = (process.env.SKICLUBPRO_ANTIBOT_REQUIRE_KEY !== "false") 
+    maxWaitMs = Number(process.env.SKICLUBPRO_ANTIBOT_MAX_WAIT_MS || 12000),
+    requireKey = (process.env.SKICLUBPRO_ANTIBOT_REQUIRE_KEY !== "false"),
+    isSessionReuse = false // Phase 3: New parameter for adaptive delays
   } = {}
 ): Promise<boolean> {
+  // Phase 3: Reduce wait time for session reuse (cookies already valid)
+  if (isSessionReuse && maxWaitMs > 2000) {
+    maxWaitMs = 2000;
+    console.log('[Antibot] Session reuse detected, reduced wait to 2000ms');
+  }
   const start = Date.now();
   const keySel = 'input[name*="antibot_key"], input[type="hidden"][name="antibot_key"]';
   
@@ -467,7 +474,9 @@ async function ensureLoggedIn(
     
     // Wait for anti-bot measures
     console.log('[login] Waiting for anti-bot measures...');
-    await waitForDrupalAntibot(page);
+    // Phase 3: Pass session reuse flag for adaptive delays
+    const isSessionReuse = config.storageState !== undefined;
+    await waitForDrupalAntibot(page, { isSessionReuse });
     await waitForDrupalTokensStable(page);
     
     // Submit form

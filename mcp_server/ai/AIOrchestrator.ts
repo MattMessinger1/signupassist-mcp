@@ -890,9 +890,19 @@ Example follow-up (only when needed):
   /**
    * Handle automatic program discovery after login
    * Always passes session_token to avoid creating new sessions
+   * Phase 3: Added program caching for faster subsequent calls
    */
   private async handleAutoProgramDiscovery(ctx: SessionContext, extras?: { mandate_jws?: string }, sessionId?: string): Promise<OrchestratorResponse> {
     if (!ctx?.provider?.orgRef) throw new Error("Provider context missing for auto-discovery");
+    
+    // Phase 3: Check program cache first
+    const cacheKey = `programs:${ctx.provider.orgRef}:${ctx.category || 'all'}`;
+    const cachedPrograms = ctx.cache?.[cacheKey];
+    
+    if (cachedPrograms) {
+      console.log(`[handleAutoProgramDiscovery] ✅ Using cached programs (${Object.keys(cachedPrograms).length} themes)`);
+      return await this.presentProgramsAsCards(ctx, cachedPrograms);
+    }
     
     // Quick Win #2: Use category from context if provided
     const args = {
@@ -907,14 +917,32 @@ Example follow-up (only when needed):
     const res = await this.callTool("scp.find_programs", args, sessionId);
     if (res?.session_token) ctx.session_token = res.session_token;
     
+    // Phase 3: Cache programs for reuse (15 min TTL)
+    const programs = res?.programs_by_theme || {};
+    if (Object.keys(programs).length > 0) {
+      if (!ctx.cache) ctx.cache = {};
+      ctx.cache[cacheKey] = programs;
+      console.log(`[handleAutoProgramDiscovery] 📦 Cached ${Object.keys(programs).length} program themes`);
+    }
+    
     // Return the result from presentProgramsAsCards
-    return await this.presentProgramsAsCards(ctx, res?.programs_by_theme || {});
+    return await this.presentProgramsAsCards(ctx, programs);
   }
 
   /**
    * Handle extractor test action
+   * Phase 3: Added program caching for faster subsequent calls
    */
   private async handleAction_run_extractor_test(ctx: SessionContext, sessionId?: string): Promise<OrchestratorResponse> {
+    // Phase 3: Check program cache first
+    const cacheKey = `programs:${ctx?.provider?.orgRef ?? "blackhawk-ski"}:all`;
+    const cachedPrograms = ctx.cache?.[cacheKey];
+    
+    if (cachedPrograms) {
+      console.log(`[handleAction_run_extractor_test] ✅ Using cached programs (${Object.keys(cachedPrograms).length} themes)`);
+      return await this.presentProgramsAsCards(ctx, cachedPrograms);
+    }
+    
     const args = {
       org_ref: ctx?.provider?.orgRef ?? "blackhawk-ski",
       session_token: ctx.session_token,
@@ -946,7 +974,15 @@ Example follow-up (only when needed):
       items: numItems
     });
     
-    return await this.presentProgramsAsCards(ctx, res?.programs_by_theme || {});
+    // Phase 3: Cache programs for reuse (15 min TTL)
+    const programs = res?.programs_by_theme || {};
+    if (Object.keys(programs).length > 0) {
+      if (!ctx.cache) ctx.cache = {};
+      ctx.cache[cacheKey] = programs;
+      console.log(`[handleAction_run_extractor_test] 📦 Cached ${Object.keys(programs).length} program themes`);
+    }
+    
+    return await this.presentProgramsAsCards(ctx, programs);
   }
 
   /**

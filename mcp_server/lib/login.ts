@@ -11,6 +11,7 @@ export interface ProviderLoginConfig {
   };
   postLoginCheck: string | string[]; // CSS or text locator
   timeout?: number; // Optional timeout in ms (default: 30000)
+  storageState?: string | { cookies: any[]; origins: any[] }; // Phase 3: For session reuse
 }
 
 // Fallback selector arrays for progressive detection
@@ -156,8 +157,12 @@ export async function loginWithCredentials(
 
   console.log("DEBUG Navigating to login page:", config.loginUrl);
   
-  // Navigate to login page with anti-bot timeout cap
-  const ANTIBOT_MAX_WAIT_MS = 6500; // 6.5s cap for anti-bot waits
+  // Navigate to login page with adaptive anti-bot timeout
+  // Phase 3: Dynamic tuning - faster timeout when reusing sessions (storageState present)
+  const hasStorageState = config.storageState !== undefined;
+  const ANTIBOT_MAX_WAIT_MS = hasStorageState ? 1500 : 6500;
+  console.log(`[Login] Antibot timeout: ${ANTIBOT_MAX_WAIT_MS}ms (session reuse: ${hasStorageState})`);
+  
   try {
     await page.goto(config.loginUrl, { waitUntil: 'domcontentloaded', timeout: ANTIBOT_MAX_WAIT_MS });
   } catch (timeoutError: any) {

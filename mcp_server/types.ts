@@ -47,6 +47,9 @@ export interface SessionContext {
   session_ttl_ms?: number;     // Session time-to-live in milliseconds
   login_status?: "pending" | "success" | "failed";  // Login status tracking (strict type)
   mandate_valid_until?: number; // Mandate expiration timestamp
+  
+  // Phase 3: Program caching for performance
+  cache?: Record<string, any>; // Generic cache for programs and other data
 }
 
 // ============================================================================
