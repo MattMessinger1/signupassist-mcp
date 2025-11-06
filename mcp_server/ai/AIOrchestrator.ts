@@ -12,6 +12,7 @@ import { buildGroupedCardsPayload, buildSimpleCardsFromGrouped } from "./cardPay
 import { parseIntent, buildIntentQuestion, filterByAge, classifyIntentStrength, pickLikelyProgram, type ParsedIntent, type ExtendedIntent } from "../lib/intentParser.js";
 import { normalizeEmailWithAI, generatePersonalizedMessage } from "../lib/aiIntentParser.js";
 import { singleFlight } from "../utils/singleflight.js";
+import type { SessionContext } from "../types.js";
 
 /**
  * Prompt version tracking for tone changes
@@ -103,96 +104,6 @@ export enum FlowStep {
   CONFIRMATION = 7,
   COMPLETED = 8
 }
-
-  /**
-   * Session context structure - defines what's stored for each conversation
-   */
-  export interface SessionContext {
-    step?: FlowStep;
-    userLocation?: { lat: number; lng: number };
-    provider?: { name: string; orgRef: string; source?: string; city?: string; state?: string };
-    providerSearchResults?: any[];
-    program?: { name: string; id: string };
-    child?: { name: string; id?: string; birthdate?: string };
-    children?: Array<{ id: string; name: string; birthdate?: string }>;
-    prerequisites?: Record<string, "ok" | "required" | "missing">;
-    formAnswers?: Record<string, any>;
-    conversationHistory?: Array<{ role: string; content: string }>;
-    loginCompleted?: boolean;
-    confirmed?: boolean;
-    user_jwt?: string;
-    credential_id?: string;
-    session_token?: string;  // Browser session token for reuse
-    session_issued_at?: number;  // Timestamp when session_token was issued (ms since epoch)
-    session_ttl_ms?: number;  // Session time-to-live in milliseconds (default: 300000 = 5 min)
-    login_status?: "pending" | "success" | "failed";  // Track login state for credentials_submitted handling
-    mandate_id?: string;  // Mandate ID for audit trail
-    mandate_jws?: string;  // Mandate JWS token for verification
-    mandate_valid_until?: number;  // Timestamp when mandate expires (ms since epoch)
-    credentials?: { [provider: string]: { id: string; credential_id: string } };
-    pendingLogin?: { provider: string; orgRef: string };
-    discovery_retry_count?: number;
-    provider_cookies?: any[];
-    
-    // Quick Win #1: Intent capture fields
-    category?: string;      // Activity category: "lessons", "camps", "races", "all"
-    childAge?: number;      // Child's age for filtering programs
-    partialIntent?: ExtendedIntent; // Stores incomplete intent across turns (includes new user signals)
-    lastQuestionType?: 'age' | 'category' | 'provider';  // Context-aware parsing: tracks last missing intent question
-    userType?: 'first_time_parent' | 'returning_user' | 'unknown'; // NEW: User classification for personalized messaging
-    isNewUser?: boolean;    // NEW: Detected "I'm new" signals → trigger account creation flow proactively
-    
-    // Quick Win #5: Session reuse tracking
-    org_ref?: string;       // Organization reference for session validation
-    
-    // Phase 3: Program caching for performance
-    cache?: Record<string, any>; // Generic cache for programs and other data
-    
-    // Smart Program Filtering Properties
-    availablePrograms?: any[];
-    displayedProgramIds?: string[];
-    remainingProgramIds?: string[];
-    programSummary?: {
-      categories: Array<{
-        name: string;
-        count: number;
-        examples: string[];
-        programIds: string[];
-      }>;
-    };
-    showingCategories?: boolean;
-    currentCategory?: string;
-    selectedProgram?: string;
-    
-    // Intent Capture & Field Probe Properties
-    programIntent?: {
-      category?: "lessons" | "membership" | "camp" | "race" | "private";
-      day_pref?: "weekend" | "weekday" | null;
-      time_pref?: "morning" | "afternoon" | "evening" | null;
-      level?: "beginner" | "intermediate" | "advanced" | null;
-      keywords?: string[];
-    };
-    extractedFields?: {
-      fields: Array<{
-        id: string;
-        label: string;
-        type: string;
-        required: boolean;
-        options?: Array<{ value: string; label: string }>;
-        group?: string;
-        confidence: number;
-      }>;
-      target_url?: string;
-      screenshot?: string;
-      meta?: {
-        discovered_at: string;
-        strategy: string;
-        readiness: string;
-      };
-    };
-    field_probe_run_id?: string;
-    provider_session_token?: string;
-  }
 
 /**
  * Card specification for UI rendering

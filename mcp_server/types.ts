@@ -53,6 +53,60 @@ export interface SessionContext {
   
   // Phase 3: Program caching for performance
   cache?: Record<string, any>; // Generic cache for programs and other data
+  
+  // Orchestrator-specific fields
+  program?: { name: string; id: string };
+  child?: { name: string; id?: string; birthdate?: string };
+  prerequisites?: Record<string, "ok" | "required" | "missing">;
+  formAnswers?: Record<string, any>;
+  conversationHistory?: Array<{ role: string; content: string }>;
+  confirmed?: boolean;
+  credentials?: { [provider: string]: { id: string; credential_id: string } };
+  pendingLogin?: { provider: string; orgRef: string };
+  lastQuestionType?: 'age' | 'category' | 'provider';
+  userType?: 'first_time_parent' | 'returning_user' | 'unknown';
+  isNewUser?: boolean;
+  availablePrograms?: any[];
+  displayedProgramIds?: string[];
+  remainingProgramIds?: string[];
+  programSummary?: {
+    categories: Array<{
+      name: string;
+      count: number;
+      examples: string[];
+      programIds: string[];
+    }>;
+  };
+  showingCategories?: boolean;
+  currentCategory?: string;
+  selectedProgram?: string;
+  programIntent?: {
+    category?: "lessons" | "membership" | "camp" | "race" | "private";
+    day_pref?: "weekend" | "weekday" | null;
+    time_pref?: "morning" | "afternoon" | "evening" | null;
+    level?: "beginner" | "intermediate" | "advanced" | null;
+    keywords?: string[];
+  };
+  extractedFields?: {
+    fields: Array<{
+      id: string;
+      label: string;
+      type: string;
+      required: boolean;
+      options?: Array<{ value: string; label: string }>;
+      group?: string;
+      confidence: number;
+    }>;
+    target_url?: string;
+    screenshot?: string;
+    meta?: {
+      discovered_at: string;
+      strategy: string;
+      readiness: string;
+    };
+  };
+  field_probe_run_id?: string;
+  provider_session_token?: string;
 }
 
 // ============================================================================
