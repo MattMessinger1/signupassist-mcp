@@ -54,6 +54,9 @@ import { registerAllProviders } from './prereqs/providers.js';
 // Import OpenAI smoke test
 import { runOpenAISmokeTests } from './startup/openaiSmokeTest.js';
 
+// Import provider cache preloader
+import { preloadProviderCache } from './startup/preloadProviders.js';
+
 // Type-only import for AIOrchestrator (safe - doesn't execute module code)
 import type AIOrchestrator from './ai/AIOrchestrator.js';
 
@@ -800,12 +803,19 @@ if (process.env.NODE_ENV === 'production' || process.env.PORT) {
   const startTime = Date.now();
   
   server.startHTTP()
-    .then((httpServer) => {
+    .then(async (httpServer) => {
       const bootTime = Date.now() - startTime;
       console.log('[STARTUP] ✅ HTTP server fully operational');
       console.log('[STARTUP] Boot time:', bootTime, 'ms');
       console.log('[STARTUP] Process uptime:', process.uptime().toFixed(2), 'seconds');
       console.log('[STARTUP] Memory usage:', Math.round(process.memoryUsage().heapUsed / 1024 / 1024), 'MB');
+      
+      // Preload provider cache for faster response times
+      try {
+        await preloadProviderCache();
+      } catch (error) {
+        console.warn('[STARTUP] Provider cache preload failed (non-fatal):', error);
+      }
       
       // Health monitoring heartbeat - logs every 30 seconds
       setInterval(() => {
