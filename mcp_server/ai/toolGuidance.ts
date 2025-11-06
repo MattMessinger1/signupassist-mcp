@@ -1,6 +1,28 @@
 /**
  * Tool Guidance for AIOrchestrator
  * 
+ * TOOL_GUIDANCE__LOGIN_WRAPPER_ANTIBOT
+ * 
+ * scp.login Anti-bot Tool Guidance:
+ * 
+ * Rules:
+ * 1. If anti-bot waits exceed 6.5 seconds without clear progress, immediately navigate 
+ *    to /registration and continue (fast-path).
+ * 2. On first success, persist cookies+localStorage and tag session_issued_at.
+ * 3. On reuse, skip anti-bot waits and go straight to /registration.
+ * 4. Never re-login if a fresh session_token exists (issued < ttl-30s).
+ * 
+ * Implementation:
+ * - 6.5s timeout cap in mcp_server/lib/login.ts (ANTIBOT_MAX_WAIT_MS)
+ * - Session persistence via storageState (cookies + localStorage)
+ * - session_issued_at tracked in AIOrchestrator context
+ * - Session reuse check validates: session_token + org_ref match + (now - session_issued_at < ttl-30s)
+ * 
+ * Why: Prevents unnecessary delays, improves reliability, follows Design DNA 
+ * (minimize friction, transparent behavior).
+ * 
+ * ───────────────────────────────────────────────────────────────────────────
+ * 
  * TOOL_GUIDANCE__AUTO_PROGRAM_DISCOVERY_V2
  * 
  * Goal: After successful provider login, automatically fetch and display programs.
