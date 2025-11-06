@@ -145,6 +145,9 @@ export enum FlowStep {
     // Quick Win #5: Session reuse tracking
     org_ref?: string;       // Organization reference for session validation
     
+    // Phase 3: Program caching for performance
+    cache?: Record<string, any>; // Generic cache for programs and other data
+    
     // Smart Program Filtering Properties
     availablePrograms?: any[];
     displayedProgramIds?: string[];
