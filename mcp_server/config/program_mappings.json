@@ -1,0 +1,42 @@
+{
+  "generated_at": "2025-01-06T00:00:00.000Z",
+  "total_samples": 0,
+  "mappings_count": 3,
+  "min_samples": 1,
+  "note": "This is a placeholder file. Run 'tsx scripts/buildProgramMappings.ts' to generate from audit logs.",
+  "mappings": [
+    {
+      "program_ref": "309",
+      "ageMin": 6,
+      "ageMax": 12,
+      "category": "lessons",
+      "provider": "blackhawk-ski-club",
+      "keywords": ["nordic", "wednesday", "kids"],
+      "confidence": 0.9,
+      "season": "winter",
+      "samples": 0
+    },
+    {
+      "program_ref": "310",
+      "ageMin": 4,
+      "ageMax": 8,
+      "category": "lessons",
+      "provider": "blackhawk-ski-club",
+      "keywords": ["beginner", "saturday", "morning"],
+      "confidence": 0.85,
+      "season": "winter",
+      "samples": 0
+    },
+    {
+      "program_ref": "311",
+      "ageMin": 8,
+      "ageMax": 14,
+      "category": "lessons",
+      "provider": "blackhawk-ski-club",
+      "keywords": ["intermediate", "sunday", "afternoon"],
+      "confidence": 0.8,
+      "season": "winter",
+      "samples": 0
+    }
+  ]
+}
