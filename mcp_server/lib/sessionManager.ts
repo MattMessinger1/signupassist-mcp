@@ -86,12 +86,32 @@ export function generateToken(): string {
 }
 
 /**
+ * Refresh session TTL to keep active sessions alive
+ */
+export function refreshSession(token: string, additionalTtlMs = SESSION_TTL_MS): boolean {
+  if (!SESSION_CACHE_ENABLED) {
+    return false;
+  }
+  
+  const managed = sessions.get(token);
+  if (!managed) {
+    console.log('[SessionManager] Cannot refresh - session not found:', token);
+    return false;
+  }
+  
+  managed.expiresAt = Date.now() + additionalTtlMs;
+  console.log('[SessionManager] 🔄 Refreshed session:', token, 'new expiry in', additionalTtlMs, 'ms');
+  return true;
+}
+
+/**
  * Clean up expired sessions periodically
  */
 export function cleanupExpiredSessions() {
   const now = Date.now();
   for (const [token, managed] of sessions.entries()) {
     if (now > managed.expiresAt) {
+      console.log('[SessionManager] 🗑️ Cleaning up expired session:', token);
       sessions.delete(token);
     }
   }

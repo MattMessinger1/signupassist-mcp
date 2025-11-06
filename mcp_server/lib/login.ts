@@ -195,7 +195,7 @@ export async function loginWithCredentials(
   }
 
   // Quick human pause + tiny mouse wiggle (Antibot micro-behavior)
-  await humanPause(350, 900);
+  await humanPause(200, 500);
   try {
     const box = page.locator('body');
     await box.hover({ position: { x: jitter(10, 200), y: jitter(10, 200) } }).catch(() => {});
@@ -261,7 +261,7 @@ export async function loginWithCredentials(
 
   // Antibot micro-behavior: pause before interacting (JS needs time to set up)
   console.log("DEBUG Pausing for Antibot JS initialization...");
-  await humanPause(500, 1400);
+  await humanPause(300, 800);
 
   // Small scroll to trigger visibility events
   try {
@@ -275,15 +275,15 @@ export async function loginWithCredentials(
   // Type credentials with human-like delays
   console.log("DEBUG Typing email...");
   await page.click(emailSel, { timeout: 5000 }).catch(() => {});
-  await page.type(emailSel, creds.email, { delay: jitter(35, 95) });
+  await page.type(emailSel, creds.email, { delay: jitter(25, 60) });
   
-  await humanPause(200, 500);
+  await humanPause(100, 300);
   
   console.log("DEBUG Typing password...");
   await page.click(passSel, { timeout: 5000 }).catch(() => {});
-  await page.type(passSel, creds.password, { delay: jitter(35, 95) });
+  await page.type(passSel, creds.password, { delay: jitter(25, 60) });
   
-  await humanPause(300, 700);
+  await humanPause(150, 400);
 
   // FIX 1: Override Drupal's destination field to force post-login redirect
   const currentPageUrl = new URL(page.url());
