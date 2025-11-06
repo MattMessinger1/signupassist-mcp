@@ -8,6 +8,7 @@ import { default as pLimit } from "p-limit";
 import { MODELS } from "./oai.js";
 import { safeJSONParse } from "./openaiHelpers.js";
 import { canonicalizeSnippet, validateAndDedupePrograms } from "./extractionUtils.js";
+import { sha1, getCached, setCached } from "../utils/extractionCache.js";
 
 export interface ProgramData {
   id: string;
@@ -188,7 +189,8 @@ async function callStrictExtraction(opts: {
 export async function runThreePassExtractorForPrograms(
   page: any, 
   orgRef: string,
-  opts: ExtractorConfig
+  opts: ExtractorConfig,
+  category: string = "programs"
 ) {
   console.log('[PACK-06 Extractor] Starting programs-only extraction');
   
@@ -226,6 +228,21 @@ export async function runThreePassExtractorForPrograms(
     console.warn('[PACK-06] No program containers found');
     return [];
   }
+
+  // Phase 3: Generate cache key and check cache
+  const combinedHtml = snippets.map(s => s.html).join("");
+  const pageHash = sha1(combinedHtml);
+  const cacheKey = `${orgRef}:${category}:${pageHash}`;
+  
+  console.log(`[PACK-06 Cache] Key: ${cacheKey.substring(0, 50)}...`);
+  const cachedResult = await getCached(cacheKey);
+  
+  if (cachedResult) {
+    console.log(`[PACK-06 Cache] Hit! Returning ${cachedResult.length} cached programs`);
+    return cachedResult;
+  }
+  
+  console.log('[PACK-06 Cache] Miss, proceeding with extraction');
 
   // Step 4: Wrap extraction in try-catch for graceful fallback
   try {
@@ -360,6 +377,9 @@ Return validated programs array in strict JSON format.`,
     // Step 1e: Apply final validation and deduplication
     const cleanedPrograms = validateAndDedupePrograms(finalPrograms);
     console.log(`[PACK-06 Post-validation] ${cleanedPrograms.length} programs after filtering and deduplication`);
+    
+    // Phase 3: Cache the cleaned results (TTL: 900s = 15 minutes)
+    await setCached(cacheKey, cleanedPrograms, 900);
     
     return cleanedPrograms;
     
