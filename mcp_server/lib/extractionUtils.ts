@@ -3,21 +3,7 @@
  * Provides HTML snippet cleanup and program validation/deduplication
  */
 
-// Import ProgramData type - will be used for validation
-interface ProgramData {
-  id: string;
-  program_ref: string;
-  title: string;
-  description?: string;
-  schedule?: string;
-  age_range?: string;
-  skill_level?: string;
-  price?: string;
-  actual_id?: string;
-  org_ref?: string;
-  status?: string;
-  cta_href?: string;
-}
+import type { ProgramData } from "./threePassExtractor.programs.js";
 
 /**
  * Canonicalize an HTML snippet for LLM consumption

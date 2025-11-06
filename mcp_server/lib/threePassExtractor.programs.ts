@@ -171,7 +171,7 @@ async function callStrictExtraction(opts: {
     // Retry logic for invalid JSON
     if (!parsed && _retryCount < 2) {
       logOncePer(
-        `extraction-retry-${model}`,
+        `extraction-retry-${opts.model}`,
         5000,
         () => console.warn(`[threePassExtractor] Retrying extraction (attempt ${_retryCount + 2}/3)...`)
       );
