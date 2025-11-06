@@ -411,12 +411,12 @@ async function ensureLoggedIn(
     await page.goto(loginUrl, { waitUntil: waitUntilMode });
     
     // PACK-L1: Robust Drupal login-field detection
-    // 1) Gate on any of the expected "we can proceed" signals
+    // 1) Gate on any of the expected "we can proceed" signals (optimized timeouts)
     const SEEN = await Promise.race([
-      page.waitForSelector('form.user-login-form, #user-login, #edit-name, input[name="name"], input[id*="edit-name"], input[name*="mail"], input[type="email"]', { timeout: 15000 }).then(() => 'login'),
-      page.waitForSelector('a[href*="/user/logout"], .user-logged-in', { timeout: 15000 }).then(() => 'logged-in'),
-      page.waitForSelector('input[name*="antibot_key"], [name="antibot_key"]', { timeout: 15000 }).then(() => 'antibot'),
-      page.waitForSelector('text=/Just a moment|Access denied|403/i', { timeout: 15000 }).then(() => 'challenge'),
+      page.waitForSelector('form.user-login-form, #user-login, #edit-name, input[name="name"], input[id*="edit-name"], input[name*="mail"], input[type="email"]', { timeout: 10000 }).then(() => 'login'),
+      page.waitForSelector('a[href*="/user/logout"], .user-logged-in', { timeout: 10000 }).then(() => 'logged-in'),
+      page.waitForSelector('input[name*="antibot_key"], [name="antibot_key"]', { timeout: 10000 }).then(() => 'antibot'),
+      page.waitForSelector('text=/Just a moment|Access denied|403/i', { timeout: 10000 }).then(() => 'challenge'),
     ].map(p => p.catch(() => null)));
 
     if (SEEN === 'logged-in') {
@@ -451,10 +451,10 @@ async function ensureLoggedIn(
       'input[autocomplete="current-password"]'
     ].join(',');
 
-    // Wait for either username and password inputs to exist
+    // Wait for either username and password inputs to exist (optimized timeouts)
     console.log('[ensureLoggedIn] PACK-L1: Waiting for login fields');
-    await page.waitForSelector(USER_SEL, { timeout: 20000 });
-    await page.waitForSelector(PASS_SEL, { timeout: 20000 });
+    await page.waitForSelector(USER_SEL, { timeout: 10000 });
+    await page.waitForSelector(PASS_SEL, { timeout: 10000 });
 
     const userEl = page.locator(USER_SEL).first();
     const passEl = page.locator(PASS_SEL).first();

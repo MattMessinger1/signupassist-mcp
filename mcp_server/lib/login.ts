@@ -47,7 +47,7 @@ const HONEYPOT_PATTERNS = [
 ];
 
 // Helper to find first available selector from array or string
-async function findSelector(page: Page, selectors: string | string[], timeout = 5000): Promise<string | null> {
+async function findSelector(page: Page, selectors: string | string[], timeout = 3000): Promise<string | null> {
   const selectorArray = Array.isArray(selectors) ? selectors : [selectors];
   
   for (const sel of selectorArray) {
@@ -62,8 +62,13 @@ async function findSelector(page: Page, selectors: string | string[], timeout = 
   return null;
 }
 
-// Detect and log honeypot fields
+// Detect and log honeypot fields (only in debug mode for performance)
 async function detectHoneypots(page: Page): Promise<void> {
+  // Skip honeypot detection in production for ~200-300ms performance gain
+  if (process.env.DEBUG_HONEYPOTS !== 'true') {
+    return;
+  }
+  
   console.log("DEBUG Checking for Antibot honeypot fields...");
   for (const pattern of HONEYPOT_PATTERNS) {
     const honeypots = await page.$$(pattern);
@@ -343,23 +348,23 @@ export async function loginWithCredentials(
   const submitTime = Date.now();
   
   try {
-    // Check for SUCCESS indicators with multiple signals
+    // Check for SUCCESS indicators with multiple signals (optimized timeouts)
     const loginResult = await Promise.race([
-      // Success signal 1: Session cookie appears
+      // Success signal 1: Session cookie appears (faster polling for quicker detection)
       page.waitForFunction(() => {
         return document.cookie.includes('SESS') || document.cookie.includes('SSESS');
-      }, { timeout: 8000 }).then(() => 'cookie'),
+      }, { timeout: 5000, polling: 50 }).then(() => 'cookie'),
       
       // Success signal 2: URL changes away from login page
-      page.waitForFunction(() => !window.location.href.includes('/user/login'), { timeout: 8000 })
+      page.waitForFunction(() => !window.location.href.includes('/user/login'), { timeout: 5000, polling: 50 })
         .then(() => 'url'),
       
       // Success signal 3: Logout link appears
-      page.waitForSelector('a:has-text("Log out"), a:has-text("Sign out")', { timeout: 8000 })
+      page.waitForSelector('a:has-text("Log out"), a:has-text("Sign out")', { timeout: 5000 })
         .then(() => 'logout'),
       
       // Failure signal: Error message appears
-      page.waitForSelector('.messages--error, .messages--warning, div[role="alert"]', { timeout: 8000 })
+      page.waitForSelector('.messages--error, .messages--warning, div[role="alert"]', { timeout: 5000 })
         .then(async () => {
           const msg = await page.locator('.messages--error, .messages--warning, div[role="alert"]').first().innerText().catch(() => '');
           console.log(`DEBUG ✗ Error message detected: ${msg.trim()}`);
