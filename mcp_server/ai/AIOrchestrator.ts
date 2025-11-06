@@ -892,12 +892,20 @@ Example follow-up (only when needed):
       });
 
       if (!loginRes?.session_token) throw new Error("Login did not return session_token");
-      ctx.session_token = loginRes.session_token;
-      ctx.session_issued_at = Date.now();
-      ctx.session_ttl_ms = sessionTTL;
-      ctx.org_ref = targetOrg;
-      ctx.login_status = "success";
-      ctx.loginCompleted = true;
+      
+      // Phase B: Persist session token to survive HTTP request boundaries
+      await this.updateContext(sessionId, {
+        session_token: loginRes.session_token,
+        session_issued_at: Date.now(),
+        session_token_expires_at: Date.now() + sessionTTL,
+        session_ttl_ms: sessionTTL,
+        org_ref: targetOrg,
+        login_status: "success",
+        loginCompleted: true
+      });
+      
+      // Get fresh context after persistence
+      ctx = await this.getContext(sessionId);
     }
 
     return await this.handleAutoProgramDiscovery(ctx, { mandate_jws }, sessionId);
