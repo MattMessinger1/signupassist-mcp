@@ -159,6 +159,45 @@ export type Database = {
         }
         Relationships: []
       }
+      cached_programs: {
+        Row: {
+          cache_key: string
+          cached_at: string
+          category: string
+          created_at: string
+          expires_at: string
+          id: string
+          metadata: Json | null
+          org_ref: string
+          programs_by_theme: Json
+          updated_at: string
+        }
+        Insert: {
+          cache_key: string
+          cached_at?: string
+          category?: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          metadata?: Json | null
+          org_ref: string
+          programs_by_theme?: Json
+          updated_at?: string
+        }
+        Update: {
+          cache_key?: string
+          cached_at?: string
+          category?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          metadata?: Json | null
+          org_ref?: string
+          programs_by_theme?: Json
+          updated_at?: string
+        }
+        Relationships: []
+      }
       charges: {
         Row: {
           amount_cents: number | null
@@ -740,7 +779,16 @@ export type Database = {
     }
     Functions: {
       cleanup_expired_checkout_sessions: { Args: never; Returns: undefined }
+      cleanup_expired_program_cache: { Args: never; Returns: number }
       cleanup_expired_sessions: { Args: never; Returns: undefined }
+      find_programs_cached: {
+        Args: {
+          p_category?: string
+          p_max_age_hours?: number
+          p_org_ref: string
+        }
+        Returns: Json
+      }
       get_best_hints: {
         Args: { p_program: string; p_provider: string; p_stage: string }
         Returns: Json
@@ -773,6 +821,16 @@ export type Database = {
       }
       refresh_best_hints: { Args: never; Returns: undefined }
       sanitize_error_text: { Args: { txt: string }; Returns: string }
+      upsert_cached_programs: {
+        Args: {
+          p_category: string
+          p_metadata?: Json
+          p_org_ref: string
+          p_programs_by_theme: Json
+          p_ttl_hours?: number
+        }
+        Returns: string
+      }
       upsert_discovery_run: {
         Args: {
           p_errors: Json
