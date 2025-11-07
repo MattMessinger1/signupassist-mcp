@@ -1,3 +1,4 @@
+// Version: 1.1.0 - JWT authentication enabled
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import * as jose from 'https://deno.land/x/jose@v5.9.6/index.ts';
 
