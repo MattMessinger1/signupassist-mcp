@@ -150,6 +150,11 @@ Deno.serve(async (req) => {
 
   const userJwt = jwtData.properties.access_token;
   console.log('[refresh-program-cache] JWT generated successfully');
+  console.log('[refresh-program-cache] JWT structure check:', { 
+    hasProperties: !!jwtData.properties,
+    hasAccessToken: !!jwtData.properties?.access_token,
+    jwtLength: jwtData.properties?.access_token?.length 
+  });
   
   const { data: credentials, error: credError } = await supabase
     .from('stored_credentials')
