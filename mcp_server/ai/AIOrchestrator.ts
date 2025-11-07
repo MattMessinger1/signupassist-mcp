@@ -1338,8 +1338,10 @@ Example follow-up (only when needed):
         buttons: [{
           label: "View Requirements",
           action: "view_checklist",
-          variant: "outline" as const,
-          payload: { program_ref: checklist.program_ref }
+          payload: { 
+            program_ref: checklist.program_ref,
+            org_ref: checklist.org_ref || ''
+          }
         }]
       }));
       
