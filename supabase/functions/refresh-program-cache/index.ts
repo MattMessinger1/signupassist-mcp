@@ -160,10 +160,18 @@ Deno.serve(async (req) => {
 
   // Generate JWT for system user (needed for credential decryption)
   console.log('[refresh-program-cache] Generating system user JWT...');
+  
+  // Debug: Check all available env vars
+  const allEnvKeys = Object.keys(Deno.env.toObject());
+  console.log('[refresh-program-cache] Available env var keys:', allEnvKeys.filter(k => k.includes('JWT') || k.includes('SUPABASE')));
+  
   const jwtSecret = Deno.env.get('SUPABASE_JWT_SECRET');
+  console.log('[refresh-program-cache] JWT Secret status:', jwtSecret ? 'Found (length: ' + jwtSecret.length + ')' : 'NOT FOUND');
+  
   if (!jwtSecret) {
     const error = 'SUPABASE_JWT_SECRET not configured';
     console.error(`[refresh-program-cache] ${error}`);
+    console.error('[refresh-program-cache] This is a system-provided secret. Check Supabase dashboard.');
     return new Response(JSON.stringify({ error }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
