@@ -132,22 +132,57 @@ Deno.serve(async (req) => {
   }
 
   const credentialId = credentials[0].id;
+  const encryptedData = credentials[0].encrypted_data;
   
-  // Decrypt the credential using cred-get function with service role
+  // Decrypt the credential directly (service role context)
   console.log(`[refresh-program-cache] Decrypting credential: ${credentialId}`);
-  const { data: decryptedCreds, error: decryptError } = await supabase.functions.invoke('cred-get', {
-    body: { id: credentialId }
-  });
+  
+  const sealKey = Deno.env.get('CRED_SEAL_KEY');
+  if (!sealKey) {
+    console.error('[refresh-program-cache] Missing CRED_SEAL_KEY');
+    return new Response(JSON.stringify({ error: 'Missing CRED_SEAL_KEY' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
 
-  if (decryptError || !decryptedCreds) {
+  let decryptedCreds: { email: string; password: string };
+  
+  try {
+    const [encryptedBase64, ivBase64] = encryptedData.split(':');
+    
+    // Convert base64 back to binary
+    const encryptedBytes = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0));
+    const iv = Uint8Array.from(atob(ivBase64), c => c.charCodeAt(0));
+    
+    // Import the key
+    const keyData = Uint8Array.from(atob(sealKey), c => c.charCodeAt(0));
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      keyData,
+      { name: 'AES-GCM' },
+      false,
+      ['decrypt']
+    );
+
+    // Decrypt
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      cryptoKey,
+      encryptedBytes
+    );
+
+    const decoder = new TextDecoder();
+    decryptedCreds = JSON.parse(decoder.decode(decrypted));
+    
+    console.log(`[refresh-program-cache] Credential decrypted successfully (email: ${decryptedCreds.email?.substring(0, 3)}***)`);
+  } catch (decryptError) {
     console.error(`[refresh-program-cache] Failed to decrypt credential:`, decryptError);
     return new Response(JSON.stringify({ error: 'Failed to decrypt credential' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
-
-  console.log(`[refresh-program-cache] Using credential: ${credentialId} (email: ${decryptedCreds.email?.substring(0, 3)}***)`);
 
   // Get development mandate if available
   const devMandateJws = Deno.env.get('DEV_MANDATE_JWS');
