@@ -200,8 +200,10 @@ Deno.serve(async (req) => {
         const mcpResult = await invokeMCPToolDirect('scp.find_programs', {
           org_ref: org.orgRef,
           category: category,
-          username: decryptedCreds.email,
-          password: decryptedCreds.password
+          email: decryptedCreds.email,
+          password: decryptedCreds.password,
+          user_id: 'system',
+          force_login: true
         });
 
         console.log(`[refresh-program-cache] MCP result for ${org.orgRef}:${category}:`, JSON.stringify(mcpResult, null, 2));
@@ -239,8 +241,9 @@ Deno.serve(async (req) => {
                 org_ref: org.orgRef,
                 program_ref: programRef,
                 stage: 'prereq',
-                username: decryptedCreds.email,
+                email: decryptedCreds.email,
                 password: decryptedCreds.password,
+                user_id: 'system',
                 mode: 'prerequisites_only'
               });
 
@@ -254,8 +257,9 @@ Deno.serve(async (req) => {
                 org_ref: org.orgRef,
                 program_ref: programRef,
                 stage: 'program',
-                username: decryptedCreds.email,
+                email: decryptedCreds.email,
                 password: decryptedCreds.password,
+                user_id: 'system',
                 mode: 'full'
               });
 

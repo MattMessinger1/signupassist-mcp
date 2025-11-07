@@ -678,11 +678,11 @@ async function ensureLoggedOut(session: any) {
 /**
  * Real implementation of SkiClubPro field discovery with login/logout handling
  */
-export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs & { session_token?: string }): Promise<FieldSchema> {
+export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs & { session_token?: string; email?: string; password?: string }): Promise<FieldSchema> {
   
-  // Validate user JWT is provided
-  if (!args.user_jwt) {
-    throw new Error('Missing user_jwt for credential lookup');
+  // Validate authentication - require either user_jwt OR email+password
+  if (!args.user_jwt && !(args.email && args.password)) {
+    throw new Error('Missing authentication: Must provide either user_jwt OR email+password for credential lookup');
   }
   
   // Inline program mapping to avoid import issues
