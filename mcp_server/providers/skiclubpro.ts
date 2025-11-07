@@ -1902,6 +1902,24 @@ export const skiClubProTools = {
           // Import programs-only extractor
           const { runThreePassExtractorForPrograms } = await import('../lib/threePassExtractor.programs.js');
           
+          // TASK 3: Build filter object from schedule preferences
+          const extractorFilters: any = {};
+          
+          if (args.filter_day) {
+            extractorFilters.dayOfWeek = args.filter_day;
+            console.log('[scp.find_programs] TASK 3: Applying day filter:', args.filter_day);
+          }
+          
+          if (args.filter_time) {
+            extractorFilters.timeOfDay = args.filter_time;
+            console.log('[scp.find_programs] TASK 3: Applying time filter:', args.filter_time);
+          }
+          
+          if (args.child_age) {
+            extractorFilters.childAge = parseInt(args.child_age, 10);
+            console.log('[scp.find_programs] TASK 3: Applying age filter:', args.child_age);
+          }
+          
           scrapedPrograms = await runThreePassExtractorForPrograms(session.page, orgRef, {
             models: {
               vision: process.env.OPENAI_MODEL_PROGRAM_VISION || 'gpt-5-2025-08-07',
@@ -1915,7 +1933,10 @@ export const skiClubProTools = {
               price: ['.views-field-field-price', '.price', 'td:has-text("$")'],
               schedule: ['.views-field-field-schedule', '.schedule', 'td:has-text("AM")', 'td:has-text("PM")']
             }
-          });
+          }, 
+          'programs', // category
+          Object.keys(extractorFilters).length > 0 ? extractorFilters : undefined // TASK 3: Pass filters
+          );
           
           console.log(`[scp.find_programs] ✅ PACK-05: Extracted ${scrapedPrograms.length} programs`);
         }

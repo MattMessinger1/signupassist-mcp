@@ -5,11 +5,138 @@
 
 import OpenAI from "openai";
 import { default as pLimit } from "p-limit";
+import type { ElementHandle } from 'playwright-core';
 import { MODELS } from "./oai.js";
 import { safeJSONParse } from "./openaiHelpers.js";
 import { canonicalizeSnippet, validateAndDedupePrograms } from "./extractionUtils.js";
 import { sha1, getCached, setCached } from "../utils/extractionCache.js";
 import { logOncePer } from "../utils/logDebouncer.js";
+
+/**
+ * TASK 3: Playwright-based pre-filtering to reduce DOM sent to OpenAI
+ * Uses defensive selectors to match different HTML structures
+ * Filters by schedule (day/time) and age if provided
+ */
+async function filterProgramCandidates(
+  page: any,
+  candidates: ElementHandle[],
+  filters: { dayOfWeek?: string; timeOfDay?: string; childAge?: number }
+): Promise<ElementHandle[]> {
+  const { dayOfWeek, timeOfDay, childAge } = filters;
+  
+  console.log('[Pre-Filter] Filtering with:', { dayOfWeek, timeOfDay, childAge });
+  
+  // Defensive selectors for finding schedule/age text across different layouts
+  const scheduleSelectors = [
+    '.views-field-field-schedule',
+    '.schedule',
+    'td:has-text("AM")',
+    'td:has-text("PM")',
+    '[class*="schedule"]',
+    'td:nth-child(2)', // Common position for schedule column
+  ];
+  
+  const ageSelectors = [
+    '.views-field-field-age',
+    '.age-range',
+    '[class*="age"]',
+    'td:has-text("years")',
+    'td:has-text("yrs")',
+    'td:nth-child(3)', // Common position for age column
+  ];
+  
+  const filtered: ElementHandle[] = [];
+  
+  for (const candidate of candidates) {
+    try {
+      const shouldInclude = await candidate.evaluate(
+        (el: HTMLElement, opts: any) => {
+          const { dayOfWeek, timeOfDay, childAge, scheduleSelectors, ageSelectors } = opts;
+          
+          // Helper: Find text using defensive selectors
+          const findText = (selectors: string[]): string => {
+            for (const sel of selectors) {
+              try {
+                const elem = el.querySelector(sel);
+                if (elem?.textContent?.trim()) {
+                  return elem.textContent.trim().toLowerCase();
+                }
+              } catch {}
+            }
+            // Fallback: check entire element text
+            return el.textContent?.toLowerCase() || '';
+          };
+          
+          // Get schedule and age text
+          const scheduleText = findText(scheduleSelectors);
+          const ageText = findText(ageSelectors);
+          
+          // Filter by day of week
+          if (dayOfWeek && dayOfWeek !== 'any') {
+            const isWeekday = dayOfWeek === 'weekday';
+            const hasWeekdayIndicators = /mon|tue|wed|thu|fri|weekday/i.test(scheduleText);
+            const hasWeekendIndicators = /sat|sun|weekend/i.test(scheduleText);
+            
+            if (isWeekday && hasWeekendIndicators && !hasWeekdayIndicators) {
+              return false; // Program is weekend-only, user wants weekdays
+            }
+            if (!isWeekday && hasWeekdayIndicators && !hasWeekendIndicators) {
+              return false; // Program is weekday-only, user wants weekends
+            }
+            // If ambiguous or mentions both, include it (conservative filter)
+          }
+          
+          // Filter by time of day
+          if (timeOfDay && timeOfDay !== 'any') {
+            const hasMorning = /\b([6-9]|10|11)\s*(am|a\.m\.)/i.test(scheduleText) || /morning/i.test(scheduleText);
+            const hasAfternoon = /\b(12|[1-5])\s*(pm|p\.m\.)/i.test(scheduleText) || /afternoon/i.test(scheduleText);
+            const hasEvening = /\b([6-9]|10|11)\s*(pm|p\.m\.)/i.test(scheduleText) || /evening/i.test(scheduleText);
+            
+            if (timeOfDay === 'morning' && !hasMorning && (hasAfternoon || hasEvening)) {
+              return false;
+            }
+            if (timeOfDay === 'afternoon' && !hasAfternoon && (hasMorning || hasEvening)) {
+              return false;
+            }
+            if (timeOfDay === 'evening' && !hasEvening && (hasMorning || hasAfternoon)) {
+              return false;
+            }
+            // If no time indicators found, include it (conservative)
+          }
+          
+          // Filter by child age
+          if (childAge) {
+            // Extract age range like "6-8 years" or "Ages 5-7"
+            const ageMatch = ageText.match(/(\d+)\s*[-–]\s*(\d+)/);
+            if (ageMatch) {
+              const minAge = parseInt(ageMatch[1], 10);
+              const maxAge = parseInt(ageMatch[2], 10);
+              
+              // Conservative: include if child age is within ±2 years of range
+              if (childAge < minAge - 2 || childAge > maxAge + 2) {
+                return false;
+              }
+            }
+            // If no age range found, include it (conservative)
+          }
+          
+          return true; // Include by default
+        },
+        { dayOfWeek, timeOfDay, childAge, scheduleSelectors, ageSelectors }
+      );
+      
+      if (shouldInclude) {
+        filtered.push(candidate);
+      }
+    } catch (err) {
+      console.warn('[Pre-Filter] Error filtering candidate:', err);
+      filtered.push(candidate); // Include on error (fail-safe)
+    }
+  }
+  
+  return filtered;
+}
+
 
 export interface ProgramData {
   id: string;
@@ -195,9 +322,10 @@ export async function runThreePassExtractorForPrograms(
   page: any, 
   orgRef: string,
   opts: ExtractorConfig,
-  category: string = "programs"
+  category: string = "programs",
+  filters?: { dayOfWeek?: string; timeOfDay?: string; childAge?: number } // TASK 3: Add filter params
 ) {
-  console.log('[PACK-06 Extractor] Starting programs-only extraction');
+  console.log('[PACK-06 Extractor] Starting programs-only extraction', { filters });
   
   // Use centralized MODELS as defaults
   const models = {
@@ -217,10 +345,23 @@ export async function runThreePassExtractorForPrograms(
     .join(',');
   
   const candidates = await page.$$(containerSelector);
+  
+  // TASK 3: Pre-filter candidates using Playwright before extraction
+  const filteredCandidates = filters ? 
+    await filterProgramCandidates(page, candidates, filters) : 
+    candidates;
+  
+  const preFilterCount = candidates.length;
+  const postFilterCount = filteredCandidates.length;
+  
+  if (filters && postFilterCount < preFilterCount) {
+    console.log(`[PACK-06 Pre-Filter] ✂️ Reduced from ${preFilterCount} → ${postFilterCount} candidates (${Math.round((1 - postFilterCount/preFilterCount) * 100)}% reduction)`);
+  }
+  
   const snippets: { id: number; html: string }[] = [];
   
-  for (let i = 0; i < candidates.length; i++) {
-    const html = await candidates[i].evaluate((el: HTMLElement) => el.outerHTML);
+  for (let i = 0; i < filteredCandidates.length; i++) {
+    const html = await filteredCandidates[i].evaluate((el: HTMLElement) => el.outerHTML);
     if (html?.trim()) {
       // Step 1d: Canonicalize snippet to reduce token usage before LLM extraction
       const canonicalHtml = canonicalizeSnippet(html);
