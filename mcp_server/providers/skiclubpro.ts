@@ -1722,6 +1722,9 @@ export const skiClubProTools = {
       filter_program_ref?: string;  // Phase 3: Fast-path target program reference
       filter_mode?: 'single' | 'full';  // Phase 3: Extraction mode
       fallback_to_full?: boolean;  // Phase 3: Fallback to full scrape if target not found
+      filter_day?: string;  // TASK 2: Schedule filter - day of week
+      filter_time?: string;  // TASK 2: Schedule filter - time of day
+      child_age?: string;  // Age filter for programs
     }): Promise<ProviderResponse<{ programs: any[]; programs_by_theme?: Record<string, any[]>; session_token?: string }>> => {
       const orgRef = args.org_ref || 'blackhawk-ski-club';
       const category = args.category || 'all';

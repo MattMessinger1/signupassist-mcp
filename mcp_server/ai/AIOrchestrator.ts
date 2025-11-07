@@ -14,6 +14,7 @@ import { normalizeEmailWithAI, generatePersonalizedMessage } from "../lib/aiInte
 import { singleFlight } from "../utils/singleflight.js";
 import type { SessionContext } from "../types.js";
 import { createClient } from '@supabase/supabase-js';
+import type { Database } from '../../src/integrations/supabase/types.js';
 
 /**
  * Prompt version tracking for tone changes
@@ -178,7 +179,7 @@ class AIOrchestrator {
   private model: string;
   private temperature: number;
   private mcpToolCaller?: (toolName: string, args: any) => Promise<any>;
-  private supabase?: ReturnType<typeof createClient>;
+  private supabase?: ReturnType<typeof createClient<Database>>;
 
   /**
    * Initialize the AI orchestrator
@@ -204,7 +205,7 @@ class AIOrchestrator {
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (supabaseUrl && supabaseKey) {
-      this.supabase = createClient(supabaseUrl, supabaseKey);
+      this.supabase = createClient<Database>(supabaseUrl, supabaseKey);
     }
 
     // Step-specific prompt templates for consistent messaging
