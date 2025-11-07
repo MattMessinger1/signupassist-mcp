@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.test-cache-population]
 verify_jwt = false
+
+[functions.populate-program-cache]
+verify_jwt = false

@@ -840,6 +840,19 @@ export type Database = {
         }
         Returns: string
       }
+      upsert_cached_programs_enhanced: {
+        Args: {
+          p_category: string
+          p_deep_links?: Json
+          p_metadata?: Json
+          p_org_ref: string
+          p_prerequisites_schema?: Json
+          p_programs_by_theme: Json
+          p_questions_schema?: Json
+          p_ttl_hours?: number
+        }
+        Returns: string
+      }
       upsert_discovery_run: {
         Args: {
           p_errors: Json
