@@ -91,16 +91,24 @@ export async function invokeMCPTool(
 
 export async function invokeMCPToolDirect(tool: string, args: any): Promise<any> {
   const mcpServerUrl = Deno.env.get("MCP_SERVER_URL");
+  const mcpAccessToken = Deno.env.get("MCP_ACCESS_TOKEN");
   
   if (!mcpServerUrl) {
     throw new Error("MCP_SERVER_URL environment variable not configured");
+  }
+
+  if (!mcpAccessToken) {
+    throw new Error("MCP_ACCESS_TOKEN environment variable not configured");
   }
 
   console.log(`Invoking MCP tool directly: ${tool}`, { args });
 
   const res = await fetch(`${mcpServerUrl}/tools/call`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { 
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${mcpAccessToken}`
+    },
     body: JSON.stringify({ tool, args })
   });
 
