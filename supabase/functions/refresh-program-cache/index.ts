@@ -44,11 +44,11 @@ Deno.serve(async (req) => {
   let totalSuccesses = 0;
   let totalFailures = 0;
 
-  // Get a valid credential for skiclubpro provider
+  // Get a valid credential for skiclubpro provider and decrypt it
   console.log('[refresh-program-cache] Looking up stored credentials...');
   const { data: credentials, error: credError } = await supabase
     .from('stored_credentials')
-    .select('id')
+    .select('id, encrypted_data')
     .eq('provider', 'skiclubpro')
     .limit(1);
 
@@ -62,7 +62,22 @@ Deno.serve(async (req) => {
   }
 
   const credentialId = credentials[0].id;
-  console.log(`[refresh-program-cache] Using credential: ${credentialId}`);
+  
+  // Decrypt the credential using cred-get function with service role
+  console.log(`[refresh-program-cache] Decrypting credential: ${credentialId}`);
+  const { data: decryptedCreds, error: decryptError } = await supabase.functions.invoke('cred-get', {
+    body: { id: credentialId }
+  });
+
+  if (decryptError || !decryptedCreds) {
+    console.error(`[refresh-program-cache] Failed to decrypt credential:`, decryptError);
+    return new Response(JSON.stringify({ error: 'Failed to decrypt credential' }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+
+  console.log(`[refresh-program-cache] Using credential: ${credentialId} (email: ${decryptedCreds.email?.substring(0, 3)}***)`);
 
   // Get development mandate if available
   const devMandateJws = Deno.env.get('DEV_MANDATE_JWS');
@@ -80,7 +95,8 @@ Deno.serve(async (req) => {
         const mcpResult = await invokeMCPToolDirect('scp.find_programs', {
           org_ref: org.orgRef,
           category: category,
-          credential_id: credentialId
+          username: decryptedCreds.email,
+          password: decryptedCreds.password
         });
 
         console.log(`[refresh-program-cache] MCP result for ${org.orgRef}:${category}:`, JSON.stringify(mcpResult, null, 2));
