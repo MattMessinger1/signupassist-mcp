@@ -40,12 +40,20 @@ Deno.serve(async (req) => {
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-  // Get MCP server URL and mandate
-  const mcpServerUrl = Deno.env.get('MCP_SERVER_URL');
-  const devMandateJws = Deno.env.get('DEV_MANDATE_JWS');
+  const results: ScrapeResult[] = [];
+  let totalSuccesses = 0;
+  let totalFailures = 0;
 
-  if (!mcpServerUrl) {
-    const error = 'MCP_SERVER_URL not configured';
+  // Get a valid credential for skiclubpro provider
+  console.log('[refresh-program-cache] Looking up stored credentials...');
+  const { data: credentials, error: credError } = await supabase
+    .from('stored_credentials')
+    .select('id')
+    .eq('provider', 'skiclubpro')
+    .limit(1);
+
+  if (credError || !credentials || credentials.length === 0) {
+    const error = 'No stored credentials found for skiclubpro provider';
     console.error(`[refresh-program-cache] ${error}`);
     return new Response(JSON.stringify({ error }), {
       status: 500,
@@ -53,45 +61,43 @@ Deno.serve(async (req) => {
     });
   }
 
-  const results: ScrapeResult[] = [];
-  let totalSuccesses = 0;
-  let totalFailures = 0;
+  const credentialId = credentials[0].id;
+  console.log(`[refresh-program-cache] Using credential: ${credentialId}`);
 
-  // Scrape each organization and category
+  // Get development mandate if available
+  const devMandateJws = Deno.env.get('DEV_MANDATE_JWS');
+
+  // Scrape each organization and category using Supabase edge function invocation
   for (const org of ORGS_TO_SCRAPE) {
     for (const category of org.categories) {
       const startTime = Date.now();
       console.log(`[refresh-program-cache] Scraping ${org.orgRef}:${category}...`);
 
       try {
-        // Call MCP server to find programs
-        const mcpResponse = await fetch(`${mcpServerUrl}/tools/call`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            tool: 'scp.find_programs',
-            args: {
+        // Call the discover-plan-fields edge function which already handles MCP authentication
+        // This function internally calls scp.find_programs with proper auth
+        const { data: discoverData, error: discoverError } = await supabase.functions.invoke(
+          'discover-plan-fields',
+          {
+            body: {
               org_ref: org.orgRef,
               category: category,
+              credential_id: credentialId,
               mandate_jws: devMandateJws,
-              cache_mode: 'bypass', // Force fresh scrape for cache population
+              mode: 'programs_only', // Just get programs, skip field discovery
             }
-          })
-        });
+          }
+        );
 
-        if (!mcpResponse.ok) {
-          throw new Error(`MCP server returned ${mcpResponse.status}: ${mcpResponse.statusText}`);
+        if (discoverError) {
+          throw new Error(`Edge function error: ${discoverError.message}`);
         }
 
-        const mcpData = await mcpResponse.json();
-        
-        if (!mcpData.success || !mcpData.programs_by_theme) {
-          throw new Error(mcpData.error || 'No programs returned from MCP');
+        if (!discoverData || !discoverData.programs_by_theme) {
+          throw new Error('No programs returned from edge function');
         }
 
-        const programsByTheme = mcpData.programs_by_theme;
+        const programsByTheme = discoverData.programs_by_theme;
         const themes = Object.keys(programsByTheme);
         const programCount = Object.values(programsByTheme).flat().length;
 
@@ -129,7 +135,7 @@ Deno.serve(async (req) => {
 
         totalSuccesses++;
         
-        console.log(`[refresh-program-cache] ✅ Cached ${org.orgRef}:${category} (${programCount} programs, ${durationMs}ms)`);
+        console.log(`[refresh-program-cache] ✅ Cached ${org.orgRef}:${category} (${programCount} programs, ${durationMs}ms, cache_id: ${cacheId})`);
 
         // Small delay between scrapes to avoid overwhelming the provider
         await new Promise(resolve => setTimeout(resolve, 2000));

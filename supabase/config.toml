@@ -20,3 +20,6 @@ verify_jwt = false
 
 [functions.refresh-program-cache]
 verify_jwt = false
+
+[functions.test-cache-population]
+verify_jwt = false
