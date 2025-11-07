@@ -782,6 +782,36 @@ export type Database = {
         }
         Relationships: []
       }
+      user_prereq_answers: {
+        Row: {
+          answers: Json
+          created_at: string
+          id: string
+          org_ref: string
+          program_ref: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          answers?: Json
+          created_at?: string
+          id?: string
+          org_ref: string
+          program_ref: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          answers?: Json
+          created_at?: string
+          id?: string
+          org_ref?: string
+          program_ref?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
