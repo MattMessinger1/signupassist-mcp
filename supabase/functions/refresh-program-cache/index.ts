@@ -1,5 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { invokeMCPTool } from '../_shared/mcpClient.ts';
+import { SignJWT } from 'https://deno.land/x/jose@v5.9.6/index.ts';
+import { invokeMCPToolDirect } from '../_shared/mcpClient.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -157,6 +158,32 @@ Deno.serve(async (req) => {
   const credentialId = credentials[0].id;
   console.log(`[refresh-program-cache] Found credential_id: ${credentialId}`);
 
+  // Generate JWT for system user (needed for credential decryption)
+  console.log('[refresh-program-cache] Generating system user JWT...');
+  const jwtSecret = Deno.env.get('SUPABASE_JWT_SECRET');
+  if (!jwtSecret) {
+    const error = 'SUPABASE_JWT_SECRET not configured';
+    console.error(`[refresh-program-cache] ${error}`);
+    return new Response(JSON.stringify({ error }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+
+  const secret = new TextEncoder().encode(jwtSecret);
+  const systemUserJwt = await new SignJWT({
+    sub: systemUser.id,
+    email: systemUser.email,
+    role: 'authenticated',
+    aud: 'authenticated',
+  })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime('1h')
+    .sign(secret);
+
+  console.log('[refresh-program-cache] System user JWT generated');
+
   // Scrape each organization and category using the PROVEN discovery flow
   for (const org of ORGS_TO_SCRAPE) {
     for (const category of org.categories) {
@@ -165,19 +192,19 @@ Deno.serve(async (req) => {
 
       try {
         // Call the PROVEN discovery tool that handles:
-        // - Browserbase launch
-        // - Antibot stealth context
+        // - Browserbase launch with antibot stealth
         // - Login with credentials
-        // - Session reuse
+        // - Session reuse after first successful login
         // - Field discovery
-        const result = await invokeMCPTool('scp.discover_required_fields', {
+        // Uses invokeMCPToolDirect for server-to-server auth with MCP_ACCESS_TOKEN
+        const result = await invokeMCPToolDirect('scp.discover_required_fields', {
           org_ref: org.orgRef,
           category: category,
           credential_id: credentialId,
+          user_jwt: systemUserJwt,
+          user_id: systemUser.id,
           mode: 'full', // Get both prerequisites AND program questions
           stage: 'program'
-        }, {
-          skipAudit: true // Skip audit logging for cache refresh
         });
 
         console.log(`[refresh-program-cache] Discovery result for ${org.orgRef}:${category}:`, JSON.stringify(result, null, 2));
