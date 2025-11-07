@@ -13,7 +13,8 @@ import { parseIntent, buildIntentQuestion, filterByAge, classifyIntentStrength, 
 import { normalizeEmailWithAI, generatePersonalizedMessage } from "../lib/aiIntentParser.js";
 import { singleFlight } from "../utils/singleflight.js";
 import type { SessionContext } from "../types.js";
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '../../src/integrations/supabase/types.js';
 
 /**
  * Prompt version tracking for tone changes
@@ -178,7 +179,7 @@ class AIOrchestrator {
   private model: string;
   private temperature: number;
   private mcpToolCaller?: (toolName: string, args: any) => Promise<any>;
-  private supabase?: ReturnType<typeof createClient>;
+  private supabase?: SupabaseClient<Database>;
 
   /**
    * Initialize the AI orchestrator
@@ -204,7 +205,7 @@ class AIOrchestrator {
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (supabaseUrl && supabaseKey) {
-      this.supabase = createClient(supabaseUrl, supabaseKey);
+      this.supabase = createClient<Database>(supabaseUrl, supabaseKey);
     }
 
     // Step-specific prompt templates for consistent messaging
@@ -3263,7 +3264,7 @@ Return JSON: {
     }
 
     try {
-      const { data, error } = await (this.supabase as any).rpc('find_programs_cached', {
+      const { data, error } = await this.supabase.rpc('find_programs_cached', {
         p_org_ref: orgRef,
         p_category: category,
         p_max_age_hours: maxAgeHours
@@ -3316,7 +3317,7 @@ Return JSON: {
     }
 
     try {
-      const { data, error } = await (this.supabase as any).rpc('upsert_cached_programs', {
+      const { data, error } = await this.supabase.rpc('upsert_cached_programs', {
         p_org_ref: orgRef,
         p_category: category,
         p_programs_by_theme: programsByTheme,

@@ -20,11 +20,12 @@ COPY package-lock.json ./
 # Install ALL dependencies (including devDependencies for build)
 RUN npm ci
 
-# Copy TypeScript configs and source for BACKEND
+# Copy TypeScript configs and source for BACKEND + SHARED TYPES
 COPY tsconfig.json tsconfig.mcp.json ./
 COPY mcp_server ./mcp_server
 COPY providers ./providers
 COPY mcp ./mcp
+COPY src ./src
 
 # --- Ensure full lib coverage ---
 COPY mcp_server/lib ./mcp_server/lib
@@ -50,7 +51,6 @@ RUN if [ "$RAILWAY_AUTO_DEPLOY" = "false" ]; then \
 RUN ls -la dist/mcp_server/ai/ || echo "⚠️ AI folder not built"
 
 # Copy frontend source and configs for FRONTEND BUILD
-COPY src ./src
 COPY index.html ./
 COPY vite.config.ts ./
 COPY tailwind.config.ts ./
