@@ -16,6 +16,7 @@ import { GroupedProgramCards } from "./GroupedProgramCards";
 import { OptionsCarousel } from "./OptionsCarousel";
 import { InlineChatForm } from "./InlineChatForm";
 import { StatusChip } from "./StatusChip";
+import { PrereqChecklistCard } from "@/components/PrereqChecklistCard";
 import { Loader2 } from "lucide-react";
 
 export interface ChatMessage {
@@ -151,6 +152,20 @@ export function MessageBubble({
           <div className="mt-3">
             <GroupedProgramCards
               payload={message.componentData}
+              onAction={onAction}
+            />
+          </div>
+        )}
+
+        {/* Prerequisite Checklist Card */}
+        {message.componentData?.type === "prereq_checklist" && (
+          <div className="mt-3">
+            <PrereqChecklistCard
+              title={message.componentData.title}
+              program_ref={message.componentData.program_ref}
+              prerequisites={message.componentData.prerequisites || {}}
+              questions={message.componentData.questions || []}
+              deep_link={message.componentData.deep_link}
               onAction={onAction}
             />
           </div>

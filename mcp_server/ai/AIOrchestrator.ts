@@ -1987,37 +1987,21 @@ Example follow-up (only when needed):
             );
           }
           
-          // Build detailed checklist message
-          const prereqList = Object.entries(checklist.prerequisites)
-            .map(([key, value]: [string, any]) => `  • ${value.message}`)
-            .join('\n');
-          
-          const questionList = checklist.questions
-            .filter((q: QuestionField) => q.required)
-            .map((q: QuestionField) => `  • ${q.label} (${q.type})`)
-            .join('\n');
-          
-          const message = `📋 **${checklist.title}**
+          // Build prereq_checklist UI payload instead of text
+          const checklistPayload = {
+            type: "prereq_checklist",
+            title: checklist.title,
+            program_ref: checklist.program_ref,
+            prerequisites: checklist.prerequisites,
+            questions: checklist.questions,
+            deep_link: checklist.deep_link
+          };
 
-**Prerequisites:**
-${prereqList || '  None'}
-
-**Questions to Answer:**
-${questionList || '  None'}
-
-Once you're ready, you can either open the provider's website directly or let SignupAssist handle it for you.`;
-
-          return this.formatResponse(
-            message,
-            undefined,
-            [{ 
-              label: "Ready to proceed", 
-              action: "show_finish_options", 
-              variant: "accent",
-              payload: { program_ref: checklistProgRef }
-            }],
-            {}
-          );
+          return {
+            message: "Here are the requirements for this program:",
+            uiPayload: checklistPayload,
+            contextUpdates: {}
+          };
 
         case "show_finish_options":
           // Phase 1D: Present two-persona finish options (deep-link vs agentic)
