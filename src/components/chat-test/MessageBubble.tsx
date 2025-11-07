@@ -9,6 +9,8 @@
  */
 
 import { cn } from "@/lib/utils";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { ConfirmationCard } from "./ConfirmationCard";
 import { GroupedProgramCards } from "./GroupedProgramCards";
 import { OptionsCarousel } from "./OptionsCarousel";
@@ -95,14 +97,34 @@ export function MessageBubble({
         {/* Render cards from orchestrator response */}
         {message.componentData?.cards && message.componentData.cards.map((card: any, idx: number) => (
           <div key={idx} className="mt-3">
-            <ConfirmationCard
-              title={card.title}
-              message={card.subtitle || card.description || ''}
-              onConfirm={() => card.buttons?.[0] && handleCardButtonClick(card.buttons[0].action, card.metadata)}
-              onCancel={card.buttons?.[1] ? () => handleCardButtonClick(card.buttons[1].action, card.metadata) : undefined}
-              confirmLabel={card.buttons?.[0]?.label}
-              cancelLabel={card.buttons?.[1]?.label}
-            />
+            <Card className="border-primary/20">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">{card.title}</CardTitle>
+                {card.subtitle && <CardDescription>{card.subtitle}</CardDescription>}
+              </CardHeader>
+              {card.description && (
+                <CardContent className="pb-3">
+                  <CardDescription className="text-foreground whitespace-pre-line">
+                    {card.description}
+                  </CardDescription>
+                </CardContent>
+              )}
+              {card.buttons && card.buttons.length > 0 && (
+                <CardFooter className="flex flex-wrap gap-2">
+                  {card.buttons.map((btn: any, btnIdx: number) => (
+                    <Button
+                      key={btnIdx}
+                      onClick={() => handleCardButtonClick(btn.action, btn.payload || card.metadata)}
+                      variant={btn.variant === "accent" ? "default" : "outline"}
+                      size="sm"
+                      className="flex-1 min-w-[120px]"
+                    >
+                      {btn.label}
+                    </Button>
+                  ))}
+                </CardFooter>
+              )}
+            </Card>
           </div>
         ))}
 

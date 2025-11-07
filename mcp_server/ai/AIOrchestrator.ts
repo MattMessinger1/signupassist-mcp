@@ -118,6 +118,7 @@ interface CardSpec {
     label: string;
     action: string;
     variant?: "accent" | "outline";
+    payload?: any;  // TASK 2: Support payload for button actions (e.g., schedule filters)
   }>;
 }
 
@@ -840,6 +841,14 @@ Example follow-up (only when needed):
   private async handleAutoProgramDiscovery(ctx: SessionContext, extras?: { mandate_jws?: string }, sessionId?: string): Promise<OrchestratorResponse> {
     if (!ctx?.provider?.orgRef) throw new Error("Provider context missing for auto-discovery");
     
+    // TASK 2: Check if we need to prompt for schedule preferences
+    const SCHEDULE_FILTER_ENABLED = process.env.FEATURE_SCHEDULE_FILTER !== 'false'; // Default enabled
+    
+    if (SCHEDULE_FILTER_ENABLED && !ctx.schedulePreference && !ctx.scheduleDeclined) {
+      Logger.info('[Schedule Filter] Prompting user for schedule preferences');
+      return this.buildScheduleFilterPrompt(sessionId);
+    }
+    
     // Phase 3: Check program cache first
     const cacheKey = `programs:${ctx.provider.orgRef}:${ctx.category || 'all'}`;
     const cachedPrograms = ctx.cache?.[cacheKey];
@@ -873,6 +882,22 @@ Example follow-up (only when needed):
       mandate_jws: extras?.mandate_jws ?? process.env.DEV_MANDATE_JWS,
       credential_id: ctx.credential_id             // fallback if token missing
     };
+    
+    // TASK 2: Add schedule preferences for filtering if provided
+    if (ctx.schedulePreference) {
+      if (ctx.schedulePreference.dayOfWeek && ctx.schedulePreference.dayOfWeek !== "any") {
+        args.filter_day = ctx.schedulePreference.dayOfWeek;
+      }
+      if (ctx.schedulePreference.timeOfDay && ctx.schedulePreference.timeOfDay !== "any") {
+        args.filter_time = ctx.schedulePreference.timeOfDay;
+      }
+      
+      Logger.info('[Schedule Filter Applied]', {
+        sessionId,
+        dayOfWeek: args.filter_day,
+        timeOfDay: args.filter_time
+      });
+    }
     
     // Phase 2: Add fast-path parameters if eligible
     if (fastPathEligible) {
@@ -1580,6 +1605,34 @@ Example follow-up (only when needed):
             );
           }
           return this.handleFieldProbe(selectedProg, sessionId);
+        
+        
+        case "set_schedule_filter":
+          // TASK 2: User selected their schedule preferences
+          const { dayOfWeek, timeOfDay } = payload || {};
+          
+          Logger.info('[Schedule Filter] User selected preferences', { dayOfWeek, timeOfDay });
+          
+          await this.updateContext(sessionId, {
+            schedulePreference: { dayOfWeek, timeOfDay },
+            scheduleDeclined: false
+          });
+          
+          // Proceed with program discovery now that we have preferences
+          const ctxWithSchedule = await this.getContext(sessionId);
+          return await this.handleAutoProgramDiscovery(ctxWithSchedule, { mandate_jws: context.mandate_jws }, sessionId);
+        
+        case "skip_schedule_filter":
+          // TASK 2: User declined to set schedule preferences
+          Logger.info('[Schedule Filter] User skipped schedule filter');
+          
+          await this.updateContext(sessionId, {
+            scheduleDeclined: true
+          });
+          
+          // Proceed with program discovery without schedule filter
+          const ctxNoSchedule = await this.getContext(sessionId);
+          return await this.handleAutoProgramDiscovery(ctxNoSchedule, { mandate_jws: context.mandate_jws }, sessionId);
         
       case "retry_program_search":
         const ctx = await this.getContext(sessionId);
@@ -2451,6 +2504,62 @@ Return JSON: {
       ]
     }));
   }
+
+  /**
+   * TASK 2: Build schedule filter prompt UI
+   * Prompts user for preferred day and time of week
+   * Uses carousel component type for horizontal options
+   */
+  private buildScheduleFilterPrompt(sessionId?: string): OrchestratorResponse {
+    const dayOptions = [
+      { label: "Weekdays", value: "weekday", emoji: "📅" },
+      { label: "Weekends", value: "weekend", emoji: "🎉" },
+      { label: "Any Day", value: "any", emoji: "✨" }
+    ];
+    
+    const timeOptions = [
+      { label: "Mornings", value: "morning", emoji: "☀️" },
+      { label: "Afternoons", value: "afternoon", emoji: "🌤️" },
+      { label: "Evenings", value: "evening", emoji: "🌙" },
+      { label: "Any Time", value: "any", emoji: "⏰" }
+    ];
+
+    // Build cards as carousel for horizontal scrolling
+    const cards: CardSpec[] = [
+      {
+        title: "📅 Preferred Days",
+        description: "When would you like classes?",
+        buttons: dayOptions.map(opt => ({
+          label: `${opt.emoji} ${opt.label}`,
+          action: "set_schedule_filter",
+          variant: "outline" as const,
+          payload: { dayOfWeek: opt.value, timeOfDay: "any" }
+        }))
+      },
+      {
+        title: "⏰ Preferred Time",
+        description: "What time works best?",
+        buttons: timeOptions.map(opt => ({
+          label: `${opt.emoji} ${opt.label}`,
+          action: "set_schedule_filter",
+          variant: "outline" as const,
+          payload: { dayOfWeek: "any", timeOfDay: opt.value }
+        }))
+      }
+    ];
+
+    return this.formatResponse(
+      "Quick question — when would you prefer classes? (This helps me show the most relevant programs first) 🗓️",
+      cards,
+      [{ 
+        label: "Skip — Show All", 
+        action: "skip_schedule_filter", 
+        variant: "outline" 
+      }],
+      {}
+    );
+  }
+
 
   /**
    * Build confirmation card for final registration

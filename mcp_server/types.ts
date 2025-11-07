@@ -54,6 +54,13 @@ export interface SessionContext {
   // Phase 3: Program caching for performance
   cache?: Record<string, any>; // Generic cache for programs and other data
   
+  // TASK 2: Schedule filter preferences
+  schedulePreference?: {
+    dayOfWeek?: "weekday" | "weekend" | "any";
+    timeOfDay?: "morning" | "afternoon" | "evening" | "any";
+  };
+  scheduleDeclined?: boolean; // User chose to skip schedule filter
+  
   // Orchestrator-specific fields
   program?: { name: string; id: string };
   child?: { name: string; id?: string; birthdate?: string };
