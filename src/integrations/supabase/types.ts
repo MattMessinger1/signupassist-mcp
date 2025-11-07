@@ -165,11 +165,14 @@ export type Database = {
           cached_at: string
           category: string
           created_at: string
+          deep_links: Json | null
           expires_at: string
           id: string
           metadata: Json | null
           org_ref: string
+          prerequisites_schema: Json | null
           programs_by_theme: Json
+          questions_schema: Json | null
           updated_at: string
         }
         Insert: {
@@ -177,11 +180,14 @@ export type Database = {
           cached_at?: string
           category?: string
           created_at?: string
+          deep_links?: Json | null
           expires_at: string
           id?: string
           metadata?: Json | null
           org_ref: string
+          prerequisites_schema?: Json | null
           programs_by_theme?: Json
+          questions_schema?: Json | null
           updated_at?: string
         }
         Update: {
@@ -189,11 +195,14 @@ export type Database = {
           cached_at?: string
           category?: string
           created_at?: string
+          deep_links?: Json | null
           expires_at?: string
           id?: string
           metadata?: Json | null
           org_ref?: string
+          prerequisites_schema?: Json | null
           programs_by_theme?: Json
+          questions_schema?: Json | null
           updated_at?: string
         }
         Relationships: []
