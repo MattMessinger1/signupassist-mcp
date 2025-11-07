@@ -13,7 +13,7 @@ interface OrgConfig {
 
 // Organizations to scrape (ordered by priority)
 const ORGS_TO_SCRAPE: OrgConfig[] = [
-  { orgRef: 'blackhawk-ski', categories: ['all', 'lessons', 'teams'], priority: 'high' },
+  { orgRef: 'blackhawk-ski-club', categories: ['all', 'lessons', 'teams'], priority: 'high' },
   // Add more organizations as needed
 ];
 
@@ -74,30 +74,27 @@ Deno.serve(async (req) => {
       console.log(`[refresh-program-cache] Scraping ${org.orgRef}:${category}...`);
 
       try {
-        // Call the discover-plan-fields edge function which already handles MCP authentication
-        // This function internally calls scp.find_programs with proper auth
-        const { data: discoverData, error: discoverError } = await supabase.functions.invoke(
-          'discover-plan-fields',
-          {
-            body: {
-              org_ref: org.orgRef,
-              category: category,
-              credential_id: credentialId,
-              mandate_jws: devMandateJws,
-              mode: 'programs_only', // Just get programs, skip field discovery
-            }
-          }
-        );
+        // Call MCP server directly to find programs
+        const { invokeMCPToolDirect } = await import('../_shared/mcpClient.ts');
+        
+        const mcpResult = await invokeMCPToolDirect('scp.find_programs', {
+          org_ref: org.orgRef,
+          category: category,
+          credential_id: credentialId
+        });
 
-        if (discoverError) {
-          throw new Error(`Edge function error: ${discoverError.message}`);
+        console.log(`[refresh-program-cache] MCP result for ${org.orgRef}:${category}:`, JSON.stringify(mcpResult, null, 2));
+
+        // Check for MCP errors
+        if (!mcpResult.success || mcpResult.error) {
+          throw new Error(`MCP server error: ${mcpResult.error || 'Unknown error'}`);
         }
 
-        if (!discoverData || !discoverData.programs_by_theme) {
-          throw new Error('No programs returned from edge function');
+        if (!mcpResult.programs_by_theme) {
+          throw new Error(`No programs_by_theme in response`);
         }
 
-        const programsByTheme = discoverData.programs_by_theme;
+        const programsByTheme = mcpResult.programs_by_theme;
         const themes = Object.keys(programsByTheme);
         const programCount = Object.values(programsByTheme).flat().length;
 
