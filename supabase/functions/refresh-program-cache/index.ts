@@ -132,15 +132,16 @@ Deno.serve(async (req) => {
   
   console.log(`[refresh-program-cache] Found system user: ${systemUser.id}`);
   
-  // Generate JWT for system user to authenticate with MCP server
+  // Generate JWT for system user by creating a short-lived session
   console.log('[refresh-program-cache] Generating JWT for system user...');
-  const { data: jwtData, error: jwtError } = await supabase.auth.admin.generateLink({
-    type: 'magiclink',
-    email: SYSTEM_EMAIL
+  
+  // Use admin API to create a session token for the system user
+  const { data: sessionData, error: sessionError } = await supabase.auth.admin.createSession({
+    user_id: systemUser.id
   });
 
-  if (jwtError || !jwtData) {
-    const error = `Failed to generate JWT for system user: ${jwtError?.message}`;
+  if (sessionError || !sessionData?.access_token) {
+    const error = `Failed to generate JWT for system user: ${sessionError?.message}`;
     console.error(`[refresh-program-cache] ${error}`);
     return new Response(JSON.stringify({ error }), {
       status: 500,
@@ -148,13 +149,8 @@ Deno.serve(async (req) => {
     });
   }
 
-  const userJwt = jwtData.properties.access_token;
-  console.log('[refresh-program-cache] JWT generated successfully');
-  console.log('[refresh-program-cache] JWT structure check:', { 
-    hasProperties: !!jwtData.properties,
-    hasAccessToken: !!jwtData.properties?.access_token,
-    jwtLength: jwtData.properties?.access_token?.length 
-  });
+  const userJwt = sessionData.access_token;
+  console.log('[refresh-program-cache] JWT generated successfully, length:', userJwt.length);
   
   const { data: credentials, error: credError } = await supabase
     .from('stored_credentials')
