@@ -3579,9 +3579,9 @@ Return JSON: {
       // Build checklist cards from enhanced cache data
       const checklistCards = this.buildChecklistCards(
         allPrograms,
-        cacheEntry.prerequisites_schema || {},
-        cacheEntry.questions_schema || {},
-        cacheEntry.deep_links || {}
+        (cacheEntry.prerequisites_schema || {}) as Record<string, any>,
+        (cacheEntry.questions_schema || {}) as Record<string, any>,
+        (cacheEntry.deep_links || {}) as Record<string, any>
       );
 
       Logger.info('[DB Cache] ✓ Enhanced hit', {
