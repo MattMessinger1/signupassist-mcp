@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.populate-program-cache]
 verify_jwt = false
+
+[functions.setup-system-user]
+verify_jwt = false

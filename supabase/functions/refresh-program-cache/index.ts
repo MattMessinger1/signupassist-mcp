@@ -114,12 +114,29 @@ Deno.serve(async (req) => {
   let totalSuccesses = 0;
   let totalFailures = 0;
 
-  // Get a valid credential for skiclubpro provider and decrypt it
-  console.log('[refresh-program-cache] Looking up stored credentials...');
+  // Get system user credentials for skiclubpro provider
+  console.log('[refresh-program-cache] Looking up system user credentials...');
+  
+  const SYSTEM_EMAIL = 'system@signupassist.internal';
+  const { data: users } = await supabase.auth.admin.listUsers();
+  const systemUser = users?.users.find((u: any) => u.email === SYSTEM_EMAIL);
+  
+  if (!systemUser) {
+    const error = 'System user not found. Run setup-system-user edge function first.';
+    console.error(`[refresh-program-cache] ${error}`);
+    return new Response(JSON.stringify({ error }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+  
+  console.log(`[refresh-program-cache] Found system user: ${systemUser.id}`);
+  
   const { data: credentials, error: credError } = await supabase
     .from('stored_credentials')
     .select('id, encrypted_data')
     .eq('provider', 'skiclubpro')
+    .eq('user_id', systemUser.id)
     .limit(1);
 
   if (credError || !credentials || credentials.length === 0) {

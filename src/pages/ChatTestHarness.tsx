@@ -33,6 +33,7 @@ import { ChatInput } from "@/components/chat-test/ChatInput";
 import { DebugPanel, LogEntry } from "@/components/chat-test/DebugPanel";
 import { TestCoveragePanel } from "@/components/chat-test/TestCoveragePanel";
 import { LoginCredentialDialog } from "@/components/LoginCredentialDialog";
+import { SystemUserSetup } from "@/components/SystemUserSetup";
 import type { ChatMessage } from "@/components/chat-test/MessageBubble";
 import { checkMCPHealth, type MCPHealthCheckResult, callMCPTool } from "@/lib/chatMcpClient";
 import { createLogEntry, type LogLevel, type LogCategory } from "@/lib/debugLogger";
@@ -41,6 +42,7 @@ import { validateTone, determineToneContext, formatToneIssues } from "@/lib/tone
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { CheckCircle2, XCircle, Activity } from "lucide-react";
 import { sendMessage, sendAction, overridePrompt } from "@/lib/orchestratorClient";
 import { parseIntent } from "@/lib/intentParser";
@@ -155,6 +157,7 @@ function ChatTestHarnessContent() {
   } | null>(null);
   const [lastQuestionType, setLastQuestionType] = useState<'age' | 'category' | 'provider' | null>(null);
   const [isRefreshingCache, setIsRefreshingCache] = useState(false);
+  const [showSystemUserSetup, setShowSystemUserSetup] = useState(false);
 
   // Mount guard to prevent duplicate initialization
   const welcomeShownRef = useRef(false);
@@ -1208,6 +1211,16 @@ function ChatTestHarnessContent() {
           </Button>
 
           <Button 
+            onClick={() => setShowSystemUserSetup(true)} 
+            disabled={isProcessing}
+            size="sm"
+            variant="outline"
+            className="gap-2"
+          >
+            ⚙️ System User Setup
+          </Button>
+
+          <Button 
             onClick={() => {
               setLoginDialogData({
                 provider: 'skiclubpro',
@@ -1305,6 +1318,13 @@ function ChatTestHarnessContent() {
           }}
         />
       )}
+
+      {/* System User Setup Dialog */}
+      <Dialog open={showSystemUserSetup} onOpenChange={setShowSystemUserSetup}>
+        <DialogContent className="max-w-2xl">
+          <SystemUserSetup />
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
