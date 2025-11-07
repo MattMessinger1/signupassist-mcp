@@ -16,6 +16,7 @@ import type { SessionContext } from "../types.js";
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../src/integrations/supabase/types.js';
 import type { ChecklistCard, CacheResult, PrerequisiteCheck, QuestionField } from '../types/cacheSchemas.js';
+import { parseAAPTriad, buildAAPQuestion, buildCacheQuery } from "./preLoginNarrowing.js";
 
 /**
  * Prompt version tracking for tone changes
@@ -282,6 +283,37 @@ class AIOrchestrator {
         await this.updateContext(sessionId, {
           mandate_jws: mandateInfo.mandate_jws,
           mandate_id: mandateInfo.mandate_id
+        } as any);
+      }
+      
+      // A-A-P Triage: Ensure we have Age, Activity, Provider before proceeding
+      const aapTriad = parseAAPTriad(userMessage, {
+        age: context.childAge,
+        activity: context.category,
+        provider: context.provider?.name
+      });
+      
+      if (!aapTriad.complete) {
+        const aapQuestion = buildAAPQuestion(aapTriad);
+        if (aapQuestion) {
+          Logger.info(`[A-A-P Triage] Missing ${aapTriad.missing.join(', ')}`, { sessionId });
+          // Store partial A-A-P data in context
+          await this.updateContext(sessionId, {
+            childAge: aapTriad.age,
+            category: aapTriad.activity,
+            aapIncomplete: true
+          } as any);
+          return this.formatResponse(aapQuestion, undefined, undefined, {});
+        }
+      }
+      
+      // A-A-P Complete: Store normalized values in context
+      if (aapTriad.complete) {
+        Logger.info('[A-A-P Complete]', { sessionId, triad: aapTriad });
+        await this.updateContext(sessionId, {
+          childAge: aapTriad.age,
+          category: aapTriad.activity,
+          aapComplete: true
         } as any);
       }
       
@@ -892,13 +924,21 @@ Example follow-up (only when needed):
     }
     
     // TASK 4: Check database cache first (before in-memory cache)
-    const cacheKey = `programs:${ctx.provider.orgRef}:${ctx.category || 'all'}`;
+    // Build cache query using normalized A-A-P values
+    const cacheQuery = buildCacheQuery({
+      age: ctx.childAge,
+      activity: ctx.category,
+      provider: ctx.provider?.name,
+      complete: true,
+      missing: []
+    });
+    const cacheKey = `programs:${cacheQuery.orgRef || ctx.provider.orgRef}:${cacheQuery.category}`;
     
     // Try database cache first with age filtering
-    const childAge = ctx.childAge; // Extract from context if available
+    const childAge = cacheQuery.age; // Use normalized age from cache query
     const cacheResult = await this.checkDatabaseCache(
-      ctx.provider.orgRef, 
-      ctx.category || 'all',
+      cacheQuery.orgRef || ctx.provider.orgRef, 
+      cacheQuery.category,
       childAge
     );
     if (cacheResult && cacheResult.hit) {
