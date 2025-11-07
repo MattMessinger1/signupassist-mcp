@@ -77,6 +77,8 @@ export interface ChecklistCard {
   type: 'checklist';
   title: string;
   program_ref: string;
+  org_ref?: string;
+  theme?: string;
   prerequisites: {
     [checkName: string]: PrerequisiteCheck;
   };

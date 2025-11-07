@@ -1330,7 +1330,11 @@ Example follow-up (only when needed):
       const previewCards = ctx.checklistCards.slice(0, 4).map(checklist => ({
         title: checklist.title,
         subtitle: `${Object.keys(checklist.prerequisites).length} prerequisites • ${checklist.questions.length} questions`,
-        metadata: { program_ref: checklist.program_ref },
+        metadata: { 
+          programRef: checklist.program_ref,
+          orgRef: checklist.org_ref || '',
+          theme: checklist.theme || 'Requirements'
+        },
         buttons: [{
           label: "View Requirements",
           action: "view_checklist",
@@ -3638,6 +3642,8 @@ Return JSON: {
         type: 'checklist',
         title: `${program.title} - Requirements`,
         program_ref: programRef,
+        org_ref: program.org_ref,
+        theme: program.theme,
         prerequisites,
         questions,
         deep_link: deepLink,
