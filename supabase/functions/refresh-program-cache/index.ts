@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
   
   const { data: credentials, error: credError } = await supabase
     .from('stored_credentials')
-    .select('id')
+    .select('id, encrypted_data')
     .eq('provider', 'skiclubpro')
     .eq('user_id', systemUser.id)
     .limit(1);
@@ -155,16 +155,15 @@ Deno.serve(async (req) => {
   }
 
   const credentialId = credentials[0].id;
+  const encryptedData = credentials[0].encrypted_data;
   console.log(`[refresh-program-cache] Found credential_id: ${credentialId}`);
 
-  // Decrypt credentials using cred-get edge function
+  // Decrypt credentials directly (we have service role access)
   console.log('[refresh-program-cache] Decrypting credentials...');
-  const credGetResponse = await supabase.functions.invoke('cred-get', {
-    body: { id: credentialId }
-  });
-
-  if (credGetResponse.error || !credGetResponse.data) {
-    const error = `Failed to decrypt credentials: ${credGetResponse.error?.message || 'Unknown error'}`;
+  
+  const sealKey = Deno.env.get('CRED_SEAL_KEY');
+  if (!sealKey) {
+    const error = 'CRED_SEAL_KEY not configured';
     console.error(`[refresh-program-cache] ${error}`);
     return new Response(JSON.stringify({ error }), {
       status: 500,
@@ -172,8 +171,49 @@ Deno.serve(async (req) => {
     });
   }
 
-  const { email, password } = credGetResponse.data;
-  console.log(`[refresh-program-cache] Credentials decrypted for: ${email.substring(0, 3)}***`);
+  let email: string;
+  let password: string;
+
+  try {
+    // Parse encrypted data format: "encryptedBase64:ivBase64"
+    const [encryptedBase64, ivBase64] = encryptedData.split(':');
+    
+    // Convert base64 back to binary
+    const encryptedBytes = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0));
+    const iv = Uint8Array.from(atob(ivBase64), c => c.charCodeAt(0));
+    
+    // Import the key
+    const keyData = Uint8Array.from(atob(sealKey), c => c.charCodeAt(0));
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      keyData,
+      { name: 'AES-GCM' },
+      false,
+      ['decrypt']
+    );
+
+    // Decrypt
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      cryptoKey,
+      encryptedBytes
+    );
+
+    const decoder = new TextDecoder();
+    const credentialsObj = JSON.parse(decoder.decode(decrypted));
+    
+    email = credentialsObj.email;
+    password = credentialsObj.password;
+    
+    console.log(`[refresh-program-cache] Credentials decrypted for: ${email.substring(0, 3)}***`);
+  } catch (decryptError) {
+    const error = `Failed to decrypt credentials: ${decryptError instanceof Error ? decryptError.message : 'Unknown error'}`;
+    console.error(`[refresh-program-cache] ${error}`);
+    return new Response(JSON.stringify({ error }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
 
   // Scrape each organization and category using the PROVEN discovery flow
   for (const org of ORGS_TO_SCRAPE) {
