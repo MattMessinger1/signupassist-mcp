@@ -5,6 +5,76 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Helper: Generate deep links for a program
+function generateDeepLinks(orgRef: string, programRef: string): Record<string, string> {
+  const baseUrl = `https://${orgRef}.skiclubpro.team`;
+  const registrationUrl = `${baseUrl}/registration/${programRef}/start`;
+  const accountUrl = `${baseUrl}/user/register`;
+  const detailsUrl = `${baseUrl}/programs/${programRef}`;
+  
+  return {
+    registration_start: `${registrationUrl}?ref=signupassist&utm_source=chatgpt_app`,
+    account_creation: `${accountUrl}?ref=signupassist&prefill=guardian`,
+    program_details: `${detailsUrl}?ref=signupassist`
+  };
+}
+
+// Helper: Transform discovered prerequisite fields to schema format
+function transformPrereqFields(discoveredSchema: any): Record<string, any> {
+  if (!discoveredSchema?.fields) return {};
+  
+  const prereqs: Record<string, any> = {};
+  
+  for (const field of discoveredSchema.fields) {
+    const fieldKey = field.name || field.id || field.label?.toLowerCase().replace(/\s+/g, '_');
+    if (!fieldKey) continue;
+    
+    // Detect prerequisite type from field characteristics
+    if (field.type === 'checkbox' && (field.label?.toLowerCase().includes('waiver') || field.label?.toLowerCase().includes('agree'))) {
+      prereqs.waiver = {
+        key: fieldKey,
+        label: field.label || 'Waiver acceptance',
+        type: 'checkbox',
+        required: field.required || true
+      };
+    } else if (field.label?.toLowerCase().includes('membership')) {
+      prereqs.membership = {
+        key: fieldKey,
+        label: field.label || 'Membership',
+        type: field.type || 'select',
+        required: field.required || false,
+        options: field.options || []
+      };
+    } else if (field.label?.toLowerCase().includes('rental')) {
+      prereqs.rental = {
+        key: fieldKey,
+        label: field.label || 'Equipment rental',
+        type: field.type || 'select',
+        required: field.required || false,
+        options: field.options || ['Yes', 'No']
+      };
+    }
+  }
+  
+  return prereqs;
+}
+
+// Helper: Transform discovered question fields to schema format
+function transformQuestionFields(discoveredSchema: any): Record<string, any> {
+  if (!discoveredSchema?.fields) return { fields: [] };
+  
+  const fields = discoveredSchema.fields.map((field: any) => ({
+    key: field.name || field.id || field.label?.toLowerCase().replace(/\s+/g, '_') || 'unknown',
+    label: field.label || field.name || 'Unknown field',
+    type: field.type || 'text',
+    required: field.required || false,
+    options: field.options || undefined,
+    placeholder: field.placeholder || undefined
+  }));
+  
+  return { fields };
+}
+
 interface OrgConfig {
   orgRef: string;
   categories: string[];
@@ -116,14 +186,77 @@ Deno.serve(async (req) => {
 
         console.log(`[refresh-program-cache] Scraped ${programCount} programs in ${themes.length} themes`);
 
-        // Store in database cache via RPC
-        const { data: cacheId, error: cacheError } = await supabase.rpc('upsert_cached_programs', {
+        // Discover real form fields for each program
+        const prerequisitesSchema: Record<string, any> = {};
+        const questionsSchema: Record<string, any> = {};
+        const deepLinksSchema: Record<string, any> = {};
+
+        for (const [theme, programs] of Object.entries(programsByTheme) as [string, any[]][]) {
+          for (const program of programs) {
+            const programRef = program.program_ref || program.id;
+            if (!programRef) continue;
+
+            console.log(`[refresh-program-cache] Discovering fields for ${programRef}...`);
+
+            try {
+              // Discover prerequisites
+              const prereqResult = await invokeMCPToolDirect('scp.discover_required_fields', {
+                org_ref: org.orgRef,
+                program_ref: programRef,
+                stage: 'prereq',
+                username: decryptedCreds.email,
+                password: decryptedCreds.password,
+                mode: 'prerequisites_only'
+              });
+
+              if (prereqResult.success && prereqResult.schema) {
+                prerequisitesSchema[programRef] = transformPrereqFields(prereqResult.schema);
+                console.log(`[refresh-program-cache] ✓ Prerequisites discovered for ${programRef}`);
+              }
+
+              // Discover program questions
+              const questionResult = await invokeMCPToolDirect('scp.discover_required_fields', {
+                org_ref: org.orgRef,
+                program_ref: programRef,
+                stage: 'program',
+                username: decryptedCreds.email,
+                password: decryptedCreds.password,
+                mode: 'full'
+              });
+
+              if (questionResult.success && questionResult.schema) {
+                questionsSchema[programRef] = transformQuestionFields(questionResult.schema);
+                console.log(`[refresh-program-cache] ✓ Questions discovered for ${programRef}`);
+              }
+
+              // Generate deep links
+              deepLinksSchema[programRef] = generateDeepLinks(org.orgRef, programRef);
+
+            } catch (fieldError: any) {
+              console.error(`[refresh-program-cache] ⚠️ Failed to discover fields for ${programRef}:`, fieldError.message);
+              // Continue with other programs even if one fails
+            }
+
+            // Small delay to avoid overwhelming the provider
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+        }
+
+        console.log(`[refresh-program-cache] Field discovery complete: ${Object.keys(prerequisitesSchema).length}/${programCount} programs`);
+
+        // Store in database cache via enhanced RPC
+        const { data: cacheId, error: cacheError } = await supabase.rpc('upsert_cached_programs_enhanced', {
           p_org_ref: org.orgRef,
           p_category: category,
           p_programs_by_theme: programsByTheme,
+          p_prerequisites_schema: prerequisitesSchema,
+          p_questions_schema: questionsSchema,
+          p_deep_links: deepLinksSchema,
           p_metadata: {
-            scrape_type: 'nightly_scraper',
+            scrape_type: 'real_scraper',
+            source: 'nightly_scraper',
             program_count: programCount,
+            fields_scraped: Object.keys(prerequisitesSchema).length,
             themes: themes,
             scraped_at: new Date().toISOString(),
             priority: org.priority
