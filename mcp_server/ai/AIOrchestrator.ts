@@ -862,11 +862,17 @@ Example follow-up (only when needed):
     // TASK 4: Check database cache first (before in-memory cache)
     const cacheKey = `programs:${ctx.provider.orgRef}:${ctx.category || 'all'}`;
     
-    // Try database cache first
-    const dbCachedPrograms = await this.checkDatabaseCache(ctx.provider.orgRef, ctx.category || 'all');
+    // Try database cache first with age filtering
+    const childAge = ctx.childAge; // Extract from context if available
+    const dbCachedPrograms = await this.checkDatabaseCache(
+      ctx.provider.orgRef, 
+      ctx.category || 'all',
+      childAge
+    );
     if (dbCachedPrograms && Object.keys(dbCachedPrograms).length > 0) {
       Logger.info(`[DB Cache Hit] ${ctx.provider.orgRef}:${ctx.category || 'all'}`, {
-        themes: Object.keys(dbCachedPrograms).length
+        themes: Object.keys(dbCachedPrograms).length,
+        childAge: childAge ? `age ${childAge}` : 'all ages'
       });
       
       // Also store in session cache for subsequent requests
@@ -1020,7 +1026,7 @@ Example follow-up (only when needed):
     const category = "all";
     const cacheKey = `programs:${orgRef}:${category}`;
     
-    const dbCachedPrograms = await this.checkDatabaseCache(orgRef, category);
+    const dbCachedPrograms = await this.checkDatabaseCache(orgRef, category, undefined); // No age filter for test
     if (dbCachedPrograms && Object.keys(dbCachedPrograms).length > 0) {
       Logger.info(`[DB Cache Hit - Extractor Test] ${orgRef}:${category}`, {
         themes: Object.keys(dbCachedPrograms).length
@@ -3245,24 +3251,22 @@ Return JSON: {
   }
 
   /**
-   * TASK 4: Check database cache for programs
-   * Queries Supabase cached_programs table via find_programs_cached RPC
+   * RAILWAY CACHE: Fast program discovery (<2s target)
+   * Pre-login narrowing: Age → Activity → Provider → Cache lookup
    * 
-   * TYPE SAFETY NOTE: This RPC call depends on the Database type from
-   * src/integrations/supabase/types.ts. If you see type errors like "Argument is not assignable to parameter of type 'never'":
-   * 1. Verify the function exists: SELECT * FROM pg_proc WHERE proname = 'find_programs_cached'
-   * 2. Regenerate types: npm run types:generate
-   * 3. Verify the function signature matches: (p_org_ref text, p_category text, p_max_age_hours int)
-   * 4. Rebuild the project to pick up the new types
+   * Queries Supabase cached_programs table with age filtering
+   * If cache miss: triggers background refresh
    * 
    * @param orgRef - Organization reference (e.g., "blackhawk-ski")
    * @param category - Program category (e.g., "lessons", "all")
+   * @param childAge - Child's age for filtering (optional)
    * @param maxAgeHours - Maximum cache age in hours (default: 24)
    * @returns Cached programs grouped by theme, or null if cache miss
    */
   private async checkDatabaseCache(
     orgRef: string,
     category: string = 'all',
+    childAge?: number,
     maxAgeHours: number = 24
   ): Promise<Record<string, any[]> | null> {
     if (!this.supabase) {
@@ -3284,21 +3288,93 @@ Return JSON: {
 
       // RPC returns empty object {} on cache miss
       if (!data || Object.keys(data).length === 0) {
+        Logger.info('[DB Cache] Miss - triggering background refresh', { orgRef, category });
+        // Trigger background refresh (fire-and-forget)
+        this.triggerCacheRefresh(orgRef, category).catch(err => 
+          Logger.error('[DB Cache] Background refresh failed', { error: err.message })
+        );
         return null;
       }
 
-      Logger.info('[DB Cache] Hit', {
+      // Apply age filtering if provided
+      let filteredData = data;
+      if (childAge) {
+        filteredData = {};
+        for (const [theme, programs] of Object.entries(data)) {
+          const ageFiltered = (programs as any[]).filter((program: any) => 
+            this.isAgeAppropriate(program, childAge)
+          );
+          if (ageFiltered.length > 0) {
+            filteredData[theme] = ageFiltered;
+          }
+        }
+      }
+
+      Logger.info('[DB Cache] ✓ Hit', {
         orgRef,
         category,
-        themes: Object.keys(data).length,
-        programCount: Object.values(data).flat().length
+        childAge: childAge ? `age ${childAge}` : 'all ages',
+        themes: Object.keys(filteredData).length,
+        programCount: Object.values(filteredData).flat().length
       });
 
-      return data as Record<string, any[]>;
+      return filteredData as Record<string, any[]>;
     } catch (error: any) {
       Logger.error('[DB Cache] Unexpected error', { error: error.message, orgRef, category });
       return null;
     }
+  }
+
+  /**
+   * Check if program is age-appropriate based on age range in description
+   */
+  private isAgeAppropriate(program: any, childAge: number): boolean {
+    // Check various fields for age range
+    const searchFields = [
+      program.age_range,
+      program.ageRange,
+      program.caption,
+      program.subtitle,
+      program.description
+    ];
+
+    for (const field of searchFields) {
+      if (!field) continue;
+      
+      // Pattern: "Ages 7-10" or "7-10 years" or "6 to 9"
+      const rangeMatch = field.match(/(\d+)\s*[-to]+\s*(\d+)/i);
+      if (rangeMatch) {
+        const min = parseInt(rangeMatch[1], 10);
+        const max = parseInt(rangeMatch[2], 10);
+        return childAge >= min && childAge <= max;
+      }
+      
+      // Pattern: "Age 8" or "8 years old"
+      const singleMatch = field.match(/\b(\d+)\s*(?:year|yr|yo)/i);
+      if (singleMatch) {
+        const targetAge = parseInt(singleMatch[1], 10);
+        return childAge === targetAge;
+      }
+    }
+    
+    // Include if no age range specified
+    return true;
+  }
+
+  /**
+   * Trigger background cache refresh for a specific org/category (fire-and-forget)
+   */
+  private async triggerCacheRefresh(orgRef: string, category: string): Promise<void> {
+    Logger.info('[DB Cache] Triggering background refresh', { orgRef, category });
+    
+    // This would call the refresh-program-cache edge function
+    // For now, just log the intent - actual implementation depends on edge function setup
+    // TODO: Implement actual background refresh trigger when ready
+    
+    // Example implementation:
+    // await this.supabase?.functions.invoke('refresh-program-cache', {
+    //   body: { orgRef, category }
+    // });
   }
 
   /**
