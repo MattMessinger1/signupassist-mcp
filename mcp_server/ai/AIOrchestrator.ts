@@ -3263,7 +3263,7 @@ Return JSON: {
     }
 
     try {
-      const { data, error } = await this.supabase.rpc('find_programs_cached', {
+      const { data, error } = await (this.supabase as any).rpc('find_programs_cached', {
         p_org_ref: orgRef,
         p_category: category,
         p_max_age_hours: maxAgeHours
@@ -3316,7 +3316,7 @@ Return JSON: {
     }
 
     try {
-      const { data, error } = await this.supabase.rpc('upsert_cached_programs', {
+      const { data, error } = await (this.supabase as any).rpc('upsert_cached_programs', {
         p_org_ref: orgRef,
         p_category: category,
         p_programs_by_theme: programsByTheme,
