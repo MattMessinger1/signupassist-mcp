@@ -146,12 +146,10 @@ Deno.serve(async (req) => {
       // Encrypt credentials using the store-credentials function
       const storeCredsResponse = await supabaseAdmin.functions.invoke('store-credentials', {
         body: {
-          provider: 'skiclubpro',
+          provider_slug: 'skiclubpro',
           alias: 'system_cache_scraper',
-          data: {
-            email: skiclubpro_email,
-            password: skiclubpro_password
-          },
+          email: skiclubpro_email,
+          password: skiclubpro_password,
           user_id: systemUser.id
         }
       });
