@@ -1,5 +1,4 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { SignJWT } from 'https://deno.land/x/jose@v5.9.6/index.ts';
 import { invokeMCPToolDirect } from '../_shared/mcpClient.ts';
 
 const corsHeaders = {
@@ -158,39 +157,9 @@ Deno.serve(async (req) => {
   const credentialId = credentials[0].id;
   console.log(`[refresh-program-cache] Found credential_id: ${credentialId}`);
 
-  // Generate JWT for system user (needed for credential decryption)
-  console.log('[refresh-program-cache] Generating system user JWT...');
-  
-  // Debug: Check all available env vars
-  const allEnvKeys = Object.keys(Deno.env.toObject());
-  console.log('[refresh-program-cache] Available env var keys:', allEnvKeys.filter(k => k.includes('JWT') || k.includes('SUPABASE')));
-  
-  const jwtSecret = Deno.env.get('SUPABASE_JWT_SECRET');
-  console.log('[refresh-program-cache] JWT Secret status:', jwtSecret ? 'Found (length: ' + jwtSecret.length + ')' : 'NOT FOUND');
-  
-  if (!jwtSecret) {
-    const error = 'SUPABASE_JWT_SECRET not configured';
-    console.error(`[refresh-program-cache] ${error}`);
-    console.error('[refresh-program-cache] This is a system-provided secret. Check Supabase dashboard.');
-    return new Response(JSON.stringify({ error }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-  }
-
-  const secret = new TextEncoder().encode(jwtSecret);
-  const systemUserJwt = await new SignJWT({
-    sub: systemUser.id,
-    email: systemUser.email,
-    role: 'authenticated',
-    aud: 'authenticated',
-  })
-    .setProtectedHeader({ alg: 'HS256' })
-    .setIssuedAt()
-    .setExpirationTime('1h')
-    .sign(secret);
-
-  console.log('[refresh-program-cache] System user JWT generated');
+  // For MCP tool authentication: use service role key directly
+  // The MCP server will use this to authenticate and decrypt credentials
+  console.log('[refresh-program-cache] Using service role key for MCP authentication');
 
   // Scrape each organization and category using the PROVEN discovery flow
   for (const org of ORGS_TO_SCRAPE) {
@@ -205,11 +174,11 @@ Deno.serve(async (req) => {
         // - Session reuse after first successful login
         // - Field discovery
         // Uses invokeMCPToolDirect for server-to-server auth with MCP_ACCESS_TOKEN
+        // The MCP server handles credential decryption using the service role context
         const result = await invokeMCPToolDirect('scp.discover_required_fields', {
           org_ref: org.orgRef,
           category: category,
           credential_id: credentialId,
-          user_jwt: systemUserJwt,
           user_id: systemUser.id,
           mode: 'full', // Get both prerequisites AND program questions
           stage: 'program'
