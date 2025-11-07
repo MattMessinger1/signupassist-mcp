@@ -17,3 +17,6 @@ verify_jwt = true
 
 [functions.testHarness]
 verify_jwt = false
+
+[functions.refresh-program-cache]
+verify_jwt = false
