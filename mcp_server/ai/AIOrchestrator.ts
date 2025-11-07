@@ -1190,6 +1190,7 @@ Example follow-up (only when needed):
   /**
    * Present programs as grouped cards
    * Quick Win #3: Filter by child age before building cards
+   * Phase 1D: Include checklist card previews when available
    */
   private async presentProgramsAsCards(ctx: SessionContext, themed: Record<string, any[]>): Promise<OrchestratorResponse> {
     // Quick Win #3: Apply age filtering if childAge is in context
@@ -1275,11 +1276,37 @@ Example follow-up (only when needed):
       return [header, ...set];
     });
 
+    // Phase 1D: Add checklist preview cards if available
+    const allCards = [...cards];
+    if (ctx.checklistCards && ctx.checklistCards.length > 0) {
+      // Add a header card for checklists
+      allCards.push({
+        title: "📋 Registration Requirements",
+        subtitle: "Review what you'll need before registering",
+        isHeader: true
+      });
+      
+      // Add preview cards for each checklist (first 4)
+      const previewCards = ctx.checklistCards.slice(0, 4).map(checklist => ({
+        title: checklist.title,
+        subtitle: `${Object.keys(checklist.prerequisites).length} prerequisites • ${checklist.questions.length} questions`,
+        metadata: { program_ref: checklist.program_ref },
+        buttons: [{
+          label: "View Requirements",
+          action: "view_checklist",
+          variant: "outline" as const,
+          payload: { program_ref: checklist.program_ref }
+        }]
+      }));
+      
+      allCards.push(...previewCards);
+    }
+
     return {
       message: ctx.childAge 
         ? `✅ I found programs for age ${ctx.childAge}, sorted by theme.`
         : "✅ I sorted the programs by theme so it's easy to browse.",
-      cards,
+      cards: allCards,
       uiPayload: { type: "cards" },
       contextUpdates: {}
     };
@@ -1894,6 +1921,138 @@ Example follow-up (only when needed):
               {}
             );
           }
+
+        case "view_checklist":
+          // Phase 1D: Display full checklist card when user clicks "View Requirements"
+          const { program_ref: checklistProgRef } = payload || {};
+          
+          if (!checklistProgRef) {
+            return this.formatResponse(
+              "I couldn't find that program's requirements. Please try again.",
+              undefined,
+              undefined,
+              {}
+            );
+          }
+          
+          // Get checklist from context
+          const checklist = context.checklistCards?.find(c => c.program_ref === checklistProgRef);
+          
+          if (!checklist) {
+            return this.formatResponse(
+              "Requirements for this program aren't available yet. Would you like to proceed anyway?",
+              undefined,
+              [{ label: "Proceed", action: "start_registration", variant: "accent", payload: { program_ref: checklistProgRef } }],
+              {}
+            );
+          }
+          
+          // Build detailed checklist message
+          const prereqList = Object.entries(checklist.prerequisites)
+            .map(([key, value]: [string, any]) => `  • ${value.message}`)
+            .join('\n');
+          
+          const questionList = checklist.questions
+            .filter((q: QuestionField) => q.required)
+            .map((q: QuestionField) => `  • ${q.label} (${q.type})`)
+            .join('\n');
+          
+          const message = `📋 **${checklist.title}**
+
+**Prerequisites:**
+${prereqList || '  None'}
+
+**Questions to Answer:**
+${questionList || '  None'}
+
+Once you're ready, you can either open the provider's website directly or let SignupAssist handle it for you.`;
+
+          return this.formatResponse(
+            message,
+            undefined,
+            [{ 
+              label: "Ready to proceed", 
+              action: "show_finish_options", 
+              variant: "accent",
+              payload: { program_ref: checklistProgRef }
+            }],
+            {}
+          );
+
+        case "show_finish_options":
+          // Phase 1D: Present two-persona finish options (deep-link vs agentic)
+          const { program_ref: finishProgRef } = payload || {};
+          
+          if (!finishProgRef) {
+            return this.formatResponse(
+              "I need to know which program you want to register for.",
+              undefined,
+              undefined,
+              {}
+            );
+          }
+          
+          // Get checklist from context to retrieve deep_link
+          const finishChecklist = context.checklistCards?.find(c => c.program_ref === finishProgRef);
+          const deepLink = finishChecklist?.deep_link;
+          const programTitle = finishChecklist?.title || "this program";
+          
+          // Build message with two options
+          const finishMessage = `🎯 **Choose How to Complete Registration**
+
+**Option 1: Open Provider Website (Recommended)**
+Complete registration directly on the provider's website. This is the fastest and most straightforward option.
+
+**Option 2: Let SignupAssist Finish**
+I'll handle the registration for you automatically. This requires connecting your account and may take a few minutes.
+
+Which would you prefer?`;
+
+          // Build CTAs
+          const finishCtas: any[] = [];
+          
+          // Option 1: Deep-link (if available)
+          if (deepLink) {
+            finishCtas.push({
+              label: "Open Provider Website",
+              action: "open_link",
+              variant: "accent",
+              href: deepLink
+            });
+          }
+          
+          // Option 2: Agentic flow
+          finishCtas.push({
+            label: "Let SignupAssist Finish",
+            action: "start_agentic_registration",
+            variant: "outline",
+            payload: { program_ref: finishProgRef }
+          });
+          
+          // Option 3: Cancel
+          finishCtas.push({
+            label: "Cancel",
+            action: "cancel",
+            variant: "ghost"
+          });
+          
+          return this.formatResponse(finishMessage, undefined, finishCtas, {});
+
+        case "start_agentic_registration":
+          // Phase 1D: Placeholder for agentic registration (Phase 2 implementation)
+          const { program_ref: agenticProgRef } = payload || {};
+          
+          return this.formatResponse(
+            "🔐 To complete registration automatically, I'll need to connect to your account securely. Let's get that set up.",
+            undefined,
+            [{ 
+              label: "Connect Account", 
+              action: "connect_account", 
+              variant: "accent",
+              payload: { program_ref: agenticProgRef }
+            }],
+            { pendingRegistration: { program_ref: agenticProgRef } }
+          );
 
         case "reset":
         case "retry_search":
