@@ -13,6 +13,7 @@ import { parseIntent, buildIntentQuestion, filterByAge, classifyIntentStrength, 
 import { normalizeEmailWithAI, generatePersonalizedMessage } from "../lib/aiIntentParser.js";
 import { singleFlight } from "../utils/singleflight.js";
 import type { SessionContext } from "../types.js";
+import { createClient } from '@supabase/supabase-js';
 
 /**
  * Prompt version tracking for tone changes
@@ -177,6 +178,7 @@ class AIOrchestrator {
   private model: string;
   private temperature: number;
   private mcpToolCaller?: (toolName: string, args: any) => Promise<any>;
+  private supabase?: ReturnType<typeof createClient>;
 
   /**
    * Initialize the AI orchestrator
@@ -197,6 +199,13 @@ class AIOrchestrator {
 
     // Use the production system prompt as the single source of truth
     this.systemPrompt = PRODUCTION_SYSTEM_PROMPT;
+    
+    // Initialize Supabase client for cache queries
+    const supabaseUrl = process.env.SUPABASE_URL;
+    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (supabaseUrl && supabaseKey) {
+      this.supabase = createClient(supabaseUrl, supabaseKey);
+    }
 
     // Step-specific prompt templates for consistent messaging
     this.promptTemplates = {
@@ -849,14 +858,31 @@ Example follow-up (only when needed):
       return this.buildScheduleFilterPrompt(sessionId);
     }
     
-    // Phase 3: Check program cache first
+    // TASK 4: Check database cache first (before in-memory cache)
     const cacheKey = `programs:${ctx.provider.orgRef}:${ctx.category || 'all'}`;
-    const cachedPrograms = ctx.cache?.[cacheKey];
     
+    // Try database cache first
+    const dbCachedPrograms = await this.checkDatabaseCache(ctx.provider.orgRef, ctx.category || 'all');
+    if (dbCachedPrograms && Object.keys(dbCachedPrograms).length > 0) {
+      Logger.info(`[DB Cache Hit] ${ctx.provider.orgRef}:${ctx.category || 'all'}`, {
+        themes: Object.keys(dbCachedPrograms).length
+      });
+      
+      // Also store in session cache for subsequent requests
+      if (!ctx.cache) ctx.cache = {};
+      ctx.cache[cacheKey] = dbCachedPrograms;
+      
+      return await this.presentProgramsAsCards(ctx, dbCachedPrograms);
+    }
+    
+    // Fallback to in-memory session cache
+    const cachedPrograms = ctx.cache?.[cacheKey];
     if (cachedPrograms) {
-      console.log(`[handleAutoProgramDiscovery] ✅ Using cached programs (${Object.keys(cachedPrograms).length} themes)`);
+      console.log(`[handleAutoProgramDiscovery] ✅ Using session cached programs (${Object.keys(cachedPrograms).length} themes)`);
       return await this.presentProgramsAsCards(ctx, cachedPrograms);
     }
+    
+    Logger.info(`[Cache Miss] ${ctx.provider.orgRef}:${ctx.category || 'all'} - proceeding with live scrape`);
     
     // Phase 2: Check for high-intent fast-path eligibility
     const isHighIntent = ctx.intentStrength === "high";
@@ -957,13 +983,26 @@ Example follow-up (only when needed):
       return await this.presentProgramsAsCards(ctx, fallbackPrograms);
     }
     
-    // Phase 3: Cache programs for reuse (15 min TTL)
+    // TASK 4: Cache programs in database and session (15 min TTL)
     if (Object.keys(programs).length > 0) {
+      // Store in session cache
       if (!ctx.cache) ctx.cache = {};
       ctx.cache[cacheKey] = programs;
       
+      // Store in database cache
+      await this.upsertDatabaseCache(
+        ctx.provider.orgRef,
+        ctx.category || 'all',
+        programs,
+        {
+          scrape_type: fastPathEligible ? "fast-path" : "full",
+          program_count: Object.values(programs).flat().length,
+          themes: Object.keys(programs)
+        }
+      );
+      
       const scrapeType = fastPathEligible ? "fast-path" : "full";
-      console.log(`[handleAutoProgramDiscovery] 📦 Cached ${Object.keys(programs).length} program themes (${scrapeType})`);
+      console.log(`[handleAutoProgramDiscovery] 📦 Cached ${Object.keys(programs).length} program themes (${scrapeType}) in DB and session`);
     }
     
     // Return the result from presentProgramsAsCards
@@ -972,15 +1011,31 @@ Example follow-up (only when needed):
 
   /**
    * Handle extractor test action
-   * Phase 3: Added program caching for faster subsequent calls
+   * TASK 4: Added database cache lookup for faster subsequent calls
    */
   private async handleAction_run_extractor_test(ctx: SessionContext, sessionId?: string): Promise<OrchestratorResponse> {
-    // Phase 3: Check program cache first
-    const cacheKey = `programs:${ctx?.provider?.orgRef ?? "blackhawk-ski"}:all`;
-    const cachedPrograms = ctx.cache?.[cacheKey];
+    // TASK 4: Check database cache first
+    const orgRef = ctx?.provider?.orgRef ?? "blackhawk-ski";
+    const category = "all";
+    const cacheKey = `programs:${orgRef}:${category}`;
     
+    const dbCachedPrograms = await this.checkDatabaseCache(orgRef, category);
+    if (dbCachedPrograms && Object.keys(dbCachedPrograms).length > 0) {
+      Logger.info(`[DB Cache Hit - Extractor Test] ${orgRef}:${category}`, {
+        themes: Object.keys(dbCachedPrograms).length
+      });
+      
+      // Also store in session cache
+      if (!ctx.cache) ctx.cache = {};
+      ctx.cache[cacheKey] = dbCachedPrograms;
+      
+      return await this.presentProgramsAsCards(ctx, dbCachedPrograms);
+    }
+    
+    // Fallback to session cache
+    const cachedPrograms = ctx.cache?.[cacheKey];
     if (cachedPrograms) {
-      console.log(`[handleAction_run_extractor_test] ✅ Using cached programs (${Object.keys(cachedPrograms).length} themes)`);
+      console.log(`[handleAction_run_extractor_test] ✅ Using session cached programs (${Object.keys(cachedPrograms).length} themes)`);
       return await this.presentProgramsAsCards(ctx, cachedPrograms);
     }
     
@@ -1023,12 +1078,27 @@ Example follow-up (only when needed):
       items: numItems
     });
     
-    // Phase 3: Cache programs for reuse (15 min TTL)
+    // TASK 4: Cache programs in database and session (15 min TTL)
     const programs = res?.programs_by_theme || {};
     if (Object.keys(programs).length > 0) {
+      // Store in session cache
       if (!ctx.cache) ctx.cache = {};
       ctx.cache[cacheKey] = programs;
-      console.log(`[handleAction_run_extractor_test] 📦 Cached ${Object.keys(programs).length} program themes`);
+      
+      // Store in database cache
+      await this.upsertDatabaseCache(
+        orgRef,
+        category,
+        programs,
+        {
+          scrape_type: "full",
+          program_count: Object.values(programs).flat().length,
+          themes: Object.keys(programs),
+          source: "extractor_test"
+        }
+      );
+      
+      console.log(`[handleAction_run_extractor_test] 📦 Cached ${Object.keys(programs).length} program themes in DB and session`);
     }
     
     return await this.presentProgramsAsCards(ctx, programs);
@@ -3171,6 +3241,114 @@ Return JSON: {
       undefined,
       { confirmed: false, awaitingConfirmation: true }
     );
+  }
+
+  /**
+   * TASK 4: Check database cache for programs
+   * Queries Supabase cached_programs table via find_programs_cached RPC
+   * 
+   * @param orgRef - Organization reference (e.g., "blackhawk-ski")
+   * @param category - Program category (e.g., "lessons", "all")
+   * @param maxAgeHours - Maximum cache age in hours (default: 24)
+   * @returns Cached programs grouped by theme, or null if cache miss
+   */
+  private async checkDatabaseCache(
+    orgRef: string,
+    category: string = 'all',
+    maxAgeHours: number = 24
+  ): Promise<Record<string, any[]> | null> {
+    if (!this.supabase) {
+      Logger.warn('[DB Cache] Supabase client not initialized, skipping cache check');
+      return null;
+    }
+
+    try {
+      const { data, error } = await this.supabase.rpc('find_programs_cached', {
+        p_org_ref: orgRef,
+        p_category: category,
+        p_max_age_hours: maxAgeHours
+      });
+
+      if (error) {
+        Logger.error('[DB Cache] Query failed', { error: error.message, orgRef, category });
+        return null;
+      }
+
+      // RPC returns empty object {} on cache miss
+      if (!data || Object.keys(data).length === 0) {
+        return null;
+      }
+
+      Logger.info('[DB Cache] Hit', {
+        orgRef,
+        category,
+        themes: Object.keys(data).length,
+        programCount: Object.values(data).flat().length
+      });
+
+      return data as Record<string, any[]>;
+    } catch (error: any) {
+      Logger.error('[DB Cache] Unexpected error', { error: error.message, orgRef, category });
+      return null;
+    }
+  }
+
+  /**
+   * TASK 4: Upsert programs to database cache
+   * Stores programs in Supabase cached_programs table via upsert_cached_programs RPC
+   * 
+   * @param orgRef - Organization reference (e.g., "blackhawk-ski")
+   * @param category - Program category (e.g., "lessons", "all")
+   * @param programsByTheme - Programs grouped by theme
+   * @param metadata - Additional metadata about the cache entry
+   * @param ttlHours - Time-to-live in hours (default: 24)
+   */
+  private async upsertDatabaseCache(
+    orgRef: string,
+    category: string,
+    programsByTheme: Record<string, any[]>,
+    metadata: Record<string, any> = {},
+    ttlHours: number = 24
+  ): Promise<void> {
+    if (!this.supabase) {
+      Logger.warn('[DB Cache] Supabase client not initialized, skipping cache upsert');
+      return;
+    }
+
+    try {
+      const { data, error } = await this.supabase.rpc('upsert_cached_programs', {
+        p_org_ref: orgRef,
+        p_category: category,
+        p_programs_by_theme: programsByTheme,
+        p_metadata: metadata,
+        p_ttl_hours: ttlHours
+      });
+
+      if (error) {
+        Logger.error('[DB Cache] Upsert failed', { 
+          error: error.message, 
+          orgRef, 
+          category,
+          themeCount: Object.keys(programsByTheme).length
+        });
+        return;
+      }
+
+      Logger.info('[DB Cache] Upserted', {
+        orgRef,
+        category,
+        cacheId: data,
+        themes: Object.keys(programsByTheme).length,
+        programCount: Object.values(programsByTheme).flat().length,
+        ttlHours
+      });
+    } catch (error: any) {
+      Logger.error('[DB Cache] Unexpected upsert error', { 
+        error: error.message, 
+        orgRef, 
+        category 
+      });
+    }
   }
 }
 
