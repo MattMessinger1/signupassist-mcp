@@ -763,63 +763,73 @@ Example follow-up (only when needed):
    * Reuses session_token if available, otherwise performs login
    */
   private async handleAction_credentials_submitted(ctx: SessionContext, payload: any, sessionId?: string): Promise<OrchestratorResponse> {
-    // Quick Win #5: credentials_submitted NO-OP - don't re-login if already successful
-    if (ctx.login_status === "success" && ctx.session_token) {
-      Logger.info("[orchestrator] credentials_submitted NO-OP: already logged in successfully");
-      return await this.handleAutoProgramDiscovery(ctx, { mandate_jws: ctx.mandate_jws }, sessionId);
+    // TASK 1: Enhanced session reuse check - verify both token and expiry
+    const targetOrg = ctx?.provider?.orgRef ?? "blackhawk-ski";
+    const now = Date.now();
+    const sessionTTL = ctx.session_ttl_ms || 300000; // Default 5 min
+    
+    // Check if session_token is still valid before attempting login
+    const hasValidSession = 
+      ctx.session_token &&
+      ctx.org_ref === targetOrg &&
+      ctx.session_token_expires_at &&
+      now < ctx.session_token_expires_at - 30000; // 30s grace period
+    
+    if (hasValidSession) {
+      Logger.info("[orchestrator] ✅ Reusing valid session_token - skipping login entirely");
+      Logger.info(`[orchestrator] Session valid until: ${new Date(ctx.session_token_expires_at!).toISOString()}`);
+      
+      // Mark login as complete without calling scp.login
+      await this.updateContext(sessionId, {
+        login_status: "success",
+        loginCompleted: true
+      });
+      
+      // Get fresh context after update
+      const updatedCtx = await this.getContext(sessionId);
+      return await this.handleAutoProgramDiscovery(updatedCtx, { mandate_jws: ctx.mandate_jws }, sessionId);
     }
     
+    // No valid session - need to login
+    Logger.info("[orchestrator] No valid session found - performing login to obtain session_token…");
+    
+    // Update context with payload data
     ctx.provider_cookies = payload?.cookies ? Object.values(payload.cookies) : ctx.provider_cookies;
     ctx.credential_id = payload?.credential_id ?? ctx.credential_id;
 
     const mandate_jws = ctx.mandate_jws ?? process.env.DEV_MANDATE_JWS;
     
-    // Quick Win #5: Idempotent login guard - check session validity before calling login
-    const targetOrg = ctx?.provider?.orgRef ?? "blackhawk-ski";
-    const now = Date.now();
-    const sessionTTL = ctx.session_ttl_ms || 300000; // Default 5 min
-    const validToken = 
-      ctx.session_token &&
-      ctx.org_ref === targetOrg &&
-      ctx.session_issued_at &&
-      now - ctx.session_issued_at < sessionTTL - 30000; // 30s buffer
-
-    if (validToken) {
-      Logger.info("[orchestrator] Valid session_token exists; skipping login");
-      ctx.login_status = "success";
-    } else {
-      Logger.info("[orchestrator] Performing login to obtain session_token…");
-      
-      // Single-flight guard: ensure at most one login per {user_id, org_ref} at a time
-      const loginKey = `login:${extractUserIdFromJWT(ctx.user_jwt)}:${targetOrg}`;
-      const loginRes = await singleFlight(loginKey, async () => {
-        return await this.callTool("scp.login", {
-          credential_id: ctx.credential_id,
-          org_ref: targetOrg,
-          user_jwt: ctx.user_jwt,
-          mandate_jws,
-          destination: process.env.SKICLUBPRO_LOGIN_GOTO_DEST || "/registration"
-        }, sessionId);
-      });
-
-      if (!loginRes?.session_token) throw new Error("Login did not return session_token");
-      
-      // Phase B: Persist session token to survive HTTP request boundaries
-      await this.updateContext(sessionId, {
-        session_token: loginRes.session_token,
-        session_issued_at: Date.now(),
-        session_token_expires_at: Date.now() + sessionTTL,
-        session_ttl_ms: sessionTTL,
+    // Single-flight guard: ensure at most one login per {user_id, org_ref} at a time
+    const loginKey = `login:${extractUserIdFromJWT(ctx.user_jwt)}:${targetOrg}`;
+    const loginRes = await singleFlight(loginKey, async () => {
+      return await this.callTool("scp.login", {
+        credential_id: ctx.credential_id,
         org_ref: targetOrg,
-        login_status: "success",
-        loginCompleted: true
-      });
-      
-      // Get fresh context after persistence
-      ctx = await this.getContext(sessionId);
-    }
+        user_jwt: ctx.user_jwt,
+        mandate_jws,
+        destination: process.env.SKICLUBPRO_LOGIN_GOTO_DEST || "/registration"
+      }, sessionId);
+    });
 
-    return await this.handleAutoProgramDiscovery(ctx, { mandate_jws }, sessionId);
+    if (!loginRes?.session_token) throw new Error("Login did not return session_token");
+    
+    // Persist session token with proper expiry tracking
+    const expiresAt = Date.now() + sessionTTL;
+    await this.updateContext(sessionId, {
+      session_token: loginRes.session_token,
+      session_issued_at: Date.now(),
+      session_token_expires_at: expiresAt,
+      session_ttl_ms: sessionTTL,
+      org_ref: targetOrg,
+      login_status: "success",
+      loginCompleted: true
+    });
+    
+    Logger.info(`[orchestrator] ✅ Login successful - session valid until ${new Date(expiresAt).toISOString()}`);
+    
+    // Get fresh context after persistence
+    const updatedCtx = await this.getContext(sessionId);
+    return await this.handleAutoProgramDiscovery(updatedCtx, { mandate_jws }, sessionId);
   }
 
   /**
