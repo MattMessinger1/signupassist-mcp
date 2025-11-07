@@ -157,9 +157,23 @@ Deno.serve(async (req) => {
   const credentialId = credentials[0].id;
   console.log(`[refresh-program-cache] Found credential_id: ${credentialId}`);
 
-  // For MCP tool authentication: use service role key directly
-  // The MCP server will use this to authenticate and decrypt credentials
-  console.log('[refresh-program-cache] Using service role key for MCP authentication');
+  // Decrypt credentials using cred-get edge function
+  console.log('[refresh-program-cache] Decrypting credentials...');
+  const credGetResponse = await supabase.functions.invoke('cred-get', {
+    body: { id: credentialId }
+  });
+
+  if (credGetResponse.error || !credGetResponse.data) {
+    const error = `Failed to decrypt credentials: ${credGetResponse.error?.message || 'Unknown error'}`;
+    console.error(`[refresh-program-cache] ${error}`);
+    return new Response(JSON.stringify({ error }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+
+  const { email, password } = credGetResponse.data;
+  console.log(`[refresh-program-cache] Credentials decrypted for: ${email.substring(0, 3)}***`);
 
   // Scrape each organization and category using the PROVEN discovery flow
   for (const org of ORGS_TO_SCRAPE) {
@@ -174,12 +188,12 @@ Deno.serve(async (req) => {
         // - Session reuse after first successful login
         // - Field discovery
         // Uses invokeMCPToolDirect for server-to-server auth with MCP_ACCESS_TOKEN
-        // The MCP server handles credential decryption using the service role context
+        // Pass decrypted credentials directly for MCP authentication
         const result = await invokeMCPToolDirect('scp.discover_required_fields', {
           org_ref: org.orgRef,
           category: category,
-          credential_id: credentialId,
-          user_id: systemUser.id,
+          email: email,
+          password: password,
           mode: 'full', // Get both prerequisites AND program questions
           stage: 'program'
         });
