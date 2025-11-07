@@ -3248,6 +3248,13 @@ Return JSON: {
    * TASK 4: Check database cache for programs
    * Queries Supabase cached_programs table via find_programs_cached RPC
    * 
+   * TYPE SAFETY NOTE: This RPC call depends on the Database type from
+   * src/integrations/supabase/types.ts. If you see type errors like "Argument is not assignable to parameter of type 'never'":
+   * 1. Verify the function exists: SELECT * FROM pg_proc WHERE proname = 'find_programs_cached'
+   * 2. Regenerate types: npm run types:generate
+   * 3. Verify the function signature matches: (p_org_ref text, p_category text, p_max_age_hours int)
+   * 4. Rebuild the project to pick up the new types
+   * 
    * @param orgRef - Organization reference (e.g., "blackhawk-ski")
    * @param category - Program category (e.g., "lessons", "all")
    * @param maxAgeHours - Maximum cache age in hours (default: 24)
@@ -3297,6 +3304,13 @@ Return JSON: {
   /**
    * TASK 4: Upsert programs to database cache
    * Stores programs in Supabase cached_programs table via upsert_cached_programs RPC
+   * 
+   * TYPE SAFETY NOTE: This RPC call depends on the Database type from
+   * src/integrations/supabase/types.ts. If you see type errors like "Argument is not assignable to parameter of type 'never'":
+   * 1. Verify the function exists: SELECT * FROM pg_proc WHERE proname = 'upsert_cached_programs'
+   * 2. Regenerate types: npm run types:generate
+   * 3. Verify the function signature matches: (p_org_ref text, p_category text, p_programs_by_theme jsonb, p_metadata jsonb, p_ttl_hours int)
+   * 4. Rebuild the project to pick up the new types
    * 
    * @param orgRef - Organization reference (e.g., "blackhawk-ski")
    * @param category - Program category (e.g., "lessons", "all")
