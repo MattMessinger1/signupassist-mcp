@@ -154,6 +154,7 @@ function ChatTestHarnessContent() {
     orgRef: string;
   } | null>(null);
   const [lastQuestionType, setLastQuestionType] = useState<'age' | 'category' | 'provider' | null>(null);
+  const [isRefreshingCache, setIsRefreshingCache] = useState(false);
 
   // Mount guard to prevent duplicate initialization
   const welcomeShownRef = useRef(false);
@@ -909,6 +910,43 @@ function ChatTestHarnessContent() {
     }
   };
 
+  // ============= Cache Refresh =============
+
+  /**
+   * Refresh the program cache with real scraped data
+   */
+  const handleRefreshCache = async () => {
+    setIsRefreshingCache(true);
+    addLog("info", "system", "🔄 Starting cache refresh with real data...");
+
+    try {
+      const { data, error } = await supabase.functions.invoke('refresh-program-cache');
+
+      if (error) {
+        throw error;
+      }
+
+      addLog("success", "system", `✅ Cache refresh complete: ${data.totalPrograms} programs cached`, data);
+      
+      toast({
+        title: "Cache Refreshed",
+        description: `Successfully scraped and cached ${data.totalPrograms} programs from ${data.totalSuccesses} sources`,
+      });
+
+    } catch (error: any) {
+      console.error('[Cache Refresh] Error:', error);
+      addLog("error", "system", `❌ Cache refresh failed: ${error.message}`);
+      
+      toast({
+        title: "Cache Refresh Failed",
+        description: error.message || "Failed to refresh cache",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRefreshingCache(false);
+    }
+  };
+
   // ============= Three-Pass Extractor Test =============
 
   /**
@@ -1144,6 +1182,8 @@ function ChatTestHarnessContent() {
         isProcessing={isProcessing}
         onRunDemo={runDemoFlow}
         onReset={() => resetConversation()}
+        onRefreshCache={handleRefreshCache}
+        isRefreshingCache={isRefreshingCache}
       />
 
       {/* Test Coverage Report */}

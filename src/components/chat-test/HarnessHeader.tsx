@@ -7,7 +7,7 @@
  * - Action buttons (Run Demo, Reset)
  */
 
-import { Play, RotateCcw } from "lucide-react";
+import { Play, RotateCcw, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +17,8 @@ interface HarnessHeaderProps {
   isProcessing: boolean;
   onRunDemo: () => void;
   onReset: () => void;
+  onRefreshCache?: () => void;
+  isRefreshingCache?: boolean;
 }
 
 export function HarnessHeader({
@@ -25,6 +27,8 @@ export function HarnessHeader({
   isProcessing,
   onRunDemo,
   onReset,
+  onRefreshCache,
+  isRefreshingCache = false,
 }: HarnessHeaderProps) {
   return (
     <div className="border-b bg-card px-6 py-4 flex-shrink-0">
@@ -34,6 +38,19 @@ export function HarnessHeader({
           <p className="text-sm text-muted-foreground">ChatGPT-style conversation simulator</p>
         </div>
         <div className="flex items-center gap-2">
+          {onRefreshCache && (
+            <Button
+              onClick={onRefreshCache}
+              disabled={isProcessing || isRefreshingCache}
+              size="sm"
+              variant="ghost"
+              className="gap-2"
+              title="Refresh program cache with real data"
+            >
+              <RefreshCw className={cn("h-4 w-4", isRefreshingCache && "animate-spin")} />
+              {isRefreshingCache ? "Refreshing..." : "Refresh Cache"}
+            </Button>
+          )}
           <Button
             onClick={onReset}
             disabled={isProcessing}
