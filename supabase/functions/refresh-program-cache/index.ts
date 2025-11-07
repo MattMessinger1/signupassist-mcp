@@ -1,4 +1,5 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import * as jose from 'https://deno.land/x/jose@v5.9.6/index.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -131,7 +132,34 @@ Deno.serve(async (req) => {
   }
   
   console.log(`[refresh-program-cache] Found system user: ${systemUser.id}`);
-  console.log('[refresh-program-cache] ℹ️  Will use credential_id for MCP authentication (MCP server handles JWT internally)');
+  
+  // Generate JWT for system user using JWT secret
+  console.log('[refresh-program-cache] Generating JWT for system user...');
+  const jwtSecret = Deno.env.get('SUPABASE_JWT_SECRET');
+  if (!jwtSecret) {
+    const error = 'SUPABASE_JWT_SECRET environment variable not found';
+    console.error(`[refresh-program-cache] ${error}`);
+    return new Response(JSON.stringify({ error }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+
+  // Create JWT with system user claims
+  const secret = new TextEncoder().encode(jwtSecret);
+  const jwt = await new jose.SignJWT({
+    sub: systemUser.id,
+    email: systemUser.email,
+    role: 'authenticated',
+    aud: 'authenticated',
+    iss: `https://${Deno.env.get('SUPABASE_URL')?.replace('https://', '')}/auth/v1`,
+  })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setIssuedAt()
+    .setExpirationTime('1h')
+    .sign(secret);
+
+  console.log('[refresh-program-cache] JWT generated successfully');
   
   const { data: credentials, error: credError } = await supabase
     .from('stored_credentials')
@@ -169,6 +197,7 @@ Deno.serve(async (req) => {
           org_ref: org.orgRef,
           category: category,
           credential_id: credentialId,
+          user_jwt: jwt,
           user_id: systemUser.id,
           force_login: true
         });
@@ -209,6 +238,7 @@ Deno.serve(async (req) => {
                 program_ref: programRef,
                 stage: 'prereq',
                 credential_id: credentialId,
+                user_jwt: jwt,
                 user_id: systemUser.id,
                 mode: 'prerequisites_only'
               });
@@ -224,6 +254,7 @@ Deno.serve(async (req) => {
                 program_ref: programRef,
                 stage: 'program',
                 credential_id: credentialId,
+                user_jwt: jwt,
                 user_id: systemUser.id,
                 mode: 'full'
               });
