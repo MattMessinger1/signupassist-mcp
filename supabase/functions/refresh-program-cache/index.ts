@@ -112,7 +112,7 @@ Deno.serve(async (req) => {
 
   console.log('[refresh-program-cache] Starting cache refresh using PROVEN login flow...');
   
-  // Initialize Supabase client with service role for RPC access
+  // Initialize Supabase client with service role key for RPC access
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
