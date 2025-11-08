@@ -1,3 +1,4 @@
+// Trigger rebuild: 2025-11-08 - Updated to use mandate authentication
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { invokeMCPToolDirect } from '../_shared/mcpClient.ts';
 
