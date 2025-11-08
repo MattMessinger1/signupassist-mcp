@@ -6,6 +6,31 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// Helper: Log audit entry for cache refresh operations
+async function logAuditEntry(
+  supabase: any,
+  orgRef: string,
+  category: string,
+  status: 'success' | 'failed',
+  metadata: Record<string, any>
+) {
+  try {
+    await supabase.from('mandate_audit').insert({
+      user_id: '00000000-0000-0000-0000-000000000000', // System user
+      action: 'cache_refresh_scrape',
+      org_ref: orgRef,
+      provider: 'skiclubpro',
+      metadata: {
+        status,
+        category,
+        ...metadata
+      }
+    });
+  } catch (error) {
+    console.error('[refresh-program-cache] Failed to log audit entry:', error);
+  }
+}
+
 // Helper: Generate deep links for a program
 function generateDeepLinks(orgRef: string, programRef: string): Record<string, string> {
   const baseUrl = `https://${orgRef}.skiclubpro.team`;
@@ -232,6 +257,17 @@ Deno.serve(async (req) => {
         
         console.log(`[refresh-program-cache] ✅ Cached ${org.orgRef}:${category} (${programCount} programs, ${durationMs}ms, cache_id: ${cacheId})`);
 
+        // Log successful scrape to audit table
+        await logAuditEntry(supabase, org.orgRef, category, 'success', {
+          program_count: programCount,
+          themes,
+          duration_ms: durationMs,
+          cache_id: cacheId,
+          prereq_count: prerequisiteChecks.length,
+          question_count: programQuestions.length,
+          scraped_at: new Date().toISOString()
+        });
+
         // Small delay between scrapes to avoid overwhelming the provider
         await new Promise(resolve => setTimeout(resolve, 2000));
 
@@ -251,6 +287,13 @@ Deno.serve(async (req) => {
         totalFailures++;
         
         console.error(`[refresh-program-cache] ❌ Failed ${org.orgRef}:${category}: ${error.message}`);
+
+        // Log failed scrape to audit table
+        await logAuditEntry(supabase, org.orgRef, category, 'failed', {
+          error: error.message,
+          duration_ms: durationMs,
+          scraped_at: new Date().toISOString()
+        });
       }
     }
   }
