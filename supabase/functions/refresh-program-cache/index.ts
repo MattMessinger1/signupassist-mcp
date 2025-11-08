@@ -157,23 +157,15 @@ Deno.serve(async (req) => {
   const userId = payload.user_id;
   console.log('[refresh-program-cache-v2] Mandate user:', userId);
   
-  // STEP 3: Look up credential_id for this user
-  const { data: cred, error: credError } = await supabase
-    .from('stored_credentials')
-    .select('id')
-    .eq('user_id', userId)
-    .eq('provider', 'skiclubpro')
-    .single();
-  
-  if (credError || !cred) {
-    return new Response(JSON.stringify({ error: `No credentials for user ${userId}` }), {
+  // STEP 3: Get credential_id from environment
+  const credentialId = Deno.env.get('SCP_SERVICE_CRED_ID');
+  if (!credentialId) {
+    return new Response(JSON.stringify({ error: 'SCP_SERVICE_CRED_ID not configured' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
-  
-  const credentialId = cred.id;
-  console.log('[refresh-program-cache-v2] ✅ Found credential:', credentialId);
+  console.log('[refresh-program-cache-v2] ✅ Using service credential:', credentialId);
 
   const results: ScrapeResult[] = [];
   let totalSuccesses = 0;
