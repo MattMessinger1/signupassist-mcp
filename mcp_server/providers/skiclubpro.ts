@@ -754,7 +754,7 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
       if (!credentialId && mandateVerified?.user_id) {
         console.log('[scpDiscoverRequiredFields] Auto-looking up credential for user:', mandateVerified.user_id);
         try {
-          const supabase = await getSupabaseClient();
+          // Use existing supabase client from top of file
           const { data: cred, error } = await supabase
             .from('stored_credentials')
             .select('id')
