@@ -105,8 +105,8 @@ export async function invokeMCPToolDirect(
     throw new Error("MCP_ACCESS_TOKEN environment variable not configured");
   }
 
-  // Build request args with mandate if provided
-  const requestArgs = mandate ? { ...args, mandate } : args;
+  // Build request args with mandate if provided (use mandate_jws key)
+  const requestArgs = mandate ? { ...args, mandate_jws: mandate } : args;
 
   console.log(`Invoking MCP tool directly: ${tool}`, { 
     args: requestArgs,
