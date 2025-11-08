@@ -153,6 +153,36 @@ Deno.serve(async (req) => {
   }
   console.log('[refresh-program-cache] System mandate loaded successfully');
 
+  // Extract user_id from mandate and lookup credential_id
+  let credentialId: string | undefined;
+  try {
+    // Decode JWT to get user_id (JWT format: header.payload.signature)
+    const payload = JSON.parse(atob(systemMandateJws.split('.')[1]));
+    const userId = payload.user_id;
+    console.log('[refresh-program-cache] Mandate user_id:', userId);
+    
+    // Look up credential for this user
+    const { data: cred, error: credError } = await supabase
+      .from('stored_credentials')
+      .select('id')
+      .eq('user_id', userId)
+      .eq('provider', 'skiclubpro')
+      .single();
+    
+    if (credError || !cred) {
+      throw new Error(`No credentials found for user ${userId}: ${credError?.message}`);
+    }
+    
+    credentialId = cred.id;
+    console.log('[refresh-program-cache] Found credential_id:', credentialId);
+  } catch (error: any) {
+    console.error('[refresh-program-cache] Failed to lookup credentials:', error);
+    return new Response(JSON.stringify({ error: `Credential lookup failed: ${error.message}` }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+
   const results: ScrapeResult[] = [];
   let totalSuccesses = 0;
   let totalFailures = 0;
@@ -177,7 +207,8 @@ Deno.serve(async (req) => {
             org_ref: org.orgRef,
             category: category,
             mode: 'full', // Get both prerequisites AND program questions
-            stage: 'program'
+            stage: 'program',
+            credential_id: credentialId  // Pass credential_id explicitly
           },
           systemMandateJws  // Mandate handles authentication
         );

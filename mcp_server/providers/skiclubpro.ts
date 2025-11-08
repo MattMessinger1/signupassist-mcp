@@ -749,6 +749,31 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
       // Extract user_id from mandate, JWT, or default to anonymous
       const userId = mandateVerified?.user_id || (args.user_jwt ? JSON.parse(atob(args.user_jwt.split('.')[1])).sub : 'anonymous');
       
+      // Auto-lookup credential_id if mandate provided but no credential_id
+      let credentialId = args.credential_id;
+      if (!credentialId && mandateVerified?.user_id) {
+        console.log('[scpDiscoverRequiredFields] Auto-looking up credential for user:', mandateVerified.user_id);
+        try {
+          const supabase = await getSupabaseClient();
+          const { data: cred, error } = await supabase
+            .from('stored_credentials')
+            .select('id')
+            .eq('user_id', mandateVerified.user_id)
+            .eq('provider', 'skiclubpro')
+            .single();
+          
+          if (error || !cred) {
+            throw new Error(`No credentials found for user ${mandateVerified.user_id}`);
+          }
+          
+          credentialId = cred.id;
+          console.log('[scpDiscoverRequiredFields] ✅ Found credential_id:', credentialId);
+        } catch (lookupError: any) {
+          console.error('[scpDiscoverRequiredFields] Credential lookup failed:', lookupError);
+          throw new Error(`Failed to lookup credentials: ${lookupError.message}`);
+        }
+      }
+      
       const warmHintsPrereqs = args.warm_hints_prereqs || {};
       const warmHintsProgram = args.warm_hints_program || {};
       
@@ -770,7 +795,7 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           // Login for prerequisites
           const prereqLogin = await ensureLoggedIn(
             prereqSession, 
-            args.credential_id, 
+            credentialId,  // Use auto-looked-up credential_id
             args.user_jwt, 
             baseUrl, 
             userId, 
@@ -844,7 +869,7 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         // Login for program discovery
         const programLogin = await ensureLoggedIn(
           programSession,
-          args.credential_id,
+          credentialId,  // Use auto-looked-up credential_id
           args.user_jwt,
           baseUrl,
           userId,
