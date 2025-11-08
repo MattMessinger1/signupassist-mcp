@@ -689,7 +689,6 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
   let mandateVerified: any = null;
   if (args.mandate) {
     try {
-      const { verifyMandate } = await import('../lib/mandates');
       mandateVerified = await verifyMandate(args.mandate, ['scp:authenticate', 'scp:discover:fields']);
       console.log('[scpDiscoverRequiredFields] ✅ Mandate verified:', mandateVerified.mandate_id, 'user:', mandateVerified.user_id);
     } catch (mandateError: any) {
