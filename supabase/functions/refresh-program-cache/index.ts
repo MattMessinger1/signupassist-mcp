@@ -116,104 +116,21 @@ Deno.serve(async (req) => {
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+  // Get system mandate for authentication
+  const systemMandateJws = Deno.env.get('SYSTEM_MANDATE_JWS');
+  if (!systemMandateJws) {
+    const error = 'SYSTEM_MANDATE_JWS not configured. Run create-system-mandate edge function first.';
+    console.error(`[refresh-program-cache] ${error}`);
+    return new Response(JSON.stringify({ error }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+  console.log('[refresh-program-cache] System mandate loaded successfully');
+
   const results: ScrapeResult[] = [];
   let totalSuccesses = 0;
   let totalFailures = 0;
-
-  // Get system user credentials for skiclubpro provider
-  console.log('[refresh-program-cache] Looking up system user credentials...');
-  
-  const SYSTEM_EMAIL = 'system@signupassist.internal';
-  const { data: users } = await supabase.auth.admin.listUsers();
-  const systemUser = users?.users.find((u: any) => u.email === SYSTEM_EMAIL);
-  
-  if (!systemUser) {
-    const error = 'System user not found. Run setup-system-user edge function first.';
-    console.error(`[refresh-program-cache] ${error}`);
-    return new Response(JSON.stringify({ error }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-  }
-  
-  console.log(`[refresh-program-cache] Found system user: ${systemUser.id}`);
-  
-  const { data: credentials, error: credError } = await supabase
-    .from('stored_credentials')
-    .select('id, encrypted_data')
-    .eq('provider', 'skiclubpro')
-    .eq('user_id', systemUser.id)
-    .limit(1);
-
-  if (credError || !credentials || credentials.length === 0) {
-    const error = 'No stored credentials found for skiclubpro provider';
-    console.error(`[refresh-program-cache] ${error}`);
-    return new Response(JSON.stringify({ error }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-  }
-
-  const credentialId = credentials[0].id;
-  const encryptedData = credentials[0].encrypted_data;
-  console.log(`[refresh-program-cache] Found credential_id: ${credentialId}`);
-
-  // Decrypt credentials directly (we have service role access)
-  console.log('[refresh-program-cache] Decrypting credentials...');
-  
-  const sealKey = Deno.env.get('CRED_SEAL_KEY');
-  if (!sealKey) {
-    const error = 'CRED_SEAL_KEY not configured';
-    console.error(`[refresh-program-cache] ${error}`);
-    return new Response(JSON.stringify({ error }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-  }
-
-  let email: string;
-  let password: string;
-
-  try {
-    // Parse encrypted data format: "encryptedBase64:ivBase64"
-    const [encryptedBase64, ivBase64] = encryptedData.split(':');
-    
-    // Convert base64 back to binary
-    const encryptedBytes = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0));
-    const iv = Uint8Array.from(atob(ivBase64), c => c.charCodeAt(0));
-    
-    // Import the key
-    const keyData = Uint8Array.from(atob(sealKey), c => c.charCodeAt(0));
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      keyData,
-      { name: 'AES-GCM' },
-      false,
-      ['decrypt']
-    );
-
-    // Decrypt
-    const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv },
-      cryptoKey,
-      encryptedBytes
-    );
-
-    const decoder = new TextDecoder();
-    const credentialsObj = JSON.parse(decoder.decode(decrypted));
-    
-    email = credentialsObj.email;
-    password = credentialsObj.password;
-    
-    console.log(`[refresh-program-cache] Credentials decrypted for: ${email.substring(0, 3)}***`);
-  } catch (decryptError) {
-    const error = `Failed to decrypt credentials: ${decryptError instanceof Error ? decryptError.message : 'Unknown error'}`;
-    console.error(`[refresh-program-cache] ${error}`);
-    return new Response(JSON.stringify({ error }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-  }
 
   // Scrape each organization and category using the PROVEN discovery flow
   for (const org of ORGS_TO_SCRAPE) {
@@ -224,19 +141,21 @@ Deno.serve(async (req) => {
       try {
         // Call the PROVEN discovery tool that handles:
         // - Browserbase launch with antibot stealth
-        // - Login with credentials
+        // - Login with mandate authentication
         // - Session reuse after first successful login
         // - Field discovery
         // Uses invokeMCPToolDirect for server-to-server auth with MCP_ACCESS_TOKEN
-        // Pass decrypted credentials directly for MCP authentication
-        const result = await invokeMCPToolDirect('scp.discover_required_fields', {
-          org_ref: org.orgRef,
-          category: category,
-          email: email,
-          password: password,
-          mode: 'full', // Get both prerequisites AND program questions
-          stage: 'program'
-        });
+        // Pass system mandate for authentication (no raw credentials)
+        const result = await invokeMCPToolDirect(
+          'scp.discover_required_fields', 
+          {
+            org_ref: org.orgRef,
+            category: category,
+            mode: 'full', // Get both prerequisites AND program questions
+            stage: 'program'
+          },
+          systemMandateJws  // Mandate handles authentication
+        );
 
         console.log(`[refresh-program-cache] Discovery result for ${org.orgRef}:${category}:`, JSON.stringify(result, null, 2));
 
@@ -281,7 +200,8 @@ Deno.serve(async (req) => {
           p_questions_schema: questionsSchema,
           p_deep_links: deepLinksSchema,
           p_metadata: {
-            scrape_type: 'proven_discovery_flow',
+            scrape_type: 'mandate_authenticated_discovery',
+            auth_method: 'system_mandate_jws',
             source: 'nightly_cache_refresh',
             program_count: programCount,
             prereq_count: prerequisiteChecks.length,
@@ -350,7 +270,8 @@ Deno.serve(async (req) => {
     totalDurationMs,
     avgDurationMs: Math.round(avgDurationMs),
     results,
-    flow: 'PROVEN discovery flow (Browserbase + antibot + session reuse)'
+    flow: 'Mandate-authenticated discovery (Browserbase + antibot + session reuse)',
+    auth_method: 'system_mandate_jws'
   };
 
   console.log(`[refresh-program-cache] 🏁 Complete: ${totalSuccesses}/${results.length} successful, ${totalPrograms} programs cached`);

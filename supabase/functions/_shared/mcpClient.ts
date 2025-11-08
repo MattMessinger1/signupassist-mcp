@@ -89,7 +89,11 @@ export async function invokeMCPTool(
   }
 }
 
-export async function invokeMCPToolDirect(tool: string, args: any): Promise<any> {
+export async function invokeMCPToolDirect(
+  tool: string, 
+  args: any, 
+  mandate?: string  // Optional mandate JWS for authentication
+): Promise<any> {
   const mcpServerUrl = Deno.env.get("MCP_SERVER_URL");
   const mcpAccessToken = Deno.env.get("MCP_ACCESS_TOKEN");
   
@@ -101,7 +105,13 @@ export async function invokeMCPToolDirect(tool: string, args: any): Promise<any>
     throw new Error("MCP_ACCESS_TOKEN environment variable not configured");
   }
 
-  console.log(`Invoking MCP tool directly: ${tool}`, { args });
+  // Build request args with mandate if provided
+  const requestArgs = mandate ? { ...args, mandate } : args;
+
+  console.log(`Invoking MCP tool directly: ${tool}`, { 
+    args: requestArgs,
+    hasMandate: !!mandate 
+  });
 
   const res = await fetch(`${mcpServerUrl}/tools/call`, {
     method: "POST",
@@ -109,7 +119,7 @@ export async function invokeMCPToolDirect(tool: string, args: any): Promise<any>
       "Content-Type": "application/json",
       "Authorization": `Bearer ${mcpAccessToken}`
     },
-    body: JSON.stringify({ tool, args })
+    body: JSON.stringify({ tool, args: requestArgs })
   });
 
   if (!res.ok) {
