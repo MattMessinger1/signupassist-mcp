@@ -820,6 +820,7 @@ export type Database = {
       cleanup_expired_checkout_sessions: { Args: never; Returns: undefined }
       cleanup_expired_program_cache: { Args: never; Returns: number }
       cleanup_expired_sessions: { Args: never; Returns: undefined }
+      delete_cron_job: { Args: { query: string }; Returns: undefined }
       find_programs_cached: {
         Args: {
           p_category?: string
@@ -854,6 +855,7 @@ export type Database = {
         Returns: string
       }
       merge_hints: { Args: { existing: Json; newest: Json }; Returns: Json }
+      query_cron_jobs: { Args: { query: string }; Returns: Json }
       recompute_confidence: {
         Args: { latest: number; prev: number; samples: number }
         Returns: number
