@@ -134,64 +134,55 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  console.log('[refresh-program-cache] Starting cache refresh using PROVEN login flow...');
+  console.log('[refresh-program-cache-v2] Starting cache refresh with mandate auth...');
   
-  // Initialize Supabase client with service role key for RPC access
+  // Initialize Supabase client with service role key
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-  // Get system mandate for authentication
+  // STEP 1: Get and validate system mandate
   const systemMandateJws = Deno.env.get('SYSTEM_MANDATE_JWS');
   if (!systemMandateJws) {
-    const error = 'SYSTEM_MANDATE_JWS not configured. Run create-system-mandate edge function first.';
-    console.error(`[refresh-program-cache] ${error}`);
-    return new Response(JSON.stringify({ error }), {
+    return new Response(JSON.stringify({ error: 'SYSTEM_MANDATE_JWS not configured' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
-  console.log('[refresh-program-cache] System mandate loaded successfully');
+  console.log('[refresh-program-cache-v2] ✅ System mandate loaded');
 
-  // Extract user_id from mandate and lookup credential_id
-  let credentialId: string | undefined;
-  try {
-    // Decode JWT to get user_id (JWT format: header.payload.signature)
-    const payload = JSON.parse(atob(systemMandateJws.split('.')[1]));
-    const userId = payload.user_id;
-    console.log('[refresh-program-cache] Mandate user_id:', userId);
-    
-    // Look up credential for this user
-    const { data: cred, error: credError } = await supabase
-      .from('stored_credentials')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('provider', 'skiclubpro')
-      .single();
-    
-    if (credError || !cred) {
-      throw new Error(`No credentials found for user ${userId}: ${credError?.message}`);
-    }
-    
-    credentialId = cred.id;
-    console.log('[refresh-program-cache] Found credential_id:', credentialId);
-  } catch (error: any) {
-    console.error('[refresh-program-cache] Failed to lookup credentials:', error);
-    return new Response(JSON.stringify({ error: `Credential lookup failed: ${error.message}` }), {
+  // STEP 2: Extract user_id from mandate JWT
+  const payload = JSON.parse(atob(systemMandateJws.split('.')[1]));
+  const userId = payload.user_id;
+  console.log('[refresh-program-cache-v2] Mandate user:', userId);
+  
+  // STEP 3: Look up credential_id for this user
+  const { data: cred, error: credError } = await supabase
+    .from('stored_credentials')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('provider', 'skiclubpro')
+    .single();
+  
+  if (credError || !cred) {
+    return new Response(JSON.stringify({ error: `No credentials for user ${userId}` }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }
+  
+  const credentialId = cred.id;
+  console.log('[refresh-program-cache-v2] ✅ Found credential:', credentialId);
 
   const results: ScrapeResult[] = [];
   let totalSuccesses = 0;
   let totalFailures = 0;
 
-  // Scrape each organization and category using the PROVEN discovery flow
+  // STEP 4: Scrape each organization/category
   for (const org of ORGS_TO_SCRAPE) {
     for (const category of org.categories) {
       const startTime = Date.now();
-      console.log(`[refresh-program-cache] Discovering ${org.orgRef}:${category} using PROVEN flow...`);
+      console.log(`[refresh-program-cache-v2] Scraping ${org.orgRef}:${category}...`);
 
       try {
         // Call the PROVEN discovery tool that handles:
