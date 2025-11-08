@@ -29,3 +29,6 @@ verify_jwt = false
 
 [functions.setup-system-user]
 verify_jwt = false
+
+[functions.create-system-mandate]
+verify_jwt = false
