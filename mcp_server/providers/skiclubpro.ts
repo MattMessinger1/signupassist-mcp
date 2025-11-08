@@ -678,11 +678,24 @@ async function ensureLoggedOut(session: any) {
 /**
  * Real implementation of SkiClubPro field discovery with login/logout handling
  */
-export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs & { session_token?: string; email?: string; password?: string }): Promise<FieldSchema> {
+export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs & { session_token?: string; email?: string; password?: string; mandate?: string }): Promise<FieldSchema> {
   
-  // Validate authentication - require either user_jwt OR email+password
-  if (!args.user_jwt && !(args.email && args.password)) {
-    throw new Error('Missing authentication: Must provide either user_jwt OR email+password for credential lookup');
+  // Validate authentication - require mandate OR user_jwt OR email+password
+  if (!args.mandate && !args.user_jwt && !(args.email && args.password)) {
+    throw new Error('Missing authentication: Must provide mandate OR user_jwt OR email+password for credential lookup');
+  }
+  
+  // Verify mandate if provided
+  let mandateVerified: any = null;
+  if (args.mandate) {
+    try {
+      const { verifyMandate } = await import('../lib/mandates');
+      mandateVerified = await verifyMandate(args.mandate, ['scp:authenticate', 'scp:discover:fields']);
+      console.log('[scpDiscoverRequiredFields] ✅ Mandate verified:', mandateVerified.mandate_id, 'user:', mandateVerified.user_id);
+    } catch (mandateError: any) {
+      console.error('[scpDiscoverRequiredFields] ❌ Mandate verification failed:', mandateError);
+      throw new Error(`Mandate verification failed: ${mandateError.message}`);
+    }
   }
   
   // Inline program mapping to avoid import issues
@@ -734,8 +747,8 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
       // Extract domain for legacy functions that need it
       const baseDomain = baseUrl.replace(/^https?:\/\//, '');
       
-      // Extract user_id from JWT for session caching
-      const userId = args.user_jwt ? JSON.parse(atob(args.user_jwt.split('.')[1])).sub : 'anonymous';
+      // Extract user_id from mandate, JWT, or default to anonymous
+      const userId = mandateVerified?.user_id || (args.user_jwt ? JSON.parse(atob(args.user_jwt.split('.')[1])).sub : 'anonymous');
       
       const warmHintsPrereqs = args.warm_hints_prereqs || {};
       const warmHintsProgram = args.warm_hints_program || {};
