@@ -25,6 +25,7 @@ export interface StoredCredential {
 
 /**
  * Decrypt credentials using CRED_SEAL_KEY (AES-GCM)
+ * Uses Web Crypto API to match Supabase edge function encryption
  */
 async function decryptCredentials(encryptedData: string): Promise<SkiClubProCredentials> {
   const sealKey = process.env.CRED_SEAL_KEY;
@@ -33,30 +34,33 @@ async function decryptCredentials(encryptedData: string): Promise<SkiClubProCred
   }
 
   try {
-    // Split encrypted data and IV
+    // Split encrypted data and IV (format: encryptedBase64:ivBase64)
     const [encryptedBase64, ivBase64] = encryptedData.split(':');
     
     // Convert base64 back to binary
-    const encryptedBytes = Uint8Array.from(Buffer.from(encryptedBase64, 'base64'));
-    const iv = Uint8Array.from(Buffer.from(ivBase64, 'base64'));
-    
-    // Import the key using Node.js crypto (not Web Crypto API)
-    const crypto = await import('crypto');
+    const encryptedBytes = Buffer.from(encryptedBase64, 'base64');
+    const iv = Buffer.from(ivBase64, 'base64');
     const keyData = Buffer.from(sealKey, 'base64');
     
-    // Decrypt using Node.js crypto
-    const decipher = crypto.createDecipheriv('aes-256-gcm', keyData, iv);
+    // Import the key using Web Crypto API (matches edge function)
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw',
+      keyData,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['decrypt']
+    );
     
-    // Extract auth tag (last 16 bytes of encrypted data)
-    const authTag = encryptedBytes.slice(-16);
-    const ciphertext = encryptedBytes.slice(0, -16);
+    // Decrypt using Web Crypto API (auth tag is embedded in encrypted data)
+    const decryptedBuffer = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv },
+      cryptoKey,
+      encryptedBytes
+    );
     
-    decipher.setAuthTag(authTag);
-    
-    let decrypted = decipher.update(ciphertext);
-    decrypted = Buffer.concat([decrypted, decipher.final()]);
-    
-    const credentials = JSON.parse(decrypted.toString('utf8'));
+    // Convert ArrayBuffer to string and parse JSON
+    const decryptedText = new TextDecoder().decode(decryptedBuffer);
+    const credentials = JSON.parse(decryptedText);
     
     return {
       email: credentials.email,
