@@ -2,8 +2,8 @@
 FROM node:20-alpine AS builder
 
 # Force rebuild toggle — updated automatically by Lovable or CLI
-# Last rebuild: 2025-11-06 - Provider cache optimization + force clean build
-ARG BUILD_TAG=20251106-cache-optimization
+# Last rebuild: 2025-11-10 - Web Crypto API credential decryption fix
+ARG BUILD_TAG=20251110-crypto-api-fix
 LABEL build-tag=$BUILD_TAG
 
 WORKDIR /app
