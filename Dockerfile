@@ -3,7 +3,7 @@ FROM node:20-alpine AS builder
 
 # Force rebuild toggle — updated automatically by Lovable or CLI
 # Last rebuild: 2025-11-10 - Added /tools/cred-store endpoint for credential re-storage
-ARG BUILD_TAG=20251110-cred-store-endpoint
+ARG BUILD_TAG=20251110-cred-store-upsert-fix
 LABEL build-tag=$BUILD_TAG
 
 WORKDIR /app

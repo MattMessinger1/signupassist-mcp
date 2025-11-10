@@ -443,12 +443,15 @@ class SignupAssistMCPServer {
 
             const { data, error } = await supabase
               .from('stored_credentials')
-              .upsert({
-                user_id: effectiveUserId,
-                provider,
-                alias,
-                encrypted_data: encryptedData,
-              })
+              .upsert(
+                {
+                  user_id: effectiveUserId,
+                  provider,
+                  alias,
+                  encrypted_data: encryptedData,
+                },
+                { onConflict: 'user_id,provider', ignoreDuplicates: false }
+              )
               .select()
               .single();
 
