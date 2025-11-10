@@ -2,8 +2,8 @@
 FROM node:20-alpine AS builder
 
 # Force rebuild toggle — updated automatically by Lovable or CLI
-# Last rebuild: 2025-11-10 - Web Crypto API credential decryption fix
-ARG BUILD_TAG=20251110-crypto-api-fix
+# Last rebuild: 2025-11-10 - Added /tools/cred-store endpoint for credential re-storage
+ARG BUILD_TAG=20251110-cred-store-endpoint
 LABEL build-tag=$BUILD_TAG
 
 WORKDIR /app

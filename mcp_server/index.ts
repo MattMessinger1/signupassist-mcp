@@ -368,6 +368,115 @@ class SignupAssistMCPServer {
         return;
       }
 
+      // --- Credential storage endpoint
+      if (url.pathname === '/tools/cred-store') {
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Only POST supported' }));
+          return;
+        }
+
+        let body = '';
+        req.on('data', (chunk) => (body += chunk));
+        req.on('end', async () => {
+          try {
+            const { provider, alias, email, password, user_id } = JSON.parse(body);
+            
+            if (!provider || !alias || !email || !password) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ 
+                error: 'Missing required fields: provider, alias, email, password' 
+              }));
+              return;
+            }
+
+            // Check for CRED_SEAL_KEY
+            const sealKey = process.env.CRED_SEAL_KEY;
+            if (!sealKey) {
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'CRED_SEAL_KEY not configured' }));
+              return;
+            }
+
+            // Use system user ID if not provided (for service credentials)
+            const SYSTEM_USER_ID = 'eb8616ca-a2fa-4849-aef6-723528d8c273';
+            const effectiveUserId = user_id || SYSTEM_USER_ID;
+
+            console.log(`[cred-store] Storing credential for provider=${provider}, alias=${alias}, user=${effectiveUserId}`);
+
+            // Encrypt credentials using Web Crypto API (AES-GCM)
+            const credentialData = JSON.stringify({ email, password });
+            const encoder = new TextEncoder();
+            const dataBuffer = encoder.encode(credentialData);
+            
+            // Generate random IV (12 bytes for AES-GCM)
+            const iv = crypto.randomBytes(12);
+            
+            // Import the encryption key
+            const keyData = Buffer.from(sealKey, 'base64');
+            const cryptoKey = await crypto.subtle.importKey(
+              'raw',
+              keyData,
+              { name: 'AES-GCM', length: 256 },
+              false,
+              ['encrypt']
+            );
+            
+            // Encrypt the data
+            const encryptedBuffer = await crypto.subtle.encrypt(
+              { name: 'AES-GCM', iv },
+              cryptoKey,
+              dataBuffer
+            );
+            
+            // Format as base64:base64 (encrypted:iv)
+            const encryptedBase64 = Buffer.from(encryptedBuffer).toString('base64');
+            const ivBase64 = iv.toString('base64');
+            const encryptedData = `${encryptedBase64}:${ivBase64}`;
+
+            // Store in database using service role
+            const supabaseUrl = process.env.SUPABASE_URL!;
+            const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+            
+            const { createClient } = await import('@supabase/supabase-js');
+            const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+            const { data, error } = await supabase
+              .from('stored_credentials')
+              .upsert({
+                user_id: effectiveUserId,
+                provider,
+                alias,
+                encrypted_data: encryptedData,
+              })
+              .select()
+              .single();
+
+            if (error) {
+              console.error('[cred-store] Database error:', error);
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: `Database error: ${error.message}` }));
+              return;
+            }
+
+            console.log(`[cred-store] ✅ Stored credential with ID: ${data.id}`);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ 
+              success: true,
+              id: data.id,
+              alias: data.alias,
+              provider: data.provider,
+              created_at: data.created_at
+            }));
+          } catch (err: any) {
+            console.error('[cred-store] Error:', err);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: err.message || 'Unknown error' }));
+          }
+        });
+        return;
+      }
+
       // --- List tools
       if (req.method === 'GET' && url.pathname === '/tools') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
