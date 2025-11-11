@@ -148,8 +148,26 @@ async function discoverProgramsForCategory(
       systemMandateJws
     );
     
-    if (!result.success || !result.programs) {
-      console.warn(`[Phase 1] ⚠️ No programs found for ${category}`);
+    // Log the full result for debugging
+    console.log(`[Phase 1] Raw result for ${orgRef}:${category}:`, JSON.stringify({
+      success: result.success,
+      programCount: result.programs?.length || 0,
+      error: result.error,
+      hasPrograms: !!result.programs
+    }));
+    
+    if (!result.success) {
+      console.error(`[Phase 1] ❌ Tool failed for ${orgRef}:${category}:`, result.error || 'Unknown error');
+      return [];
+    }
+    
+    if (!result.programs || !Array.isArray(result.programs)) {
+      console.error(`[Phase 1] ❌ Invalid response for ${orgRef}:${category} - programs is not an array:`, typeof result.programs);
+      return [];
+    }
+    
+    if (result.programs.length === 0) {
+      console.warn(`[Phase 1] ⚠️ No programs found for ${orgRef}:${category} (valid response, but empty)`);
       return [];
     }
     
@@ -159,11 +177,14 @@ async function discoverProgramsForCategory(
       category: category
     }));
     
-    console.log(`[Phase 1] ✅ Found ${programs.length} programs`);
+    console.log(`[Phase 1] ✅ Found ${programs.length} programs for ${orgRef}:${category}`);
     return programs;
     
   } catch (error: any) {
-    console.error(`[Phase 1] ❌ Failed to discover programs:`, error.message);
+    console.error(`[Phase 1] ❌ Exception for ${orgRef}:${category}:`, {
+      message: error.message,
+      stack: error.stack?.split('\n').slice(0, 3).join('\n')
+    });
     return []; // Defensive: don't crash entire refresh
   }
 }
@@ -283,6 +304,38 @@ Deno.serve(async (req) => {
     });
   }
   console.log('[refresh-program-cache] ✅ Using service credential:', credentialId);
+
+  // STEP 3.5: Validate MCP server is accessible
+  try {
+    console.log('[refresh-program-cache] 🔍 Validating MCP server connection...');
+    const mcpServerUrl = Deno.env.get('MCP_SERVER_URL');
+    const mcpAccessToken = Deno.env.get('MCP_ACCESS_TOKEN');
+    
+    if (!mcpServerUrl || !mcpAccessToken) {
+      throw new Error('MCP_SERVER_URL or MCP_ACCESS_TOKEN not configured');
+    }
+    
+    const healthCheck = await fetch(`${mcpServerUrl}/health`, {
+      headers: {
+        'Authorization': `Bearer ${mcpAccessToken}`
+      }
+    });
+    
+    if (!healthCheck.ok) {
+      throw new Error(`MCP health check failed: ${healthCheck.status}`);
+    }
+    
+    console.log('[refresh-program-cache] ✅ MCP server is accessible');
+  } catch (error: any) {
+    console.error('[refresh-program-cache] ❌ Cannot reach MCP server:', error.message);
+    return new Response(JSON.stringify({ 
+      error: 'MCP server not accessible',
+      details: error.message 
+    }), {
+      status: 503,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
 
   const results: ScrapeResult[] = [];
   let totalSuccesses = 0;
@@ -543,7 +596,7 @@ Deno.serve(async (req) => {
 
   const summary = {
     timestamp: new Date().toISOString(),
-    totalOrgs: ORGS_TO_SCRAPE.length,
+    totalOrgs: orgsToScrape.length,
     totalScrapesAttempted: results.length,
     totalSuccesses,
     totalFailures,

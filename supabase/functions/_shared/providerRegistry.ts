@@ -49,7 +49,7 @@ registerProvider({
   name: 'SkiClubPro',
   tools: {
     findPrograms: 'scp.find_programs',
-    discoverFields: 'scp.discover_fields'
+    discoverFields: 'scp.discover_required_fields'
   },
   generateDeepLinks: (orgRef: string, programRef: string) => {
     const baseUrl = `https://${orgRef}.skiclubpro.team`;
