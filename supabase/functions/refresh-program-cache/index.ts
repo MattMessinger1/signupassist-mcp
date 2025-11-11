@@ -1,7 +1,9 @@
-// Trigger rebuild: 2025-11-11 - Two-phase accuracy-optimized cache refresh
+// Trigger rebuild: 2025-11-11 - Provider registry system
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { invokeMCPToolDirect } from '../_shared/mcpClient.ts';
 import pLimit from 'npm:p-limit@5';
+import { getAllActiveOrganizations, getOrganization } from '../../mcp_server/config/organizations.ts';
+import { getProvider } from '../../mcp_server/providers/registry.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,7 +23,7 @@ async function logAuditEntry(
       user_id: '00000000-0000-0000-0000-000000000000', // System user
       action: 'cache_refresh_scrape',
       org_ref: orgRef,
-      provider: 'skiclubpro',
+      provider: metadata?.provider || 'skiclubpro',
       metadata: {
         status,
         category,
@@ -33,18 +35,21 @@ async function logAuditEntry(
   }
 }
 
-// Helper: Generate deep links for a program
-function generateDeepLinks(orgRef: string, programRef: string): Record<string, string> {
-  const baseUrl = `https://${orgRef}.skiclubpro.team`;
-  const registrationUrl = `${baseUrl}/registration/${programRef}/start`;
-  const accountUrl = `${baseUrl}/user/register`;
-  const detailsUrl = `${baseUrl}/programs/${programRef}`;
+// Helper: Generate deep links for a program (provider-aware)
+function generateDeepLinks(provider: string, orgRef: string, programRef: string): Record<string, string> {
+  const providerConfig = getProvider(provider);
+  if (!providerConfig) {
+    console.warn(`[generateDeepLinks] Unknown provider '${provider}', using fallback`);
+    // Fallback for unknown providers
+    const baseUrl = `https://${orgRef}.skiclubpro.team`;
+    return {
+      registration_start: `${baseUrl}/registration/${programRef}/start?ref=signupassist`,
+      account_creation: `${baseUrl}/user/register?ref=signupassist`,
+      program_details: `${baseUrl}/programs/${programRef}?ref=signupassist`
+    };
+  }
   
-  return {
-    registration_start: `${registrationUrl}?ref=signupassist&utm_source=chatgpt_app`,
-    account_creation: `${accountUrl}?ref=signupassist&prefill=guardian`,
-    program_details: `${detailsUrl}?ref=signupassist`
-  };
+  return providerConfig.generateDeepLinks(orgRef, programRef);
 }
 
 // Helper: Transform prerequisite_checks to prerequisites_schema format
@@ -87,13 +92,20 @@ function transformProgramQuestions(programQuestions: any[]): Record<string, any>
   return { fields };
 }
 
-// Helper: Determine theme from program title
-function determineTheme(title: string): string {
-  const t = title.toLowerCase();
-  if (t.includes('lesson') || t.includes('class')) return 'Lessons & Classes';
-  if (t.includes('camp') || t.includes('clinic')) return 'Camps & Clinics';
-  if (t.includes('race') || t.includes('team') || t.includes('competition')) return 'Races & Teams';
-  return 'All Programs';
+// Helper: Determine theme from program title (provider-aware)
+function determineTheme(provider: string, title: string): string {
+  const providerConfig = getProvider(provider);
+  if (!providerConfig) {
+    console.warn(`[determineTheme] Unknown provider '${provider}', using fallback`);
+    // Fallback theme detection
+    const t = title.toLowerCase();
+    if (t.includes('lesson') || t.includes('class')) return 'Lessons & Classes';
+    if (t.includes('camp') || t.includes('clinic')) return 'Camps & Clinics';
+    if (t.includes('race') || t.includes('team')) return 'Races & Teams';
+    return 'All Programs';
+  }
+  
+  return providerConfig.determineTheme(title);
 }
 
 // Helper: Validate program data completeness
@@ -112,18 +124,20 @@ function validateProgramData(program: any): string[] {
   return issues;
 }
 
-// PHASE 1: Dynamic Program Discovery using Three Phase Extractor
+// PHASE 1: Dynamic Program Discovery using Three Phase Extractor (Provider-aware)
 async function discoverProgramsForCategory(
+  provider: string,
+  findProgramsTool: string,
   systemMandateJws: string,
   credentialId: string,
   orgRef: string,
   category: string
 ): Promise<Array<{ program_ref: string; title: string; category: string }>> {
-  console.log(`[Phase 1] 🔍 Discovering programs for ${orgRef}:${category}...`);
+  console.log(`[Phase 1] 🔍 Discovering programs for ${orgRef}:${category} (provider: ${provider})...`);
   
   try {
     const result = await invokeMCPToolDirect(
-      'scp.find_programs',
+      findProgramsTool, // Use provider-specific tool
       {
         credential_id: credentialId,
         org_ref: orgRef,
@@ -154,8 +168,10 @@ async function discoverProgramsForCategory(
   }
 }
 
-// PHASE 2: Field Discovery with Retry Logic
+// PHASE 2: Field Discovery with Retry Logic (Provider-aware)
 async function discoverFieldsForProgram(
+  provider: string,
+  discoverFieldsTool: string,
   systemMandateJws: string,
   credentialId: string,
   orgRef: string,
@@ -169,12 +185,12 @@ async function discoverFieldsForProgram(
   program_questions?: any[];
   error?: string;
 }> {
-  console.log(`[Phase 2] 📋 Discovering fields for ${programRef}...`);
+  console.log(`[Phase 2] 📋 Discovering fields for ${programRef} (provider: ${provider})...`);
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const result = await invokeMCPToolDirect(
-        'scp.discover_required_fields',
+        discoverFieldsTool, // Use provider-specific tool
         {
           credential_id: credentialId,
           org_ref: orgRef,
@@ -216,17 +232,7 @@ async function discoverFieldsForProgram(
   return { success: false, program_ref: programRef, error: 'Max retries exceeded' };
 }
 
-interface OrgConfig {
-  orgRef: string;
-  categories: string[];
-  priority: 'high' | 'normal' | 'low';
-}
-
-// Organizations to scrape (ordered by priority)
-const ORGS_TO_SCRAPE: OrgConfig[] = [
-  { orgRef: 'blackhawk-ski-club', categories: ['all', 'lessons', 'teams', 'races', 'camps', 'clinics'], priority: 'high' },
-  // Add more organizations as needed
-];
+// Organizations are now loaded from the registry (no hardcoded config needed)
 
 interface ScrapeResult {
   orgRef: string;
@@ -285,24 +291,49 @@ Deno.serve(async (req) => {
   // Concurrency control: Sequential processing for maximum accuracy
   const limit = pLimit(1);
 
-  // STEP 4: Scrape each organization/category
-  for (const org of ORGS_TO_SCRAPE) {
+  // STEP 4: Load organizations from registry
+  const orgsToScrape = getAllActiveOrganizations();
+  console.log(`[refresh-program-cache] 📋 Loaded ${orgsToScrape.length} active organizations from registry`);
+  
+  if (orgsToScrape.length === 0) {
+    console.warn('[refresh-program-cache] ⚠️ No active organizations found in registry');
+    return new Response(JSON.stringify({ error: 'No active organizations configured' }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    });
+  }
+
+  // STEP 5: Scrape each organization/category
+  for (const org of orgsToScrape) {
+    // Get provider configuration
+    const providerConfig = getProvider(org.provider);
+    if (!providerConfig) {
+      console.error(`[refresh-program-cache] ❌ Unknown provider: ${org.provider}, skipping ${org.orgRef}`);
+      continue;
+    }
+    
+    console.log(`[refresh-program-cache] 🔧 Using provider: ${providerConfig.name} (${providerConfig.id})`);
+    
+    // Use provider-specific credential if org doesn't have one
+    const credentialIdToUse = org.credentialId || credentialId;
     for (const category of org.categories) {
       const startTime = Date.now();
       console.log(`\n[refresh-program-cache] === ${org.orgRef}:${category} ===`);
 
       try {
-        // PHASE 1: Discover all programs in category (using Three Phase Extractor)
+        // PHASE 1: Discover all programs in category (provider-aware)
         const programs = await discoverProgramsForCategory(
+          org.provider,
+          providerConfig.tools.findPrograms,
           systemMandateJws,
-          credentialId,
+          credentialIdToUse,
           org.orgRef,
           category
         );
         
         if (programs.length === 0) {
           console.warn(`[refresh-program-cache] ⚠️ No programs found, skipping ${category}`);
-          await logAuditEntry(supabase, org.orgRef, category, 'no_programs', null);
+          await logAuditEntry(supabase, org.orgRef, category, 'no_programs', { provider: org.provider });
           
           results.push({
             orgRef: org.orgRef,
@@ -319,12 +350,14 @@ Deno.serve(async (req) => {
         
         console.log(`[refresh-program-cache] 📊 Found ${programs.length} programs to scrape`);
         
-        // PHASE 2: Discover fields for each program (using Serial Discovery)
+        // PHASE 2: Discover fields for each program (provider-aware)
         const discoveries = await Promise.allSettled(
           programs.map(p => 
             limit(() => discoverFieldsForProgram(
+              org.provider,
+              providerConfig.tools.discoverFields,
               systemMandateJws,
-              credentialId,
+              credentialIdToUse,
               org.orgRef,
               p.program_ref,
               category
@@ -369,8 +402,8 @@ Deno.serve(async (req) => {
               successCount++;
             }
             
-            // Add to programs_by_theme
-            const theme = determineTheme(program.title);
+            // Add to programs_by_theme (provider-aware theme detection)
+            const theme = determineTheme(org.provider, program.title);
             if (!programsByTheme[theme]) programsByTheme[theme] = [];
             programsByTheme[theme].push({
               program_ref: program.program_ref,
@@ -390,8 +423,8 @@ Deno.serve(async (req) => {
               metrics.total_questions_found += result.program_questions.length;
             }
             
-            // Add deep links
-            deepLinksSchema[program.program_ref] = generateDeepLinks(org.orgRef, program.program_ref);
+            // Add deep links (provider-aware)
+            deepLinksSchema[program.program_ref] = generateDeepLinks(org.provider, org.orgRef, program.program_ref);
             
             console.log(`[refresh-program-cache] ✅ ${program.title} (${program.program_ref})`);
           } else {
@@ -418,6 +451,7 @@ Deno.serve(async (req) => {
             p_questions_schema: questionsSchema,
             p_deep_links: deepLinksSchema,
             p_metadata: {
+              provider: org.provider,
               scrape_type: 'dynamic_two_phase_accuracy_optimized',
               accuracy_mode: 'maximum',
               models: {
@@ -434,6 +468,7 @@ Deno.serve(async (req) => {
           if (error) throw error;
           
           await logAuditEntry(supabase, org.orgRef, category, 'success', {
+            provider: org.provider,
             programs_discovered: programs.length,
             programs_scraped: successCount,
             programs_incomplete: incompleteCount,
@@ -455,6 +490,7 @@ Deno.serve(async (req) => {
         } catch (cacheError: any) {
           console.error(`[refresh-program-cache] ❌ Failed to cache ${category}:`, cacheError);
           await logAuditEntry(supabase, org.orgRef, category, 'failed', { 
+            provider: org.provider,
             error: cacheError.message,
             programs_discovered: programs.length
           });
@@ -490,6 +526,7 @@ Deno.serve(async (req) => {
         console.error(`[refresh-program-cache] ❌ Failed ${org.orgRef}:${category}: ${error.message}`);
 
         await logAuditEntry(supabase, org.orgRef, category, 'failed', {
+          provider: org.provider,
           error: error.message,
           duration_ms: durationMs,
           scraped_at: new Date().toISOString()

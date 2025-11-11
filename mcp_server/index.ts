@@ -51,6 +51,11 @@ import { waitForSkiClubProReady } from './providers/utils/skiclubproReadiness.js
 // Import prereqs registry
 import { registerAllProviders } from './prereqs/providers.js';
 
+// Import provider and organization registries
+import './providers/skiclubpro/config.js'; // Auto-registers SkiClubPro
+import './config/organizations.js'; // Auto-registers organizations
+// import './providers/campminder/config.js'; // Uncomment when ready
+
 // Import OpenAI smoke test
 import { runOpenAISmokeTests } from './startup/openaiSmokeTest.js';
 
