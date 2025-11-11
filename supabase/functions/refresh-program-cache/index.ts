@@ -447,6 +447,7 @@ Deno.serve(async (req) => {
             p_org_ref: org.orgRef,
             p_category: category,
             p_programs_by_theme: programsByTheme,
+            p_provider: org.provider,
             p_prerequisites_schema: prerequisitesSchema,
             p_questions_schema: questionsSchema,
             p_deep_links: deepLinksSchema,

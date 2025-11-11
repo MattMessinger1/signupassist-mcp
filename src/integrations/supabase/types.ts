@@ -172,6 +172,7 @@ export type Database = {
           org_ref: string
           prerequisites_schema: Json | null
           programs_by_theme: Json
+          provider: string
           questions_schema: Json | null
           updated_at: string
         }
@@ -187,6 +188,7 @@ export type Database = {
           org_ref: string
           prerequisites_schema?: Json | null
           programs_by_theme?: Json
+          provider?: string
           questions_schema?: Json | null
           updated_at?: string
         }
@@ -202,6 +204,7 @@ export type Database = {
           org_ref?: string
           prerequisites_schema?: Json | null
           programs_by_theme?: Json
+          provider?: string
           questions_schema?: Json | null
           updated_at?: string
         }
@@ -821,14 +824,24 @@ export type Database = {
       cleanup_expired_program_cache: { Args: never; Returns: number }
       cleanup_expired_sessions: { Args: never; Returns: undefined }
       delete_cron_job: { Args: { query: string }; Returns: undefined }
-      find_programs_cached: {
-        Args: {
-          p_category?: string
-          p_max_age_hours?: number
-          p_org_ref: string
-        }
-        Returns: Json
-      }
+      find_programs_cached:
+        | {
+            Args: {
+              p_category: string
+              p_max_age_hours?: number
+              p_org_ref: string
+              p_provider?: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_category?: string
+              p_max_age_hours?: number
+              p_org_ref: string
+            }
+            Returns: Json
+          }
       get_best_hints: {
         Args: { p_program: string; p_provider: string; p_stage: string }
         Returns: Json
@@ -872,19 +885,34 @@ export type Database = {
         }
         Returns: string
       }
-      upsert_cached_programs_enhanced: {
-        Args: {
-          p_category: string
-          p_deep_links?: Json
-          p_metadata?: Json
-          p_org_ref: string
-          p_prerequisites_schema?: Json
-          p_programs_by_theme: Json
-          p_questions_schema?: Json
-          p_ttl_hours?: number
-        }
-        Returns: string
-      }
+      upsert_cached_programs_enhanced:
+        | {
+            Args: {
+              p_category: string
+              p_deep_links?: Json
+              p_metadata?: Json
+              p_org_ref: string
+              p_prerequisites_schema?: Json
+              p_programs_by_theme: Json
+              p_provider?: string
+              p_questions_schema?: Json
+              p_ttl_hours?: number
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_category: string
+              p_deep_links?: Json
+              p_metadata?: Json
+              p_org_ref: string
+              p_prerequisites_schema?: Json
+              p_programs_by_theme: Json
+              p_questions_schema?: Json
+              p_ttl_hours?: number
+            }
+            Returns: string
+          }
       upsert_discovery_run: {
         Args: {
           p_errors: Json
