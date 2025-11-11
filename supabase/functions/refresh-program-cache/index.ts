@@ -224,7 +224,7 @@ interface OrgConfig {
 
 // Organizations to scrape (ordered by priority)
 const ORGS_TO_SCRAPE: OrgConfig[] = [
-  { orgRef: 'blackhawk-ski-club', categories: ['all', 'lessons', 'teams'], priority: 'high' },
+  { orgRef: 'blackhawk-ski-club', categories: ['all', 'lessons', 'teams', 'races', 'camps', 'clinics'], priority: 'high' },
   // Add more organizations as needed
 ];
 
