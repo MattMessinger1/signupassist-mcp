@@ -42,7 +42,7 @@ export interface SerialDiscoveryResult {
   };
 }
 
-const MAX_LOOPS = 10;
+const MAX_LOOPS = 20; // Increased for accuracy-optimized cache refresh
 
 /**
  * Main serial discovery function
@@ -65,7 +65,7 @@ export async function discoverFieldsSerially(
   if (warmHints && Object.keys(warmHints).length > 0) {
     console.log('[SerialDiscovery] Applying warm hints...');
     await applyWarmHints(page, warmHints);
-    await humanPause(400, 800);
+    await humanPause(800, 1600); // 2x timeout for accuracy
   }
   
   while (loopCount < MAX_LOOPS) {
@@ -74,7 +74,7 @@ export async function discoverFieldsSerially(
     
     // Step 1: Fill all visible fields with safe defaults
     await naiveAutofill(page);
-    await humanPause(300, 600);
+    await humanPause(600, 1200); // 2x timeout for accuracy
     
     // Step 2: Try to submit
     const submitted = await trySubmit(page);
@@ -84,7 +84,7 @@ export async function discoverFieldsSerially(
     }
     
     // Step 3: Wait for validation or navigation
-    await humanPause(700, 1200);
+    await humanPause(1400, 2400); // 2x timeout for accuracy
     
     // Step 4: Check if we've succeeded
     if (await detectSuccess(page)) {

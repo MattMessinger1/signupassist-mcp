@@ -442,8 +442,8 @@ Rules:
     const batches = chunkArray(snippets, BATCH_SIZE);
     console.log(`[PACK-06 Pass 2] Processing ${batches.length} batches of ${BATCH_SIZE} programs`);
     
-    // Phase 3 Optimization: Increased parallelization with pLimit(5) for 3-4× speed-up
-    const limit = pLimit(5); // Higher concurrency for modern models
+    // Sequential processing for accuracy-optimized cache refresh
+    const limit = pLimit(process.env.CACHE_REFRESH_MODE === 'accuracy' ? 1 : 5);
     const startTime = Date.now();
     
     const batchPromises = batches.map((batch, i) => 
