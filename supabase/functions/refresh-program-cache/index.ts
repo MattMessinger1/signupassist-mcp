@@ -2,8 +2,8 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { invokeMCPToolDirect } from '../_shared/mcpClient.ts';
 import pLimit from 'npm:p-limit@5';
-import { getAllActiveOrganizations, getOrganization } from '../../mcp_server/config/organizations.ts';
-import { getProvider } from '../../mcp_server/providers/registry.ts';
+import { getAllActiveOrganizations, getOrganization } from '../_shared/organizations.ts';
+import { getProvider } from '../_shared/providerRegistry.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
