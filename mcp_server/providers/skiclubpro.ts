@@ -1767,6 +1767,11 @@ export const skiClubProTools = {
       const category = args.category || 'all';
       const isFastPath = args.filter_mode === 'single' && !!args.filter_program_ref;
       
+      // PATCH #3: Enhanced debug logging for tool execution
+      console.log(`[scp.find_programs][DEBUG] ====== Tool Execution Start ======`);
+      console.log(`[scp.find_programs][DEBUG] org_ref: ${orgRef}`);
+      console.log(`[scp.find_programs][DEBUG] category: ${category}`);
+      
       console.log('[scp.find_programs] PACK-05: Incoming args:', {
         org_ref: args.org_ref,
         credential_id: args.credential_id,
@@ -1815,6 +1820,9 @@ export const skiClubProTools = {
         
         // Get base URL for organization (using centralized utility)
         const baseUrl = resolveBaseUrl(orgRef);
+        
+        // PATCH #3: Log resolved base URL
+        console.log(`[scp.find_programs][DEBUG] Base URL resolved: ${baseUrl}`);
         
         // PACK-05 Step 1: Restore session by token first
         let restoredStatePath: string | undefined;
@@ -1882,6 +1890,21 @@ export const skiClubProTools = {
         const { waitForSkiClubProReady } = await import('./utils/skiclubproReadiness.js');
         await waitForSkiClubProReady(session.page);
         console.log('[scp.find_programs] ✅ PACK-05: Page ready for extraction');
+        
+        // PATCH #3: Log page state after navigation
+        console.log(`[scp.find_programs][DEBUG] Current page URL: ${session.page.url()}`);
+        console.log(`[scp.find_programs][DEBUG] Page title: ${await session.page.title()}`);
+        
+        // Check for common selector patterns
+        const cardSelector = '.view-registrations .views-row';
+        const cardCount = await session.page.locator(cardSelector).count();
+        console.log(`[scp.find_programs][DEBUG] Program cards found (selector="${cardSelector}"): ${cardCount}`);
+        
+        if (cardCount === 0) {
+          console.log(`[scp.find_programs][DEBUG] ⚠️ No cards found! Dumping page HTML sample:`);
+          const htmlSample = await session.page.content();
+          console.log(htmlSample.slice(0, 1000)); // First 1000 chars
+        }
         
         // PACK-08: Optional noise-cut after listings load
         if (process.env.SKICLUBPRO_BLOCK_ANALYTICS_ON_LISTING === 'true') {
@@ -1987,6 +2010,13 @@ export const skiClubProTools = {
           );
           
           console.log(`[scp.find_programs] ✅ PACK-05: Extracted ${scrapedPrograms.length} programs`);
+          
+          // PATCH #3: Log extraction results
+          console.log(`[scp.find_programs][DEBUG] ====== Extraction Complete ======`);
+          console.log(`[scp.find_programs][DEBUG] Total programs extracted: ${scrapedPrograms.length}`);
+          if (scrapedPrograms.length > 0) {
+            console.log(`[scp.find_programs][DEBUG] First program sample:`, JSON.stringify(scrapedPrograms[0], null, 2));
+          }
         }
         
         // PACK-05 Step 5: Group by theme

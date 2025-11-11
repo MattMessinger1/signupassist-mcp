@@ -148,7 +148,30 @@ async function discoverProgramsForCategory(
       systemMandateJws
     );
     
-    // Log the full result for debugging
+    // PATCH #1: Enhanced debug logging for MCP tool results
+    console.log(`\n[Phase 1][DEBUG] ────────────────`);
+    console.log(`[Phase 1][DEBUG] Raw MCP result for ${orgRef}:${category}:`);
+    console.log(JSON.stringify(result, null, 2));
+    
+    if (result?.debugNavigationSteps) {
+      console.log(`[Phase 1][DEBUG] Navigation trace (${result.debugNavigationSteps.length} steps):`);
+      result.debugNavigationSteps.forEach((s: any, i: number) =>
+        console.log(`  ${i + 1}. ${s.url} → ${s.status}`)
+      );
+    }
+    
+    if (result?.pageUrl) {
+      console.log(`[Phase 1][DEBUG] Final page URL: ${result.pageUrl}`);
+    }
+    if (result?.html) {
+      console.log(`[Phase 1][DEBUG] HTML length: ${result.html.length}`);
+    }
+    if (result?.screenshots) {
+      console.log(`[Phase 1][DEBUG] Screenshots captured: ${result.screenshots.length}`);
+    }
+    console.log(`[Phase 1][DEBUG] ────────────────\n`);
+    
+    // Legacy debug summary (keep for backward compatibility)
     console.log(`[Phase 1] Raw result for ${orgRef}:${category}:`, JSON.stringify({
       success: result.success,
       programCount: result.programs?.length || 0,
@@ -326,6 +349,20 @@ Deno.serve(async (req) => {
     }
     
     console.log('[refresh-program-cache] ✅ MCP server is accessible');
+    
+    // PATCH #2: Verify organization registry is accessible
+    console.log('[refresh-program-cache][DEBUG] 🔍 Checking MCP organization registry...');
+    try {
+      const manifestRes = await fetch(`${mcpServerUrl}/mcp/manifest.json`);
+      if (manifestRes.ok) {
+        const manifest = await manifestRes.json();
+        console.log('[refresh-program-cache][DEBUG] ✅ MCP manifest keys:', Object.keys(manifest));
+      } else {
+        console.warn('[refresh-program-cache][DEBUG] ⚠️ Could not fetch manifest:', manifestRes.status);
+      }
+    } catch (manifestError: any) {
+      console.error('[refresh-program-cache][DEBUG] ❌ Manifest fetch error:', manifestError.message);
+    }
   } catch (error: any) {
     console.error('[refresh-program-cache] ❌ Cannot reach MCP server:', error.message);
     return new Response(JSON.stringify({ 
@@ -347,6 +384,13 @@ Deno.serve(async (req) => {
   // STEP 4: Load organizations from registry
   const orgsToScrape = getAllActiveOrganizations();
   console.log(`[refresh-program-cache] 📋 Loaded ${orgsToScrape.length} active organizations from registry`);
+  
+  // PATCH #2: Log what organizations we're about to scrape
+  console.log('[refresh-program-cache][DEBUG] 📋 Organizations to scrape:');
+  orgsToScrape.forEach(org => {
+    console.log(`  - ${org.name} (${org.orgRef}) - Provider: ${org.provider}`);
+    console.log(`    Categories: ${org.categories?.join(', ') || 'all'}`);
+  });
   
   if (orgsToScrape.length === 0) {
     console.warn('[refresh-program-cache] ⚠️ No active organizations found in registry');
