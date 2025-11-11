@@ -1974,7 +1974,7 @@ export const skiClubProTools = {
               schedule: ['.views-field-field-schedule', '.schedule', 'td:has-text("AM")', 'td:has-text("PM")']
             }
           }, 
-          'programs', // category
+          category, // Use the category from args (all, lessons, teams, races, camps, clinics)
           Object.keys(extractorFilters).length > 0 ? extractorFilters : undefined // TASK 3: Pass filters
           );
           
