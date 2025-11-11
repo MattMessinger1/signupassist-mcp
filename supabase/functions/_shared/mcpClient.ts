@@ -106,8 +106,8 @@ export async function invokeMCPToolDirect(
   }
 
   // Build request args with mandate if provided
-  // Pass as both 'mandate' and 'mandate_jws' for compatibility
-  const requestArgs = mandate ? { ...args, mandate, mandate_jws: mandate } : args;
+  // Pass as 'mandate', 'mandate_jws', and 'user_jwt' for compatibility
+  const requestArgs = mandate ? { ...args, mandate, mandate_jws: mandate, user_jwt: mandate } : args;
 
   console.log(`Invoking MCP tool directly: ${tool}`, { 
     args: requestArgs,
