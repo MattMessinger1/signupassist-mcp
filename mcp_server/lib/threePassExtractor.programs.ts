@@ -323,7 +323,8 @@ export async function runThreePassExtractorForPrograms(
   orgRef: string,
   opts: ExtractorConfig,
   category: string = "programs",
-  filters?: { dayOfWeek?: string; timeOfDay?: string; childAge?: number } // TASK 3: Add filter params
+  filters?: { dayOfWeek?: string; timeOfDay?: string; childAge?: number }, // TASK 3: Add filter params
+  skipCache?: boolean // Cache bypass for fresh overnight scraping
 ) {
   console.log('[PACK-06 Extractor] Starting programs-only extraction', { filters });
   
@@ -380,16 +381,24 @@ export async function runThreePassExtractorForPrograms(
   const pageHash = sha1(combinedHtml);
   const cacheKey = `${orgRef}:${category}:${pageHash}`;
   
-  console.log(`[PACK-06 Cache] Key: ${cacheKey.substring(0, 50)}...`);
-  const cachedResult = await getCached(cacheKey);
+  // Cache bypass for fresh overnight scraping
+  const disableCache = skipCache || process.env.DISABLE_EXTRACTION_CACHE === 'true';
   
-  if (cachedResult) {
-    logOncePer(
-      `cache-hit-${orgRef}`,
-      3000,
-      () => console.log(`[PACK-06 Cache] Hit! Returning ${cachedResult.length} cached programs`)
-    );
-    return cachedResult;
+  console.log(`[PACK-06 Cache] Key: ${cacheKey.substring(0, 50)}...`);
+  
+  if (!disableCache) {
+    const cachedResult = await getCached(cacheKey);
+    
+    if (cachedResult) {
+      logOncePer(
+        `cache-hit-${orgRef}`,
+        3000,
+        () => console.log(`[PACK-06 Cache] Hit! Returning ${cachedResult.length} cached programs`)
+      );
+      return cachedResult;
+    }
+  } else {
+    console.log('[PACK-06 Cache] Bypass enabled - skipping cache read');
   }
   
   console.log('[PACK-06 Cache] Miss, proceeding with extraction');
@@ -529,7 +538,11 @@ Return validated programs array in strict JSON format.`,
     console.log(`[PACK-06 Post-validation] ${cleanedPrograms.length} programs after filtering and deduplication`);
     
     // Phase 3: Cache the cleaned results (TTL: 900s = 15 minutes)
-    await setCached(cacheKey, cleanedPrograms, 900);
+    if (!disableCache) {
+      await setCached(cacheKey, cleanedPrograms, 900);
+    } else {
+      console.log('[PACK-06 Cache] Bypass enabled - skipping cache write');
+    }
     
     return cleanedPrograms;
     

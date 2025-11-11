@@ -128,7 +128,8 @@ async function discoverProgramsForCategory(
         credential_id: credentialId,
         org_ref: orgRef,
         category: category,
-        mandate_jws: systemMandateJws
+        mandate_jws: systemMandateJws,
+        skipCache: true // Force fresh scraping during nightly refresh
       },
       systemMandateJws
     );
