@@ -1864,9 +1864,17 @@ export const skiClubProTools = {
           console.log(`[scp.find_programs] ✅ PACK-05: Fresh login completed with token: ${token}`);
         }
         
-        // PACK-05 Step 3: Navigate to /registration + wait for readiness
-        console.log('[scp.find_programs] PACK-05: Navigating to /registration');
-        await session.page.goto(`${baseUrl.replace(/\/$/, '')}/registration`, { 
+        // PACK-05 Step 3: Navigate to category-specific registration page
+        let registrationPath = '/registration';
+        if (category && category !== 'all') {
+          // Try category-specific path first (e.g., /registration/lessons)
+          registrationPath = `/registration?category=${category}`;
+          console.log(`[scp.find_programs] PACK-05: Navigating to category-specific page: ${registrationPath}`);
+        } else {
+          console.log('[scp.find_programs] PACK-05: Navigating to /registration (all programs)');
+        }
+        
+        await session.page.goto(`${baseUrl.replace(/\/$/, '')}${registrationPath}`, { 
           waitUntil: 'domcontentloaded', 
           timeout: 8000 
         });
