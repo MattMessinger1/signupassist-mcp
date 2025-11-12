@@ -459,7 +459,8 @@ Deno.serve(async (req) => {
               credentialIdToUse,
               org.orgRef,
               p.program_ref,
-              category
+              category,
+              p.cta_href  // Pass direct URL from Phase 1 discovery
             ))
           )
         );
