@@ -559,10 +559,17 @@ Deno.serve(async (req) => {
               metrics.total_prereqs_found += result.prerequisite_checks.length;
             }
             
-            // Add questions
+            // Add questions with metadata
             if (result.program_questions && result.program_questions.length > 0) {
-              questionsSchema[program.program_ref] = transformProgramQuestions(result.program_questions);
+              questionsSchema[program.program_ref] = {
+                fields: transformProgramQuestions(result.program_questions),
+                metadata: result.metadata || {} // NEW: Store metadata
+              };
               metrics.total_questions_found += result.program_questions.length;
+              
+              if (result.metadata?.password_protected) {
+                console.log(`[refresh-program-cache] ✅ Stored partial schema for password-protected program: ${program.program_ref}`);
+              }
             }
             
             // Add deep links (provider-aware)
