@@ -526,7 +526,9 @@ Deno.serve(async (req) => {
             console.log(`[refresh-program-cache] ✅ ${program.title} (${program.program_ref})`);
           } else {
             failureCount++;
-            const error = discovery.status === 'rejected' ? discovery.reason : discovery.value.error;
+            const error = discovery.status === 'rejected' 
+              ? (discovery.reason || 'Unknown rejection reason')
+              : (discovery.value?.error || 'Unknown discovery error');
             console.error(`[refresh-program-cache] ❌ ${program.title}: ${error}`);
           }
         }
