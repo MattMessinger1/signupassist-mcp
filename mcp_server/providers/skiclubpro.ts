@@ -910,6 +910,48 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         
         console.log(`[scp.discover_required_fields][POST-NAV] Navigation completed successfully`);
         
+        // === RUNTIME PASSWORD DETECTION ===
+        const hasPasswordInput = await programSession.page.locator('input[type="password"]').count() > 0;
+        const bodyText = await programSession.page.textContent('body').catch(() => '');
+        const hasPasswordText = /password\s+required|requires?\s+password|protected\s+program/i.test(bodyText);
+        
+        if (hasPasswordInput || hasPasswordText) {
+          console.log('[scp.discover_required_fields] ⚠️  Password protection detected on page');
+          
+          // Try to extract hint text
+          const hintText = await programSession.page
+            .locator('text=/contact|email|director/i')
+            .first()
+            .textContent()
+            .catch(() => '');
+          
+          // Return early with password metadata
+          return {
+            success: true,
+            data: {
+              fields: [
+                {
+                  id: 'password_required',
+                  label: 'Program Password',
+                  type: 'password',
+                  required: true,
+                  helper_text: hintText || 'This program requires a password for registration.'
+                }
+              ],
+              prerequisites: {},
+              metadata: {
+                password_protected: true,
+                password_hint: hintText || undefined
+              }
+            },
+            metadata: {
+              hint: 'Program requires password - manual verification needed',
+              tone: 'informative',
+              ux: 'info-card'
+            }
+          };
+        }
+        
         // If child_name or child_id provided, try to select child (if selector exists)
         if (args.child_name || args.child_id) {
           console.log(`${P} Checking for child selection step: ${args.child_name || args.child_id}`);
