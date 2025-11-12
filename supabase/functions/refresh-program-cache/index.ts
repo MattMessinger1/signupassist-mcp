@@ -501,7 +501,8 @@ Deno.serve(async (req) => {
               org.orgRef,
               p.program_ref,
               category,
-              p.cta_href  // Pass direct URL from Phase 1 discovery
+              p.cta_href,  // Pass direct URL from Phase 1 discovery
+              p.skill_level // NEW: Pass skill_level from Phase 1
             ))
           )
         );
