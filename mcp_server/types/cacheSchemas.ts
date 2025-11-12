@@ -28,6 +28,13 @@ export interface QuestionField {
 export interface QuestionsSchema {
   [programRef: string]: {
     fields: QuestionField[];
+    metadata?: {
+      password_protected?: boolean;
+      verification_needed?: boolean;
+      password_hint?: string;
+      phase1_data_only?: boolean;
+      partial_schema?: boolean;
+    };
   };
 }
 
