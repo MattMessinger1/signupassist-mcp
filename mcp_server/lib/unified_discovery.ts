@@ -239,8 +239,17 @@ export async function discoverPrerequisites(
 export async function navigateToProgramForm(
   page: Page,
   programRef: string,
-  baseDomain: string  // Unified domain
+  baseDomain: string,  // Unified domain
+  programUrl?: string  // Direct URL to program (from cta_href)
 ): Promise<void> {
+  // If direct URL provided, use it immediately
+  if (programUrl) {
+    console.log(`[ProgramNav] Using direct URL: ${programUrl}`);
+    await page.goto(programUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await humanPause(500, 800);
+    return;
+  }
+  
   const baseUrl = `https://${baseDomain}`;
   
   console.log(`[ProgramNav] Using unified domain: ${baseDomain}, url: ${baseUrl}`);

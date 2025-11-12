@@ -55,6 +55,7 @@ export interface DiscoverRequiredFieldsArgs {
   mode?: 'full' | 'prerequisites_only';
   _stage?: 'prereq' | 'program';
   _run_id?: string;
+  program_url?: string; // Direct URL to program registration page (from cta_href)
 }
 
 export interface FieldSchema {
@@ -897,7 +898,8 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         await navigateToProgramForm(
           programSession.page,
           args.program_ref,
-          baseDomain
+          baseDomain,
+          args.program_url  // Pass direct URL if provided
         );
         
         // If child_name or child_id provided, try to select child (if selector exists)

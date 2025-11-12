@@ -221,6 +221,7 @@ async function discoverFieldsForProgram(
   orgRef: string,
   programRef: string,
   category: string,
+  programUrl?: string, // Direct URL from cta_href
   maxRetries: number = 5
 ): Promise<{
   success: boolean;
@@ -240,7 +241,8 @@ async function discoverFieldsForProgram(
           org_ref: orgRef,
           program_ref: programRef,
           mode: 'full', // Both prereqs + questions
-          mandate_jws: systemMandateJws
+          mandate_jws: systemMandateJws,
+          program_url: programUrl // Pass direct URL if available
         },
         systemMandateJws
       );
