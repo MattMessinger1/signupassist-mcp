@@ -927,29 +927,26 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           
           // Return early with password metadata
           return {
-            success: true,
-            data: {
-              fields: [
-                {
-                  id: 'password_required',
-                  label: 'Program Password',
-                  type: 'password',
-                  required: true,
-                  helper_text: hintText || 'This program requires a password for registration.'
-                }
-              ],
-              prerequisites: {},
-              metadata: {
-                password_protected: true,
-                password_hint: hintText || undefined
+            program_ref: args.program_ref,
+            program_questions: [
+              {
+                id: 'password_required',
+                label: 'Program Password',
+                type: 'password',
+                required: true
               }
-            },
+            ],
+            prerequisites: [],
+            prerequisite_status: 'unknown',
             metadata: {
-              hint: 'Program requires password - manual verification needed',
-              tone: 'informative',
-              ux: 'info-card'
+              url: programSession.page.url(),
+              field_count: 1,
+              categories: [],
+              discovered_at: new Date().toISOString(),
+              password_protected: true,
+              password_hint: hintText || undefined
             }
-          };
+          } as FieldSchema;
         }
         
         // If child_name or child_id provided, try to select child (if selector exists)

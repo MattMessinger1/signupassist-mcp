@@ -676,8 +676,8 @@ export async function discoverProgramFieldsMultiStep(
     }
     
     // Check for success indicators
-    const bodyText = await page.textContent('body').catch(() => '');
-    if (/thank\s*you|success|confirmation|complete/i.test(bodyText)) {
+    const bodyTextForSuccess = await page.textContent('body').catch(() => '');
+    if (/thank\s*you|success|confirmation|complete/i.test(bodyTextForSuccess)) {
       console.log('[ProgramMultiStep] Success indicators detected - stopping');
       return {
         fields: Array.from(allFields.values()).map(f => {
