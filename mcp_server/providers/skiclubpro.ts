@@ -894,6 +894,12 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
         const { navigateToProgramForm, discoverProgramFieldsMultiStep } = 
           await import('../lib/unified_discovery.js');
         
+        console.log(`[scp.discover_required_fields][PRE-NAV] About to navigate with:`, {
+          program_ref: args.program_ref,
+          program_url: args.program_url,
+          baseDomain
+        });
+        
         // Navigate to program form (/registration/{program_id})
         await navigateToProgramForm(
           programSession.page,
@@ -901,6 +907,8 @@ export async function scpDiscoverRequiredFields(args: DiscoverRequiredFieldsArgs
           baseDomain,
           args.program_url  // Pass direct URL if provided
         );
+        
+        console.log(`[scp.discover_required_fields][POST-NAV] Navigation completed successfully`);
         
         // If child_name or child_id provided, try to select child (if selector exists)
         if (args.child_name || args.child_id) {
