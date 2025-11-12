@@ -197,7 +197,8 @@ async function discoverProgramsForCategory(
     const programs = result.programs.map((p: any) => ({
       program_ref: p.program_id || p.program_ref,
       title: p.title,
-      category: category
+      category: category,
+      cta_href: p.cta_href  // Preserve direct URL for Phase 2 navigation
     }));
     
     console.log(`[Phase 1] ✅ Found ${programs.length} programs for ${orgRef}:${category}`);
