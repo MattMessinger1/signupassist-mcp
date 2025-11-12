@@ -242,13 +242,18 @@ export async function navigateToProgramForm(
   baseDomain: string,  // Unified domain
   programUrl?: string  // Direct URL to program (from cta_href)
 ): Promise<void> {
+  console.log(`[ProgramNav][ENTRY] programRef=${programRef}, programUrl=${programUrl}, baseDomain=${baseDomain}`);
+  
   // If direct URL provided, use it immediately
   if (programUrl) {
-    console.log(`[ProgramNav] Using direct URL: ${programUrl}`);
+    console.log(`[ProgramNav] ✅ Using direct URL: ${programUrl}`);
     await page.goto(programUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
     await humanPause(500, 800);
+    console.log(`[ProgramNav] ✅ Successfully navigated to ${programUrl}`);
     return;
   }
+  
+  console.log(`[ProgramNav] ⚠️  No programUrl provided, using fallback navigation`);
   
   const baseUrl = `https://${baseDomain}`;
   
