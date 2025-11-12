@@ -447,6 +447,34 @@ export async function discoverProgramFieldsMultiStep(
   for (let i = 0; i < MAX_ITERATIONS; i++) {
     loopCount++;
     const prevUrl = page.url();
+    
+    // === DIAGNOSTIC LOGGING ===
+    const pageTitle = await page.title().catch(() => 'unknown');
+    const inputCount = await page.locator('input:visible').count();
+    const selectCount = await page.locator('select:visible').count();
+    const textareaCount = await page.locator('textarea:visible').count();
+    const buttonCount = await page.locator('button:visible, input[type="submit"]:visible').count();
+    const linkButtonCount = await page.locator('a.btn:visible').count();
+    
+    console.log(`[ProgramMultiStep][Diagnostic] Step ${i+1}:`, {
+      title: pageTitle,
+      url: prevUrl,
+      inputs: inputCount,
+      selects: selectCount,
+      textareas: textareaCount,
+      buttons: buttonCount,
+      linkButtons: linkButtonCount
+    });
+    
+    // Check for password protection
+    const hasPasswordField = await page.locator('input[type="password"]').count() > 0;
+    const bodyText = await page.textContent('body').catch(() => '');
+    const hasPasswordText = /password\s+required|requires?\s+password|protected\s+program/i.test(bodyText);
+    
+    if (hasPasswordField || hasPasswordText) {
+      console.log('[ProgramMultiStep] ⚠️  Password protection detected');
+    }
+    
     console.log(`[ProgramMultiStep] Iteration ${i + 1}/${MAX_ITERATIONS}, URL: ${prevUrl}`);
     
     // Wait for network idle + settle time for dynamic JS rendering
@@ -590,6 +618,41 @@ export async function discoverProgramFieldsMultiStep(
     
     console.log(`[ProgramMultiStep] Found ${newFieldsThisStep} new fields (total: ${allFields.size})`);
     
+    // === STEP 0 LANDING PAGE HANDLING ===
+    // Special case: No fields on first iteration = landing page with "start" button
+    if (i === 0 && allFields.size === 0 && fieldsFoundThisStep === 0) {
+      console.log('[ProgramMultiStep] ⚠️  Step 0: No fields detected, searching for initial continue button...');
+      
+      const landingButtonSelectors = [
+        'a.btn:has-text("Register"):visible',
+        'button:has-text("Start"):visible',
+        'a.btn.btn-primary:visible',
+        'button:has-text("Begin"):visible',
+        'a:has-text("Register"):visible',
+        'button:has-text("Add to Cart"):visible',
+        'a.btn:has-text("Start Registration"):visible'
+      ];
+      
+      let clickedLanding = false;
+      for (const selector of landingButtonSelectors) {
+        const btn = page.locator(selector).first();
+        if (await btn.count() > 0) {
+          const text = await btn.textContent().catch(() => '');
+          console.log(`[ProgramMultiStep] Clicking landing button: "${text}"`);
+          await btn.click().catch(() => {});
+          clickedLanding = true;
+          await humanPause(800, 1200);
+          await page.waitForLoadState('networkidle').catch(() => {});
+          break;
+        }
+      }
+      
+      if (clickedLanding) {
+        console.log('[ProgramMultiStep] Re-running extraction after landing click...');
+        continue; // Go to next iteration
+      }
+    }
+    
     // Track no-new-errors iterations
     if (newFieldsThisStep === 0) {
       noNewErrorsCount++;
@@ -628,8 +691,9 @@ export async function discoverProgramFieldsMultiStep(
       };
     }
     
-    // Find Next/Continue/Confirm button with broad candidates
+    // Find Next/Continue/Confirm button with EXPANDED candidates for SkiClubPro
     const nextCandidates = [
+      // Existing selectors
       'button[type="submit"]:visible',
       'button:has-text("Next"):visible',
       'button:has-text("Continue"):visible',
@@ -637,7 +701,18 @@ export async function discoverProgramFieldsMultiStep(
       'button:has-text("Confirm"):visible',
       'button:has-text("Proceed"):visible',
       'button:has-text("Register"):visible',
-      'button:has-text("Submit"):visible'
+      'button:has-text("Submit"):visible',
+      
+      // NEW: SkiClubPro-specific patterns
+      'a.btn:has-text("Register"):visible',
+      'a.btn.btn-primary:visible',
+      'a.btn.btn-secondary:visible',
+      'button:has-text("Start"):visible',
+      'a:has-text("Start"):visible',
+      'input[type="submit"]:visible',
+      'button:has-text("Add to Cart"):visible',
+      'button:has-text("Add Participant"):visible',
+      'a.btn:has-text("Begin"):visible'
     ];
     
     let clickedNext = false;

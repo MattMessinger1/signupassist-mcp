@@ -223,15 +223,55 @@ async function discoverFieldsForProgram(
   programRef: string,
   category: string,
   programUrl?: string, // Direct URL from cta_href
+  skillLevel?: string, // NEW: Pass from Phase 1
   maxRetries: number = 5
 ): Promise<{
   success: boolean;
   program_ref: string;
   prerequisite_checks?: any[];
   program_questions?: any[];
+  metadata?: {
+    password_protected?: boolean;
+    verification_needed?: boolean;
+    phase1_data_only?: boolean;
+  };
   error?: string;
 }> {
   console.log(`[Phase 2] 📋 Discovering fields for ${programRef} (provider: ${provider})...`);
+  
+  // === EARLY PASSWORD DETECTION ===
+  const isPasswordProtected = skillLevel?.toLowerCase().includes('password');
+  
+  if (isPasswordProtected) {
+    console.log(`[Phase 2] ⚠️  Program "${programRef}" is password-protected - creating partial schema`);
+    
+    return {
+      success: true,
+      program_ref: programRef,
+      prerequisite_checks: [],
+      program_questions: [
+        {
+          id: 'password_required',
+          label: 'Program Password',
+          type: 'password',
+          required: true,
+          helper_text: 'This program requires a password. Please contact the program director for access.'
+        },
+        {
+          id: 'verification_note',
+          label: 'Note',
+          type: 'info',
+          required: false,
+          helper_text: 'Additional registration questions will be available after password verification.'
+        }
+      ],
+      metadata: {
+        password_protected: true,
+        verification_needed: true,
+        phase1_data_only: true
+      }
+    };
+  }
   
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
