@@ -9,6 +9,7 @@ export async function waitForSkiClubProReady(page: Page): Promise<boolean> {
   const maxReloads = Number(process.env.SKICLUBPRO_READY_MAX_RELOADS || 2);
   const selectors = [
     '#registration-table', '.view-registrations .views-row', 'table.views-table',
+    '.card-body', '.card',  // Modern card-based layouts (Blackhawk structure)
     'a[href*="/register"]', 'button:has-text("Register")', '.program-card, .node--type-program'
   ];
   

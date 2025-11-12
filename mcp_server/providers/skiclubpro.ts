@@ -1859,6 +1859,19 @@ export const skiClubProTools = {
             { tool_name: 'scp.find_programs', mandate_jws: args.mandate_jws }
           );
           
+          // Check current URL after login and force navigation to /registration if needed
+          const currentUrl = session.page.url();
+          console.log('[scp.find_programs] Post-login URL:', currentUrl);
+          
+          if (currentUrl.includes('check_logged_in') || currentUrl.includes('destination=')) {
+            console.log('[scp.find_programs] Detected login redirect, navigating to /registration...');
+            await session.page.goto(`${baseUrl}/registration`, { 
+              waitUntil: 'domcontentloaded',
+              timeout: 10000 
+            });
+            console.log('[scp.find_programs] ✅ Navigated to:', session.page.url());
+          }
+          
           // Extract cookies and generate token
           const cookies = await session.page.context().cookies();
           token = generateToken();
