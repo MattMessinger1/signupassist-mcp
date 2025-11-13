@@ -563,9 +563,9 @@ Return validated programs array in strict JSON format.`,
     const cleanedPrograms = validateAndDedupePrograms(finalPrograms);
     console.log(`[PACK-06 Post-validation] ${cleanedPrograms.length} programs after filtering and deduplication`);
     
-    // Phase 3: Cache the cleaned results (TTL: 900s = 15 minutes)
+    // Phase 3: Cache the cleaned results
     if (!disableCache) {
-      await setCached(cacheKey, cleanedPrograms, 900);
+      setCached(cacheKey, cleanedPrograms);
     } else {
       console.log('[PACK-06 Cache] Bypass enabled - skipping cache write');
     }
