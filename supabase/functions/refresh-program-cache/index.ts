@@ -237,16 +237,16 @@ Deno.serve(async (req) => {
     
     // Process each organization
     for (const org of organizations) {
-      const orgConfig = getOrganization(org.ref);
+      const orgConfig = getOrganization(org.orgRef);
       if (!orgConfig) {
-        console.warn(`[refresh-program-cache] ⚠️ No config for ${org.ref}, skipping`);
+        console.warn(`[refresh-program-cache] ⚠️ No config for ${org.orgRef}, skipping`);
         continue;
       }
       
       const provider = orgConfig.provider;
       const categories = orgConfig.categories || ['all'];
       
-      console.log(`\n[refresh-program-cache] === ${org.ref} (${provider}) ===`);
+      console.log(`\n[refresh-program-cache] === ${org.orgRef} (${provider}) ===`);
       console.log(`   Categories: ${categories.join(', ')}`);
       
       // Process each category
@@ -267,11 +267,11 @@ Deno.serve(async (req) => {
           const page = await context.newPage();
           
           // PHASE 1: Scrape program list
-          const programs = await scrapePrograms(page, org.ref, category, provider);
+          const programs = await scrapePrograms(page, org.orgRef, category, provider);
           
           if (programs.length === 0) {
-            console.warn(`[refresh-program-cache] ⚠️ No programs found for ${org.ref}:${category}`);
-            await logAuditEntry(supabase, org.ref, category, 'no_programs', { provider });
+            console.warn(`[refresh-program-cache] ⚠️ No programs found for ${org.orgRef}:${category}`);
+            await logAuditEntry(supabase, org.orgRef, category, 'no_programs', { provider });
             continue;
           }
           
@@ -281,16 +281,16 @@ Deno.serve(async (req) => {
           console.log(`[refresh-program-cache] 🔍 Discovering fields for ${programs.length} programs...`);
           
           for (const program of programs) {
-            const { prereqs, questions } = await scrapeFieldsForProgram(page, program, org.ref);
+            const { prereqs, questions } = await scrapeFieldsForProgram(page, program, org.orgRef);
             
             totalFieldsDiscovered += questions.length;
             
             // Prepare cache entry
-            const deepLinks = generateDeepLinks(provider, org.ref, program.program_ref);
+            const deepLinks = generateDeepLinks(provider, org.orgRef, program.program_ref);
             const theme = determineTheme(provider, program.title);
             
             const cacheEntry = {
-              org_ref: org.ref,
+              org_ref: org.orgRef,
               category,
               program_ref: program.program_ref,
               title: program.title,
@@ -329,29 +329,29 @@ Deno.serve(async (req) => {
           }
           
           // Log success
-          await logAuditEntry(supabase, org.ref, category, 'success', {
+          await logAuditEntry(supabase, org.orgRef, category, 'success', {
             provider,
             programs_scraped: programs.length,
             fields_discovered: totalFieldsDiscovered
           });
           
           results.push({
-            org_ref: org.ref,
+            org_ref: org.orgRef,
             category,
             programs_scraped: programs.length,
             status: 'success'
           });
           
         } catch (error: any) {
-          console.error(`[refresh-program-cache] ❌ Failed for ${org.ref}:${category}:`, error.message);
+          console.error(`[refresh-program-cache] ❌ Failed for ${org.orgRef}:${category}:`, error.message);
           
-          await logAuditEntry(supabase, org.ref, category, 'failed', {
+          await logAuditEntry(supabase, org.orgRef, category, 'failed', {
             provider,
             error: error.message
           });
           
           results.push({
-            org_ref: org.ref,
+            org_ref: org.orgRef,
             category,
             error: error.message,
             status: 'failed'
