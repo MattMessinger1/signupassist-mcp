@@ -21,8 +21,6 @@ import { PROMPT_VERSION } from '../ai/AIOrchestrator.js';
 import { getReadiness } from './utils/pageReadinessRegistry.js';
 import { UrlBuilder } from '../../providers/skiclubpro/lib/index.js';
 import { resolveBaseUrl } from './utils/resolveBaseUrl.js';
-import { getCachedPrograms, getCachedFieldSchema, transformCachedProgramsToResponse } from '../lib/cacheHelpers.js';
-import { findProgramsCacheFirst, discoverFieldsCacheFirst } from '../lib/cacheFirstWrapper.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -1294,9 +1292,7 @@ function getCandidatePathsForIntent(intent?: {
 
 export const skiClubProTools = {
   // Phase 3: Wrapped with cache-first logic for ChatGPT conversations
-  'scp.discover_required_fields': async (args: any) => {
-    return await discoverFieldsCacheFirst(args, scpDiscoverRequiredFields);
-  },
+  'scp.discover_required_fields': scpDiscoverRequiredFields,
 
   'scp.check_account_status': async (args: { credential_id: string; org_ref?: string; email?: string; mandate_id?: string; plan_execution_id?: string }): Promise<ProviderResponse> => {
     // Stub implementation - returns expected format for edge function
@@ -2182,9 +2178,7 @@ export const skiClubProTools = {
       timestamp: new Date().toISOString()
     };
   };
-    
-    // Phase 3: Use cache-first wrapper
-    return await findProgramsCacheFirst(args, originalHandler);
+    return originalHandler(args);
   },
 
   'scp.pay': async (args: any): Promise<ProviderResponse> => {

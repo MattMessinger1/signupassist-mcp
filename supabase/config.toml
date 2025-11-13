@@ -18,23 +18,8 @@ verify_jwt = true
 [functions.testHarness]
 verify_jwt = false
 
-[functions.refresh-program-cache]
-verify_jwt = false
-
-[functions.test-cache-population]
-verify_jwt = false
-
-[functions.populate-program-cache]
-verify_jwt = false
-
 [functions.setup-system-user]
 verify_jwt = false
 
 [functions.create-system-mandate]
-verify_jwt = false
-
-[functions.delete-test-cron]
-verify_jwt = false
-
-[functions.warm-cache-authenticated]
 verify_jwt = false

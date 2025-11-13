@@ -32,7 +32,7 @@ import { MessageList } from "@/components/chat-test/MessageList";
 import { ChatInput } from "@/components/chat-test/ChatInput";
 import { DebugPanel, LogEntry } from "@/components/chat-test/DebugPanel";
 import { TestCoveragePanel } from "@/components/chat-test/TestCoveragePanel";
-import { Phase3TestingSection } from "@/components/chat-test/Phase3TestingSection";
+
 import { LoginCredentialDialog } from "@/components/LoginCredentialDialog";
 import { SystemUserSetup } from "@/components/SystemUserSetup";
 import type { ChatMessage } from "@/components/chat-test/MessageBubble";
@@ -1279,39 +1279,6 @@ function ChatTestHarnessContent() {
         </div>
       </div>
 
-      {/* Phase 3 Testing Section */}
-      <div className="px-4 py-3 border-b">
-        <Phase3TestingSection 
-          onTestChatGPT={async (message) => {
-            addUserMessage(message);
-            setIsProcessing(true);
-            try {
-              const response = await sendMessage(
-                message,
-                sessionId,
-                userLocation,
-                getUserJwt()
-              );
-              
-              if (response.message) {
-                addAssistantMessage(
-                  response.message,
-                  response.cards && response.cards.length > 0 ? "cards" : undefined,
-                  { cards: response.cards, cta: response.cta }
-                );
-              }
-              
-              if (response.contextUpdates) {
-                setState(prev => ({ ...prev, ...response.contextUpdates }));
-              }
-            } catch (error: any) {
-              handleError(error.message);
-            } finally {
-              setIsProcessing(false);
-            }
-          }}
-        />
-      </div>
 
       <MessageList
         messages={messages}
