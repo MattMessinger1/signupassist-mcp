@@ -2214,7 +2214,7 @@ export const skiClubProTools = {
     force_login?: boolean;
     mandate_jws?: string;
     plan_execution_id?: string;
-  }) => {
+  }): Promise<ProviderResponse> => {
     return await auditToolCall(
       {
         tool: 'scp.list_children',
@@ -2304,7 +2304,7 @@ export const skiClubProTools = {
     plan_id?: string;
     user_id?: string;
     session_token?: string;
-  }) => {
+  }): Promise<ProviderResponse> => {
     // ✅ NO mandate enforcement for prerequisites check (pre-plan interactive)
     // ✅ Login is still audited via performSkiClubProLogin → audit-login
     let session = null;
@@ -2415,6 +2415,6 @@ export const skiClubProTools = {
         }
       }
     }
-  }
+  },
 
 };
