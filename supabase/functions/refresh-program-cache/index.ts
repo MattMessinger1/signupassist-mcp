@@ -1,16 +1,29 @@
-// Trigger rebuild: 2025-11-11 - Provider registry system
+/**
+ * Phase 2: Refresh Program Cache (MCP-Independent)
+ * Uses direct Browserbase scraping with shared helpers
+ * No MCP server dependencies
+ */
+
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { invokeMCPToolDirect } from '../_shared/mcpClient.ts';
-import pLimit from 'npm:p-limit@5';
 import { getAllActiveOrganizations, getOrganization } from '../_shared/organizations.ts';
 import { getProvider } from '../_shared/providerRegistry.ts';
+import { 
+  scrapeProgramList, 
+  discoverFieldsSerially, 
+  navigateToProgramForm,
+  type ProgramData,
+  type DiscoveredField 
+} from '../_shared/scraping.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Helper: Log audit entry for cache refresh operations
+// ============================================================================
+// AUDIT LOGGING
+// ============================================================================
+
 async function logAuditEntry(
   supabase: any,
   orgRef: string,
@@ -20,7 +33,7 @@ async function logAuditEntry(
 ) {
   try {
     await supabase.from('mandate_audit').insert({
-      user_id: '00000000-0000-0000-0000-000000000000', // System user
+      user_id: '00000000-0000-0000-0000-000000000000',
       action: 'cache_refresh_scrape',
       org_ref: orgRef,
       provider: metadata?.provider || 'skiclubpro',
@@ -35,12 +48,13 @@ async function logAuditEntry(
   }
 }
 
-// Helper: Generate deep links for a program (provider-aware)
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
 function generateDeepLinks(provider: string, orgRef: string, programRef: string): Record<string, string> {
   const providerConfig = getProvider(provider);
   if (!providerConfig) {
-    console.warn(`[generateDeepLinks] Unknown provider '${provider}', using fallback`);
-    // Fallback for unknown providers
     const baseUrl = `https://${orgRef}.skiclubpro.team`;
     return {
       registration_start: `${baseUrl}/registration/${programRef}/start?ref=signupassist`,
@@ -52,12 +66,10 @@ function generateDeepLinks(provider: string, orgRef: string, programRef: string)
   return providerConfig.generateDeepLinks(orgRef, programRef);
 }
 
-// Helper: Transform prerequisite_checks to prerequisites_schema format
 function transformPrereqChecks(prereqChecks: any[]): Record<string, any> {
   if (!prereqChecks || prereqChecks.length === 0) return {};
   
   const prereqs: Record<string, any> = {};
-  
   for (const check of prereqChecks) {
     const key = check.key || check.id || check.label?.toLowerCase().replace(/\s+/g, '_');
     if (!key) continue;
@@ -75,8 +87,7 @@ function transformPrereqChecks(prereqChecks: any[]): Record<string, any> {
   return prereqs;
 }
 
-// Helper: Transform program_questions to questions_schema format
-function transformProgramQuestions(programQuestions: any[]): Record<string, any> {
+function transformProgramQuestions(programQuestions: DiscoveredField[]): Record<string, any> {
   if (!programQuestions || programQuestions.length === 0) return { fields: [] };
   
   const fields = programQuestions.map((question: any) => ({
@@ -92,12 +103,9 @@ function transformProgramQuestions(programQuestions: any[]): Record<string, any>
   return { fields };
 }
 
-// Helper: Determine theme from program title (provider-aware)
 function determineTheme(provider: string, title: string): string {
   const providerConfig = getProvider(provider);
   if (!providerConfig) {
-    console.warn(`[determineTheme] Unknown provider '${provider}', using fallback`);
-    // Fallback theme detection
     const t = title.toLowerCase();
     if (t.includes('lesson') || t.includes('class')) return 'Lessons & Classes';
     if (t.includes('camp') || t.includes('clinic')) return 'Camps & Clinics';
@@ -108,293 +116,298 @@ function determineTheme(provider: string, title: string): string {
   return providerConfig.determineTheme(title);
 }
 
-// Helper: Validate program data completeness
-function validateProgramData(program: any): string[] {
-  const issues: string[] = [];
-  
-  if (!program.program_ref) issues.push('missing_program_ref');
-  if (!program.title) issues.push('missing_title');
-  if (!program.prerequisite_checks || program.prerequisite_checks.length === 0) {
-    issues.push('no_prerequisites_found');
-  }
-  if (!program.program_questions || program.program_questions.length === 0) {
-    issues.push('no_questions_found');
-  }
-  
-  return issues;
+// ============================================================================
+// BROWSERBASE SESSION MANAGEMENT
+// ============================================================================
+
+interface BrowserbaseSession {
+  session: {
+    id: string;
+    connectUrl: string;
+  };
 }
 
-// PHASE 1: Dynamic Program Discovery using Three Phase Extractor (Provider-aware)
-async function discoverProgramsForCategory(
-  provider: string,
-  findProgramsTool: string,
-  systemMandateJws: string,
-  credentialId: string,
+async function createBrowserbaseSession(supabase: any): Promise<BrowserbaseSession> {
+  console.log('[Browserbase] Creating new session...');
+  
+  const { data, error } = await supabase.functions.invoke('launch-browserbase', {
+    body: { headless: true }
+  });
+  
+  if (error) {
+    throw new Error(`Failed to launch Browserbase: ${error.message}`);
+  }
+  
+  console.log(`[Browserbase] Session created: ${data.session.id}`);
+  return data;
+}
+
+// ============================================================================
+// PHASE 1: PROGRAM LIST SCRAPING
+// ============================================================================
+
+async function scrapePrograms(
+  page: any,
   orgRef: string,
-  category: string
-): Promise<Array<{ program_ref: string; title: string; category: string }>> {
-  console.log(`[Phase 1] 🔍 Discovering programs for ${orgRef}:${category} (provider: ${provider})...`);
+  category: string,
+  provider: string
+): Promise<ProgramData[]> {
+  console.log(`[Phase 1] 🔍 Scraping programs for ${orgRef}:${category}...`);
+  
+  // Navigate to registration page
+  const registrationUrl = `https://${orgRef}.skiclubpro.team/registration`;
+  await page.goto(registrationUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
+  
+  // Use scraping helper with provider-specific selectors
+  const selectors = {
+    container: ['.program-row', '[data-program]', 'tr[data-id]', '.program-card'],
+    title: ['.program-title', 'h3', 'h4', 'a.program-link'],
+    price: ['.price', '.cost', '[class*="price"]'],
+    schedule: ['.schedule', '.dates', '[class*="schedule"]']
+  };
+  
+  const programs = await scrapeProgramList(page, orgRef, selectors);
+  
+  console.log(`[Phase 1] ✅ Scraped ${programs.length} programs for ${orgRef}:${category}`);
+  return programs.map(p => ({
+    ...p,
+    category,
+    org_ref: orgRef
+  }));
+}
+
+// ============================================================================
+// PHASE 2: FIELD DISCOVERY FOR PROGRAMS
+// ============================================================================
+
+async function scrapeFieldsForProgram(
+  page: any,
+  program: ProgramData,
+  orgRef: string
+): Promise<{ prereqs: DiscoveredField[]; questions: DiscoveredField[] }> {
+  console.log(`[Phase 2] 📋 Discovering fields for ${program.program_ref}...`);
   
   try {
-    const result = await invokeMCPToolDirect(
-      findProgramsTool, // Use provider-specific tool
-      {
-        credential_id: credentialId,
-        org_ref: orgRef,
-        category: category,
-        mandate_jws: systemMandateJws,
-        skipCache: true // Force fresh scraping during nightly refresh
-      },
-      systemMandateJws
-    );
+    // Navigate to program registration form
+    const programUrl = program.url || `https://${orgRef}.skiclubpro.team/registration/${program.program_ref}/start`;
+    await navigateToProgramForm(page, program.program_ref, `${orgRef}.skiclubpro.team`, programUrl);
     
-    // PATCH #1: Enhanced debug logging for MCP tool results
-    console.log(`\n[Phase 1][DEBUG] ────────────────`);
-    console.log(`[Phase 1][DEBUG] Raw MCP result for ${orgRef}:${category}:`);
-    console.log(JSON.stringify(result, null, 2));
+    // Discover fields using serial discovery
+    const result = await discoverFieldsSerially(page, program.program_ref);
     
-    if (result?.debugNavigationSteps) {
-      console.log(`[Phase 1][DEBUG] Navigation trace (${result.debugNavigationSteps.length} steps):`);
-      result.debugNavigationSteps.forEach((s: any, i: number) =>
-        console.log(`  ${i + 1}. ${s.url} → ${s.status}`)
-      );
-    }
+    console.log(`[Phase 2] ✅ Found ${result.fields.length} fields for ${program.program_ref}`);
     
-    if (result?.pageUrl) {
-      console.log(`[Phase 1][DEBUG] Final page URL: ${result.pageUrl}`);
-    }
-    if (result?.html) {
-      console.log(`[Phase 1][DEBUG] HTML length: ${result.html.length}`);
-    }
-    if (result?.screenshots) {
-      console.log(`[Phase 1][DEBUG] Screenshots captured: ${result.screenshots.length}`);
-    }
-    console.log(`[Phase 1][DEBUG] ────────────────\n`);
-    
-    // Legacy debug summary (keep for backward compatibility)
-    console.log(`[Phase 1] Raw result for ${orgRef}:${category}:`, JSON.stringify({
-      success: result.success,
-      programCount: result.programs?.length || 0,
-      error: result.error,
-      hasPrograms: !!result.programs
-    }));
-    
-    if (!result.success) {
-      console.error(`[Phase 1] ❌ Tool failed for ${orgRef}:${category}:`, result.error || 'Unknown error');
-      return [];
-    }
-    
-    if (!result.programs || !Array.isArray(result.programs)) {
-      console.error(`[Phase 1] ❌ Invalid response for ${orgRef}:${category} - programs is not an array:`, typeof result.programs);
-      return [];
-    }
-    
-    if (result.programs.length === 0) {
-      console.warn(`[Phase 1] ⚠️ No programs found for ${orgRef}:${category} (valid response, but empty)`);
-      return [];
-    }
-    
-    const programs = result.programs.map((p: any) => ({
-      program_ref: p.program_id || p.program_ref,
-      title: p.title,
-      category: category,
-      cta_href: p.cta_href  // Preserve direct URL for Phase 2 navigation
-    }));
-    
-    console.log(`[Phase 1] ✅ Found ${programs.length} programs for ${orgRef}:${category}`);
-    return programs;
+    // Separate prerequisites from program questions
+    // (For now, treat all as program questions - prerequisites discovery can be added later)
+    return {
+      prereqs: [],
+      questions: result.fields
+    };
     
   } catch (error: any) {
-    console.error(`[Phase 1] ❌ Exception for ${orgRef}:${category}:`, {
-      message: error.message,
-      stack: error.stack?.split('\n').slice(0, 3).join('\n')
-    });
-    return []; // Defensive: don't crash entire refresh
+    console.error(`[Phase 2] ❌ Failed to discover fields for ${program.program_ref}:`, error.message);
+    return { prereqs: [], questions: [] };
   }
 }
 
-// PHASE 2: Field Discovery with Retry Logic (Provider-aware)
-async function discoverFieldsForProgram(
-  provider: string,
-  discoverFieldsTool: string,
-  systemMandateJws: string,
-  credentialId: string,
-  orgRef: string,
-  programRef: string,
-  category: string,
-  programUrl?: string, // Direct URL from cta_href
-  skillLevel?: string, // NEW: Pass from Phase 1
-  maxRetries: number = 5
-): Promise<{
-  success: boolean;
-  program_ref: string;
-  prerequisite_checks?: any[];
-  program_questions?: any[];
-  metadata?: {
-    password_protected?: boolean;
-    verification_needed?: boolean;
-    phase1_data_only?: boolean;
-  };
-  error?: string;
-}> {
-  console.log(`[Phase 2] 📋 Discovering fields for ${programRef} (provider: ${provider})...`);
-  
-  // === EARLY PASSWORD DETECTION ===
-  const isPasswordProtected = skillLevel?.toLowerCase().includes('password');
-  
-  if (isPasswordProtected) {
-    console.log(`[Phase 2] ⚠️  Program "${programRef}" is password-protected - creating partial schema`);
-    
-    return {
-      success: true,
-      program_ref: programRef,
-      prerequisite_checks: [],
-      program_questions: [
-        {
-          id: 'password_required',
-          label: 'Program Password',
-          type: 'password',
-          required: true,
-          helper_text: 'This program requires a password. Please contact the program director for access.'
-        },
-        {
-          id: 'verification_note',
-          label: 'Note',
-          type: 'info',
-          required: false,
-          helper_text: 'Additional registration questions will be available after password verification.'
-        }
-      ],
-      metadata: {
-        password_protected: true,
-        verification_needed: true,
-        phase1_data_only: true
-      }
-    };
-  }
-  
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const result = await invokeMCPToolDirect(
-        discoverFieldsTool, // Use provider-specific tool
-        {
-          credential_id: credentialId,
-          org_ref: orgRef,
-          program_ref: programRef,
-          mode: 'full', // Both prereqs + questions
-          mandate_jws: systemMandateJws,
-          program_url: programUrl // Pass direct URL if available
-        },
-        systemMandateJws
-      );
-      
-      if (!result.success) {
-        throw new Error(result.error || 'Discovery failed');
-      }
-      
-      return {
-        success: true,
-        program_ref: programRef,
-        prerequisite_checks: result.prerequisite_checks || [],
-        program_questions: result.program_questions || []
-      };
-      
-    } catch (error: any) {
-      const backoffMs = Math.pow(2, attempt - 1) * 1000; // Exponential backoff
-      console.error(`[Phase 2] ❌ Attempt ${attempt}/${maxRetries} failed: ${error.message}`);
-      
-      if (attempt === maxRetries) {
-        // Detect 404s and permanent failures
-        const is404 = error.message?.toLowerCase().includes('page not found') || 
-                      error.message?.toLowerCase().includes('404') ||
-                      error.message?.toLowerCase().includes('not found');
-        
-        return {
-          success: false,
-          program_ref: programRef,
-          error: error.message,
-          metadata: {
-            is_404: is404,
-            should_mark_not_discoverable: is404
-          }
-        };
-      }
-      
-      console.log(`[Phase 2] ⏳ Retrying in ${backoffMs}ms...`);
-      await new Promise(resolve => setTimeout(resolve, backoffMs));
-    }
-  }
-  
-  return { success: false, program_ref: programRef, error: 'Max retries exceeded' };
-}
-
-// Organizations are now loaded from the registry (no hardcoded config needed)
-
-interface ScrapeResult {
-  orgRef: string;
-  category: string;
-  success: boolean;
-  programCount: number;
-  themes: string[];
-  error?: string;
-  durationMs: number;
-  metrics?: any;
-}
+// ============================================================================
+// MAIN HANDLER
+// ============================================================================
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
-  console.log('[refresh-program-cache] 🚀 Starting accuracy-optimized two-phase cache refresh...');
-  console.log('[refresh-program-cache] 🎯 Mode: Sequential processing with GPT-4o models');
-  
-  // Initialize Supabase client with service role key
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-  // STEP 1: Get and validate system mandate
-  const systemMandateJws = Deno.env.get('SYSTEM_MANDATE_JWS');
-  if (!systemMandateJws) {
-    return new Response(JSON.stringify({ error: 'SYSTEM_MANDATE_JWS not configured' }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-  }
-  console.log('[refresh-program-cache] ✅ System mandate loaded');
-
-  // STEP 2: Extract user_id from mandate JWT
-  const payload = JSON.parse(atob(systemMandateJws.split('.')[1]));
-  const userId = payload.user_id;
-  console.log('[refresh-program-cache] Mandate user:', userId);
-  
-  // STEP 3: Get credential_id from environment
-  const credentialId = Deno.env.get('SCP_SERVICE_CRED_ID');
-  if (!credentialId) {
-    return new Response(JSON.stringify({ error: 'SCP_SERVICE_CRED_ID not configured' }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-  }
-  console.log('[refresh-program-cache] ✅ Using service credential:', credentialId);
-
-  // STEP 3.5: Validate MCP server is accessible
   try {
-    console.log('[refresh-program-cache] 🔍 Validating MCP server connection...');
-    const mcpServerUrl = Deno.env.get('MCP_SERVER_URL');
-    const mcpAccessToken = Deno.env.get('MCP_ACCESS_TOKEN');
+    console.log('[refresh-program-cache] 🚀 Starting MCP-independent cache refresh...');
     
-    if (!mcpServerUrl || !mcpAccessToken) {
-      throw new Error('MCP_SERVER_URL or MCP_ACCESS_TOKEN not configured');
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    // Load organizations
+    const organizations = getAllActiveOrganizations();
+    console.log(`[refresh-program-cache] 📋 Loaded ${organizations.length} active organizations`);
+    
+    const results: any[] = [];
+    let totalProgramsScraped = 0;
+    let totalFieldsDiscovered = 0;
+    
+    // Process each organization
+    for (const org of organizations) {
+      const orgConfig = getOrganization(org.ref);
+      if (!orgConfig) {
+        console.warn(`[refresh-program-cache] ⚠️ No config for ${org.ref}, skipping`);
+        continue;
+      }
+      
+      const provider = orgConfig.provider;
+      const categories = orgConfig.categories || ['all'];
+      
+      console.log(`\n[refresh-program-cache] === ${org.ref} (${provider}) ===`);
+      console.log(`   Categories: ${categories.join(', ')}`);
+      
+      // Process each category
+      for (const category of categories) {
+        let session: BrowserbaseSession | null = null;
+        let browser: any = null;
+        
+        try {
+          // Create Browserbase session
+          session = await createBrowserbaseSession(supabase);
+          
+          // Import Playwright dynamically (Deno-compatible)
+          const { chromium } = await import('https://deno.land/x/playwright@0.4501.1/index.ts');
+          
+          // Connect to Browserbase
+          browser = await chromium.connectOverCDP(session.session.connectUrl);
+          const context = browser.contexts()[0];
+          const page = await context.newPage();
+          
+          // PHASE 1: Scrape program list
+          const programs = await scrapePrograms(page, org.ref, category, provider);
+          
+          if (programs.length === 0) {
+            console.warn(`[refresh-program-cache] ⚠️ No programs found for ${org.ref}:${category}`);
+            await logAuditEntry(supabase, org.ref, category, 'no_programs', { provider });
+            continue;
+          }
+          
+          totalProgramsScraped += programs.length;
+          
+          // PHASE 2: Discover fields for each program (sequential to avoid overwhelming Browserbase)
+          console.log(`[refresh-program-cache] 🔍 Discovering fields for ${programs.length} programs...`);
+          
+          for (const program of programs) {
+            const { prereqs, questions } = await scrapeFieldsForProgram(page, program, org.ref);
+            
+            totalFieldsDiscovered += questions.length;
+            
+            // Prepare cache entry
+            const deepLinks = generateDeepLinks(provider, org.ref, program.program_ref);
+            const theme = determineTheme(provider, program.title);
+            
+            const cacheEntry = {
+              org_ref: org.ref,
+              category,
+              program_ref: program.program_ref,
+              title: program.title,
+              description: program.description || '',
+              price: program.price || 'TBD',
+              schedule: program.schedule || '',
+              age_range: program.age_range || '',
+              skill_level: program.skill_level || '',
+              status: program.status || 'open',
+              theme,
+              deep_links: [deepLinks],
+              prerequisites_schema: transformPrereqChecks(prereqs),
+              questions_schema: transformProgramQuestions(questions),
+              provider,
+              cached_at: new Date().toISOString(),
+              metadata: {
+                prerequisite_count: prereqs.length,
+                question_count: questions.length,
+                scrape_source: 'direct_browserbase',
+                scrape_method: 'phase2_independent'
+              }
+            };
+            
+            // Upsert to cache
+            const { error: upsertError } = await supabase
+              .from('cached_programs')
+              .upsert(cacheEntry, {
+                onConflict: 'org_ref,category,program_ref'
+              });
+            
+            if (upsertError) {
+              console.error(`[refresh-program-cache] ❌ Failed to upsert ${program.program_ref}:`, upsertError);
+            } else {
+              console.log(`[refresh-program-cache] ✅ Cached ${program.program_ref}`);
+            }
+          }
+          
+          // Log success
+          await logAuditEntry(supabase, org.ref, category, 'success', {
+            provider,
+            programs_scraped: programs.length,
+            fields_discovered: totalFieldsDiscovered
+          });
+          
+          results.push({
+            org_ref: org.ref,
+            category,
+            programs_scraped: programs.length,
+            status: 'success'
+          });
+          
+        } catch (error: any) {
+          console.error(`[refresh-program-cache] ❌ Failed for ${org.ref}:${category}:`, error.message);
+          
+          await logAuditEntry(supabase, org.ref, category, 'failed', {
+            provider,
+            error: error.message
+          });
+          
+          results.push({
+            org_ref: org.ref,
+            category,
+            error: error.message,
+            status: 'failed'
+          });
+          
+        } finally {
+          // Clean up Browserbase session
+          if (browser) {
+            try {
+              await browser.close();
+              console.log('[Browserbase] Session closed');
+            } catch (closeError) {
+              console.error('[Browserbase] Failed to close session:', closeError);
+            }
+          }
+        }
+      }
     }
     
-    const healthCheck = await fetch(`${mcpServerUrl}/health`, {
-      headers: {
-        'Authorization': `Bearer ${mcpAccessToken}`
+    console.log('\n[refresh-program-cache] ✅ Cache refresh complete');
+    console.log(`   Total programs: ${totalProgramsScraped}`);
+    console.log(`   Total fields: ${totalFieldsDiscovered}`);
+    
+    return new Response(
+      JSON.stringify({
+        success: true,
+        timestamp: new Date().toISOString(),
+        summary: {
+          organizations_processed: organizations.length,
+          programs_scraped: totalProgramsScraped,
+          fields_discovered: totalFieldsDiscovered
+        },
+        results
+      }),
+      {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       }
-    });
+    );
+    
+  } catch (error: any) {
+    console.error('[refresh-program-cache] 💥 Fatal error:', error);
+    
+    return new Response(
+      JSON.stringify({
+        success: false,
+        error: error.message,
+        stack: error.stack
+      }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      }
+    );
+  }
+});
     
     if (!healthCheck.ok) {
       throw new Error(`MCP health check failed: ${healthCheck.status}`);
