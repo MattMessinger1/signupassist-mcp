@@ -2177,8 +2177,6 @@ export const skiClubProTools = {
       login_status: 'success' as const,
       timestamp: new Date().toISOString()
     };
-  };
-    return originalHandler(args);
   },
 
   'scp.pay': async (args: any): Promise<ProviderResponse> => {
