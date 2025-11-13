@@ -287,26 +287,33 @@ class AIOrchestrator {
       }
       
       // A-A-P Triage: Ensure we have Age, Activity, Provider before proceeding
+      Logger.info(`[A-A-P] Parsing triad from message: "${userMessage}"`, { sessionId, existingContext: context });
       const aapTriad = parseAAPTriad(userMessage, {
         age: context.childAge,
         activity: context.category,
         provider: context.provider?.name
       });
+      Logger.info(`[A-A-P] Parsed result:`, { sessionId, aapTriad });
       
       if (!aapTriad.complete) {
         const aapQuestion = buildAAPQuestion(aapTriad);
         if (aapQuestion) {
-          Logger.info(`[A-A-P Triage] Missing ${aapTriad.missing.join(', ')}`, { sessionId });
+          Logger.info(`[A-A-P Triage] Missing ${aapTriad.missing.join(', ')}`, { sessionId, aapTriad, existingContext: context });
           // Store partial A-A-P data in context (including provider if found)
           const contextUpdate: any = {
             childAge: aapTriad.age,
             category: aapTriad.activity,
             aapIncomplete: true
           };
-          // CRITICAL: Preserve provider if extracted
+          // CRITICAL: Preserve provider from EITHER triad OR existing context
           if (aapTriad.provider) {
             contextUpdate.provider = { name: aapTriad.provider };
+            Logger.info(`[A-A-P] Saving provider from triad: ${aapTriad.provider}`, { sessionId });
+          } else if (context.provider) {
+            contextUpdate.provider = context.provider;
+            Logger.info(`[A-A-P] Preserving provider from context: ${context.provider.name}`, { sessionId });
           }
+          Logger.info(`[A-A-P] Context update:`, { sessionId, contextUpdate });
           await this.updateContext(sessionId, contextUpdate);
           return this.formatResponse(aapQuestion, undefined, undefined, {});
         }
@@ -314,16 +321,21 @@ class AIOrchestrator {
       
       // A-A-P Complete: Store normalized values in context
       if (aapTriad.complete) {
-        Logger.info('[A-A-P Complete]', { sessionId, triad: aapTriad });
+        Logger.info('[A-A-P Complete]', { sessionId, triad: aapTriad, existingContext: context });
         const contextUpdate: any = {
           childAge: aapTriad.age,
           category: aapTriad.activity,
           aapComplete: true
         };
-        // Store provider if extracted
+        // CRITICAL: Preserve provider from EITHER triad OR existing context
         if (aapTriad.provider) {
           contextUpdate.provider = { name: aapTriad.provider };
+          Logger.info(`[A-A-P Complete] Saving provider from triad: ${aapTriad.provider}`, { sessionId });
+        } else if (context.provider) {
+          contextUpdate.provider = context.provider;
+          Logger.info(`[A-A-P Complete] Preserving provider from context: ${context.provider.name}`, { sessionId });
         }
+        Logger.info(`[A-A-P Complete] Context update:`, { sessionId, contextUpdate });
         await this.updateContext(sessionId, contextUpdate);
       }
       

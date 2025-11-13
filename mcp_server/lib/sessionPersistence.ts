@@ -24,6 +24,8 @@ export async function loadSessionFromDB(sessionId: string, userId?: string): Pro
   if (!supabase) return null;
 
   try {
+    console.log(`[sessionPersistence] Loading session ${sessionId}...`);
+    
     const query = supabase
       .from('agentic_checkout_sessions')
       .select('state, user_id')
@@ -46,7 +48,7 @@ export async function loadSessionFromDB(sessionId: string, userId?: string): Pro
       return null;
     }
 
-    console.log('[SessionPersistence] Loaded session from DB:', sessionId);
+    console.log('[SessionPersistence] Loaded session from DB:', sessionId, 'Context:', JSON.stringify(data.state, null, 2));
     return (data.state as SessionContext) || {};
   } catch (err) {
     console.error('[SessionPersistence] Unexpected load error:', err);
@@ -65,6 +67,8 @@ export async function saveSessionToDB(
   if (!supabase) return;
 
   try {
+    console.log(`[sessionPersistence] Saving session ${sessionId}:`, JSON.stringify(context, null, 2));
+    
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 24); // 24 hour TTL
 
@@ -84,7 +88,7 @@ export async function saveSessionToDB(
     if (error) {
       console.error('[SessionPersistence] Save error:', error);
     } else {
-      console.log('[SessionPersistence] Saved session to DB:', sessionId);
+      console.log('[SessionPersistence] Saved session to DB:', sessionId, 'with context:', JSON.stringify(context, null, 2));
     }
   } catch (err) {
     console.error('[SessionPersistence] Unexpected save error:', err);
