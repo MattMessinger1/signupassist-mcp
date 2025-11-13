@@ -297,12 +297,17 @@ class AIOrchestrator {
         const aapQuestion = buildAAPQuestion(aapTriad);
         if (aapQuestion) {
           Logger.info(`[A-A-P Triage] Missing ${aapTriad.missing.join(', ')}`, { sessionId });
-          // Store partial A-A-P data in context
-          await this.updateContext(sessionId, {
+          // Store partial A-A-P data in context (including provider if found)
+          const contextUpdate: any = {
             childAge: aapTriad.age,
             category: aapTriad.activity,
             aapIncomplete: true
-          } as any);
+          };
+          // CRITICAL: Preserve provider if extracted
+          if (aapTriad.provider) {
+            contextUpdate.provider = { name: aapTriad.provider };
+          }
+          await this.updateContext(sessionId, contextUpdate);
           return this.formatResponse(aapQuestion, undefined, undefined, {});
         }
       }
@@ -310,11 +315,16 @@ class AIOrchestrator {
       // A-A-P Complete: Store normalized values in context
       if (aapTriad.complete) {
         Logger.info('[A-A-P Complete]', { sessionId, triad: aapTriad });
-        await this.updateContext(sessionId, {
+        const contextUpdate: any = {
           childAge: aapTriad.age,
           category: aapTriad.activity,
           aapComplete: true
-        } as any);
+        };
+        // Store provider if extracted
+        if (aapTriad.provider) {
+          contextUpdate.provider = { name: aapTriad.provider };
+        }
+        await this.updateContext(sessionId, contextUpdate);
       }
       
       // Feature flag: Upfront intent capture
