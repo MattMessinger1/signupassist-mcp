@@ -1844,7 +1844,7 @@ export const skiClubProTools = {
       console.error('[scp.find_programs]', errorMsg);
       return {
         success: false,
-        login_status: 'failed',
+        login_status: 'failed' as const,
         error: errorMsg,
         timestamp: new Date().toISOString()
       };
@@ -1867,7 +1867,7 @@ export const skiClubProTools = {
             console.error('[scp.find_programs] Mandate verification failed:', mandateError);
             return { 
               success: false,
-              login_status: 'failed', 
+              login_status: 'failed' as const, 
               error: `Mandate verification failed: ${mandateError.message}`,
               timestamp: new Date().toISOString()
             };
@@ -2011,7 +2011,7 @@ export const skiClubProTools = {
                   session_token: token,
                   programs: [],
                   programs_by_theme: {},
-                  login_status: 'success',
+                  login_status: 'success' as const,
                   timestamp: new Date().toISOString()
                 };
               }
@@ -2125,7 +2125,7 @@ export const skiClubProTools = {
           session_token: token,
           programs: scrapedPrograms,
           programs_by_theme,
-          login_status: 'success',
+          login_status: 'success' as const,
           timestamp: new Date().toISOString()
         };
         
@@ -2134,7 +2134,7 @@ export const skiClubProTools = {
         
         return {
           success: false,
-          login_status: 'failed',
+          login_status: 'failed' as const,
           error: error.message || 'Unknown error during live scraping',
           timestamp: new Date().toISOString()
         };
