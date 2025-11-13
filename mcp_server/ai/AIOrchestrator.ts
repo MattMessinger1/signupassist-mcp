@@ -914,28 +914,12 @@ Example follow-up (only when needed):
       return this.buildScheduleFilterPrompt(sessionId);
     }
     
-    // TASK 4: Check database cache first (before in-memory cache)
-    // Build cache query using normalized A-A-P values
-    const cacheQuery = buildCacheQuery({
-      age: ctx.childAge,
-      activity: ctx.category,
-      provider: ctx.provider?.name,
-      complete: true,
-      missing: []
-    });
-    const cacheKey = `programs:${cacheQuery.orgRef || ctx.provider.orgRef}:${cacheQuery.category}`;
-    
-    // Cache disabled - proceed to live discovery
+    // Cache disabled - proceed directly to live scraping
+    const cacheKey = `programs:${ctx.provider.orgRef}:${ctx.category || 'all'}`;
     Logger.info(`[Live Discovery] No cache, calling provider directly`, {
       orgRef: ctx.provider.orgRef,
       category: ctx.category || 'all'
     });
-      
-      if (!ctx.cache) ctx.cache = {};
-      ctx.cache[cacheKey] = programsByTheme;
-      
-      return await this.presentProgramsAsCards(ctx, programsByTheme);
-    }
     
     // Fallback to in-memory session cache
     const cachedPrograms = ctx.cache?.[cacheKey];
@@ -1045,26 +1029,11 @@ Example follow-up (only when needed):
       return await this.presentProgramsAsCards(ctx, fallbackPrograms);
     }
     
-    // TASK 4: Cache programs in database and session (15 min TTL)
+    // Store programs in session cache
     if (Object.keys(programs).length > 0) {
-      // Store in session cache
       if (!ctx.cache) ctx.cache = {};
       ctx.cache[cacheKey] = programs;
-      
-      // Store in database cache
-      await this.upsertDatabaseCache(
-        ctx.provider.orgRef,
-        ctx.category || 'all',
-        programs,
-        {
-          scrape_type: fastPathEligible ? "fast-path" : "full",
-          program_count: Object.values(programs).flat().length,
-          themes: Object.keys(programs)
-        }
-      );
-      
-      const scrapeType = fastPathEligible ? "fast-path" : "full";
-      console.log(`[handleAutoProgramDiscovery] 📦 Cached ${Object.keys(programs).length} program themes (${scrapeType}) in DB and session`);
+      console.log(`[handleAutoProgramDiscovery] 📦 Cached ${Object.keys(programs).length} program themes in session`);
     }
     
     // Return the result from presentProgramsAsCards
@@ -1075,15 +1044,11 @@ Example follow-up (only when needed):
    * Handle extractor test action
    */
   private async handleAction_run_extractor_test(ctx: SessionContext, sessionId?: string): Promise<OrchestratorResponse> {
-    // Cache disabled - call provider directly
     const orgRef = ctx?.provider?.orgRef ?? "blackhawk-ski";
     const category = "all";
     const cacheKey = `programs:${orgRef}:${category}`;
     
     Logger.info(`[Extractor Test] Calling provider directly`, { orgRef, category });
-      
-      return await this.presentProgramsAsCards(ctx, programsByTheme);
-    }
     
     // Fallback to session cache
     const cachedPrograms = ctx.cache?.[cacheKey];
@@ -1131,27 +1096,12 @@ Example follow-up (only when needed):
       items: numItems
     });
     
-    // TASK 4: Cache programs in database and session (15 min TTL)
+    // Store programs in session cache
     const programs = res?.programs_by_theme || {};
     if (Object.keys(programs).length > 0) {
-      // Store in session cache
       if (!ctx.cache) ctx.cache = {};
       ctx.cache[cacheKey] = programs;
-      
-      // Store in database cache
-      await this.upsertDatabaseCache(
-        orgRef,
-        category,
-        programs,
-        {
-          scrape_type: "full",
-          program_count: Object.values(programs).flat().length,
-          themes: Object.keys(programs),
-          source: "extractor_test"
-        }
-      );
-      
-      console.log(`[handleAction_run_extractor_test] 📦 Cached ${Object.keys(programs).length} program themes in DB and session`);
+      console.log(`[handleAction_run_extractor_test] 📦 Cached ${Object.keys(programs).length} program themes in session`);
     }
     
     return await this.presentProgramsAsCards(ctx, programs);
