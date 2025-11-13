@@ -15,7 +15,7 @@ import { singleFlight } from "../utils/singleflight.js";
 import type { SessionContext } from "../types.js";
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../src/integrations/supabase/types.js';
-import type { ChecklistCard, CacheResult, PrerequisiteCheck, QuestionField } from '../types/cacheSchemas.js';
+
 import { parseAAPTriad, buildAAPQuestion, buildCacheQuery } from "./preLoginNarrowing.js";
 
 /**
