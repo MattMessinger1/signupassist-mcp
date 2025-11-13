@@ -9,7 +9,7 @@ import { loadSessionFromDB, saveSessionToDB } from "../lib/sessionPersistence.js
 import { shouldReuseSession, getProgramCategory, TOOL_WORKFLOW, SESSION_REUSE_CONFIG } from "./toolGuidance.js";
 import { getMessageForState } from "./messageTemplates.js";
 import { buildGroupedCardsPayload, buildSimpleCardsFromGrouped } from "./cardPayloadBuilder.js";
-import { parseIntent, buildIntentQuestion, filterByAge, classifyIntentStrength, pickLikelyProgram, type ParsedIntent, type ExtendedIntent } from "../lib/intentParser.js";
+import { filterByAge, classifyIntentStrength, pickLikelyProgram, type ParsedIntent, type ExtendedIntent } from "../lib/intentParser.js";
 import { normalizeEmailWithAI, generatePersonalizedMessage } from "../lib/aiIntentParser.js";
 import { singleFlight } from "../utils/singleflight.js";
 import type { SessionContext } from "../types.js";
@@ -342,7 +342,13 @@ class AIOrchestrator {
               childAge: !intent?.childAge
             }
           });
-          const emergencyQuestion = buildIntentQuestion(intent || { hasIntent: false });
+          // Build AAP triad from stored context
+          const aapTriad = context.aapTriad || parseAAPTriad('', {
+            age: intent?.childAge,
+            activity: intent?.category,
+            provider: intent?.provider
+          });
+          const emergencyQuestion = buildAAPQuestion(aapTriad);
           if (emergencyQuestion) {
             return this.formatResponse(emergencyQuestion, undefined, undefined, {});
           }
@@ -502,38 +508,29 @@ class AIOrchestrator {
       return null; // Proceed with defaults
     }
     
-    // Context-aware fallback: if last question was about age and user typed a standalone number
-    let contextAge: number | undefined;
-    if (context.lastQuestionType === 'age') {
-      const ageMatch = userMessage.match(/^\s*(\d{1,2})\s*$/);
-      if (ageMatch) {
-        const age = parseInt(ageMatch[1], 10);
-        if (age >= 3 && age <= 18) {
-          contextAge = age;
-          Logger.info(`[Context-Aware Age] ${sessionId}: Extracted age ${age} from standalone number`);
-        }
-      }
-    }
+    // Parse AAP triad from current message with accumulated context
+    const aapTriad = parseAAPTriad(userMessage, {
+      age: context.partialIntent?.childAge,
+      activity: context.partialIntent?.category,
+      provider: context.partialIntent?.provider
+    });
     
-    // Merge new intent with existing partial intent (uses OpenAI via parseIntent)
-    const newIntent = await parseIntent(userMessage);
-    
-    Logger.info('[Intent Parsing Debug]', {
+    Logger.info('[AAP Triad Parsing]', {
       sessionId,
       userMessage,
-      contextAge,
-      newIntent,
+      aapTriad,
       existingPartialIntent: context.partialIntent
     });
     
+    // Convert AAP format to ParsedIntent format for compatibility
     const mergedIntent: ParsedIntent = {
-      hasIntent: newIntent.hasIntent || !!context.partialIntent?.hasIntent || !!contextAge,
-      provider: newIntent.provider || context.partialIntent?.provider,
-      category: newIntent.category || context.partialIntent?.category,
-      childAge: contextAge || newIntent.childAge || context.partialIntent?.childAge
+      hasIntent: aapTriad.complete || aapTriad.age !== undefined || aapTriad.activity !== undefined || aapTriad.provider !== undefined,
+      provider: aapTriad.provider,
+      category: aapTriad.activity,
+      childAge: aapTriad.age
     };
     
-    Logger.info('[Intent Merged]', { sessionId, mergedIntent });
+    Logger.info('[Intent Merged from AAP]', { sessionId, mergedIntent, aapComplete: aapTriad.complete });
     
     // Phase 2: Classify intent strength and pick likely program for fast-path
     const intentStrength = classifyIntentStrength(mergedIntent, userMessage);
@@ -546,58 +543,52 @@ class AIOrchestrator {
       fastPathEligible: !!(intentStrength === "high" && targetProgram && targetProgram.confidence >= 0.75)
     });
     
-    // Store merged intent with strength and target program
+    // Store merged intent with AAP triad for next turn
     const updates: any = { 
       partialIntent: mergedIntent,
+      aapTriad: aapTriad, // Store raw triad for stateful parsing
       category: mergedIntent.category,
       childAge: mergedIntent.childAge,
       intentStrength,
       targetProgram
     };
     
-    if (contextAge || newIntent.hasIntent) {
-      updates.lastQuestionType = undefined; // Clear after successful extraction
-    }
-    
     await this.updateContext(sessionId, updates);
     
-    // Build question for missing parts (concise one-turn format)
-    const question = buildIntentQuestion(mergedIntent);
+    // Build question for missing parts using AAP question builder (ONE question only)
+    const question = buildAAPQuestion(aapTriad);
     
     if (question) {
       // Track what type of question we're asking for context-aware parsing
       const questionLower = question.toLowerCase();
       if (questionLower.includes("child's age") || questionLower.includes("age?")) {
         await this.updateContext(sessionId, { lastQuestionType: 'age' });
-      } else if (questionLower.includes('lessons') || questionLower.includes('team')) {
+      } else if (questionLower.includes('activity')) {
         await this.updateContext(sessionId, { lastQuestionType: 'category' });
-      } else if (questionLower.includes('provider') || questionLower.includes('club')) {
+      } else if (questionLower.includes('organization') || questionLower.includes('provider')) {
         await this.updateContext(sessionId, { lastQuestionType: 'provider' });
       }
       
-      Logger.info(`[Missing Intent] ${sessionId}`, { mergedIntent, question, lastQuestionType: context.lastQuestionType });
+      Logger.info(`[Missing AAP Component] ${sessionId}`, { aapTriad, question, missing: aapTriad.missing });
       return question;
     }
     
     // SAFETY CHECK: Verify all required fields are actually present before returning null
     if (!mergedIntent.provider || !mergedIntent.category || !mergedIntent.childAge) {
-      Logger.warn('[Intent Bug] buildIntentQuestion returned null but fields still missing', { 
+      Logger.warn('[AAP Incomplete] buildAAPQuestion returned null but fields still missing', { 
         sessionId, 
         mergedIntent,
-        missing: {
-          provider: !mergedIntent.provider,
-          category: !mergedIntent.category,
-          childAge: !mergedIntent.childAge
-        }
+        aapTriad,
+        missing: aapTriad.missing
       });
-      // Build emergency question
-      const emergencyQuestion = buildIntentQuestion(mergedIntent) || "Which provider or club?";
+      // Build emergency question from first missing component
+      const emergencyQuestion = buildAAPQuestion(aapTriad) || "Which provider or club?";
       return emergencyQuestion;
     }
     
     // Intent is complete! No need to return confirmation message here - 
     // the orchestrator will handle the next step and confirm naturally
-    Logger.info(`[Intent Complete] ${sessionId}`, { mergedIntent });
+    Logger.info(`[AAP Complete] ${sessionId}`, { mergedIntent, aapTriad });
     return null;
   }
 

@@ -42,6 +42,7 @@ export interface SessionContext {
   category?: string;      // Activity category: "lessons", "camps", "races", "all"
   childAge?: number;      // Child's age for filtering programs
   partialIntent?: { provider?: string; category?: string; childAge?: number; hasIntent: boolean }; // Stores incomplete intent across turns
+  aapTriad?: { age?: number; activity?: string; provider?: string; complete: boolean; missing: Array<'age' | 'activity' | 'provider'> }; // AAP Triad state for stateful parsing
   targetProgram?: { program_ref: string; confidence: number }; // HIGH INTENT: Likely target program for fast-path
   intentStrength?: "low" | "medium" | "high"; // Intent strength classification for optimization
   
