@@ -106,13 +106,10 @@ export function parseAAPTriad(message: string, context?: Partial<AAPTriad>): AAP
 }
 
 /**
- * Generate clarifying question for missing A-A-P component
+ * Generate clarifying question for missing A-A-P component (template-based fallback)
  */
 export function buildAAPQuestion(triad: AAPTriad): string | null {
   if (triad.complete) return null;
-  
-  // Ask for the first missing item only (minimal friction)
-  const missing = triad.missing[0];
   
   const questions = {
     age: "What's your child's age? (This helps me show age-appropriate programs)",
@@ -120,7 +117,132 @@ export function buildAAPQuestion(triad: AAPTriad): string | null {
     provider: "Which organization? (e.g., Blackhawk Ski Club, YMCA)",
   };
   
-  return questions[missing];
+  // Get all missing questions
+  const missingQuestions = triad.missing.map(key => questions[key]);
+  
+  // Combine based on count
+  if (missingQuestions.length === 1) {
+    return missingQuestions[0];
+  }
+  
+  if (missingQuestions.length === 2) {
+    // "Question 1? And question 2?"
+    return `${missingQuestions[0]} And ${missingQuestions[1].toLowerCase()}`;
+  }
+  
+  // All 3 missing: "Provider? Activity? And age?"
+  return `${missingQuestions[0]} ${missingQuestions[1]} And ${missingQuestions[2].toLowerCase()}`;
+}
+
+/**
+ * AI-Powered Natural Question Generator
+ * 
+ * Uses OpenAI to generate contextual, friendly questions that combine
+ * all missing AAP components into a single, natural question.
+ * 
+ * @param triad - Current AAP triad state
+ * @param userMessage - User's last message for context
+ * @returns Natural language question or null if complete
+ */
+export async function buildNaturalAAPQuestion(
+  triad: AAPTriad, 
+  userMessage: string
+): Promise<string | null> {
+  if (triad.complete) return null;
+  
+  // Import here to avoid circular dependencies
+  const { callOpenAI_JSON } = await import("../lib/openaiHelpers.js");
+  const Logger = (await import("../utils/logger.js")).default;
+  
+  try {
+    Logger.info('[AAP AI Question] Generating natural question for missing:', triad.missing);
+    
+    // Build context about what we have and what we need
+    const hasItems = [];
+    if (triad.age) hasItems.push(`age ${triad.age}`);
+    if (triad.activity) hasItems.push(`activity: ${triad.activity}`);
+    if (triad.provider) hasItems.push(`provider: ${triad.provider}`);
+    
+    const needsItems = triad.missing.map(item => {
+      switch (item) {
+        case 'age': return 'child\'s age';
+        case 'activity': return 'activity type (e.g., skiing, swimming)';
+        case 'provider': return 'organization name (e.g., Blackhawk Ski Club, YMCA)';
+        default: return item;
+      }
+    });
+    
+    const result = await callOpenAI_JSON({
+      model: "gpt-4o-mini",
+      system: `You generate friendly, concise questions for parent registration flows.
+
+Your job: Combine multiple missing pieces into ONE natural question.
+
+Guidelines:
+- Be warm and conversational, like a helpful assistant
+- Keep it under 25 words total
+- Use "and" to connect items naturally
+- Add brief context in parentheses only if helpful
+- Never use jargon or technical terms
+
+Examples:
+- Missing age only: "What's your child's age? (Helps me show the right programs)"
+- Missing activity + age: "What activity are you interested in, and how old is your child?"
+- Missing all three: "Which organization are you looking at? What activity interests you? And what's your child's age?"
+
+Generate ONE question that asks for all missing items in a natural, friendly way.`,
+      user: {
+        userMessage,
+        currentlyHave: hasItems.join(', ') || 'nothing yet',
+        needsToKnow: needsItems,
+      },
+      maxTokens: 100,
+      temperature: 0.3, // Some creativity for natural language
+      useResponsesAPI: false,
+    });
+    
+    const question = result.question || result.text || result.content;
+    Logger.info('[AAP AI Question] Generated:', question);
+    
+    return question;
+    
+  } catch (error: any) {
+    Logger.warn('[AAP AI Question] Generation failed, using template fallback:', error.message);
+    // Fallback to template-based question
+    return buildAAPQuestion(triad);
+  }
+}
+
+/**
+ * Map ParsedIntent to AAPTriad format
+ * 
+ * Converts the AI-parsed intent structure to the AAP format,
+ * preserving existing context values.
+ * 
+ * @param intent - Parsed intent from AI
+ * @param context - Existing AAP context to preserve
+ * @returns AAP triad with completion status
+ */
+export function mapIntentToAAP(
+  intent: { provider?: string; category?: string; childAge?: number },
+  context?: Partial<AAPTriad>
+): AAPTriad {
+  const age = intent.childAge || context?.age;
+  const activity = intent.category || context?.activity;
+  const provider = intent.provider || context?.provider;
+  
+  const missing: Array<'age' | 'activity' | 'provider'> = [];
+  if (!age) missing.push('age');
+  if (!activity) missing.push('activity');
+  if (!provider) missing.push('provider');
+  
+  return {
+    age,
+    activity,
+    provider,
+    complete: missing.length === 0,
+    missing,
+  };
 }
 
 /**
