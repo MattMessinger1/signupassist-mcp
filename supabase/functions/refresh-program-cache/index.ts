@@ -304,10 +304,19 @@ async function discoverFieldsForProgram(
       console.error(`[Phase 2] ❌ Attempt ${attempt}/${maxRetries} failed: ${error.message}`);
       
       if (attempt === maxRetries) {
+        // Detect 404s and permanent failures
+        const is404 = error.message?.toLowerCase().includes('page not found') || 
+                      error.message?.toLowerCase().includes('404') ||
+                      error.message?.toLowerCase().includes('not found');
+        
         return {
           success: false,
           program_ref: programRef,
-          error: error.message
+          error: error.message,
+          metadata: {
+            is_404: is404,
+            should_mark_not_discoverable: is404
+          }
         };
       }
       
@@ -490,9 +499,47 @@ Deno.serve(async (req) => {
         
         console.log(`[refresh-program-cache] 📊 Found ${programs.length} programs to scrape`);
         
-        // PHASE 2: Discover fields for each program (provider-aware)
+        // PHASE 2: Check discovery status and filter out programs that should be skipped
+        const { data: discoveryStatuses } = await supabase
+          .from('program_discovery_status')
+          .select('program_ref, discovery_status, consecutive_failures, last_attempt_at')
+          .eq('org_ref', org.orgRef)
+          .eq('provider', org.provider)
+          .in('program_ref', programs.map(p => p.program_ref));
+        
+        const statusMap = new Map(
+          (discoveryStatuses || []).map(s => [s.program_ref, s])
+        );
+        
+        // Filter programs: skip not_discoverable and recently failed (3+ failures within 1 hour)
+        const programsToDiscover = programs.filter(p => {
+          const status = statusMap.get(p.program_ref);
+          
+          // Skip if marked as not_discoverable
+          if (status?.discovery_status === 'not_discoverable') {
+            console.log(`[Phase 2] ⏭️  Skipping ${p.program_ref} (marked not_discoverable: ${status.last_error})`);
+            return false;
+          }
+          
+          // Skip if 3+ consecutive failures within last hour
+          if (status?.consecutive_failures >= 3 && status?.last_attempt_at) {
+            const lastAttempt = new Date(status.last_attempt_at);
+            const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+            if (lastAttempt > hourAgo) {
+              const minutesAgo = Math.round((Date.now() - lastAttempt.getTime()) / 60000);
+              console.log(`[Phase 2] ⏭️  Skipping ${p.program_ref} (3+ failures, last attempt ${minutesAgo}m ago)`);
+              return false;
+            }
+          }
+          
+          return true;
+        });
+        
+        console.log(`[refresh-program-cache] 🔍 Attempting discovery for ${programsToDiscover.length}/${programs.length} programs (${programs.length - programsToDiscover.length} skipped)`);
+        
+        // PHASE 2: Discover fields for filtered programs (provider-aware)
         const discoveries = await Promise.allSettled(
-          programs.map(p => 
+          programsToDiscover.map(p => 
             limit(() => discoverFieldsForProgram(
               org.provider,
               providerConfig.tools.discoverFields,
@@ -530,7 +577,7 @@ Deno.serve(async (req) => {
         
         for (let i = 0; i < discoveries.length; i++) {
           const discovery = discoveries[i];
-          const program = programs[i];
+          const program = programsToDiscover[i]; // Use filtered list
           
           if (discovery.status === 'fulfilled' && discovery.value.success) {
             const result = discovery.value;
@@ -575,6 +622,21 @@ Deno.serve(async (req) => {
             // Add deep links (provider-aware)
             deepLinksSchema[program.program_ref] = generateDeepLinks(org.provider, org.orgRef, program.program_ref);
             
+            // === UPDATE DISCOVERY STATUS: SUCCESS ===
+            await supabase
+              .from('program_discovery_status')
+              .upsert({
+                org_ref: org.orgRef,
+                provider: org.provider,
+                program_ref: program.program_ref,
+                discovery_status: 'ok',
+                consecutive_failures: 0,
+                last_error: null,
+                last_attempt_at: new Date().toISOString()
+              }, {
+                onConflict: 'org_ref,provider,program_ref'
+              });
+            
             console.log(`[refresh-program-cache] ✅ ${program.title} (${program.program_ref})`);
           } else {
             failureCount++;
@@ -582,6 +644,46 @@ Deno.serve(async (req) => {
               ? (discovery.reason || 'Unknown rejection reason')
               : (discovery.value?.error || 'Unknown discovery error');
             console.error(`[refresh-program-cache] ❌ ${program.title}: ${error}`);
+            
+            // === UPDATE DISCOVERY STATUS: FAILURE ===
+            const resultValue = discovery.status === 'fulfilled' ? discovery.value : null;
+            const should_mark_not_discoverable = resultValue?.metadata?.should_mark_not_discoverable || false;
+            
+            if (should_mark_not_discoverable) {
+              // Permanent failure (404, etc.) - mark as not_discoverable
+              console.log(`[refresh-program-cache] 🚫 Marking ${program.program_ref} as not_discoverable (${error})`);
+              await supabase
+                .from('program_discovery_status')
+                .upsert({
+                  org_ref: org.orgRef,
+                  provider: org.provider,
+                  program_ref: program.program_ref,
+                  discovery_status: 'not_discoverable',
+                  consecutive_failures: 5, // Max out
+                  last_error: error,
+                  last_attempt_at: new Date().toISOString()
+                }, {
+                  onConflict: 'org_ref,provider,program_ref'
+                });
+            } else {
+              // Temporary error - increment failures
+              const currentStatus = statusMap.get(program.program_ref);
+              const currentFailures = currentStatus?.consecutive_failures || 0;
+              
+              await supabase
+                .from('program_discovery_status')
+                .upsert({
+                  org_ref: org.orgRef,
+                  provider: org.provider,
+                  program_ref: program.program_ref,
+                  discovery_status: 'temporary_error',
+                  consecutive_failures: currentFailures + 1,
+                  last_error: error,
+                  last_attempt_at: new Date().toISOString()
+                }, {
+                  onConflict: 'org_ref,provider,program_ref'
+                });
+            }
           }
         }
         

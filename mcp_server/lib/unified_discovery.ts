@@ -466,6 +466,31 @@ export async function discoverProgramFieldsMultiStep(
       linkButtons: linkButtonCount
     });
     
+    // === EARLY 404 DETECTION ===
+    const is404Page = pageTitle.toLowerCase().includes('page not found') || 
+                      pageTitle.toLowerCase().includes('404') ||
+                      pageTitle.toLowerCase().includes('not found');
+    
+    if (is404Page) {
+      console.log(`[ProgramMultiStep] ❌ Detected 404 page: "${pageTitle}"`);
+      return {
+        fields: [],
+        loopCount,
+        confidence: 0,
+        urlsVisited,
+        stops: {
+          reason: 'payment_detected', // Reuse this type for any permanent failure
+          evidence: {
+            url: prevUrl,
+            title: pageTitle,
+            reason: 'Program page not found (404)',
+            timestamp: new Date().toISOString(),
+            should_mark_not_discoverable: true
+          } as any
+        }
+      };
+    }
+    
     // Check for password protection
     const hasPasswordField = await page.locator('input[type="password"]').count() > 0;
     const bodyTextForPasswordCheck = await page.textContent('body').catch(() => '');
