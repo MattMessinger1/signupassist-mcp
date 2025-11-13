@@ -294,7 +294,16 @@ class AIOrchestrator {
       let aiIntent;
       try {
         aiIntent = await parseIntentWithAI(userMessage);
-        Logger.info(`[A-A-P AI] Parsed intent:`, { sessionId, intent: aiIntent });
+        Logger.info(`[A-A-P AI EXTRACTED]`, { 
+          sessionId, 
+          userMessage,
+          extracted: {
+            provider: aiIntent.provider,
+            category: aiIntent.category,
+            childAge: aiIntent.childAge,
+            hasIntent: aiIntent.hasIntent
+          }
+        });
       } catch (error: any) {
         Logger.warn(`[A-A-P AI] Parsing failed, using fallback:`, error.message);
         // Fallback to regex-based parsing
@@ -307,12 +316,32 @@ class AIOrchestrator {
       }
       
       // Map AI intent to AAP format, preserving existing context
+      Logger.info(`[A-A-P CONTEXT MERGE] Before merge:`, {
+        sessionId,
+        existingContext: {
+          provider: context.provider?.name,
+          category: context.category,
+          childAge: context.childAge
+        },
+        aiIntent: {
+          provider: aiIntent.provider,
+          category: aiIntent.category,
+          childAge: aiIntent.childAge
+        }
+      });
+      
       const aapTriad = mapIntentToAAP(aiIntent, {
         age: context.childAge,
         activity: context.category,
         provider: context.provider?.name
       });
-      Logger.info(`[A-A-P AI] Mapped AAP triad:`, { sessionId, aapTriad });
+      
+      Logger.info(`[A-A-P CONTEXT MERGE] After merge:`, { 
+        sessionId, 
+        resultTriad: aapTriad,
+        complete: aapTriad.complete,
+        missing: aapTriad.missing
+      });
       
       if (!aapTriad.complete) {
         // Use AI to generate natural, contextual question
@@ -333,7 +362,15 @@ class AIOrchestrator {
             contextUpdate.provider = context.provider;
             Logger.info(`[A-A-P AI] Preserving provider from context: ${context.provider.name}`, { sessionId });
           }
-          Logger.info(`[A-A-P AI] Context update:`, { sessionId, contextUpdate });
+          Logger.info(`[A-A-P CONTEXT SAVED] Incomplete - saving partial context:`, { 
+            sessionId, 
+            contextUpdate,
+            fullContext: {
+              childAge: this.sessions[sessionId]?.childAge,
+              category: this.sessions[sessionId]?.category,
+              provider: this.sessions[sessionId]?.provider
+            }
+          });
           await this.updateContext(sessionId, contextUpdate);
           return this.formatResponse(aapQuestion, undefined, undefined, {});
         }
@@ -356,7 +393,15 @@ class AIOrchestrator {
           contextUpdate.provider = context.provider;
           Logger.info(`[A-A-P AI Complete] Preserving provider from context: ${context.provider.name}`, { sessionId });
         }
-        Logger.info(`[A-A-P AI Complete] Context update:`, { sessionId, contextUpdate });
+        Logger.info(`[A-A-P CONTEXT SAVED] Complete - saving full context:`, { 
+          sessionId, 
+          contextUpdate,
+          fullContext: {
+            childAge: this.sessions[sessionId]?.childAge,
+            category: this.sessions[sessionId]?.category,
+            provider: this.sessions[sessionId]?.provider
+          }
+        });
         await this.updateContext(sessionId, contextUpdate);
       }
       

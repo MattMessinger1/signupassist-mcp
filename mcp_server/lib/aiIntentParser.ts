@@ -43,12 +43,14 @@ export async function parseIntentWithAI(message: string): Promise<ExtendedIntent
 
 Extract FIVE pieces of information from user messages:
 
-1. PROVIDER - Organization or club name:
-   - "blackhawk" or "black hawk" → "blackhawk-ski-club"
-   - "vail" or "vail resort" → "vail"
+1. PROVIDER - Organization or club name (CRITICAL: Look for ANY organization mentions):
+   - "blackhawk", "black hawk", "for blackhawk", "at blackhawk" → "blackhawk-ski-club"
+   - "vail", "vail resort", "for vail" → "vail"
    - "ski club" (generic) → "ski-club"
    - "nordic" or "nordic ski" without other context → null (it's an activity type, not a provider)
-   - Return null if not mentioned
+   - IMPORTANT: If user says "for [NAME]", "at [NAME]", "with [NAME]" → extract [NAME] as provider
+   - Examples: "sign up for blackhawk" → provider is "blackhawk-ski-club"
+   - Return null ONLY if absolutely no organization mentioned
 
 2. CATEGORY - Activity type:
    - "lessons", "lesson", "ski", "skiing", "class" → "lessons"
