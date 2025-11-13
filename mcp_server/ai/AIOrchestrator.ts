@@ -1196,18 +1196,8 @@ Example follow-up (only when needed):
       return [header, ...set];
     });
 
-    // Return program cards without checklist previews
+    // Return program cards
     const allCards = [...cards];
-          action: "view_checklist",
-          payload: { 
-            program_ref: checklist.program_ref,
-            org_ref: checklist.org_ref || ''
-          }
-        }]
-      }));
-      
-      allCards.push(...previewCards);
-    }
 
     return {
       message: ctx.childAge 
