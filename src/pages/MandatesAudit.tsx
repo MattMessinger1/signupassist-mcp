@@ -1,11 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Header } from '@/components/Header';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Loader2, Shield, FileText, AlertCircle } from 'lucide-react';
+import { Loader2, Shield, FileText, AlertCircle, Search, Filter, ArrowUpDown } from 'lucide-react';
 import { format } from 'date-fns';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
@@ -18,6 +18,9 @@ import { CreateTestMandate } from '@/components/CreateTestMandate';
 import { JWSInspector } from '@/components/JWSInspector';
 import { MockAuditGenerator } from '@/components/MockAuditGenerator';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 
 interface Mandate {
   id: string;
@@ -64,6 +67,13 @@ export default function MandatesAudit() {
   const [mandateAuditLogs, setMandateAuditLogs] = useState<MandateAuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Filter and sort states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [actionFilter, setActionFilter] = useState<string>('all');
+  const [providerFilter, setProviderFilter] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<'date' | 'action' | 'provider'>('date');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     if (!user) {
@@ -154,6 +164,77 @@ export default function MandatesAudit() {
       default:
         return 'secondary';
     }
+  };
+
+  // Get unique values for filters
+  const uniqueActions = useMemo(() => {
+    const actions = new Set(mandateAuditLogs.map(log => log.action));
+    return Array.from(actions).sort();
+  }, [mandateAuditLogs]);
+
+  const uniqueProviders = useMemo(() => {
+    const providers = new Set(mandateAuditLogs.map(log => log.provider).filter(Boolean));
+    return Array.from(providers).sort();
+  }, [mandateAuditLogs]);
+
+  // Filtered and sorted audit logs
+  const filteredAndSortedLogs = useMemo(() => {
+    let filtered = [...mandateAuditLogs];
+
+    // Apply search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(log => 
+        log.action.toLowerCase().includes(query) ||
+        log.provider?.toLowerCase().includes(query) ||
+        log.org_ref?.toLowerCase().includes(query) ||
+        log.program_ref?.toLowerCase().includes(query) ||
+        log.credential_id?.toLowerCase().includes(query)
+      );
+    }
+
+    // Apply action filter
+    if (actionFilter !== 'all') {
+      filtered = filtered.filter(log => log.action === actionFilter);
+    }
+
+    // Apply provider filter
+    if (providerFilter !== 'all') {
+      filtered = filtered.filter(log => log.provider === providerFilter);
+    }
+
+    // Apply sorting
+    filtered.sort((a, b) => {
+      let comparison = 0;
+      
+      switch (sortBy) {
+        case 'date':
+          comparison = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+          break;
+        case 'action':
+          comparison = a.action.localeCompare(b.action);
+          break;
+        case 'provider':
+          comparison = (a.provider || '').localeCompare(b.provider || '');
+          break;
+      }
+
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+    return filtered;
+  }, [mandateAuditLogs, searchQuery, actionFilter, providerFilter, sortBy, sortOrder]);
+
+  const toggleSortOrder = () => {
+    setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+  };
+
+  const resetFilters = () => {
+    setSearchQuery('');
+    setActionFilter('all');
+    setProviderFilter('all');
+    setSortBy('date');
+    setSortOrder('desc');
   };
 
   if (loading) {
@@ -360,14 +441,111 @@ export default function MandatesAudit() {
                     Complete log of all actions performed (credentials accessed, registrations, etc.)
                   </CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-4">
                   {mandateAuditLogs.length === 0 ? (
                     <div className="text-center py-8 text-muted-foreground">
                       No audit logs yet. Actions will appear here as you use the system.
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      {mandateAuditLogs.map((log) => (
+                    <>
+                      {/* Filter and Sort Controls */}
+                      <div className="space-y-4 p-4 bg-muted/50 rounded-lg">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Filter className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm font-medium">Filters & Sorting</span>
+                        </div>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                          {/* Search */}
+                          <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                              placeholder="Search logs..."
+                              value={searchQuery}
+                              onChange={(e) => setSearchQuery(e.target.value)}
+                              className="pl-9"
+                            />
+                          </div>
+
+                          {/* Action Filter */}
+                          <Select value={actionFilter} onValueChange={setActionFilter}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Action" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Actions</SelectItem>
+                              {uniqueActions.map(action => (
+                                <SelectItem key={action} value={action}>
+                                  {action}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+
+                          {/* Provider Filter */}
+                          <Select value={providerFilter} onValueChange={setProviderFilter}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Provider" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">All Providers</SelectItem>
+                              {uniqueProviders.map(provider => (
+                                <SelectItem key={provider} value={provider}>
+                                  {provider}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+
+                          {/* Sort By */}
+                          <div className="flex gap-2">
+                            <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
+                              <SelectTrigger className="flex-1">
+                                <SelectValue placeholder="Sort by" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="date">Date</SelectItem>
+                                <SelectItem value="action">Action</SelectItem>
+                                <SelectItem value="provider">Provider</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <Button 
+                              variant="outline" 
+                              size="icon"
+                              onClick={toggleSortOrder}
+                              title={`Sort ${sortOrder === 'asc' ? 'descending' : 'ascending'}`}
+                            >
+                              <ArrowUpDown className={`h-4 w-4 ${sortOrder === 'desc' ? 'rotate-180' : ''} transition-transform`} />
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Active filters summary */}
+                        {(searchQuery || actionFilter !== 'all' || providerFilter !== 'all') && (
+                          <div className="flex items-center gap-2 pt-2">
+                            <span className="text-xs text-muted-foreground">
+                              Showing {filteredAndSortedLogs.length} of {mandateAuditLogs.length} logs
+                            </span>
+                            <Button 
+                              variant="ghost" 
+                              size="sm" 
+                              onClick={resetFilters}
+                              className="h-6 text-xs"
+                            >
+                              Reset Filters
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Audit Logs */}
+                      {filteredAndSortedLogs.length === 0 ? (
+                        <div className="text-center py-8 text-muted-foreground">
+                          No logs match your filters. Try adjusting your search criteria.
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {filteredAndSortedLogs.map((log) => (
                         <div
                           key={log.id}
                           className="border rounded p-3 space-y-2 hover:bg-muted/50 transition-colors"
@@ -413,9 +591,11 @@ export default function MandatesAudit() {
                               </pre>
                             </details>
                           )}
-                        </div>
-                      ))}
-                    </div>
+                          </div>
+                        ))}
+                      </div>
+                      )}
+                    </>
                   )}
                 </CardContent>
               </Card>
