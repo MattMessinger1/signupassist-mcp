@@ -2172,7 +2172,7 @@ export const skiClubProTools = {
         program.title.toLowerCase().includes(query) ||
         program.description.toLowerCase().includes(query)
       );
-    };
+    }
     
     // Phase 3: Use cache-first wrapper
     return await findProgramsCacheFirst(args, originalHandler);
