@@ -4,7 +4,8 @@
  * These functions can be used by edge functions for scheduled cache refreshes
  */
 
-import { Page } from 'https://deno.land/x/playwright@0.4501.1/types/types.ts';
+// Type alias for Playwright Page (Playwright is imported dynamically in edge functions)
+type Page = any;
 
 // ============================================================================
 // TYPE DEFINITIONS (copied from mcp_server types)
