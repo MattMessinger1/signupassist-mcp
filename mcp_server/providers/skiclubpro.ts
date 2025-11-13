@@ -1855,17 +1855,17 @@ export const skiClubProTools = {
     }
     
     // If credentials or session token provided, use live Browserbase scraping
-    if (args.credential_id || args.session_token) {
+    if (handlerArgs.credential_id || handlerArgs.session_token) {
       console.log('[scp.find_programs] Using live Browserbase scraping with PACK-05');
       
       let session: any = null;
-      let token = args.session_token;
+      let token = handlerArgs.session_token;
       
       try {
         // PACK-B: Verify mandate includes required scopes
-        if (args.mandate_jws) {
+        if (handlerArgs.mandate_jws) {
           try {
-            await verifyMandate(args.mandate_jws, ['scp:read:listings']);
+            await verifyMandate(handlerArgs.mandate_jws, ['scp:read:listings']);
             console.log('[scp.find_programs] ✅ Mandate verified with scp:read:listings scope');
           } catch (mandateError: any) {
             console.error('[scp.find_programs] Mandate verification failed:', mandateError);
@@ -1909,14 +1909,14 @@ export const skiClubProTools = {
           
           await ensureLoggedIn(
             session,
-            args.credential_id,
-            args.user_jwt,
+            handlerArgs.credential_id,
+            handlerArgs.user_jwt,
             baseUrl,
-            args.user_id || 'system',
+            handlerArgs.user_id || 'system',
             orgRef,
             undefined,
             undefined,
-            { tool_name: 'scp.find_programs', mandate_jws: args.mandate_jws }
+            { tool_name: 'scp.find_programs', mandate_jws: handlerArgs.mandate_jws }
           );
           
           // Check current URL after login and force navigation to /registration if needed
@@ -1996,10 +1996,10 @@ export const skiClubProTools = {
         
         // Phase 3: Fast-path single program extraction
         if (isFastPath) {
-          console.log('[scp.find_programs] 🚀 FAST-PATH: Attempting single-program extraction for:', args.filter_program_ref);
+          console.log('[scp.find_programs] 🚀 FAST-PATH: Attempting single-program extraction for:', handlerArgs.filter_program_ref);
           
           try {
-            const fastPathProgram = await findProgramCardByRef(session.page, args.filter_program_ref!, orgRef);
+            const fastPathProgram = await findProgramCardByRef(session.page, handlerArgs.filter_program_ref!, orgRef);
             
             if (fastPathProgram) {
               console.log('[scp.find_programs] ✅ FAST-PATH: Found target program:', fastPathProgram.title);
@@ -2007,7 +2007,7 @@ export const skiClubProTools = {
             } else {
               console.log('[scp.find_programs] ⚠️ FAST-PATH: Target program not found');
               
-              if (!args.fallback_to_full) {
+              if (!handlerArgs.fallback_to_full) {
                 // Return empty result if fallback disabled
                 console.log('[scp.find_programs] FAST-PATH: Fallback disabled, returning empty result');
                 return {
@@ -2026,7 +2026,7 @@ export const skiClubProTools = {
           } catch (fastPathError: any) {
             console.warn('[scp.find_programs] FAST-PATH: Error during extraction:', fastPathError.message);
             
-            if (!args.fallback_to_full) {
+            if (!handlerArgs.fallback_to_full) {
               throw fastPathError;
             }
             
@@ -2049,19 +2049,19 @@ export const skiClubProTools = {
           // TASK 3: Build filter object from schedule preferences
           const extractorFilters: any = {};
           
-          if (args.filter_day) {
-            extractorFilters.dayOfWeek = args.filter_day;
-            console.log('[scp.find_programs] TASK 3: Applying day filter:', args.filter_day);
+          if (handlerArgs.filter_day) {
+            extractorFilters.dayOfWeek = handlerArgs.filter_day;
+            console.log('[scp.find_programs] TASK 3: Applying day filter:', handlerArgs.filter_day);
           }
           
-          if (args.filter_time) {
-            extractorFilters.timeOfDay = args.filter_time;
-            console.log('[scp.find_programs] TASK 3: Applying time filter:', args.filter_time);
+          if (handlerArgs.filter_time) {
+            extractorFilters.timeOfDay = handlerArgs.filter_time;
+            console.log('[scp.find_programs] TASK 3: Applying time filter:', handlerArgs.filter_time);
           }
           
-          if (args.child_age) {
-            extractorFilters.childAge = parseInt(args.child_age, 10);
-            console.log('[scp.find_programs] TASK 3: Applying age filter:', args.child_age);
+          if (handlerArgs.child_age) {
+            extractorFilters.childAge = parseInt(handlerArgs.child_age, 10);
+            console.log('[scp.find_programs] TASK 3: Applying age filter:', handlerArgs.child_age);
           }
           
           scrapedPrograms = await runThreePassExtractorForPrograms(session.page, orgRef, {
@@ -2112,10 +2112,10 @@ export const skiClubProTools = {
         console.log('[scp.find_programs] ✅ PACK-05: Grouped into themes:', Object.keys(programs_by_theme));
         
         // Capture screenshot evidence if plan execution exists
-        if (args.plan_execution_id) {
+        if (handlerArgs.plan_execution_id) {
           try {
             const screenshot = await captureScreenshot(session);
-            await captureScreenshotEvidence(args.plan_execution_id, screenshot, 'programs-listing');
+            await captureScreenshotEvidence(handlerArgs.plan_execution_id, screenshot, 'programs-listing');
             console.log('[scp.find_programs] Screenshot evidence captured');
           } catch (evidenceError) {
             console.warn('[scp.find_programs] Could not capture evidence:', evidenceError);
@@ -2166,13 +2166,22 @@ export const skiClubProTools = {
     }));
     
     let filteredPrograms = fallbackPrograms;
-    if (args.query) {
-      const query = args.query.toLowerCase();
+    if (handlerArgs.query) {
+      const query = handlerArgs.query.toLowerCase();
       filteredPrograms = fallbackPrograms.filter(program => 
         program.title.toLowerCase().includes(query) ||
         program.description.toLowerCase().includes(query)
       );
     }
+    
+    return {
+      success: true,
+      programs: filteredPrograms,
+      programs_by_theme: { 'Static Programs': filteredPrograms },
+      login_status: 'not_required',
+      timestamp: new Date().toISOString()
+    };
+  };
     
     // Phase 3: Use cache-first wrapper
     return await findProgramsCacheFirst(args, originalHandler);
