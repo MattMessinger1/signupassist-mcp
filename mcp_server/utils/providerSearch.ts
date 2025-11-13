@@ -6,8 +6,24 @@
 
 import axios from "axios";
 import Logger from "./logger.js";
-import { providerCache } from "./providerSearchCache.js";
 import { singleFlight } from "./singleflight.js";
+
+// Simple in-memory cache for provider search results
+const providerCacheMap = new Map<string, { result: any; timestamp: number }>();
+const CACHE_TTL = 30 * 60 * 1000; // 30 minutes
+
+export const providerCache = {
+  get(key: string): any | null {
+    const cached = providerCacheMap.get(key);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return cached.result;
+    }
+    return null;
+  },
+  set(key: string, result: any): void {
+    providerCacheMap.set(key, { result, timestamp: Date.now() });
+  }
+};
 
 export interface Provider {
   name: string;

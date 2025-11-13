@@ -9,8 +9,34 @@ import type { ElementHandle } from 'playwright-core';
 import { MODELS } from "./oai.js";
 import { safeJSONParse } from "./openaiHelpers.js";
 import { canonicalizeSnippet, validateAndDedupePrograms } from "./extractionUtils.js";
-import { sha1, getCached, setCached } from "../utils/extractionCache.js";
 import { logOncePer } from "../utils/logDebouncer.js";
+
+// Simple in-memory cache for extraction results
+const extractionCacheMap = new Map<string, { result: any; timestamp: number }>();
+const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+
+function sha1(text: string): string {
+  // Simple hash for cache keys
+  let hash = 0;
+  for (let i = 0; i < text.length; i++) {
+    const char = text.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash).toString(36);
+}
+
+function getCached(key: string): any | null {
+  const cached = extractionCacheMap.get(key);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+    return cached.result;
+  }
+  return null;
+}
+
+function setCached(key: string, result: any): void {
+  extractionCacheMap.set(key, { result, timestamp: Date.now() });
+}
 
 /**
  * TASK 3: Playwright-based pre-filtering to reduce DOM sent to OpenAI

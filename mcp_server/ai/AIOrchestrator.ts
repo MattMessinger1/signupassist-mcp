@@ -70,7 +70,7 @@ CHECKLIST CARD FORMAT:
 }
 
 State & idempotency:
-- Keep and reuse {org_ref, provider, activity/category, age, credential_id, session_token, session_issued_at, session_ttl_ms, mandate_jws, mandate_valid_until, login_status, checklistCards}.
+- Keep and reuse {org_ref, provider, activity/category, age, credential_id, session_token, session_issued_at, session_ttl_ms, mandate_jws, mandate_valid_until, login_status}.
 - Idempotent tool calls: given the same context, produce the same calls, once.
 
 Session & mandate reuse:
@@ -925,53 +925,11 @@ Example follow-up (only when needed):
     });
     const cacheKey = `programs:${cacheQuery.orgRef || ctx.provider.orgRef}:${cacheQuery.category}`;
     
-    // Try database cache first with age filtering
-    const childAge = cacheQuery.age; // Use normalized age from cache query
-    const cacheResult = await this.checkDatabaseCache(
-      cacheQuery.orgRef || ctx.provider.orgRef, 
-      cacheQuery.category,
-      childAge
-    );
-    if (cacheResult && cacheResult.hit) {
-      Logger.info(`[DB Cache Hit] ${ctx.provider.orgRef}:${ctx.category || 'all'}`, {
-        themes: cacheResult.programs.length,
-        childAge: childAge ? `age ${childAge}` : 'all ages',
-        checklistCards: cacheResult.checklistCards?.length || 0
-      });
-      
-      // Phase 1C: If we have checklist cards, present them with program cards
-      if (cacheResult.checklistCards && cacheResult.checklistCards.length > 0) {
-        Logger.info('[Checklist Flow] Presenting programs with checklist cards');
-        
-        // Group programs back by theme for display
-        const programsByTheme: Record<string, any[]> = {};
-        for (const program of cacheResult.programs) {
-          const theme = program.theme || 'general';
-          if (!programsByTheme[theme]) {
-            programsByTheme[theme] = [];
-          }
-          programsByTheme[theme].push(program);
-        }
-        
-        // Store in session cache for subsequent requests
-        if (!ctx.cache) ctx.cache = {};
-        ctx.cache[cacheKey] = programsByTheme;
-        
-        // Store checklist cards in context
-        await this.updateContext(sessionId!, { checklistCards: cacheResult.checklistCards } as any);
-        
-        return await this.presentProgramsAsCards(ctx, programsByTheme);
-      }
-      
-      // Fallback: No checklist data available, present programs normally
-      const programsByTheme: Record<string, any[]> = {};
-      for (const program of cacheResult.programs) {
-        const theme = program.theme || 'general';
-        if (!programsByTheme[theme]) {
-          programsByTheme[theme] = [];
-        }
-        programsByTheme[theme].push(program);
-      }
+    // Cache disabled - proceed to live discovery
+    Logger.info(`[Live Discovery] No cache, calling provider directly`, {
+      orgRef: ctx.provider.orgRef,
+      category: ctx.category || 'all'
+    });
       
       if (!ctx.cache) ctx.cache = {};
       ctx.cache[cacheKey] = programsByTheme;
@@ -1115,33 +1073,14 @@ Example follow-up (only when needed):
 
   /**
    * Handle extractor test action
-   * TASK 4: Added database cache lookup for faster subsequent calls
    */
   private async handleAction_run_extractor_test(ctx: SessionContext, sessionId?: string): Promise<OrchestratorResponse> {
-    // TASK 4: Check database cache first
+    // Cache disabled - call provider directly
     const orgRef = ctx?.provider?.orgRef ?? "blackhawk-ski";
     const category = "all";
     const cacheKey = `programs:${orgRef}:${category}`;
     
-    const cacheResult = await this.checkDatabaseCache(orgRef, category, undefined); // No age filter for test
-    if (cacheResult && cacheResult.hit) {
-      Logger.info(`[DB Cache Hit - Extractor Test] ${orgRef}:${category}`, {
-        programCount: cacheResult.programs.length
-      });
-      
-      // Group programs back by theme for session cache
-      const programsByTheme: Record<string, any[]> = {};
-      for (const program of cacheResult.programs) {
-        const theme = program.theme || 'general';
-        if (!programsByTheme[theme]) {
-          programsByTheme[theme] = [];
-        }
-        programsByTheme[theme].push(program);
-      }
-      
-      // Store in session cache
-      if (!ctx.cache) ctx.cache = {};
-      ctx.cache[cacheKey] = programsByTheme;
+    Logger.info(`[Extractor Test] Calling provider directly`, { orgRef, category });
       
       return await this.presentProgramsAsCards(ctx, programsByTheme);
     }
@@ -1307,27 +1246,8 @@ Example follow-up (only when needed):
       return [header, ...set];
     });
 
-    // Phase 1D: Add checklist preview cards if available
+    // Return program cards without checklist previews
     const allCards = [...cards];
-    if (ctx.checklistCards && ctx.checklistCards.length > 0) {
-      // Add a header card for checklists
-      allCards.push({
-        title: "📋 Registration Requirements",
-        subtitle: "Review what you'll need before registering",
-        isHeader: true
-      });
-      
-      // Add preview cards for each checklist (first 4)
-      const previewCards = ctx.checklistCards.slice(0, 4).map(checklist => ({
-        title: checklist.title,
-        subtitle: `${Object.keys(checklist.prerequisites).length} prerequisites • ${checklist.questions.length} questions`,
-        metadata: { 
-          programRef: checklist.program_ref,
-          orgRef: checklist.org_ref || '',
-          theme: checklist.theme || 'Requirements'
-        },
-        buttons: [{
-          label: "View Requirements",
           action: "view_checklist",
           payload: { 
             program_ref: checklist.program_ref,
@@ -1972,33 +1892,13 @@ Example follow-up (only when needed):
             );
           }
           
-          // Get checklist from context
-          const checklist = context.checklistCards?.find(c => c.program_ref === checklistProgRef);
-          
-          if (!checklist) {
-            return this.formatResponse(
-              "Requirements for this program aren't available yet. Would you like to proceed anyway?",
-              undefined,
-              [{ label: "Proceed", action: "start_registration", variant: "accent", payload: { program_ref: checklistProgRef } }],
-              {}
-            );
-          }
-          
-          // Build prereq_checklist UI payload instead of text
-          const checklistPayload = {
-            type: "prereq_checklist",
-            title: checklist.title,
-            program_ref: checklist.program_ref,
-            prerequisites: checklist.prerequisites,
-            questions: checklist.questions,
-            deep_link: checklist.deep_link
-          };
-
-          return {
-            message: "Here are the requirements for this program:",
-            uiPayload: checklistPayload,
-            contextUpdates: {}
-          };
+          // Checklist functionality disabled
+          return this.formatResponse(
+            "Requirements preview is temporarily unavailable. Would you like to proceed with registration?",
+            undefined,
+            [{ label: "Proceed", action: "start_registration", variant: "accent", payload: { program_ref: checklistProgRef } }],
+            {}
+          );
 
         case "show_finish_options":
           // Phase 1D: Present two-persona finish options (deep-link vs agentic)
@@ -2013,10 +1913,8 @@ Example follow-up (only when needed):
             );
           }
           
-          // Get checklist from context to retrieve deep_link
-          const finishChecklist = context.checklistCards?.find(c => c.program_ref === finishProgRef);
-          const deepLink = finishChecklist?.deep_link;
-          const programTitle = finishChecklist?.title || "this program";
+          // Checklist functionality disabled - skip deep link retrieval
+          const programTitle = "this program";
           
           // Build message with two options
           const finishMessage = `🎯 **Choose How to Complete Registration**
@@ -2029,33 +1927,20 @@ I'll handle the registration for you automatically. This requires connecting you
 
 Which would you prefer?`;
 
-          // Build CTAs
-          const finishCtas: any[] = [];
-          
-          // Option 1: Deep-link (if available)
-          if (deepLink) {
-            finishCtas.push({
-              label: "Open Provider Website",
-              action: "open_link",
+          // Build CTAs (no deep link available without cache)
+          const finishCtas: any[] = [
+            {
+              label: "Let SignupAssist Finish",
+              action: "start_agentic_registration",
               variant: "accent",
-              href: deepLink
-            });
-          }
-          
-          // Option 2: Agentic flow
-          finishCtas.push({
-            label: "Let SignupAssist Finish",
-            action: "start_agentic_registration",
-            variant: "outline",
-            payload: { program_ref: finishProgRef }
-          });
-          
-          // Option 3: Cancel
-          finishCtas.push({
-            label: "Cancel",
-            action: "cancel",
-            variant: "ghost"
-          });
+              payload: { program_ref: finishProgRef }
+            },
+            {
+              label: "Cancel",
+              action: "cancel",
+              variant: "ghost"
+            }
+          ];
           
           return this.formatResponse(finishMessage, undefined, finishCtas, {});
 
@@ -3507,154 +3392,6 @@ Return JSON: {
   }
 
   /**
-   * RAILWAY CACHE + Phase 1C: Fast program discovery with enhanced checklist data
-   * Pre-login narrowing: Age → Activity → Provider → Cache lookup
-   * Returns programs, prerequisites, questions, and deep-links for checklist cards
-   * 
-   * @param orgRef - Organization reference (e.g., "blackhawk-ski")
-   * @param category - Program category (e.g., "lessons", "all")
-   * @param childAge - Child's age for filtering (optional)
-   * @param maxAgeHours - Maximum cache age in hours (default: 24)
-   * @returns Enhanced cache result with programs and checklist schemas, or null if cache miss
-   */
-  private async checkDatabaseCache(
-    orgRef: string,
-    category: string = 'all',
-    childAge?: number,
-    maxAgeHours: number = 24
-  ): Promise<CacheResult | null> {
-    if (!this.supabase) {
-      Logger.warn('[DB Cache] Supabase client not initialized, skipping cache check');
-      return null;
-    }
-
-    try {
-      // Query the full cache entry (not just RPC which returns programs_by_theme only)
-      const { data: cacheEntry, error } = await this.supabase
-        .from('cached_programs')
-        .select('*')
-        .eq('org_ref', orgRef)
-        .eq('category', category)
-        .gt('expires_at', new Date().toISOString())
-        .gte('cached_at', new Date(Date.now() - maxAgeHours * 60 * 60 * 1000).toISOString())
-        .order('cached_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (error) {
-        Logger.error('[DB Cache] Query failed', { error: error.message, orgRef, category });
-        return null;
-      }
-
-      // Cache miss
-      if (!cacheEntry || !cacheEntry.programs_by_theme || Object.keys(cacheEntry.programs_by_theme).length === 0) {
-        Logger.info('[DB Cache] Miss - triggering background refresh', { orgRef, category });
-        // Trigger background refresh (fire-and-forget)
-        this.triggerCacheRefresh(orgRef, category).catch(err => 
-          Logger.error('[DB Cache] Background refresh failed', { error: err.message })
-        );
-        return null;
-      }
-
-      // Apply age filtering to programs
-      let filteredPrograms = cacheEntry.programs_by_theme as Record<string, any[]>;
-      if (childAge) {
-        filteredPrograms = {};
-        for (const [theme, programs] of Object.entries(cacheEntry.programs_by_theme as Record<string, any[]>)) {
-          const ageFiltered = (programs as any[]).filter((program: any) => 
-            this.isAgeAppropriate(program, childAge)
-          );
-          if (ageFiltered.length > 0) {
-            filteredPrograms[theme] = ageFiltered;
-          }
-        }
-      }
-
-      // Extract flat list of programs for checklist cards
-      const allPrograms = Object.values(filteredPrograms).flat();
-
-      // Build checklist cards from enhanced cache data
-      const checklistCards = this.buildChecklistCards(
-        allPrograms,
-        (cacheEntry.prerequisites_schema || {}) as Record<string, any>,
-        (cacheEntry.questions_schema || {}) as Record<string, any>,
-        (cacheEntry.deep_links || {}) as Record<string, any>
-      );
-
-      Logger.info('[DB Cache] ✓ Enhanced hit', {
-        orgRef,
-        category,
-        childAge: childAge ? `age ${childAge}` : 'all ages',
-        themes: Object.keys(filteredPrograms).length,
-        programCount: allPrograms.length,
-        checklistCards: checklistCards.length
-      });
-
-      return {
-        hit: true,
-        programs: allPrograms,
-        checklistCards,
-        timestamp: cacheEntry.cached_at
-      };
-    } catch (error: any) {
-      Logger.error('[DB Cache] Unexpected error', { error: error.message, orgRef, category });
-      return null;
-    }
-  }
-
-  /**
-   * Phase 1C: Build checklist cards from cached prerequisites and questions
-   * 
-   * @param programs - List of programs
-   * @param prerequisitesSchema - Prerequisites per program
-   * @param questionsSchema - Questions per program
-   * @param deepLinksSchema - Deep-links per program
-   * @returns Array of checklist cards for pre-login display
-   */
-  private buildChecklistCards(
-    programs: any[],
-    prerequisitesSchema: Record<string, any>,
-    questionsSchema: Record<string, any>,
-    deepLinksSchema: Record<string, any>
-  ): ChecklistCard[] {
-    const cards: ChecklistCard[] = [];
-
-    for (const program of programs) {
-      const programRef = program.program_ref;
-      const prerequisites = prerequisitesSchema[programRef] || {};
-      const questions = questionsSchema[programRef]?.fields || [];
-      const deepLink = deepLinksSchema[programRef]?.registration_start || '';
-
-      // Skip if no checklist data available
-      if (Object.keys(prerequisites).length === 0 && questions.length === 0) {
-        Logger.warn(`[Checklist] No checklist data for program: ${programRef}`);
-        continue;
-      }
-
-      const card: ChecklistCard = {
-        type: 'checklist',
-        title: `${program.title} - Requirements`,
-        program_ref: programRef,
-        org_ref: program.org_ref,
-        theme: program.theme,
-        prerequisites,
-        questions,
-        deep_link: deepLink,
-        cta: {
-          label: 'Ready to proceed',
-          action: 'show_finish_options',
-          data: { program_ref: programRef }
-        }
-      };
-
-      cards.push(card);
-    }
-
-    Logger.info(`[Checklist] Built ${cards.length} checklist cards from ${programs.length} programs`);
-    return cards;
-  }
-
-  /**
    * Check if program is age-appropriate based on age range in description
    */
   private isAgeAppropriate(program: any, childAge: number): boolean {
@@ -3690,86 +3427,6 @@ Return JSON: {
     return true;
   }
 
-  /**
-   * Trigger background cache refresh for a specific org/category (fire-and-forget)
-   */
-  private async triggerCacheRefresh(orgRef: string, category: string): Promise<void> {
-    Logger.info('[DB Cache] Triggering background refresh', { orgRef, category });
-    
-    // This would call the refresh-program-cache edge function
-    // For now, just log the intent - actual implementation depends on edge function setup
-    // TODO: Implement actual background refresh trigger when ready
-    
-    // Example implementation:
-    // await this.supabase?.functions.invoke('refresh-program-cache', {
-    //   body: { orgRef, category }
-    // });
-  }
-
-  /**
-   * TASK 4: Upsert programs to database cache
-   * Stores programs in Supabase cached_programs table via upsert_cached_programs RPC
-   * 
-   * TYPE SAFETY NOTE: This RPC call depends on the Database type from
-   * src/integrations/supabase/types.ts. If you see type errors like "Argument is not assignable to parameter of type 'never'":
-   * 1. Verify the function exists: SELECT * FROM pg_proc WHERE proname = 'upsert_cached_programs'
-   * 2. Regenerate types: npm run types:generate
-   * 3. Verify the function signature matches: (p_org_ref text, p_category text, p_programs_by_theme jsonb, p_metadata jsonb, p_ttl_hours int)
-   * 4. Rebuild the project to pick up the new types
-   * 
-   * @param orgRef - Organization reference (e.g., "blackhawk-ski")
-   * @param category - Program category (e.g., "lessons", "all")
-   * @param programsByTheme - Programs grouped by theme
-   * @param metadata - Additional metadata about the cache entry
-   * @param ttlHours - Time-to-live in hours (default: 24)
-   */
-  private async upsertDatabaseCache(
-    orgRef: string,
-    category: string,
-    programsByTheme: Record<string, any[]>,
-    metadata: Record<string, any> = {},
-    ttlHours: number = 24
-  ): Promise<void> {
-    if (!this.supabase) {
-      Logger.warn('[DB Cache] Supabase client not initialized, skipping cache upsert');
-      return;
-    }
-
-    try {
-      const { data, error } = await this.supabase.rpc('upsert_cached_programs', {
-        p_org_ref: orgRef,
-        p_category: category,
-        p_programs_by_theme: programsByTheme,
-        p_metadata: metadata,
-        p_ttl_hours: ttlHours
-      });
-
-      if (error) {
-        Logger.error('[DB Cache] Upsert failed', { 
-          error: error.message, 
-          orgRef, 
-          category,
-          themeCount: Object.keys(programsByTheme).length
-        });
-        return;
-      }
-
-      Logger.info('[DB Cache] Upserted', {
-        orgRef,
-        category,
-        cacheId: data,
-        themes: Object.keys(programsByTheme).length,
-        programCount: Object.values(programsByTheme).flat().length,
-        ttlHours
-      });
-    } catch (error: any) {
-      Logger.error('[DB Cache] Unexpected upsert error', { 
-        error: error.message, 
-        orgRef, 
-        category 
-      });
-    }
-  }
 }
 
 export default AIOrchestrator;
