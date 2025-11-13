@@ -21,6 +21,8 @@ import { PROMPT_VERSION } from '../ai/AIOrchestrator.js';
 import { getReadiness } from './utils/pageReadinessRegistry.js';
 import { UrlBuilder } from '../../providers/skiclubpro/lib/index.js';
 import { resolveBaseUrl } from './utils/resolveBaseUrl.js';
+import { getCachedPrograms, getCachedFieldSchema, transformCachedProgramsToResponse } from '../lib/cacheHelpers.js';
+import { findProgramsCacheFirst, discoverFieldsCacheFirst } from '../lib/cacheFirstWrapper.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -1291,7 +1293,10 @@ function getCandidatePathsForIntent(intent?: {
 }
 
 export const skiClubProTools = {
-  'scp.discover_required_fields': scpDiscoverRequiredFields,
+  // Phase 3: Wrapped with cache-first logic for ChatGPT conversations
+  'scp.discover_required_fields': async (args: any) => {
+    return await discoverFieldsCacheFirst(args, scpDiscoverRequiredFields);
+  },
 
   'scp.check_account_status': async (args: { credential_id: string; org_ref?: string; email?: string; mandate_id?: string; plan_execution_id?: string }): Promise<ProviderResponse> => {
     // Stub implementation - returns expected format for edge function
@@ -1794,47 +1799,51 @@ export const skiClubProTools = {
     }
   },
 
-    'scp.find_programs': async (args: {
-      org_ref?: string; 
-      query?: string; 
-      mandate_id?: string; 
-      plan_execution_id?: string; 
-      plan_id?: string;
-      credential_id?: string; 
-      user_jwt?: string; 
-      user_id?: string;
-      session_token?: string;
-      mandate_jws?: string;
-      force_login?: boolean;
-      category?: string;
-      filter_program_ref?: string;  // Phase 3: Fast-path target program reference
-      filter_mode?: 'single' | 'full';  // Phase 3: Extraction mode
-      fallback_to_full?: boolean;  // Phase 3: Fallback to full scrape if target not found
-      filter_day?: string;  // TASK 2: Schedule filter - day of week
-      filter_time?: string;  // TASK 2: Schedule filter - time of day
-      child_age?: string;  // Age filter for programs
-    }): Promise<ProviderResponse<{ programs: any[]; programs_by_theme?: Record<string, any[]>; session_token?: string }>> => {
-      const orgRef = args.org_ref || 'blackhawk-ski-club';
-      const category = args.category || 'all';
-      const isFastPath = args.filter_mode === 'single' && !!args.filter_program_ref;
+  // Phase 3: Wrapped with cache-first logic for ChatGPT conversations
+  'scp.find_programs': async (args: {
+    org_ref?: string; 
+    query?: string; 
+    mandate_id?: string; 
+    plan_execution_id?: string; 
+    plan_id?: string;
+    credential_id?: string; 
+    user_jwt?: string; 
+    user_id?: string;
+    session_token?: string;
+    mandate_jws?: string;
+    force_login?: boolean;
+    category?: string;
+    filter_program_ref?: string;
+    filter_mode?: 'single' | 'full';
+    fallback_to_full?: boolean;
+    filter_day?: string;
+    filter_time?: string;
+    child_age?: string;
+    skipCache?: boolean;  // Phase 3: Force live scraping
+  }): Promise<ProviderResponse<{ programs: any[]; programs_by_theme?: Record<string, any[]>; session_token?: string }>> => {
+    // Phase 3: Cache-first wrapper
+    const originalHandler = async (handlerArgs: any) => {
+      const orgRef = handlerArgs.org_ref || 'blackhawk-ski-club';
+      const category = handlerArgs.category || 'all';
+      const isFastPath = handlerArgs.filter_mode === 'single' && !!handlerArgs.filter_program_ref;
       
-      // PATCH #3: Enhanced debug logging for tool execution
+      // ... rest of original scp.find_programs logic stays the same
       console.log(`[scp.find_programs][DEBUG] ====== Tool Execution Start ======`);
       console.log(`[scp.find_programs][DEBUG] org_ref: ${orgRef}`);
       console.log(`[scp.find_programs][DEBUG] category: ${category}`);
       
       console.log('[scp.find_programs] PACK-05: Incoming args:', {
-        org_ref: args.org_ref,
-        credential_id: args.credential_id,
-        session_token: args.session_token,
+        org_ref: handlerArgs.org_ref,
+        credential_id: handlerArgs.credential_id,
+        session_token: handlerArgs.session_token,
         category,
-        user_jwt: !!args.user_jwt,
+        user_jwt: !!handlerArgs.user_jwt,
         fastPath: isFastPath,
-        targetRef: args.filter_program_ref
+        targetRef: handlerArgs.filter_program_ref
       });
     
     // Validate user_jwt when credential_id is provided
-    if (args.credential_id && !args.user_jwt) {
+    if (handlerArgs.credential_id && !handlerArgs.user_jwt) {
       const errorMsg = 'Missing user_jwt: orchestrator must pass valid JWT for credential lookup';
       console.error('[scp.find_programs]', errorMsg);
       return {
@@ -2163,17 +2172,10 @@ export const skiClubProTools = {
         program.title.toLowerCase().includes(query) ||
         program.description.toLowerCase().includes(query)
       );
-    }
-    
-    return {
-      success: false,
-      login_status: 'failed',
-      data: {
-        programs: filteredPrograms
-      },
-      error: 'No credentials provided - showing static fallback data',
-      timestamp: new Date().toISOString()
     };
+    
+    // Phase 3: Use cache-first wrapper
+    return await findProgramsCacheFirst(args, originalHandler);
   },
 
   'scp.pay': async (args: any): Promise<ProviderResponse> => {
