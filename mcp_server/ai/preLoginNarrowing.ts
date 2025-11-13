@@ -227,22 +227,42 @@ export function mapIntentToAAP(
   intent: { provider?: string; category?: string; childAge?: number },
   context?: Partial<AAPTriad>
 ): AAPTriad {
+  console.log('[mapIntentToAAP] Input:', { 
+    intent: {
+      provider: intent.provider,
+      category: intent.category,
+      childAge: intent.childAge
+    }, 
+    context: {
+      provider: context?.provider,
+      activity: context?.activity,
+      age: context?.age
+    }
+  });
+  
+  // PRIORITY: New extraction takes precedence, fallback to existing context
   const age = intent.childAge || context?.age;
   const activity = intent.category || context?.activity;
   const provider = intent.provider || context?.provider;
+  
+  console.log('[mapIntentToAAP] Merged result:', { age, activity, provider });
   
   const missing: Array<'age' | 'activity' | 'provider'> = [];
   if (!age) missing.push('age');
   if (!activity) missing.push('activity');
   if (!provider) missing.push('provider');
   
-  return {
+  const result = {
     age,
     activity,
     provider,
     complete: missing.length === 0,
     missing,
   };
+  
+  console.log('[mapIntentToAAP] Final AAP triad:', result);
+  
+  return result;
 }
 
 /**
