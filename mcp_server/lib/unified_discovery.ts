@@ -468,8 +468,8 @@ export async function discoverProgramFieldsMultiStep(
     
     // Check for password protection
     const hasPasswordField = await page.locator('input[type="password"]').count() > 0;
-    const bodyText = await page.textContent('body').catch(() => '');
-    const hasPasswordText = /password\s+required|requires?\s+password|protected\s+program/i.test(bodyText);
+    const bodyTextForPasswordCheck = await page.textContent('body').catch(() => '');
+    const hasPasswordText = /password\s+required|requires?\s+password|protected\s+program/i.test(bodyTextForPasswordCheck);
     
     if (hasPasswordField || hasPasswordText) {
       console.log('[ProgramMultiStep] ⚠️  Password protection detected');

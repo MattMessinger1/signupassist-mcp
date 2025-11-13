@@ -84,6 +84,8 @@ export interface FieldSchema {
     field_count: number;
     categories: string[];
     discovered_at: string;
+    password_protected?: boolean;
+    password_hint?: string;
   };
 }
 
