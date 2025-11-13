@@ -299,13 +299,13 @@ class AIOrchestrator {
         const aapQuestion = buildAAPQuestion(aapTriad);
         if (aapQuestion) {
           Logger.info(`[A-A-P Triage] Missing ${aapTriad.missing.join(', ')}`, { sessionId, aapTriad, existingContext: context });
-          // Store partial A-A-P data in context (including provider if found)
+          // CRITICAL: Preserve ALL fields from context if not in current triad
           const contextUpdate: any = {
-            childAge: aapTriad.age,
-            category: aapTriad.activity,
+            childAge: aapTriad.age || context.childAge,  // Preserve existing age
+            category: aapTriad.activity || context.category,  // Preserve existing activity
             aapIncomplete: true
           };
-          // CRITICAL: Preserve provider from EITHER triad OR existing context
+          // Preserve provider from EITHER triad OR existing context
           if (aapTriad.provider) {
             contextUpdate.provider = { name: aapTriad.provider };
             Logger.info(`[A-A-P] Saving provider from triad: ${aapTriad.provider}`, { sessionId });
@@ -322,12 +322,13 @@ class AIOrchestrator {
       // A-A-P Complete: Store normalized values in context
       if (aapTriad.complete) {
         Logger.info('[A-A-P Complete]', { sessionId, triad: aapTriad, existingContext: context });
+        // CRITICAL: Preserve ALL fields from context if not in current triad
         const contextUpdate: any = {
-          childAge: aapTriad.age,
-          category: aapTriad.activity,
+          childAge: aapTriad.age || context.childAge,  // Preserve existing age
+          category: aapTriad.activity || context.category,  // Preserve existing activity
           aapComplete: true
         };
-        // CRITICAL: Preserve provider from EITHER triad OR existing context
+        // Preserve provider from EITHER triad OR existing context
         if (aapTriad.provider) {
           contextUpdate.provider = { name: aapTriad.provider };
           Logger.info(`[A-A-P Complete] Saving provider from triad: ${aapTriad.provider}`, { sessionId });
