@@ -2282,7 +2282,10 @@ export const skiClubProTools = {
           
           console.log(`[scp:list_children] Found ${children.length} children`);
           
-          return { children };
+          return { 
+            success: true,
+            children 
+          };
           
         } catch (error) {
           console.error('[scp:list_children] Failed:', error);
@@ -2342,6 +2345,7 @@ export const skiClubProTools = {
       if (loginResult.login_status === 'failed') {
         console.error('[scp:check_prerequisites] Login failed');
         return {
+          success: false,
           login_status: 'failed',
           account: { ok: false, summary: 'Login failed' },
           membership: { ok: null, summary: 'Not checked - login failed' },
@@ -2391,6 +2395,7 @@ export const skiClubProTools = {
       }
       
       return {
+        success: true,
         login_status: 'success',
         // Legacy shape for current UI:
         account: toCheck('account.login'),
@@ -2406,6 +2411,7 @@ export const skiClubProTools = {
     } catch (error) {
       console.error('[scp:check_prerequisites] Failed:', error);
       return {
+        success: false,
         login_status: 'failed',
         account: { ok: false, summary: 'Error occurred' },
         membership: { ok: null, summary: 'Not checked - error occurred' },
