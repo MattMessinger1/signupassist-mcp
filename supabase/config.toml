@@ -35,3 +35,6 @@ verify_jwt = false
 
 [functions.delete-test-cron]
 verify_jwt = false
+
+[functions.warm-cache-authenticated]
+verify_jwt = false
