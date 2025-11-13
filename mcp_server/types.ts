@@ -4,8 +4,6 @@
  * No duplicate definitions allowed across the codebase.
  */
 
-import type { ChecklistCard } from './types/cacheSchemas';
-
 // ============================================================================
 // Core Domain Types
 // ============================================================================
@@ -77,7 +75,6 @@ export interface SessionContext {
   userType?: 'first_time_parent' | 'returning_user' | 'unknown';
   isNewUser?: boolean;
   availablePrograms?: any[];
-  checklistCards?: ChecklistCard[];
   displayedProgramIds?: string[];
   remainingProgramIds?: string[];
   programSummary?: {

@@ -2174,7 +2174,7 @@ export const skiClubProTools = {
       success: true,
       programs: filteredPrograms,
       programs_by_theme: { 'Static Programs': filteredPrograms },
-      login_status: 'not_required',
+      login_status: 'success' as const,
       timestamp: new Date().toISOString()
     };
   };
