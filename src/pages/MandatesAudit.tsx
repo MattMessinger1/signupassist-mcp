@@ -18,6 +18,7 @@ import { CreateTestMandate } from '@/components/CreateTestMandate';
 import { JWSInspector } from '@/components/JWSInspector';
 import { MockAuditGenerator } from '@/components/MockAuditGenerator';
 import { CacheWarmingPanel } from '@/components/CacheWarmingPanel';
+import { Phase3TestingPanel } from '@/components/Phase3TestingPanel';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -604,6 +605,7 @@ export default function MandatesAudit() {
 
             <TabsContent value="testing" className="space-y-4 mt-6">
               <div className="grid grid-cols-1 gap-6">
+                <Phase3TestingPanel />
                 <CacheWarmingPanel />
                 <CreateTestMandate onMandateCreated={fetchMandatesAndAudits} />
                 <JWSInspector />
