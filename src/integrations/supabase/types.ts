@@ -701,6 +701,45 @@ export type Database = {
           },
         ]
       }
+      program_discovery_status: {
+        Row: {
+          consecutive_failures: number
+          created_at: string
+          discovery_status: string
+          id: string
+          last_attempt_at: string | null
+          last_error: string | null
+          org_ref: string
+          program_ref: string
+          provider: string
+          updated_at: string
+        }
+        Insert: {
+          consecutive_failures?: number
+          created_at?: string
+          discovery_status?: string
+          id?: string
+          last_attempt_at?: string | null
+          last_error?: string | null
+          org_ref: string
+          program_ref: string
+          provider?: string
+          updated_at?: string
+        }
+        Update: {
+          consecutive_failures?: number
+          created_at?: string
+          discovery_status?: string
+          id?: string
+          last_attempt_at?: string | null
+          last_error?: string | null
+          org_ref?: string
+          program_ref?: string
+          provider?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       program_fingerprints: {
         Row: {
           form_fingerprint: string
@@ -925,6 +964,10 @@ export type Database = {
           p_stage: string
         }
         Returns: string
+      }
+      validate_program_url: {
+        Args: { org_ref: string; url: string }
+        Returns: boolean
       }
     }
     Enums: {

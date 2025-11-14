@@ -368,13 +368,19 @@ class AIOrchestrator {
           askedFlags
         );
         
+        const locationHint = triageResult.aap?.provider?.locationHint;
+        const has_location = Boolean(
+          locationHint?.city || locationHint?.region || locationHint?.country ||
+          (typeof locationHint?.lat === 'number' && typeof locationHint?.lng === 'number')
+        );
+        
         Logger.info('[NEW AAP TRIAGE COMPLETE]', {
           sessionId,
           aap: triageResult.aap,
           provider_mode: triageResult.aap?.provider?.mode,
-          has_location: !!triageResult.aap?.provider?.locationHint,
-          location_source: triageResult.aap?.provider?.locationHint?.source,
-          location_city: triageResult.aap?.provider?.locationHint?.city,
+          has_location,
+          location_source: locationHint?.source,
+          location_city: locationHint?.city,
           followup_questions: triageResult.followup_questions,
           ready_for_discovery: triageResult.ready_for_discovery,
           assumptions: triageResult.assumptions
