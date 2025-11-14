@@ -595,17 +595,19 @@ function ChatTestHarnessContent() {
           ...prev,
           category: intent.category || prev.category,
           childAge: intent.childAge || prev.childAge,
+          provider: intent.provider || prev.provider, // AAP context: preserve provider
         }));
       }
       
-      // Call orchestrator with intent parameters
+      // Call orchestrator with intent parameters INCLUDING PROVIDER
       const response = await sendMessage(
         userInput, 
         sessionId, 
         userLocation || undefined, 
         getUserJwt(),
         intent.category || state.category,
-        intent.childAge || state.childAge
+        intent.childAge || state.childAge,
+        intent.provider || state.provider // AAP: pass provider to backend
       );
       
       console.log('[HARNESS] Orchestrator response:', response);
@@ -620,7 +622,12 @@ function ChatTestHarnessContent() {
       
       // Update local state if context changed
       if (response.contextUpdates) {
-        setState(prev => ({ ...prev, ...response.contextUpdates }));
+        setState(prev => ({ 
+          ...prev, 
+          ...response.contextUpdates,
+          // AAP: Extract provider from contextUpdates
+          provider: response.contextUpdates.provider?.name || prev.provider
+        }));
       }
     } catch (error: any) {
       console.error('[HARNESS] Error handling user input:', error);
