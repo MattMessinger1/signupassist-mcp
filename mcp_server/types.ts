@@ -95,6 +95,12 @@ export interface SessionContext {
     level?: "beginner" | "intermediate" | "advanced" | null;
     keywords?: string[];
   };
+  
+  // NEW AAP System (Phase 1+2)
+  aap?: import("./types/aap.js").AAPTriad;
+  aap_asked_flags?: import("./types/aap.js").AAPAskedFlags;
+  aap_discovery_plan?: import("./types/aap.js").DiscoveryPlan;
+  
   extractedFields?: {
     fields: Array<{
       id: string;

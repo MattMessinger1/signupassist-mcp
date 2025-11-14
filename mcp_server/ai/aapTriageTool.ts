@@ -1,0 +1,131 @@
+/**
+ * AAP Triage Tool - OpenAI Function Call
+ * Extracts and merges Age-Activity-Provider without losing context
+ */
+
+import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
+import { AAPTriageResult, AAPAskedFlags, AAPTriad } from "../types/aap.js";
+import Logger from "../utils/logger.js";
+
+const TRIAGE_AAP_SYSTEM_PROMPT = `You maintain the A‑A‑P triad (Age, Activity, Provider) for the current signup flow.
+
+You receive:
+- recent_messages: the latest 1–3 parent messages as plain text.
+- existing_aap: the current A‑A‑P triad object from session (may be partial).
+- request_hints: optional hints from the frontend (category, childAge, provider).
+- asked_flags: which A‑A‑P follow‑up questions have already been asked in this flow
+
+Your job:
+1) Merge new information into existing_aap without losing anything.
+2) Decide which (if any) A‑A‑P follow‑up questions are still needed.
+3) Decide if we're ready to start showing programs (ready_for_discovery).
+
+MERGE RULES:
+- Treat existing_aap as the baseline; it came from earlier turns or profile.
+- NEVER clear a field whose status is "known".
+- You may refine it if the new info is strictly more specific (e.g., "elementary school" → 9 years).
+- Use request_hints as additional evidence for A‑A‑P fields (age, activity, provider).
+
+Infer:
+
+AGE
+- Look for explicit ages: "9", "she's 9", "9 years old".
+- Look for grades: "2nd grade", "3rd grader", "kindergartener".
+- Map grades to approximate years when helpful, and record either years or a range.
+- If multiple kids are mentioned, focus on the one clearly tied to this signup request.
+
+ACTIVITY
+- Look for what they want to sign up for: "ski lessons", "after‑school care", "swim team", "soccer clinic".
+- Map to a simple category if possible: "skiing", "swimming", "soccer", "music".
+
+PROVIDER
+- Look for provider names: "Blackhawk ski", "YMCA", "Alpine Ridge Ski School", etc.
+- If the orchestrator gives you an org_ref mapping, include it; otherwise store the raw name.
+
+FOLLOW‑UP QUESTIONS:
+A field is "missing" if its status is "unknown".
+
+- For each missing field (Age, Activity, Provider):
+  - If asked_flags for that field is false: You MAY propose ONE follow‑up question for that field.
+  - If asked_flags for that field is true: Do NOT propose another question; assume the parent was unable or unwilling to answer.
+
+- Questions must be short, parent‑friendly, and target one field at a time:
+  - Age: "How old is your child, or what grade are they in?"
+  - Activity: "What kind of activity are you looking for (for example: ski lessons, swim, or music)?"
+  - Provider: "Do you already have a specific provider in mind, or should I show you a few options first?"
+
+- If the message shows the parent is unsure ("not sure", "no idea yet"):
+  - Do NOT propose another question for that field.
+  - Leave status = "unknown" and note the uncertainty in assumptions.
+
+READY FOR DISCOVERY:
+Set ready_for_discovery as:
+- true if: Age is known OR clearly bounded by a reasonable range (e.g., "elementary school"), AND Activity OR Provider is known.
+- false otherwise.`;
+
+export async function triageAAP(
+  recentMessages: Array<{ role: string; content: string }>,
+  existingAAP: AAPTriad | null,
+  requestHints: { category?: string; childAge?: number; provider?: string },
+  askedFlags: AAPAskedFlags
+): Promise<AAPTriageResult> {
+  
+  Logger.info('[AAP Triage] Input:', { 
+    messageCount: recentMessages.length,
+    existingAAP,
+    requestHints,
+    askedFlags
+  });
+
+  try {
+    const result = await callOpenAI_JSON({
+      model: "gpt-4o-mini",
+      system: TRIAGE_AAP_SYSTEM_PROMPT,
+      user: {
+        recent_messages: recentMessages,
+        existing_aap: existingAAP,
+        request_hints: requestHints,
+        asked_flags: askedFlags
+      },
+      maxTokens: 500,
+      temperature: 0.1,
+      useResponsesAPI: false
+    });
+
+    Logger.info('[AAP Triage] Result:', result);
+    return result as AAPTriageResult;
+
+  } catch (error) {
+    Logger.error('[AAP Triage] Error:', error);
+    
+    // Fallback: preserve existing AAP, ask for everything missing
+    return {
+      aap: existingAAP || createEmptyAAP(),
+      followup_questions: buildFallbackQuestions(existingAAP, askedFlags),
+      assumptions: ['AI triage failed, using safe defaults'],
+      ready_for_discovery: false
+    };
+  }
+}
+
+function createEmptyAAP(): AAPTriad {
+  return {
+    age: { status: 'unknown', raw: null, normalized: null, source: 'assumed' },
+    activity: { status: 'unknown', raw: null, normalized: null, source: 'assumed' },
+    provider: { status: 'unknown', raw: null, normalized: null, source: 'assumed' }
+  };
+}
+
+function buildFallbackQuestions(aap: AAPTriad | null, asked: AAPAskedFlags): string[] {
+  const questions: string[] = [];
+  if ((!aap?.age || aap.age.status === 'unknown') && !asked.asked_age) {
+    questions.push("How old is your child, or what grade are they in?");
+  }
+  if ((!aap?.activity || aap.activity.status === 'unknown') && !asked.asked_activity) {
+    questions.push("What kind of activity are you looking for (for example: ski lessons, swim, or music)?");
+  }
+  if ((!aap?.provider || aap.provider.status === 'unknown') && !asked.asked_provider) {
+    questions.push("Do you already have a specific provider in mind, or should I show you a few options first?");
+  }
+  return questions;
+}

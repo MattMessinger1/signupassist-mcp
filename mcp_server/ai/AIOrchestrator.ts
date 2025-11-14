@@ -19,10 +19,22 @@ import type { Database } from '../../src/integrations/supabase/types.js';
 import { parseAAPTriad, buildAAPQuestion, buildNaturalAAPQuestion, buildCacheQuery, mapIntentToAAP } from "./preLoginNarrowing.js";
 import { parseIntentWithAI } from "../lib/aiIntentParser.js";
 
+// NEW AAP System (Phase 1+2)
+import { triageAAP } from './aapTriageTool.js';
+import { planProgramDiscovery } from './aapDiscoveryPlanner.js';
+import { AAPTriad, AAPAskedFlags } from '../types/aap.js';
+
 /**
  * Prompt version tracking for tone changes
  */
 export const PROMPT_VERSION = "v1.0.0";
+
+/**
+ * Feature Flag: Use New AAP System
+ * Set to true to enable structured AAP triad with triage tool
+ * Set to false to use legacy parseIntentWithAI flow
+ */
+const USE_NEW_AAP_SYSTEM = process.env.USE_NEW_AAP === 'true' || false;
 
 /**
  * PRODUCTION_SYSTEM_PROMPT
@@ -287,82 +299,195 @@ class AIOrchestrator {
         } as any);
       }
       
-      // A-A-P Triage: AI-Powered Smart Parsing
-      Logger.info(`[A-A-P AI] Parsing intent from message: "${userMessage}"`, { sessionId, existingContext: context });
+      // ======================================================================
+      // A-A-P TRIAGE: Feature Flag Switch
+      // ======================================================================
       
-      // Use AI to parse intent (handles typos, variations, informal language)
-      let aiIntent;
-      try {
-        aiIntent = await parseIntentWithAI(userMessage);
-        Logger.info(`[A-A-P AI EXTRACTED]`, { 
-          sessionId, 
-          userMessage,
-          extracted: {
+      if (USE_NEW_AAP_SYSTEM) {
+        // NEW SYSTEM: Structured AAP Triad with Triage Tool
+        Logger.info(`[NEW AAP] Using structured AAP triage system`, { sessionId });
+        
+        // Get conversation history (last 3 messages max)
+        const recentMessages = (context.conversationHistory || []).slice(-3);
+        recentMessages.push({ role: 'user', content: userMessage });
+        
+        // Track which AAP questions we've already asked
+        const askedFlags: AAPAskedFlags = context.aap_asked_flags || {
+          asked_age: false,
+          asked_activity: false,
+          asked_provider: false
+        };
+        
+        // Run AAP triage tool
+        const triageResult = await triageAAP(
+          recentMessages,
+          context.aap || null,
+          { category, childAge, provider },
+          askedFlags
+        );
+        
+        Logger.info('[NEW AAP TRIAGE COMPLETE]', {
+          sessionId,
+          aap: triageResult.aap,
+          followup_questions: triageResult.followup_questions,
+          ready_for_discovery: triageResult.ready_for_discovery,
+          assumptions: triageResult.assumptions
+        });
+        
+        // Update session with AAP result
+        await this.updateContext(sessionId, {
+          aap: triageResult.aap
+        });
+        
+        // Mark which questions we're asking NOW (prevent loops)
+        if (triageResult.followup_questions.length > 0) {
+          const question = triageResult.followup_questions[0];
+          if (question.toLowerCase().includes('age') || question.toLowerCase().includes('grade')) {
+            askedFlags.asked_age = true;
+          }
+          if (question.toLowerCase().includes('activity')) {
+            askedFlags.asked_activity = true;
+          }
+          if (question.toLowerCase().includes('provider') || question.toLowerCase().includes('organization')) {
+            askedFlags.asked_provider = true;
+          }
+          await this.updateContext(sessionId, { aap_asked_flags: askedFlags });
+          
+          // Ask the question and stop
+          return this.formatResponse(question, undefined, undefined, {
+            aap: triageResult.aap,
+            ready_for_discovery: false
+          });
+        }
+        
+        // If ready for discovery and user wants programs, plan the feed query
+        if (triageResult.ready_for_discovery) {
+          const discoveryPlan = await planProgramDiscovery(
+            triageResult.aap,
+            userMessage
+          );
+          await this.updateContext(sessionId, { aap_discovery_plan: discoveryPlan });
+          
+          Logger.info('[NEW AAP DISCOVERY PLAN]', { sessionId, plan: discoveryPlan });
+          
+          // Update legacy context fields for compatibility
+          await this.updateContext(sessionId, {
+            childAge: triageResult.aap.age?.normalized?.years || context.childAge,
+            category: triageResult.aap.activity?.normalized?.category || context.category,
+            provider: triageResult.aap.provider?.normalized?.org_ref 
+              ? { name: triageResult.aap.provider.raw || '', orgRef: triageResult.aap.provider.normalized.org_ref }
+              : context.provider
+          });
+        }
+        
+      } else {
+        // OLD SYSTEM: Legacy parseIntentWithAI flow
+        Logger.info(`[LEGACY AAP] Using parseIntentWithAI flow`, { sessionId });
+        
+        // Use AI to parse intent (handles typos, variations, informal language)
+        let aiIntent;
+        try {
+          aiIntent = await parseIntentWithAI(userMessage);
+          Logger.info(`[A-A-P AI EXTRACTED]`, { 
+            sessionId, 
+            userMessage,
+            extracted: {
+              provider: aiIntent.provider,
+              category: aiIntent.category,
+              childAge: aiIntent.childAge,
+              hasIntent: aiIntent.hasIntent
+            }
+          });
+        } catch (error: any) {
+          Logger.warn(`[A-A-P AI] Parsing failed, using fallback:`, error.message);
+          // Fallback to regex-based parsing
+          aiIntent = {
+            provider: undefined,
+            category: undefined,
+            childAge: undefined,
+            hasIntent: false
+          };
+        }
+        
+        // Map AI intent to AAP format, preserving existing context
+        Logger.info(`[A-A-P CONTEXT MERGE] Before merge:`, {
+          sessionId,
+          existingContext: {
+            provider: context.provider?.name,
+            category: context.category,
+            childAge: context.childAge
+          },
+          aiIntent: {
             provider: aiIntent.provider,
             category: aiIntent.category,
-            childAge: aiIntent.childAge,
-            hasIntent: aiIntent.hasIntent
+            childAge: aiIntent.childAge
           }
         });
-      } catch (error: any) {
-        Logger.warn(`[A-A-P AI] Parsing failed, using fallback:`, error.message);
-        // Fallback to regex-based parsing
-        aiIntent = {
-          provider: undefined,
-          category: undefined,
-          childAge: undefined,
-          hasIntent: false
-        };
-      }
-      
-      // Map AI intent to AAP format, preserving existing context
-      Logger.info(`[A-A-P CONTEXT MERGE] Before merge:`, {
-        sessionId,
-        existingContext: {
-          provider: context.provider?.name,
-          category: context.category,
-          childAge: context.childAge
-        },
-        aiIntent: {
-          provider: aiIntent.provider,
-          category: aiIntent.category,
-          childAge: aiIntent.childAge
+        
+        const aapTriad = mapIntentToAAP(aiIntent, {
+          age: context.childAge,
+          activity: context.category,
+          provider: context.provider?.name
+        });
+        
+        Logger.info(`[A-A-P CONTEXT MERGE] After merge:`, { 
+          sessionId, 
+          resultTriad: aapTriad,
+          complete: aapTriad.complete,
+          missing: aapTriad.missing
+        });
+        
+        if (!aapTriad.complete) {
+          // Use AI to generate natural, contextual question
+          const aapQuestion = await buildNaturalAAPQuestion(aapTriad, userMessage);
+          if (aapQuestion) {
+            Logger.info(`[A-A-P AI Triage] Missing ${aapTriad.missing.join(', ')}`, { sessionId, aapTriad, existingContext: context });
+            // CRITICAL: Preserve ALL fields from context if not in current triad
+            const contextUpdate: any = {
+              childAge: aapTriad.age || context.childAge,  // Preserve existing age
+              category: aapTriad.activity || context.category,  // Preserve existing activity
+              aapIncomplete: true
+            };
+            // Preserve provider from EITHER triad OR existing context
+            if (aapTriad.provider) {
+              contextUpdate.provider = { name: aapTriad.provider };
+              Logger.info(`[A-A-P AI] Saving provider from triad: ${aapTriad.provider}`, { sessionId });
+            } else if (context.provider) {
+              contextUpdate.provider = context.provider;
+              Logger.info(`[A-A-P AI] Preserving provider from context: ${context.provider.name}`, { sessionId });
+            }
+            Logger.info(`[A-A-P CONTEXT SAVED] Incomplete - saving partial context:`, { 
+              sessionId, 
+              contextUpdate,
+              fullContext: {
+                childAge: this.sessions[sessionId]?.childAge,
+                category: this.sessions[sessionId]?.category,
+                provider: this.sessions[sessionId]?.provider
+              }
+            });
+            await this.updateContext(sessionId, contextUpdate);
+            return this.formatResponse(aapQuestion, undefined, undefined, {});
+          }
         }
-      });
-      
-      const aapTriad = mapIntentToAAP(aiIntent, {
-        age: context.childAge,
-        activity: context.category,
-        provider: context.provider?.name
-      });
-      
-      Logger.info(`[A-A-P CONTEXT MERGE] After merge:`, { 
-        sessionId, 
-        resultTriad: aapTriad,
-        complete: aapTriad.complete,
-        missing: aapTriad.missing
-      });
-      
-      if (!aapTriad.complete) {
-        // Use AI to generate natural, contextual question
-        const aapQuestion = await buildNaturalAAPQuestion(aapTriad, userMessage);
-        if (aapQuestion) {
-          Logger.info(`[A-A-P AI Triage] Missing ${aapTriad.missing.join(', ')}`, { sessionId, aapTriad, existingContext: context });
+        
+        // A-A-P Complete: Store normalized values in context
+        if (aapTriad.complete) {
+          Logger.info('[A-A-P AI Complete]', { sessionId, triad: aapTriad, existingContext: context });
           // CRITICAL: Preserve ALL fields from context if not in current triad
           const contextUpdate: any = {
             childAge: aapTriad.age || context.childAge,  // Preserve existing age
             category: aapTriad.activity || context.category,  // Preserve existing activity
-            aapIncomplete: true
+            aapComplete: true
           };
           // Preserve provider from EITHER triad OR existing context
           if (aapTriad.provider) {
             contextUpdate.provider = { name: aapTriad.provider };
-            Logger.info(`[A-A-P AI] Saving provider from triad: ${aapTriad.provider}`, { sessionId });
+            Logger.info(`[A-A-P AI Complete] Saving provider from triad: ${aapTriad.provider}`, { sessionId });
           } else if (context.provider) {
             contextUpdate.provider = context.provider;
-            Logger.info(`[A-A-P AI] Preserving provider from context: ${context.provider.name}`, { sessionId });
+            Logger.info(`[A-A-P AI Complete] Preserving provider from context: ${context.provider.name}`, { sessionId });
           }
-          Logger.info(`[A-A-P CONTEXT SAVED] Incomplete - saving partial context:`, { 
+          Logger.info(`[A-A-P CONTEXT SAVED] Complete - saving full context:`, { 
             sessionId, 
             contextUpdate,
             fullContext: {
@@ -372,37 +497,7 @@ class AIOrchestrator {
             }
           });
           await this.updateContext(sessionId, contextUpdate);
-          return this.formatResponse(aapQuestion, undefined, undefined, {});
         }
-      }
-      
-      // A-A-P Complete: Store normalized values in context
-      if (aapTriad.complete) {
-        Logger.info('[A-A-P AI Complete]', { sessionId, triad: aapTriad, existingContext: context });
-        // CRITICAL: Preserve ALL fields from context if not in current triad
-        const contextUpdate: any = {
-          childAge: aapTriad.age || context.childAge,  // Preserve existing age
-          category: aapTriad.activity || context.category,  // Preserve existing activity
-          aapComplete: true
-        };
-        // Preserve provider from EITHER triad OR existing context
-        if (aapTriad.provider) {
-          contextUpdate.provider = { name: aapTriad.provider };
-          Logger.info(`[A-A-P AI Complete] Saving provider from triad: ${aapTriad.provider}`, { sessionId });
-        } else if (context.provider) {
-          contextUpdate.provider = context.provider;
-          Logger.info(`[A-A-P AI Complete] Preserving provider from context: ${context.provider.name}`, { sessionId });
-        }
-        Logger.info(`[A-A-P CONTEXT SAVED] Complete - saving full context:`, { 
-          sessionId, 
-          contextUpdate,
-          fullContext: {
-            childAge: this.sessions[sessionId]?.childAge,
-            category: this.sessions[sessionId]?.category,
-            provider: this.sessions[sessionId]?.provider
-          }
-        });
-        await this.updateContext(sessionId, contextUpdate);
       }
       
       // Feature flag: Upfront intent capture
