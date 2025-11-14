@@ -66,8 +66,14 @@ interface ConversationState {
   prerequisitesComplete?: boolean;
   availablePrograms?: any[];
   step?: string; // Current flow step
-  category?: string; // Activity category from intent
-  childAge?: number; // Child age from intent
+  category?: string; // Activity category from intent (legacy)
+  childAge?: number; // Child age from intent (legacy)
+  
+  // NEW: Phase 3 - Structured AAP Object
+  aap?: any;  // Structured AAP from backend
+  ready_for_discovery?: boolean;
+  feedQuery?: any;
+  discoveryNotes?: string;
 }
 
 // ============= Main Component =============
@@ -598,13 +604,15 @@ function ChatTestHarnessContent() {
       }
       
       // Call orchestrator with intent parameters
+      // Phase 3: Send structured AAP object if available
       const response = await sendMessage(
         userInput, 
         sessionId, 
         userLocation || undefined, 
         getUserJwt(),
-        intent.category || state.category,
-        intent.childAge || state.childAge
+        state.aap,  // NEW: Pass structured AAP object
+        intent.category || state.category,  // Legacy fallback
+        intent.childAge || state.childAge   // Legacy fallback
       );
       
       console.log('[HARNESS] Orchestrator response:', response);
@@ -619,7 +627,24 @@ function ChatTestHarnessContent() {
       
       // Update local state if context changed
       if (response.contextUpdates) {
-        setState(prev => ({ ...prev, ...response.contextUpdates }));
+        setState(prev => ({ 
+          ...prev, 
+          ...response.contextUpdates,
+          // Phase 3: Update AAP state from backend
+          aap: response.contextUpdates.aap || prev.aap,
+          ready_for_discovery: response.contextUpdates.ready_for_discovery ?? prev.ready_for_discovery,
+          feedQuery: response.contextUpdates.feedQuery || prev.feedQuery,
+          discoveryNotes: response.contextUpdates.discoveryNotes || prev.discoveryNotes
+        }));
+        
+        // Log AAP updates for debugging
+        if (response.contextUpdates.aap) {
+          console.log('[AAP STATE UPDATE]', {
+            aap: response.contextUpdates.aap,
+            ready_for_discovery: response.contextUpdates.ready_for_discovery
+          });
+          addLog("info", "system", "AAP State Updated", response.contextUpdates.aap);
+        }
       }
     } catch (error: any) {
       console.error('[HARNESS] Error handling user input:', error);

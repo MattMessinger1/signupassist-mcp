@@ -67,18 +67,21 @@ tsx scripts/testNewAAP.ts
 
 ## Migration Phases
 
-### ✅ Phase 1+2 (Current): Foundation + Backend Integration
+### ✅ Phase 1+2 (Complete): Foundation + Backend Integration
 - New AAP tools created
 - Feature flag integrated into AIOrchestrator
 - Legacy code marked deprecated
 - Tests written
 
-### Phase 3 (Next): Frontend Integration
-- Update `src/lib/orchestratorClient.ts` to send AAP object
-- Update `src/pages/ChatTestHarness.tsx` to manage AAP state
-- Enable `USE_NEW_AAP=true` in production
+### ✅ Phase 3 (Complete): Frontend Integration
+- Updated `src/lib/orchestratorClient.ts` to send AAP object
+- Updated `src/pages/ChatTestHarness.tsx` to manage AAP state
+- Backend accepts `currentAAP` parameter from frontend
+- Round-trip AAP context preservation working
 
-### Phase 4 (Final): Cleanup
+### Phase 4 (Next): Production Rollout & Cleanup
+- Enable `USE_NEW_AAP=true` in production
+- Monitor for 1-2 weeks
 - Remove `USE_NEW_AAP` flag
 - Delete deprecated files:
   - `mcp_server/ai/preLoginNarrowing.ts`
