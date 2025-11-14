@@ -27,7 +27,7 @@ export interface UserCredentials {
 export class AuthService {
   private readonly ENCRYPTION_ALGORITHM = 'aes-256-gcm';
   private readonly KEY_LENGTH = 32;
-  private readonly IV_LENGTH = 16;
+  private readonly IV_LENGTH = 12; // GCM mode uses 12 bytes for IV
 
   constructor(private encryptionKey: string) {
     if (!encryptionKey || encryptionKey.length < 32) {
@@ -42,7 +42,7 @@ export class AuthService {
     const key = crypto.scryptSync(this.encryptionKey, 'salt', this.KEY_LENGTH);
     const iv = crypto.randomBytes(this.IV_LENGTH);
     
-    const cipher = crypto.createCipherGCM(this.ENCRYPTION_ALGORITHM, key, iv);
+    const cipher = crypto.createCipheriv(this.ENCRYPTION_ALGORITHM, key, iv);
     
     const credentialsString = JSON.stringify(credentials);
     let encrypted = cipher.update(credentialsString, 'utf8', 'hex');
@@ -69,7 +69,7 @@ export class AuthService {
     const [encryptedData, authTagHex] = encryptedCreds.encrypted.split(':');
     const authTag = Buffer.from(authTagHex, 'hex');
     
-    const decipher = crypto.createDecipherGCM(this.ENCRYPTION_ALGORITHM, key, iv);
+    const decipher = crypto.createDecipheriv(this.ENCRYPTION_ALGORITHM, key, iv);
     decipher.setAuthTag(authTag);
     
     let decrypted = decipher.update(encryptedData, 'hex', 'utf8');
