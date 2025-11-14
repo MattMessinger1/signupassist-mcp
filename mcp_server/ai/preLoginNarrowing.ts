@@ -34,6 +34,7 @@ export function parseAAPTriad(message: string, context?: Partial<AAPTriad>): AAP
   let age = context?.age;
   if (!age) {
     const agePatterns = [
+      /^\s*(\d{1,2})\b/i,  // Leading number at start of message (child's age)
       /\b(\d{1,2})\s*(?:year|yr|yo|y\.o\.)s?\s*old\b/i,
       /\bage[s]?\s*(\d{1,2})\b/i,
       /\b(\d{1,2})\s*(?:and|,)\s*\d+\b/, // "ages 7 and 9" or "7, 9"

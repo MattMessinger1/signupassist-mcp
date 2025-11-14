@@ -5,6 +5,7 @@
 
 import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
 import { AAPTriageResult, AAPAskedFlags, AAPTriad, createEmptyAAP, createAAPAge, createAAPActivity, createAAPProvider } from "../types/aap.js";
+import { parseAAPTriad as legacyParseAAPTriad } from "./preLoginNarrowing.js";
 import Logger from "../utils/logger.js";
 
 const TRIAGE_AAP_SYSTEM_PROMPT = `You maintain the A‑A‑P triad (Age, Activity, Provider) for the current signup flow.
@@ -160,7 +161,7 @@ export async function triageAAP(
   } catch (error) {
     Logger.error('[AAP Triage] Error:', error);
     
-    // Fix #2: Merge existing AAP with legacy hints, NEVER erase known values
+    // OpenAI triage failed – preserve existing context and parse user message for hints
     // Start with existing AAP or create empty one
     const fallbackAAP: AAPTriad = existingAAP ? {
       age: { ...existingAAP.age },
@@ -172,8 +173,41 @@ export async function triageAAP(
       provider: createAAPProvider(),
     };
     
-    // Fill in unknown fields from legacy hints (never overwrite known)
-    // Bridge legacy childAge only if AAP age is unknown
+    // Use legacy parser to extract any AAP fields from the latest user message
+    const lastUserMsg = recentMessages.filter(m => m.role === 'user').pop()?.content || '';
+    const parsedHints = legacyParseAAPTriad(lastUserMsg);
+    
+    // Fill in parsed values if fallbackAAP field is still unknown (user-provided takes priority)
+    if (parsedHints.age && fallbackAAP.age.status === 'unknown') {
+      fallbackAAP.age = createAAPAge({
+        status: 'known',
+        raw: parsedHints.age.toString(),
+        normalized: { years: parsedHints.age, grade_band: null, range: null },
+        source: 'explicit'
+      });
+    }
+    
+    if (parsedHints.activity && fallbackAAP.activity.status === 'unknown') {
+      fallbackAAP.activity = createAAPActivity({
+        status: 'known',
+        raw: parsedHints.activity,
+        normalized: { category: parsedHints.activity },
+        source: 'explicit'
+      });
+    }
+    
+    if (parsedHints.provider && fallbackAAP.provider.status === 'unknown') {
+      fallbackAAP.provider = createAAPProvider({
+        status: 'known',
+        raw: parsedHints.provider,
+        normalized: null, // Can't map to org_ref in fallback
+        source: 'explicit',
+        mode: 'named'
+      });
+    }
+    
+    // Fill in any remaining unknown fields from legacy profile hints (never overwrite known)
+    // Bridge legacy childAge only if AAP age is still unknown
     if (
       fallbackAAP.age.status === 'unknown' &&
       typeof requestHints.childAge === 'number'
@@ -221,7 +255,7 @@ export async function triageAAP(
     return {
       aap: fallbackAAP,
       followup_questions: buildFallbackQuestions(fallbackAAP, askedFlags),
-      assumptions: ['AI triage failed, preserving existing AAP state and filling gaps from legacy hints'],
+      assumptions: ['AI triage failed, preserved user-provided values and filled defaults for missing fields'],
       ready_for_discovery: false,
     };
   }

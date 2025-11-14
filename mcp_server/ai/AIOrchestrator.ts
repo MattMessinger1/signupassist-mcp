@@ -402,22 +402,33 @@ class AIOrchestrator {
           aap: triageResult.aap
         });
         
-        // Mark which questions we're asking NOW (prevent loops)
+        // Combine multiple missing-field prompts into one message to avoid multi-turn loops
         if (triageResult.followup_questions.length > 0) {
-          const question = triageResult.followup_questions[0];
-          if (question.toLowerCase().includes('age') || question.toLowerCase().includes('grade')) {
-            askedFlags.asked_age = true;
+          let combinedQuestion: string;
+          const qList = triageResult.followup_questions;
+          
+          if (qList.length > 1) {
+            // Join questions with " And ..." for a natural combined query
+            if (qList.length === 2) {
+              combinedQuestion = `${qList[0]} And ${qList[1].charAt(0).toLowerCase()}${qList[1].slice(1)}`;
+            } else {
+              // 3 questions: join first two with space, then " And " for third
+              combinedQuestion = `${qList[0]} ${qList[1]} And ${qList[2].charAt(0).toLowerCase()}${qList[2].slice(1)}`;
+            }
+          } else {
+            combinedQuestion = qList[0];
           }
-          if (question.toLowerCase().includes('activity')) {
-            askedFlags.asked_activity = true;
-          }
-          if (question.toLowerCase().includes('provider') || question.toLowerCase().includes('organization')) {
-            askedFlags.asked_provider = true;
-          }
+          
+          // Mark all fields we are asking about as asked to prevent repeat prompts
+          const combinedLower = combinedQuestion.toLowerCase();
+          if (combinedLower.includes('age') || combinedLower.includes('grade')) askedFlags.asked_age = true;
+          if (combinedLower.includes('activity')) askedFlags.asked_activity = true;
+          if (combinedLower.includes('provider') || combinedLower.includes('organization')) askedFlags.asked_provider = true;
+          
           await this.updateContext(sessionId, { aap_asked_flags: askedFlags });
           
-          // Ask the question and stop
-          return this.formatResponse(question, undefined, undefined, {
+          // Return the combined narrowing question(s) and halt further processing this turn
+          return this.formatResponse(combinedQuestion, undefined, undefined, {
             aap: triageResult.aap,
             ready_for_discovery: false
           });
