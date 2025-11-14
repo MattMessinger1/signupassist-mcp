@@ -237,12 +237,13 @@ function ChatTestHarnessContent() {
           };
           const mockReason = mockReasonMap[data.reason as string] || "Using fallback";
           
-          toast({
-            title: isMock ? "🧪 Mock Location" : "📍 Location Detected",
-            description: isMock 
-              ? `${data.city}, ${data.region} (${mockReason})`
-              : `${data.city}, ${data.region} - Helps find nearby providers`,
-          });
+          // Only show toast for real location detection (mock is just dev noise)
+          if (!isMock) {
+            toast({
+              title: "📍 Location Detected",
+              description: `${data.city}, ${data.region} - Helps find nearby providers`,
+            });
+          }
           
           addLog(
             isMock ? "warning" : "success", 
