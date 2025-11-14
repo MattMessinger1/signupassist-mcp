@@ -160,43 +160,51 @@ export async function triageAAP(
   } catch (error) {
     Logger.error('[AAP Triage] Error:', error);
     
-    // Build fallback AAP by preserving existing + bridging legacy
-    const fallbackAAP: AAPTriad = {
-      age: existingAAP?.age || createAAPAge(),
-      activity: existingAAP?.activity || createAAPActivity(),
-      provider: existingAAP?.provider || createAAPProvider(),
+    // Fix #2: Preserve ALL existing AAP values, don't erase known fields
+    // If triage fails, keep exactly what we had before
+    const fallbackAAP: AAPTriad = existingAAP ? {
+      age: existingAAP.age,
+      activity: existingAAP.activity,
+      provider: existingAAP.provider,
+    } : {
+      age: createAAPAge(),
+      activity: createAAPActivity(),
+      provider: createAAPProvider(),
     };
     
-    // Bridge legacy childAge if AAP age is unknown
-    if (
-      fallbackAAP.age.status === 'unknown' &&
-      typeof requestHints.childAge === 'number'
-    ) {
-      fallbackAAP.age = createAAPAge({
-        status: 'known',
-        raw: requestHints.childAge.toString(),
-        normalized: { years: requestHints.childAge, grade_band: null, range: null },
-        source: 'profile',
-      });
-    }
-    
-    // Bridge legacy category if AAP activity is unknown
-    if (
-      fallbackAAP.activity.status === 'unknown' &&
-      typeof requestHints.category === 'string'
-    ) {
-      fallbackAAP.activity = createAAPActivity({
-        status: 'known',
-        raw: requestHints.category,
-        normalized: { category: requestHints.category },
-        source: 'profile',
-      });
+    // Only fill in missing fields from legacy hints if AAP is completely empty
+    if (!existingAAP) {
+      // Bridge legacy childAge if AAP age is unknown
+      if (
+        fallbackAAP.age.status === 'unknown' &&
+        typeof requestHints.childAge === 'number'
+      ) {
+        fallbackAAP.age = createAAPAge({
+          status: 'known',
+          raw: requestHints.childAge.toString(),
+          normalized: { years: requestHints.childAge, grade_band: null, range: null },
+          source: 'profile',
+        });
+      }
+      
+      // Bridge legacy category if AAP activity is unknown
+      if (
+        fallbackAAP.activity.status === 'unknown' &&
+        typeof requestHints.category === 'string'
+      ) {
+        fallbackAAP.activity = createAAPActivity({
+          status: 'known',
+          raw: requestHints.category,
+          normalized: { category: requestHints.category },
+          source: 'profile',
+        });
+      }
     }
     
     return {
       aap: fallbackAAP,
       followup_questions: buildFallbackQuestions(fallbackAAP, askedFlags),
-      assumptions: ['AI triage failed, using legacy AAP where available'],
+      assumptions: ['AI triage failed, preserving existing AAP state'],
       ready_for_discovery: false,
     };
   }
