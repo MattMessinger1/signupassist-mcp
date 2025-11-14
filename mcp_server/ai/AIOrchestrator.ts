@@ -328,9 +328,15 @@ class AIOrchestrator {
           }
         }
         
-        // Get conversation history (last 3 messages max)
-        const recentMessages = (context.conversationHistory || []).slice(-3);
+        // Get conversation history (last 10 messages for better context retention)
+        const recentMessages = (context.conversationHistory || []).slice(-10);
         recentMessages.push({ role: 'user', content: userMessage });
+        
+        Logger.info('[NEW AAP] Conversation history window', {
+          sessionId,
+          totalMessages: context.conversationHistory?.length || 0,
+          sentToTriage: recentMessages.length
+        });
         
         // Track which AAP questions we've already asked
         const askedFlags: AAPAskedFlags = context.aap_asked_flags || {
