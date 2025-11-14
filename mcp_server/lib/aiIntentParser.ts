@@ -1,6 +1,12 @@
 /**
  * AI-Powered Intent Parser
  * 
+ * @deprecated Phase 1+2: parseIntentWithAI is being replaced by the new AAP triage system.
+ * New code should use `mcp_server/ai/aapTriageTool.ts` for AAP extraction.
+ * Email normalization and message generation functions are still active.
+ * 
+ * To enable the new system, set environment variable: USE_NEW_AAP=true
+ * 
  * Uses OpenAI function calling to extract structured intent from natural language.
  * Handles misspellings, variations, and informal phrasing better than regex.
  * 

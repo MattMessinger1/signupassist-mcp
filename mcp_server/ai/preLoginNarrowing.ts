@@ -1,6 +1,12 @@
 /**
  * Pre-Login Narrowing (A-A-P Triage)
  * 
+ * @deprecated Phase 1+2: This module is being replaced by the new AAP triage system.
+ * New code should use `mcp_server/ai/aapTriageTool.ts` and `mcp_server/ai/aapDiscoveryPlanner.ts`.
+ * This file is kept for backward compatibility during the migration period.
+ * 
+ * To enable the new system, set environment variable: USE_NEW_AAP=true
+ * 
  * Extracts Age, Activity, Provider from user messages to enable
  * fast, cached program discovery without requiring login first.
  * 
