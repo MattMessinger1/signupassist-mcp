@@ -1,0 +1,43 @@
+name: PR Gatekeeper
+
+on:
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.10.0'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Compile TypeScript
+        run: npx tsc -p tsconfig.mcp.json --noEmit
+
+      - name: Run unit tests
+        run: npm run test --if-present
+
+      - name: Verify OpenAI Payloads (Responses + ChatCompletions)
+        run: npx vitest run mcp_server/lib/openaiHelpers.test.ts --reporter=verbose
+
+      - name: Verify no repeated AAP prompts
+        run: node scripts/check-aap-first-turn.js
+
+      - name: Check latency budget
+        run: node scripts/check-response-latency.js
+
+      - name: Block if violations
+        run: |
+          echo "✔︎ PR Gatekeeper complete. All validations passed."
+          echo "If any step above failed, PR will be blocked."
