@@ -1224,6 +1224,7 @@ function ChatTestHarnessContent() {
         onReset={() => resetConversation()}
         onRefreshCache={handleRefreshCache}
         isRefreshingCache={isRefreshingCache}
+        mcpUrl={import.meta.env.VITE_MCP_BASE_URL}
       />
 
       {/* Test Coverage Report */}

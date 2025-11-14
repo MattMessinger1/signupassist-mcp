@@ -7,8 +7,9 @@
  * - Action buttons (Run Demo, Reset)
  */
 
-import { Play, RotateCcw, RefreshCw } from "lucide-react";
+import { Play, RotateCcw, RefreshCw, Server } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 interface HarnessHeaderProps {
@@ -19,6 +20,7 @@ interface HarnessHeaderProps {
   onReset: () => void;
   onRefreshCache?: () => void;
   isRefreshingCache?: boolean;
+  mcpUrl?: string;
 }
 
 export function HarnessHeader({
@@ -29,13 +31,43 @@ export function HarnessHeader({
   onReset,
   onRefreshCache,
   isRefreshingCache = false,
+  mcpUrl,
 }: HarnessHeaderProps) {
+  // Determine if we're in production (Railway) or dev (localhost)
+  const isProduction = mcpUrl?.includes('railway.app');
+  const isLocalhost = mcpUrl?.includes('localhost');
+  const displayUrl = mcpUrl 
+    ? (isProduction ? '🚀 Railway Production' : isLocalhost ? '💻 Localhost' : mcpUrl)
+    : 'Not configured';
   return (
     <div className="border-b bg-card px-6 py-4 flex-shrink-0">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-foreground">SignupAssist Test Harness</h1>
-          <p className="text-sm text-muted-foreground">ChatGPT-style conversation simulator</p>
+          <div className="flex items-center gap-3">
+            <h1 className="text-xl font-semibold text-foreground">SignupAssist Test Harness</h1>
+            {mcpUrl && (
+              <Badge 
+                variant="outline" 
+                className={cn(
+                  "inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium",
+                  isProduction 
+                    ? "bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30" 
+                    : "bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30"
+                )}
+              >
+                <Server className="h-3 w-3" />
+                {displayUrl}
+              </Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-sm text-muted-foreground">ChatGPT-style conversation simulator</p>
+            {mcpUrl && (
+              <span className="text-xs text-muted-foreground/70">
+                • {mcpUrl}
+              </span>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {onRefreshCache && (
