@@ -5,7 +5,7 @@
 
 import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
 import { AAPTriageResult, AAPAskedFlags, AAPTriad, createEmptyAAP, createAAPAge, createAAPActivity, createAAPProvider } from "../types/aap.js";
-import { parseAAPTriad as legacyParseAAPTriad } from "./preLoginNarrowing.js";
+import { parseAAPTriad as legacyParseAAPTriad, AAPTriad as LegacyAAPTriad } from "./preLoginNarrowing.js";
 import Logger from "../utils/logger.js";
 
 const TRIAGE_AAP_SYSTEM_PROMPT = `You maintain the A‑A‑P triad (Age, Activity, Provider) for the current signup flow.
@@ -175,7 +175,7 @@ export async function triageAAP(
     
     // Use legacy parser to extract any AAP fields from the latest user message
     const lastUserMsg = recentMessages.filter(m => m.role === 'user').pop()?.content || '';
-    const parsedHints = legacyParseAAPTriad(lastUserMsg);
+    const parsedHints: LegacyAAPTriad = legacyParseAAPTriad(lastUserMsg);
     
     // Fill in parsed values if fallbackAAP field is still unknown (user-provided takes priority)
     if (parsedHints.age && fallbackAAP.age.status === 'unknown') {
