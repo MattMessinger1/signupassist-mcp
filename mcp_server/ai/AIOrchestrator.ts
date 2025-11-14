@@ -339,16 +339,26 @@ class AIOrchestrator {
           asked_provider: false
         };
         
+        // Extract AAP hints from context or parse from current message
+        // These may come from frontend (currentAAP), session context, or need extraction
+        const requestHints = {
+          category: context.aap?.activity?.normalized?.category || null,
+          childAge: context.aap?.age?.normalized?.years || null,
+          provider: context.aap?.provider?.raw || null,
+          location: locationHint
+        };
+
+        Logger.info('[NEW AAP] Request hints prepared', { 
+          sessionId,
+          requestHints,
+          hasLocationHint: !!locationHint
+        });
+        
         // Run AAP triage tool with location
         const triageResult = await triageAAP(
           recentMessages,
           context.aap || null,
-          { 
-            category, 
-            childAge, 
-            provider,
-            location: locationHint  // NEW: Pass location hint
-          },
+          requestHints,  // Use the prepared object
           askedFlags
         );
         

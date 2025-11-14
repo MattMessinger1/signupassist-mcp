@@ -4,7 +4,7 @@
  */
 
 import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
-import { AAPTriageResult, AAPAskedFlags, AAPTriad } from "../types/aap.js";
+import { AAPTriageResult, AAPAskedFlags, AAPTriad, createEmptyAAP } from "../types/aap.js";
 import Logger from "../utils/logger.js";
 
 const TRIAGE_AAP_SYSTEM_PROMPT = `You maintain the A‑A‑P triad (Age, Activity, Provider) for the current signup flow.
@@ -131,13 +131,6 @@ export async function triageAAP(
   }
 }
 
-function createEmptyAAP(): AAPTriad {
-  return {
-    age: { status: 'unknown', raw: null, normalized: null, source: 'assumed' },
-    activity: { status: 'unknown', raw: null, normalized: null, source: 'assumed' },
-    provider: { status: 'unknown', raw: null, normalized: null, source: 'assumed' }
-  };
-}
 
 function buildFallbackQuestions(aap: AAPTriad | null, asked: AAPAskedFlags): string[] {
   const questions: string[] = [];
