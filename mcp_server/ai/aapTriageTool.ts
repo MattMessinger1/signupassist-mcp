@@ -160,12 +160,44 @@ export async function triageAAP(
   } catch (error) {
     Logger.error('[AAP Triage] Error:', error);
     
-    // Fallback: preserve existing AAP, ask for everything missing
+    // Build fallback AAP by preserving existing + bridging legacy
+    const fallbackAAP: AAPTriad = {
+      age: existingAAP?.age || createAAPAge(),
+      activity: existingAAP?.activity || createAAPActivity(),
+      provider: existingAAP?.provider || createAAPProvider(),
+    };
+    
+    // Bridge legacy childAge if AAP age is unknown
+    if (
+      fallbackAAP.age.status === 'unknown' &&
+      typeof requestHints.childAge === 'number'
+    ) {
+      fallbackAAP.age = createAAPAge({
+        status: 'known',
+        raw: requestHints.childAge.toString(),
+        normalized: { years: requestHints.childAge, grade_band: null, range: null },
+        source: 'profile',
+      });
+    }
+    
+    // Bridge legacy category if AAP activity is unknown
+    if (
+      fallbackAAP.activity.status === 'unknown' &&
+      typeof requestHints.category === 'string'
+    ) {
+      fallbackAAP.activity = createAAPActivity({
+        status: 'known',
+        raw: requestHints.category,
+        normalized: { category: requestHints.category },
+        source: 'profile',
+      });
+    }
+    
     return {
-      aap: existingAAP || createEmptyAAP(),
-      followup_questions: buildFallbackQuestions(existingAAP, askedFlags),
-      assumptions: ['AI triage failed, using safe defaults'],
-      ready_for_discovery: false
+      aap: fallbackAAP,
+      followup_questions: buildFallbackQuestions(fallbackAAP, askedFlags),
+      assumptions: ['AI triage failed, using legacy AAP where available'],
+      ready_for_discovery: false,
     };
   }
 }
