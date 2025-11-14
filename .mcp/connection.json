@@ -1,0 +1,7 @@
+{
+  "name": "signupassist-mcp",
+  "type": "http",
+  "baseUrl": "https://signupassist-mcp-production.up.railway.app",
+  "allowLocalFallback": false,
+  "timeoutMs": 10000
+}
