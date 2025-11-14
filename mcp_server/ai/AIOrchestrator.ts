@@ -368,7 +368,10 @@ class AIOrchestrator {
           askedFlags
         );
         
-        const locationHint = triageResult.aap?.provider?.locationHint;
+        // Reuse the locationHint from triageResult if present
+        if (triageResult.aap?.provider?.locationHint) {
+          locationHint = triageResult.aap.provider.locationHint;
+        }
         const has_location = Boolean(
           locationHint?.city || locationHint?.region || locationHint?.country ||
           (typeof locationHint?.lat === 'number' && typeof locationHint?.lng === 'number')
