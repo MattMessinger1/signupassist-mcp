@@ -69,7 +69,20 @@ A field is "missing" if its status is "unknown".
 READY FOR DISCOVERY:
 Set ready_for_discovery as:
 - true if: Age is known OR clearly bounded by a reasonable range (e.g., "elementary school"), AND Activity OR Provider is known.
-- false otherwise.`;
+- false otherwise.
+
+OUTPUT FORMAT:
+Return your response as a JSON object with this exact structure:
+{
+  "aap": {
+    "age": { "status": "known"|"unknown", "raw": "...", "normalized": "...", "source": "explicit"|"implicit"|"profile"|"assumed" },
+    "activity": { "status": "known"|"unknown", "raw": "...", "normalized": "...", "source": "..." },
+    "provider": { "status": "known"|"unknown", "raw": "...", "normalized": "...", "source": "...", "mode": "named"|"local", "locationHint": {...} }
+  },
+  "followup_questions": ["question1", "question2"],
+  "assumptions": ["assumption1", "assumption2"],
+  "ready_for_discovery": true|false
+}`;
 
 export async function triageAAP(
   recentMessages: Array<{ role: string; content: string }>,
