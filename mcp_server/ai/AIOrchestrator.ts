@@ -849,20 +849,34 @@ class AIOrchestrator {
     const aap = context.aap || aapTriad;
     const derivedFromAAP = this.deriveIntentFromAAP(aap);
     
-    // Start from existing intent OR derived AAP
-    const baseIntent = context.partialIntent ?? derivedFromAAP ?? { hasIntent: false };
+    // Merge with existing ctx.intent if present
+    const intent = context.partialIntent ?? derivedFromAAP;
     
-    // Determine what's missing based on baseIntent
+    // If AAP produced a complete triad, STOP HERE — no narrowing questions
+    if (derivedFromAAP?.hasIntent) {
+      Logger.info(`[AAP Complete - Early Exit] ${sessionId}`, { derivedFromAAP, aap });
+      await this.updateContext(sessionId, {
+        partialIntent: derivedFromAAP,
+        category: derivedFromAAP.category,
+        childAge: derivedFromAAP.childAge
+      });
+      return null;
+    }
+    
+    // Determine what's missing based on intent
     const missing = {
-      provider: !baseIntent.provider,
-      category: !baseIntent.category,
-      childAge: baseIntent.childAge === undefined || baseIntent.childAge === null,
+      provider: !intent?.provider,
+      category: !intent?.category,
+      childAge: intent?.childAge === undefined || intent?.childAge === null,
     };
+    
+    // Store working intent in context
+    await this.updateContext(sessionId, { partialIntent: intent });
     
     // If nothing is missing, treat intent as complete and update context
     if (!missing.provider && !missing.category && !missing.childAge) {
       const completeIntent: ParsedIntent = {
-        ...baseIntent,
+        ...intent,
         hasIntent: true,
       };
       
@@ -877,7 +891,7 @@ class AIOrchestrator {
       return null;
     }
     
-    // From this point on, use baseIntent as the working intent
+    // From this point on, use intent as the working intent
     // Merge with new AAP triad information
     const mergeIntent = (prev: ParsedIntent | undefined, incoming: { provider?: string; category?: string; childAge?: number }): ParsedIntent => {
       const merged: ParsedIntent = { 
@@ -899,7 +913,7 @@ class AIOrchestrator {
     };
     
     // Convert AAP format to ParsedIntent format and merge with existing
-    const mergedIntent: ParsedIntent = mergeIntent(baseIntent, {
+    const mergedIntent: ParsedIntent = mergeIntent(intent, {
       provider: aapTriad.provider,
       category: aapTriad.activity,
       childAge: aapTriad.age
