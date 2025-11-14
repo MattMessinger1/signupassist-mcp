@@ -4,6 +4,9 @@
  */
 
 import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
+
+// Simple in-memory triage cache to skip redundant OpenAI calls
+const triageCache = new Map<string, any>();
 import { AAPTriageResult, AAPAskedFlags, AAPTriad, createEmptyAAP, createAAPAge, createAAPActivity, createAAPProvider } from "../types/aap.js";
 import { parseAAPTriad as legacyParseAAPTriad, AAPTriad as LegacyAAPTriad } from "./preLoginNarrowing.js";
 import Logger from "../utils/logger.js";
@@ -131,6 +134,15 @@ export async function triageAAP(
   });
 
   try {
+    // Check triage cache first to skip redundant OpenAI calls (~300-900ms savings)
+    const lastUserMessage = recentMessages.filter(m => m.role === 'user').pop()?.content || '';
+    const cacheKey = `${lastUserMessage}:${JSON.stringify(existingAAP)}`;
+    
+    if (triageCache.has(cacheKey)) {
+      Logger.info('[AAP Triage] Cache hit');
+      return triageCache.get(cacheKey);
+    }
+    
     const result = await callOpenAI_JSON({
       model: "gpt-4o-mini",
       system: TRIAGE_AAP_SYSTEM_PROMPT,
@@ -154,6 +166,9 @@ export async function triageAAP(
     if (requestHints.location && result.aap?.provider?.mode === 'local') {
       result.aap.provider.locationHint = requestHints.location;
     }
+    
+    // Store in cache for next time
+    triageCache.set(cacheKey, result);
 
     Logger.info('[AAP Triage] Result:', result);
     return result as AAPTriageResult;

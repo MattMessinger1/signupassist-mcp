@@ -282,6 +282,10 @@ class AIOrchestrator {
    * @returns Promise resolving to OrchestratorResponse with cards
    */
   async generateResponse(userMessage: string, sessionId: string, userLocation?: {lat: number, lng: number}, userJwt?: string, mandateInfo?: { mandate_jws?: string; mandate_id?: string }): Promise<OrchestratorResponse> {
+    // Latency instrumentation for performance tracking
+    const t0 = Date.now();
+    let t1: number, t2: number, t3: number, t4: number;
+    
     try {
       const context = await this.getContext(sessionId);
       // Store userLocation and JWT in context for tool calls
@@ -360,6 +364,9 @@ class AIOrchestrator {
           hasLocationHint: !!locationHint
         });
         
+        // Latency checkpoint: Before AAP triage
+        t1 = Date.now();
+        
         // Run AAP triage tool with location
         const triageResult = await triageAAP(
           recentMessages,
@@ -367,6 +374,9 @@ class AIOrchestrator {
           requestHints,  // Use the prepared object
           askedFlags
         );
+        
+        // Latency checkpoint: After AAP triage
+        t2 = Date.now();
         
         // Reuse the locationHint from triageResult if present
         if (triageResult.aap?.provider?.locationHint) {
@@ -647,7 +657,22 @@ class AIOrchestrator {
       }
       
       this.logInteraction(sessionId, "user", userMessage);
+      
+      // Latency checkpoint: Before model call
+      t3 = Date.now();
+      
       const result = await this.handleStep(step, userMessage, sessionId);
+      
+      // Latency checkpoint: After model call
+      t4 = Date.now();
+      
+      // Log latency metrics for performance optimization
+      Logger.info('[LATENCY]', {
+        total: t4 - t0,
+        triage: t2 ? (t2 - t1) : 0,
+        llm: t4 - t3,
+        sessionId
+      });
       
       // NEW: Extract and apply metadata from tool responses
       if (result.toolMetadata) {

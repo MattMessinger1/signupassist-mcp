@@ -214,6 +214,14 @@ class SignupAssistMCPServer {
         res.end(JSON.stringify({ ok: true }));
         return;
       }
+      
+      // --- Keep-warm ping endpoint to prevent cold starts
+      if (req.method === 'GET' && url.pathname === '/ping') {
+        console.log('[PING] keep-warm request received');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, ts: Date.now() }));
+        return;
+      }
 
       // --- Identity endpoint for backend verification
       if (req.method === 'GET' && url.pathname === '/identity') {
