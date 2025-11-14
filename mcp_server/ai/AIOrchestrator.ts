@@ -731,10 +731,51 @@ class AIOrchestrator {
   }
 
   /**
+   * Derive intent from AAP triad
+   * Converts AAP triad structure to ParsedIntent format
+   * Uses AAP as source of truth for what is known vs unknown
+   */
+  private deriveIntentFromAAP(aap: AAPTriad | any): ParsedIntent | null {
+    if (!aap) return null;
+
+    const ageKnown = aap.age?.status === "known";
+    const activityKnown = aap.activity?.status === "known";
+    const providerKnown = aap.provider?.status === "known";
+
+    if (!ageKnown && !activityKnown && !providerKnown) {
+      return null;
+    }
+
+    const childAge =
+      ageKnown
+        ? aap.age.normalized?.years ??
+          (aap.age.raw ? parseInt(String(aap.age.raw), 10) : undefined)
+        : undefined;
+
+    const category =
+      activityKnown
+        ? aap.activity.normalized?.category ?? aap.activity.raw
+        : undefined;
+
+    const provider =
+      providerKnown
+        ? aap.provider.normalized?.org_ref ?? aap.provider.raw
+        : undefined;
+
+    return {
+      hasIntent: ageKnown && activityKnown && providerKnown,
+      childAge,
+      category,
+      provider,
+    };
+  }
+
+  /**
    * Check and request missing intent upfront (Pre-login Intent Gate)
    * Parses user message for provider, category, and child age
    * Returns a question if any required intent is missing
    * Handles user declining with best-effort defaults
+   * Uses AAP triad as source of truth for intent completeness
    * 
    * @param userMessage - User's input text
    * @param sessionId - Session identifier
@@ -779,7 +820,40 @@ class AIOrchestrator {
       existingPartialIntent: context.partialIntent
     });
     
-    // Fix #3: Merge intent properly - never overwrite known fields with undefined
+    // Derive intent from AAP triad (AAP is source of truth)
+    const aap = context.aap || aapTriad;
+    const derivedFromAAP = this.deriveIntentFromAAP(aap);
+    
+    // Start from existing intent OR derived AAP
+    const baseIntent = context.partialIntent ?? derivedFromAAP ?? { hasIntent: false };
+    
+    // Determine what's missing based on baseIntent
+    const missing = {
+      provider: !baseIntent.provider,
+      category: !baseIntent.category,
+      childAge: baseIntent.childAge === undefined || baseIntent.childAge === null,
+    };
+    
+    // If nothing is missing, treat intent as complete and update context
+    if (!missing.provider && !missing.category && !missing.childAge) {
+      const completeIntent: ParsedIntent = {
+        ...baseIntent,
+        hasIntent: true,
+      };
+      
+      Logger.info(`[AAP Complete] ${sessionId}`, { completeIntent, aap });
+      
+      await this.updateContext(sessionId, { 
+        partialIntent: completeIntent,
+        category: completeIntent.category,
+        childAge: completeIntent.childAge
+      });
+      
+      return null;
+    }
+    
+    // From this point on, use baseIntent as the working intent
+    // Merge with new AAP triad information
     const mergeIntent = (prev: ParsedIntent | undefined, incoming: { provider?: string; category?: string; childAge?: number }): ParsedIntent => {
       const merged: ParsedIntent = { 
         hasIntent: prev?.hasIntent || false,
@@ -800,7 +874,7 @@ class AIOrchestrator {
     };
     
     // Convert AAP format to ParsedIntent format and merge with existing
-    const mergedIntent: ParsedIntent = mergeIntent(context.partialIntent, {
+    const mergedIntent: ParsedIntent = mergeIntent(baseIntent, {
       provider: aapTriad.provider,
       category: aapTriad.activity,
       childAge: aapTriad.age
