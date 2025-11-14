@@ -59,6 +59,7 @@ import { PRODUCTION_SYSTEM_PROMPT } from "@/lib/prompts";
 interface ConversationState {
   sessionRef?: string;
   orgRef: string;
+  provider?: string; // Track extracted provider for AAP context
   selectedProgram?: any;
   childId?: string;
   registrationRef?: string;

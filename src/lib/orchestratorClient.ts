@@ -47,7 +47,8 @@ export async function sendMessage(
   userLocation?: {lat: number, lng: number},
   userJwt?: string,
   category?: string,
-  childAge?: number
+  childAge?: number,
+  provider?: string
 ): Promise<OrchestratorResponse> {
   if (!ORCHESTRATOR_BASE) {
     throw new Error('MCP Server URL not configured. Please set VITE_MCP_BASE_URL in your .env file.');
@@ -57,7 +58,8 @@ export async function sendMessage(
     hasLocation: !!userLocation, 
     hasJwt: !!userJwt,
     category,
-    childAge
+    childAge,
+    provider
   });
   
   const headers: Record<string, string> = {
@@ -78,7 +80,8 @@ export async function sendMessage(
       userLocation, 
       userJwt,
       category,
-      childAge
+      childAge,
+      provider
     }),
   });
 
