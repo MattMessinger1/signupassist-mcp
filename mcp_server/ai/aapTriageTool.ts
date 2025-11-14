@@ -4,7 +4,7 @@
  */
 
 import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
-import { AAPTriageResult, AAPAskedFlags, AAPTriad, createEmptyAAP } from "../types/aap.js";
+import { AAPTriageResult, AAPAskedFlags, AAPTriad, createEmptyAAP, createAAPAge, createAAPActivity, createAAPProvider } from "../types/aap.js";
 import Logger from "../utils/logger.js";
 
 const TRIAGE_AAP_SYSTEM_PROMPT = `You maintain the A‑A‑P triad (Age, Activity, Provider) for the current signup flow.
