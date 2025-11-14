@@ -176,6 +176,16 @@ function ChatTestHarnessContent() {
     setDebugLogs(prev => [...prev, entry]);
   }, []);
 
+  // Debug: Log AAP state updates
+  useEffect(() => {
+    console.log('[AAP State Update]', {
+      provider: state.aap?.provider,
+      activity: state.aap?.activity,
+      age: state.aap?.age,
+      ready_for_discovery: state.ready_for_discovery
+    });
+  }, [state.aap, state.ready_for_discovery]);
+
   // Get JWT helper
   const getUserJwt = (): string | undefined => {
     if (!session?.access_token) {

@@ -10,15 +10,16 @@ import Logger from "../utils/logger.js";
 const TRIAGE_AAP_SYSTEM_PROMPT = `You maintain the A‑A‑P triad (Age, Activity, Provider) for the current signup flow.
 
 You receive:
-- recent_messages: the latest 1–3 parent messages as plain text.
+- recent_messages: the conversation history (up to 10 recent messages) as an array.
 - existing_aap: the current A‑A‑P triad object from session (may be partial).
 - request_hints: optional hints from the frontend (category, childAge, provider).
 - asked_flags: which A‑A‑P follow‑up questions have already been asked in this flow
 
 Your job:
-1) Merge new information into existing_aap without losing anything.
-2) Decide which (if any) A‑A‑P follow‑up questions are still needed.
-3) Decide if we're ready to start showing programs (ready_for_discovery).
+1) SCAN ALL MESSAGES in recent_messages, not just the last one. Check the entire conversation for Age, Activity, and Provider mentions.
+2) Merge new information into existing_aap without losing anything.
+3) Decide which (if any) A‑A‑P follow‑up questions are still needed.
+4) Decide if we're ready to start showing programs (ready_for_discovery).
 
 MERGE RULES:
 - Treat existing_aap as the baseline; it came from earlier turns or profile.

@@ -5,9 +5,17 @@
  * Railway rebuild trigger: 2025-10-28 - Added scp.create_mandate tool
  */
 
+// Version info for runtime debugging
+const VERSION_INFO = {
+  commit: process.env.RAILWAY_GIT_COMMIT_SHA || 'dev',
+  builtAt: new Date().toISOString(),
+  nodeVersion: process.version,
+  useNewAAP: process.env.USE_NEW_AAP === 'true'
+};
+
 // Print build info banner on startup
 console.info(
-  `[BUILD] Commit: ${process.env.RAILWAY_GIT_COMMIT_SHA || "dev"} | Built at: ${new Date().toISOString()}`
+  `[BUILD] Version: ${VERSION_INFO.commit} | Built: ${VERSION_INFO.builtAt} | USE_NEW_AAP: ${VERSION_INFO.useNewAAP}`
 );
 
 // ============================================================================
@@ -589,6 +597,16 @@ class SignupAssistMCPServer {
       }
 
       // --- Orchestrator endpoint for Chat Test Harness
+      // Version endpoint for deployment verification
+      if (url.pathname === '/version') {
+        res.writeHead(200, { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        });
+        res.end(JSON.stringify(VERSION_INFO, null, 2));
+        return;
+      }
+
       if (url.pathname === '/orchestrator/chat') {
         console.log('[ROUTE] /orchestrator/chat hit');
         if (req.method === 'OPTIONS') {
