@@ -1,16 +1,23 @@
-# AAP System Feature Flag
+# AAP System Feature Flag & Migration Guide
 
-## Overview
+## Quick Start
 
-The AAP (Age-Activity-Provider) extraction system has been refactored to use a structured, tool-based approach with explicit state tracking and loop prevention. The new system is controlled by a feature flag for safe rollout.
+**Current Phase**: Phase 3 Complete ✅ (Frontend Integration Done)  
+**Next Phase**: Phase 4 (Cleanup after 2 weeks monitoring)  
+**Status**: New system ready for production testing
 
-## Feature Flag
+### Enable New AAP System
 
-**Environment Variable**: `USE_NEW_AAP`
+```bash
+echo "USE_NEW_AAP=true" >> .env
+npm run mcp:server
+```
 
-**Default**: `false` (legacy system)
+### Before Phase 4 Cleanup
 
-**To Enable**: Set `USE_NEW_AAP=true` in your `.env` file
+⚠️ **Required**: Monitor production for 1-2 weeks with no issues  
+📋 **Checklist**: See `AAP_MONITORING_CHECKLIST.md`  
+🚀 **Runbook**: See `AAP_PHASE4_RUNBOOK.md`
 
 ## Systems
 
