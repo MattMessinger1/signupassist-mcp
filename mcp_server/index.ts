@@ -612,7 +612,15 @@ class SignupAssistMCPServer {
         req.on('end', async () => {
           try {
             const parsedBody = JSON.parse(body);
-            const { message, sessionId, action, payload, userLocation, userJwt, category, childAge } = parsedBody;
+            const { message, sessionId, action, payload, userLocation, userJwt, category, childAge, currentAAP } = parsedBody;
+            
+            console.log('[Orchestrator] Request params:', { 
+              hasMessage: !!message,
+              hasAction: !!action,
+              hasAAP: !!currentAAP,
+              hasCategory: !!category,
+              hasChildAge: !!childAge
+            });
             
             // Capture mandate from headers or body (with dev bypass)
             const mandate_jws = (req.headers['x-mandate-jws'] as string) 
@@ -722,9 +730,15 @@ class SignupAssistMCPServer {
                 throw actionError; // Re-throw to outer catch
               }
             } else if (message) {
-              // Quick Win #1: Capture intent parameters (category, childAge) from request
+              // Phase 3: Update context with structured AAP if provided
+              if (currentAAP) {
+                console.log(`[Orchestrator] Updating context with AAP object:`, currentAAP);
+                await this.orchestrator.updateContext(sessionId, { aap: currentAAP } as any);
+              }
+              
+              // Quick Win #1: Capture intent parameters (category, childAge) from request (legacy)
               if (category || childAge) {
-                console.log(`[Orchestrator] Updating context with intent:`, { category, childAge });
+                console.log(`[Orchestrator] Updating context with legacy intent:`, { category, childAge });
                 await this.orchestrator.updateContext(sessionId, { category, childAge } as any);
               }
               
@@ -732,6 +746,7 @@ class SignupAssistMCPServer {
               console.log(`[Orchestrator] generateResponse: ${message}`, { 
                 hasLocation: !!userLocation, 
                 hasJwt: !!userJwt,
+                hasAAP: !!currentAAP,
                 category,
                 childAge 
               });

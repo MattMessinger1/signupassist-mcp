@@ -37,8 +37,10 @@ export interface OrchestratorResponse {
  * @param message - User's text input
  * @param sessionId - Unique session identifier
  * @param userLocation - Optional GPS coordinates for location-based filtering
- * @param category - Optional activity category (lessons, camps, races) for targeted search
- * @param childAge - Optional child age for age-based filtering
+ * @param userJwt - Optional JWT token for authentication
+ * @param currentAAP - Optional structured AAP object from previous interaction (Phase 3)
+ * @param category - Optional activity category (legacy, for backward compatibility)
+ * @param childAge - Optional child age (legacy, for backward compatibility)
  * @returns Promise resolving to orchestrator response with cards
  */
 export async function sendMessage(
@@ -46,8 +48,9 @@ export async function sendMessage(
   sessionId: string,
   userLocation?: {lat: number, lng: number},
   userJwt?: string,
-  category?: string,
-  childAge?: number
+  currentAAP?: any,  // Structured AAP object (Phase 3)
+  category?: string,  // Legacy fallback
+  childAge?: number   // Legacy fallback
 ): Promise<OrchestratorResponse> {
   if (!ORCHESTRATOR_BASE) {
     throw new Error('MCP Server URL not configured. Please set VITE_MCP_BASE_URL in your .env file.');
@@ -56,6 +59,7 @@ export async function sendMessage(
   console.log('[Orchestrator Client] Sending message:', message, { 
     hasLocation: !!userLocation, 
     hasJwt: !!userJwt,
+    hasAAP: !!currentAAP,
     category,
     childAge
   });
@@ -77,8 +81,9 @@ export async function sendMessage(
       sessionId, 
       userLocation, 
       userJwt,
-      category,
-      childAge
+      currentAAP,  // Send structured AAP object (Phase 3)
+      category,    // Legacy fallback for backward compatibility
+      childAge     // Legacy fallback for backward compatibility
     }),
   });
 
