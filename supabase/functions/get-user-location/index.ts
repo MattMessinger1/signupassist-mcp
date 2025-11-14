@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
+// Force redeploy to pick up IPAPI_KEY secret (2025-11-14)
 // CORS headers to allow calls from our frontend
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
