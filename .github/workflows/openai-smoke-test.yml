@@ -27,6 +27,22 @@ jobs:
       - name: Compile TypeScript
         run: npx tsc -p tsconfig.mcp.json
       
+      - name: Verify VITE_MCP_BASE_URL is correct
+        run: |
+          EXPECTED_URL="https://signupassist-mcp-production.up.railway.app"
+          ACTUAL_URL="${VITE_MCP_BASE_URL:-not_set}"
+          
+          if [[ "$ACTUAL_URL" != "$EXPECTED_URL" ]]; then
+            echo "❌ VITE_MCP_BASE_URL does not match production Railway backend"
+            echo "   Expected: $EXPECTED_URL"
+            echo "   Actual: $ACTUAL_URL"
+            exit 1
+          fi
+          
+          echo "✅ VITE_MCP_BASE_URL correctly configured for production"
+        env:
+          VITE_MCP_BASE_URL: ${{ vars.VITE_MCP_BASE_URL || 'https://signupassist-mcp-production.up.railway.app' }}
+      
       - name: Run unit tests
         run: npx vitest run mcp_server/lib/openaiHelpers.test.ts --reporter=verbose
       
