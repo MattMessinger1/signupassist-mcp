@@ -50,6 +50,12 @@ PROVIDER (including local search)
   - Instead, mark provider.status = "unknown" but note the location is available
 - If both location AND a named provider exist, prefer the named provider (mode = "named")
 
+IMPORTANT: For provider.normalized, you MUST return an object { org_ref: "org-slug" }, NOT a string.
+If you can map the provider to a known organization, set org_ref to the organization's identifier (lowercase, hyphenated).
+Example: "blackhawk" → { org_ref: "blackhawk-ski-club" }
+Example: "Black Hawk Ski Club" → { org_ref: "blackhawk-ski-club" }
+If you cannot confidently map to an org_ref, set normalized to null and mode to 'local'.
+
 FOLLOW‑UP QUESTIONS:
 A field is "missing" if its status is "unknown".
 
@@ -75,14 +81,33 @@ OUTPUT FORMAT:
 Return your response as a JSON object with this exact structure:
 {
   "aap": {
-    "age": { "status": "known"|"unknown", "raw": "...", "normalized": "...", "source": "explicit"|"implicit"|"profile"|"assumed" },
-    "activity": { "status": "known"|"unknown", "raw": "...", "normalized": "...", "source": "..." },
-    "provider": { "status": "known"|"unknown", "raw": "...", "normalized": "...", "source": "...", "mode": "named"|"local", "locationHint": {...} }
+    "age": { 
+      "status": "known"|"unknown", 
+      "raw": "...", 
+      "normalized": { "years": 10, "grade_band": "elementary", "range": [8, 12] } | null,
+      "source": "explicit"|"implicit"|"profile"|"assumed" 
+    },
+    "activity": { 
+      "status": "known"|"unknown", 
+      "raw": "...", 
+      "normalized": { "category": "skiing" } | null,
+      "source": "..." 
+    },
+    "provider": { 
+      "status": "known"|"unknown", 
+      "raw": "...", 
+      "normalized": { "org_ref": "blackhawk-ski-club" } | null,
+      "source": "...", 
+      "mode": "named"|"local", 
+      "locationHint": {...} 
+    }
   },
   "followup_questions": ["question1", "question2"],
   "assumptions": ["assumption1", "assumption2"],
   "ready_for_discovery": true|false
-}`;
+}
+
+CRITICAL: The "normalized" field MUST be an object with the exact structure shown above, NOT a string.`;
 
 export async function triageAAP(
   recentMessages: Array<{ role: string; content: string }>,
