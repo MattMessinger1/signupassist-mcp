@@ -1,0 +1,47 @@
+# Lovable Bot Configuration
+# This file configures how the Lovable bot interacts with this repository
+
+# Default branch for deployments and syncing
+default_branch: main
+
+# Require pull requests instead of direct pushes to main
+require_pull_request: true
+
+# Pull request settings
+pull_request:
+  # Prevent direct pushes to main - force PR workflow
+  allow_direct_push: false
+  
+  # Automatically request reviews from team members (add GitHub usernames)
+  reviewers: []
+  
+  # Require at least one approval before merging
+  require_approval: true
+  
+  # Auto-merge PRs when all checks pass (disabled by default)
+  auto_merge: false
+
+# CI checks that must pass before merging
+ci_required_checks:
+  - deploy                # Railway deployment
+  - smoke-test            # OpenAI smoke test
+  - vercel                # Vercel frontend deployment
+  - cred-seal-key         # Credential encryption test
+  - validate              # PR Gatekeeper validation
+
+# Branch naming convention for Lovable bot PRs
+branch_prefix: "lovable/"
+
+# Commit message format
+commit_format: "conventional"  # Use conventional commits format
+
+# Notifications
+notifications:
+  # Notify on PR creation
+  on_pr_created: true
+  
+  # Notify on CI failures
+  on_ci_failure: true
+  
+  # Notify on merge conflicts
+  on_conflict: true
