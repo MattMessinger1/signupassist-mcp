@@ -207,11 +207,24 @@ class SignupAssistMCPServer {
       const url = new URL(req.url || '/', `http://localhost:${port}`);
       console.log(`[REQUEST] ${req.method} ${url.pathname}`);
 
-      // --- Health check
+      // --- Health check endpoint
       if (req.method === 'GET' && url.pathname === '/health') {
         console.log('[HEALTH] check received');
-        res.writeHead(200, { 'Content-Type': 'text/plain' });
-        res.end('OK');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+
+      // --- Identity endpoint for backend verification
+      if (req.method === 'GET' && url.pathname === '/identity') {
+        console.log('[IDENTITY] backend identity request received');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          env: process.env.NODE_ENV || 'unknown',
+          git_commit: process.env.GIT_COMMIT || process.env.RAILWAY_GIT_COMMIT_SHA || 'unknown',
+          timestamp: new Date().toISOString(),
+          backend: 'Railway Production MCP'
+        }));
         return;
       }
 
