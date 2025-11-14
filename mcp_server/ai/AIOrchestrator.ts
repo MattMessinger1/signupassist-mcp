@@ -768,13 +768,32 @@ class AIOrchestrator {
       existingPartialIntent: context.partialIntent
     });
     
-    // Convert AAP format to ParsedIntent format for compatibility
-    const mergedIntent: ParsedIntent = {
-      hasIntent: aapTriad.complete || aapTriad.age !== undefined || aapTriad.activity !== undefined || aapTriad.provider !== undefined,
+    // Fix #3: Merge intent properly - never overwrite known fields with undefined
+    const mergeIntent = (prev: ParsedIntent | undefined, incoming: { provider?: string; category?: string; childAge?: number }): ParsedIntent => {
+      const merged: ParsedIntent = { 
+        hasIntent: prev?.hasIntent || false,
+        provider: prev?.provider,
+        category: prev?.category,
+        childAge: prev?.childAge
+      };
+      
+      // Only update fields that are actually defined (not undefined)
+      if (incoming.provider !== undefined) merged.provider = incoming.provider;
+      if (incoming.category !== undefined) merged.category = incoming.category;
+      if (incoming.childAge !== undefined) merged.childAge = incoming.childAge;
+      
+      // Update hasIntent if we have any field
+      merged.hasIntent = !!(merged.provider || merged.category || merged.childAge);
+      
+      return merged;
+    };
+    
+    // Convert AAP format to ParsedIntent format and merge with existing
+    const mergedIntent: ParsedIntent = mergeIntent(context.partialIntent, {
       provider: aapTriad.provider,
       category: aapTriad.activity,
       childAge: aapTriad.age
-    };
+    });
     
     Logger.info('[Intent Merged from AAP]', { sessionId, mergedIntent, aapComplete: aapTriad.complete });
     
