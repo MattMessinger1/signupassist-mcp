@@ -307,6 +307,27 @@ class AIOrchestrator {
         // NEW SYSTEM: Structured AAP Triad with Triage Tool
         Logger.info(`[NEW AAP] Using structured AAP triage system`, { sessionId });
         
+        // Convert userLocation to LocationHint if available
+        let locationHint: any = undefined;
+        if (userLocation?.lat && userLocation?.lng) {
+          // Check if we already have detailed location in session
+          if (context.aap?.provider?.locationHint?.lat === userLocation.lat) {
+            locationHint = context.aap.provider.locationHint;
+          } else {
+            // Create basic location hint from coordinates
+            locationHint = {
+              lat: userLocation.lat,
+              lng: userLocation.lng,
+              city: null,  // Could reverse geocode if needed
+              region: null,
+              country: null,
+              radiusKm: 25,
+              source: 'ip'
+            };
+            Logger.info('[NEW AAP] Created locationHint from userLocation', { locationHint });
+          }
+        }
+        
         // Get conversation history (last 3 messages max)
         const recentMessages = (context.conversationHistory || []).slice(-3);
         recentMessages.push({ role: 'user', content: userMessage });
@@ -318,13 +339,30 @@ class AIOrchestrator {
           asked_provider: false
         };
         
-        // Run AAP triage tool
+        // Run AAP triage tool with location
         const triageResult = await triageAAP(
           recentMessages,
           context.aap || null,
-          { category, childAge, provider },
+          { 
+            category, 
+            childAge, 
+            provider,
+            location: locationHint  // NEW: Pass location hint
+          },
           askedFlags
         );
+        
+        Logger.info('[NEW AAP TRIAGE COMPLETE]', {
+          sessionId,
+          aap: triageResult.aap,
+          provider_mode: triageResult.aap?.provider?.mode,
+          has_location: !!triageResult.aap?.provider?.locationHint,
+          location_source: triageResult.aap?.provider?.locationHint?.source,
+          location_city: triageResult.aap?.provider?.locationHint?.city,
+          followup_questions: triageResult.followup_questions,
+          ready_for_discovery: triageResult.ready_for_discovery,
+          assumptions: triageResult.assumptions
+        });
         
         Logger.info('[NEW AAP TRIAGE COMPLETE]', {
           sessionId,

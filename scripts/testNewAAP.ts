@@ -80,6 +80,73 @@ async function testCase1() {
   return pass1 && pass2;
 }
 
+// Test Case 4: Local search with IP location
+async function testCase4() {
+  console.log("\n📋 TEST CASE 4: Local Search (IP Location)");
+  console.log("-".repeat(60));
+  
+  // User provides age + activity, location from IP
+  const messages = [
+    { role: 'user', content: "I want ski lessons for my 9 year old" }
+  ];
+  
+  const requestHints = {
+    childAge: 9,
+    location: {
+      lat: 43.0731,
+      lng: -89.4012,
+      city: "Madison",
+      region: "Wisconsin",
+      country: "US",
+      radiusKm: 25,
+      source: 'ip' as const
+    }
+  };
+  
+  const askedFlags: AAPAskedFlags = {
+    asked_age: false,
+    asked_activity: false,
+    asked_provider: false
+  };
+  
+  const result = await triageAAP(messages, null, requestHints, askedFlags);
+  
+  console.log("\n✅ Results:");
+  console.log("AAP State:", JSON.stringify(result.aap, null, 2));
+  console.log("Follow-up Questions:", result.followup_questions);
+  console.log("Ready for Discovery:", result.ready_for_discovery);
+  
+  // Validate: Should use local mode
+  const pass = 
+    result.aap.age?.status === 'known' &&
+    result.aap.activity?.status === 'known' &&
+    result.aap.provider?.status === 'unknown' &&
+    result.aap.provider?.mode === 'local' &&
+    result.aap.provider?.locationHint?.city === 'Madison' &&
+    result.followup_questions.length === 0 &&
+    result.ready_for_discovery;
+  
+  console.log(pass ? "✅ PASS - Local mode with location!" : "❌ FAIL");
+  
+  // Test discovery planner with location
+  if (pass) {
+    console.log("\n🔍 Testing Discovery Planner with Location:");
+    const plan = await planProgramDiscovery(result.aap, "I want ski lessons for my 9 year old");
+    console.log("Discovery Plan:", JSON.stringify(plan, null, 2));
+    
+    const planPass = 
+      plan.feed_query.category === 'skiing' &&
+      plan.feed_query.location?.lat === 43.0731 &&
+      plan.feed_query.location?.lng === -89.4012 &&
+      plan.feed_query.location?.radiusKm === 25;
+    
+    console.log(planPass ? "✅ PASS - Location in feed query!" : "❌ FAIL - Missing location");
+    return planPass;
+  }
+  
+  return pass;
+}
+
 // Test Case 2: Declined provider
 async function testCase2() {
   console.log("\n📋 TEST CASE 2: Declined Provider");
@@ -133,6 +200,73 @@ async function testCase2() {
   return pass;
 }
 
+// Test Case 4: Local search with IP location
+async function testCase4() {
+  console.log("\n📋 TEST CASE 4: Local Search (IP Location)");
+  console.log("-".repeat(60));
+  
+  // User provides age + activity, location from IP
+  const messages = [
+    { role: 'user', content: "I want ski lessons for my 9 year old" }
+  ];
+  
+  const requestHints = {
+    childAge: 9,
+    location: {
+      lat: 43.0731,
+      lng: -89.4012,
+      city: "Madison",
+      region: "Wisconsin",
+      country: "US",
+      radiusKm: 25,
+      source: 'ip' as const
+    }
+  };
+  
+  const askedFlags: AAPAskedFlags = {
+    asked_age: false,
+    asked_activity: false,
+    asked_provider: false
+  };
+  
+  const result = await triageAAP(messages, null, requestHints, askedFlags);
+  
+  console.log("\n✅ Results:");
+  console.log("AAP State:", JSON.stringify(result.aap, null, 2));
+  console.log("Follow-up Questions:", result.followup_questions);
+  console.log("Ready for Discovery:", result.ready_for_discovery);
+  
+  // Validate: Should use local mode
+  const pass = 
+    result.aap.age?.status === 'known' &&
+    result.aap.activity?.status === 'known' &&
+    result.aap.provider?.status === 'unknown' &&
+    result.aap.provider?.mode === 'local' &&
+    result.aap.provider?.locationHint?.city === 'Madison' &&
+    result.followup_questions.length === 0 &&
+    result.ready_for_discovery;
+  
+  console.log(pass ? "✅ PASS - Local mode with location!" : "❌ FAIL");
+  
+  // Test discovery planner with location
+  if (pass) {
+    console.log("\n🔍 Testing Discovery Planner with Location:");
+    const plan = await planProgramDiscovery(result.aap, "I want ski lessons for my 9 year old");
+    console.log("Discovery Plan:", JSON.stringify(plan, null, 2));
+    
+    const planPass = 
+      plan.feed_query.category === 'skiing' &&
+      plan.feed_query.location?.lat === 43.0731 &&
+      plan.feed_query.location?.lng === -89.4012 &&
+      plan.feed_query.location?.radiusKm === 25;
+    
+    console.log(planPass ? "✅ PASS - Location in feed query!" : "❌ FAIL - Missing location");
+    return planPass;
+  }
+  
+  return pass;
+}
+
 // Test Case 3: All-at-once
 async function testCase3() {
   console.log("\n📋 TEST CASE 3: All-At-Once");
@@ -180,7 +314,8 @@ async function testCase3() {
     const results = await Promise.all([
       testCase1(),
       testCase2(),
-      testCase3()
+      testCase3(),
+      testCase4()  // NEW: Local search test
     ]);
     
     console.log("\n" + "=".repeat(60));
@@ -189,6 +324,7 @@ async function testCase3() {
     console.log(`Test Case 1 (Blackhawk Loop): ${results[0] ? "✅ PASS" : "❌ FAIL"}`);
     console.log(`Test Case 2 (Declined Provider): ${results[1] ? "✅ PASS" : "❌ FAIL"}`);
     console.log(`Test Case 3 (All-At-Once): ${results[2] ? "✅ PASS" : "❌ FAIL"}`);
+    console.log(`Test Case 4 (Local Search): ${results[3] ? "✅ PASS" : "❌ FAIL"}`);  // NEW
     console.log(`\nOverall: ${results.every(r => r) ? "✅ ALL TESTS PASSED" : "❌ SOME TESTS FAILED"}`);
     
     process.exit(results.every(r => r) ? 0 : 1);

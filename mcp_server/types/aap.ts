@@ -22,10 +22,24 @@ export interface AAPActivity extends AAPField<{
   normalized: { category: string | null } | null;
 }
 
+export interface LocationHint {
+  lat: number;
+  lng: number;
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  radiusKm: number;
+  source: 'ip' | 'explicit' | 'profile';
+  mock?: boolean;  // Track if using mock Madison location
+  reason?: string; // Why mock is being used
+}
+
 export interface AAPProvider extends AAPField<{
   org_ref: string | null;
 }> {
   normalized: { org_ref: string | null } | null;
+  mode: 'named' | 'local';  // NEW: named provider vs local search
+  locationHint?: LocationHint;  // NEW: local search center
 }
 
 export interface AAPTriad {
@@ -48,6 +62,11 @@ export interface DiscoveryPlan {
     age_hint: {
       years: number | null;
       range: [number, number] | null;
+    };
+    location?: {  // NEW: for local search
+      lat: number;
+      lng: number;
+      radiusKm: number;
     };
   };
   fallback_strategy: string;
