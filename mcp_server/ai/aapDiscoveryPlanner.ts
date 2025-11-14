@@ -25,8 +25,16 @@ DATA RULES:
   - aap.activity.category when known to focus on an activity.
   - aap.age.normalized (years or range) as an age_hint when available.
 
+- If Provider mode is "named" and org_ref is present:
+  - Use org_ref to target that provider's feed
+  
+- If Provider mode is "local" and locationHint is present:
+  - Use locationHint.lat/lng for geographic search
+  - Set radiusKm from locationHint (default 25km)
+  - Note the city/region in notes_for_assistant
+
 - If Age is unknown: Do not fabricate a specific age. Avoid strict age filters; instead, prefer common youth ranges (e.g., 5–12) and rely on the UI to show age ranges clearly.
-- If Provider is unknown: Do NOT invent org_ref. Plan to search across multiple providers and then filter/sort by activity and age if available.
+- If Provider is unknown and no location available: Do NOT invent org_ref. Plan to search across multiple providers and then filter/sort by activity and age if available.
 - If Activity is unknown: Plan to show a small, diverse set of popular categories for the child's age.`;
 
 export async function planProgramDiscovery(
@@ -53,7 +61,7 @@ export async function planProgramDiscovery(
     Logger.error('[AAP Discovery Planner] Error:', error);
     
     // Fallback: broad discovery
-    return {
+    const fallback: DiscoveryPlan = {
       feed_query: {
         org_ref: aap.provider?.normalized?.org_ref || null,
         category: aap.activity?.normalized?.category || null,
@@ -65,5 +73,16 @@ export async function planProgramDiscovery(
       fallback_strategy: "Show a diverse set of popular programs for all ages if no matches found.",
       notes_for_assistant: "I'm showing programs based on what you've shared so far."
     };
+    
+    // Add location if available
+    if (aap.provider?.locationHint?.lat && aap.provider?.locationHint?.lng) {
+      fallback.feed_query.location = {
+        lat: aap.provider.locationHint.lat,
+        lng: aap.provider.locationHint.lng,
+        radiusKm: aap.provider.locationHint.radiusKm || 25
+      };
+    }
+    
+    return fallback;
   }
 }

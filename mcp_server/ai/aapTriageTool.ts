@@ -38,9 +38,16 @@ ACTIVITY
 - Look for what they want to sign up for: "ski lessons", "after‑school care", "swim team", "soccer clinic".
 - Map to a simple category if possible: "skiing", "swimming", "soccer", "music".
 
-PROVIDER
+PROVIDER (including local search)
+- Provider can be a specific organization OR a local search area.
 - Look for provider names: "Blackhawk ski", "YMCA", "Alpine Ridge Ski School", etc.
-- If the orchestrator gives you an org_ref mapping, include it; otherwise store the raw name.
+- If the orchestrator gives you an org_ref mapping, set mode = "named".
+- If request_hints.location is provided and no specific provider is mentioned:
+  - Set mode = "local"
+  - Include locationHint in the provider field
+  - Do NOT ask "Which organization?" as a blocking question
+  - Instead, mark provider.status = "unknown" but note the location is available
+- If both location AND a named provider exist, prefer the named provider (mode = "named")
 
 FOLLOW‑UP QUESTIONS:
 A field is "missing" if its status is "unknown".
@@ -66,7 +73,12 @@ Set ready_for_discovery as:
 export async function triageAAP(
   recentMessages: Array<{ role: string; content: string }>,
   existingAAP: AAPTriad | null,
-  requestHints: { category?: string; childAge?: number; provider?: string },
+  requestHints: { 
+    category?: string; 
+    childAge?: number; 
+    provider?: string;
+    location?: any;  // NEW: LocationHint from ipAPI
+  },
   askedFlags: AAPAskedFlags
 ): Promise<AAPTriageResult> {
   
@@ -74,7 +86,8 @@ export async function triageAAP(
     messageCount: recentMessages.length,
     existingAAP,
     requestHints,
-    askedFlags
+    askedFlags,
+    hasLocation: !!requestHints.location
   });
 
   try {
@@ -85,12 +98,22 @@ export async function triageAAP(
         recent_messages: recentMessages,
         existing_aap: existingAAP,
         request_hints: requestHints,
-        asked_flags: askedFlags
+        asked_flags: askedFlags,
+        available_location: requestHints.location ? {
+          city: requestHints.location.city,
+          region: requestHints.location.region,
+          source: requestHints.location.source
+        } : null
       },
       maxTokens: 500,
       temperature: 0.1,
       useResponsesAPI: false
     });
+
+    // Preserve location hint if it exists and provider mode is local
+    if (requestHints.location && result.aap?.provider?.mode === 'local') {
+      result.aap.provider.locationHint = requestHints.location;
+    }
 
     Logger.info('[AAP Triage] Result:', result);
     return result as AAPTriageResult;

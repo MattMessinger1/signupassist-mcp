@@ -619,7 +619,9 @@ class SignupAssistMCPServer {
               hasAction: !!action,
               hasAAP: !!currentAAP,
               hasCategory: !!category,
-              hasChildAge: !!childAge
+              hasChildAge: !!childAge,
+              hasLocation: !!(userLocation?.lat && userLocation?.lng),
+              location: userLocation
             });
             
             // Capture mandate from headers or body (with dev bypass)
