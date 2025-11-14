@@ -78,3 +78,53 @@ export interface AAPAskedFlags {
   asked_activity: boolean;
   asked_provider: boolean;
 }
+
+/**
+ * Factory Functions - Single source of truth for AAP defaults
+ * Prevents missing required fields and centralizes default values
+ */
+
+export const createAAPProvider = (
+  overrides: Partial<AAPProvider> = {}
+): AAPProvider => {
+  return {
+    status: 'unknown',
+    raw: null,
+    normalized: null,
+    source: 'assumed',
+    mode: 'local',  // Default to local search if no provider specified
+    ...overrides,
+  };
+};
+
+export const createAAPAge = (
+  overrides: Partial<AAPAge> = {}
+): AAPAge => {
+  return {
+    status: 'unknown',
+    raw: null,
+    normalized: null,
+    source: 'assumed',
+    ...overrides,
+  };
+};
+
+export const createAAPActivity = (
+  overrides: Partial<AAPActivity> = {}
+): AAPActivity => {
+  return {
+    status: 'unknown',
+    raw: null,
+    normalized: null,
+    source: 'assumed',
+    ...overrides,
+  };
+};
+
+export const createEmptyAAP = (): AAPTriad => {
+  return {
+    age: createAAPAge(),
+    activity: createAAPActivity(),
+    provider: createAAPProvider(),
+  };
+};
