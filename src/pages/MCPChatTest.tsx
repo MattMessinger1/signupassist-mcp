@@ -1,0 +1,53 @@
+import { MCPChat } from "@/components/MCPChat";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { useEffect, useState } from "react";
+
+const MCP_BASE_URL = import.meta.env.VITE_MCP_BASE_URL || "https://signupassist-mcp-production.up.railway.app";
+
+export default function MCPChatTest() {
+  const [backendInfo, setBackendInfo] = useState<any>(null);
+
+  useEffect(() => {
+    // Fetch backend identity on mount
+    fetch(`${MCP_BASE_URL}/identity`)
+      .then(res => res.json())
+      .then(data => setBackendInfo(data))
+      .catch(err => console.error("Failed to fetch backend identity:", err));
+  }, []);
+
+  return (
+    <div className="container mx-auto p-8 max-w-4xl">
+      <div className="mb-8 space-y-4">
+        <h1 className="text-4xl font-bold">SignupAssist — MCP Test Chat</h1>
+        
+        <Card className="p-4 bg-green-500/10 border-green-500">
+          <h3 className="text-xl font-semibold text-green-700 dark:text-green-400 mb-2">
+            ✅ MCP Backend Connected
+          </h3>
+          <div className="space-y-1 text-sm">
+            <p><strong>URL:</strong> {MCP_BASE_URL}</p>
+            {backendInfo && (
+              <>
+                <p><strong>Backend:</strong> {backendInfo.backend}</p>
+                <p><strong>Environment:</strong> {backendInfo.env}</p>
+                <p><strong>Git Commit:</strong> {backendInfo.git_commit}</p>
+                <p><strong>Timestamp:</strong> {backendInfo.timestamp}</p>
+              </>
+            )}
+          </div>
+        </Card>
+
+        <div className="flex gap-2 flex-wrap">
+          <Badge variant="outline">Direct MCP Backend</Badge>
+          <Badge variant="outline">No Local Simulation</Badge>
+          <Badge variant="outline">Production Orchestrator</Badge>
+        </div>
+      </div>
+
+      <Card className="p-6">
+        <MCPChat />
+      </Card>
+    </div>
+  );
+}
