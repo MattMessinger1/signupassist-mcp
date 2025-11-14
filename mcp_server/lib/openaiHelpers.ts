@@ -46,6 +46,26 @@ function requiresCompletionTokensParam(model: string): boolean {
 }
 
 /**
+ * Ensures at least one message contains the word "json" when using JSON response format
+ * OpenAI requires this for response_format: { type: 'json_object' }
+ */
+function ensureJsonWord(messages: Array<{ role: string; content: any }>): Array<{ role: string; content: any }> {
+  const hasJson = messages.some((m) => /json/i.test(String(m.content)));
+  if (!hasJson) {
+    const cloned = structuredClone(messages);
+    const lastIdx = cloned.length - 1;
+    cloned[lastIdx] = {
+      ...cloned[lastIdx],
+      content:
+        String(cloned[lastIdx].content) +
+        '\n\nYou MUST respond with a JSON object only. Return valid JSON.',
+    };
+    return cloned;
+  }
+  return messages;
+}
+
+/**
  * Safe JSON parser with automatic cleanup and retry
  * Prevents crashes from malformed JSON responses
  */
@@ -145,8 +165,11 @@ export async function callOpenAI_JSON(opts: {
     { role: "user", content: JSON.stringify(user) }
   ];
 
+  // Ensure at least one message contains "json" for JSON response format
+  const safeMessages = ensureJsonWord(messages);
+
   const apiFamily = useResponsesAPI ? "responses" : "chat";
-  const body = buildOpenAIBody({ model, apiFamily, messages, maxTokens, temperature });
+  const body = buildOpenAIBody({ model, apiFamily, messages: safeMessages, maxTokens, temperature });
 
   try {
     if (useResponsesAPI) {
