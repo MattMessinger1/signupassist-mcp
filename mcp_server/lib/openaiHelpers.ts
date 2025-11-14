@@ -52,15 +52,13 @@ function requiresCompletionTokensParam(model: string): boolean {
 function ensureJsonWord(messages: Array<{ role: string; content: any }>): Array<{ role: string; content: any }> {
   const hasJson = messages.some((m) => /json/i.test(String(m.content)));
   if (!hasJson) {
-    const cloned = structuredClone(messages);
-    const lastIdx = cloned.length - 1;
-    cloned[lastIdx] = {
-      ...cloned[lastIdx],
-      content:
-        String(cloned[lastIdx].content) +
-        '\n\nYou MUST respond with a JSON object only. Return valid JSON.',
-    };
-    return cloned;
+    return [
+      ...messages,
+      {
+        role: "system",
+        content: "Return your answer strictly as a JSON object."
+      }
+    ];
   }
   return messages;
 }
