@@ -16,6 +16,7 @@ import FlowTester from "./pages/FlowTester";
 import NotFound from "./pages/NotFound";
 import { DisambiguationDemo } from "./components/DisambiguationDemo";
 import ChatTestHarness from "./pages/ChatTestHarness";
+import MCPChatTest from "./pages/MCPChatTest";
 
 const queryClient = new QueryClient();
 
@@ -38,6 +39,7 @@ const App = () => (
             <Route path="/login-test" element={<LoginTest />} />
             <Route path="/disambiguation-demo" element={<DisambiguationDemo />} />
             <Route path="/chat-test" element={<ChatTestHarness />} />
+            <Route path="/mcp-chat-test" element={<MCPChatTest />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
