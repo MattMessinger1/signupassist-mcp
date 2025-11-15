@@ -771,6 +771,58 @@ class SignupAssistMCPServer {
                 throw actionError; // Re-throw to outer catch
               }
             } else if (message) {
+              // Fetch ipapi location if not already provided via userLocation
+              let finalUserLocation = userLocation;
+              
+              if (!userLocation?.lat || !userLocation?.lng) {
+                try {
+                  const SUPABASE_URL = process.env.SUPABASE_URL || process.env.SB_URL;
+                  const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SERVICE_ROLE_KEY;
+                  
+                  if (SUPABASE_URL && SUPABASE_KEY) {
+                    console.log('[Orchestrator] Fetching ipapi location...');
+                    
+                    // Forward client IP headers to ipapi function
+                    const locationRes = await fetch(`${SUPABASE_URL}/functions/v1/get-user-location`, {
+                      method: 'POST',
+                      headers: {
+                        'Authorization': `Bearer ${SUPABASE_KEY}`,
+                        'Content-Type': 'application/json',
+                        // Forward IP headers from original request
+                        ...(req.headers['x-forwarded-for'] && { 'x-forwarded-for': req.headers['x-forwarded-for'] as string }),
+                        ...(req.headers['x-real-ip'] && { 'x-real-ip': req.headers['x-real-ip'] as string }),
+                        ...(req.headers['cf-connecting-ip'] && { 'cf-connecting-ip': req.headers['cf-connecting-ip'] as string })
+                      }
+                    });
+                    
+                    if (locationRes.ok) {
+                      const locationData = await locationRes.json();
+                      console.log('[Orchestrator] ipapi location:', locationData);
+                      
+                      // Store in session context for AAP triage and provider search
+                      await this.orchestrator.updateContext(sessionId, {
+                        location: {
+                          lat: locationData.lat,
+                          lng: locationData.lng,
+                          city: locationData.city,
+                          region: locationData.region,
+                          country: 'US',
+                          source: 'ipapi',
+                          mock: locationData.mock || false,
+                          reason: locationData.reason
+                        }
+                      } as any);
+                      
+                      // Also pass as userLocation for backward compatibility
+                      finalUserLocation = { lat: locationData.lat, lng: locationData.lng };
+                    }
+                  }
+                } catch (locationError: any) {
+                  console.warn('[Orchestrator] Failed to fetch ipapi location:', locationError.message);
+                  // Continue without location - not a critical failure
+                }
+              }
+              
               // Phase 3: Update context with structured AAP if provided
               if (currentAAP) {
                 console.log(`[Orchestrator] Updating context with AAP object:`, currentAAP);
@@ -785,13 +837,13 @@ class SignupAssistMCPServer {
               
               // Text message
               console.log(`[Orchestrator] generateResponse: ${message}`, { 
-                hasLocation: !!userLocation, 
+                hasLocation: !!finalUserLocation, 
                 hasJwt: !!userJwt,
                 hasAAP: !!currentAAP,
                 category,
                 childAge 
               });
-              result = await this.orchestrator.generateResponse(message, sessionId, userLocation, userJwt, { 
+              result = await this.orchestrator.generateResponse(message, sessionId, finalUserLocation, userJwt, { 
                 mandate_jws: finalMandateJws, 
                 mandate_id 
               });
