@@ -609,16 +609,9 @@ class AIOrchestrator {
               childAge: !intent?.childAge
             }
           });
-          // Build AAP triad from stored context
-          const aapTriad = context.aapTriad || parseAAPTriad('', {
-            age: intent?.childAge,
-            activity: intent?.category,
-            provider: intent?.provider
-          });
-          const emergencyQuestion = buildAAPQuestion(aapTriad);
-          if (emergencyQuestion) {
-            return this.formatResponse(emergencyQuestion, undefined, undefined, {});
-          }
+          // Do NOT ask another narrowing question. Proceed with whatever
+          // AAP / intent we have and go straight to discovery.
+          // So: no return here.
         }
         
         // Intent is complete! If we have partialIntent.provider but not context.provider,
