@@ -18,11 +18,27 @@ export interface Child {
 }
 
 /**
+ * Session location from ipapi or user input
+ * Used for location-based provider search and AAP context
+ */
+export interface SessionLocation {
+  city?: string;
+  region?: string;   // state / province
+  country?: string;
+  lat?: number;
+  lng?: number;
+  source?: 'ipapi' | 'user' | 'manual' | 'unknown';
+  mock?: boolean;    // true if using mock location (e.g., localhost)
+  reason?: string;   // reason for mock (e.g., "no_api_key", "localhost")
+}
+
+/**
  * Session context for orchestration and tool calls
  * Tracks user state, credentials, and provider information
  */
 export interface SessionContext {
   userLocation?: { lat: number; lng: number };
+  location?: SessionLocation | null;  // ipapi-derived location for provider search
   user_jwt?: string;
   provider?: { name: string; orgRef: string; source?: string; city?: string; state?: string };
   providerSearchResults?: any[];
