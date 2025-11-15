@@ -355,7 +355,8 @@ class AIOrchestrator {
           category: context.aap?.activity?.normalized?.category || null,
           childAge: context.aap?.age?.normalized?.years || null,
           provider: context.aap?.provider?.raw || null,
-          location: locationHint
+          location: locationHint,
+          hasLocationHint: !!locationHint
         };
 
         Logger.info('[NEW AAP] Request hints prepared', { 
@@ -847,7 +848,11 @@ class AIOrchestrator {
     
     // If AAP produced a complete triad, STOP HERE — no narrowing questions
     if (derivedFromAAP?.hasIntent) {
-      Logger.info(`[AAP Complete - Early Exit] ${sessionId}`, { derivedFromAAP, aap });
+      Logger.info(`[AAP Complete - Early Exit] ${sessionId}`, { 
+        derivedFromAAP, 
+        aap,
+        message: 'AAP triad is complete - skipping all narrowing questions'
+      });
       await this.updateContext(sessionId, {
         partialIntent: derivedFromAAP,
         category: derivedFromAAP.category,
@@ -3215,6 +3220,29 @@ Return JSON: {
    * @returns Step identifier string (provider_search, login, program_selection, etc.)
    */
   private determineStep(userMessage: string, context: Record<string, any>): string {
+    // CRITICAL: Check AAP triad completeness FIRST, before routing to provider_search
+    const aap = context.aap;
+    const discoveryPlan = context.aap_discovery_plan;
+    
+    const triadComplete =
+      aap?.age?.status === "known" &&
+      aap?.activity?.status === "known" &&
+      aap?.provider?.status === "known";
+    
+    const hasDiscoveryPlan =
+      discoveryPlan?.feed === "programs" &&
+      !!discoveryPlan.query?.org_ref;
+    
+    if (triadComplete && hasDiscoveryPlan) {
+      // AAP triad is complete with a discovery plan
+      // Skip provider_search and route directly to program discovery
+      Logger.info('[Router] AAP triad complete - routing to aap_discovery', {
+        aap,
+        discoveryPlan: discoveryPlan?.query
+      });
+      return "aap_discovery";
+    }
+    
     // When FEATURE_INTENT_UPFRONT is enabled, check partialIntent first
     const FEATURE_INTENT_UPFRONT = process.env.FEATURE_INTENT_UPFRONT === "true";
     const hasProvider = context.provider || (FEATURE_INTENT_UPFRONT && context.partialIntent?.provider);
@@ -3303,9 +3331,28 @@ Return JSON: {
     const location = parsed.city;
     
     try {
-      // Get userLocation from context if available
-      const context = this.getContext(sessionId);
-      const userCoords = (context as any).userLocation;
+      // Get location from session context (ipapi-derived or userLocation)
+      const context = await this.getContext(sessionId);
+      
+      // Prefer userLocation (GPS) if available, fallback to ipapi location
+      let userCoords = (context as any).userLocation;
+      let locationSource: 'gps' | 'ipapi' | 'none' = 'none';
+      
+      if (userCoords) {
+        locationSource = 'gps';
+      } else if (context.location) {
+        // Use ipapi-derived location
+        userCoords = {
+          lat: context.location.lat,
+          lng: context.location.lng
+        };
+        locationSource = 'ipapi';
+        Logger.info('[ProviderSearch] Using ipapi-derived location', {
+          city: context.location.city,
+          region: context.location.region,
+          coords: userCoords
+        });
+      }
       
       const results = await this.callTool("search_provider", { name, location, userCoords });
       
@@ -3324,7 +3371,10 @@ Return JSON: {
       
       // Add transparency note when location-based search is used
       if (userCoords) {
-        message += `\n\n_Results are shown near your general area._`;
+        const locationNote = locationSource === 'ipapi' 
+          ? `\n\n_Results are shown near ${context.location?.city || 'your general area'}._`
+          : `\n\n_Results are shown near your general area._`;
+        message += locationNote;
       }
       
       const cards = this.buildProviderCards(results);
@@ -3333,9 +3383,13 @@ Return JSON: {
       if (userCoords) {
         this.logAction("location_based_search", {
           sessionId,
-          userProvided: true,
-          method: 'gps',
-          approximateLocation: `${userCoords.lat.toFixed(2)},${userCoords.lng.toFixed(2)}`
+          userProvided: locationSource === 'gps',
+          method: locationSource,
+          approximateLocation: `${userCoords.lat.toFixed(2)},${userCoords.lng.toFixed(2)}`,
+          ...(locationSource === 'ipapi' && context.location && {
+            city: context.location.city,
+            region: context.location.region
+          })
         });
       }
       

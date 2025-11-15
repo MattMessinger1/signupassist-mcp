@@ -5,9 +5,22 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
+interface Card {
+  title: string;
+  subtitle?: string;
+  description?: string;
+  metadata?: Record<string, any>;
+  buttons?: Array<{
+    label: string;
+    action: string;
+    variant?: "accent" | "outline";
+  }>;
+}
+
 interface Message {
   role: "user" | "assistant";
   content: string;
+  cards?: Card[];
 }
 
 export function MCPChat() {
@@ -29,10 +42,15 @@ export function MCPChat() {
     try {
       const response = await sendMessage(userMessage, sessionId);
       const assistantMessage = response.message || "(no response)";
+      const assistantCards = response.cards || [];
 
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: assistantMessage },
+        { 
+          role: "assistant", 
+          content: assistantMessage,
+          cards: assistantCards
+        },
       ]);
     } catch (error) {
       console.error("MCP Chat error:", error);
@@ -50,12 +68,36 @@ export function MCPChat() {
       <ScrollArea className="flex-1 p-4 border rounded-lg">
         <div className="space-y-4">
           {messages.map((msg, idx) => (
-            <Card key={idx} className={`p-3 ${msg.role === "user" ? "bg-primary/10 ml-12" : "bg-secondary/10 mr-12"}`}>
-              <div className="font-semibold text-sm mb-1">
-                {msg.role === "user" ? "You" : "Assistant"}
-              </div>
-              <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
-            </Card>
+            <div key={idx}>
+              <Card className={`p-3 ${msg.role === "user" ? "bg-primary/10 ml-12" : "bg-secondary/10 mr-12"}`}>
+                <div className="font-semibold text-sm mb-1">
+                  {msg.role === "user" ? "You" : "Assistant"}
+                </div>
+                <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
+              </Card>
+              
+              {msg.cards && msg.cards.length > 0 && (
+                <div className="grid grid-cols-1 gap-2 mt-2 mr-12">
+                  {msg.cards.map((card, cardIdx) => (
+                    <Card key={cardIdx} className="p-3 bg-accent/5 border-accent/20">
+                      <div className="font-semibold text-sm mb-1">{card.title}</div>
+                      {card.subtitle && (
+                        <div className="text-xs text-muted-foreground mb-2">{card.subtitle}</div>
+                      )}
+                      {card.description && (
+                        <div className="text-xs text-muted-foreground">{card.description}</div>
+                      )}
+                      {card.metadata && (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {card.metadata.orgRef && <div>Org: {card.metadata.orgRef}</div>}
+                          {card.metadata.location && <div>Location: {card.metadata.location}</div>}
+                        </div>
+                      )}
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
           {loading && (
             <Card className="p-3 bg-secondary/10 mr-12">
