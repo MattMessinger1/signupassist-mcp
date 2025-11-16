@@ -136,7 +136,12 @@ export async function triageAAP(
   try {
     // Check triage cache first to skip redundant OpenAI calls (~300-900ms savings)
     const lastUserMessage = recentMessages.filter(m => m.role === 'user').pop()?.content || '';
-    const cacheKey = `${lastUserMessage}:${JSON.stringify(existingAAP)}`;
+    const cacheKey = JSON.stringify({
+      lastUserMsg: lastUserMessage,
+      existingAAP,
+      requestHints,
+      askedFlags
+    });
     
     if (triageCache.has(cacheKey)) {
       Logger.info('[AAP Triage] Cache hit');
