@@ -297,23 +297,6 @@ class AIOrchestrator {
     }
   }
 
-    // Step-specific prompt templates for consistent messaging
-    this.promptTemplates = {
-      providerSearch: "User said: '{input}'. Extract provider name and city/state.",
-      programSelection: "List available programs for {provider} and help user choose.",
-      prerequisiteCheck: "Explain which prerequisites (membership, waivers) are missing and guide politely.",
-      formFill: "Ask for remaining registration fields clearly and one at a time.",
-      confirmation: "Summarize registration details and ask for explicit confirmation."
-    };
-
-    // Few-shot examples to maintain consistent tone and style
-    this.exampleMessages = [
-      { role: "user", content: "Blackhawk ski Madison" },
-      { role: "assistant", content: "🔍 I found **Blackhawk Ski Club (Middleton, WI)**. Is that correct?" },
-      { role: "user", content: "Yes" },
-      { role: "assistant", content: "✅ Great! Let's check available classes next." }
-    ];
-  }
 
   /**
    * Generate AI response for user message
