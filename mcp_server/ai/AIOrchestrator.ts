@@ -438,13 +438,14 @@ class AIOrchestrator {
         // Latency checkpoint: After AAP triage
         t2 = Date.now();
         
-        // Reuse the locationHint from triageResult if present
+        // Update locationForHints from triageResult if present
+        let finalLocation = locationForHints;
         if (triageResult.aap?.provider?.locationHint) {
-          locationHint = triageResult.aap.provider.locationHint;
+          finalLocation = triageResult.aap.provider.locationHint;
         }
         const has_location = Boolean(
-          locationHint?.city || locationHint?.region || locationHint?.country ||
-          (typeof locationHint?.lat === 'number' && typeof locationHint?.lng === 'number')
+          finalLocation?.city || finalLocation?.region || finalLocation?.country ||
+          (typeof finalLocation?.lat === 'number' && typeof finalLocation?.lng === 'number')
         );
         
         Logger.info('[NEW AAP TRIAGE COMPLETE]', {
@@ -452,8 +453,8 @@ class AIOrchestrator {
           aap: triageResult.aap,
           provider_mode: triageResult.aap?.provider?.mode,
           has_location,
-          location_source: locationHint?.source,
-          location_city: locationHint?.city,
+          location_source: finalLocation?.source,
+          location_city: finalLocation?.city,
           followup_questions: triageResult.followup_questions,
           ready_for_discovery: triageResult.ready_for_discovery,
           assumptions: triageResult.assumptions
@@ -833,7 +834,7 @@ class AIOrchestrator {
     });
 
     if (process.env.NODE_ENV !== 'production') {
-      Logger.debug(`[Context Updated] Full context (non-prod only) ${sessionId}`, {
+      console.log(`[DEBUG] [Context Updated] Full context (non-prod only) ${sessionId}`, {
         fullContext: this.sessions[sessionId]
       });
     }
