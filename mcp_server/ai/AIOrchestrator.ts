@@ -3469,20 +3469,16 @@ Return JSON: {
     const location = parsed.city;
     
     try {
-      // Location already fetched at the top for safety guard, reuse it
-      // Prefer userLocation (GPS) if available, fallback to ipapi location
-      
-      // Prefer userLocation (GPS) if available, fallback to ipapi location
-      let userCoords = (context as any).userLocation;
-      let locationSource: 'gps' | 'ipapi' | 'none' = 'none';
-      
       // Always use real userLocation from context (never mock)
       const userCoords = context.location && !context.location.mock
         ? { lat: context.location.lat, lng: context.location.lng }
         : undefined;
       
+      let locationSource: 'gps' | 'ipapi' | 'none' = 'none';
       if (userCoords) {
-        locationSource = context.location?.source || 'ipapi';
+        // Map context.location.source to our type-safe locationSource
+        const src = context.location?.source;
+        locationSource = (src === 'user' || src === 'manual') ? 'gps' : (src === 'ipapi' ? 'ipapi' : 'none');
         Logger.info('[ProviderSearch] Using real location', {
           city: context.location?.city,
           region: context.location?.region,
