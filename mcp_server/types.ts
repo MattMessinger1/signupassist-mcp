@@ -66,7 +66,7 @@ export interface SessionContext {
     childAge?: number;
     category?: string;
     provider?: string;
-    hasIntent?: boolean;
+    hasIntent: boolean;
   } | null;
   
   aapTriad?: { age?: number; activity?: string; provider?: string; complete: boolean; missing: Array<'age' | 'activity' | 'provider'> }; // AAP Triad state for stateful parsing
