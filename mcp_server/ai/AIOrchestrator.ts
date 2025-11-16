@@ -825,6 +825,82 @@ class AIOrchestrator {
       return null; // Proceed with defaults
     }
     
+    // CRITICAL FIX: Check if AAP triad + discovery plan are complete
+    // If yes, derive intent and return early to skip provider_search
+    const aap = context.aap;
+    const plan = context.aap_discovery_plan;
+
+    const triadComplete =
+      aap?.age?.status === 'known' &&
+      aap?.activity?.status === 'known' &&
+      aap?.provider?.status === 'known';
+
+    const hasDiscoveryPlan =
+      !!plan &&
+      plan.feed === 'programs' &&
+      !!plan.query?.provider;
+
+    // ALSO look at the derived top-level fields
+    const hasChildAge = typeof context.childAge === 'number';
+    const hasCategory = !!context.category;
+    const hasProvider =
+      !!context.provider?.orgRef ||
+      !!context.provider?.name ||
+      !!aap?.provider?.normalized?.org_ref ||
+      !!aap?.provider?.raw;
+
+    if (triadComplete && hasDiscoveryPlan && hasChildAge && hasCategory && hasProvider) {
+      const childAge =
+        context.childAge ??
+        aap.age.normalized?.years ??
+        parseInt(aap.age.raw ?? '', 10);
+
+      const category =
+        context.category ??
+        aap.activity.normalized?.category ??
+        aap.activity.raw;
+
+      const providerId =
+        context.provider?.orgRef ??
+        aap.provider.normalized?.org_ref ??
+        aap.provider.raw;
+
+      // Keep the derived fields in the context up to date
+      context.childAge = childAge;
+      context.category = category;
+      context.provider = {
+        name: context.provider?.name ?? aap.provider.raw,
+        orgRef: providerId
+      };
+
+      // And set the intent so downstream logic sees it as "complete"
+      context.intent = {
+        childAge,
+        category,
+        provider: providerId,
+        hasIntent: true
+      };
+
+      Logger.info(`[AAP Complete - Skipping Provider Search] ${sessionId}`, {
+        aap,
+        plan,
+        derivedIntent: context.intent,
+        message: 'AAP triad + discovery plan complete - proceeding to program discovery'
+      });
+
+      // Save context with complete intent
+      await this.updateContext(sessionId, {
+        childAge: context.childAge,
+        category: context.category,
+        provider: context.provider,
+        intent: context.intent,
+        partialIntent: context.intent
+      });
+
+      // IMPORTANT: return without marking anything as missing
+      return null;
+    }
+    
     // Parse AAP triad from current message with accumulated context
     const aapTriad = parseAAPTriad(userMessage, {
       age: context.partialIntent?.childAge,
