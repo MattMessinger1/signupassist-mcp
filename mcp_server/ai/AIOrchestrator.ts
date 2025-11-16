@@ -3307,16 +3307,16 @@ Return JSON: {
     
     const hasDiscoveryPlan =
       discoveryPlan?.feed === "programs" &&
-      !!discoveryPlan.query?.org_ref;
+      !!discoveryPlan.query?.provider;  // Fixed: use 'provider' not 'org_ref'
     
     if (triadComplete && hasDiscoveryPlan) {
       // AAP triad is complete with a discovery plan
       // Skip provider_search and route directly to program discovery
-      Logger.info('[Router] AAP triad complete - routing to aap_discovery', {
+      Logger.info('[Router] AAP triad complete - routing to program_selection', {
         aap,
         discoveryPlan: discoveryPlan?.query
       });
-      return "aap_discovery";
+      return "program_selection";  // Fixed: use existing program_selection step
     }
     
     // When FEATURE_INTENT_UPFRONT is enabled, check partialIntent first
