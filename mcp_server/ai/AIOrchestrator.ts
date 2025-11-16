@@ -273,6 +273,49 @@ class AIOrchestrator {
   }
 
   /**
+   * Fetch real user location via ipapi endpoint
+   */
+  private async fetchRealLocation(): Promise<any> {
+    try {
+      const base = process.env.MCP_SERVER_URL || "https://signupassist-mcp-production.up.railway.app";
+      const url = `${base}/get-user-location`;
+
+      Logger.info('[LOCATION] Fetching real user location from', { url });
+      const res = await fetch(url);
+      const data = await res.json();
+
+      Logger.info('[LOCATION] Received location data', { 
+        mock: data.mock, 
+        city: data.city, 
+        region: data.region,
+        reason: data.reason 
+      });
+      return data; // { lat, lng, city, region, country, mock }
+    } catch (err: any) {
+      Logger.error('[LOCATION] Exception fetching location', { error: err.message });
+      return { mock: true, reason: "fetch_exception", error: err.message };
+    }
+  }
+
+    // Step-specific prompt templates for consistent messaging
+    this.promptTemplates = {
+      providerSearch: "User said: '{input}'. Extract provider name and city/state.",
+      programSelection: "List available programs for {provider} and help user choose.",
+      prerequisiteCheck: "Explain which prerequisites (membership, waivers) are missing and guide politely.",
+      formFill: "Ask for remaining registration fields clearly and one at a time.",
+      confirmation: "Summarize registration details and ask for explicit confirmation."
+    };
+
+    // Few-shot examples to maintain consistent tone and style
+    this.exampleMessages = [
+      { role: "user", content: "Blackhawk ski Madison" },
+      { role: "assistant", content: "🔍 I found **Blackhawk Ski Club (Middleton, WI)**. Is that correct?" },
+      { role: "user", content: "Yes" },
+      { role: "assistant", content: "✅ Great! Let's check available classes next." }
+    ];
+  }
+
+  /**
    * Generate AI response for user message
    * Uses step-aware routing to guide user through signup flow
    * 
@@ -304,6 +347,36 @@ class AIOrchestrator {
       }
       
       // ======================================================================
+      // REAL LOCATION FETCH: Get user location before AAP triage
+      // ======================================================================
+      if (!context.location || context.location.mock) {
+        Logger.info('[LOCATION] Fetching real location for session', { sessionId });
+        const loc = await this.fetchRealLocation();
+        if (!loc.mock) {
+          Logger.info('[LOCATION] ✅ Real location acquired', { 
+            city: loc.city, 
+            region: loc.region,
+            lat: loc.lat,
+            lng: loc.lng 
+          });
+          await this.updateContext(sessionId, {
+            location: {
+              lat: loc.lat,
+              lng: loc.lng,
+              city: loc.city,
+              region: loc.region,
+              country: loc.country,
+              source: "ipapi",
+              mock: false
+            },
+            userLocation: { lat: loc.lat, lng: loc.lng }
+          });
+        } else {
+          Logger.warn('[LOCATION] ⚠️ Using mock location', { reason: loc.reason });
+        }
+      }
+      
+      // ======================================================================
       // A-A-P TRIAGE: Feature Flag Switch
       // ======================================================================
       
@@ -311,26 +384,8 @@ class AIOrchestrator {
         // NEW SYSTEM: Structured AAP Triad with Triage Tool
         Logger.info(`[NEW AAP] Using structured AAP triage system`, { sessionId });
         
-        // Convert userLocation to LocationHint if available
-        let locationHint: any = undefined;
-        if (userLocation?.lat && userLocation?.lng) {
-          // Check if we already have detailed location in session
-          if (context.aap?.provider?.locationHint?.lat === userLocation.lat) {
-            locationHint = context.aap.provider.locationHint;
-          } else {
-            // Create basic location hint from coordinates
-            locationHint = {
-              lat: userLocation.lat,
-              lng: userLocation.lng,
-              city: null,  // Could reverse geocode if needed
-              region: null,
-              country: null,
-              radiusKm: 25,
-              source: 'ip'
-            };
-            Logger.info('[NEW AAP] Created locationHint from userLocation', { locationHint });
-          }
-        }
+        // Use real location from context
+        let locationHint: any = context.location;
         
         // Get conversation history (last 10 messages for better context retention)
         const recentMessages = (context.conversationHistory || []).slice(-10);
@@ -356,7 +411,7 @@ class AIOrchestrator {
           childAge: context.aap?.age?.normalized?.years || null,
           provider: context.aap?.provider?.raw || null,
           location: locationHint,
-          hasLocationHint: !!locationHint
+          hasLocationHint: !!locationHint && !locationHint.mock
         };
 
         Logger.info('[NEW AAP] Request hints prepared', { 
@@ -3438,20 +3493,21 @@ Return JSON: {
       let userCoords = (context as any).userLocation;
       let locationSource: 'gps' | 'ipapi' | 'none' = 'none';
       
+      // Always use real userLocation from context (never mock)
+      const userCoords = context.location && !context.location.mock
+        ? { lat: context.location.lat, lng: context.location.lng }
+        : undefined;
+      
       if (userCoords) {
-        locationSource = 'gps';
-      } else if (context.location) {
-        // Use ipapi-derived location
-        userCoords = {
-          lat: context.location.lat,
-          lng: context.location.lng
-        };
-        locationSource = 'ipapi';
-        Logger.info('[ProviderSearch] Using ipapi-derived location', {
-          city: context.location.city,
-          region: context.location.region,
-          coords: userCoords
+        locationSource = context.location?.source || 'ipapi';
+        Logger.info('[ProviderSearch] Using real location', {
+          city: context.location?.city,
+          region: context.location?.region,
+          coords: userCoords,
+          source: locationSource
         });
+      } else {
+        Logger.warn('[ProviderSearch] No real location available');
       }
       
       const results = await this.callTool("search_provider", { name, location, userCoords });
