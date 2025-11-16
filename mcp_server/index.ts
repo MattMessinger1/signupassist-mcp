@@ -192,7 +192,7 @@ class SignupAssistMCPServer {
   async startHTTP(): Promise<any> {
     const port = process.env.PORT ? parseInt(process.env.PORT) : 8080;
 
-    const httpServer = createServer((req, res) => {
+    const httpServer = createServer(async (req, res) => {
       // --- CORS setup
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
