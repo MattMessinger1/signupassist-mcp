@@ -37,6 +37,21 @@ export const PROMPT_VERSION = "v1.0.0";
 const USE_NEW_AAP_SYSTEM = process.env.USE_NEW_AAP === 'true' || false;
 
 /**
+ * Development fallback location (Madison, WI)
+ * Only used in non-production when no real ipapi location is available
+ */
+const DEV_DEFAULT_LOCATION = {
+  lat: 43.0731,
+  lng: -89.4012,
+  city: 'Madison',
+  region: 'Wisconsin',
+  country: 'US',
+  source: 'ipapi' as const,
+  mock: true,
+  reason: 'no_api_key'
+};
+
+/**
  * PRODUCTION_SYSTEM_PROMPT
  * 
  * Orchestration System Prompt - Handles tool calling, session reuse, and flow logic
@@ -367,8 +382,14 @@ class AIOrchestrator {
         // NEW SYSTEM: Structured AAP Triad with Triage Tool
         Logger.info(`[NEW AAP] Using structured AAP triage system`, { sessionId });
         
-        // Use real location from context
-        let locationHint: any = context.location;
+        // Determine location for AAP triage
+        const realLocation = context.location;
+        const shouldUseDevFallback = !realLocation && process.env.NODE_ENV !== 'production';
+        const locationForHints = realLocation && !realLocation.mock
+          ? realLocation
+          : shouldUseDevFallback
+            ? DEV_DEFAULT_LOCATION
+            : null;
         
         // Get conversation history (last 10 messages for better context retention)
         const recentMessages = (context.conversationHistory || []).slice(-10);
@@ -393,14 +414,14 @@ class AIOrchestrator {
           category: context.aap?.activity?.normalized?.category || null,
           childAge: context.aap?.age?.normalized?.years || null,
           provider: context.aap?.provider?.raw || null,
-          location: locationHint,
-          hasLocationHint: !!locationHint && !locationHint.mock
+          location: locationForHints,
+          hasLocationHint: Boolean(locationForHints)
         };
 
         Logger.info('[NEW AAP] Request hints prepared', { 
           sessionId,
           requestHints,
-          hasLocationHint: !!locationHint
+          hasLocationHint: Boolean(locationForHints)
         });
         
         // Latency checkpoint: Before AAP triage
@@ -806,11 +827,16 @@ class AIOrchestrator {
       ...updates
     };
 
-    // Single consolidated log instead of 3-4 separate calls
+    // Compact logging for production, full context only in non-prod
     Logger.info(`[Context Updated] ${sessionId}`, {
-      updates,
-      fullContext: this.sessions[sessionId]
+      updates: Object.keys(updates ?? {})
     });
+
+    if (process.env.NODE_ENV !== 'production') {
+      Logger.debug(`[Context Updated] Full context (non-prod only) ${sessionId}`, {
+        fullContext: this.sessions[sessionId]
+      });
+    }
 
     // PHASE 2: Persist to Supabase
     const userId = extractUserIdFromJWT(this.sessions[sessionId]?.user_jwt);
