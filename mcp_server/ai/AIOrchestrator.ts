@@ -772,17 +772,46 @@ class AIOrchestrator {
    */
   async updateContext(sessionId: string, updates: Partial<SessionContext>): Promise<void> {
     const existing = await this.getContext(sessionId);
-    this.sessions[sessionId] = { 
-      ...existing, 
-      ...updates 
+
+    if (!updates || Object.keys(updates).length === 0) {
+      return; // nothing to update
+    }
+
+    // Shallow + JSON equality check to avoid noisy no-op updates
+    let changed = false;
+    for (const key of Object.keys(updates)) {
+      const newVal = (updates as any)[key];
+      const oldVal = (existing as any)[key];
+
+      const isObject = (v: any) => v && typeof v === "object";
+
+      const equal =
+        isObject(newVal) || isObject(oldVal)
+          ? JSON.stringify(newVal) === JSON.stringify(oldVal)
+          : newVal === oldVal;
+
+      if (!equal) {
+        changed = true;
+        break;
+      }
+    }
+
+    if (!changed) {
+      // Skip redundant log + DB writes
+      return;
+    }
+
+    this.sessions[sessionId] = {
+      ...existing,
+      ...updates
     };
-    
+
     // Single consolidated log instead of 3-4 separate calls
     Logger.info(`[Context Updated] ${sessionId}`, {
       updates,
       fullContext: this.sessions[sessionId]
     });
-    
+
     // PHASE 2: Persist to Supabase
     const userId = extractUserIdFromJWT(this.sessions[sessionId]?.user_jwt);
     await saveSessionToDB(sessionId, this.sessions[sessionId], userId || undefined);

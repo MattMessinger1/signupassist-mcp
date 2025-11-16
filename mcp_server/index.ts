@@ -244,15 +244,30 @@ class SignupAssistMCPServer {
           const apiKey = process.env.IPAPI_KEY;
 
           if (!apiKey) {
-            console.warn('[LOCATION] IPAPI_KEY not configured - returning mock location');
+            const env = (process.env.NODE_ENV || "").toLowerCase();
+            const isDev = env === "development";
+
+            if (!isDev) {
+              console.error("[get-user-location] CRITICAL: IPAPI_KEY missing in production");
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({
+                error: "IPAPI_KEY not configured",
+                mock: true,
+                reason: "missing_ipapi_key"
+              }));
+              return;
+            }
+
+            console.warn('[LOCATION] IPAPI_KEY not configured - returning mock Madison location for dev');
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
-              mock: true,
-              reason: "missing_ipapi_key",
               lat: 43.0731,
               lng: -89.4012,
               city: "Madison",
-              region: "Wisconsin"
+              region: "Wisconsin",
+              country: "US",
+              mock: true,
+              reason: "no_api_key"
             }));
             return;
           }
