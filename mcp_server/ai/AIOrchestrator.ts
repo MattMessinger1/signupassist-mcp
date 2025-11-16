@@ -441,7 +441,23 @@ class AIOrchestrator {
         // Update locationForHints from triageResult if present
         let finalLocation = locationForHints;
         if (triageResult.aap?.provider?.locationHint) {
-          finalLocation = triageResult.aap.provider.locationHint;
+          const hint = triageResult.aap.provider.locationHint;
+          // Map LocationHint to SessionLocation type
+          const sourceMap: Record<'ip' | 'explicit' | 'profile', 'ipapi' | 'user'> = {
+            'ip': 'ipapi',
+            'explicit': 'user',
+            'profile': 'user'
+          };
+          finalLocation = {
+            lat: hint.lat,
+            lng: hint.lng,
+            city: hint.city || undefined,
+            region: hint.region || undefined,
+            country: hint.country || undefined,
+            source: sourceMap[hint.source] || 'unknown',
+            mock: hint.mock,
+            reason: hint.reason
+          };
         }
         const has_location = Boolean(
           finalLocation?.city || finalLocation?.region || finalLocation?.country ||
