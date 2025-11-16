@@ -56,6 +56,12 @@ export interface AAPTriageResult {
 }
 
 export interface DiscoveryPlan {
+  feed?: 'programs' | string;  // Feed source identifier
+  query?: {                    // Query parameters for filtering
+    provider?: string | null;
+    category?: string | null;
+    age?: number | null;
+  };
   feed_query: {
     org_ref: string | null;
     category: string | null;
