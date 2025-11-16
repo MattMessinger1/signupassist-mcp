@@ -916,8 +916,8 @@ class AIOrchestrator {
     });
     
     // Derive intent from AAP triad (AAP is source of truth)
-    const aap = context.aap || aapTriad;
-    const derivedFromAAP = this.deriveIntentFromAAP(aap);
+    const aapForIntent = context.aap || aapTriad;
+    const derivedFromAAP = this.deriveIntentFromAAP(aapForIntent);
     
     // Merge with existing ctx.intent if present
     const intent = context.partialIntent ?? derivedFromAAP;
