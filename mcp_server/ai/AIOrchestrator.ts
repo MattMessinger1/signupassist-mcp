@@ -3379,6 +3379,29 @@ Return JSON: {
   private async handleProviderSearch(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
     this.logAction("tool_invocation", { toolName: "search_provider", sessionId });
     
+    // SAFETY GUARD: Skip provider search if AAP triad + discovery plan are already complete
+    const context = await this.getContext(sessionId);
+    const aap = context.aap;
+    const plan = context.aap_discovery_plan;
+
+    const triadComplete =
+      aap?.age?.status === 'known' &&
+      aap?.activity?.status === 'known' &&
+      aap?.provider?.status === 'known';
+
+    const hasDiscoveryPlan =
+      !!plan && plan.feed === 'programs' && !!plan.query?.provider;
+
+    if (triadComplete && hasDiscoveryPlan) {
+      Logger.info("[ProviderSearch] Skipping provider search - AAP triad complete and discovery plan ready", {
+        sessionId,
+        aap,
+        plan: plan?.query
+      });
+      // Jump directly to program discovery instead
+      return await this.handleProgramSelection("", sessionId);
+    }
+    
     // Cache parsed results to reduce API calls and latency
     const cacheKey = `parsed-${userMessage.toLowerCase()}`;
     let parsed: ParsedProviderInput;
@@ -3407,8 +3430,8 @@ Return JSON: {
     const location = parsed.city;
     
     try {
-      // Get location from session context (ipapi-derived or userLocation)
-      const context = await this.getContext(sessionId);
+      // Location already fetched at the top for safety guard, reuse it
+      // Prefer userLocation (GPS) if available, fallback to ipapi location
       
       // Prefer userLocation (GPS) if available, fallback to ipapi location
       let userCoords = (context as any).userLocation;
