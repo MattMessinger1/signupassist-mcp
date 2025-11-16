@@ -67,7 +67,11 @@ export async function saveSessionToDB(
   if (!supabase) return;
 
   try {
-    console.log(`[sessionPersistence] Saving session ${sessionId}:`, JSON.stringify(context, null, 2));
+    console.log(`[sessionPersistence] Saving session ${sessionId}`);
+    
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[sessionPersistence] Context snapshot (non-prod only) ${sessionId}:`, JSON.stringify(context, null, 2));
+    }
     
     const expiresAt = new Date();
     expiresAt.setHours(expiresAt.getHours() + 24); // 24 hour TTL
@@ -88,7 +92,11 @@ export async function saveSessionToDB(
     if (error) {
       console.error('[SessionPersistence] Save error:', error);
     } else {
-      console.log('[SessionPersistence] Saved session to DB:', sessionId, 'with context:', JSON.stringify(context, null, 2));
+      console.log(`[SessionPersistence] Saved session to DB: ${sessionId}`);
+      
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[SessionPersistence] Saved context (non-prod only) ${sessionId}:`, JSON.stringify(context, null, 2));
+      }
     }
   } catch (err) {
     console.error('[SessionPersistence] Unexpected save error:', err);
