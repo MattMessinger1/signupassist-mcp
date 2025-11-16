@@ -236,6 +236,115 @@ class SignupAssistMCPServer {
         return;
       }
 
+      // --- Get user location via ipapi.co
+      if (req.method === 'GET' && url.pathname === '/get-user-location') {
+        console.log('[LOCATION] User location request received');
+        
+        try {
+          const apiKey = process.env.IPAPI_KEY;
+
+          if (!apiKey) {
+            console.warn('[LOCATION] IPAPI_KEY not configured - returning mock location');
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              mock: true,
+              reason: "missing_ipapi_key",
+              lat: 43.0731,
+              lng: -89.4012,
+              city: "Madison",
+              region: "Wisconsin"
+            }));
+            return;
+          }
+
+          // Extract client IP (Railway / proxies)
+          let clientIp = req.headers['x-forwarded-for'] as string | undefined;
+          if (Array.isArray(clientIp)) clientIp = clientIp[0];
+          if (!clientIp) {
+            clientIp = req.socket.remoteAddress;
+          }
+
+          // Strip IPv6 prefix "::ffff:"
+          if (clientIp && clientIp.startsWith('::ffff:')) {
+            clientIp = clientIp.replace('::ffff:', '');
+          }
+
+          // Handle localhost
+          if (!clientIp || clientIp === '127.0.0.1' || clientIp === '::1') {
+            console.log('[LOCATION] Localhost detected - returning mock location');
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              mock: true,
+              reason: "localhost",
+              lat: 43.0731,
+              lng: -89.4012,
+              city: "Madison",
+              region: "Wisconsin"
+            }));
+            return;
+          }
+
+          console.log(`[LOCATION] Looking up IP: ${clientIp}`);
+          const apiUrl = `https://ipapi.co/${clientIp}/json/?key=${apiKey}`;
+          const response = await fetch(apiUrl);
+
+          if (!response.ok) {
+            console.error(`[LOCATION] ipapi.co error: ${response.status}`);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              mock: true,
+              reason: "ipapi_http_error",
+              status: response.status,
+              lat: 43.0731,
+              lng: -89.4012,
+              city: "Madison",
+              region: "Wisconsin"
+            }));
+            return;
+          }
+
+          const data = await response.json();
+
+          if (!data || data.error || data.latitude === undefined || data.longitude === undefined) {
+            console.error('[LOCATION] Invalid ipapi.co response:', data);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              mock: true,
+              reason: "ipapi_invalid_response",
+              lat: 43.0731,
+              lng: -89.4012,
+              city: "Madison",
+              region: "Wisconsin"
+            }));
+            return;
+          }
+
+          console.log(`[LOCATION] ✅ Real location: ${data.city}, ${data.region}`);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            lat: data.latitude,
+            lng: data.longitude,
+            city: data.city,
+            region: data.region,
+            country: data.country_name,
+            mock: false
+          }));
+        } catch (err: any) {
+          console.error('[LOCATION] Exception:', err);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            mock: true,
+            reason: "ipapi_exception",
+            error: err.message,
+            lat: 43.0731,
+            lng: -89.4012,
+            city: "Madison",
+            region: "Wisconsin"
+          }));
+        }
+        return;
+      }
+
       // --- Serve manifest.json at /mcp/manifest.json
       if (req.method === 'GET' && url.pathname === '/mcp/manifest.json') {
         try {
