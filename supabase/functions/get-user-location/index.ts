@@ -27,7 +27,7 @@ serve(async (req) => {
     const cfIP = req.headers.get("cf-connecting-ip");
     let clientIp = forwardedFor?.split(",")[0]?.trim() || realIP || cfIP || null;
 
-    console.log("[get-user-location] IP extraction:", { forwardedFor, realIP, cfIP, clientIp });
+    console.log("[get-user-location] IP extraction successful:", { hasForwardedFor: !!forwardedFor, hasRealIP: !!realIP, hasCfIP: !!cfIP });
 
     // Check cache first (skip localhost IPs)
     if (clientIp && clientIp !== "127.0.0.1" && clientIp !== "::1" && cache[clientIp]) {
@@ -80,7 +80,7 @@ serve(async (req) => {
 
     // Call ipapi.co for real location lookup
     const apiUrl = `https://ipapi.co/${clientIp}/json/?key=${apiKey}`;
-    console.log(`[get-user-location] Calling ipapi.co for IP: ${clientIp}`);
+    console.log(`[get-user-location] Calling ipapi.co for geolocation lookup`);
     
     const resp = await fetch(apiUrl, { headers: { "Accept": "application/json" } });
     
@@ -136,7 +136,7 @@ serve(async (req) => {
     // Store in cache
     if (clientIp) {
       cache[clientIp] = { data: result, timestamp: Date.now() };
-      console.log(`[get-user-location] Cached result for IP: ${clientIp}`);
+      console.log(`[get-user-location] Cached result for location: ${result.city}, ${result.region}`);
     }
 
     console.log("[get-user-location] ✅ Real location detected:", result);
