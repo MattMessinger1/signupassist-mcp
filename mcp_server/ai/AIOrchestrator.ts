@@ -287,7 +287,7 @@ class AIOrchestrator {
     let t1: number, t2: number, t3: number, t4: number;
     
     try {
-      const context = await this.getContext(sessionId);
+      let context = await this.getContext(sessionId);
       // Store userLocation and JWT in context for tool calls
       if (userLocation) {
         await this.updateContext(sessionId, { userLocation } as any);
@@ -589,7 +589,8 @@ class AIOrchestrator {
       const FEATURE_INTENT_UPFRONT = process.env.FEATURE_INTENT_UPFRONT === "true";
       
       // Check for missing intent on first turn (before provider search)
-      if (FEATURE_INTENT_UPFRONT) {
+      // Only run intent gate if NOT using new AAP system
+      if (FEATURE_INTENT_UPFRONT && !USE_NEW_AAP_SYSTEM) {
         const intentQuestion = await this.checkAndRequestMissingIntent(userMessage, sessionId);
         if (intentQuestion) {
           Logger.info(`[Intent Question] ${sessionId}: ${intentQuestion}`);
@@ -597,8 +598,8 @@ class AIOrchestrator {
         }
         
         // SAFETY CHECK: Verify intent is actually complete before proceeding
-        const context = await this.getContext(sessionId);
-        const intent = context.partialIntent;
+        const intentContext = await this.getContext(sessionId);
+        const intent = intentContext.partialIntent;
         
         if (!intent?.provider || !intent?.category || !intent?.childAge) {
           Logger.warn('[Intent Incomplete] checkAndRequestMissingIntent returned null but intent incomplete', { 
@@ -610,14 +611,8 @@ class AIOrchestrator {
               childAge: !intent?.childAge
             }
           });
-          // Do NOT ask another narrowing question. Proceed with whatever
-          // AAP / intent we have and go straight to discovery.
-          // So: no return here.
-        }
-        
-        // Intent is complete! If we have partialIntent.provider but not context.provider,
-        // we need to do a provider search to get the full provider object
-        if (intent?.provider && !context.provider) {
+          // Proceed anyway; no extra questions
+        } else if (intent?.provider && !intentContext.provider) {
           Logger.info('[Intent Complete] Converting partial intent to provider object', { 
             sessionId, 
             partialProvider: intent.provider 
@@ -625,7 +620,13 @@ class AIOrchestrator {
           // Search for the provider to get full details (name, orgRef, etc.)
           return await this.handleProviderSearch(intent.provider, sessionId);
         }
+
+        // 🔧 Keep our outer context in sync with the latest snapshot
+        context = intentContext;
       }
+      
+      // Refresh context once more right before routing (belt-and-suspenders)
+      context = await this.getContext(sessionId);
       
       const step = this.determineStep(userMessage, context);
       
