@@ -1829,15 +1829,66 @@ export const skiClubProTools = {
       console.log(`[scp.find_programs][DEBUG] org_ref: ${orgRef}`);
       console.log(`[scp.find_programs][DEBUG] category: ${category}`);
       
-      console.log('[scp.find_programs] PACK-05: Incoming args:', {
-        org_ref: handlerArgs.org_ref,
-        credential_id: handlerArgs.credential_id,
-        session_token: handlerArgs.session_token,
-        category,
-        user_jwt: !!handlerArgs.user_jwt,
-        fastPath: isFastPath,
-        targetRef: handlerArgs.filter_program_ref
-      });
+    console.log('[scp.find_programs] PACK-05: Incoming args:', {
+      org_ref: handlerArgs.org_ref,
+      credential_id: handlerArgs.credential_id,
+      session_token: handlerArgs.session_token,
+      category,
+      user_jwt: !!handlerArgs.user_jwt,
+      fastPath: isFastPath,
+      targetRef: handlerArgs.filter_program_ref
+    });
+    
+    // CACHE-FIRST: Before any login flow — use unified cache
+    if (!handlerArgs.credential_id && !handlerArgs.session_token) {
+      console.log('[scp.find_programs] 📦 Checking cached_provider_feed...');
+      
+      try {
+        const { data, error } = await supabase
+          .from('cached_provider_feed')
+          .select('*')
+          .eq('org_ref', orgRef)
+          .eq('category', category);
+        
+        if (error) {
+          console.error('[scp.find_programs] Cache query error:', error);
+        } else if (data?.length) {
+          console.log(`[scp.find_programs] ✅ Found ${data.length} cached programs`);
+          
+          const programs = data.map(({ program, program_ref }) => ({
+            id: program_ref,
+            program_ref: program_ref,
+            actual_id: program_ref,
+            org_ref: orgRef,
+            title: program.title || 'Program',
+            schedule: program.schedule || 'Schedule TBD',
+            price: program.price || 'Price TBD',
+            age_range: program.age_range || '',
+            description: program.description || '',
+            skill_level: program.skill_level || '',
+            status: program.status || 'available',
+            category: program.category || category,
+            url: program.url || '',
+            cta_label: 'Enroll',
+            cta_href: program.url || '',
+            metadata: program.metadata || {}
+          }));
+          
+          return {
+            success: true,
+            login_status: 'cached' as const,
+            programs,
+            message: `Loaded ${programs.length} programs from cache`,
+            timestamp: new Date().toISOString()
+          };
+        } else {
+          console.log('[scp.find_programs] ⚠️ No cached data found, will need to scrape');
+        }
+      } catch (err) {
+        console.error('[scp.find_programs] Cache check error:', err);
+        // Continue to scraping fallback
+      }
+    }
     
     // Validate user_jwt when credential_id is provided
     if (handlerArgs.credential_id && !handlerArgs.user_jwt) {
