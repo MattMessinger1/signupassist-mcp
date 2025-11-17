@@ -418,4 +418,92 @@ function inferFieldType(key: string, selector?: string): string {
   return 'text';
 }
 
+// ============================================================================
+// SIGNUP FORM EXTRACTION
+// ============================================================================
+
+/**
+ * Extract signup form structure from a program page
+ * Parses visible form fields, options, and requirements
+ */
+export async function extractProgramSignupForm(
+  page: Page,
+  programUrl: string
+): Promise<{
+  fields: DiscoveredField[];
+  fingerprint: string;
+  metadata: { url: string; timestamp: string };
+}> {
+  console.log(`[Scraping] Extracting signup form from: ${programUrl}`);
+  
+  // Navigate to the program signup page
+  await page.goto(programUrl, { waitUntil: 'networkidle' });
+  await page.waitForTimeout(2000); // Allow dynamic content to load
+  
+  // Extract all visible form fields
+  const fields = await page.$$eval(
+    'input, select, textarea',
+    (elements) => {
+      return (elements as HTMLElement[])
+        .filter((el: any) => {
+          const cs = window.getComputedStyle(el);
+          const r = el.getBoundingClientRect();
+          return cs.display !== 'none' && cs.visibility !== 'hidden' && r.width > 0 && r.height > 0;
+        })
+        .filter((el: any) => !['hidden', 'submit', 'button', 'image', 'file'].includes(el.type))
+        .map((el: any) => {
+          const id = el.name || el.id || `field_${Math.random().toString(36).slice(2)}`;
+          const isSelect = el.tagName === 'SELECT';
+          const isTextArea = el.tagName === 'TEXTAREA';
+          const type = isSelect ? 'select' : isTextArea ? 'textarea' : (el.type || 'text');
+          
+          // Try to find label
+          const explicit = document.querySelector(`label[for='${el.id}']`);
+          const implicit = el.closest('label');
+          const label = (explicit?.textContent || implicit?.textContent || el.ariaLabel || el.placeholder || '').trim();
+          
+          // Extract options for select fields
+          const options = isSelect
+            ? Array.from((el as HTMLSelectElement).options).map(o => ({
+                value: o.value,
+                label: o.textContent || o.value
+              }))
+            : undefined;
+          
+          const selector = el.id ? `#${el.id}` : el.name ? `[name="${el.name}"]` : undefined;
+          
+          return {
+            id,
+            label: label || id,
+            type,
+            required: !!el.required,
+            options,
+            selector,
+            category: type === 'select' ? 'dropdown' : type === 'textarea' ? 'longtext' : 'input'
+          };
+        });
+    }
+  );
+  
+  console.log(`[Scraping] Extracted ${fields.length} form fields`);
+  
+  // Generate fingerprint from field structure
+  const fieldSignature = fields
+    .map(f => `${f.id}:${f.type}:${f.required ? 'req' : 'opt'}`)
+    .sort()
+    .join('|');
+  
+  const crypto = await import('crypto');
+  const fingerprint = crypto.createHash('sha256').update(fieldSignature).digest('hex').slice(0, 16);
+  
+  return {
+    fields,
+    fingerprint,
+    metadata: {
+      url: programUrl,
+      timestamp: new Date().toISOString()
+    }
+  };
+}
+
 console.log('[Scraping] Shared scraping helpers loaded');
