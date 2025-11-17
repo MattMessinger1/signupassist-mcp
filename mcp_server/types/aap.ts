@@ -23,13 +23,13 @@ export interface AAPActivity extends AAPField<{
 }
 
 export interface LocationHint {
-  lat: number;
-  lng: number;
+  lat: number | null;  // Allow null when location is unknown
+  lng: number | null;  // Allow null when location is unknown
   city: string | null;
   region: string | null;
   country: string | null;
-  radiusKm: number;
-  source: 'ip' | 'explicit' | 'profile';
+  radiusKm?: number;  // Optional since null location won't have radius
+  source: 'ip' | 'explicit' | 'profile' | 'user' | 'disabled_ipapi' | 'unknown';  // Extended sources
   mock?: boolean;  // Track if using mock Madison location
   reason?: string; // Why mock is being used
 }

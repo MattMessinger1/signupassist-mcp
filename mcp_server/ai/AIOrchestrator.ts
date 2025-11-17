@@ -345,34 +345,35 @@ class AIOrchestrator {
       }
       
       // ======================================================================
-      // REAL LOCATION FETCH: Get user location before AAP triage
+      // 🚀 PATCH: DISABLE AUTOMATIC LOCATION FETCH
+      // ChatGPT does not forward real user IPs → ipapi returns datacenter IPs
+      // Design DNA: Explicit over implicit — ask user for their city instead
       // ======================================================================
-      if (!context.location || context.location.mock) {
-        Logger.info('[LOCATION] Fetching real location for session', { sessionId });
-        const loc = await this.fetchRealLocation();
-        if (!loc.mock) {
-          Logger.info('[LOCATION] ✅ Real location acquired', { 
-            city: loc.city, 
-            region: loc.region,
-            lat: loc.lat,
-            lng: loc.lng 
-          });
-          await this.updateContext(sessionId, {
-            location: {
-              lat: loc.lat,
-              lng: loc.lng,
-              city: loc.city,
-              region: loc.region,
-              country: loc.country,
-              source: "ipapi",
-              mock: false
-            },
-            userLocation: { lat: loc.lat, lng: loc.lng }
-          });
-        } else {
-          Logger.warn('[LOCATION] ⚠️ Using mock location', { reason: loc.reason });
-        }
+      
+      let location = context.location;
+      
+      // Only use location if user explicitly provided it
+      if (!location || location.source !== "user") {
+        Logger.info('[LOCATION] No user-provided location, will ask user via AAP triage', { sessionId });
+        location = {
+          lat: null,
+          lng: null,
+          city: null,
+          region: null,
+          country: null,
+          source: "disabled_ipapi",
+          mock: true,
+          reason: "ipapi_disabled_chatgpt_no_real_ip"
+        };
+      } else {
+        Logger.info('[LOCATION] ✅ Using user-provided location', { 
+          city: location.city, 
+          region: location.region,
+          source: location.source
+        });
       }
+      
+      context.location = location;
       
       // ======================================================================
       // A-A-P TRIAGE: Feature Flag Switch
