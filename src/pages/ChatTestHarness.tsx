@@ -960,7 +960,7 @@ function ChatTestHarnessContent() {
     addLog("info", "system", "🔄 Starting cache refresh with real data...");
 
     try {
-      const { data, error } = await supabase.functions.invoke('refresh-program-cache');
+      const { data, error } = await supabase.functions.invoke('refresh-provider-feed');
 
       if (error) {
         throw error;
