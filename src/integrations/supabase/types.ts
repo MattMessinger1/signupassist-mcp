@@ -944,6 +944,7 @@ export type Database = {
       }
       refresh_best_hints: { Args: never; Returns: undefined }
       sanitize_error_text: { Args: { txt: string }; Returns: string }
+      trigger_provider_feed_refresh: { Args: never; Returns: Json }
       upsert_cached_programs: {
         Args: {
           p_category: string
