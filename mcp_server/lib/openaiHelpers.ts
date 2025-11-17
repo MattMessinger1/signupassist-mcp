@@ -107,10 +107,12 @@ export function buildOpenAIBody(opts: {
     body.temperature = temperature;
   }
   
-  // Add sampling parameters for concise, stable output
-  body.top_p = 1;
-  body.presence_penalty = 0;
-  body.frequency_penalty = 0;
+  // Add sampling parameters for concise, stable output (chat API only)
+  if (apiFamily === "chat") {
+    body.top_p = 1;
+    body.presence_penalty = 0;
+    body.frequency_penalty = 0;
+  }
 
   if (apiFamily === "responses") {
     // Responses API parameter family
@@ -160,20 +162,17 @@ export async function callOpenAI_JSON(opts: {
   
   //----------------------------------------------------------------------
   // 🚀 PATCH 4: Latency Reduction - Lower token count → shorter generation
-  // Reduces 300-900ms per call by capping tokens at 100
+  // Default 250 tokens for JSON responses (was 1200)
   //----------------------------------------------------------------------
   const {
     model,
     system,
     user,
-    maxTokens = 100,  // Reduced from 1200 - hard cap for faster generation
+    maxTokens = 250,  // Balanced for complete JSON responses
     temperature = 0,  // Default to 0 for stable, concise output
     useResponsesAPI = process.env.OPENAI_USE_RESPONSES !== "false",
     _retryCount = 0
   } = opts;
-  
-  // Enforce hard cap at 100 tokens
-  const cappedMaxTokens = Math.min(maxTokens, 100);
 
   const messages = [
     { role: "system", content: system },
@@ -184,7 +183,7 @@ export async function callOpenAI_JSON(opts: {
   const safeMessages = ensureJsonWord(messages);
 
   const apiFamily = useResponsesAPI ? "responses" : "chat";
-  const body = buildOpenAIBody({ model, apiFamily, messages: safeMessages, maxTokens: cappedMaxTokens, temperature });
+  const body = buildOpenAIBody({ model, apiFamily, messages: safeMessages, maxTokens, temperature });
 
   try {
     if (useResponsesAPI) {
