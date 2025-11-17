@@ -10,6 +10,7 @@ const triageCache = new Map<string, any>();
 import { AAPTriageResult, AAPAskedFlags, AAPTriad, createEmptyAAP, createAAPAge, createAAPActivity, createAAPProvider } from "../types/aap.js";
 import { parseAAPTriad as legacyParseAAPTriad, AAPTriad as LegacyAAPTriad } from "./preLoginNarrowing.js";
 import Logger from "../utils/logger.js";
+import { detectNewProvider } from "./aap/detectNewProvider.js";
 
 const TRIAGE_AAP_SYSTEM_PROMPT = `You maintain the A‑A‑P triad (Age, Activity, Provider) for the current signup flow.
 
@@ -143,24 +144,57 @@ export async function triageAAP(
     hasLocation: !!requestHints.location
   });
 
+  // Get the most recent user message for provider change detection
+  const lastUserMessage = recentMessages.filter(m => m.role === 'user').pop()?.content || '';
+
+  // Detect provider switch
+  const existingProviderRaw = existingAAP?.provider?.raw || null;
+  const providerSwitch = detectNewProvider(lastUserMessage, existingProviderRaw);
+
+  // Create mutable copy of inputs for modification
+  let updatedAAP = existingAAP;
+  let updatedAskedFlags = { ...askedFlags };
+  let updatedRequestHints = { ...requestHints };
+
+  // If provider switch detected, reset provider and related state
+  if (providerSwitch) {
+    Logger.info('[AAP Triage] Provider switch detected, resetting provider state', {
+      oldProvider: existingProviderRaw,
+      userMessage: lastUserMessage
+    });
+    
+    // Reset provider
+    updatedAAP = {
+      ...existingAAP,
+      provider: createAAPProvider()
+    } as AAPTriad;
+    
+    // Reset provider-related asked flags
+    updatedAskedFlags.asked_provider = false;
+    updatedAskedFlags.asked_activity = false; // Allow re-triage of activity
+    // Keep age if known (updatedAskedFlags.asked_age remains as is)
+    
+    // Clear location hint to avoid stale data
+    updatedRequestHints.location = null;
+  }
+
   // Check if location is unreliable (ChatGPT DC IPs)
-  const isLocationUnreliable = requestHints.location && (
-    requestHints.location.city === 'Ashburn' ||
-    requestHints.location.region === 'Virginia' ||
-    (requestHints.location.source === 'ipapi' && requestHints.location.mock === true)
+  const isLocationUnreliable = updatedRequestHints.location && (
+    updatedRequestHints.location.city === 'Ashburn' ||
+    updatedRequestHints.location.region === 'Virginia' ||
+    (updatedRequestHints.location.source === 'ipapi' && updatedRequestHints.location.mock === true)
   );
 
   // Treat unreliable location as no location for triage purposes
-  const reliableLocation = isLocationUnreliable ? null : requestHints.location;
+  const reliableLocation = isLocationUnreliable ? null : updatedRequestHints.location;
 
   try {
     // Check triage cache first to skip redundant OpenAI calls (~300-900ms savings)
-    const lastUserMessage = recentMessages.filter(m => m.role === 'user').pop()?.content || '';
     const cacheKey = JSON.stringify({
       lastUserMsg: lastUserMessage,
-      existingAAP,
-      requestHints,
-      askedFlags
+      existingAAP: updatedAAP,
+      requestHints: updatedRequestHints,
+      askedFlags: updatedAskedFlags
     });
     
     if (triageCache.has(cacheKey)) {
@@ -173,9 +207,9 @@ export async function triageAAP(
       system: TRIAGE_AAP_SYSTEM_PROMPT,
       user: {
         recent_messages: recentMessages,
-        existing_aap: existingAAP,
-        request_hints: { ...requestHints, location: reliableLocation },
-        asked_flags: askedFlags,
+        existing_aap: updatedAAP,
+        request_hints: { ...updatedRequestHints, location: reliableLocation },
+        asked_flags: updatedAskedFlags,
         available_location: reliableLocation ? {
           city: reliableLocation.city,
           region: reliableLocation.region,
