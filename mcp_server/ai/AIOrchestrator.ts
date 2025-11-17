@@ -3420,6 +3420,18 @@ Return JSON: {
       aap?.activity?.status === "known" &&
       aap?.provider?.status === "known";
     
+    // 🔧 Safety: ensure provider always populated for program feed plans
+    // This is a last-resort normalization in case planner missed it
+    if (discoveryPlan?.feed === "programs" && !discoveryPlan.query?.provider) {
+      if (discoveryPlan.feed_query?.org_ref) {
+        discoveryPlan.query = discoveryPlan.query || {};
+        discoveryPlan.query.provider = discoveryPlan.feed_query.org_ref;
+        Logger.warn('[Router] Normalized query.provider in orchestrator (should happen in planner)', {
+          org_ref: discoveryPlan.feed_query.org_ref
+        });
+      }
+    }
+    
     const hasDiscoveryPlan =
       discoveryPlan?.feed === "programs" &&
       !!discoveryPlan.query?.provider;  // Fixed: use 'provider' not 'org_ref'
