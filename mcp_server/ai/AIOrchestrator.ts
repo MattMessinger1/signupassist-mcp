@@ -528,7 +528,8 @@ class AIOrchestrator {
         if (triageResult.ready_for_discovery) {
           const discoveryPlan = await planProgramDiscovery(
             triageResult.aap,
-            userMessage
+            userMessage,
+            context  // Pass context for cache reuse
           );
           await this.updateContext(sessionId, { aap_discovery_plan: discoveryPlan });
           
