@@ -1,12 +1,18 @@
 import { MCPChat } from "@/components/MCPChat";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+import { RefreshCw } from "lucide-react";
 
 const MCP_BASE_URL = import.meta.env.VITE_MCP_BASE_URL || "https://signupassist-mcp-production.up.railway.app";
 
 export default function MCPChatTest() {
   const [backendInfo, setBackendInfo] = useState<any>(null);
+  const [isRefreshingCache, setIsRefreshingCache] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     // Fetch backend identity on mount
@@ -16,10 +22,52 @@ export default function MCPChatTest() {
       .catch(err => console.error("Failed to fetch backend identity:", err));
   }, []);
 
+  const handleRefreshCache = async () => {
+    setIsRefreshingCache(true);
+    console.log('[Cache Refresh] Starting...');
+
+    try {
+      const { data, error } = await supabase.functions.invoke('refresh-provider-feed');
+
+      if (error) {
+        throw error;
+      }
+
+      console.log('[Cache Refresh] Success:', data);
+      
+      toast({
+        title: "✅ Cache Refreshed",
+        description: `${data.total_programs || 0} programs from ${data.orgs_refreshed || 0} organizations`,
+      });
+
+    } catch (error: any) {
+      console.error('[Cache Refresh] Error:', error);
+      
+      toast({
+        title: "❌ Cache Refresh Failed",
+        description: error.message || "Unknown error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRefreshingCache(false);
+    }
+  };
+
   return (
     <div className="container mx-auto p-8 max-w-4xl">
       <div className="mb-8 space-y-4">
-        <h1 className="text-4xl font-bold">SignupAssist — MCP Test Chat</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-4xl font-bold">SignupAssist — MCP Test Chat</h1>
+          <Button
+            onClick={handleRefreshCache}
+            disabled={isRefreshingCache}
+            variant="outline"
+            size="sm"
+          >
+            <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshingCache ? 'animate-spin' : ''}`} />
+            {isRefreshingCache ? 'Refreshing...' : 'Refresh Cache'}
+          </Button>
+        </div>
         
         <Card className="p-4 bg-green-500/10 border-green-500">
           <h3 className="text-xl font-semibold text-green-700 dark:text-green-400 mb-2">
