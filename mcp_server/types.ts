@@ -27,7 +27,7 @@ export interface SessionLocation {
   country?: string;
   lat?: number;
   lng?: number;
-  source?: 'ipapi' | 'user' | 'manual' | 'unknown';
+  source?: 'ipapi' | 'user' | 'manual' | 'unknown' | 'disabled_ipapi';
   mock?: boolean;    // true if using mock location (e.g., localhost)
   reason?: string;   // reason for mock (e.g., "no_api_key", "localhost")
 }
