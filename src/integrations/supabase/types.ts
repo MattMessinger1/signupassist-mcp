@@ -210,6 +210,36 @@ export type Database = {
         }
         Relationships: []
       }
+      cached_provider_feed: {
+        Row: {
+          cached_at: string | null
+          category: string | null
+          org_ref: string
+          prerequisites: Json | null
+          program: Json
+          program_ref: string
+          signup_form: Json | null
+        }
+        Insert: {
+          cached_at?: string | null
+          category?: string | null
+          org_ref: string
+          prerequisites?: Json | null
+          program: Json
+          program_ref: string
+          signup_form?: Json | null
+        }
+        Update: {
+          cached_at?: string | null
+          category?: string | null
+          org_ref?: string
+          prerequisites?: Json | null
+          program?: Json
+          program_ref?: string
+          signup_form?: Json | null
+        }
+        Relationships: []
+      }
       charges: {
         Row: {
           amount_cents: number | null
@@ -952,6 +982,17 @@ export type Database = {
             }
             Returns: string
           }
+      upsert_cached_provider_feed: {
+        Args: {
+          p_category: string
+          p_org_ref: string
+          p_prereq: Json
+          p_program: Json
+          p_program_ref: string
+          p_signup_form: Json
+        }
+        Returns: undefined
+      }
       upsert_discovery_run: {
         Args: {
           p_errors: Json
