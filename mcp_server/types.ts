@@ -207,8 +207,9 @@ export interface ProviderResponse<T = any> extends Record<string, any> {
   
   /**
    * Legacy login status field (kept for compatibility)
+   * "cached" indicates data was served from cache without login
    */
-  login_status?: 'success' | 'failed';
+  login_status?: 'success' | 'failed' | 'cached';
   
   /**
    * Session token for reusing Browserbase sessions across tool calls
