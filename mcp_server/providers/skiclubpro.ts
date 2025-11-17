@@ -21,7 +21,7 @@ import { PROMPT_VERSION } from '../ai/AIOrchestrator.js';
 import { getReadiness } from './utils/pageReadinessRegistry.js';
 import { UrlBuilder } from '../../providers/skiclubpro/lib/index.js';
 import { resolveBaseUrl } from './utils/resolveBaseUrl.js';
-import { discoverFieldsSerially, navigateToProgramForm, extractProgramSignupForm } from '../../supabase/functions/_shared/scraping.js';
+import { discoverFieldsSerially } from '../lib/serial_field_discovery.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -1980,9 +1980,12 @@ export const skiClubProTools = {
             // Check prerequisites
             const prereqResults = await runChecks('skiclubpro', { page, baseUrl, orgRef });
             
-            // Extract signup form structure
+            // Discover signup form fields
             if (program.url) {
-              const formData = await extractProgramSignupForm(page, program.url);
+              await page.goto(program.url);
+              await page.waitForTimeout(2000);
+              
+              const formDiscovery = await discoverFieldsSerially(page, program.program_ref);
               
               // 4. Save to unified cache
               await supabase.rpc('upsert_cached_provider_feed', {
@@ -1992,9 +1995,9 @@ export const skiClubProTools = {
                 p_program: program,
                 p_prereq: prereqResults,
                 p_signup_form: {
-                  fields: formData.fields,
-                  fingerprint: formData.fingerprint,
-                  metadata: formData.metadata
+                  fields: formDiscovery.fields,
+                  confidence: formDiscovery.confidence,
+                  metadata: formDiscovery.metadata
                 }
               });
               
