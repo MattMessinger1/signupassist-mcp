@@ -6,6 +6,38 @@ import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
 import { AAPTriad, DiscoveryPlan } from "../types/aap.js";
 import Logger from "../utils/logger.js";
 
+/**
+ * Normalizes discovery plan to ensure query.provider is populated
+ * when feed_query.org_ref exists. Required for orchestrator validation.
+ */
+function normalizeDiscoveryPlan(plan: DiscoveryPlan): DiscoveryPlan {
+  // Only normalize program feed plans
+  if (plan.feed === "programs") {
+    // Ensure query object exists
+    if (!plan.query) {
+      plan.query = {};
+    }
+    
+    // Populate query.provider from feed_query.org_ref if missing
+    if (!plan.query.provider && plan.feed_query?.org_ref) {
+      plan.query.provider = plan.feed_query.org_ref;
+      Logger.info('[AAP Discovery Planner] Normalized query.provider from feed_query.org_ref', {
+        org_ref: plan.feed_query.org_ref
+      });
+    }
+    
+    // Fallback: if query.org_ref exists, mirror it into provider
+    if (!plan.query.provider && (plan.query as any)?.org_ref) {
+      plan.query.provider = (plan.query as any).org_ref;
+      Logger.info('[AAP Discovery Planner] Normalized query.provider from query.org_ref', {
+        org_ref: (plan.query as any).org_ref
+      });
+    }
+  }
+  
+  return plan;
+}
+
 const DISCOVERY_PLANNER_SYSTEM_PROMPT = `You turn the current A‑A‑P triad + user intent into a plan for which program feed to call, and how.
 
 You receive:
@@ -66,10 +98,11 @@ export async function planProgramDiscovery(
     
     if (sameAAP) {
       Logger.info('[AAP Discovery Planner] ✅ Cache hit - reusing plan', { prevPlan });
-      return {
+      const cachedPlan = {
         ...prevPlan,
         notes_for_assistant: prevPlan.notes_for_assistant + " (cached)"
       };
+      return normalizeDiscoveryPlan(cachedPlan);
     }
   }
   //----------------------------------------------------------------------
@@ -88,8 +121,10 @@ export async function planProgramDiscovery(
       useResponsesAPI: false
     });
 
-    Logger.info('[AAP Discovery Planner] Result:', result);
-    return result as DiscoveryPlan;
+    Logger.info('[AAP Discovery Planner] Raw LLM Result:', result);
+    const normalized = normalizeDiscoveryPlan(result as DiscoveryPlan);
+    Logger.info('[AAP Discovery Planner] Normalized Plan:', normalized);
+    return normalized;
 
   } catch (error) {
     Logger.error('[AAP Discovery Planner] Error:', error);
@@ -117,6 +152,6 @@ export async function planProgramDiscovery(
       };
     }
     
-    return fallback;
+    return normalizeDiscoveryPlan(fallback);
   }
 }

@@ -57,13 +57,13 @@ export interface AAPTriageResult {
 
 export interface DiscoveryPlan {
   feed?: 'programs' | string;  // Feed source identifier
-  query?: {                    // Query parameters for filtering
-    provider?: string | null;
+  query?: {                    // Query parameters for filtering (normalized by planner)
+    provider?: string | null;  // MUST be populated if feed_query.org_ref exists (normalized by planner)
     category?: string | null;
     age?: number | null;
   };
   feed_query: {
-    org_ref: string | null;
+    org_ref: string | null;    // Primary source - will be copied to query.provider by normalizer
     category: string | null;
     age_hint: {
       years: number | null;
