@@ -30,7 +30,7 @@ async function testCase1() {
     asked_location: false
   };
   
-  const result1 = await triageAAP(turn1Messages, null, {}, askedFlags1);
+  const result1 = await triageAAP(turn1Messages, null, {}, askedFlags1, "I'd like to sign up my kids for blackhawk ski");
   
   console.log("\n✅ Turn 1 Results:");
   console.log("AAP State:", JSON.stringify(result1.aap, null, 2));
@@ -62,7 +62,7 @@ async function testCase1() {
     asked_location: false
   };
   
-  const result2 = await triageAAP(turn2Messages, result1.aap, {}, askedFlags2);
+  const result2 = await triageAAP(turn2Messages, result1.aap, {}, askedFlags2, "9");
   
   console.log("\n✅ Turn 2 Results:");
   console.log("AAP State:", JSON.stringify(result2.aap, null, 2));
@@ -112,7 +112,7 @@ async function testCase4() {
     asked_location: false
   };
   
-  const result = await triageAAP(messages, null, requestHints, askedFlags);
+  const result = await triageAAP(messages, null, requestHints, askedFlags, "I want ski lessons for my 9 year old");
   
   console.log("\n✅ Results:");
   console.log("AAP State:", JSON.stringify(result.aap, null, 2));
@@ -167,7 +167,7 @@ async function testCase2() {
     asked_location: false
   };
   
-  const result1 = await triageAAP(turn1Messages, null, {}, askedFlags1);
+  const result1 = await triageAAP(turn1Messages, null, {}, askedFlags1, "I want ski lessons for my 9 year old");
   
   console.log("\n✅ Turn 1 Results:");
   console.log("AAP State:", JSON.stringify(result1.aap, null, 2));
@@ -187,7 +187,7 @@ async function testCase2() {
     asked_location: false
   };
   
-  const result2 = await triageAAP(turn2Messages, result1.aap, {}, askedFlags2);
+  const result2 = await triageAAP(turn2Messages, result1.aap, {}, askedFlags2, "not sure");
   
   console.log("\n✅ Turn 2 Results:");
   console.log("AAP State:", JSON.stringify(result2.aap, null, 2));
@@ -235,7 +235,7 @@ async function testCase4() {
     asked_location: false
   };
   
-  const result = await triageAAP(messages, null, requestHints, askedFlags);
+  const result = await triageAAP(messages, null, requestHints, askedFlags, "I want ski lessons for my 9 year old");
   
   console.log("\n✅ Results:");
   console.log("AAP State:", JSON.stringify(result.aap, null, 2));
@@ -289,7 +289,7 @@ async function testCase3() {
     asked_location: false
   };
   
-  const result = await triageAAP(messages, null, {}, askedFlags);
+  const result = await triageAAP(messages, null, {}, askedFlags, "Sign up my 9 year old for blackhawk ski lessons");
   
   console.log("\n✅ Results:");
   console.log("AAP State:", JSON.stringify(result.aap, null, 2));

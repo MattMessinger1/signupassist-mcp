@@ -428,12 +428,13 @@ class AIOrchestrator {
         // Latency checkpoint: Before AAP triage
         t1 = Date.now();
         
-        // Run AAP triage tool with location
+        // Run AAP triage tool with location and raw user message
         const triageResult = await triageAAP(
           recentMessages,
           context.aap || null,
           requestHints,  // Use the prepared object
-          askedFlags
+          askedFlags,
+          userMessage  // NEW: Pass raw user message for provider detection
         );
         
         // Latency checkpoint: After AAP triage
