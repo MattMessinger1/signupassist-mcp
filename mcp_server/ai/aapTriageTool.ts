@@ -229,6 +229,14 @@ export async function triageAAP(
       result.aap.provider.locationHint = reliableLocation;
     }
     
+    // If provider was reset and is still unknown, ask for it once
+    if (providerSwitch && result.aap?.provider?.status === 'unknown' && !updatedAskedFlags.asked_provider) {
+      if (!result.followup_questions.includes("Which organization or program should I look at?")) {
+        result.followup_questions.push("Which organization or program should I look at?");
+      }
+      updatedAskedFlags.asked_provider = true;
+    }
+    
     // Store in cache for next time
     triageCache.set(cacheKey, result);
 
