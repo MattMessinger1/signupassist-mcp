@@ -83,6 +83,7 @@ export interface AAPAskedFlags {
   asked_age: boolean;
   asked_activity: boolean;
   asked_provider: boolean;
+  asked_location: boolean;
 }
 
 /**

@@ -54,6 +54,15 @@ PROVIDER (including local search)
   - Instead, mark provider.status = "unknown" but note the location is available
 - If both location AND a named provider exist, prefer the named provider (mode = "named")
 
+LOCATION RELIABILITY:
+- ipapi locations from ChatGPT environments resolve to DC exit nodes (Ashburn, Virginia) and are UNRELIABLE.
+- Treat location as unreliable if: city === "Ashburn" OR region === "Virginia" OR source === "ipapi" with mock === true.
+- When provider is NOT known AND location is unreliable/missing AND asked_location is false:
+  - Ask: "What city should I look in?"
+  - Set asked_location to true
+- Do NOT loop; only ask once per Design DNA.
+- Preserve user-provided location if they already gave one (source === "explicit" or "profile").
+
 IMPORTANT: For provider.normalized, you MUST return an object { org_ref: "org-slug" }, NOT a string.
 If you can map the provider to a known organization, set org_ref to the organization's identifier (lowercase, hyphenated).
 Example: "blackhawk" → { org_ref: "blackhawk-ski-club" }
@@ -63,7 +72,7 @@ If you cannot confidently map to an org_ref, set normalized to null and mode to 
 FOLLOW‑UP QUESTIONS:
 A field is "missing" if its status is "unknown".
 
-- For each missing field (Age, Activity, Provider):
+- For each missing field (Age, Activity, Provider, Location):
   - If asked_flags for that field is false: You MAY propose ONE follow‑up question for that field.
   - If asked_flags for that field is true: Do NOT propose another question; assume the parent was unable or unwilling to answer.
 
@@ -71,6 +80,7 @@ A field is "missing" if its status is "unknown".
   - Age: "How old is your child, or what grade are they in?"
   - Activity: "What kind of activity are you looking for (for example: ski lessons, swim, or music)?"
   - Provider: "Do you already have a specific provider in mind, or should I show you a few options first?"
+  - Location: "What city should I look in?"
 
 - If the message shows the parent is unsure ("not sure", "no idea yet"):
   - Do NOT propose another question for that field.
@@ -133,6 +143,16 @@ export async function triageAAP(
     hasLocation: !!requestHints.location
   });
 
+  // Check if location is unreliable (ChatGPT DC IPs)
+  const isLocationUnreliable = requestHints.location && (
+    requestHints.location.city === 'Ashburn' ||
+    requestHints.location.region === 'Virginia' ||
+    (requestHints.location.source === 'ipapi' && requestHints.location.mock === true)
+  );
+
+  // Treat unreliable location as no location for triage purposes
+  const reliableLocation = isLocationUnreliable ? null : requestHints.location;
+
   try {
     // Check triage cache first to skip redundant OpenAI calls (~300-900ms savings)
     const lastUserMessage = recentMessages.filter(m => m.role === 'user').pop()?.content || '';
@@ -154,12 +174,12 @@ export async function triageAAP(
       user: {
         recent_messages: recentMessages,
         existing_aap: existingAAP,
-        request_hints: requestHints,
+        request_hints: { ...requestHints, location: reliableLocation },
         asked_flags: askedFlags,
-        available_location: requestHints.location ? {
-          city: requestHints.location.city,
-          region: requestHints.location.region,
-          source: requestHints.location.source
+        available_location: reliableLocation ? {
+          city: reliableLocation.city,
+          region: reliableLocation.region,
+          source: reliableLocation.source
         } : null
       },
       maxTokens: 500,
@@ -168,8 +188,8 @@ export async function triageAAP(
     });
 
     // Preserve location hint if it exists and provider mode is local
-    if (requestHints.location && result.aap?.provider?.mode === 'local') {
-      result.aap.provider.locationHint = requestHints.location;
+    if (reliableLocation && result.aap?.provider?.mode === 'local') {
+      result.aap.provider.locationHint = reliableLocation;
     }
     
     // Store in cache for next time
@@ -268,13 +288,13 @@ export async function triageAAP(
     }
     
     // Preserve location hint if available and provider is local mode
-    if (requestHints.location && fallbackAAP.provider.mode === 'local') {
-      fallbackAAP.provider.locationHint = requestHints.location;
+    if (reliableLocation && fallbackAAP.provider.mode === 'local') {
+      fallbackAAP.provider.locationHint = reliableLocation;
     }
     
     return {
       aap: fallbackAAP,
-      followup_questions: buildFallbackQuestions(fallbackAAP, askedFlags),
+      followup_questions: buildFallbackQuestions(fallbackAAP, askedFlags, !reliableLocation && !existingAAP?.provider?.locationHint),
       assumptions: ['AI triage failed, preserved user-provided values and filled defaults for missing fields'],
       ready_for_discovery: false,
     };
@@ -282,16 +302,29 @@ export async function triageAAP(
 }
 
 
-function buildFallbackQuestions(aap: AAPTriad | null, asked: AAPAskedFlags): string[] {
+function buildFallbackQuestions(
+  aap: AAPTriad | null, 
+  asked: AAPAskedFlags,
+  needsLocation: boolean = false
+): string[] {
   const questions: string[] = [];
+  
   if ((!aap?.age || aap.age.status === 'unknown') && !asked.asked_age) {
     questions.push("How old is your child, or what grade are they in?");
   }
+  
   if ((!aap?.activity || aap.activity.status === 'unknown') && !asked.asked_activity) {
     questions.push("What kind of activity are you looking for (for example: ski lessons, swim, or music)?");
   }
+  
   if ((!aap?.provider || aap.provider.status === 'unknown') && !asked.asked_provider) {
     questions.push("Do you already have a specific provider in mind, or should I show you a few options first?");
   }
+  
+  // Ask for location only if provider is unknown AND location is unreliable/missing
+  if ((!aap?.provider || aap.provider.status === 'unknown') && needsLocation && !asked.asked_location) {
+    questions.push("What city should I look in?");
+  }
+  
   return questions;
 }
