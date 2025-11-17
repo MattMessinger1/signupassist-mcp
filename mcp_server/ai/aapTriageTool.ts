@@ -133,7 +133,8 @@ export async function triageAAP(
     provider?: string;
     location?: any;  // NEW: LocationHint from ipAPI
   },
-  askedFlags: AAPAskedFlags
+  askedFlags: AAPAskedFlags,
+  rawUserMessage?: string  // NEW: Raw user message for provider detection
 ): Promise<AAPTriageResult> {
   
   Logger.info('[AAP Triage] Input:', { 
@@ -141,11 +142,13 @@ export async function triageAAP(
     existingAAP,
     requestHints,
     askedFlags,
-    hasLocation: !!requestHints.location
+    hasLocation: !!requestHints.location,
+    hasRawUserMessage: !!rawUserMessage
   });
 
   // Get the most recent user message for provider change detection
-  const lastUserMessage = recentMessages.filter(m => m.role === 'user').pop()?.content || '';
+  // Prefer rawUserMessage (current turn) over history
+  const lastUserMessage = rawUserMessage || recentMessages.filter(m => m.role === 'user').pop()?.content || '';
 
   // Detect provider switch
   const existingProviderRaw = existingAAP?.provider?.raw || null;
