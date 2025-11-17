@@ -94,6 +94,50 @@ export default function MCPChatTest() {
       </div>
 
       <Card className="p-6">
+        <div className="mb-4 space-y-2">
+          <h3 className="text-sm font-semibold text-muted-foreground">Quick Test Prompts:</h3>
+          <div className="flex flex-wrap gap-2">
+            <Badge 
+              variant="outline" 
+              className="cursor-pointer hover:bg-accent"
+              onClick={() => {
+                const input = document.querySelector('input[placeholder*="test"]') as HTMLInputElement;
+                if (input) {
+                  input.value = "I want to sign up my 8 year old for ski lessons";
+                  input.focus();
+                }
+              }}
+            >
+              🎿 Ski lessons (8yo)
+            </Badge>
+            <Badge 
+              variant="outline" 
+              className="cursor-pointer hover:bg-accent"
+              onClick={() => {
+                const input = document.querySelector('input[placeholder*="test"]') as HTMLInputElement;
+                if (input) {
+                  input.value = "Find summer camps near me";
+                  input.focus();
+                }
+              }}
+            >
+              ⛺ Summer camps
+            </Badge>
+            <Badge 
+              variant="outline" 
+              className="cursor-pointer hover:bg-accent"
+              onClick={() => {
+                const input = document.querySelector('input[placeholder*="test"]') as HTMLInputElement;
+                if (input) {
+                  input.value = "What programs are available at Blackhawk Ski Club?";
+                  input.focus();
+                }
+              }}
+            >
+              🏔️ Blackhawk programs
+            </Badge>
+          </div>
+        </div>
         <MCPChat />
       </Card>
     </div>

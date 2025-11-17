@@ -1,11 +1,14 @@
-import { useState } from "react";
-import { sendMessage } from "@/lib/orchestratorClient";
+import { useState, useRef, useEffect } from "react";
+import { sendMessage, sendAction } from "@/lib/orchestratorClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, Send } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
-interface Card {
+interface CardData {
   title: string;
   subtitle?: string;
   description?: string;
@@ -20,7 +23,7 @@ interface Card {
 interface Message {
   role: "user" | "assistant";
   content: string;
-  cards?: Card[];
+  cards?: CardData[];
 }
 
 export function MCPChat() {
@@ -28,6 +31,15 @@ export function MCPChat() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [sessionId] = useState(`lovable-test-${Date.now()}`);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, loading]);
 
   async function send(userMessage: string) {
     if (!userMessage.trim() || loading) return;
@@ -54,10 +66,46 @@ export function MCPChat() {
       ]);
     } catch (error) {
       console.error("MCP Chat error:", error);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      
+      toast({
+        title: "❌ Message Failed",
+        description: errorMsg,
+        variant: "destructive",
+      });
+      
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", content: `Error: ${error instanceof Error ? error.message : 'Unknown error'}` },
+        { role: "assistant", content: `Error: ${errorMsg}` },
       ]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleCardAction(action: string, payload: any) {
+    setLoading(true);
+    
+    try {
+      const response = await sendAction(action, payload, sessionId);
+      
+      setMessages((prev) => [
+        ...prev,
+        { 
+          role: "assistant", 
+          content: response.message || "(no response)",
+          cards: response.cards || []
+        },
+      ]);
+    } catch (error) {
+      console.error("Card action error:", error);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      
+      toast({
+        title: "❌ Action Failed",
+        description: errorMsg,
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -65,52 +113,108 @@ export function MCPChat() {
 
   return (
     <div className="flex flex-col h-[600px] gap-4">
-      <ScrollArea className="flex-1 p-4 border rounded-lg">
-        <div className="space-y-4">
+      {/* Session Info */}
+      <div className="flex items-center gap-2 px-2">
+        <Badge variant="outline" className="text-xs">
+          Session: {sessionId.slice(-8)}
+        </Badge>
+        {loading && (
+          <Badge variant="secondary" className="text-xs">
+            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+            Processing...
+          </Badge>
+        )}
+      </div>
+
+      {/* Messages */}
+      <ScrollArea className="flex-1 border rounded-lg">
+        <div ref={scrollRef} className="p-4 space-y-4">
+          {messages.length === 0 && (
+            <div className="flex items-center justify-center h-[400px] text-muted-foreground">
+              <div className="text-center space-y-2">
+                <p className="text-lg font-semibold">Welcome to MCP Chat Test</p>
+                <p className="text-sm">Send a message to start testing the orchestrator</p>
+              </div>
+            </div>
+          )}
+          
           {messages.map((msg, idx) => (
             <div key={idx}>
-              <Card className={`p-3 ${msg.role === "user" ? "bg-primary/10 ml-12" : "bg-secondary/10 mr-12"}`}>
-                <div className="font-semibold text-sm mb-1">
-                  {msg.role === "user" ? "You" : "Assistant"}
+              <Card className={`p-4 ${msg.role === "user" ? "bg-primary/10 ml-12" : "bg-secondary/10 mr-12"}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <Badge variant={msg.role === "user" ? "default" : "secondary"} className="text-xs">
+                    {msg.role === "user" ? "You" : "Assistant"}
+                  </Badge>
                 </div>
                 <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
               </Card>
               
               {msg.cards && msg.cards.length > 0 && (
-                <div className="grid grid-cols-1 gap-2 mt-2 mr-12">
+                <div className="grid grid-cols-1 gap-3 mt-3 mr-12">
                   {msg.cards.map((card, cardIdx) => (
-                    <Card key={cardIdx} className="p-3 bg-accent/5 border-accent/20">
-                      <div className="font-semibold text-sm mb-1">{card.title}</div>
-                      {card.subtitle && (
-                        <div className="text-xs text-muted-foreground mb-2">{card.subtitle}</div>
-                      )}
-                      {card.description && (
-                        <div className="text-xs text-muted-foreground">{card.description}</div>
-                      )}
-                      {card.metadata && (
-                        <div className="text-xs text-muted-foreground mt-1">
-                          {card.metadata.orgRef && <div>Org: {card.metadata.orgRef}</div>}
-                          {card.metadata.location && <div>Location: {card.metadata.location}</div>}
-                        </div>
-                      )}
+                    <Card key={cardIdx} className="p-4 bg-accent/5 border-accent/20 hover:bg-accent/10 transition-colors">
+                      <div className="space-y-2">
+                        <div className="font-semibold">{card.title}</div>
+                        {card.subtitle && (
+                          <div className="text-sm text-muted-foreground">{card.subtitle}</div>
+                        )}
+                        {card.description && (
+                          <div className="text-sm text-muted-foreground">{card.description}</div>
+                        )}
+                        {card.metadata && (
+                          <div className="flex flex-wrap gap-2 text-xs">
+                            {card.metadata.orgRef && (
+                              <Badge variant="outline">Org: {card.metadata.orgRef}</Badge>
+                            )}
+                            {card.metadata.location && (
+                              <Badge variant="outline">📍 {card.metadata.location}</Badge>
+                            )}
+                            {card.metadata.category && (
+                              <Badge variant="outline">{card.metadata.category}</Badge>
+                            )}
+                          </div>
+                        )}
+                        {card.buttons && card.buttons.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mt-3">
+                            {card.buttons.map((button, btnIdx) => (
+                              <Button
+                                key={btnIdx}
+                                variant={button.variant === "accent" ? "default" : "outline"}
+                                size="sm"
+                                onClick={() => handleCardAction(button.action, card.metadata)}
+                                disabled={loading}
+                              >
+                                {button.label}
+                              </Button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </Card>
                   ))}
                 </div>
               )}
             </div>
           ))}
+          
           {loading && (
-            <Card className="p-3 bg-secondary/10 mr-12">
-              <div className="font-semibold text-sm mb-1">Assistant</div>
-              <div className="text-sm">Thinking...</div>
+            <Card className="p-4 bg-secondary/10 mr-12">
+              <div className="flex items-center gap-2 mb-2">
+                <Badge variant="secondary" className="text-xs">Assistant</Badge>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Thinking...
+              </div>
             </Card>
           )}
         </div>
       </ScrollArea>
 
+      {/* Input Area */}
       <div className="flex gap-2">
         <Input
-          placeholder="Type a message…"
+          placeholder="Type a message to test the MCP orchestrator..."
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
@@ -120,9 +224,14 @@ export function MCPChat() {
             }
           }}
           disabled={loading}
+          className="flex-1"
         />
-        <Button onClick={() => send(input)} disabled={loading || !input.trim()}>
-          Send
+        <Button 
+          onClick={() => send(input)} 
+          disabled={loading || !input.trim()}
+          size="icon"
+        >
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
         </Button>
       </div>
     </div>
