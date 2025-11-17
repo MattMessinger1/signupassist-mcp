@@ -181,6 +181,35 @@ export async function triageAAP(
     updatedRequestHints.location = null;
   }
 
+  //----------------------------------------------------------------------
+  // 🚀 FAST-PATH: Skip triage if AAP is already complete and user added no new info.
+  //----------------------------------------------------------------------
+  
+  // Consider short or empty messages as "no new info"
+  const noNewInfo =
+    !lastUserMessage.trim() ||
+    lastUserMessage.trim().length < 3 ||        // often just "ok", "yes", "9" etc.
+    /^[\d\s]+$/.test(lastUserMessage.trim());   // pure numbers = child age answer
+
+  const aapComplete =
+    updatedAAP &&
+    updatedAAP.age?.status === "known" &&
+    updatedAAP.activity?.status === "known" &&
+    updatedAAP.provider?.status === "known";
+
+  // Skip expensive OpenAI call if we already have everything and user said nothing new
+  if (aapComplete && noNewInfo && !providerSwitch) {
+    Logger.info('[AAP Triage] Fast-path: AAP complete with trivial input, skipping OpenAI call');
+    return {
+      aap: updatedAAP,
+      followup_questions: [],
+      assumptions: [],
+      ready_for_discovery: true
+    };
+  }
+  // END FAST-PATH
+  //----------------------------------------------------------------------
+
   // Check if location is unreliable (ChatGPT DC IPs)
   const isLocationUnreliable = updatedRequestHints.location && (
     updatedRequestHints.location.city === 'Ashburn' ||
