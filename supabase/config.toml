@@ -23,3 +23,6 @@ verify_jwt = false
 
 [functions.create-system-mandate]
 verify_jwt = false
+
+[functions.refresh-provider-feed]
+verify_jwt = false
