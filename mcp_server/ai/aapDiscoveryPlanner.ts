@@ -39,8 +39,42 @@ DATA RULES:
 
 export async function planProgramDiscovery(
   aap: AAPTriad,
-  userIntent: string
+  userIntent: string,
+  context?: { aap?: AAPTriad; aap_discovery_plan?: DiscoveryPlan }
 ): Promise<DiscoveryPlan> {
+  
+  //----------------------------------------------------------------------
+  // 🚀 FAST-PATH: Reuse cached discovery plan if AAP hasn't changed
+  //----------------------------------------------------------------------
+  const prevPlan = context?.aap_discovery_plan;
+  const prevAAP = context?.aap;
+  
+  if (prevPlan && prevAAP) {
+    const newAge = aap.age?.normalized?.years || null;
+    const newActivity = aap.activity?.normalized?.category || null;
+    const newProvider = aap.provider?.normalized?.org_ref || null;
+    
+    const prevAge = prevAAP.age?.normalized?.years || null;
+    const prevActivity = prevAAP.activity?.normalized?.category || null;
+    const prevProvider = prevAAP.provider?.normalized?.org_ref || null;
+    
+    // IF: AAP has not changed → reuse cache
+    const sameAAP = 
+      prevAge === newAge &&
+      prevActivity === newActivity &&
+      prevProvider === newProvider;
+    
+    if (sameAAP) {
+      Logger.info('[AAP Discovery Planner] ✅ Cache hit - reusing plan', { prevPlan });
+      return {
+        ...prevPlan,
+        notes_for_assistant: prevPlan.notes_for_assistant + " (cached)"
+      };
+    }
+  }
+  //----------------------------------------------------------------------
+  // Otherwise: compute new plan via OpenAI
+  //----------------------------------------------------------------------
   
   Logger.info('[AAP Discovery Planner] Input:', { aap, userIntent });
 
