@@ -405,7 +405,8 @@ class AIOrchestrator {
         const askedFlags: AAPAskedFlags = context.aap_asked_flags || {
           asked_age: false,
           asked_activity: false,
-          asked_provider: false
+          asked_provider: false,
+          asked_location: false
         };
         
         // Extract AAP hints from context or parse from current message

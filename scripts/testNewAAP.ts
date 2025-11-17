@@ -26,7 +26,8 @@ async function testCase1() {
   const askedFlags1: AAPAskedFlags = {
     asked_age: false,
     asked_activity: false,
-    asked_provider: false
+    asked_provider: false,
+    asked_location: false
   };
   
   const result1 = await triageAAP(turn1Messages, null, {}, askedFlags1);
@@ -57,7 +58,8 @@ async function testCase1() {
   const askedFlags2: AAPAskedFlags = {
     asked_age: true,
     asked_activity: false,
-    asked_provider: false
+    asked_provider: false,
+    asked_location: false
   };
   
   const result2 = await triageAAP(turn2Messages, result1.aap, {}, askedFlags2);
@@ -106,7 +108,8 @@ async function testCase4() {
   const askedFlags: AAPAskedFlags = {
     asked_age: false,
     asked_activity: false,
-    asked_provider: false
+    asked_provider: false,
+    asked_location: false
   };
   
   const result = await triageAAP(messages, null, requestHints, askedFlags);
@@ -160,7 +163,8 @@ async function testCase2() {
   const askedFlags1: AAPAskedFlags = {
     asked_age: false,
     asked_activity: false,
-    asked_provider: false
+    asked_provider: false,
+    asked_location: false
   };
   
   const result1 = await triageAAP(turn1Messages, null, {}, askedFlags1);
@@ -179,7 +183,8 @@ async function testCase2() {
   const askedFlags2: AAPAskedFlags = {
     asked_age: false,
     asked_activity: false,
-    asked_provider: true
+    asked_provider: true,
+    asked_location: false
   };
   
   const result2 = await triageAAP(turn2Messages, result1.aap, {}, askedFlags2);
@@ -226,7 +231,8 @@ async function testCase4() {
   const askedFlags: AAPAskedFlags = {
     asked_age: false,
     asked_activity: false,
-    asked_provider: false
+    asked_provider: false,
+    asked_location: false
   };
   
   const result = await triageAAP(messages, null, requestHints, askedFlags);
@@ -279,7 +285,8 @@ async function testCase3() {
   const askedFlags: AAPAskedFlags = {
     asked_age: false,
     asked_activity: false,
-    asked_provider: false
+    asked_provider: false,
+    asked_location: false
   };
   
   const result = await triageAAP(messages, null, {}, askedFlags);
