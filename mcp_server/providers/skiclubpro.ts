@@ -21,6 +21,7 @@ import { PROMPT_VERSION } from '../ai/AIOrchestrator.js';
 import { getReadiness } from './utils/pageReadinessRegistry.js';
 import { UrlBuilder } from '../../providers/skiclubpro/lib/index.js';
 import { resolveBaseUrl } from './utils/resolveBaseUrl.js';
+import { discoverFieldsSerially, navigateToProgramForm } from '../../supabase/functions/_shared/scraping.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -1848,6 +1849,139 @@ export const skiClubProTools = {
         error: errorMsg,
         timestamp: new Date().toISOString()
       };
+    }
+    
+    // SERVICE CREDENTIAL FEED REFRESH: Detect if this is a service credential
+    const isServiceFeedRefresh = handlerArgs.credential_id === process.env.SCP_SERVICE_CRED_ID;
+    
+    if (isServiceFeedRefresh) {
+      console.log("🔄 [scp.find_programs] Running full provider feed refresh for SkiClubPro...");
+      
+      let session: any = null;
+      
+      try {
+        // 1. Get service credentials and login
+        const credentials = await lookupCredentialsById(handlerArgs.credential_id, handlerArgs.user_jwt);
+        const baseUrl = resolveBaseUrl(orgRef);
+        
+        session = await launchBrowserbaseSession();
+        const { page, browser } = session;
+        
+        await page.goto(`${baseUrl}/user/login`, { waitUntil: 'networkidle' });
+        
+        console.log('[scp.find_programs] 🔐 Logging in with service credentials...');
+        await loginWithCredentials(page, skiClubProConfig, credentials, browser);
+        
+        // 2. Navigate to registration page and scrape program list
+        await page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
+        console.log('[scp.find_programs] 📋 Scraping program list...');
+        
+        // Use existing program extraction logic (simplified version)
+        const cardSelector = '.views-row, .program-card, tr[class*="views-row"]';
+        const programElements = await page.locator(cardSelector).all();
+        
+        const programs: any[] = [];
+        for (const element of programElements) {
+          try {
+            const programData = await page.evaluate((el) => {
+              const findText = (element: Element, selectors: string[]): string => {
+                for (const sel of selectors) {
+                  const found = element.querySelector(sel);
+                  if (found?.textContent?.trim()) return found.textContent.trim();
+                }
+                return '';
+              };
+              
+              const title = findText(el, ['.views-field-title a', '.program-title', 'h3', 'a[href*="program"]']) || '';
+              if (!title) return null;
+              
+              const price = findText(el, ['.views-field-field-price', '.price']) || '';
+              const schedule = findText(el, ['.views-field-field-schedule', '.schedule']) || '';
+              const regLink = el.querySelector('a[href*="registration"], a[href*="register"]');
+              const url = regLink ? (regLink as HTMLAnchorElement).href : '';
+              
+              return { title, price, schedule, url };
+            }, element);
+            
+            if (programData?.title) {
+              const program_ref = programData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+              programs.push({
+                program_ref,
+                title: programData.title,
+                price: programData.price,
+                schedule: programData.schedule,
+                url: programData.url,
+                org_ref: orgRef
+              });
+            }
+          } catch (err) {
+            console.error('[scp.find_programs] Error extracting program:', err);
+          }
+        }
+        
+        console.log(`[scp.find_programs] ✅ Found ${programs.length} programs`);
+        
+        // 3. For each program, extract prerequisites and signup form
+        for (const program of programs) {
+          try {
+            console.log(`[scp.find_programs] 🔍 Discovering prerequisites and form for: ${program.title}`);
+            
+            // Check prerequisites
+            const prereqResults = await runChecks('skiclubpro', { page, baseUrl, orgRef });
+            
+            // Navigate to program form
+            if (program.url) {
+              await navigateToProgramForm(page, program.program_ref, baseUrl.replace('https://', ''), program.url);
+              await page.waitForTimeout(2000);
+              
+              // Discover form fields
+              const formDiscovery = await discoverFieldsSerially(page, program.program_ref);
+              
+              // 4. Save to unified cache
+              await supabase.rpc('upsert_cached_provider_feed', {
+                p_org_ref: orgRef,
+                p_program_ref: program.program_ref,
+                p_category: category,
+                p_program: program,
+                p_prereq: prereqResults,
+                p_signup_form: {
+                  fields: formDiscovery.fields,
+                  confidence: formDiscovery.confidence,
+                  metadata: formDiscovery.metadata
+                }
+              });
+              
+              console.log(`[scp.find_programs] ✅ Cached ${program.program_ref}`);
+            }
+          } catch (err) {
+            console.error(`[scp.find_programs] Error processing ${program.title}:`, err);
+            // Continue with next program
+          }
+        }
+        
+        await closeBrowserbaseSession(session);
+        
+        return {
+          success: true,
+          login_status: 'success' as const,
+          programs: programs,
+          refreshed: programs.length,
+          message: `Refreshed ${programs.length} programs with prerequisites and forms`,
+          timestamp: new Date().toISOString()
+        };
+        
+      } catch (error: any) {
+        console.error('[scp.find_programs] Feed refresh error:', error);
+        if (session) {
+          await closeBrowserbaseSession(session);
+        }
+        return {
+          success: false,
+          login_status: 'failed' as const,
+          error: `Feed refresh failed: ${error.message}`,
+          timestamp: new Date().toISOString()
+        };
+      }
     }
     
     // If credentials or session token provided, use live Browserbase scraping
