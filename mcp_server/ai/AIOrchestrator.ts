@@ -2232,7 +2232,7 @@ Example follow-up (only when needed):
           const selectedProgramData = context.availablePrograms?.find(
             (p: any) => p.id === program_ref || p.id === program_id || p.program_ref === program_ref
           );
-          const programName = selectedProgramData?.title || "this program";
+          const programName = selectedProgramData?.title || selectedProgramData?.name || "this program";
           
           await this.updateContext(sessionId, {
             selectedProgram: program_ref || program_id,
