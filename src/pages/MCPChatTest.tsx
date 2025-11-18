@@ -35,6 +35,16 @@ export default function MCPChatTest() {
 
       console.log('[Cache Refresh] Success:', data);
       
+      // Check if refresh failed due to session limits
+      if (data.results?.some((r: any) => r.error?.includes('session limit'))) {
+        toast({
+          title: "⚠️ Session Limit Reached",
+          description: "Browserbase sessions at capacity. Use 'Cleanup Sessions' button below.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
       toast({
         title: "✅ Cache Refreshed",
         description: `${data.total_programs || 0} programs from ${data.orgs_refreshed || 0} organizations`,
@@ -53,19 +63,53 @@ export default function MCPChatTest() {
     }
   };
 
+  const handleCleanupSessions = async () => {
+    console.log('[Session Cleanup] Starting...');
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('cleanup-browserbase-sessions');
+      
+      if (error) {
+        throw error;
+      }
+      
+      console.log('[Session Cleanup] Success:', data);
+      toast({
+        title: "✅ Sessions Cleaned",
+        description: `Terminated ${data.terminated || 0} active sessions`,
+      });
+    } catch (error: any) {
+      console.error('[Session Cleanup] Error:', error);
+      toast({
+        title: "❌ Cleanup Failed",
+        description: error.message || "Unknown error occurred",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="container mx-auto p-8 max-w-4xl">
       <div className="mb-8 space-y-4">
         <div className="flex items-center justify-between">
           <h1 className="text-4xl font-bold">SignupAssist — MCP Test Chat</h1>
-          <Button
-            onClick={handleRefreshCache}
-            disabled={isRefreshingCache}
-            variant="default"
-          >
-            <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshingCache ? 'animate-spin' : ''}`} />
-            {isRefreshingCache ? 'Refreshing...' : 'Refresh Cache'}
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              onClick={handleCleanupSessions}
+              variant="outline"
+              size="sm"
+            >
+              Cleanup Sessions
+            </Button>
+            <Button
+              onClick={handleRefreshCache}
+              disabled={isRefreshingCache}
+              variant="default"
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshingCache ? 'animate-spin' : ''}`} />
+              {isRefreshingCache ? 'Refreshing...' : 'Refresh Cache'}
+            </Button>
+          </div>
         </div>
         
         <Card className="p-4 bg-green-500/10 border-green-500">

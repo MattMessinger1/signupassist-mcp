@@ -53,6 +53,9 @@ Deno.serve(async (req) => {
       throw new Error('SCP_SERVICE_CRED_ID not configured');
     }
     
+    // Check for Browserbase session limit issues
+    console.log('[refresh-provider-feed] ⚠️ Note: If Browserbase sessions are at limit, this will fail. Consider cleanup first.');
+    
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
     // Parse request body for custom orgs (optional)
@@ -89,11 +92,24 @@ Deno.serve(async (req) => {
         });
         
         if (error) {
-          console.error(`[refresh-provider-feed] Error refreshing ${config.org_ref}:`, error);
+          const errorMsg = error.message || JSON.stringify(error);
+          console.error(`[refresh-provider-feed] Error refreshing ${config.org_ref}:`, errorMsg);
+          
+          // Check for Browserbase session limit
+          if (errorMsg.includes('429') || errorMsg.includes('concurrent sessions')) {
+            console.error('[refresh-provider-feed] 🚨 Browserbase session limit reached. Stopping refresh.');
+            results.push({
+              org_ref: config.org_ref,
+              success: false,
+              error: 'Browserbase session limit reached. Please cleanup sessions and retry.'
+            });
+            break; // Stop trying other orgs
+          }
+          
           results.push({
             org_ref: config.org_ref,
             success: false,
-            error: error.message
+            error: errorMsg
           });
           continue;
         }
