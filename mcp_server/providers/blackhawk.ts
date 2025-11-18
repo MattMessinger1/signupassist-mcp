@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../../src/integrations/supabase/types.js';
-import { launchBrowserbaseSession, closeBrowserbaseSession } from '../lib/browserbase-skiclubpro.js';
+import { launchBrowserbaseSession, closeBrowserbaseSession, BrowserbaseSession } from '../lib/browserbase-skiclubpro.js';
 import { loginWithCredentials } from '../lib/login.js';
 import { skiClubProConfig } from '../config/skiclubproConfig.js';
 import { discoverFieldsSerially } from '../lib/serial_field_discovery.js';
@@ -22,15 +22,15 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
   const providerId = 'skiclubpro';
   console.log(`[${orgRef}] 🔄 Starting full program feed refresh...`);
 
-  // Launch headless browser session
-  let session: { page: any, browser: any } | null = null;
-  try {
-    session = await launchBrowserbaseSession();
-    const { page, browser } = session;
+    // Launch headless browser session
+    let session: BrowserbaseSession | null = null;
+    try {
+      session = await launchBrowserbaseSession();
+      const { page, browser } = session;
 
-    // Build base URL for Blackhawk (uses custom domain if available)
-    const providerConfig = getProvider(providerId);
-    const baseUrl: string = providerConfig.buildBaseUrl(orgRef, providerConfig.customDomain);
+      // Build base URL for Blackhawk (uses custom domain if available)
+      const providerConfig = getProvider(providerId);
+      const baseUrl: string = providerConfig.buildBaseUrl(orgRef);
 
     // 1. Log in with service account credentials
     const serviceUsername = process.env.BLACKHAWK_USERNAME || process.env.SCP_SERVICE_USERNAME;

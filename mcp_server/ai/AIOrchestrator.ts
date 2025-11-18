@@ -2217,9 +2217,9 @@ Example follow-up (only when needed):
           );
 
         case "select_program":
-          const { program_ref, program_id } = payload || {};
+          const { program_ref: progRef, program_id: progId } = payload || {};
           
-          if (!program_ref && !program_id) {
+          if (!progRef && !progId) {
             return this.formatResponse(
               "I'm not sure which program you selected. Can you try again?",
               [],
@@ -2229,19 +2229,19 @@ Example follow-up (only when needed):
           }
           
           // Find the program name from context for acknowledgement
-          const selectedProgramData = context.availablePrograms?.find(
-            (p: any) => p.id === program_ref || p.id === program_id || p.program_ref === program_ref
+          const selectedProgData = context.availablePrograms?.find(
+            (p: any) => p.id === progRef || p.id === progId || p.program_ref === progRef
           );
-          const programName = selectedProgramData?.title || selectedProgramData?.name || "this program";
+          const progName = selectedProgData?.title || selectedProgData?.name || "this program";
           
           await this.updateContext(sessionId, {
-            selectedProgram: program_ref || program_id,
+            selectedProgram: progRef || progId,
             step: FlowStep.FIELD_PROBE
           });
           
           // Use template: ASSISTANT__ACK_SELECTION (Block 12)
           const ackMessage = getMessageForState("selection_ack", {
-            program_name: programName
+            program_name: progName
           });
           
           // Show acknowledgement before proceeding to field probe
