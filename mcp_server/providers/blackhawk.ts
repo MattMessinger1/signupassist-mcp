@@ -55,7 +55,7 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
     const programsList: any[] = [];
     for (const el of programElements) {
       try {
-        const programData = await page.evaluate((element) => {
+        const programData = await el.evaluate((element) => {
           // Helper to extract text content from the element using any of the given selectors
           const findText = (elem: Element, selectors: string[]): string => {
             for (const sel of selectors) {
@@ -81,7 +81,7 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
             else status = 'Open';
           }
           return { title, price, schedule, ageRange, url, status };
-        }, el);
+        });
         if (!programData || !programData.title) {
           continue; // skip if extraction returned null or empty title
         }

@@ -1996,9 +1996,9 @@ Example follow-up (only when needed):
 
         case "select_program":
           // Step 5 → Step 6: Program selected, check prerequisites
-          const { program_ref, program_id } = payload || {};
+          const { program_ref: pRef, program_id: pId } = payload || {};
           const selectedProgramData = context.availablePrograms?.find((p: any) =>
-            p.id === program_ref || p.id === program_id || p.program_ref === program_ref
+            p.id === pRef || p.id === pId || p.program_ref === pRef
           );
           const programName = selectedProgramData?.title || selectedProgramData?.name || "this program";
           await this.updateContext(sessionId, {
@@ -2349,9 +2349,9 @@ Example follow-up (only when needed):
 
         case "view_program":
           // Quick Win #5: Handle view_program action - call scp.program_field_probe
-          const { program_ref: progRef, org_ref: orgRef } = payload || {};
+          const { program_ref: viewProgRef, org_ref: viewOrgRef } = payload || {};
           
-          if (!progRef || !orgRef) {
+          if (!viewProgRef || !viewOrgRef) {
             return this.formatResponse(
               "I'm not sure which program you want to view. Can you try again?",
               undefined,
@@ -2360,13 +2360,13 @@ Example follow-up (only when needed):
             );
           }
           
-          Logger.info(`[view_program] Fetching details for program_ref=${progRef}, org_ref=${orgRef}`);
+          Logger.info(`[view_program] Fetching details for program_ref=${viewProgRef}, org_ref=${viewOrgRef}`);
           
           try {
             // Call scp.program_field_probe to get program details
             const result = await this.callTool("scp.program_field_probe", {
-              org_ref: orgRef,
-              program_ref: progRef,
+              org_ref: viewOrgRef,
+              program_ref: viewProgRef,
               session_token: context.session_token,
               cookies: context.provider_cookies || [],
               credential_id: context.credential_id
