@@ -1996,12 +1996,17 @@ Example follow-up (only when needed):
 
         case "select_program":
           // Step 5 → Step 6: Program selected, check prerequisites
+          const { program_ref, program_id } = payload || {};
+          const selectedProgramData = context.availablePrograms?.find((p: any) =>
+            p.id === program_ref || p.id === program_id || p.program_ref === program_ref
+          );
+          const programName = selectedProgramData?.title || selectedProgramData?.name || "this program";
           await this.updateContext(sessionId, {
-            program: payload,
+            program: selectedProgramData || payload,
             step: FlowStep.PREREQUISITE_CHECK
           });
           return this.formatResponse(
-            `Perfect choice — **${payload.title}**! Let me check a few prerequisites before we continue.`,
+            `Perfect choice — **${programName}**! Let me check a few prerequisites before we continue.`,
             undefined,
             [{ label: "Check Prerequisites", action: "check_prereqs", variant: "accent" }],
             {}
