@@ -1285,98 +1285,69 @@ Example follow-up (only when needed):
     // Use template: ASSISTANT__LOADING_STATUS
     const loadingMessage = getMessageForState("loading");
     Logger.info(`[handleProgramSearch] ${loadingMessage}`);
-    Logger.info(`[handleProgramSearch] Fetching ${intentCategory} programs from cache for ${context.provider.name}`);
+    Logger.info(`[handleProgramSearch] Fetching ${intentCategory} programs for ${context.provider.name}`);
     
     try {
-      // Always use cached feed - no live scraping in user context
-      Logger.info('[handleProgramSearch] Querying cached_programs table', {
+      // Call scp.find_programs tool
+      const result = await this.callTool('scp.find_programs', {
+        credential_id: context.credential_id,
+        session_token: context.provider_session_token,
         org_ref: context.provider.orgRef,
+        user_jwt: context.user_jwt,
         category: intentCategory
       });
       
-      const { data: cacheEntry, error: cacheError } = await this.supabase
-        .from('cached_programs')
-        .select('programs_by_theme, prerequisites_schema, questions_schema, deep_links, metadata, cached_at')
-        .eq('org_ref', context.provider.orgRef)
-        .eq('category', intentCategory)
-        .gt('expires_at', new Date().toISOString())
-        .order('cached_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      
-      if (cacheError || !cacheEntry) {
-        Logger.warn('[handleProgramSearch] No cached feed available', {
-          org_ref: context.provider.orgRef,
-          category: intentCategory,
-          error: cacheError
-        });
+      // Check for session expiration or login errors
+      if (!result.success) {
+        Logger.error('[handleProgramSearch] Tool returned error:', result.error);
         
+        if (result.error?.includes('session') || result.error?.includes('login')) {
+          const sessionExpiredMsg = getMessageForState("session_expired", {
+            provider_name: context.provider.name
+          });
+          return this.formatResponse(
+            sessionExpiredMsg,
+            [],
+            [{ label: "Reconnect", action: "connect_account", variant: "accent" }],
+            {}
+          );
+        }
+        
+        // Generic error
+        const errorMsg = getMessageForState("error", {
+          provider_name: context.provider.name
+        });
         return this.formatResponse(
-          "I don't have the latest programs available right now. Please click 'Refresh Cache' and try again.",
+          errorMsg,
           [],
-          [{ label: "Refresh Cache", action: "refresh_cache", variant: "accent" }],
+          [{ label: "Retry", action: "retry_program_search", variant: "accent" }],
           {}
         );
       }
       
-      // Check cache staleness (>24 hours)
-      const cacheTime = new Date(cacheEntry.cached_at);
-      const ageHours = (Date.now() - cacheTime.getTime()) / (1000 * 60 * 60);
+      const programs = result.data?.programs || [];
       
-      if (ageHours > 24) {
-        Logger.warn(`[handleProgramSearch] Cached feed is stale (age ${ageHours.toFixed(1)}h)`, {
-          org_ref: context.provider.orgRef,
-          cache_time: cacheTime.toISOString()
-        });
-        
-        return this.formatResponse(
-          "The program list is a bit outdated. Please refresh the cache and try again.",
-          [],
-          [{ label: "Refresh Cache", action: "refresh_cache", variant: "accent" }],
-          {}
-        );
-      }
-      
-      Logger.info(`[handleProgramSearch] Serving programs from cache (age ${ageHours.toFixed(1)}h)`, {
-        org_ref: context.provider.orgRef,
-        themes: Object.keys(cacheEntry.programs_by_theme || {}).length
-      });
-      
-      // Format result to match expected structure
-      const result = {
-        success: true,
-        programs_by_theme: cacheEntry.programs_by_theme,
-        prerequisites_schema: cacheEntry.prerequisites_schema,
-        questions_schema: cacheEntry.questions_schema,
-        deep_links: cacheEntry.deep_links,
-        from_cache: true,
-        cached_at: cacheEntry.cached_at,
-        metadata: cacheEntry.metadata
-      };
-      
-      // Extract programs from grouped themes
-      const programsByTheme = result.programs_by_theme || {};
-      let allPrograms: any[] = [];
-      
-      for (const theme of Object.keys(programsByTheme)) {
-        const themePrograms = programsByTheme[theme] || [];
-        allPrograms = allPrograms.concat(themePrograms);
-      }
-      
-      if (allPrograms.length === 0) {
+      if (programs.length === 0) {
         const noProgramsMsg = getMessageForState("no_programs", {
           provider_name: context.provider.name
         });
         return this.formatResponse(
           noProgramsMsg,
           [],
-          [{ label: "Refresh Cache", action: "refresh_cache", variant: "accent" }],
+          [{ label: "Try Again", action: "retry_program_search", variant: "accent" }],
           {}
         );
       }
       
+      // Store session token for next steps
+      if (result.session_token) {
+        await this.updateContext(sessionId, { 
+          provider_session_token: result.session_token 
+        } as any);
+      }
+      
       // Format programs as cards with selection buttons
-      const programCards = allPrograms.slice(0, 5).map((program: any) => ({
+      const programCards = programs.slice(0, 5).map((program: any) => ({
         title: program.title,
         description: `${program.schedule || ''} • ${program.age_range || ''} • ${program.price || ''}`,
         metadata: { 
@@ -1391,14 +1362,14 @@ Example follow-up (only when needed):
       }));
       
       await this.updateContext(sessionId, {
-        availablePrograms: allPrograms,
+        availablePrograms: programs,
         step: FlowStep.PROGRAM_SELECTION
       });
       
       // Use template: ASSISTANT__PROGRAMS_READY
       const programsReadyMsg = getMessageForState("programs_ready", {
         provider_name: context.provider.name,
-        counts: { total: allPrograms.length }
+        counts: { total: programs.length }
       });
       
       return this.formatResponse(
@@ -1593,27 +1564,15 @@ Example follow-up (only when needed):
     
     const res = await this.callTool("scp.find_programs", args, sessionId);
     
-    // Check for cache errors
-    if (!res.success) {
-      if (res.error === 'cache_miss') {
-        Logger.warn('[Auto Discovery] Cache miss - prompting user to refresh');
-        return this.formatResponse(
-          "I don't have the latest programs available. Please click 'Refresh Cache' to update the program list.",
-          [],
-          [{ label: "Refresh Cache", action: "refresh_cache", variant: "accent" }],
-          {}
-        );
-      }
+    // Phase C: Persist session token if refreshed during discovery
+    if (res?.session_token) {
+      await this.updateContext(sessionId, {
+        session_token: res.session_token,
+        session_token_expires_at: Date.now() + (ctx.session_ttl_ms || 300000)
+      });
       
-      if (res.error === 'cache_stale') {
-        Logger.warn('[Auto Discovery] Cache stale - prompting user to refresh');
-        return this.formatResponse(
-          "The program list is outdated. Please refresh the cache for the latest programs.",
-          [],
-          [{ label: "Refresh Cache", action: "refresh_cache", variant: "accent" }],
-          {}
-        );
-      }
+      // Refresh context reference
+      ctx = await this.getContext(sessionId);
     }
     
     // Phase 2: Validate fast-path result
@@ -1634,17 +1593,7 @@ Example follow-up (only when needed):
       delete fallbackArgs.fallback_to_full;
       
       const fallbackRes = await this.callTool("scp.find_programs", fallbackArgs, sessionId);
-      
-      // Check for cache errors in fallback
-      if (!fallbackRes.success) {
-        Logger.error('[Fast-Path Fallback] Cache unavailable', fallbackRes.error);
-        return this.formatResponse(
-          "Unable to load programs. Please refresh the cache.",
-          [],
-          [{ label: "Refresh Cache", action: "refresh_cache", variant: "accent" }],
-          {}
-        );
-      }
+      if (fallbackRes?.session_token) ctx.session_token = fallbackRes.session_token;
       
       const fallbackPrograms = fallbackRes?.programs_by_theme || {};
       
@@ -1696,32 +1645,21 @@ Example follow-up (only when needed):
     const startMs = Date.now();
     let res = await this.callTool("scp.find_programs", args, sessionId);
     
-    // Check for cache errors
-    if (!res.success) {
-      Logger.warn('[Extractor Test] Cache unavailable', res.error);
-      return this.formatResponse(
-        "Unable to load programs for testing. Please refresh the cache.",
-        [],
-        [{ label: "Refresh Cache", action: "refresh_cache", variant: "accent" }],
-        {}
-      );
-    }
-    
     // Quick Win #6: Category fallback - if category-scoped results are empty, retry with "all"
     if (args.category !== "all" && (!res?.programs_by_theme || Object.keys(res.programs_by_theme).length === 0)) {
       Logger.info(`[orchestrator] Category "${args.category}" yielded zero results, retrying with "all"`);
       args.category = "all";
       res = await this.callTool("scp.find_programs", args, sessionId);
+    }
+    
+    if (res?.session_token) {
+      await this.updateContext(sessionId, {
+        session_token: res.session_token,
+        session_token_expires_at: Date.now() + (ctx.session_ttl_ms || 300000)
+      });
       
-      if (!res.success) {
-        Logger.warn('[Extractor Test] Cache unavailable on retry', res.error);
-        return this.formatResponse(
-          "Unable to load programs. Please refresh the cache.",
-          [],
-          [{ label: "Refresh Cache", action: "refresh_cache", variant: "accent" }],
-          {}
-        );
-      }
+      // Refresh context reference
+      ctx = await this.getContext(sessionId);
     }
     
     // Quick Win #7: Metrics logging
@@ -2600,101 +2538,7 @@ Which would you prefer?`;
       return this.getFromCache(cacheKey).value;
     }
 
-    // ======= CACHE-ONLY FIND_PROGRAMS =======
-    // Always use cached programs - never trigger live scraping
-    if (toolName === 'scp.find_programs' || toolName === 'find_programs') {
-      Logger.info('[callTool] Handling find_programs with cache-only approach', {
-        org_ref: args.org_ref,
-        category: args.category || 'all'
-      });
-      
-      try {
-        const orgRef = args.org_ref || args.provider?.orgRef || args.provider || '';
-        const category = args.category || 'all';
-        
-        if (!orgRef) {
-          throw new Error('org_ref is required for find_programs');
-        }
-        
-        // Query cached_programs table
-        const { data: cacheEntry, error: cacheError } = await this.supabase
-          .from('cached_programs')
-          .select('programs_by_theme, prerequisites_schema, questions_schema, deep_links, metadata, cached_at')
-          .eq('org_ref', orgRef)
-          .eq('category', category)
-          .gt('expires_at', new Date().toISOString())
-          .order('cached_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        
-        if (cacheError || !cacheEntry) {
-          Logger.warn('[callTool] No cached feed available for find_programs', {
-            org_ref: orgRef,
-            category,
-            error: cacheError
-          });
-          
-          // Return empty result with cache miss indicator
-          return {
-            success: false,
-            error: 'cache_miss',
-            message: "Program cache not available. Please refresh the cache.",
-            programs_by_theme: {},
-            from_cache: false
-          };
-        }
-        
-        // Check cache staleness (>24 hours)
-        const cacheTime = new Date(cacheEntry.cached_at);
-        const ageHours = (Date.now() - cacheTime.getTime()) / (1000 * 60 * 60);
-        
-        if (ageHours > 24) {
-          Logger.warn(`[callTool] Cached feed is stale (age ${ageHours.toFixed(1)}h)`, {
-            org_ref: orgRef,
-            cache_time: cacheTime.toISOString()
-          });
-          
-          return {
-            success: false,
-            error: 'cache_stale',
-            message: "Program cache is outdated. Please refresh the cache.",
-            programs_by_theme: cacheEntry.programs_by_theme,
-            from_cache: true,
-            stale: true,
-            age_hours: ageHours
-          };
-        }
-        
-        Logger.info(`[callTool] Serving programs from cache (age ${ageHours.toFixed(1)}h)`, {
-          org_ref: orgRef,
-          themes: Object.keys(cacheEntry.programs_by_theme || {}).length
-        });
-        
-        // Return successful cached result
-        return {
-          success: true,
-          programs_by_theme: cacheEntry.programs_by_theme,
-          prerequisites_schema: cacheEntry.prerequisites_schema,
-          questions_schema: cacheEntry.questions_schema,
-          deep_links: cacheEntry.deep_links,
-          metadata: cacheEntry.metadata,
-          from_cache: true,
-          cached_at: cacheEntry.cached_at,
-          age_hours: ageHours
-        };
-        
-      } catch (error: any) {
-        Logger.error('[callTool] Error in cache-only find_programs:', error);
-        return {
-          success: false,
-          error: error.message || 'Unknown error',
-          programs_by_theme: {},
-          from_cache: false
-        };
-      }
-    }
-
-    // ======= MANDATE ENFORCEMENT ======= 
+    // ======= MANDATE ENFORCEMENT =======
     const isProtectedTool = [
       'scp.login',
       'scp.find_programs',
@@ -2947,47 +2791,41 @@ Which would you prefer?`;
         }
       },
       find_programs: async (args: any) => {
-        // Note: This fallback is no longer used - cache-only handling is in callTool
-        // Kept for backward compatibility
         try {
           if (this.supabase) {
             const orgRef = args.org_ref || (args.provider?.orgRef || args.provider) || "";
             const category = args.category || "all";
             const { data: cacheEntry, error } = await this.supabase
               .from('cached_programs')
-              .select('programs_by_theme, prerequisites_schema, questions_schema, deep_links, metadata, cached_at')
+              .select('programs_by_theme')
               .eq('org_ref', orgRef)
               .eq('category', category)
               .gt('expires_at', new Date().toISOString())
               .order('cached_at', { ascending: false })
               .limit(1)
               .maybeSingle();
-            
             if (!error && cacheEntry) {
-              return {
-                success: true,
-                programs_by_theme: cacheEntry.programs_by_theme,
-                prerequisites_schema: cacheEntry.prerequisites_schema,
-                questions_schema: cacheEntry.questions_schema,
-                deep_links: cacheEntry.deep_links,
-                metadata: cacheEntry.metadata,
-                from_cache: true,
-                cached_at: cacheEntry.cached_at
-              };
+              if (args.org_ref) {
+                // Return grouped programs for auto discovery usage
+                return { programs_by_theme: cacheEntry.programs_by_theme };
+              }
+              // Otherwise, return flat list of programs for card display
+              const grouped = cacheEntry.programs_by_theme || {};
+              let flatPrograms: any[] = [];
+              for (const theme of Object.keys(grouped)) {
+                flatPrograms = flatPrograms.concat(grouped[theme]);
+              }
+              return flatPrograms;
             }
           }
         } catch (err: any) {
           Logger.error("[find_programs fallback] Error reading cache:", err);
         }
-        
-        // Return empty result if cache unavailable
-        return {
-          success: false,
-          error: 'cache_miss',
-          message: 'Program cache not available',
-          programs_by_theme: {},
-          from_cache: false
-        };
+        // Fallback to stub data if no cache available
+        return [
+          { name: "Beginner Ski Class – Saturdays", id: "prog1" },
+          { name: "Intermediate Ski Class – Sundays", id: "prog2" }
+        ];
       },
       check_prerequisites: async () => ({ membership: "ok", payment: "ok" }),
     };
