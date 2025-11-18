@@ -2381,14 +2381,14 @@ Example follow-up (only when needed):
               return this.formatResponse(
                 `📋 **Program Registration Form**\n\nRequired fields:\n${fieldDescriptions}`,
                 undefined,
-                [{ label: "Start Registration", action: "select_program", variant: "accent", payload: { program_ref: progRef, org_ref: orgRef } }],
+                [{ label: "Start Registration", action: "select_program", variant: "accent", payload: { program_ref: viewProgRef, org_ref: viewOrgRef } }],
                 {}
               );
             } else {
               return this.formatResponse(
                 "I found the program but couldn't extract its registration details. Would you like to try again?",
                 undefined,
-                [{ label: "Try Again", action: "view_program", variant: "accent", payload: { program_ref: progRef, org_ref: orgRef } }],
+                [{ label: "Try Again", action: "view_program", variant: "accent", payload: { program_ref: viewProgRef, org_ref: viewOrgRef } }],
                 {}
               );
             }
@@ -2397,7 +2397,7 @@ Example follow-up (only when needed):
             return this.formatResponse(
               `⚠️ I couldn't load the program details. ${error.message || 'Please try again.'}`,
               undefined,
-              [{ label: "Retry", action: "view_program", variant: "accent", payload: { program_ref: progRef, org_ref: orgRef } }],
+              [{ label: "Retry", action: "view_program", variant: "accent", payload: { program_ref: viewProgRef, org_ref: viewOrgRef } }],
               {}
             );
           }
