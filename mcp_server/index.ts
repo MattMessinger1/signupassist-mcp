@@ -51,6 +51,7 @@ const __dirname = dirname(__filename);
 import { skiClubProTools } from './providers/skiclubpro.js';
 // import { daysmartTools } from '../providers/daysmart/index';
 // import { campminderTools } from '../providers/campminder/index';
+import { programFeedTools } from './providers/programFeed.js';
 
 // Import page readiness registry and helpers
 import { registerReadiness } from './providers/utils/pageReadinessRegistry.js';
@@ -175,6 +176,17 @@ class SignupAssistMCPServer {
       });
     });
 
+    // Register program feed (cache-first) tools
+    Object.entries(programFeedTools).forEach(([name, tool]) => {
+      this.tools.set(name, {
+        name,
+        description: `Program Feed tool: ${name}`,
+        inputSchema: tool.inputSchema,
+        handler: tool.handler
+      });
+    });
+
+    // Future array tools (no-op for now)
     const arrayTools: any[] = [];
     arrayTools.forEach((tool) => this.tools.set(tool.name, tool));
   }
