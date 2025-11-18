@@ -61,8 +61,7 @@ export default function MCPChatTest() {
           <Button
             onClick={handleRefreshCache}
             disabled={isRefreshingCache}
-            variant="outline"
-            size="sm"
+            variant="default"
           >
             <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshingCache ? 'animate-spin' : ''}`} />
             {isRefreshingCache ? 'Refreshing...' : 'Refresh Cache'}

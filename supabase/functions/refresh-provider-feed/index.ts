@@ -124,6 +124,7 @@ Deno.serve(async (req) => {
       success: true,
       message: `Refreshed ${successCount}/${results.length} organizations`,
       total_programs: totalRefreshed,
+      orgs_refreshed: successCount,
       results,
       timestamp: new Date().toISOString()
     }), {
