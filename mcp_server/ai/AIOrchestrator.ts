@@ -2785,10 +2785,43 @@ Which would you prefer?`;
           throw error;
         }
       },
-      find_programs: async ({ provider }: any) => [
-        { name: "Beginner Ski Class – Saturdays", id: "prog1" },
-        { name: "Intermediate Ski Class – Sundays", id: "prog2" },
-      ],
+      find_programs: async (args: any) => {
+        try {
+          if (this.supabase) {
+            const orgRef = args.org_ref || (args.provider?.orgRef || args.provider) || "";
+            const category = args.category || "all";
+            const { data: cacheEntry, error } = await this.supabase
+              .from('cached_programs')
+              .select('programs_by_theme')
+              .eq('org_ref', orgRef)
+              .eq('category', category)
+              .gt('expires_at', new Date().toISOString())
+              .order('cached_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+            if (!error && cacheEntry) {
+              if (args.org_ref) {
+                // Return grouped programs for auto discovery usage
+                return { programs_by_theme: cacheEntry.programs_by_theme };
+              }
+              // Otherwise, return flat list of programs for card display
+              const grouped = cacheEntry.programs_by_theme || {};
+              let flatPrograms: any[] = [];
+              for (const theme of Object.keys(grouped)) {
+                flatPrograms = flatPrograms.concat(grouped[theme]);
+              }
+              return flatPrograms;
+            }
+          }
+        } catch (err: any) {
+          Logger.error("[find_programs fallback] Error reading cache:", err);
+        }
+        // Fallback to stub data if no cache available
+        return [
+          { name: "Beginner Ski Class – Saturdays", id: "prog1" },
+          { name: "Intermediate Ski Class – Sundays", id: "prog2" }
+        ];
+      },
       check_prerequisites: async () => ({ membership: "ok", payment: "ok" }),
     };
 
