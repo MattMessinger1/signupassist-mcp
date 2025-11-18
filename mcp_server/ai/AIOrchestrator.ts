@@ -3879,19 +3879,45 @@ Return JSON: {
   private async handleProgramSelection(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
     const context = await this.getContext(sessionId);
     const provider = context.provider?.name || userMessage;
+    const orgRef = context.provider?.org_ref || context.org_ref;
+    const category = context.category || "all";
+    const providerName = provider || "this provider";
     
-    this.logAction("tool_invocation", { toolName: "find_programs", sessionId, provider });
+    // NEW: Cache-first program feed
+    this.logAction("tool_invocation", {
+      toolName: "program_feed.get",
+      sessionId,
+      org_ref: orgRef,
+      category,
+      age_hint: context.childAge
+    });
     
     try {
-      const programs = await this.callTool("find_programs", { provider });
+      const feedResult = await this.callTool("program_feed.get", {
+        org_ref: orgRef,
+        category,
+        age_hint: context.childAge
+      });
+      
+      let programs = feedResult?.programs ?? [];
+      
+      // OPTIONAL: logged-in fallback to live scrape
+      if (programs.length === 0 && context.loginCompleted) {
+        this.logAction("tool_invocation", { toolName: "scp.find_programs", sessionId });
+        const live = await this.callTool(
+          "scp.find_programs",
+          { org_ref: orgRef, category, credential_id: context.credential_id },
+          sessionId
+        );
+        programs = live?.programs ?? [];
+      }
       
       if (!programs || programs.length === 0) {
         return this.formatResponse(
-          `Hmm, I couldn't find any programs currently available at ${provider}. This might be a temporary issue.`,
+          `Hmm, I couldn't find any programs at **${providerName}** right now.`,
           undefined,
           [
-            { label: "Try Different Provider", action: "change_provider", variant: "accent" },
-            { label: "Contact Support", action: "contact_support", variant: "outline" }
+            { label: "Try Another Provider", action: "change_provider", variant: "accent" }
           ],
           {}
         );
@@ -3903,7 +3929,7 @@ Return JSON: {
       // SMART FILTERING LOGIC
       if (programs.length < 10) {
         // Small list: Show all programs directly
-        const message = `Perfect! Here are the ${programs.length} programs available at **${provider}** 👇`;
+        const message = `Perfect! Here are the ${programs.length} programs available at **${providerName}** 👇`;
         const cards = this.buildProgramCards(programs);
         
         return this.formatResponse(message, cards, undefined, {});
@@ -3912,7 +3938,7 @@ Return JSON: {
         Logger.info(`[ProgramSelection] Large list detected (${programs.length} programs), running AI summarizer...`);
         
         const summary = await this.summarizePrograms(programs);
-        const message = `I found **${programs.length} programs** at ${provider}. Here's a quick overview by category 👇`;
+        const message = `I found **${programs.length} programs** at ${providerName}. Here's a quick overview by category 👇`;
         const cards = this.buildCategoryCards(summary.categories);
         
         return this.formatResponse(
