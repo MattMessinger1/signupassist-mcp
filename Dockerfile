@@ -1,89 +1,68 @@
-# ============= BUILD STAGE =============
-FROM node:20-alpine AS builder
+# ============================================
+# Optimized Dockerfile for Railway (cache + speed)
+# ============================================
+
+# Base image with build tools
+FROM node:20-alpine AS base
+RUN apk add --no-cache python3 make g++
+
+# ============================================
+# Builder stage
+# ============================================
+FROM base AS builder
+WORKDIR /app
 
 # Force rebuild toggle — updated automatically by Lovable or CLI
 # Last rebuild: 2025-11-10 - Added /tools/cred-store endpoint for credential re-storage
 ARG BUILD_TAG=20251110-cred-store-upsert-fix
 LABEL build-tag=$BUILD_TAG
 
-WORKDIR /app
-
 # Skip Playwright browser downloads to speed up build
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 RUN echo "🏗️ Building with BUILD_TAG=$BUILD_TAG"
 
-# Copy all package files
+# Install deps early to unlock Docker layer caching
 COPY package.production.json package.json
 COPY package-lock.json ./
-
-# Install ALL dependencies (including devDependencies for build)
 RUN npm ci
 
-# Copy TypeScript configs and source for BACKEND + SHARED TYPES
-COPY tsconfig.json tsconfig.mcp.json ./
+# Copy TypeScript configs
+COPY tsconfig.json tsconfig.json
+COPY tsconfig.mcp.json tsconfig.mcp.json
+
+# Copy source code
 COPY mcp_server ./mcp_server
 COPY providers ./providers
 COPY mcp ./mcp
 COPY src ./src
 
-# --- Ensure full lib coverage ---
-COPY mcp_server/lib ./mcp_server/lib
-COPY mcp_server/types.ts ./mcp_server/
-
-# Clear any cached dist folder and ensure fresh compile
-RUN rm -rf dist && mkdir -p dist
-
-# Pre-deploy type and import verification
-RUN npx tsc -p tsconfig.mcp.json --noEmit
-
-# Build backend TypeScript to dist/ (clean build)
-RUN rm -rf dist && npx tsc -p tsconfig.mcp.json
-
-# Check deployment mode
-RUN if [ "$RAILWAY_AUTO_DEPLOY" = "false" ]; then \
-      echo "🧪 Auto-deploy disabled for testing mode"; \
-    else \
-      echo "🚀 Auto-deploy enabled for production"; \
-    fi
+# Build backend (single tsc run, no duplicate)
+RUN mkdir -p dist
+RUN npx tsc -p tsconfig.mcp.json
 
 # Verify AIOrchestrator was built
 RUN ls -la dist/mcp_server/ai/ || echo "⚠️ AI folder not built"
 
-# Copy frontend source and configs for FRONTEND BUILD
-COPY index.html ./
-COPY vite.config.ts ./
-COPY tailwind.config.ts ./
-COPY postcss.config.js ./
-COPY tsconfig.app.json ./
-COPY tsconfig.node.json ./
-COPY components.json ./
-COPY public ./public
-
-# Build frontend (Vite production bundle)
-RUN npm run build:frontend
-
-# ============= RUNTIME STAGE =============
-FROM node:20-alpine
-
+# ============================================
+# Runner stage (smaller final image)
+# ============================================
+FROM node:20-alpine AS runner
 WORKDIR /app
 
 # Copy production package.json
 COPY package.production.json package.json
 
-# Copy node_modules from builder stage and prune dev dependencies
+# Copy node_modules from builder and prune dev dependencies
 COPY --from=builder /app/node_modules ./node_modules
 RUN npm prune --production
 
-# Copy built backend code from builder stage
+# Copy built backend code
 COPY --from=builder /app/dist ./dist
-COPY mcp ./mcp
-
-# Copy built frontend static files from builder stage
-COPY --from=builder /app/dist/client ./dist/client
+COPY --from=builder /app/mcp ./mcp
 
 # Expose correct port (matches code default)
 EXPOSE 8080
 
 # Start server
-CMD ["npm", "run", "mcp:start"]
+CMD ["node", "dist/mcp_server/index.js"]
