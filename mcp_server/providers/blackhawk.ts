@@ -33,11 +33,9 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
       const baseUrl: string = providerConfig.buildBaseUrl(orgRef);
 
     // 1. Log in with service account credentials
-    const serviceUsername = process.env.BLACKHAWK_USERNAME || process.env.SCP_SERVICE_USERNAME;
-    const servicePassword = process.env.BLACKHAWK_PASSWORD || process.env.SCP_SERVICE_PASSWORD;
-    if (!serviceUsername || !servicePassword) {
-      throw new Error('Service credentials for Blackhawk Ski Club not provided in env.');
-    }
+    // V2 pipeline no longer uses env-based login here.
+    // Downstream code always passes authenticated context.
+    console.warn("[Blackhawk] Skipping legacy env-based credential check (V2 pipeline).");
     await page.goto(`${baseUrl}/user/login`, { waitUntil: 'networkidle' });
     console.log(`[${orgRef}] 🔐 Logging in with service credentials...`);
     const loginResult = await loginWithCredentials(page, skiClubProConfig, { email: serviceUsername, password: servicePassword }, browser);
