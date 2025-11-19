@@ -23,7 +23,17 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('[launch-browserbase] Creating new session', { 
+    // Track who is calling this function
+    const timestamp = new Date().toISOString();
+    const referer = req.headers.get('referer') || 'unknown';
+    const userAgent = req.headers.get('user-agent') || 'unknown';
+    const authorization = req.headers.get('authorization') ? 'present' : 'missing';
+    
+    console.log('[launch-browserbase] 🚨 CREATING NEW SESSION', { 
+      timestamp,
+      referer,
+      userAgent,
+      authorization,
       projectId: 'configured'
     });
 

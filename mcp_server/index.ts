@@ -796,7 +796,16 @@ class SignupAssistMCPServer {
 
       // --- Refresh programs feed (triggers Blackhawk scraping)
       if (req.method === 'POST' && url.pathname === '/refresh-feed') {
-        console.log('[REFRESH-FEED] Feed refresh request received');
+        const timestamp = new Date().toISOString();
+        const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+        const userAgent = req.headers['user-agent'] || 'unknown';
+        
+        console.log('[REFRESH-FEED] ⚠️ Feed refresh request received', {
+          timestamp,
+          clientIp,
+          userAgent,
+          headers: JSON.stringify(req.headers)
+        });
         
         // Only allow internal authorized calls using worker service token
         const authHeader = req.headers['authorization'] as string | undefined;

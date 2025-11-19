@@ -44,9 +44,15 @@ Deno.serve(async (req) => {
     const sessions = await listResponse.json();
     console.log(`[cleanup-browserbase] Found ${sessions.length} sessions`);
 
-    // Terminate ALL sessions regardless of status (fixes zombie session leak)
-    const terminatePromises = sessions
-      .map(async (session: any) => {
+    // Batch terminate sessions to avoid worker limits (5 at a time)
+    const results = [];
+    const BATCH_SIZE = 5;
+    
+    for (let i = 0; i < sessions.length; i += BATCH_SIZE) {
+      const batch = sessions.slice(i, i + BATCH_SIZE);
+      console.log(`[cleanup-browserbase] Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(sessions.length / BATCH_SIZE)}`);
+      
+      const batchPromises = batch.map(async (session: any) => {
         try {
           const response = await fetch(
             `https://www.browserbase.com/v1/sessions/${session.id}`,
@@ -59,20 +65,27 @@ Deno.serve(async (req) => {
           );
           
           if (response.ok) {
-            console.log(`[cleanup-browserbase] ✅ Terminated session ${session.id}`);
+            console.log(`[cleanup-browserbase] ✅ Terminated ${session.id}`);
             return { id: session.id, success: true };
           } else {
             const error = await response.text();
-            console.error(`[cleanup-browserbase] ❌ Failed to terminate ${session.id}: ${error}`);
+            console.error(`[cleanup-browserbase] ❌ Failed ${session.id}: ${error}`);
             return { id: session.id, success: false, error };
           }
         } catch (err) {
-          console.error(`[cleanup-browserbase] ❌ Error terminating ${session.id}:`, err);
+          console.error(`[cleanup-browserbase] ❌ Error ${session.id}:`, err);
           return { id: session.id, success: false, error: err instanceof Error ? err.message : 'Unknown error' };
         }
       });
-
-    const results = await Promise.all(terminatePromises);
+      
+      const batchResults = await Promise.all(batchPromises);
+      results.push(...batchResults);
+      
+      // Small delay between batches to avoid overwhelming the worker
+      if (i + BATCH_SIZE < sessions.length) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
     const successCount = results.filter(r => r.success).length;
 
     console.log(`[cleanup-browserbase] Cleanup complete: ${successCount}/${results.length} sessions terminated`);
