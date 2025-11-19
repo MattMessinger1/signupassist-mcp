@@ -103,21 +103,20 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
           storeSession(sessionToken, session);
           console.log(`[${orgRef}] 📦 Stored authenticated session for reuse`);
         }
+        
+        // Re-check auth after login
+        await page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
+        const authenticated = await isAuthenticated(page);
+        if (!authenticated) {
+          telemetry.record("login_repair", { provider: "blackhawk", status: "failed", error: "verification_failed" });
+          throw new Error('Login failed - authentication verification failed after login attempt');
+        }
+        
+        telemetry.record("login_repair", { provider: "blackhawk", status: "success" });
+        console.log(`[${orgRef}] ✅ Fresh login succeeded; session is authenticated.`);
+      } else {
+        console.log(`[${orgRef}] ✅ Session is authenticated. Proceeding with program scrape.`);
       }
-      
-      // Re-check auth with small grace window
-      await page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
-      authenticated = await isAuthenticated(page);
-      if (!authenticated) {
-        telemetry.record("login_repair", { provider: "blackhawk", status: "failed", error: "verification_failed" });
-        throw new Error('Login failed - authentication verification failed after login attempt');
-      }
-      
-      telemetry.record("login_repair", { provider: "blackhawk", status: "success" });
-      console.log(`[${orgRef}] ✅ Fresh login succeeded; session is authenticated.`);
-    } else {
-      console.log(`[${orgRef}] ✅ Session is authenticated. Proceeding with program scrape.`);
-    }
 
     // 2. Scrape all program entries from the registration page
     console.log(`[${orgRef}] 📋 Scraping program list...`);
