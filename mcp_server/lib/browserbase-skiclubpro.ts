@@ -9,6 +9,7 @@ import { captureScreenshotEvidence } from './evidence.js';
 import { SKICLUBPRO_CONFIGS } from '../config/skiclubpro_selectors.js';
 import { createStealthContext } from './antibot.js';
 import { createClient } from '@supabase/supabase-js';
+import { singleFlight } from '../utils/singleflight.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -22,11 +23,10 @@ export interface BrowserbaseSession {
 }
 
 /**
- * Launch a new Browserbase session via Supabase Edge Function
- * 🧠 Now handled securely through launch-browserbase edge function
- * @param options - Optional configuration including storageStatePath for session reuse
+ * Internal function to launch a new Browserbase session
+ * Use launchBrowserbaseSession() instead (single-flight protected)
  */
-export async function launchBrowserbaseSession(options?: {
+async function _launchBrowserbaseSessionInternal(options?: {
   storageStatePath?: string;
 }): Promise<BrowserbaseSession> {
   try {
@@ -71,6 +71,17 @@ export async function launchBrowserbaseSession(options?: {
     console.error('[Browserbase] Launch failed:', error);
     throw new Error(`Failed to launch Browserbase session: ${error.message}`);
   }
+}
+
+/**
+ * Launch a new Browserbase session with single-flight guarantee
+ * Only one session launch can occur at a time; concurrent calls wait for the in-flight launch
+ * @param options - Optional configuration including storageStatePath for session reuse
+ */
+export async function launchBrowserbaseSession(options?: {
+  storageStatePath?: string;
+}): Promise<BrowserbaseSession> {
+  return singleFlight('browserbase-launch', () => _launchBrowserbaseSessionInternal(options));
 }
 
 

@@ -9,6 +9,7 @@ import { getProvider } from './registry.js';
 import { isAuthenticated, performLogin } from './blackhawk/login.js';
 import { scrapeProgramList } from './blackhawk/scrapeProgramList.js';
 import { telemetry } from '../lib/telemetry.js';
+import { getSession, storeSession, generateToken } from '../lib/sessionManager.js';
 
 // Supabase client for cache writes (using service role)
 const supabaseUrl = process.env.SUPABASE_URL!;
@@ -24,50 +25,84 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
   const providerId = 'skiclubpro';
   console.log(`[${orgRef}] 🔄 Starting full program feed refresh...`);
 
-    // Launch headless browser session
+    // Try to reuse existing session or launch new one
     let session: BrowserbaseSession | null = null;
+    let sessionToken: string | null = null;
+    let sessionReused = false;
+    
     try {
-      console.log(`[${orgRef}] 🚀 Launching Browserbase session...`);
-      session = await launchBrowserbaseSession();
-      telemetry.record("browserbase_session", { 
-        provider: "blackhawk", 
-        action: "launched",
-        session_id: session.sessionId 
-      });
+      // Attempt to get existing session from cache
+      const existingSession = await getSession();
+      
+      if (existingSession) {
+        console.log(`[${orgRef}] ♻️ Reusing cached Browserbase session`);
+        session = existingSession.session;
+        sessionToken = existingSession.newToken;
+        sessionReused = true;
+        telemetry.record("browserbase_session", { 
+          provider: "blackhawk", 
+          action: "reused",
+          session_id: session.sessionId 
+        });
+      } else {
+        // No valid session, launch new one
+        console.log(`[${orgRef}] 🚀 Launching new Browserbase session...`);
+        session = await launchBrowserbaseSession();
+        sessionToken = generateToken();
+        telemetry.record("browserbase_session", { 
+          provider: "blackhawk", 
+          action: "launched",
+          session_id: session.sessionId 
+        });
+      }
+      
       const { page, browser } = session;
 
       // Build base URL for Blackhawk (uses custom domain if available)
       const providerConfig = getProvider(providerId);
       const baseUrl: string = providerConfig.buildBaseUrl(orgRef);
 
-    // Fetch service credentials and login
-    const serviceCredId = process.env.SCP_SERVICE_CRED_ID;
-    if (!serviceCredId) {
-      throw new Error('SCP_SERVICE_CRED_ID not configured');
-    }
-    
-    console.log(`[${orgRef}] 🔐 Fetching service credentials...`);
-    const credentials = await lookupCredentialsById(serviceCredId);
-    
-    // Verify if session is already authenticated
-    console.log(`[${orgRef}] 🔍 Verifying existing session authentication...`);
-    await page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
-    let authenticated = await isAuthenticated(page);
-    
-    telemetry.record("auth_check", {
-      provider: "blackhawk",
-      result: authenticated ? "session_valid" : "session_stale"
-    });
-    
-    if (!authenticated) {
-      console.log(`[${orgRef}] ⚠️ Pre-authenticated session is NOT actually logged in. Performing fresh login...`);
-      
-      telemetry.record("login_repair", { provider: "blackhawk", status: "performed" });
-      
-      const loginResult = await performLogin(page, browser, baseUrl, credentials);
-      if (!loginResult.success) {
-        telemetry.record("login_repair", { provider: "blackhawk", status: "failed", error: loginResult.error });
-        throw new Error(`Login failed: ${loginResult.error}`);
+      // If session was reused, verify it's still authenticated
+      if (sessionReused) {
+        console.log(`[${orgRef}] 🔍 Verifying cached session authentication...`);
+        await page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
+        const authenticated = await isAuthenticated(page);
+        
+        if (!authenticated) {
+          console.log(`[${orgRef}] ⚠️ Cached session lost authentication, will re-authenticate...`);
+          sessionReused = false; // Mark as new session flow
+          telemetry.record("session_reauth", { provider: "blackhawk", reason: "auth_lost" });
+        } else {
+          console.log(`[${orgRef}] ✅ Cached session still authenticated`);
+          telemetry.record("session_reauth", { provider: "blackhawk", status: "valid" });
+        }
+      }
+
+      // Authenticate if not already authenticated (new session or lost auth)
+      if (!sessionReused) {
+        // Fetch service credentials
+        const serviceCredId = process.env.SCP_SERVICE_CRED_ID;
+        if (!serviceCredId) {
+          throw new Error('SCP_SERVICE_CRED_ID not configured');
+        }
+        
+        console.log(`[${orgRef}] 🔐 Fetching service credentials...`);
+        const credentials = await lookupCredentialsById(serviceCredId);
+        
+        console.log(`[${orgRef}] 🔓 Performing login...`);
+        const loginResult = await performLogin(page, browser, baseUrl, credentials);
+        if (!loginResult.success) {
+          telemetry.record("login_failed", { provider: "blackhawk", error: loginResult.error });
+          throw new Error(`Login failed: ${loginResult.error}`);
+        }
+        console.log(`[${orgRef}] ✅ Login successful`);
+        telemetry.record("login_success", { provider: "blackhawk" });
+        
+        // Store the newly authenticated session for future reuse
+        if (sessionToken) {
+          storeSession(sessionToken, session);
+          console.log(`[${orgRef}] 📦 Stored authenticated session for reuse`);
+        }
       }
       
       // Re-check auth with small grace window
@@ -217,7 +252,29 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
     
     // (No partial writes on error; cache remains unchanged if failure occurs before upsert)
   } finally {
-    if (session) {
+    // Session lifecycle management with caching
+    if (session && sessionToken) {
+      if (sessionReused) {
+        // Session was reused successfully, refresh its TTL
+        console.log(`[${orgRef}] 🔄 Refreshing cached session TTL`);
+        storeSession(sessionToken, session);
+        telemetry.record("browserbase_session", { 
+          provider: "blackhawk", 
+          action: "ttl_refreshed",
+          session_id: session.sessionId 
+        });
+      } else {
+        // New session was created and authenticated, keep it alive for reuse
+        console.log(`[${orgRef}] 🔄 Keeping session ${session.sessionId} alive for reuse`);
+        telemetry.record("browserbase_session", { 
+          provider: "blackhawk", 
+          action: "stored_for_reuse",
+          session_id: session.sessionId 
+        });
+      }
+    } else if (session) {
+      // Session failed or wasn't stored, close it
+      console.log(`[${orgRef}] 🔒 Closing failed session ${session.sessionId}`);
       telemetry.record("browserbase_session", { 
         provider: "blackhawk", 
         action: "closing",
