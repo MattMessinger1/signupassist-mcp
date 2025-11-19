@@ -27,7 +27,13 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
     // Launch headless browser session
     let session: BrowserbaseSession | null = null;
     try {
+      console.log(`[${orgRef}] 🚀 Launching Browserbase session...`);
       session = await launchBrowserbaseSession();
+      telemetry.record("browserbase_session", { 
+        provider: "blackhawk", 
+        action: "launched",
+        session_id: session.sessionId 
+      });
       const { page, browser } = session;
 
       // Build base URL for Blackhawk (uses custom domain if available)
@@ -192,9 +198,31 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
     console.log(`[${orgRef}] 🎉 Refresh complete: ${programsCount} programs cached under ${Object.keys(programsByTheme).length} themes.`);
   } catch (err: any) {
     console.error(`[${orgRef}] ❌ Pipeline error:`, err.message);
+    
+    // Track specific error types in telemetry
+    if (err.message?.includes('429') || err.message?.includes('concurrent sessions')) {
+      telemetry.record("feed_refresh_error", { 
+        provider: "blackhawk", 
+        error_type: "browserbase_session_limit",
+        error: err.message 
+      });
+      console.error(`[${orgRef}] 🚨 Browserbase session limit reached. Run cleanup before retrying.`);
+    } else {
+      telemetry.record("feed_refresh_error", { 
+        provider: "blackhawk", 
+        error_type: "unknown",
+        error: err.message 
+      });
+    }
+    
     // (No partial writes on error; cache remains unchanged if failure occurs before upsert)
   } finally {
     if (session) {
+      telemetry.record("browserbase_session", { 
+        provider: "blackhawk", 
+        action: "closing",
+        session_id: session.sessionId 
+      });
       await closeBrowserbaseSession(session);
     }
   }
