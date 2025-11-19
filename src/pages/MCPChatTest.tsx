@@ -27,7 +27,7 @@ export default function MCPChatTest() {
     console.log('[Cache Refresh] Starting...');
 
     try {
-      const { data, error } = await supabase.functions.invoke('refresh-provider-feed');
+      const { data, error } = await supabase.functions.invoke('refresh-feed');
 
       if (error) {
         throw error;
@@ -35,11 +35,11 @@ export default function MCPChatTest() {
 
       console.log('[Cache Refresh] Success:', data);
       
-      // Check if refresh failed due to session limits
-      if (data.results?.some((r: any) => r.error?.includes('session limit'))) {
+      // Handle Browserbase session limit error, if present
+      if (data?.error && typeof data.error === 'string' && data.error.includes('session limit')) {
         toast({
           title: "⚠️ Session Limit Reached",
-          description: "Browserbase sessions at capacity. Use 'Cleanup Sessions' button below.",
+          description: "Browserbase sessions at capacity. Please cleanup sessions and retry.",
           variant: "destructive",
         });
         return;
@@ -47,7 +47,7 @@ export default function MCPChatTest() {
       
       toast({
         title: "✅ Cache Refreshed",
-        description: `${data.total_programs || 0} programs from ${data.orgs_refreshed || 0} organizations`,
+        description: `${data.refreshed || 0} programs refreshed`,
       });
 
     } catch (error: any) {

@@ -52,6 +52,13 @@ import { skiClubProTools } from './providers/skiclubpro.js';
 // import { daysmartTools } from '../providers/daysmart/index';
 // import { campminderTools } from '../providers/campminder/index';
 import { programFeedTools } from './providers/programFeed.js';
+import { refreshBlackhawkPrograms } from './providers/blackhawk.js'; // Import Blackhawk refresh function
+import { createClient } from '@supabase/supabase-js';
+
+// Initialize Supabase client for database operations (service role)
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Import page readiness registry and helpers
 import { registerReadiness } from './providers/utils/pageReadinessRegistry.js';
@@ -750,6 +757,43 @@ class SignupAssistMCPServer {
             res.end(JSON.stringify({ error: err.message || 'Unknown error' }));
           }
         });
+        return;
+      }
+
+      // --- Refresh programs feed (triggers Blackhawk scraping)
+      if (req.method === 'POST' && url.pathname === '/refresh-feed') {
+        console.log('[REFRESH-FEED] Feed refresh request received');
+        
+        // Only allow internal authorized calls using service role key
+        const authHeader = req.headers['authorization'] as string | undefined;
+        const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        
+        if (!serviceKey || authHeader !== `Bearer ${serviceKey}`) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Unauthorized' }));
+          return;
+        }
+        
+        try {
+          await refreshBlackhawkPrograms();  // Run full refresh for Blackhawk Ski Club
+          
+          // Query cached_programs to get count of refreshed programs
+          const { data, error } = await supabase
+            .from('cached_programs')
+            .select('metadata')
+            .eq('org_ref', 'blackhawk-ski-club')
+            .eq('category', 'all')
+            .single();
+          
+          const refreshedCount = (data?.metadata as any)?.programs_count || 0;
+          
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true, refreshed: refreshedCount }));
+        } catch (err: any) {
+          console.error('[REFRESH-FEED] Error:', err);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: err.message || 'Unknown error' }));
+        }
         return;
       }
 
