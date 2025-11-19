@@ -8,15 +8,45 @@ import type { SkiClubProCredentials } from '../../lib/credentials.js';
  * a dashboard-only selector. SkiClubPro hides programs unless logged in.
  */
 export async function isAuthenticated(page: Page): Promise<boolean> {
-  try {
-    // This selector appears only when logged in
-    await page.waitForSelector('nav a[href*="/dashboard"]', {
-      timeout: 1500
-    });
-    return true;
-  } catch (_) {
-    return false;
+  // Try multiple authentication indicators
+  const indicators = [
+    'a:has-text("Logout")',
+    'a:has-text("Log out")',
+    'text=/Welcome,.*!/i',
+    'nav a[href*="/dashboard"]',
+    'nav:has-text("ACCOUNT")',
+    'a[href*="/user/"][href*="logout"]'
+  ];
+
+  for (const selector of indicators) {
+    try {
+      await page.waitForSelector(selector, { timeout: 2000 });
+      console.log(`[Auth Check] ✅ Found authentication indicator: ${selector}`);
+      return true;
+    } catch (_) {
+      // Try next indicator
+    }
   }
+
+  // Fallback: Check for authentication cookies
+  try {
+    const cookies = await page.context().cookies();
+    const authCookie = cookies.find(c => 
+      c.name.includes('SESS') || 
+      c.name.includes('session') ||
+      c.name.includes('auth')
+    );
+    
+    if (authCookie && authCookie.value) {
+      console.log(`[Auth Check] ✅ Found authentication cookie: ${authCookie.name}`);
+      return true;
+    }
+  } catch (cookieErr) {
+    console.log('[Auth Check] Could not check cookies:', cookieErr);
+  }
+
+  console.log('[Auth Check] ❌ No authentication indicators found');
+  return false;
 }
 
 /**
