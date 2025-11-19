@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../../src/integrations/supabase/types.js';
 import { launchBrowserbaseSession, closeBrowserbaseSession, BrowserbaseSession } from '../lib/browserbase-skiclubpro.js';
 import { loginWithCredentials } from '../lib/login.js';
+import { lookupCredentialsById } from '../lib/credentials.js';
 import { skiClubProConfig } from '../config/skiclubproConfig.js';
 import { discoverFieldsSerially } from '../lib/serial_field_discovery.js';
 import { runChecks } from '../prereqs/registry.js';
@@ -32,8 +33,22 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
       const providerConfig = getProvider(providerId);
       const baseUrl: string = providerConfig.buildBaseUrl(orgRef);
 
-    // V2 pipeline: session is pre-authenticated, skip login
-    console.log(`[${orgRef}] ℹ️ Using pre-authenticated session (V2 pipeline)`);
+    // Fetch service credentials and login
+    const serviceCredId = process.env.SCP_SERVICE_CRED_ID;
+    if (!serviceCredId) {
+      throw new Error('SCP_SERVICE_CRED_ID not configured');
+    }
+    
+    console.log(`[${orgRef}] 🔐 Fetching service credentials...`);
+    const credentials = await lookupCredentialsById(serviceCredId);
+    
+    await page.goto(`${baseUrl}/user/login`, { waitUntil: 'networkidle' });
+    console.log(`[${orgRef}] 🔐 Logging in with service credentials...`);
+    const loginResult = await loginWithCredentials(page, skiClubProConfig, credentials, browser);
+    if (loginResult.login_status !== 'success') {
+      throw new Error('Login failed for service credentials');
+    }
+    console.log(`[${orgRef}] ✅ Login successful`);
 
     // 2. Navigate to the programs registration page and scrape all program entries
     await page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
