@@ -14,5 +14,5 @@
 
     "outDir": "./dist"
   },
-  "include": ["src", "mcp_server", "providers", "mcp"]
+  "include": ["mcp_server", "providers", "mcp"]
 }
