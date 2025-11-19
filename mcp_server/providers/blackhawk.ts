@@ -106,6 +106,8 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
         
         // Re-check auth after login
         await page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
+        // Give the page time to fully render authenticated UI
+        await page.waitForTimeout(3000);
         const authenticated = await isAuthenticated(page);
         if (!authenticated) {
           telemetry.record("login_repair", { provider: "blackhawk", status: "failed", error: "verification_failed" });
