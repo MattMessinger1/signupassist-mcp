@@ -1,13 +1,13 @@
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../../src/integrations/supabase/types.js';
-import { launchBrowserbaseSession, closeBrowserbaseSession, BrowserbaseSession, isAuthenticated } from '../lib/browserbase-skiclubpro.js';
-import { loginWithCredentials } from '../lib/login.js';
+import { launchBrowserbaseSession, closeBrowserbaseSession, BrowserbaseSession } from '../lib/browserbase-skiclubpro.js';
 import { lookupCredentialsById } from '../lib/credentials.js';
-import { skiClubProConfig } from '../config/skiclubproConfig.js';
 import { discoverFieldsSerially } from '../lib/serial_field_discovery.js';
 import { runChecks } from '../prereqs/registry.js';
 import { getProvider } from './registry.js';
+import { isAuthenticated, performLogin } from './blackhawk/login.js';
+import { scrapeProgramList } from './blackhawk/scrapeProgramList.js';
 
 // Supabase client for cache writes (using service role)
 const supabaseUrl = process.env.SUPABASE_URL!;
@@ -42,85 +42,34 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
     console.log(`[${orgRef}] 🔐 Fetching service credentials...`);
     const credentials = await lookupCredentialsById(serviceCredId);
     
-    await page.goto(`${baseUrl}/user/login`, { waitUntil: 'networkidle' });
-    console.log(`[${orgRef}] 🔐 Logging in with service credentials...`);
-    const loginResult = await loginWithCredentials(page, skiClubProConfig, credentials, browser);
-    if (loginResult.login_status !== 'success') {
-      throw new Error('Login failed for service credentials');
-    }
-    console.log(`[${orgRef}] ✅ Login successful`);
-
-    // Verify authentication before proceeding
+    // Verify if session is already authenticated
+    console.log(`[${orgRef}] 🔍 Verifying existing session authentication...`);
     await page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
-    const authenticated = await isAuthenticated(page);
+    let authenticated = await isAuthenticated(page);
+    
     if (!authenticated) {
-      throw new Error('Authentication verification failed - dashboard link not found');
+      console.log(`[${orgRef}] ⚠️ Pre-authenticated session is NOT actually logged in. Performing fresh login...`);
+      
+      const loginResult = await performLogin(page, browser, baseUrl, credentials);
+      if (!loginResult.success) {
+        throw new Error(`Login failed: ${loginResult.error}`);
+      }
+      
+      // Re-check auth with small grace window
+      await page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
+      authenticated = await isAuthenticated(page);
+      if (!authenticated) {
+        throw new Error('Login failed - authentication verification failed after login attempt');
+      }
+      
+      console.log(`[${orgRef}] ✅ Fresh login succeeded; session is authenticated.`);
+    } else {
+      console.log(`[${orgRef}] ✅ Session is authenticated. Proceeding with program scrape.`);
     }
-    console.log(`[${orgRef}] ✓ Authentication verified`);
 
     // 2. Scrape all program entries from the registration page
     console.log(`[${orgRef}] 📋 Scraping program list...`);
-    const cardSelector = '.views-row, .program-card, tr[class*="views-row"]';
-    const programElements = await page.locator(cardSelector).all();
-
-    const programsList: any[] = [];
-    for (const el of programElements) {
-      try {
-        const programData = await el.evaluate((element) => {
-          // Helper to extract text content from the element using any of the given selectors
-          const findText = (elem: Element, selectors: string[]): string => {
-            for (const sel of selectors) {
-              const found = elem.querySelector(sel);
-              if (found && found.textContent && found.textContent.trim()) {
-                return found.textContent.trim();
-              }
-            }
-            return '';
-          };
-          const title = findText(element, ['.views-field-title a', '.program-title', 'h3', 'a[href*="program"]']) || '';
-          if (!title) return null;
-          const price = findText(element, ['.views-field-field-price', '.price']) || '';
-          const schedule = findText(element, ['.views-field-field-schedule', '.schedule']) || '';
-          const ageRange = findText(element, ['.views-field-field-age', '.age-range', '[class*="age"]', 'td:nth-child(3)']) || '';
-          const regLinkElem = element.querySelector('a[href*="registration"], a[href*="register"]');
-          const url = regLinkElem ? (regLinkElem as HTMLAnchorElement).href : '';
-          let status = '';
-          if (regLinkElem && (regLinkElem as HTMLElement).innerText) {
-            const linkText = (regLinkElem as HTMLElement).innerText.toLowerCase();
-            if (linkText.includes('waitlist')) status = 'Waitlist';
-            else if (linkText.includes('full') || linkText.includes('sold out') || linkText.includes('closed')) status = 'Full';
-            else status = 'Open';
-          }
-          return { title, price, schedule, ageRange, url, status };
-        });
-        if (!programData || !programData.title) {
-          continue; // skip if extraction returned null or empty title
-        }
-        // Derive a stable program reference (ID or slug)
-        let programRef = '';
-        if (programData.url) {
-          const match = programData.url.match(/\/(?:program|registration)\/(\d+)/);
-          if (match) programRef = match[1];
-        }
-        if (!programRef) {
-          // Fallback to slug from title if numeric ID not found
-          programRef = programData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
-        }
-
-        programsList.push({
-          program_ref: programRef,
-          title: programData.title,
-          schedule_text: programData.schedule,
-          age_range: programData.ageRange,
-          price: programData.price,
-          status: programData.status,
-          // theme will be assigned after determineTheme is called
-        });
-      } catch (extractErr: any) {
-        console.error(`[${orgRef}] ⚠️ Error extracting a program entry:`, extractErr.message);
-        // Continue to next element without throwing
-      }
-    }
+    const programsList = await scrapeProgramList(page, baseUrl);
     console.log(`[${orgRef}] ✅ Found ${programsList.length} programs total.`);
 
     if (programsList.length === 0) {
