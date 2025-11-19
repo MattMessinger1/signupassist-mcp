@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "CommonJS",
-    "moduleResolution": "Node",
+    "module": "ES2022",
+    "moduleResolution": "Bundler",
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "strict": false,
@@ -14,5 +14,6 @@
 
     "outDir": "./dist"
   },
-  "include": ["mcp_server", "providers", "mcp"]
+  "include": ["mcp_server", "providers", "mcp"],
+  "exclude": ["**/*.test.ts", "**/*.test.md", "mcp_server/tests/**"]
 }
