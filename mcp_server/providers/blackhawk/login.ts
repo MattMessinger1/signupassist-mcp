@@ -8,6 +8,9 @@ import type { SkiClubProCredentials } from '../../lib/credentials.js';
  * a dashboard-only selector. SkiClubPro hides programs unless logged in.
  */
 export async function isAuthenticated(page: Page): Promise<boolean> {
+  console.log('[Auth Check] Starting authentication verification...');
+  console.log('[Auth Check] Current URL:', page.url());
+  
   // Try multiple authentication indicators
   const indicators = [
     'a:has-text("Logout")',
@@ -24,25 +27,35 @@ export async function isAuthenticated(page: Page): Promise<boolean> {
       console.log(`[Auth Check] ✅ Found authentication indicator: ${selector}`);
       return true;
     } catch (_) {
-      // Try next indicator
+      console.log(`[Auth Check] ⏭️ Indicator not found: ${selector}`);
     }
   }
 
-  // Fallback: Check for authentication cookies
+  // Fallback: Check for authentication cookies WITH DETAILED LOGGING
   try {
     const cookies = await page.context().cookies();
+    console.log(`[Auth Check] 🍪 Found ${cookies.length} total cookies`);
+    
+    // Log all cookie names for debugging
+    if (cookies.length > 0) {
+      const cookieNames = cookies.map(c => c.name).join(', ');
+      console.log(`[Auth Check] 🍪 Cookie names: ${cookieNames}`);
+    }
+    
     const authCookie = cookies.find(c => 
       c.name.includes('SESS') || 
       c.name.includes('session') ||
       c.name.includes('auth')
     );
     
-    if (authCookie && authCookie.value) {
-      console.log(`[Auth Check] ✅ Found authentication cookie: ${authCookie.name}`);
+    if (authCookie) {
+      console.log(`[Auth Check] ✅ Found authentication cookie: ${authCookie.name}=${authCookie.value.substring(0, 20)}...`);
       return true;
+    } else {
+      console.log(`[Auth Check] ❌ No authentication cookie found among ${cookies.length} cookies`);
     }
   } catch (cookieErr) {
-    console.log('[Auth Check] Could not check cookies:', cookieErr);
+    console.log('[Auth Check] ⚠️ Error checking cookies:', cookieErr);
   }
 
   console.log('[Auth Check] ❌ No authentication indicators found');
