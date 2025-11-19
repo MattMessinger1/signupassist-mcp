@@ -1,43 +1,18 @@
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "ESNext",
-    "moduleResolution": "node",
-    "outDir": "dist",
-    "rootDir": ".",
-    
-    // CI-Friendly Settings (KEEP THESE)
-    "skipLibCheck": true,                        // Prevents breakages from external library types
-    "noErrorTruncation": true,                   // Full error messages in Railway logs
-    "forceConsistentCasingInFileNames": true,    // Cross-platform compatibility
-    
-    // Strict Settings (DISABLED - Enable incrementally)
-    // Enabling these requires fixing ~35 type errors first
-    // See docs/INCREMENTAL_STRICT_MODE.md for migration plan
-    "strict": false,
-    // "noImplicitAny": false,                   // Implicit 'any' types allowed for now
-    // "strictNullChecks": false,                // null/undefined checks disabled
-    // "strictFunctionTypes": false,             // Function type checking disabled
-    // "strictPropertyInitialization": false,    // Class property init disabled
-    
-    // Module Resolution
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "resolveJsonModule": true,
-    
-    // Build Settings
-    "noEmitOnError": true                        // Still fail on actual errors
+    "forceConsistentCasingInFileNames": true,
+    "strict": false,
+    "skipLibCheck": true,
+
+    // 🚀 Major speedup with incremental compilation
+    "incremental": true,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+
+    "outDir": "./dist"
   },
-  "include": [
-    "mcp_server/**/*",
-    "providers/**/*",
-    "core/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "mcp_server/tests",
-    "**/*.test.ts",
-    "**/*.test.tsx"
-  ]
+  "include": ["src", "mcp_server", "providers", "mcp"]
 }
