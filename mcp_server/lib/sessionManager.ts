@@ -4,6 +4,8 @@
  */
 
 import { launchBrowserbaseSession, closeBrowserbaseSession, BrowserbaseSession } from './browserbase-skiclubpro.js';
+import { isAuthenticated } from '../providers/blackhawk/login.js';
+import { telemetry } from './telemetry.js';
 
 type ManagedSession = {
   session: BrowserbaseSession;
@@ -22,10 +24,12 @@ console.log(`[SessionManager] Caching: ${SESSION_CACHE_ENABLED ? 'ENABLED' : 'DI
 /**
  * Get a session - either reuse existing or create new
  * Returns session, token, and statePath for optional chaining, or null if caching disabled
+ * Verifies authentication status before reusing cached sessions
  */
 export async function getSession(token?: string): Promise<{ session: BrowserbaseSession; newToken: string; statePath?: string } | null> {
   if (!SESSION_CACHE_ENABLED) {
     console.log('[SessionManager] Session caching disabled, skipping reuse');
+    telemetry.record('session_cache', { action: 'disabled' });
     return null;
   }
   
@@ -38,12 +42,30 @@ export async function getSession(token?: string): Promise<{ session: Browserbase
   if (!managed || Date.now() > managed.expiresAt) {
     if (managed) {
       console.log('[SessionManager] Session expired, removing from cache');
+      telemetry.record('session_cache', { action: 'expired', token });
     }
     sessions.delete(token);
     return null;
   }
   
-  console.log('[SessionManager] ✅ Reusing existing session:', token);
+  // Verify the cached session is still authenticated
+  try {
+    const authenticated = await isAuthenticated(managed.session.page);
+    if (!authenticated) {
+      console.log('[SessionManager] ❌ Cached session no longer authenticated, invalidating');
+      telemetry.record('session_cache', { action: 'auth_failed', token });
+      await releaseSession(token, managed.session);
+      return null;
+    }
+  } catch (err: any) {
+    console.error('[SessionManager] ⚠️ Error checking authentication, invalidating session:', err.message);
+    telemetry.record('session_cache', { action: 'auth_check_error', error: err.message });
+    await releaseSession(token, managed.session);
+    return null;
+  }
+  
+  console.log('[SessionManager] ✅ Reusing authenticated session:', token);
+  telemetry.record('session_cache', { action: 'reused', token });
   return { session: managed.session, newToken: token, statePath: managed.statePath };
 }
 
@@ -66,6 +88,7 @@ export async function releaseSession(token: string, session: BrowserbaseSession)
 export function storeSession(token: string, session: BrowserbaseSession, ttlMs = SESSION_TTL_MS, statePath?: string): string {
   if (!SESSION_CACHE_ENABLED) {
     console.log('[SessionManager] Session caching disabled, not storing');
+    telemetry.record('session_cache', { action: 'store_disabled' });
     return token;
   }
   
@@ -75,6 +98,7 @@ export function storeSession(token: string, session: BrowserbaseSession, ttlMs =
     statePath
   });
   console.log('[SessionManager] 📦 Stored session:', token, 'expires in', ttlMs, 'ms');
+  telemetry.record('session_cache', { action: 'stored', token, ttl_ms: ttlMs });
   return token;
 }
 
