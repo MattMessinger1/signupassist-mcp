@@ -53,12 +53,22 @@ Deno.serve(async (req) => {
       throw new Error('SCP_SERVICE_CRED_ID not configured');
     }
     
-    // Check for Browserbase session limit issues
-    console.log('[refresh-provider-feed] ⚠️ Note: If Browserbase sessions are at limit, this will fail. Consider cleanup first.');
-    
+    // STEP 1: Cleanup old Browserbase sessions to ensure we have capacity
+    console.log('[refresh-provider-feed] 🧹 Cleaning up old Browserbase sessions...');
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    // Parse request body for custom orgs (optional)
+    const { data: cleanupData, error: cleanupError } = await supabase.functions.invoke('cleanup-browserbase-sessions');
+    
+    if (cleanupError) {
+      console.error('[refresh-provider-feed] ⚠️ Session cleanup failed:', cleanupError);
+    } else {
+      console.log(`[refresh-provider-feed] ✅ Cleanup complete: ${cleanupData?.terminated || 0} sessions terminated`);
+    }
+    
+    // Wait a moment for sessions to fully terminate
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // STEP 2: Parse request body for custom orgs (optional)
     let orgsToRefresh = DEFAULT_ORGS;
     try {
       const body = await req.json();
@@ -69,6 +79,7 @@ Deno.serve(async (req) => {
       // Use defaults if no body provided
     }
     
+    // STEP 3: Refresh each organization
     console.log(`[refresh-provider-feed] Refreshing ${orgsToRefresh.length} organization(s)...`);
     
     const results = [];
