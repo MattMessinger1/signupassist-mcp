@@ -25,4 +25,4 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.refresh-provider-feed]
-verify_jwt = false
+verify_jwt = true  # SECURED: Prevent unauthorized calls creating infinite Browserbase sessions
