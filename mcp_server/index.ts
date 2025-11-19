@@ -760,17 +760,33 @@ class SignupAssistMCPServer {
         return;
       }
 
+      // --- Identity endpoint (helps Supabase functions auto-detect worker URL)
+      if (req.method === 'GET' && url.pathname === '/identity') {
+        const host = req.headers['host'];
+        const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+        const workerUrl = `${protocol}://${host}`;
+        
+        res.writeHead(200, { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        });
+        res.end(JSON.stringify({ worker_url: workerUrl }));
+        console.log('[IDENTITY] Served worker URL:', workerUrl);
+        return;
+      }
+
       // --- Refresh programs feed (triggers Blackhawk scraping)
       if (req.method === 'POST' && url.pathname === '/refresh-feed') {
         console.log('[REFRESH-FEED] Feed refresh request received');
         
-        // Only allow internal authorized calls using service role key
+        // Only allow internal authorized calls using worker service token
         const authHeader = req.headers['authorization'] as string | undefined;
-        const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        const workerToken = process.env.WORKER_SERVICE_TOKEN;
         
-        if (!serviceKey || authHeader !== `Bearer ${serviceKey}`) {
-          res.writeHead(401, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Unauthorized' }));
+        if (!workerToken || authHeader !== `Bearer ${workerToken}`) {
+          console.warn('❌ Unauthorized /refresh-feed call (bad token)');
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Forbidden' }));
           return;
         }
         

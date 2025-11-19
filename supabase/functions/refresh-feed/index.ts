@@ -6,13 +6,9 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Supabase service key for authorization
-const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+// Worker service token for authorization (safer than service role key)
+const workerToken = Deno.env.get('WORKER_SERVICE_TOKEN');
 const workerUrl = Deno.env.get('WORKER_URL');
-
-if (!workerUrl) {
-  console.error('Environment variable WORKER_URL is not set');
-}
 
 // Handle incoming requests
 Deno.serve(async (req) => {
@@ -22,17 +18,37 @@ Deno.serve(async (req) => {
   }
 
   try {
-    if (!workerUrl || !supabaseServiceKey) {
-      throw new Error('Missing configuration for worker URL or service key');
+    // Auto-detect worker URL if not explicitly set
+    let effectiveWorkerUrl = workerUrl;
+    if (!effectiveWorkerUrl) {
+      console.log('[refresh-feed] WORKER_URL not set, auto-detecting from MCP_SERVER_URL...');
+      const mcpServerUrl = Deno.env.get('MCP_SERVER_URL');
+      if (mcpServerUrl) {
+        // Fetch /identity to get the canonical worker URL
+        const identityResponse = await fetch(`${mcpServerUrl}/identity`);
+        if (identityResponse.ok) {
+          const identityData = await identityResponse.json();
+          effectiveWorkerUrl = identityData.worker_url;
+          console.log('[refresh-feed] Auto-detected worker URL:', effectiveWorkerUrl);
+        } else {
+          throw new Error('Failed to auto-detect worker URL from /identity endpoint');
+        }
+      } else {
+        throw new Error('Neither WORKER_URL nor MCP_SERVER_URL is set');
+      }
     }
 
-    console.log('[refresh-feed] Proxying refresh request to Worker at', workerUrl);
+    if (!workerToken) {
+      throw new Error('Missing WORKER_SERVICE_TOKEN configuration');
+    }
 
-    // Forward request to worker /refresh-feed with service role auth
-    const response = await fetch(`${workerUrl}/refresh-feed`, {
+    console.log('[refresh-feed] Proxying refresh request to Worker at', effectiveWorkerUrl);
+
+    // Forward request to worker /refresh-feed with worker token auth
+    const response = await fetch(`${effectiveWorkerUrl}/refresh-feed`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${supabaseServiceKey}`,
+        'Authorization': `Bearer ${workerToken}`,
         'Content-Type': 'application/json',
       },
     });
