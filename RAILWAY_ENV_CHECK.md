@@ -12,14 +12,21 @@ The MCP server needs these environment variables to call Browserbase API directl
    - Value: `d22bbfff-eb6e-4175-a288-5e22949bf116`
    - Location: Railway → signupassist-mcp-production → Variables
 
-## Verification Steps
+## ⚠️ CRITICAL: Railway Restart Required ⚠️
+
+**The Railway service MUST be restarted after adding env vars!**
+
+### Steps to Restart Railway:
 
 1. Go to https://railway.app
 2. Select your `signupassist-mcp-production` service
 3. Click "Variables" tab
-4. Verify BOTH variables are present
-5. **CRITICAL**: Click "Restart" button to reload environment variables
-6. Wait 2 minutes for deployment to stabilize
+4. Verify BOTH variables are present:
+   - `BROWSERBASE_API_KEY` (value starts with `bb_`)
+   - `BROWSERBASE_PROJECT_ID` = `d22bbfff-eb6e-4175-a288-5e22949bf116`
+5. **CRITICAL**: Click the "⋮" menu (three dots) → "Restart Service"
+6. Wait 3-5 minutes for the service to fully restart and stabilize
+7. Check deployment logs to confirm env vars are loaded
 
 ## Why This is Necessary
 
