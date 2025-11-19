@@ -8,6 +8,7 @@ import { runChecks } from '../prereqs/registry.js';
 import { getProvider } from './registry.js';
 import { isAuthenticated, performLogin } from './blackhawk/login.js';
 import { scrapeProgramList } from './blackhawk/scrapeProgramList.js';
+import { telemetry } from '../lib/telemetry.js';
 
 // Supabase client for cache writes (using service role)
 const supabaseUrl = process.env.SUPABASE_URL!;
@@ -47,11 +48,19 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
     await page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
     let authenticated = await isAuthenticated(page);
     
+    telemetry.record("auth_check", {
+      provider: "blackhawk",
+      result: authenticated ? "session_valid" : "session_stale"
+    });
+    
     if (!authenticated) {
       console.log(`[${orgRef}] ⚠️ Pre-authenticated session is NOT actually logged in. Performing fresh login...`);
       
+      telemetry.record("login_repair", { provider: "blackhawk", status: "performed" });
+      
       const loginResult = await performLogin(page, browser, baseUrl, credentials);
       if (!loginResult.success) {
+        telemetry.record("login_repair", { provider: "blackhawk", status: "failed", error: loginResult.error });
         throw new Error(`Login failed: ${loginResult.error}`);
       }
       
@@ -59,9 +68,11 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
       await page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
       authenticated = await isAuthenticated(page);
       if (!authenticated) {
+        telemetry.record("login_repair", { provider: "blackhawk", status: "failed", error: "verification_failed" });
         throw new Error('Login failed - authentication verification failed after login attempt');
       }
       
+      telemetry.record("login_repair", { provider: "blackhawk", status: "success" });
       console.log(`[${orgRef}] ✅ Fresh login succeeded; session is authenticated.`);
     } else {
       console.log(`[${orgRef}] ✅ Session is authenticated. Proceeding with program scrape.`);
