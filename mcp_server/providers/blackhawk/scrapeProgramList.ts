@@ -1,4 +1,5 @@
 import type { Page } from 'playwright-core';
+import { isAuthenticated } from './login.js';
 
 export interface ProgramData {
   program_ref: string;
@@ -16,6 +17,13 @@ export interface ProgramData {
 export async function scrapeProgramList(page: Page, baseUrl: string): Promise<ProgramData[]> {
   // Navigate to registration page
   await page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
+  
+  // Ensure we are still logged in before scraping (fail-fast safety)
+  const stillAuthed = await isAuthenticated(page);
+  if (!stillAuthed) {
+    console.error('[blackhawk-ski-club] ❌ Authentication dropped mid-scrape.');
+    return [];
+  }
   
   const cardSelector = '.views-row, .program-card, tr[class*="views-row"]';
   const programElements = await page.locator(cardSelector).all();
