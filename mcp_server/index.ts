@@ -1259,12 +1259,12 @@ if (process.env.NODE_ENV === 'production' || process.env.PORT) {
       console.log('[STARTUP] Process uptime:', process.uptime().toFixed(2), 'seconds');
       console.log('[STARTUP] Memory usage:', Math.round(process.memoryUsage().heapUsed / 1024 / 1024), 'MB');
       
-      // Preload provider cache for faster response times
-      try {
-        await preloadProviderCache();
-      } catch (error) {
-        console.warn('[STARTUP] Provider cache preload failed (non-fatal):', error);
-      }
+      // DISABLED: Provider cache preloading was creating unnecessary Browserbase sessions
+      // try {
+      //   await preloadProviderCache();
+      // } catch (error) {
+      //   console.warn('[STARTUP] Provider cache preload failed (non-fatal):', error);
+      // }
       
       // Health monitoring heartbeat - logs every 30 seconds
       setInterval(() => {
