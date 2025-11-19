@@ -44,9 +44,8 @@ Deno.serve(async (req) => {
     const sessions = await listResponse.json();
     console.log(`[cleanup-browserbase] Found ${sessions.length} sessions`);
 
-    // Terminate all active sessions
+    // Terminate ALL sessions regardless of status (fixes zombie session leak)
     const terminatePromises = sessions
-      .filter((s: any) => s.status === 'RUNNING' || s.status === 'NEW')
       .map(async (session: any) => {
         try {
           const response = await fetch(
