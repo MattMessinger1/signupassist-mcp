@@ -13,7 +13,7 @@ describe('buildOpenAIBody', () => {
   ];
 
   describe('Responses API family', () => {
-    it('should include text.format.type === "json" for responses API', () => {
+    it('should include text.format.type === "json_object" for responses API', () => {
       const body = buildOpenAIBody({
         model: 'gpt-4o-mini',
         apiFamily: 'responses',
@@ -24,7 +24,7 @@ describe('buildOpenAIBody', () => {
 
       expect(body.text).toBeDefined();
       expect(body.text.format).toBeDefined();
-      expect(body.text.format.type).toBe('json');
+      expect(body.text.format.type).toBe('json_object');
     });
 
     it('should NOT include response_format for responses API', () => {
@@ -284,7 +284,7 @@ describe('Integration: Full parameter validation', () => {
     // Has correct fields for Responses API
     expect(body.model).toBe('gpt-4o');
     expect(body.input).toBeDefined();
-    expect(body.text.format.type).toBe('json');
+    expect(body.text.format.type).toBe('json_object');
     expect(body.max_output_tokens).toBe(1500);
     expect(body.temperature).toBe(0.7);
 
