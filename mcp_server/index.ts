@@ -92,6 +92,25 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
+// Graceful shutdown handlers for Browserbase session cleanup
+async function gracefulShutdown(signal: string) {
+  console.log(`[SHUTDOWN] Received ${signal}, cleaning up...`);
+  
+  try {
+    // Import session manager dynamically to avoid circular dependencies
+    const { closeAllSessions } = await import('./lib/sessionManager.js');
+    await closeAllSessions();
+  } catch (error) {
+    console.error('[SHUTDOWN] Error closing sessions:', error);
+  }
+  
+  console.log('[SHUTDOWN] Cleanup complete, exiting');
+  process.exit(0);
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 class SignupAssistMCPServer {
   private server: Server;
   private tools: Map<string, any> = new Map();
