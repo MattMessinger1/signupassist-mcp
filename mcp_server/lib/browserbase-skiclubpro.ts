@@ -30,23 +30,32 @@ async function _launchBrowserbaseSessionInternal(options?: {
   storageStatePath?: string;
 }): Promise<BrowserbaseSession> {
   try {
-    console.log('[Browserbase] Launching session via Supabase Edge Function...');
+    console.log('[Browserbase] Launching session directly via Browserbase API...');
     
-    // Call Supabase Edge Function to create Browserbase session
-    const { data, error } = await supabase.functions.invoke('launch-browserbase', {
-      body: { headless: true }
+    const browserbaseApiKey = process.env.BROWSERBASE_API_KEY;
+    const browserbaseProjectId = process.env.BROWSERBASE_PROJECT_ID;
+    
+    if (!browserbaseApiKey || !browserbaseProjectId) {
+      throw new Error('Missing BROWSERBASE_API_KEY or BROWSERBASE_PROJECT_ID environment variables');
+    }
+
+    // Call Browserbase API directly (no edge function)
+    const response = await fetch('https://www.browserbase.com/v1/sessions', {
+      method: 'POST',
+      headers: {
+        'X-BB-API-Key': browserbaseApiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ projectId: browserbaseProjectId }),
     });
 
-    if (error) {
-      throw new Error(`Failed to start Browserbase session: ${error.message}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Browserbase API error ${response.status}: ${errorText}`);
     }
 
-    if (!data?.session) {
-      throw new Error('No session data returned from edge function');
-    }
-
-    const session = data.session;
-    console.log('[Browserbase] Session created via Edge Function:', session.id);
+    const session = await response.json();
+    console.log('[Browserbase] Session created directly:', session.id);
 
     // Connect Playwright to Browserbase using the connectUrl
     const browser = await chromium.connectOverCDP(session.connectUrl);
