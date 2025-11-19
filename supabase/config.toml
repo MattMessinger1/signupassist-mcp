@@ -24,5 +24,8 @@ verify_jwt = false
 [functions.create-system-mandate]
 verify_jwt = false
 
+[functions.launch-browserbase]
+verify_jwt = true  # SECURED: Require authentication to prevent unauthorized session creation
+
 [functions.refresh-provider-feed]
 verify_jwt = true  # SECURED: Prevent unauthorized calls creating infinite Browserbase sessions
