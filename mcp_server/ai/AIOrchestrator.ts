@@ -3879,7 +3879,7 @@ Return JSON: {
   private async handleProgramSelection(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
     const context = await this.getContext(sessionId);
     const provider = context.provider?.name || userMessage;
-    const orgRef = context.provider?.org_ref || context.org_ref;
+    const orgRef = context.provider?.orgRef || context.org_ref;
     const category = context.category || "all";
     const providerName = provider || "this provider";
     

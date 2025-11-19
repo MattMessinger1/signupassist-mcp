@@ -2040,7 +2040,7 @@ export const skiClubProTools = {
       // 🚫 Remove PACK-05 fallback: do not perform live program scraping
       return {
         success: false,
-        login_status: 'failed',
+        login_status: 'failed' as const,
         error: 'FEED_STALE',
         timestamp: new Date().toISOString()
       };
