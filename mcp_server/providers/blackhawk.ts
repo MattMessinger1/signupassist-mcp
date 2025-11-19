@@ -32,17 +32,8 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
       const providerConfig = getProvider(providerId);
       const baseUrl: string = providerConfig.buildBaseUrl(orgRef);
 
-    // 1. Log in with service account credentials
-    // V2 pipeline no longer uses env-based login here.
-    // Downstream code always passes authenticated context.
-    console.warn("[Blackhawk] Skipping legacy env-based credential check (V2 pipeline).");
-    await page.goto(`${baseUrl}/user/login`, { waitUntil: 'networkidle' });
-    console.log(`[${orgRef}] 🔐 Logging in with service credentials...`);
-    const loginResult = await loginWithCredentials(page, skiClubProConfig, { email: serviceUsername, password: servicePassword }, browser);
-    if (loginResult.login_status !== 'success') {
-      throw new Error('Login failed for service credentials');
-    }
-    console.log(`[${orgRef}] ✅ Login successful, navigating to program listings...`);
+    // V2 pipeline: session is pre-authenticated, skip login
+    console.log(`[${orgRef}] ℹ️ Using pre-authenticated session (V2 pipeline)`);
 
     // 2. Navigate to the programs registration page and scrape all program entries
     await page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
