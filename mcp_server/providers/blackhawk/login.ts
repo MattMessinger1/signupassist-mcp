@@ -1,7 +1,7 @@
-import type { Page } from 'playwright-core';
-import type { Browser } from '@browserbasehq/sdk';
+import type { Page, Browser } from 'playwright-core';
 import { loginWithCredentials } from '../../lib/login.js';
 import { skiClubProConfig } from '../../config/skiclubproConfig.js';
+import type { SkiClubProCredentials } from '../../lib/credentials.js';
 
 /**
  * Check if the current session is authenticated by detecting
@@ -26,7 +26,7 @@ export async function performLogin(
   page: Page,
   browser: Browser,
   baseUrl: string,
-  credentials: { username: string; password: string }
+  credentials: SkiClubProCredentials
 ): Promise<{ success: boolean; error?: string }> {
   try {
     await page.goto(`${baseUrl}/user/login`, { waitUntil: 'networkidle' });

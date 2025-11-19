@@ -9,6 +9,7 @@ export interface ProgramData {
   price: string;
   status: string;
   url?: string;
+  theme?: string;
 }
 
 /**
