@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../../src/integrations/supabase/types.js';
-import { launchBrowserbaseSession, closeBrowserbaseSession, BrowserbaseSession } from '../lib/browserbase-skiclubpro.js';
+import { launchBrowserbaseSession, closeBrowserbaseSession, BrowserbaseSession, isAuthenticated } from '../lib/browserbase-skiclubpro.js';
 import { loginWithCredentials } from '../lib/login.js';
 import { lookupCredentialsById } from '../lib/credentials.js';
 import { skiClubProConfig } from '../config/skiclubproConfig.js';
@@ -50,8 +50,15 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
     }
     console.log(`[${orgRef}] ✅ Login successful`);
 
-    // 2. Navigate to the programs registration page and scrape all program entries
+    // Verify authentication before proceeding
     await page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
+    const authenticated = await isAuthenticated(page);
+    if (!authenticated) {
+      throw new Error('Authentication verification failed - dashboard link not found');
+    }
+    console.log(`[${orgRef}] ✓ Authentication verified`);
+
+    // 2. Scrape all program entries from the registration page
     console.log(`[${orgRef}] 📋 Scraping program list...`);
     const cardSelector = '.views-row, .program-card, tr[class*="views-row"]';
     const programElements = await page.locator(cardSelector).all();

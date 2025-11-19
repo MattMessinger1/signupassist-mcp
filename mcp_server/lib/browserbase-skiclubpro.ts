@@ -75,6 +75,22 @@ export async function launchBrowserbaseSession(options?: {
 
 
 /**
+ * Check if the current session is authenticated by detecting
+ * a dashboard-only selector. SkiClubPro hides programs unless logged in.
+ */
+export async function isAuthenticated(page: Page): Promise<boolean> {
+  try {
+    // This selector appears only when logged in
+    await page.waitForSelector('nav a[href*="/dashboard"]', {
+      timeout: 1500
+    });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
  * Check if account exists on SkiClubPro for given organization
  */
 export async function checkAccountExists(
