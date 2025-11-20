@@ -3883,7 +3883,7 @@ Return JSON: {
     const category = context.category || "all";
     const providerName = provider || "this provider";
     
-    // NEW: Cache-first program feed
+    // Cache-first program feed with stale-while-revalidate
     this.logAction("tool_invocation", {
       toolName: "program_feed.get",
       sessionId,
@@ -3900,16 +3900,47 @@ Return JSON: {
       });
       
       let programs = feedResult?.programs ?? [];
+      const cacheMetadata = feedResult?.cache_metadata;
       
-      // OPTIONAL: logged-in fallback to live scrape
-      if (programs.length === 0 && context.loginCompleted) {
-        this.logAction("tool_invocation", { toolName: "scp.find_programs", sessionId });
-        const live = await this.callTool(
-          "scp.find_programs",
-          { org_ref: orgRef, category, credential_id: context.credential_id },
-          sessionId
-        );
-        programs = live?.programs ?? [];
+      // Check cache age for stale-while-revalidate
+      if (cacheMetadata?.cached_timestamp) {
+        const cacheAgeMs = Date.now() - Date.parse(cacheMetadata.cached_timestamp);
+        const cacheAgeHours = cacheAgeMs / (1000 * 60 * 60);
+        
+        Logger.info(`[ProgramSelection] Cache age: ${cacheAgeHours.toFixed(1)} hours`);
+        
+        // If cache is older than 4 hours, trigger background refresh (fire and forget)
+        if (cacheAgeHours > 4) {
+          Logger.info(`[ProgramSelection] Cache is stale (${cacheAgeHours.toFixed(1)}h), triggering background refresh`);
+          // Don't await - let it refresh in background
+          this.callTool("scp.find_programs", {
+            org_ref: orgRef,
+            category,
+            credential_id: context.credential_id,
+            mode: 'background_refresh'
+          }, sessionId).catch(err => {
+            Logger.error(`[ProgramSelection] Background refresh failed:`, err);
+          });
+        }
+      }
+      
+      // Fallback to live scrape only if cache is completely empty
+      if (programs.length === 0) {
+        Logger.info(`[ProgramSelection] Cache miss, attempting live scrape`);
+        
+        if (context.loginCompleted) {
+          this.logAction("tool_invocation", { toolName: "scp.find_programs", sessionId });
+          const live = await this.callTool(
+            "scp.find_programs",
+            { org_ref: orgRef, category, credential_id: context.credential_id },
+            sessionId
+          );
+          programs = live?.programs ?? [];
+        } else {
+          Logger.warn(`[ProgramSelection] Cannot live scrape - user not logged in`);
+        }
+      } else {
+        Logger.info(`[ProgramSelection] Cache hit: ${programs.length} programs (age: ${cacheMetadata ? 'fresh' : 'legacy'})`);
       }
       
       if (!programs || programs.length === 0) {

@@ -213,6 +213,16 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
     // 4. Upsert the aggregated cache entry into the database
     const programsCount = Object.values(programsByTheme).reduce((count, list) => count + list.length, 0);
     console.log(`[${orgRef}] 💾 Caching ${programsCount} programs across ${Object.keys(programsByTheme).length} themes...`);
+    
+    // Validation logging before cache write
+    console.log(`[${orgRef}] 📊 Cache validation:`, {
+      programs_count: programsCount,
+      themes: Object.keys(programsByTheme),
+      prerequisites_programs: Object.keys(prerequisitesSchema).length,
+      questions_programs: Object.keys(questionsSchema).length,
+      deep_links_programs: Object.keys(deepLinks).length
+    });
+    
     const { data, error } = await supabase.rpc('upsert_cached_programs_enhanced', {
       p_org_ref: orgRef,
       p_category: 'all',
@@ -231,6 +241,27 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
       throw new Error(`Cache upsert failed: ${error.message}`);
     }
     console.log(`[${orgRef}] ✅ Program cache updated (Entry ID: ${data}).`);
+    
+    // Post-write verification
+    const { data: verifyData, error: verifyError } = await supabase
+      .from('cached_programs')
+      .select('programs_by_theme, prerequisites_schema, questions_schema, deep_links, cached_at')
+      .eq('id', data)
+      .single();
+      
+    if (verifyError) {
+      console.error(`[${orgRef}] ⚠️ Cache verification failed:`, verifyError);
+    } else {
+      const cachedProgramsCount = Object.values(verifyData.programs_by_theme as Record<string, any[]>)
+        .reduce((count, list) => count + list.length, 0);
+      console.log(`[${orgRef}] ✅ Cache verified: ${cachedProgramsCount} programs written successfully`);
+      telemetry.record("cache_write", { 
+        provider: "blackhawk", 
+        programs_count: cachedProgramsCount,
+        cache_id: data 
+      });
+    }
+    
     console.log(`[${orgRef}] 🎉 Refresh complete: ${programsCount} programs cached under ${Object.keys(programsByTheme).length} themes.`);
   } catch (err: any) {
     console.error(`[${orgRef}] ❌ Pipeline error:`, err.message);

@@ -26,6 +26,65 @@ export const programFeedTools = {
       }
 
       try {
+        // Try cached_programs table first (new enhanced cache)
+        const { data: enhancedCache, error: enhancedError } = await supabase
+          .from("cached_programs")
+          .select("programs_by_theme, prerequisites_schema, questions_schema, deep_links, cached_at, metadata")
+          .eq("org_ref", org_ref)
+          .eq("category", category)
+          .gt('expires_at', new Date().toISOString())
+          .order('cached_at', { ascending: false })
+          .limit(1)
+          .single();
+
+        if (!enhancedError && enhancedCache) {
+          // Enhanced cache hit - flatten programs from themes
+          const allPrograms: any[] = [];
+          const programsByTheme = enhancedCache.programs_by_theme as Record<string, any[]>;
+          
+          for (const [theme, programs] of Object.entries(programsByTheme)) {
+            for (const prog of programs) {
+              allPrograms.push({
+                id: prog.program_ref,
+                program_ref: prog.program_ref,
+                title: prog.title ?? "Program",
+                schedule: prog.schedule_text ?? prog.schedule ?? "Schedule TBD",
+                price: prog.price ?? "Price TBD",
+                age_range: prog.age_range ?? "",
+                description: prog.description ?? "",
+                status: prog.status ?? "available",
+                category: theme,
+                url: prog.url ?? "",
+                cta_label: "Enroll",
+                cta_href: prog.url ?? "",
+                theme: theme,
+                metadata: prog.metadata ?? {}
+              });
+            }
+          }
+
+          // Age filtering
+          let filtered = allPrograms;
+          if (age_hint) {
+            filtered = allPrograms.filter((p) => {
+              const m = p.age_range.match(/(\d+).*?(\d+)/);
+              if (m) {
+                const [min, max] = [parseInt(m[1]), parseInt(m[2])];
+                return age_hint >= min && age_hint <= max;
+              }
+              return true;
+            });
+          }
+
+          const cacheAgeMs = Date.now() - Date.parse(enhancedCache.cached_at);
+          Logger.info(
+            `[program_feed.get] cache_hit=true (enhanced), feed_age_ms=${cacheAgeMs}, items=${filtered.length}, themes=${Object.keys(programsByTheme).length}`
+          );
+
+          return { success: true, programs: filtered, cache_metadata: enhancedCache.metadata };
+        }
+
+        // Fallback to old cached_provider_feed table
         const { data, error } = await supabase
           .from("cached_provider_feed")
           .select("*")
@@ -38,7 +97,7 @@ export const programFeedTools = {
         }
 
         if (!data || data.length === 0) {
-          Logger.info(`[program_feed.get] feed_hit=false, items=0`);
+          Logger.info(`[program_feed.get] cache_hit=false, items=0`);
           return { success: true, programs: [] };
         }
 
@@ -75,7 +134,7 @@ export const programFeedTools = {
         const newest = Math.max(...data.map(d => Date.parse(d.cached_at ?? 0)));
         const feedAgeMs = newest ? Date.now() - newest : -1;
         Logger.info(
-          `[program_feed.get] feed_hit=true, feed_age_ms=${feedAgeMs}, items=${filtered.length}`
+          `[program_feed.get] cache_hit=true (legacy), feed_age_ms=${feedAgeMs}, items=${filtered.length}`
         );
 
         return { success: true, programs: filtered };
