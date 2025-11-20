@@ -3,20 +3,15 @@ import { supportsCustomTemperature } from "./openaiHelpers.js";
 
 export const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-/** Single place to choose models, with sane fallbacks. */
+/** 
+ * Production models - always use the best for accuracy.
+ * Env vars allow override for testing, but default to gpt-4o.
+ */
 export const MODELS = {
   vision:    process.env.OPENAI_MODEL_PROGRAM_VISION    || "gpt-4o",
-  extractor: process.env.OPENAI_MODEL_PROGRAM_EXTRACTOR || "gpt-4o-mini",
-  validator: process.env.OPENAI_MODEL_PROGRAM_VALIDATOR || "gpt-4o-mini",
-  grouper:   process.env.OPENAI_MODEL_PROGRAM_GROUPER   || process.env.OPENAI_MODEL_PROGRAM_VALIDATOR || "gpt-4o-mini",
-};
-
-/** Accuracy-optimized models for cache refresh (overnight jobs) */
-export const ACCURACY_MODELS = {
-  vision:    process.env.CACHE_REFRESH_VISION_MODEL    || "gpt-4o",
-  extractor: process.env.CACHE_REFRESH_EXTRACTOR_MODEL || "gpt-4o",
-  validator: process.env.CACHE_REFRESH_VALIDATOR_MODEL || "gpt-4o",
-  grouper:   "gpt-4o",
+  extractor: process.env.OPENAI_MODEL_PROGRAM_EXTRACTOR || "gpt-4o",
+  validator: process.env.OPENAI_MODEL_PROGRAM_VALIDATOR || "gpt-4o",
+  grouper:   process.env.OPENAI_MODEL_PROGRAM_GROUPER   || "gpt-4o",
 };
 
 /** 
