@@ -12,9 +12,9 @@ RUN apk add --no-cache python3 make g++
 FROM base AS builder
 WORKDIR /app
 
-# Force rebuild toggle — updated automatically by Lovable or CLI
-# Last rebuild: 2025-11-20 - Align with Railway deployment b9e7276
-ARG BUILD_TAG=b9e7276
+# Build tag is automatically set by Railway from RAILWAY_GIT_COMMIT_SHA
+# No manual updates needed - Railway provides this at build time
+ARG BUILD_TAG=auto
 LABEL build-tag=$BUILD_TAG
 
 # Skip Playwright browser downloads to speed up build

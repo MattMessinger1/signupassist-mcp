@@ -4,7 +4,8 @@ import { Badge } from "@/components/ui/badge";
 import { AlertCircle, CheckCircle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const DOCKERFILE_BUILD_TAG = "b9e7276"; // From Dockerfile ARG BUILD_TAG
+// Note: Dockerfile BUILD_TAG is now dynamic (set by Railway), not hardcoded
+// This component compares frontend expectations vs Railway's actual deployment
 
 interface BackendInfo {
   env: string;
@@ -44,11 +45,13 @@ export function DeploymentStatusMonitor() {
   }, []);
 
   const railwayCommit = backendInfo?.git_commit?.substring(0, 7) || "unknown";
-  const isAligned = railwayCommit === DOCKERFILE_BUILD_TAG;
+  const railwayTimestamp = backendInfo?.timestamp 
+    ? new Date(backendInfo.timestamp).toLocaleString()
+    : "unknown";
   
-  const StatusIcon = isAligned ? CheckCircle : AlertCircle;
-  const statusColor = isAligned ? "text-green-600" : "text-amber-600";
-  const statusBadge = isAligned ? "default" : "destructive";
+  const isHealthy = backendInfo !== null;
+  const StatusIcon = isHealthy ? CheckCircle : AlertCircle;
+  const statusColor = isHealthy ? "text-green-600" : "text-amber-600";
 
   return (
     <Card>
@@ -72,34 +75,31 @@ export function DeploymentStatusMonitor() {
         ) : (
           <>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Dockerfile BUILD_TAG:</span>
+              <span className="text-muted-foreground">Railway Commit:</span>
               <Badge variant="outline" className="font-mono">
-                {DOCKERFILE_BUILD_TAG}
+                {loading ? "..." : railwayCommit}
               </Badge>
             </div>
             
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted-foreground">Railway Deployment:</span>
-              <Badge variant="outline" className="font-mono">
-                {loading ? "..." : railwayCommit}
-              </Badge>
+              <span className="text-muted-foreground">Deployed At:</span>
+              <span className="text-xs text-muted-foreground">
+                {loading ? "..." : railwayTimestamp}
+              </span>
             </div>
             
             <div className="pt-2 border-t">
               <div className={`flex items-center gap-2 text-sm ${statusColor}`}>
                 <StatusIcon className="h-4 w-4" />
                 <span className="font-medium">
-                  {isAligned ? "✓ Versions Aligned" : "⚠ Version Mismatch Detected"}
+                  {isHealthy ? "✓ Backend Healthy" : "⚠ Backend Unreachable"}
                 </span>
               </div>
               
-              {!isAligned && (
-                <div className="mt-2 text-xs text-muted-foreground space-y-1">
-                  <p>• Dockerfile expects: <code className="bg-muted px-1 py-0.5 rounded">{DOCKERFILE_BUILD_TAG}</code></p>
-                  <p>• Railway deployed: <code className="bg-muted px-1 py-0.5 rounded">{railwayCommit}</code></p>
-                  <p className="text-amber-600 mt-2">
-                    Push latest changes to GitHub main branch to trigger Railway deployment.
-                  </p>
+              {isHealthy && (
+                <div className="mt-2 text-xs text-muted-foreground">
+                  <p>Backend version is automatically set by Railway from git commit SHA.</p>
+                  <p className="mt-1">Push to <code className="bg-muted px-1 py-0.5 rounded">main</code> branch to deploy updates.</p>
                 </div>
               )}
             </div>
