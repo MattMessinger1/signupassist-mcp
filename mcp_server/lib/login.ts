@@ -163,8 +163,12 @@ export async function loginWithCredentials(
   const ANTIBOT_MAX_WAIT_MS = hasStorageState ? 1500 : 6500;
   console.log(`[Login] Antibot timeout: ${ANTIBOT_MAX_WAIT_MS}ms (session reuse: ${hasStorageState})`);
   
+  // Use clean login URL without query parameters to avoid redirect confusion
+  const cleanLoginUrl = config.loginUrl.split('?')[0];
+  console.log("DEBUG Navigating to clean login URL:", cleanLoginUrl);
+  
   try {
-    await page.goto(config.loginUrl, { waitUntil: 'domcontentloaded', timeout: ANTIBOT_MAX_WAIT_MS });
+    await page.goto(cleanLoginUrl, { waitUntil: 'domcontentloaded', timeout: ANTIBOT_MAX_WAIT_MS });
   } catch (timeoutError: any) {
     // Anti-bot fast-path: If initial load times out, proceed anyway
     console.log('[Login] Fast-path: Anti-bot timeout on initial load, proceeding...');
@@ -172,16 +176,64 @@ export async function loginWithCredentials(
   
   console.log(`DEBUG Page load state: ${page.url()}`);
   
-  // Only wait if form not immediately visible - with timeout cap
-  const formReady = await page.locator('#edit-name, input[name="name"]').isVisible().catch(() => false);
-  if (!formReady) {
-    console.log("DEBUG Form not ready, waiting for JS initialization (capped at 3s)...");
-    try {
-      await page.waitForLoadState('networkidle', { timeout: 3000 });
-    } catch {
-      console.log('[Login] Fast-path: Networkidle timeout, proceeding with form submission...');
-    }
+  // ============= WAIT FOR DRUPAL FORM TO BE FULLY RENDERED =============
+  console.log('[Form Init] Waiting for Drupal form elements to be present...');
+  
+  // Wait for basic form fields
+  try {
+    await page.waitForSelector(emailSel, { timeout: 10000, state: 'attached' });
+    await page.waitForSelector(passSel, { timeout: 10000, state: 'attached' });
+    console.log('[Form Init] ✓ Form fields detected');
+  } catch (e) {
+    throw new Error('Login form fields not found after 10s');
   }
+  
+  // Wait for Drupal form structure (CRITICAL)
+  console.log('[Form Init] Checking for Drupal form tokens...');
+  const formTokensPresent = await page.evaluate(() => {
+    const formBuildId = document.querySelector('input[name="form_build_id"]');
+    const formToken = document.querySelector('input[name="form_token"]');
+    return {
+      hasFormBuildId: !!formBuildId,
+      hasFormToken: !!formToken,
+      formBuildIdValue: (formBuildId as HTMLInputElement)?.value || '',
+      formTokenValue: (formToken as HTMLInputElement)?.value || ''
+    };
+  });
+  
+  console.log('[Form Init] Token check result:', {
+    hasFormBuildId: formTokensPresent.hasFormBuildId,
+    hasFormToken: formTokensPresent.hasFormToken,
+    buildIdPreview: formTokensPresent.formBuildIdValue.substring(0, 15) + '...',
+    tokenPreview: formTokensPresent.formTokenValue.substring(0, 15) + '...'
+  });
+  
+  if (!formTokensPresent.hasFormBuildId || !formTokensPresent.hasFormToken) {
+    console.log('[Form Init] ⚠️ Tokens missing, waiting 3s and reloading...');
+    await page.waitForTimeout(3000);
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+    
+    // Verify after reload
+    const tokensAfterReload = await page.evaluate(() => {
+      const fb = document.querySelector('input[name="form_build_id"]') as HTMLInputElement;
+      const ft = document.querySelector('input[name="form_token"]') as HTMLInputElement;
+      return {
+        hasFormBuildId: !!fb,
+        hasFormToken: !!ft,
+        formBuildIdValue: fb?.value || '',
+        formTokenValue: ft?.value || ''
+      };
+    });
+    
+    if (!tokensAfterReload.hasFormBuildId || !tokensAfterReload.hasFormToken) {
+      throw new Error('Drupal form tokens still not present after reload');
+    }
+    
+    console.log('[Form Init] ✓ Tokens present after reload');
+  }
+  
+  console.log('[Form Init] ✓ Drupal form fully initialized');
 
     // Quick check if already logged in - but verify by checking the current URL
     // Don't trust cookie existence alone, as cookies can be expired
@@ -340,6 +392,12 @@ export async function loginWithCredentials(
     form_build_id: await getToken('input[name="form_build_id"]'), 
     form_token: await getToken('input[name="form_token"]') 
   };
+  
+  console.log(`[Drupal Tokens] Initial values - build_id: ${lastTokens.form_build_id ? `${lastTokens.form_build_id.substring(0, 15)}...` : 'MISSING'}, token: ${lastTokens.form_token ? `${lastTokens.form_token.substring(0, 15)}...` : 'MISSING'}`);
+  
+  if (!lastTokens.form_build_id || !lastTokens.form_token) {
+    throw new Error('CRITICAL: Drupal tokens missing at stability check - form initialization failed');
+  }
   let lastChangeTime = Date.now();
   const tokenWaitStart = Date.now();
   const maxTokenWait = 10000; // 10 seconds
@@ -477,38 +535,63 @@ export async function loginWithCredentials(
   const submitTime = Date.now();
   
   try {
-    // Check for SUCCESS indicators with multiple signals (optimized timeouts)
+    // Wait for redirect AWAY from /user/login (key change)
     const loginResult = await Promise.race([
-      // Success signal 1: Session cookie appears (faster polling for quicker detection)
+      // Success signal: URL changes away from login page
+      page.waitForFunction(() => {
+        const path = window.location.pathname;
+        return !path.includes('/user/login') && !path.includes('/user/password');
+      }, { timeout: 8000, polling: 100 }).then(() => 'redirected'),
+      
+      // Success signal: Session cookie appears
       page.waitForFunction(() => {
         return document.cookie.includes('SESS') || document.cookie.includes('SSESS');
-      }, { timeout: 5000, polling: 50 }).then(() => 'cookie'),
-      
-      // Success signal 2: URL changes away from login page
-      page.waitForFunction(() => !window.location.href.includes('/user/login'), { timeout: 5000, polling: 50 })
-        .then(() => 'url'),
-      
-      // Success signal 3: Logout link appears
-      page.waitForSelector('a:has-text("Log out"), a:has-text("Sign out")', { timeout: 5000 })
-        .then(() => 'logout'),
+      }, { timeout: 8000, polling: 100 }).then(() => 'cookie'),
       
       // Failure signal: Error message appears
-      page.waitForSelector('.messages--error, .messages--warning, div[role="alert"], .form-item--error-message, .alert-danger, .error-message, .form-error', { timeout: 5000 })
+      page.waitForSelector('.messages--error, .messages--warning, div[role="alert"], .form-item--error-message', { timeout: 8000 })
         .then(async () => {
-          const msg = await page.locator('.messages--error, .messages--warning, div[role="alert"], .form-item--error-message, .alert-danger, .error-message, .form-error').first().innerText().catch(() => '');
+          const msg = await page.locator('.messages--error, .messages--warning, div[role="alert"], .form-item--error-message').first().innerText().catch(() => '');
           console.log(`DEBUG ✗ Error message detected: ${msg.trim()}`);
           throw new Error(`Login failed: ${msg.trim() || 'Unknown error message appeared'}`);
-        })
+        }),
+      
+      // Timeout fallback
+      page.waitForTimeout(8000).then(() => 'timeout')
     ]).catch((error: any) => {
-      // If all promises timeout, check if we're actually logged in anyway
-      if (error.name === 'TimeoutError') {
-        console.log('DEBUG Timeout waiting for explicit signals - checking login status directly...');
-        return 'timeout';
+      if (error.message?.includes('Login failed:')) {
+        throw error;
       }
-      throw error;
+      return 'timeout';
     });
     
     console.log(`DEBUG Login detection result: ${loginResult}`);
+    
+    // Check if still on login page
+    const currentUrl = page.url();
+    const stillOnLoginPage = currentUrl.includes('/user/login');
+    
+    console.log(`DEBUG Current URL after submission: ${currentUrl}`);
+    console.log(`DEBUG Still on login page: ${stillOnLoginPage}`);
+    
+    if (stillOnLoginPage) {
+      // Check for Drupal error messages
+      const drupalError = await page.evaluate(() => {
+        const errorMessages = document.querySelectorAll('.messages--error, .form-item--error-message, div.error');
+        for (const el of errorMessages) {
+          if (el.textContent?.trim()) {
+            return el.textContent.trim();
+          }
+        }
+        return null;
+      });
+      
+      if (drupalError) {
+        throw new Error(`Login failed: ${drupalError}`);
+      } else {
+        throw new Error('Login failed: Still on login page after form submission (no redirect occurred)');
+      }
+    }
     
     // If timeout occurred, do comprehensive error check first
     if (loginResult === 'timeout') {
