@@ -10,6 +10,7 @@ import { MODELS } from "./oai.js";
 import { safeJSONParse } from "./openaiHelpers.js";
 import { canonicalizeSnippet, validateAndDedupePrograms } from "./extractionUtils.js";
 import { logOncePer } from "../utils/logDebouncer.js";
+import { telemetry } from "./telemetry.js";
 
 // Simple in-memory cache for extraction results
 const extractionCacheMap = new Map<string, { result: any; timestamp: number }>();
@@ -353,6 +354,7 @@ export async function runThreePassExtractorForPrograms(
   skipCache?: boolean // Cache bypass for fresh overnight scraping
 ) {
   console.log('[PACK-06 Extractor] Starting programs-only extraction', { filters });
+  const accuracyMode = process.env.CACHE_REFRESH_MODE === 'accuracy';
   
   // Use centralized MODELS as defaults
   const models = {
@@ -407,8 +409,8 @@ export async function runThreePassExtractorForPrograms(
   const pageHash = sha1(combinedHtml);
   const cacheKey = `${orgRef}:${category}:${pageHash}`;
   
-  // Cache bypass for fresh overnight scraping
-  const disableCache = skipCache || process.env.DISABLE_EXTRACTION_CACHE === 'true';
+  // Cache bypass for fresh overnight scraping or accuracy mode
+  const disableCache = skipCache || process.env.DISABLE_EXTRACTION_CACHE === 'true' || accuracyMode;
   
   console.log(`[PACK-06 Cache] Key: ${cacheKey.substring(0, 50)}...`);
   
@@ -474,21 +476,46 @@ Rules:
     // PASS 2: Extraction (batched for reliability)
     console.log('[PACK-06 Pass 2] Extracting program data with strict schema (batched)');
     
-    const batches = chunkArray(snippets, BATCH_SIZE);
-    console.log(`[PACK-06 Pass 2] Processing ${batches.length} batches of ${BATCH_SIZE} programs`);
+    const batchSize = accuracyMode ? Math.min(BATCH_SIZE, parseInt(process.env.ACCURACY_BATCH_SIZE || '15', 10)) : BATCH_SIZE;
+    const batches = chunkArray(snippets, batchSize);
+    console.log(`[PACK-06 Pass 2] Processing ${batches.length} batches of ${batchSize} programs (accuracy: ${accuracyMode})`);
     
     // Sequential processing for accuracy-optimized cache refresh
-    const limit = pLimit(process.env.CACHE_REFRESH_MODE === 'accuracy' ? 1 : 5);
+    const limit = pLimit(accuracyMode ? 1 : 5);
     const startTime = Date.now();
     
-    const batchPromises = batches.map((batch, i) => 
-      limit(async () => {
-        console.log(`[PACK-06 Pass 2] Batch ${i + 1}/${batches.length}: Extracting ${batch.length} programs`);
-        
-        try {
-          const extracted = await callStrictExtraction({
-            model: models.extractor,
-            system: `You extract REAL program listings from HTML snippets. Some snippets may be headers or containers—skip those entirely.
+    // Enhanced batch extraction with recursion limits, rate limiting, and telemetry
+    const MAX_RECURSION_DEPTH = 4;
+    const BATCH_TIMEOUT_MS = 120000; // 2 minutes per batch
+    
+    async function extractBatchWithSafety(
+      batch: typeof snippets,
+      depth: number = 0,
+      batchIndex: number = 0
+    ): Promise<any[]> {
+      const batchId = `batch-${batchIndex}-depth-${depth}`;
+      
+      // Recursion limit
+      if (depth >= MAX_RECURSION_DEPTH) {
+        console.error(`[PACK-06 Pass 2] ${batchId}: Max recursion depth ${MAX_RECURSION_DEPTH} reached, abandoning ${batch.length} programs`);
+        telemetry.record('extraction_max_depth_reached', { 
+          batchSize: batch.length, 
+          depth, 
+          batchIndex,
+          orgRef 
+        });
+        return [];
+      }
+      
+      // Timeout wrapper
+      const timeoutPromise = new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('Batch extraction timeout')), BATCH_TIMEOUT_MS)
+      );
+      
+      try {
+        const extractionPromise = callStrictExtraction({
+          model: models.extractor,
+          system: `You extract REAL program listings from HTML snippets. Some snippets may be headers or containers—skip those entirely.
 
 For each real program, output fields with normalization:
 - title: exact program name text
@@ -507,23 +534,98 @@ Rules:
 - Do NOT invent values. If a field is not present, use "".
 - Deduplicate by program_ref (keep the first).
 - Return strict JSON: {"items":[{...}, ...]} only.`,
-            data: { orgRef, snippets: batch },
-            schema: ExtractionSchema,
-            maxTokens: 8000 // Phase 2: Increased for batch size 30
+          data: { orgRef, snippets: batch },
+          schema: ExtractionSchema,
+          maxTokens: 8000
+        });
+        
+        const extracted = await Promise.race([extractionPromise, timeoutPromise]);
+        
+        // Micro-validator to drop blanks or invalid entries
+        const batchItems = (extracted?.items ?? []).filter(p =>
+          p.title?.trim() &&
+          !p.title.match(/Confirm|Select|Choose|Register|Sign Up|Add to Cart/i)
+        );
+        
+        console.log(`[PACK-06 Pass 2] ${batchId}: Extracted ${batchItems.length}/${batch.length} programs`);
+        
+        if (batchItems.length > 0) {
+          telemetry.record('extraction_batch_success', { 
+            batchSize: batch.length, 
+            extracted: batchItems.length,
+            depth,
+            batchIndex,
+            orgRef
+          });
+        }
+        
+        return batchItems;
+        
+      } catch (err: any) {
+        const errorMessage = err.message || 'Unknown error';
+        console.error(`[PACK-06 Pass 2] ${batchId} failed:`, errorMessage);
+        
+        // Detect rate limiting (429)
+        const isRateLimit = errorMessage.includes('429') || errorMessage.toLowerCase().includes('rate limit');
+        
+        // Detect timeout
+        const isTimeout = errorMessage.includes('timeout');
+        
+        telemetry.record('extraction_batch_error', { 
+          batchSize: batch.length, 
+          depth,
+          batchIndex,
+          error: errorMessage,
+          isRateLimit,
+          isTimeout,
+          orgRef
+        });
+        
+        // Handle rate limiting with exponential backoff
+        if (isRateLimit) {
+          const backoffMs = Math.min(1000 * Math.pow(2, depth), 16000); // Cap at 16s
+          console.warn(`[PACK-06 Pass 2] ${batchId}: Rate limited, waiting ${backoffMs}ms before retry...`);
+          telemetry.record('extraction_rate_limit_backoff', { 
+            backoffMs, 
+            depth, 
+            batchIndex,
+            orgRef 
+          });
+          await new Promise(r => setTimeout(r, backoffMs));
+        }
+        
+        // Recursive split in accuracy mode (only if batch size > 1)
+        if (accuracyMode && batch.length > 1) {
+          console.warn(`[PACK-06 Pass 2] ${batchId}: Splitting batch of ${batch.length} into smaller batches`);
+          telemetry.record('extraction_batch_split', { 
+            originalSize: batch.length, 
+            depth, 
+            batchIndex,
+            reason: isRateLimit ? 'rate_limit' : (isTimeout ? 'timeout' : 'error'),
+            orgRef
           });
           
-          // Phase 1 Part 4: Micro-validator to drop blanks and invalid entries
-          const batchItems = (extracted?.items ?? []).filter(p => 
-            p.title?.trim() && 
-            !p.title.match(/Confirm|Select|Choose|Register|Sign Up|Add to Cart/i)
-          );
-          console.log(`[PACK-06 Pass 2] Batch ${i + 1}: Extracted ${batchItems.length} programs`);
-          return batchItems;
+          const mid = Math.ceil(batch.length / 2);
+          const firstHalf = batch.slice(0, mid);
+          const secondHalf = batch.slice(mid);
           
-        } catch (err: any) {
-          console.error(`[PACK-06 Pass 2] Batch ${i + 1} failed:`, err.message);
-          return []; // Return empty array on failure, continue with other batches
+          const res1 = await extractBatchWithSafety(firstHalf, depth + 1, batchIndex);
+          const res2 = await extractBatchWithSafety(secondHalf, depth + 1, batchIndex);
+          
+          return [...res1, ...res2];
         }
+        
+        // Non-accuracy mode or single item: fail fast
+        return [];
+      }
+    }
+    
+    const batchPromises = batches.map((batch, i) =>
+      limit(async () => {
+        console.log(`[PACK-06 Pass 2] Batch ${i + 1}/${batches.length}: Processing ${batch.length} programs`);
+        const result = await extractBatchWithSafety(batch, 0, i);
+        console.log(`[PACK-06 Pass 2] Batch ${i + 1}/${batches.length} completed with ${result.length} programs`);
+        return result;
       })
     );
     
