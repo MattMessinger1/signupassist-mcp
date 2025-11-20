@@ -600,63 +600,117 @@ export async function loginWithCredentials(
     }
   }
 
-  // Final comprehensive antibot check before submit
-  console.log('[Antibot] Final pre-submit verification...');
-  const finalCheck = await page.evaluate(() => {
-    const form = document.querySelector('form.antibot, form[data-action]') as HTMLFormElement;
-    const keyInput = document.querySelector('input[name="antibot_key"]') as HTMLInputElement;
+// Final comprehensive antibot check before submit
+console.log('[Antibot] Final pre-submit verification...');
+const finalCheck = await page.evaluate(() => {
+  const form = document.querySelector('form.antibot, form[data-action]') as HTMLFormElement;
+  const keyInput = document.querySelector('input[name="antibot_key"]') as HTMLInputElement;
+  
+  // CRITICAL: Ensure antibot_key field is ENABLED and will be submitted
+  if (keyInput) {
+    // Remove disabled/readonly attributes that prevent submission
+    keyInput.removeAttribute('disabled');
+    keyInput.removeAttribute('readonly');
     
-    // Check for honeypot fields with values (should be empty)
-    const honeypotFilled = Array.from(document.querySelectorAll('input'))
-      .filter(input => {
-        const name = input.name || input.id || '';
-        const isHoneypotName = /honeypot|bot|trap|fake|url|website|homepage/i.test(name);
-        const isHidden = input.type === 'hidden' || 
-                        window.getComputedStyle(input).display === 'none';
-        return isHoneypotName && isHidden && name !== 'antibot_key' && input.value;
-      });
+    // Ensure the field is inside the form (some antibot implementations move it)
+    if (form && !form.contains(keyInput)) {
+      console.log('[Antibot] ⚠️ Key field is outside form, moving it inside');
+      form.appendChild(keyInput);
+    }
     
-    return {
-      formAction: form?.action || 'NO_FORM',
-      actionIsValid: form?.action && !form.action.includes('/antibot'),
-      keyPresent: !!keyInput?.value,
-      keyLength: keyInput?.value?.length || 0,
-      keyPreview: keyInput?.value?.substring(0, 20) || 'MISSING',
-      honeypotFieldsFilled: honeypotFilled.length,
-      allGood: form?.action && 
-               !form.action.includes('/antibot') && 
-               keyInput?.value?.length > 10 &&
-               honeypotFilled.length === 0
-    };
-  });
+    // Make absolutely sure the field is visible to the form submission
+    keyInput.style.position = 'absolute';
+    keyInput.style.left = '-9999px'; // Hidden but still submittable
+    keyInput.setAttribute('type', 'hidden'); // Ensure it's treated as hidden field
+  }
+  
+  // Check for honeypot fields with values (should be empty)
+  const honeypotFilled = Array.from(document.querySelectorAll('input'))
+    .filter(input => {
+      const name = input.name || input.id || '';
+      const isHoneypotName = /honeypot|bot|trap|fake|url|website|homepage/i.test(name);
+      const isHidden = input.type === 'hidden' || 
+                      window.getComputedStyle(input).display === 'none';
+      return isHoneypotName && isHidden && name !== 'antibot_key' && input.value;
+    });
+  
+  return {
+    formAction: form?.action || 'NO_FORM',
+    actionIsValid: form?.action && !form.action.includes('/antibot'),
+    keyPresent: !!keyInput?.value,
+    keyLength: keyInput?.value?.length || 0,
+    keyPreview: keyInput?.value?.substring(0, 20) || 'MISSING',
+    keyFieldEnabled: keyInput && !keyInput.disabled && !keyInput.readOnly,
+    keyFieldInForm: form?.contains(keyInput) || false,
+    honeypotFieldsFilled: honeypotFilled.length,
+    allGood: form?.action && 
+             !form.action.includes('/antibot') && 
+             keyInput?.value?.length > 10 &&
+             !keyInput?.disabled &&
+             form?.contains(keyInput) &&
+             honeypotFilled.length === 0
+  };
+});
 
   console.log('[Antibot] Final status:', finalCheck);
 
-  if (!finalCheck.allGood) {
-    const issues = [];
-    if (!finalCheck.actionIsValid) issues.push(`action=${finalCheck.formAction}`);
-    if (!finalCheck.keyPresent) issues.push('key missing');
-    if (finalCheck.keyLength < 10) issues.push(`key too short (${finalCheck.keyLength})`);
-    if (finalCheck.honeypotFieldsFilled > 0) issues.push(`${finalCheck.honeypotFieldsFilled} honeypots filled`);
-    
-    throw new Error(`Antibot verification failed: ${issues.join(', ')}`);
-  }
+if (!finalCheck.allGood) {
+  const issues = [];
+  if (!finalCheck.actionIsValid) issues.push(`action=${finalCheck.formAction}`);
+  if (!finalCheck.keyPresent) issues.push('key missing');
+  if (finalCheck.keyLength < 10) issues.push(`key too short (${finalCheck.keyLength})`);
+  if (!finalCheck.keyFieldEnabled) issues.push('key field disabled/readonly');
+  if (!finalCheck.keyFieldInForm) issues.push('key field outside form');
+  if (finalCheck.honeypotFieldsFilled > 0) issues.push(`${finalCheck.honeypotFieldsFilled} honeypots filled`);
+  
+  throw new Error(`Antibot verification failed: ${issues.join(', ')}`);
+}
 
   console.log('[Antibot] ✓ All checks passed, safe to submit');
   
-  // Debug: Capture form state before submission (only in debug mode)
-  if (process.env.DEBUG_ANTIBOT === 'true') {
-    try {
-      await page.screenshot({ path: 'debug_before_submit.png', fullPage: false });
-      const formHTML = await page.evaluate(() => {
-        const form = document.querySelector('form');
-        return form?.outerHTML.substring(0, 2000);
-      });
-      console.log('[Debug] Form HTML before submit:', formHTML);
-    } catch (e) {
-      // Screenshot failed, continue
+// Debug: Capture form state before submission (only in debug mode)
+if (process.env.DEBUG_ANTIBOT === 'true') {
+  try {
+    await page.screenshot({ path: 'debug_before_submit.png', fullPage: false });
+    const formHTML = await page.evaluate(() => {
+      const form = document.querySelector('form');
+      return form?.outerHTML.substring(0, 2000);
+    });
+    console.log('[Debug] Form HTML before submit:', formHTML);
+  } catch (e) {
+    // Screenshot failed, continue
+  }
+}
+
+// CRITICAL: Log the actual FormData that will be submitted
+console.log('[Antibot] Capturing form data that will be submitted...');
+const formDataPreview = await page.evaluate(() => {
+  const form = document.querySelector('form.antibot, form[data-action]') as HTMLFormElement;
+  if (!form) return { error: 'No form found' };
+  
+  const formData = new FormData(form);
+  const data: Record<string, any> = {};
+  
+  // Capture all form fields
+  for (const [key, value] of formData.entries()) {
+    if (key === 'pass' || key.includes('password')) {
+      data[key] = '***REDACTED***';
+    } else if (key === 'antibot_key') {
+      data[key] = value.toString().substring(0, 20) + '...';
+    } else {
+      data[key] = value.toString().substring(0, 50);
     }
   }
+  
+  return data;
+});
+
+console.log('[Antibot] Form data to be submitted:', formDataPreview);
+
+// Verify antibot_key is present in FormData
+if (!formDataPreview.antibot_key && formDataPreview.antibot_key !== '...') {
+  console.log('[Antibot] ⚠️ WARNING: antibot_key NOT in FormData! This will cause submission to fail.');
+}
 
   // Submit the form
   console.log("DEBUG Submitting form...");
