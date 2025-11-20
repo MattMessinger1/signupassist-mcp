@@ -1,6 +1,7 @@
 import { Browser, Page } from 'playwright-core';
 import { sleep, humanPause, jitter } from './humanize.js';
 import { createStealthContext } from './antibot.js';
+import { saveSessionState, generateSessionKey } from './session.js';
 
 export interface ProviderLoginConfig {
   loginUrl: string;
@@ -136,7 +137,8 @@ export async function loginWithCredentials(
   config: ProviderLoginConfig, 
   creds: { email: string; password: string },
   browser?: Browser,
-  postLoginUrl?: string  // Optional: Force navigation after login
+  postLoginUrl?: string,  // Optional: Force navigation after login
+  sessionCacheParams?: { userId: string; credentialId: string; orgRef: string }  // Optional: For session caching
 ): Promise<{
   url?: string;
   title?: string;
@@ -404,8 +406,12 @@ export async function loginWithCredentials(
   
   console.log(`[Drupal Tokens] Initial values - build_id: ${lastTokens.form_build_id ? `${lastTokens.form_build_id.substring(0, 15)}...` : 'MISSING'}, token: ${lastTokens.form_token ? `${lastTokens.form_token.substring(0, 15)}...` : 'MISSING'}`);
   
-  if (!lastTokens.form_build_id || !lastTokens.form_token) {
-    throw new Error('CRITICAL: Drupal tokens missing at stability check - form initialization failed');
+  if (!lastTokens.form_build_id) {
+    throw new Error('CRITICAL: form_build_id missing at stability check - form initialization failed');
+  }
+  
+  if (!lastTokens.form_token) {
+    console.log('[Drupal Tokens] ℹ️ form_token not present, proceeding with form_build_id only');
   }
   let lastChangeTime = Date.now();
   const tokenWaitStart = Date.now();
@@ -430,9 +436,11 @@ export async function loginWithCredentials(
     
     // Check if tokens have been stable long enough
     if (Date.now() - lastChangeTime >= stableTime && 
-        currentTokens.form_build_id && 
-        currentTokens.form_token) {
-      console.log(`[Drupal Tokens] ✓ Stable (build_id=${currentTokens.form_build_id.substring(0, 10)}..., token=${currentTokens.form_token.substring(0, 10)}...)`);
+        currentTokens.form_build_id) {
+      const tokenInfo = currentTokens.form_token 
+        ? `token=${currentTokens.form_token.substring(0, 10)}...`
+        : 'token=NONE';
+      console.log(`[Drupal Tokens] ✓ Stable (build_id=${currentTokens.form_build_id.substring(0, 10)}..., ${tokenInfo})`);
       break;
     }
   }
@@ -443,10 +451,12 @@ export async function loginWithCredentials(
     form_token: await getToken('input[name="form_token"]')
   };
   
-  if (!finalTokens.form_build_id || !finalTokens.form_token) {
-    console.warn('[Drupal Tokens] ⚠️ Tokens not found or not stable - form may be rejected by Drupal');
+  if (!finalTokens.form_build_id) {
+    console.warn('[Drupal Tokens] ⚠️ form_build_id not found - form will likely be rejected by Drupal');
+  } else if (!finalTokens.form_token) {
+    console.log('[Drupal Tokens] ℹ️ form_token not present (may be optional for this form)');
   } else {
-    console.log('[Drupal Tokens] ✓ Verified present before submission');
+    console.log('[Drupal Tokens] ✓ Verified both tokens present before submission');
   }
 
   // Check "Remember me" checkbox if present (required for persistent session cookies)
@@ -773,6 +783,14 @@ export async function loginWithCredentials(
           await waitForSkiClubProReady(page);
           
           console.log(`[Login] ✅ Navigation complete: ${page.url()}`);
+        }
+        
+        // Save session state for reuse if caching parameters provided
+        if (sessionCacheParams) {
+          const { userId, credentialId, orgRef } = sessionCacheParams;
+          const sessionKey = generateSessionKey(userId, credentialId, orgRef);
+          console.log(`[Session Cache] Saving session for key: ${sessionKey}`);
+          await saveSessionState(page, sessionKey);
         }
         
         return {
