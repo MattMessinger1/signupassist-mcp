@@ -708,20 +708,95 @@ const formDataPreview = await page.evaluate(() => {
 console.log('[Antibot] Form data to be submitted:', formDataPreview);
 
 // Verify antibot_key is present in FormData
-if (!formDataPreview.antibot_key && formDataPreview.antibot_key !== '...') {
-  console.log('[Antibot] ⚠️ WARNING: antibot_key NOT in FormData! This will cause submission to fail.');
+if (!formDataPreview.antibot_key || formDataPreview.antibot_key === '...') {
+  console.log('[Antibot] ⚠️ WARNING: antibot_key NOT in FormData! Attempting to fix...');
+  
+  // Fix: Manually ensure antibot_key is properly set in the form
+  const fixResult = await page.evaluate(() => {
+    const form = document.querySelector('form.antibot, form[data-action]') as HTMLFormElement;
+    const keyInput = document.querySelector('input[name="antibot_key"]') as HTMLInputElement;
+    
+    if (!form || !keyInput) {
+      return { success: false, reason: 'form or keyInput not found' };
+    }
+    
+    // Ensure the field is inside the form
+    if (!form.contains(keyInput)) {
+      form.appendChild(keyInput);
+    }
+    
+    // Remove any attributes that prevent submission
+    keyInput.removeAttribute('disabled');
+    keyInput.removeAttribute('readonly');
+    
+    // Ensure it has a value
+    if (!keyInput.value || keyInput.value.trim() === '') {
+      return { success: false, reason: 'antibot_key has no value' };
+    }
+    
+    // Make it a hidden field to ensure it's submitted
+    keyInput.type = 'hidden';
+    
+    // Verify it's now in FormData
+    const testFormData = new FormData(form);
+    const hasKey = testFormData.has('antibot_key');
+    const keyValue = testFormData.get('antibot_key');
+    
+    return { 
+      success: hasKey, 
+      value: keyValue ? keyValue.toString().substring(0, 20) : 'null',
+      inForm: form.contains(keyInput),
+      disabled: keyInput.disabled,
+      readonly: keyInput.readOnly
+    };
+  });
+  
+  console.log('[Antibot] Fix result:', fixResult);
+  
+  if (!fixResult.success) {
+    console.log('[Antibot] ❌ Failed to fix antibot_key. Login will likely fail.');
+  } else {
+    console.log('[Antibot] ✅ antibot_key is now in FormData:', fixResult.value);
+  }
 }
 
-  // Submit the form
+  // Submit the form using native JavaScript to ensure all fields are included
   console.log("DEBUG Submitting form...");
-  const submitBtn = page.locator(submitSel).first();
-  const submitExists = await submitBtn.count();
   
-  if (submitExists > 0) {
-    await submitBtn.click({ trial: false }).catch(() => {});
-  } else {
-    console.log("DEBUG No submit button found, pressing Enter in password field");
-    await page.press(passSel, 'Enter').catch(() => {});
+  // Try JavaScript form.submit() first (most reliable for including all fields)
+  const jsSubmitResult = await page.evaluate(() => {
+    const form = document.querySelector('form.antibot, form[data-action]') as HTMLFormElement;
+    if (form) {
+      // Remove any submit event listeners that might interfere
+      const newForm = form.cloneNode(true) as HTMLFormElement;
+      form.parentNode?.replaceChild(newForm, form);
+      
+      // Use requestSubmit if available (triggers validation), otherwise submit()
+      if (typeof newForm.requestSubmit === 'function') {
+        newForm.requestSubmit();
+        return { method: 'requestSubmit', success: true };
+      } else {
+        newForm.submit();
+        return { method: 'submit', success: true };
+      }
+    }
+    return { method: 'none', success: false };
+  }).catch((e) => ({ method: 'error', success: false, error: e.message }));
+  
+  console.log('[Antibot] JS submit result:', jsSubmitResult);
+  
+  // Fallback: If JS submit didn't work, try clicking the button
+  if (!jsSubmitResult.success) {
+    console.log('[Antibot] Fallback: clicking submit button...');
+    const submitBtn = page.locator(submitSel).first();
+    const submitExists = await submitBtn.count();
+    
+    if (submitExists > 0) {
+      await submitBtn.click({ trial: false }).catch(() => {});
+    } else {
+      console.log("DEBUG No submit button found, pressing Enter in password field");
+      await page.press(passSel, 'Enter').catch(() => {});
+    }
   }
 
   // Check for success indicators first, then error messages
