@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { RefreshCw } from "lucide-react";
+import { DeploymentStatusMonitor } from "@/components/DeploymentStatusMonitor";
 
 const MCP_BASE_URL = import.meta.env.VITE_MCP_BASE_URL || "https://signupassist-mcp-production.up.railway.app";
 
@@ -109,6 +110,8 @@ export default function MCPChatTest() {
             </Button>
           </div>
         </div>
+        
+        <DeploymentStatusMonitor />
         
         <Card className="p-4 bg-green-500/10 border-green-500">
           <h3 className="text-xl font-semibold text-green-700 dark:text-green-400 mb-2">
