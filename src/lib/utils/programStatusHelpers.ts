@@ -4,7 +4,6 @@
  */
 
 import { ProgramStatus, ProgramAccessLevel, type ProgramRestriction } from '@/types/program';
-import { telemetry } from '../../../mcp_server/lib/telemetry';
 
 export interface StatusDisplayConfig {
   variant: 'default' | 'secondary' | 'destructive' | 'outline';
@@ -91,11 +90,6 @@ export function detectProgramRestrictions(
   const statusRestricted = status && /^(restricted|closed|full|sold out)$/i.test(status);
   
   if (hasPasswordRestriction) {
-    telemetry.record('program_restriction_detected', {
-      type: 'password_protected',
-      status: status || 'unknown'
-    });
-    
     return {
       isRestricted: true,
       reason: 'Password or membership required',
@@ -104,11 +98,6 @@ export function detectProgramRestrictions(
   }
   
   if (hasAccessRestriction) {
-    telemetry.record('program_restriction_detected', {
-      type: 'access_restricted',
-      status: status || 'unknown'
-    });
-    
     return {
       isRestricted: true,
       reason: 'Restricted access',
@@ -117,11 +106,6 @@ export function detectProgramRestrictions(
   }
   
   if (statusRestricted && (hasPasswordRestriction || hasAccessRestriction)) {
-    telemetry.record('program_restriction_detected', {
-      type: 'status_restricted',
-      status: status || 'unknown'
-    });
-    
     return {
       isRestricted: true,
       reason: 'Limited availability',
