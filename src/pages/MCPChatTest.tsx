@@ -15,7 +15,6 @@ export default function MCPChatTest() {
   const { toast } = useToast();
 
   useEffect(() => {
-    // Fetch backend identity on mount
     fetch(`${MCP_BASE_URL}/identity`)
       .then(res => res.json())
       .then(data => setBackendInfo(data))
@@ -35,7 +34,6 @@ export default function MCPChatTest() {
 
       console.log('[Cache Refresh] Success:', data);
       
-      // Handle Browserbase session limit error, if present
       if (data?.error && typeof data.error === 'string' && data.error.includes('session limit')) {
         toast({
           title: "⚠️ Session Limit Reached",
@@ -117,72 +115,35 @@ export default function MCPChatTest() {
             ✅ MCP Backend Connected
           </h3>
           <div className="space-y-1 text-sm">
-            <p><strong>URL:</strong> {MCP_BASE_URL}</p>
-            {backendInfo && (
+            {backendInfo ? (
               <>
-                <p><strong>Backend:</strong> {backendInfo.backend}</p>
-                <p><strong>Environment:</strong> {backendInfo.env}</p>
-                <p><strong>Git Commit:</strong> {backendInfo.git_commit}</p>
-                <p><strong>Timestamp:</strong> {backendInfo.timestamp}</p>
+                <p><strong>Server:</strong> {backendInfo.server || 'Unknown'}</p>
+                <p><strong>Environment:</strong> {backendInfo.environment || 'Unknown'}</p>
+                <p><strong>Version:</strong> {backendInfo.version || 'Unknown'}</p>
+                <p><strong>Endpoint:</strong> <Badge variant="secondary">{MCP_BASE_URL}</Badge></p>
               </>
+            ) : (
+              <p className="text-muted-foreground">Fetching backend info...</p>
             )}
           </div>
         </Card>
 
-        <div className="flex gap-2 flex-wrap">
-          <Badge variant="outline">Direct MCP Backend</Badge>
-          <Badge variant="outline">No Local Simulation</Badge>
-          <Badge variant="outline">Production Orchestrator</Badge>
-        </div>
+        <Card className="p-4 bg-blue-500/10 border-blue-500">
+          <h3 className="text-lg font-semibold text-blue-700 dark:text-blue-400 mb-2">
+            🧪 Quick Test Prompts
+          </h3>
+          <div className="space-y-2 text-sm">
+            <p className="text-muted-foreground">Try these prompts in the chat below:</p>
+            <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+              <li>"Show me ski programs at Blackhawk Ski Club"</li>
+              <li>"Find skating lessons in Boulder"</li>
+              <li>"List swim programs"</li>
+            </ul>
+          </div>
+        </Card>
       </div>
 
-      <Card className="p-6">
-        <div className="mb-4 space-y-2">
-          <h3 className="text-sm font-semibold text-muted-foreground">Quick Test Prompts:</h3>
-          <div className="flex flex-wrap gap-2">
-            <Badge 
-              variant="outline" 
-              className="cursor-pointer hover:bg-accent"
-              onClick={() => {
-                const input = document.querySelector('input[placeholder*="test"]') as HTMLInputElement;
-                if (input) {
-                  input.value = "I want to sign up my 8 year old for ski lessons";
-                  input.focus();
-                }
-              }}
-            >
-              🎿 Ski lessons (8yo)
-            </Badge>
-            <Badge 
-              variant="outline" 
-              className="cursor-pointer hover:bg-accent"
-              onClick={() => {
-                const input = document.querySelector('input[placeholder*="test"]') as HTMLInputElement;
-                if (input) {
-                  input.value = "Find summer camps near me";
-                  input.focus();
-                }
-              }}
-            >
-              ⛺ Summer camps
-            </Badge>
-            <Badge 
-              variant="outline" 
-              className="cursor-pointer hover:bg-accent"
-              onClick={() => {
-                const input = document.querySelector('input[placeholder*="test"]') as HTMLInputElement;
-                if (input) {
-                  input.value = "What programs are available at Blackhawk Ski Club?";
-                  input.focus();
-                }
-              }}
-            >
-              🏔️ Blackhawk programs
-            </Badge>
-          </div>
-        </div>
-        <MCPChat />
-      </Card>
+      <MCPChat />
     </div>
   );
 }
