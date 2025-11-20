@@ -64,25 +64,49 @@ async function findSelector(page: Page, selectors: string | string[], timeout = 
   return null;
 }
 
-// Detect and log honeypot fields (only in debug mode for performance)
-async function detectHoneypots(page: Page): Promise<void> {
-  // Skip honeypot detection in production for ~200-300ms performance gain
-  if (process.env.DEBUG_HONEYPOTS !== 'true') {
-    return;
-  }
+// Actively prevent interaction with honeypot fields
+async function preventHoneypotInteraction(page: Page): Promise<void> {
+  console.log('[Honeypot] Scanning for and neutralizing honeypot fields...');
   
-  console.log("DEBUG Checking for Antibot honeypot fields...");
-  for (const pattern of HONEYPOT_PATTERNS) {
-    const honeypots = await page.$$(pattern);
-    if (honeypots.length > 0) {
-      console.log(`DEBUG Found ${honeypots.length} potential honeypot field(s) matching: ${pattern}`);
-      for (const hp of honeypots) {
-        const name = await hp.getAttribute('name');
-        const type = await hp.getAttribute('type');
-        const value = await hp.getAttribute('value');
-        console.log(`  - Honeypot: name="${name}", type="${type}", value="${value}"`);
+  const honeypotInfo = await page.evaluate(() => {
+    const honeypots: Array<{name: string, type: string, visible: boolean}> = [];
+    
+    // Find all hidden/invisible inputs
+    const allInputs = document.querySelectorAll('input');
+    for (const input of allInputs) {
+      const computed = window.getComputedStyle(input);
+      const isHidden = 
+        input.type === 'hidden' ||
+        computed.display === 'none' ||
+        computed.visibility === 'hidden' ||
+        computed.opacity === '0' ||
+        input.offsetParent === null;
+      
+      // Flag suspicious fields (common honeypot names)
+      const name = input.name || input.id || '';
+      const isHoneypotName = /honeypot|bot|trap|fake|url|website|homepage/i.test(name);
+      
+      if (isHidden && isHoneypotName && name !== 'antibot_key') {
+        honeypots.push({
+          name: name,
+          type: input.type,
+          visible: !isHidden
+        });
+        
+        // Clear any value that might have been set
+        if (input.value) {
+          input.value = '';
+        }
       }
     }
+    
+    return honeypots;
+  });
+  
+  if (honeypotInfo.length > 0) {
+    console.log(`[Honeypot] Found and neutralized ${honeypotInfo.length} honeypot fields:`, honeypotInfo);
+  } else {
+    console.log('[Honeypot] No honeypot fields detected');
   }
 }
 
@@ -304,6 +328,25 @@ export async function loginWithCredentials(
   }
   
   console.log('[Form Init] ✓ Drupal form ready (form_build_id present)');
+  
+  // Check if form is wrapped in antibot container that needs to be revealed
+  console.log('[Form Init] Checking antibot wrapper state...');
+  const antibotWrapper = await page.evaluate(() => {
+    const wrapper = document.querySelector('.antibot-message, [data-antibot]');
+    if (wrapper) {
+      const computed = window.getComputedStyle(wrapper);
+      return {
+        found: true,
+        hidden: computed.display === 'none' || computed.visibility === 'hidden'
+      };
+    }
+    return { found: false, hidden: false };
+  });
+
+  if (antibotWrapper.found && antibotWrapper.hidden) {
+    console.log('[Form Init] ⚠️ Antibot wrapper still hidden, waiting for JavaScript...');
+    await page.waitForTimeout(3000);
+  }
 
   // Wait for form fields with config timeout and one-time reload retry
   console.log(`DEBUG Waiting for email selector with timeout: ${timeout}ms`);
@@ -327,8 +370,8 @@ export async function loginWithCredentials(
     console.log("DEBUG Form fields detected after reload");
   }
 
-  // Detect honeypot fields (but don't interact)
-  await detectHoneypots(page);
+  // Actively prevent interaction with honeypot fields
+  await preventHoneypotInteraction(page);
 
   // ============= PRE-LOGIN WARM-UP (CRITICAL FOR ANTIBOT) =============
   console.log('[Antibot] Starting pre-login warm-up sequence...');
@@ -360,17 +403,50 @@ export async function loginWithCredentials(
   console.log('[Antibot] Waiting for antibot initialization (5-7 seconds)...');
   await humanPause(5000, 7000);
   
-  // 4. Verify antibot key is ready
-  const antibotReady = await page.evaluate(() => {
-    const el = document.querySelector('input[name="antibot_key"]') as HTMLInputElement;
-    return el?.value?.length > 10;
+  // 4. Verify antibot key is ready AND form action is restored
+  console.log('[Antibot] Verifying form is fully activated...');
+  const antibotStatus = await page.evaluate(() => {
+    const form = document.querySelector('form.antibot, form[data-action]') as HTMLFormElement;
+    const keyInput = document.querySelector('input[name="antibot_key"]') as HTMLInputElement;
+    
+    return {
+      keyPopulated: keyInput?.value?.length > 10,
+      keyValue: keyInput?.value?.substring(0, 20) || 'MISSING',
+      formAction: form?.action || 'NO_FORM',
+      formDataAction: form?.getAttribute('data-action') || 'NO_DATA_ACTION',
+      actionRestored: form?.action && !form.action.includes('/antibot')
+    };
   });
-  
-  if (!antibotReady) {
+
+  console.log('[Antibot] Status check:', antibotStatus);
+
+  if (!antibotStatus.actionRestored) {
+    console.log('[Antibot] ⚠️ Form action not restored yet, waiting additional 3 seconds...');
+    await humanPause(3000, 4000);
+    
+    // Re-check
+    const retryStatus = await page.evaluate(() => {
+      const form = document.querySelector('form.antibot, form[data-action]') as HTMLFormElement;
+      return {
+        formAction: form?.action || 'NO_FORM',
+        actionRestored: form?.action && !form.action.includes('/antibot')
+      };
+    });
+    
+    if (!retryStatus.actionRestored) {
+      throw new Error(`Antibot form not ready: action=${retryStatus.formAction}`);
+    }
+  }
+
+  if (!antibotStatus.keyPopulated) {
     console.log('[Antibot] Key not ready, waiting additional 3 seconds...');
     await humanPause(3000, 4000);
   }
   
+  // 5. Wait minimum duration after key appears (proves JS has been running)
+  console.log('[Antibot] Waiting minimum 3 seconds after key populated...');
+  await humanPause(3000, 4000);
+
   console.log('[Antibot] Warm-up complete, proceeding with form interaction');
   
   // ============= NOW TYPE CREDENTIALS WITH ENHANCED HUMANIZATION =============
@@ -506,33 +582,62 @@ export async function loginWithCredentials(
     }
   }
 
-  // Check if Antibot key is populated before submit
-  console.log("DEBUG Checking Antibot key before submit...");
-  try {
-    const antibotKey = await page.evaluate(() => {
-      const el = document.querySelector('input[name="antibot_key"]') as HTMLInputElement;
-      return el ? el.value : null;
-    });
+  // Final comprehensive antibot check before submit
+  console.log('[Antibot] Final pre-submit verification...');
+  const finalCheck = await page.evaluate(() => {
+    const form = document.querySelector('form.antibot, form[data-action]') as HTMLFormElement;
+    const keyInput = document.querySelector('input[name="antibot_key"]') as HTMLInputElement;
     
-    if (antibotKey && antibotKey.length > 0) {
-      console.log(`DEBUG ✓ Antibot key populated: ${antibotKey.substring(0, 20)}...`);
-    } else {
-      console.log('DEBUG ⚠ Antibot key empty - waiting 2s more...');
-      await humanPause(1500, 2500);
-      
-      const retryKey = await page.evaluate(() => {
-        const el = document.querySelector('input[name="antibot_key"]') as HTMLInputElement;
-        return el ? el.value : null;
+    // Check for honeypot fields with values (should be empty)
+    const honeypotFilled = Array.from(document.querySelectorAll('input'))
+      .filter(input => {
+        const name = input.name || input.id || '';
+        const isHoneypotName = /honeypot|bot|trap|fake|url|website|homepage/i.test(name);
+        const isHidden = input.type === 'hidden' || 
+                        window.getComputedStyle(input).display === 'none';
+        return isHoneypotName && isHidden && name !== 'antibot_key' && input.value;
       });
-      
-      if (retryKey && retryKey.length > 0) {
-        console.log(`DEBUG ✓ Antibot key populated after wait: ${retryKey.substring(0, 20)}...`);
-      } else {
-        console.log('DEBUG ⚠ Antibot key still empty - proceeding anyway');
-      }
+    
+    return {
+      formAction: form?.action || 'NO_FORM',
+      actionIsValid: form?.action && !form.action.includes('/antibot'),
+      keyPresent: !!keyInput?.value,
+      keyLength: keyInput?.value?.length || 0,
+      keyPreview: keyInput?.value?.substring(0, 20) || 'MISSING',
+      honeypotFieldsFilled: honeypotFilled.length,
+      allGood: form?.action && 
+               !form.action.includes('/antibot') && 
+               keyInput?.value?.length > 10 &&
+               honeypotFilled.length === 0
+    };
+  });
+
+  console.log('[Antibot] Final status:', finalCheck);
+
+  if (!finalCheck.allGood) {
+    const issues = [];
+    if (!finalCheck.actionIsValid) issues.push(`action=${finalCheck.formAction}`);
+    if (!finalCheck.keyPresent) issues.push('key missing');
+    if (finalCheck.keyLength < 10) issues.push(`key too short (${finalCheck.keyLength})`);
+    if (finalCheck.honeypotFieldsFilled > 0) issues.push(`${finalCheck.honeypotFieldsFilled} honeypots filled`);
+    
+    throw new Error(`Antibot verification failed: ${issues.join(', ')}`);
+  }
+
+  console.log('[Antibot] ✓ All checks passed, safe to submit');
+  
+  // Debug: Capture form state before submission (only in debug mode)
+  if (process.env.DEBUG_ANTIBOT === 'true') {
+    try {
+      await page.screenshot({ path: 'debug_before_submit.png', fullPage: false });
+      const formHTML = await page.evaluate(() => {
+        const form = document.querySelector('form');
+        return form?.outerHTML.substring(0, 2000);
+      });
+      console.log('[Debug] Form HTML before submit:', formHTML);
+    } catch (e) {
+      // Screenshot failed, continue
     }
-  } catch (e) {
-    console.log('DEBUG Could not check Antibot key:', e);
   }
 
   // Submit the form
