@@ -13,8 +13,8 @@ FROM base AS builder
 WORKDIR /app
 
 # Force rebuild toggle — updated automatically by Lovable or CLI
-# Last rebuild: 2025-11-10 - Added /tools/cred-store endpoint for credential re-storage
-ARG BUILD_TAG=20251110-cred-store-upsert-fix
+# Last rebuild: 2025-01-20 - Align with git commit b6ef722
+ARG BUILD_TAG=b6ef722
 LABEL build-tag=$BUILD_TAG
 
 # Skip Playwright browser downloads to speed up build
