@@ -118,7 +118,7 @@ async function isLoggedIn(page: Page): Promise<boolean> {
   const cookies = await context.cookies();
   
   // Look for Drupal session cookie (SSESS* or similar)
-  const hasDrupalAuth = cookies.some(c => /^SSESS/i.test(c.name));
+  const hasDrupalAuth = cookies.some(c => /^S?SESS[a-f0-9]+$|^PHPSESSID$/i.test(c.name));
   
   // Check for logout link (indicates authenticated UI)
   const hasLogoutLink = await page.locator('a[href*="/user/logout"]').count() > 0;
@@ -324,6 +324,63 @@ export async function loginWithCredentials(
   
   // Longer pause after typing password (user reviewing what they typed)
   await humanPause(1000, 2000);
+
+  // ============= WAIT FOR DRUPAL FORM TOKENS TO STABILIZE =============
+  console.log('[Drupal Tokens] Waiting for form_build_id and form_token to stabilize...');
+  
+  const getToken = async (selector: string) => {
+    try {
+      return await page.$eval(selector, (el: any) => el.value || "").catch(() => "");
+    } catch {
+      return "";
+    }
+  };
+  
+  let lastTokens = { 
+    form_build_id: await getToken('input[name="form_build_id"]'), 
+    form_token: await getToken('input[name="form_token"]') 
+  };
+  let lastChangeTime = Date.now();
+  const tokenWaitStart = Date.now();
+  const maxTokenWait = 10000; // 10 seconds
+  const stableTime = 500; // Tokens must be stable for 500ms
+  
+  while (Date.now() - tokenWaitStart < maxTokenWait) {
+    await page.waitForTimeout(200);
+    
+    const currentTokens = { 
+      form_build_id: await getToken('input[name="form_build_id"]'), 
+      form_token: await getToken('input[name="form_token"]') 
+    };
+    
+    // If tokens changed, reset the stability timer
+    if (currentTokens.form_build_id !== lastTokens.form_build_id || 
+        currentTokens.form_token !== lastTokens.form_token) {
+      lastTokens = currentTokens;
+      lastChangeTime = Date.now();
+      console.log('[Drupal Tokens] Changed, waiting for stability...');
+    }
+    
+    // Check if tokens have been stable long enough
+    if (Date.now() - lastChangeTime >= stableTime && 
+        currentTokens.form_build_id && 
+        currentTokens.form_token) {
+      console.log(`[Drupal Tokens] ✓ Stable (build_id=${currentTokens.form_build_id.substring(0, 10)}..., token=${currentTokens.form_token.substring(0, 10)}...)`);
+      break;
+    }
+  }
+  
+  // Verify tokens are present before proceeding
+  const finalTokens = {
+    form_build_id: await getToken('input[name="form_build_id"]'),
+    form_token: await getToken('input[name="form_token"]')
+  };
+  
+  if (!finalTokens.form_build_id || !finalTokens.form_token) {
+    console.warn('[Drupal Tokens] ⚠️ Tokens not found or not stable - form may be rejected by Drupal');
+  } else {
+    console.log('[Drupal Tokens] ✓ Verified present before submission');
+  }
 
   // Check "Remember me" checkbox if present (required for persistent session cookies)
   console.log("DEBUG Checking for 'Remember me' checkbox...");
@@ -592,7 +649,7 @@ export async function loginWithCredentials(
       const looksLoggedIn =
         hasCookie ||
         /logout|sign out/i.test(bodyText) ||
-        /welcome to (blackhawk|[\w\s]+) ski club/i.test(bodyText) ||
+        // Removed "welcome" check - it appears in footer even when not logged in
         /dashboard|my-account|profile/i.test(currentUrl);
       
       if (looksLoggedIn) {
@@ -607,7 +664,7 @@ export async function loginWithCredentials(
         });
         
         // ✅ Log session cookie specifically
-        const sessionCookie = cookies.find(c => /S?SESS|PHPSESSID/i.test(c.name));
+        const sessionCookie = cookies.find(c => /^S?SESS[a-f0-9]+$|^PHPSESSID$/i.test(c.name));
         if (sessionCookie) {
           console.log(`DEBUG ✅ Session cookie found: ${sessionCookie.name}=${sessionCookie.value.substring(0, 20)}...`);
         } else {
