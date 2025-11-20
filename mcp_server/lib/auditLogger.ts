@@ -23,7 +23,11 @@ export interface AuditLogEntry {
   org_ref?: string;
   program_ref?: string;
   credential_id?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, any> & {
+    is_restricted?: boolean;
+    restriction_reason?: string;
+    access_level?: string;
+  };
 }
 
 export interface ToneChangeEntry {
@@ -136,6 +140,51 @@ export async function logMandateEvent(entry: {
     }
   } catch (err) {
     console.error('[MandateAudit] Unexpected error:', err);
+  }
+}
+
+/**
+ * Log program interaction with restriction info
+ */
+export async function logProgramInteraction(entry: {
+  user_id: string;
+  action: 'view_program' | 'register_attempt' | 'restriction_detected';
+  provider?: string;
+  org_ref?: string;
+  program_ref?: string;
+  is_restricted?: boolean;
+  restriction_reason?: string;
+  access_level?: string;
+}): Promise<void> {
+  console.log('[ProgramInteraction]', entry.action, ':', entry.program_ref || 'unknown');
+
+  if (!supabase) {
+    console.warn('[ProgramInteraction] Supabase not configured, skipping database insert');
+    return;
+  }
+
+  try {
+    const { error } = await supabase
+      .from('mandate_audit')
+      .insert({
+        user_id: entry.user_id,
+        action: entry.action,
+        provider: entry.provider,
+        org_ref: entry.org_ref,
+        program_ref: entry.program_ref,
+        metadata: {
+          is_restricted: entry.is_restricted || false,
+          restriction_reason: entry.restriction_reason,
+          access_level: entry.access_level,
+          timestamp: new Date().toISOString()
+        }
+      });
+
+    if (error) {
+      console.error('[ProgramInteraction] Failed to insert audit log:', error);
+    }
+  } catch (err) {
+    console.error('[ProgramInteraction] Unexpected error:', err);
   }
 }
 
