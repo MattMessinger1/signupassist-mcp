@@ -12,7 +12,6 @@ import { Badge } from "@/components/ui/badge";
 import { ExternalLink, Info, Lock } from "lucide-react";
 import { getStatusDisplay, detectProgramRestrictions, formatCaptionParts } from "@/lib/utils/programStatusHelpers";
 import type { ProgramCard as ProgramCardType } from "@/types/program";
-import { telemetry } from "../../../mcp_server/lib/telemetry";
 
 interface CardAction {
   type: "link" | "postback";
@@ -65,9 +64,9 @@ export function GroupedProgramCards({ payload, onAction }: GroupedProgramCardsPr
       card.subtitle?.includes('Status:') ? card.subtitle.split('Status:')[1]?.trim() : undefined
     );
 
-    // Log restriction detection
+    // Log restriction detection via console for debugging
     if (restriction.isRestricted) {
-      telemetry.record('restricted_program_action', {
+      console.log('Restricted program action:', {
         program_ref: card.program_ref,
         org_ref: card.org_ref,
         restriction_reason: restriction.reason,
