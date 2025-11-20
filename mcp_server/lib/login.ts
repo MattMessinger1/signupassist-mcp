@@ -295,6 +295,43 @@ export async function loginWithCredentials(
   
   await humanPause(150, 400);
 
+  // Check "Remember me" checkbox if present (required for persistent session cookies)
+  console.log("DEBUG Checking for 'Remember me' checkbox...");
+  try {
+    const rememberMeSelectors = [
+      'input[name="persistent_login"]',
+      'input[type="checkbox"][name="remember_me"]',
+      'input#edit-remember-me',
+      'label:has-text("Remember me") input[type="checkbox"]',
+      'input[type="checkbox"][id*="remember"]'
+    ];
+    
+    let rememberMeChecked = false;
+    for (const rememberSel of rememberMeSelectors) {
+      const rememberEl = page.locator(rememberSel).first();
+      const count = await rememberEl.count();
+      if (count > 0) {
+        const isChecked = await rememberEl.isChecked();
+        if (!isChecked) {
+          await rememberEl.check();
+          console.log(`DEBUG ✓ Checked 'Remember me' checkbox using selector: ${rememberSel}`);
+        } else {
+          console.log(`DEBUG ✓ 'Remember me' already checked using selector: ${rememberSel}`);
+        }
+        rememberMeChecked = true;
+        break;
+      }
+    }
+    
+    if (!rememberMeChecked) {
+      console.log("DEBUG ⚠ No 'Remember me' checkbox found - session may not persist");
+    }
+  } catch (e) {
+    console.log("DEBUG ⚠ Error checking 'Remember me' checkbox:", e);
+  }
+
+  await humanPause(100, 200);
+
   // FIX 1: Override Drupal's destination field to force post-login redirect
   const currentPageUrl = new URL(page.url());
   if (currentPageUrl.pathname.includes('/user/login')) {
