@@ -425,10 +425,15 @@ export async function loginWithCredentials(
       const cookies = await page.context().cookies();
       console.log(`DEBUG Extracted ${cookies.length} cookies for Session B reuse`);
       
+      // 🔍 Log ALL cookies with full details
+      cookies.forEach(c => {
+        console.log(`DEBUG Cookie: ${c.name}=${c.value.substring(0, 20)}... | domain=${c.domain} | path=${c.path} | secure=${c.secure} | httpOnly=${c.httpOnly}`);
+      });
+      
       // ✅ Log session cookie specifically
       const sessionCookie = cookies.find(c => /S?SESS|PHPSESSID/i.test(c.name));
       if (sessionCookie) {
-        console.log(`DEBUG Session cookie: ${sessionCookie.name}=${sessionCookie.value.substring(0, 20)}...`);
+        console.log(`DEBUG ✅ Session cookie: ${sessionCookie.name}=${sessionCookie.value.substring(0, 20)}...`);
       } else {
         console.log('DEBUG ⚠️ No session cookie found in extracted cookies');
       }
@@ -477,7 +482,21 @@ export async function loginWithCredentials(
         console.log('DEBUG ✓ Login appears successful based on page indicators - authenticated session verified');
         const cookies = await page.context().cookies();
         console.log(`DEBUG Extracted ${cookies.length} cookies for Session B reuse`);
-        return { 
+        
+        // 🔍 Log ALL cookies with full details
+        cookies.forEach(c => {
+          console.log(`DEBUG Cookie: ${c.name}=${c.value.substring(0, 20)}... | domain=${c.domain} | path=${c.path} | secure=${c.secure} | httpOnly=${c.httpOnly}`);
+        });
+        
+        // ✅ Log session cookie specifically
+        const sessionCookie = cookies.find(c => /S?SESS|PHPSESSID/i.test(c.name));
+        if (sessionCookie) {
+          console.log(`DEBUG ✅ Session cookie found: ${sessionCookie.name}=${sessionCookie.value.substring(0, 20)}...`);
+        } else {
+          console.log('DEBUG ⚠️ No session cookie found in extracted cookies');
+        }
+        
+        return {
           url: currentUrl, 
           title: pageTitle, 
           verified: true,
