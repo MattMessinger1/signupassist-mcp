@@ -165,12 +165,10 @@ export async function loginWithCredentials(
   const ANTIBOT_MAX_WAIT_MS = hasStorageState ? 1500 : 6500;
   console.log(`[Login] Antibot timeout: ${ANTIBOT_MAX_WAIT_MS}ms (session reuse: ${hasStorageState})`);
   
-  // Use clean login URL without query parameters to avoid redirect confusion
-  const cleanLoginUrl = config.loginUrl.split('?')[0];
-  console.log("DEBUG Navigating to clean login URL:", cleanLoginUrl);
+  console.log("DEBUG Navigating to login URL (preserving query parameters):", config.loginUrl);
   
   try {
-    await page.goto(cleanLoginUrl, { waitUntil: 'domcontentloaded', timeout: ANTIBOT_MAX_WAIT_MS });
+    await page.goto(config.loginUrl, { waitUntil: 'domcontentloaded', timeout: ANTIBOT_MAX_WAIT_MS });
   } catch (timeoutError: any) {
     // Anti-bot fast-path: If initial load times out, proceed anyway
     console.log('[Login] Fast-path: Anti-bot timeout on initial load, proceeding...');
