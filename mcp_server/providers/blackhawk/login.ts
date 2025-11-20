@@ -73,7 +73,7 @@ export async function performLogin(
 ): Promise<{ success: boolean; error?: string }> {
   try {
     await page.goto(`${baseUrl}/user/login`, { waitUntil: 'networkidle' });
-    const loginResult = await loginWithCredentials(page, skiClubProConfig, credentials, browser);
+    const loginResult = await loginWithCredentials(page, skiClubProConfig, credentials, browser, `${baseUrl}/registration`);
     
     if (loginResult.login_status !== 'success') {
       return { success: false, error: 'Login failed for service credentials' };
