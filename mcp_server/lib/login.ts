@@ -533,6 +533,18 @@ export async function loginWithCredentials(
           console.log('DEBUG ⚠️ No session cookie found in extracted cookies');
         }
         
+        // Force navigation to desired page if specified (don't trust ?destination=)
+        if (postLoginUrl) {
+          console.log(`[Login] Forcing navigation to: ${postLoginUrl}`);
+          await page.goto(postLoginUrl, { waitUntil: 'networkidle', timeout: 30000 });
+          
+          // Wait for page to be ready
+          const { waitForSkiClubProReady } = await import('../providers/utils/skiclubproReadiness.js');
+          await waitForSkiClubProReady(page);
+          
+          console.log(`[Login] ✅ Navigation complete: ${page.url()}`);
+        }
+        
         return {
           url: currentUrl, 
           title: pageTitle, 
