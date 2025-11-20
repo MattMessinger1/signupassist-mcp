@@ -56,16 +56,19 @@ export async function createStealthContext(
   
   const context = await browser.newContext(contextOptions);
   
-  // Hide webdriver flag via addInitScript
+  // Hide webdriver flag via addInitScript with enhanced stealth
   await context.addInitScript(() => {
     // Remove navigator.webdriver
     Object.defineProperty(navigator, 'webdriver', {
       get: () => false,
     });
     
-    // Add chrome object
+    // Add chrome object with realistic properties
     (window as any).chrome = {
       runtime: {},
+      loadTimes: function() {},
+      csi: function() {},
+      app: {}
     };
     
     // Override permissions
@@ -76,6 +79,37 @@ export async function createStealthContext(
       }
       return originalQuery(parameters);
     };
+    
+    // Add realistic plugins
+    Object.defineProperty(navigator, 'plugins', {
+      get: () => [
+        {
+          0: { type: 'application/pdf' },
+          description: 'Portable Document Format',
+          filename: 'internal-pdf-viewer',
+          length: 1,
+          name: 'PDF Viewer'
+        }
+      ]
+    });
+    
+    // Spoof language properties
+    Object.defineProperty(navigator, 'languages', {
+      get: () => ['en-US', 'en']
+    });
+    
+    // Add realistic screen properties
+    Object.defineProperty(screen, 'colorDepth', {
+      get: () => 24
+    });
+    
+    // Override automation detection methods
+    (window.navigator as any).automation = undefined;
+    
+    // Mask CDP-related properties
+    delete (window as any).__playwright;
+    delete (window as any).__pw_manual;
+    delete (window as any).__PW_inspect;
   });
   
   console.log('[Antibot] Stealth context configured');

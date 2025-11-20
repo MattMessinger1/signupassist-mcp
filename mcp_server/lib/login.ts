@@ -88,8 +88,8 @@ async function detectHoneypots(page: Page): Promise<void> {
 // Check if user is logged in via multiple signals
 async function hasDrupalSessCookie(page: Page): Promise<boolean> {
   const cookies = await page.context().cookies();
-  // Broaden cookie detection to include common session cookies
-  return cookies.some(c => /S?SESS|session|PHPSESSID/i.test(c.name));
+  // Match ONLY real Drupal session cookies, not analytics cookies like _hjSession
+  return cookies.some(c => /^S?SESS[a-f0-9]+$|^PHPSESSID$/i.test(c.name));
 }
 
 async function pageHasLogoutOrDashboard(page: Page): Promise<boolean> {
@@ -269,31 +269,61 @@ export async function loginWithCredentials(
   // Detect honeypot fields (but don't interact)
   await detectHoneypots(page);
 
-  // Antibot micro-behavior: pause before interacting (JS needs time to set up)
-  console.log("DEBUG Pausing for Antibot JS initialization...");
-  await humanPause(300, 800);
-
-  // Small scroll to trigger visibility events
+  // ============= PRE-LOGIN WARM-UP (CRITICAL FOR ANTIBOT) =============
+  console.log('[Antibot] Starting pre-login warm-up sequence...');
+  
+  // Import enhanced humanization functions
+  const { humanReadPage, humanMouseMove, humanTypeText } = await import('./humanize.js');
+  
+  // 1. Simulate page arrival and initial scan (3-5 seconds)
+  await humanReadPage(page);
+  await humanPause(1000, 2000);
+  
+  // 2. Move mouse to form area (simulate locating the login form)
   try {
-    await page.evaluate(() => window.scrollTo(0, 100));
-    await humanPause(200, 400);
-    await page.evaluate(() => window.scrollTo(0, 0));
+    const formBox = await page.locator('form').first().boundingBox();
+    if (formBox) {
+      // Move mouse near form but not on fields yet
+      await page.mouse.move(
+        formBox.x + jitter(20, formBox.width - 20),
+        formBox.y + jitter(20, 100),
+        { steps: jitter(10, 20) }
+      );
+      await humanPause(500, 1000);
+    }
   } catch (e) {
-    // Scroll might fail, that's ok
+    console.log('[Antibot] Could not locate form for mouse movement');
   }
-
-  // Type credentials with human-like delays
-  console.log("DEBUG Typing email...");
-  await page.click(emailSel, { timeout: 5000 }).catch(() => {});
-  await page.type(emailSel, creds.email, { delay: jitter(25, 60) });
   
-  await humanPause(100, 300);
+  // 3. Wait for antibot JS to fully initialize (CRITICAL)
+  console.log('[Antibot] Waiting for antibot initialization (5-7 seconds)...');
+  await humanPause(5000, 7000);
   
-  console.log("DEBUG Typing password...");
-  await page.click(passSel, { timeout: 5000 }).catch(() => {});
-  await page.type(passSel, creds.password, { delay: jitter(25, 60) });
+  // 4. Verify antibot key is ready
+  const antibotReady = await page.evaluate(() => {
+    const el = document.querySelector('input[name="antibot_key"]') as HTMLInputElement;
+    return el?.value?.length > 10;
+  });
   
-  await humanPause(150, 400);
+  if (!antibotReady) {
+    console.log('[Antibot] Key not ready, waiting additional 3 seconds...');
+    await humanPause(3000, 4000);
+  }
+  
+  console.log('[Antibot] Warm-up complete, proceeding with form interaction');
+  
+  // ============= NOW TYPE CREDENTIALS WITH ENHANCED HUMANIZATION =============
+  console.log("DEBUG Typing email with realistic human behavior...");
+  await humanTypeText(page, emailSel, creds.email, false);
+  
+  // Pause between fields (user thinking/looking at password manager)
+  await humanPause(800, 1500);
+  
+  console.log("DEBUG Typing password with realistic human behavior...");
+  await humanTypeText(page, passSel, creds.password, false);
+  
+  // Longer pause after typing password (user reviewing what they typed)
+  await humanPause(1000, 2000);
 
   // Check "Remember me" checkbox if present (required for persistent session cookies)
   console.log("DEBUG Checking for 'Remember me' checkbox...");
@@ -406,9 +436,9 @@ export async function loginWithCredentials(
         .then(() => 'logout'),
       
       // Failure signal: Error message appears
-      page.waitForSelector('.messages--error, .messages--warning, div[role="alert"]', { timeout: 5000 })
+      page.waitForSelector('.messages--error, .messages--warning, div[role="alert"], .form-item--error-message, .alert-danger, .error-message, .form-error', { timeout: 5000 })
         .then(async () => {
-          const msg = await page.locator('.messages--error, .messages--warning, div[role="alert"]').first().innerText().catch(() => '');
+          const msg = await page.locator('.messages--error, .messages--warning, div[role="alert"], .form-item--error-message, .alert-danger, .error-message, .form-error').first().innerText().catch(() => '');
           console.log(`DEBUG ✗ Error message detected: ${msg.trim()}`);
           throw new Error(`Login failed: ${msg.trim() || 'Unknown error message appeared'}`);
         })
@@ -422,6 +452,57 @@ export async function loginWithCredentials(
     });
     
     console.log(`DEBUG Login detection result: ${loginResult}`);
+    
+    // If timeout occurred, do comprehensive error check first
+    if (loginResult === 'timeout') {
+      await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
+      
+      // Check for Drupal error messages (including hidden ones)
+      const drupalErrors = await page.evaluate(() => {
+        const selectors = [
+          '.messages--error',
+          '.messages--warning',
+          '.form-item--error-message',
+          'div[role="alert"]',
+          '.alert-danger',
+          '.error-message',
+          '.form-error'
+        ];
+        
+        for (const sel of selectors) {
+          const el = document.querySelector(sel);
+          if (el?.textContent?.trim()) {
+            return {
+              found: true,
+              message: el.textContent.trim(),
+              selector: sel
+            };
+          }
+        }
+        
+        // Check if still on login page with error indicators
+        if (window.location.href.includes('/user/login')) {
+          const bodyText = document.body.textContent || '';
+          if (bodyText.includes('Unrecognized') || 
+              bodyText.includes('invalid') || 
+              bodyText.includes('incorrect') ||
+              bodyText.includes('try again')) {
+            return {
+              found: true,
+              message: 'Login page showing error indicators in body text',
+              selector: 'body-text'
+            };
+          }
+        }
+        
+        return { found: false };
+      });
+      
+      if (drupalErrors.found) {
+        console.log(`DEBUG ✗ Login failed (error detected): ${drupalErrors.message}`);
+        throw new Error(`Login failed: ${drupalErrors.message}`);
+      }
+    }
     
     // If we got a success signal, verify it
     if (loginResult !== 'timeout') {
@@ -467,8 +548,8 @@ export async function loginWithCredentials(
         console.log(`DEBUG Cookie: ${c.name}=${c.value.substring(0, 20)}... | domain=${c.domain} | path=${c.path} | secure=${c.secure} | httpOnly=${c.httpOnly}`);
       });
       
-      // ✅ Log session cookie specifically
-      const sessionCookie = cookies.find(c => /S?SESS|PHPSESSID/i.test(c.name));
+      // ✅ Log session cookie specifically (using strict regex)
+      const sessionCookie = cookies.find(c => /^S?SESS[a-f0-9]+$|^PHPSESSID$/i.test(c.name));
       if (sessionCookie) {
         console.log(`DEBUG ✅ Session cookie: ${sessionCookie.name}=${sessionCookie.value.substring(0, 20)}...`);
       } else {
