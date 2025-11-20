@@ -3,12 +3,16 @@
  * 
  * Renders program cards organized by theme (Lessons, Camps, Race Team).
  * Supports the UI_PAYLOAD__GROUPED_CARDS format from the orchestrator.
+ * Enhanced with status badges and restriction detection.
  */
 
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ExternalLink, Info } from "lucide-react";
+import { ExternalLink, Info, Lock } from "lucide-react";
+import { getStatusDisplay, detectProgramRestrictions, formatCaptionParts } from "@/lib/utils/programStatusHelpers";
+import type { ProgramCard as ProgramCardType } from "@/types/program";
+import { telemetry } from "../../../mcp_server/lib/telemetry";
 
 interface CardAction {
   type: "link" | "postback";
@@ -54,6 +58,24 @@ interface GroupedProgramCardsProps {
 
 export function GroupedProgramCards({ payload, onAction }: GroupedProgramCardsProps) {
   const handleAction = (action: CardAction, card: ProgramCard) => {
+    // Detect restrictions
+    const restriction = detectProgramRestrictions(
+      card.body,
+      card.caption,
+      card.subtitle?.includes('Status:') ? card.subtitle.split('Status:')[1]?.trim() : undefined
+    );
+
+    // Log restriction detection
+    if (restriction.isRestricted) {
+      telemetry.record('restricted_program_action', {
+        program_ref: card.program_ref,
+        org_ref: card.org_ref,
+        restriction_reason: restriction.reason,
+        access_level: restriction.accessLevel,
+        action_type: action.type
+      });
+    }
+
     if (action.type === "link" && action.href) {
       window.open(action.href, "_blank");
     } else if (action.type === "postback" && action.payload && onAction) {
@@ -63,6 +85,8 @@ export function GroupedProgramCards({ payload, onAction }: GroupedProgramCardsPr
         ...action.payload,
         program_ref: card.program_ref || action.payload.program_ref,
         org_ref: card.org_ref || action.payload.org_ref,
+        is_restricted: restriction.isRestricted,
+        restriction_reason: restriction.reason,
       };
       // Pass the intent as the action name
       onAction(actionName, enhancedPayload);
@@ -102,6 +126,18 @@ export function GroupedProgramCards({ payload, onAction }: GroupedProgramCardsPr
               if (card.isHeader) {
                 return null;
               }
+
+              // Process caption parts and detect restrictions
+              const captionParts: string[] = [];
+              if (card.caption) {
+                captionParts.push(...formatCaptionParts(card.caption));
+              }
+
+              // Detect program restrictions
+              const restriction = detectProgramRestrictions(card.body, card.caption);
+              if (restriction.isRestricted && !captionParts.some(p => p.includes('🔒'))) {
+                captionParts.push('🔒 Restricted Access');
+              }
               
               return (
                 <Card key={cardIdx} className="flex flex-col hover:shadow-lg transition-shadow">
@@ -114,23 +150,52 @@ export function GroupedProgramCards({ payload, onAction }: GroupedProgramCardsPr
                     )}
                   </CardHeader>
                   
-                  {(card.body || card.caption) && (
+                  {(card.body || captionParts.length > 0) && (
                     <CardContent className="flex-1">
                       {card.body && (
                         <p className="text-sm text-muted-foreground mb-2">{card.body}</p>
                       )}
-                      {card.caption && (
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          {card.caption.split('•').map((part, i) => (
-                            <span key={i} className="flex items-center gap-1">
-                              {i > 0 && <span>•</span>}
-                              {part.trim().startsWith('$') ? (
-                                <Badge variant="secondary">{part.trim()}</Badge>
-                              ) : (
-                                <span>{part.trim()}</span>
-                              )}
-                            </span>
-                          ))}
+                      {captionParts.length > 0 && (
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          {captionParts.map((part, i) => {
+                            // Price badge
+                            if (part.startsWith('$')) {
+                              return (
+                                <Badge key={i} variant="secondary">
+                                  {part}
+                                </Badge>
+                              );
+                            }
+                            
+                            // Status badge
+                            if (part.toLowerCase().startsWith('status:')) {
+                              const statusValue = part.slice(7).trim();
+                              const { variant, label } = getStatusDisplay(statusValue);
+                              return (
+                                <Badge key={i} variant={variant}>
+                                  {label}
+                                </Badge>
+                              );
+                            }
+                            
+                            // Restriction badge
+                            if (part.includes('🔒')) {
+                              return (
+                                <Badge key={i} variant="destructive" className="flex items-center gap-1">
+                                  <Lock className="h-3 w-3" />
+                                  {part.replace('🔒', '').trim()}
+                                </Badge>
+                              );
+                            }
+                            
+                            // Regular text
+                            return (
+                              <span key={i} className="flex items-center gap-1">
+                                {i > 0 && <span>•</span>}
+                                {part}
+                              </span>
+                            );
+                          })}
                         </div>
                       )}
                     </CardContent>

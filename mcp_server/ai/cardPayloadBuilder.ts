@@ -10,19 +10,21 @@
  */
 
 import type { GroupedProgram, ProgramGroup } from '../lib/programGrouping.js';
+import { ProgramStatus } from '../types/program.js';
 
 /**
  * Status priority mapping for sorting (lower = higher priority)
  */
 const STATUS_PRIORITY: Record<string, number> = {
-  'Open': 1,
-  'Register': 1,
-  'Waitlist': 2,
-  'Sold Out': 3,
-  'Full': 3,
-  'Closed': 3,
-  'TBD': 4,
-  '-': 5,
+  [ProgramStatus.OPEN]: 1,
+  [ProgramStatus.REGISTER]: 1,
+  [ProgramStatus.WAITLIST]: 2,
+  [ProgramStatus.SOLD_OUT]: 3,
+  [ProgramStatus.FULL]: 3,
+  [ProgramStatus.CLOSED]: 3,
+  [ProgramStatus.RESTRICTED]: 3,
+  [ProgramStatus.TBD]: 4,
+  [ProgramStatus.UNKNOWN]: 5,
   '': 6,
 };
 
@@ -31,7 +33,31 @@ const STATUS_PRIORITY: Record<string, number> = {
  */
 function getStatusPriority(status?: string): number {
   if (!status) return 6;
-  return STATUS_PRIORITY[status] || 6;
+  
+  // Normalize to enum value if possible
+  const normalized = normalizeStatusValue(status);
+  return STATUS_PRIORITY[normalized] || 6;
+}
+
+/**
+ * Normalize status string to ProgramStatus enum value
+ */
+function normalizeStatusValue(status: string): string {
+  const statusLower = status.toLowerCase().trim();
+  
+  if (/^(open|register)$/i.test(statusLower)) return ProgramStatus.OPEN;
+  if (/^(full|sold out)$/i.test(statusLower)) return ProgramStatus.FULL;
+  if (/^closed$/i.test(statusLower)) return ProgramStatus.CLOSED;
+  if (/^waitlist$/i.test(statusLower)) return ProgramStatus.WAITLIST;
+  if (/^restricted$/i.test(statusLower)) return ProgramStatus.RESTRICTED;
+  if (/^tbd$/i.test(statusLower)) return ProgramStatus.TBD;
+  
+  // Log warning for unknown status values
+  if (status && status !== '-' && status !== '') {
+    console.warn(`[cardPayloadBuilder] Unknown status value: "${status}" - using as-is`);
+  }
+  
+  return status || ProgramStatus.UNKNOWN;
 }
 
 /**
