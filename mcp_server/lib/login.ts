@@ -447,6 +447,24 @@ export async function loginWithCredentials(
   console.log('[Antibot] Waiting minimum 3 seconds after key populated...');
   await humanPause(3000, 4000);
 
+  // 6. CRITICAL: Actively interact with antibot_key field to trigger validation
+  console.log('[Antibot] Actively triggering antibot_key field events...');
+  await page.evaluate(() => {
+    const keyInput = document.querySelector('input[name="antibot_key"]') as HTMLInputElement;
+    if (keyInput && keyInput.value) {
+      // Focus the field
+      keyInput.focus();
+      
+      // Trigger input/change events to signal the value is "user-entered"
+      keyInput.dispatchEvent(new Event('input', { bubbles: true }));
+      keyInput.dispatchEvent(new Event('change', { bubbles: true }));
+      keyInput.dispatchEvent(new Event('blur', { bubbles: true }));
+      
+      console.log('[Antibot] ✓ Triggered events on antibot_key:', keyInput.value.substring(0, 20));
+    }
+  });
+  await humanPause(500, 1000);
+
   console.log('[Antibot] Warm-up complete, proceeding with form interaction');
   
   // ============= NOW TYPE CREDENTIALS WITH ENHANCED HUMANIZATION =============
