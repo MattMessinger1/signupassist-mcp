@@ -9,7 +9,7 @@ export const SKICLUBPRO_DEFAULTS: ProviderConfig = {
   urlPattern: 'subdomain',
   
   urls: {
-    login: (orgRef: string) => `https://${orgRef}.skiclubpro.team/user/login?destination=/dashboard`,
+    login: (orgRef: string) => `https://${orgRef}.skiclubpro.team/user/login`,
     dashboard: (orgRef: string) => `https://${orgRef}.skiclubpro.team/dashboard`,
     programs: (orgRef: string) => `https://${orgRef}.skiclubpro.team/registration`,
     registration: (orgRef: string, programId: string) => 
