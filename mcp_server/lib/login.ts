@@ -176,66 +176,7 @@ export async function loginWithCredentials(
   
   console.log(`DEBUG Page load state: ${page.url()}`);
   
-  // ============= WAIT FOR DRUPAL FORM TO BE FULLY RENDERED =============
-  console.log('[Form Init] Waiting for Drupal form elements to be present...');
-  
-  // Wait for basic form fields
-  try {
-    await page.waitForSelector(emailSel, { timeout: 10000, state: 'attached' });
-    await page.waitForSelector(passSel, { timeout: 10000, state: 'attached' });
-    console.log('[Form Init] ✓ Form fields detected');
-  } catch (e) {
-    throw new Error('Login form fields not found after 10s');
-  }
-  
-  // Wait for Drupal form structure (CRITICAL)
-  console.log('[Form Init] Checking for Drupal form tokens...');
-  const formTokensPresent = await page.evaluate(() => {
-    const formBuildId = document.querySelector('input[name="form_build_id"]');
-    const formToken = document.querySelector('input[name="form_token"]');
-    return {
-      hasFormBuildId: !!formBuildId,
-      hasFormToken: !!formToken,
-      formBuildIdValue: (formBuildId as HTMLInputElement)?.value || '',
-      formTokenValue: (formToken as HTMLInputElement)?.value || ''
-    };
-  });
-  
-  console.log('[Form Init] Token check result:', {
-    hasFormBuildId: formTokensPresent.hasFormBuildId,
-    hasFormToken: formTokensPresent.hasFormToken,
-    buildIdPreview: formTokensPresent.formBuildIdValue.substring(0, 15) + '...',
-    tokenPreview: formTokensPresent.formTokenValue.substring(0, 15) + '...'
-  });
-  
-  if (!formTokensPresent.hasFormBuildId || !formTokensPresent.hasFormToken) {
-    console.log('[Form Init] ⚠️ Tokens missing, waiting 3s and reloading...');
-    await page.waitForTimeout(3000);
-    await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
-    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
-    
-    // Verify after reload
-    const tokensAfterReload = await page.evaluate(() => {
-      const fb = document.querySelector('input[name="form_build_id"]') as HTMLInputElement;
-      const ft = document.querySelector('input[name="form_token"]') as HTMLInputElement;
-      return {
-        hasFormBuildId: !!fb,
-        hasFormToken: !!ft,
-        formBuildIdValue: fb?.value || '',
-        formTokenValue: ft?.value || ''
-      };
-    });
-    
-    if (!tokensAfterReload.hasFormBuildId || !tokensAfterReload.hasFormToken) {
-      throw new Error('Drupal form tokens still not present after reload');
-    }
-    
-    console.log('[Form Init] ✓ Tokens present after reload');
-  }
-  
-  console.log('[Form Init] ✓ Drupal form fully initialized');
-
-    // Quick check if already logged in - but verify by checking the current URL
+  // Quick check if already logged in - but verify by checking the current URL
     // Don't trust cookie existence alone, as cookies can be expired
     const currentUrl = page.url();
     if (await isLoggedIn(page) && !currentUrl.includes('/user/login')) {
@@ -295,6 +236,65 @@ export async function loginWithCredentials(
   const emailSel = emailSelectors.join(', ');
   const passSel = passSelectors.join(', ');
   const submitSel = submitSelectors.join(', ');
+
+  // ============= WAIT FOR DRUPAL FORM TO BE FULLY RENDERED =============
+  console.log('[Form Init] Waiting for Drupal form elements to be present...');
+  
+  // Wait for basic form fields
+  try {
+    await page.waitForSelector(emailSel, { timeout: 10000, state: 'attached' });
+    await page.waitForSelector(passSel, { timeout: 10000, state: 'attached' });
+    console.log('[Form Init] ✓ Form fields detected');
+  } catch (e) {
+    throw new Error('Login form fields not found after 10s');
+  }
+  
+  // Wait for Drupal form structure (CRITICAL)
+  console.log('[Form Init] Checking for Drupal form tokens...');
+  const formTokensPresent = await page.evaluate(() => {
+    const formBuildId = document.querySelector('input[name="form_build_id"]');
+    const formToken = document.querySelector('input[name="form_token"]');
+    return {
+      hasFormBuildId: !!formBuildId,
+      hasFormToken: !!formToken,
+      formBuildIdValue: (formBuildId as HTMLInputElement)?.value || '',
+      formTokenValue: (formToken as HTMLInputElement)?.value || ''
+    };
+  });
+  
+  console.log('[Form Init] Token check result:', {
+    hasFormBuildId: formTokensPresent.hasFormBuildId,
+    hasFormToken: formTokensPresent.hasFormToken,
+    buildIdPreview: formTokensPresent.formBuildIdValue.substring(0, 15) + '...',
+    tokenPreview: formTokensPresent.formTokenValue.substring(0, 15) + '...'
+  });
+  
+  if (!formTokensPresent.hasFormBuildId || !formTokensPresent.hasFormToken) {
+    console.log('[Form Init] ⚠️ Tokens missing, waiting 3s and reloading...');
+    await page.waitForTimeout(3000);
+    await page.reload({ waitUntil: 'domcontentloaded', timeout: 15000 });
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+    
+    // Verify after reload
+    const tokensAfterReload = await page.evaluate(() => {
+      const fb = document.querySelector('input[name="form_build_id"]') as HTMLInputElement;
+      const ft = document.querySelector('input[name="form_token"]') as HTMLInputElement;
+      return {
+        hasFormBuildId: !!fb,
+        hasFormToken: !!ft,
+        formBuildIdValue: fb?.value || '',
+        formTokenValue: ft?.value || ''
+      };
+    });
+    
+    if (!tokensAfterReload.hasFormBuildId || !tokensAfterReload.hasFormToken) {
+      throw new Error('Drupal form tokens still not present after reload');
+    }
+    
+    console.log('[Form Init] ✓ Tokens present after reload');
+  }
+  
+  console.log('[Form Init] ✓ Drupal form fully initialized');
 
   // Wait for form fields with config timeout and one-time reload retry
   console.log(`DEBUG Waiting for email selector with timeout: ${timeout}ms`);
