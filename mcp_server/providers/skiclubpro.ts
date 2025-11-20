@@ -436,10 +436,11 @@ async function waitForDrupalTokensStable(
     }
     
     // Check if tokens have been stable long enough
+    // Note: form_token is optional - some Drupal forms only use form_build_id
     if (Date.now() - lastChangeTime >= stableMs && 
-        currentTokens.form_build_id && 
-        currentTokens.form_token) {
-      console.log('[tokens] ✓ Stable');
+        currentTokens.form_build_id) {
+      const tokenStatus = currentTokens.form_token ? 'both tokens' : 'form_build_id only';
+      console.log(`[tokens] ✓ Stable (${tokenStatus})`);
       return true;
     }
   }
@@ -573,7 +574,7 @@ async function ensureLoggedIn(
   
   try {
     // Build login URL with destination parameter for fast-path
-    const dest = process.env.SKICLUBPRO_LOGIN_GOTO_DEST || "/registration";
+    const dest = process.env.SKICLUBPRO_LOGIN_GOTO_DEST || "/dashboard";
     const loginUrl = `${baseUrl.replace(/\/$/, "")}/user/login?destination=${encodeURIComponent(dest)}`;
     
     console.log(`DEBUG: Login URL with destination: ${loginUrl}`);
@@ -647,13 +648,43 @@ async function ensureLoggedIn(
     // Submit form
     await submitBtn.click({ delay: 30 });
     
-    // Fast-path probe: immediately navigate to registration after brief pause
-    console.log('[login] Fast-path: navigating to registration...');
-    await page.waitForTimeout(250);
+    // Wait for Drupal to complete post-login redirect
+    console.log('[login] Waiting for post-login redirect...');
+    await page.waitForTimeout(1500);
+
+    // Verify login succeeded (we're no longer on login page)
+    const currentUrl = page.url();
+    console.log(`[login] Current URL after submit: ${currentUrl}`);
+
+    if (currentUrl.includes('/user/login')) {
+      console.error('[login] ❌ Still on login page after submission - login likely failed');
+      throw new Error('Login failed: Still on /user/login after form submission');
+    }
+
+    console.log('[login] ✅ Login succeeded (redirected away from login page)');
+
+    // Now navigate to registration page
+    console.log('[login] Navigating to registration page...');
     await page.goto(`${baseUrl.replace(/\/$/, "")}/registration`, { 
       waitUntil: "domcontentloaded", 
       timeout: 8000 
     });
+
+    const finalUrl = page.url();
+    console.log(`[login] ✅ Arrived at: ${finalUrl}`);
+
+    // Save session state for reuse
+    if (credential_id && userId) {
+      try {
+        const sessionKey = generateSessionKey(userId, credential_id, orgRef);
+        console.log(`[Session Cache] Saving session for key: ${sessionKey}`);
+        await saveSessionState(page, sessionKey);
+        console.log('[Session Cache] ✅ Session saved successfully');
+      } catch (cacheErr) {
+        console.warn('[Session Cache] Failed to save session (non-fatal):', cacheErr);
+        // Don't fail the whole login if caching fails
+      }
+    }
   
     console.timeEnd('[login] total');
     console.log(`DEBUG: Logged in as ${creds.email}`);
