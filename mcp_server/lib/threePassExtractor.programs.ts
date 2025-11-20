@@ -285,7 +285,11 @@ async function callStrictExtraction(opts: {
   _retryCount?: number;
 }) {
   const { _retryCount = 0 } = opts;
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+  const openaiOpts: any = { apiKey: process.env.OPENAI_API_KEY! };
+  if (process.env.CACHE_REFRESH_MODE === 'accuracy') {
+    openaiOpts.timeout = 15 * 60 * 1000; // 15 minute timeout for accuracy mode
+  }
+  const openai = new OpenAI(openaiOpts);
   
   try {
     // Use Chat Completions API (not Responses) for json_schema support
@@ -322,19 +326,20 @@ async function callStrictExtraction(opts: {
     
     const parsed = safeJSONParse(text);
     
-    // Retry logic for invalid JSON
-    if (!parsed && _retryCount < 2) {
+    // Retry logic for invalid JSON - more retries in accuracy mode
+    const maxRetries = process.env.CACHE_REFRESH_MODE === 'accuracy' ? 4 : 2;
+    if (!parsed && _retryCount < maxRetries) {
       logOncePer(
         `extraction-retry-${opts.model}`,
         5000,
-        () => console.warn(`[threePassExtractor] Retrying extraction (attempt ${_retryCount + 2}/3)...`)
+        () => console.warn(`[threePassExtractor] Retrying extraction (attempt ${_retryCount + 2}/${maxRetries + 1})...`)
       );
       await new Promise(r => setTimeout(r, 1000));
       return callStrictExtraction({ ...opts, _retryCount: _retryCount + 1 });
     }
     
     if (!parsed) {
-      console.error('[threePassExtractor] Invalid JSON response after 3 attempts:', text?.substring(0, 500));
+      console.error(`[threePassExtractor] Invalid JSON response after ${maxRetries + 1} attempts:`, text?.substring(0, 500));
       throw new Error('OpenAI returned invalid JSON after 3 attempts');
     }
     
