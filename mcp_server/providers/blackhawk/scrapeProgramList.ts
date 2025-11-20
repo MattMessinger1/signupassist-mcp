@@ -38,9 +38,9 @@ export async function scrapeProgramList(page: Page, baseUrl: string): Promise<Pr
       'blackhawk-ski-club',
       {
         models: {
-          vision: MODELS.SMART,      // gpt-4o-mini for vision
-          extractor: MODELS.SMART,   // gpt-4o-mini for extraction
-          validator: MODELS.SMART    // gpt-4o-mini for validation
+          vision: MODELS.vision,
+          extractor: MODELS.extractor,
+          validator: MODELS.validator
         },
         scope: "program_list",
         selectors: {
