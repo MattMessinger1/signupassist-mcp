@@ -1,7 +1,6 @@
 import type { Page } from 'playwright-core';
 import { isAuthenticated } from './login.js';
 import { runThreePassExtractorForPrograms } from '../../lib/threePassExtractor.programs.js';
-import { MODELS } from '../../lib/oai.js';
 
 export interface ProgramData {
   program_ref: string;
@@ -37,11 +36,6 @@ export async function scrapeProgramList(page: Page, baseUrl: string): Promise<Pr
       page,
       'blackhawk-ski-club',
       {
-        models: {
-          vision: MODELS.vision,
-          extractor: MODELS.extractor,
-          validator: MODELS.validator
-        },
         scope: "program_list",
         selectors: {
           container: [

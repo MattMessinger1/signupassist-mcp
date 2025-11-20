@@ -182,11 +182,7 @@ export interface ProgramData {
 
 type Models = { vision: string; extractor: string; validator: string; };
 
-// Phase 2 Optimization: Raise batch ceiling from 17 → 30 for faster extraction
-const BATCH_SIZE = parseInt(process.env.BATCH_SIZE || '30', 10);
-
 interface ExtractorConfig {
-  models?: Models;
   scope: "program_list";
   selectors: { 
     container: string[]; 
@@ -194,6 +190,7 @@ interface ExtractorConfig {
     price: string[]; 
     schedule: string[]; 
   };
+  // Note: models are now centrally configured in oai.ts and no longer passed per-call
 }
 
 // Step 3: JSON Schema definitions for strict mode
@@ -285,10 +282,10 @@ async function callStrictExtraction(opts: {
   _retryCount?: number;
 }) {
   const { _retryCount = 0 } = opts;
-  const openaiOpts: any = { apiKey: process.env.OPENAI_API_KEY! };
-  if (process.env.CACHE_REFRESH_MODE === 'accuracy') {
-    openaiOpts.timeout = 15 * 60 * 1000; // 15 minute timeout for accuracy mode
-  }
+  const openaiOpts: any = { 
+    apiKey: process.env.OPENAI_API_KEY!,
+    timeout: 15 * 60 * 1000 // Always use 15-minute timeout for reliability
+  };
   const openai = new OpenAI(openaiOpts);
   
   try {
@@ -326,8 +323,8 @@ async function callStrictExtraction(opts: {
     
     const parsed = safeJSONParse(text);
     
-    // Retry logic for invalid JSON - more retries in accuracy mode
-    const maxRetries = process.env.CACHE_REFRESH_MODE === 'accuracy' ? 4 : 2;
+    // Retry logic for invalid JSON - always retry up to 4 times for reliability
+    const maxRetries = 4;
     if (!parsed && _retryCount < maxRetries) {
       logOncePer(
         `extraction-retry-${opts.model}`,
@@ -359,13 +356,12 @@ export async function runThreePassExtractorForPrograms(
   skipCache?: boolean // Cache bypass for fresh overnight scraping
 ) {
   console.log('[PACK-06 Extractor] Starting programs-only extraction', { filters });
-  const accuracyMode = process.env.CACHE_REFRESH_MODE === 'accuracy';
   
-  // Use centralized MODELS as defaults
+  // Always use centrally configured models (gpt-4o by default)
   const models = {
-    vision: opts.models?.vision || MODELS.vision,
-    extractor: opts.models?.extractor || MODELS.extractor,
-    validator: opts.models?.validator || MODELS.validator
+    vision: MODELS.vision,
+    extractor: MODELS.extractor,
+    validator: MODELS.validator
   };
   
   console.log('[PACK-06 Models]', models);
@@ -414,8 +410,8 @@ export async function runThreePassExtractorForPrograms(
   const pageHash = sha1(combinedHtml);
   const cacheKey = `${orgRef}:${category}:${pageHash}`;
   
-  // Cache bypass for fresh overnight scraping or accuracy mode
-  const disableCache = skipCache || process.env.DISABLE_EXTRACTION_CACHE === 'true' || accuracyMode;
+  // Cache bypass for fresh overnight scraping
+  const disableCache = skipCache || process.env.DISABLE_EXTRACTION_CACHE === 'true';
   
   console.log(`[PACK-06 Cache] Key: ${cacheKey.substring(0, 50)}...`);
   
@@ -481,12 +477,13 @@ Rules:
     // PASS 2: Extraction (batched for reliability)
     console.log('[PACK-06 Pass 2] Extracting program data with strict schema (batched)');
     
-    const batchSize = accuracyMode ? Math.min(BATCH_SIZE, parseInt(process.env.ACCURACY_BATCH_SIZE || '15', 10)) : BATCH_SIZE;
-    const batches = chunkArray(snippets, batchSize);
-    console.log(`[PACK-06 Pass 2] Processing ${batches.length} batches of ${batchSize} programs (accuracy: ${accuracyMode})`);
+    // Always use small batches for better model focus and accuracy
+    const BATCH_SIZE = 15;
+    const batches = chunkArray(snippets, BATCH_SIZE);
+    console.log(`[PACK-06 Pass 2] Processing ${batches.length} batches of ${BATCH_SIZE} programs`);
     
-    // Sequential processing for accuracy-optimized cache refresh
-    const limit = pLimit(accuracyMode ? 1 : 5);
+    // Always use sequential processing to avoid rate limits and ensure quality
+    const limit = pLimit(1);
     const startTime = Date.now();
     
     // Enhanced batch extraction with recursion limits, rate limiting, and telemetry

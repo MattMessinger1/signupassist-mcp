@@ -1625,11 +1625,6 @@ export const skiClubProTools = {
       }
       
       const extractedData = await runThreePassExtractorForPrograms(page, args.org_ref, {
-        models: {
-          vision: process.env.OPENAI_MODEL_PROGRAM_VISION || 'gpt-4o',
-          extractor: process.env.OPENAI_MODEL_PROGRAM_EXTRACTOR || 'gpt-4o-mini',
-          validator: process.env.OPENAI_MODEL_PROGRAM_VALIDATOR || 'gpt-4o-mini'
-        },
         scope: 'program_list',
         selectors: {
           container: ['.program-row', '[data-program]', 'tr[data-id]'],

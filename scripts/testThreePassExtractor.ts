@@ -83,11 +83,6 @@ async function testExtractor() {
     console.log('═'.repeat(60));
     
     const programs = await runThreePassExtractorForPrograms(page, ORG_REF, {
-      models: {
-        vision: process.env.OPENAI_MODEL_PROGRAM_VISION || 'gpt-4o',
-        extractor: process.env.OPENAI_MODEL_PROGRAM_EXTRACTOR || 'gpt-4o-mini',
-        validator: process.env.OPENAI_MODEL_PROGRAM_VALIDATOR || 'gpt-4o-mini'
-      },
       scope: 'program_list',
       selectors: {
         container: ['.program-row', '[data-program]', 'tr[data-id]'],
