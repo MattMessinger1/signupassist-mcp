@@ -10,6 +10,7 @@ import { isAuthenticated, performLogin } from './blackhawk/login.js';
 import { scrapeProgramList } from './blackhawk/scrapeProgramList.js';
 import { telemetry } from '../lib/telemetry.js';
 import { getSession, storeSession, generateToken } from '../lib/sessionManager.js';
+import { resolveSkiClubProUrl } from './utils/resolveSkiClubProUrl.js';
 
 // Supabase client for cache writes (using service role)
 const supabaseUrl = process.env.SUPABASE_URL!;
@@ -177,22 +178,49 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
         // Deep links for this program (registration start, account creation, details)
         deepLinks[progRef] = generateDeepLinks(orgRef, progRef);
 
+        // OPTIMIZATION: Skip form discovery for clearly closed/full programs
+        const statusText = (program.status || '').toLowerCase();
+        const isClosedOrFull = /full|sold out|closed|waitlist only/i.test(statusText);
+        
+        if (isClosedOrFull) {
+          console.log(
+            `[${orgRef}] ⏭️ Skipping form discovery for closed program "${program.title}" (status=${program.status})`
+          );
+          
+          // Mark as closed in metadata for UI/AAP awareness
+          questionsSchema[progRef] = {
+            fields: [],
+            metadata: {
+              registration_open: false,
+              skip_reason: 'program_closed',
+              status: program.status
+            }
+          };
+          
+          console.log(`[${orgRef}] ✅ Processed program "${program.title}" (${progRef}) - SKIPPED`);
+          continue; // Skip to next program
+        }
+
         // Load the program's registration page to discover signup form fields
         console.log(`[${orgRef}] 🔎 Extracting form fields for "${program.title}"...`);
-        if (program.url) {
-          await page.goto(program.url, { waitUntil: 'domcontentloaded' });
-        } else {
-          // Construct direct URL if not present (should not normally happen if listing had URL)
-          await page.goto(`${baseUrl}/registration/${progRef}`, { waitUntil: 'domcontentloaded' });
-        }
+        
+        // Resolve to absolute URL (handles relative paths from AI extractor)
+        const targetUrl = program.url 
+          ? resolveSkiClubProUrl(orgRef, program.url)
+          : resolveSkiClubProUrl(orgRef, `/registration/${progRef}`);
+
+        console.log(`[${orgRef}] 🌐 Navigating to: ${targetUrl}`);
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
+
         // Small delay to ensure form elements rendered
         await page.waitForTimeout(1500);
         const formDiscovery = await discoverFieldsSerially(page, progRef);
+        
         questionsSchema[progRef] = {
           fields: formDiscovery.fields || [],
           metadata: {
             ...formDiscovery.metadata,
-            // Mark partial schema if not all questions were captured
+            registration_open: true,
             partial_schema: formDiscovery.fields?.length ? undefined : true
           }
         };
@@ -223,21 +251,57 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
       deep_links_programs: Object.keys(deepLinks).length
     });
     
-    const { data, error } = await supabase.rpc('upsert_cached_programs_enhanced', {
-      p_org_ref: orgRef,
-      p_category: 'all',
-      p_programs_by_theme: programsByTheme,
-      p_provider: providerId,
-      p_prerequisites_schema: prerequisitesSchema,
-      p_questions_schema: questionsSchema,
-      p_deep_links: deepLinks,
-      p_metadata: {
+    // Build raw payload object
+    const rawPayload = {
+      org_ref: orgRef,
+      category: 'all',
+      provider: providerId,
+      programs_by_theme: programsByTheme,
+      prerequisites_schema: prerequisitesSchema,
+      questions_schema: questionsSchema,
+      deep_links: deepLinks,
+      metadata: {
         cached_by: 'service_refresh',
         programs_count: programsCount,
         cached_timestamp: new Date().toISOString()
       }
+    };
+
+    // Log a sample program for debugging
+    if (programsCount > 0) {
+      const sampleTheme = Object.keys(programsByTheme)[0];
+      const sampleProgram = programsByTheme[sampleTheme]?.[0];
+      if (sampleProgram) {
+        console.log(`[${orgRef}] 🔎 Sample program at cache upsert:`, {
+          title: sampleProgram.title,
+          status: sampleProgram.status,
+          program_ref: sampleProgram.program_ref,
+          descriptionPreview: (sampleProgram.description || '').slice(0, 200)
+        });
+      }
+    }
+
+    // Sanitize: JSON round-trip removes unserializable values and normalizes Unicode
+    const sanitizedPayload = JSON.parse(JSON.stringify(rawPayload));
+
+    // Call RPC with sanitized data
+    const { data, error } = await supabase.rpc('upsert_cached_programs_enhanced', {
+      p_org_ref: sanitizedPayload.org_ref,
+      p_category: sanitizedPayload.category,
+      p_programs_by_theme: sanitizedPayload.programs_by_theme,
+      p_provider: sanitizedPayload.provider,
+      p_prerequisites_schema: sanitizedPayload.prerequisites_schema,
+      p_questions_schema: sanitizedPayload.questions_schema,
+      p_deep_links: sanitizedPayload.deep_links,
+      p_metadata: sanitizedPayload.metadata
     });
+
     if (error) {
+      console.error(`[${orgRef}] ❌ Cache upsert failed:`, {
+        message: error.message,
+        details: error.details,
+        hint: error.hint
+      });
       throw new Error(`Cache upsert failed: ${error.message}`);
     }
     console.log(`[${orgRef}] ✅ Program cache updated (Entry ID: ${data}).`);
