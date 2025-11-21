@@ -21,10 +21,11 @@ const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey);
  * Fetches and caches all programs for Blackhawk Ski Club.
  * Logs in via service credentials, scrapes program data, and upserts into cached_programs.
  */
-export async function refreshBlackhawkPrograms(): Promise<void> {
+export async function refreshBlackhawkPrograms(): Promise<number> {
   const orgRef = 'blackhawk-ski-club';
   const providerId = 'skiclubpro';
   console.log(`[${orgRef}] 🔄 Starting full program feed refresh...`);
+  telemetry.record("feed_refresh", { provider: "blackhawk", action: "start" });
 
     // Try to reuse existing session or launch new one
     let session: BrowserbaseSession | null = null;
@@ -327,6 +328,8 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
     }
     
     console.log(`[${orgRef}] 🎉 Refresh complete: ${programsCount} programs cached under ${Object.keys(programsByTheme).length} themes.`);
+    telemetry.record("feed_refresh", { provider: "blackhawk", status: "complete", programs_count: programsCount });
+    return programsCount;
   } catch (err: any) {
     console.error(`[${orgRef}] ❌ Pipeline error:`, err.message);
     
@@ -338,6 +341,12 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
         error: err.message 
       });
       console.error(`[${orgRef}] 🚨 Browserbase session limit reached. Run cleanup before retrying.`);
+    } else if (err.message?.includes('invalid JSON')) {
+      telemetry.record("feed_refresh_error", { 
+        provider: "blackhawk", 
+        error_type: "parse_error",
+        error: err.message 
+      });
     } else {
       telemetry.record("feed_refresh_error", { 
         provider: "blackhawk", 
@@ -346,7 +355,8 @@ export async function refreshBlackhawkPrograms(): Promise<void> {
       });
     }
     
-    // (No partial writes on error; cache remains unchanged if failure occurs before upsert)
+    // Rethrow to propagate error to caller (HTTP 500)
+    throw err;
   } finally {
     // Session lifecycle management with caching
     if (session && sessionToken) {
