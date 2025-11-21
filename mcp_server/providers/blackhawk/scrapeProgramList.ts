@@ -6,13 +6,12 @@ import { telemetry } from '../../lib/telemetry.js';
 export interface ProgramData {
   program_ref: string;
   title: string;
-  schedule_text: string;
-  age_range: string;
   price: string;
   status: string;
   url?: string;
+  signup_start_time?: string;
+  is_full?: boolean;
   theme?: string;
-  description?: string;
 }
 
 /**
@@ -53,8 +52,6 @@ export async function scrapeProgramList(page: Page, baseUrl: string): Promise<Pr
           const title = findText(element, ['.views-field-title a', '.program-title', 'h3', 'a[href*="program"]']) || '';
           if (!title) return null;
           const price = findText(element, ['.views-field-field-price', '.price']) || '';
-          const schedule = findText(element, ['.views-field-field-schedule', '.schedule']) || '';
-          const ageRange = findText(element, ['.views-field-field-age', '.age-range', '[class*="age"]', 'td:nth-child(3)']) || '';
           const regLinkElem = element.querySelector('a[href*="registration"], a[href*="register"]');
           const url = regLinkElem ? (regLinkElem as HTMLAnchorElement).href : '';
           let status = '';
@@ -62,9 +59,9 @@ export async function scrapeProgramList(page: Page, baseUrl: string): Promise<Pr
             const linkText = (regLinkElem as HTMLElement).innerText.toLowerCase();
             if (linkText.includes('waitlist')) status = 'Waitlist';
             else if (linkText.includes('full') || linkText.includes('sold out') || linkText.includes('closed')) status = 'Full';
-            else status = 'Open';
+            else status = 'Register';
           }
-          return { title, price, schedule, ageRange, url, status };
+          return { title, price, url, status };
         });
         
         if (!programData || !programData.title) continue;
@@ -81,12 +78,10 @@ export async function scrapeProgramList(page: Page, baseUrl: string): Promise<Pr
         programsList.push({
           program_ref: programRef,
           title: programData.title,
-          schedule_text: programData.schedule,
-          age_range: programData.ageRange,
           price: programData.price,
           status: programData.status,
           url: programData.url,
-          description: ''
+          is_full: programData.status === 'Full' || programData.status === 'Waitlist'
         });
       } catch (extractErr: any) {
         console.error(`⚠️ Error extracting a program entry:`, extractErr.message);
@@ -126,14 +121,15 @@ export async function scrapeProgramList(page: Page, baseUrl: string): Promise<Pr
     telemetry.record("extraction_method", { provider: "blackhawk", method: "ai", program_count: extractedPrograms.length });
     
     const programsList: ProgramData[] = extractedPrograms.map((prog: any) => ({
-      program_ref: prog.program_ref || prog.id || '',
+      program_ref: (prog.cta_href && prog.cta_href.match(/\/(?:program|registration)\/(\d+)/))
+                   ? prog.cta_href.match(/\/(?:program|registration)\/(\d+)/)![1]
+                   : (prog.program_ref || ''),
       title: prog.title || '',
-      schedule_text: prog.schedule || '',
-      age_range: prog.age_range || '',
       price: prog.price || '',
-      status: prog.status || 'Open',
+      status: (!prog.status || prog.status.toLowerCase() === 'open') ? 'Register' : prog.status,
       url: prog.cta_href ? (prog.cta_href.startsWith('/') ? baseUrl + prog.cta_href : prog.cta_href) : '',
-      description: prog.description || ''
+      signup_start_time: prog.signup_start_time || '',
+      is_full: ['full', 'waitlist'].includes((prog.status || '').toLowerCase())
     }));
     
     return programsList;
@@ -141,6 +137,7 @@ export async function scrapeProgramList(page: Page, baseUrl: string): Promise<Pr
     console.error('[blackhawk-ski-club] ⚠️ AI extraction failed, falling back to CSS selectors:', aiError.message);
     const programsList = await fallbackExtract();
     const reason = aiError.message?.includes('invalid JSON') ? 'parse_error' : 'exception';
+    telemetry.record("extraction_error", { provider: "blackhawk", error_type: reason, error: aiError.message });
     telemetry.record("extraction_method", { provider: "blackhawk", method: "css", program_count: programsList.length, fallback_reason: reason });
     return programsList;
   }
