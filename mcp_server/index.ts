@@ -819,22 +819,24 @@ class SignupAssistMCPServer {
         }
         
         try {
-          await refreshBlackhawkPrograms();  // Run full refresh for Blackhawk Ski Club
+          const orgRef = 'blackhawk-ski-club'; // Could be extracted from query/body in future
+          console.log(`[RefreshFeed] 🔄 Initiating program feed refresh for "${orgRef}"`);
           
-          // Query cached_programs to get count of refreshed programs
-          const { data, error } = await supabase
-            .from('cached_programs')
-            .select('metadata')
-            .eq('org_ref', 'blackhawk-ski-club')
-            .eq('category', 'all')
-            .single();
+          // Import telemetry dynamically to avoid issues
+          const { telemetry } = await import('./lib/telemetry.js');
+          telemetry.record('feed_refresh', { provider: 'blackhawk', action: 'start' });
           
-          const refreshedCount = (data?.metadata as any)?.programs_count || 0;
+          const programsCount = await refreshBlackhawkPrograms();  // Run full refresh for Blackhawk Ski Club
+          
+          telemetry.record('feed_refresh', { provider: 'blackhawk', status: 'success', programs_count: programsCount });
+          console.log(`[RefreshFeed] ✅ Refresh complete: ${programsCount} programs cached for ${orgRef}`);
           
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: true, refreshed: refreshedCount }));
+          res.end(JSON.stringify({ success: true, message: `Refreshed ${programsCount} programs for ${orgRef}.`, refreshed: programsCount }));
         } catch (err: any) {
-          console.error('[REFRESH-FEED] Error:', err);
+          console.error('[RefreshFeed] ❌ Feed refresh failed:', err.message);
+          const { telemetry } = await import('./lib/telemetry.js');
+          telemetry.record('feed_refresh', { provider: 'blackhawk', status: 'failed', error: err.message });
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ success: false, error: err.message || 'Unknown error' }));
         }
