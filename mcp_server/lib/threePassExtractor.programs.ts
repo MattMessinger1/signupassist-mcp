@@ -315,28 +315,52 @@ async function callStrictExtraction(opts: {
       ]
     });
     
-    const text = res.choices?.[0]?.message?.content || "{}";
+    let text = res.choices?.[0]?.message?.content || "{}";
     
     // Diagnostic logging
     console.log(`[threePassExtractor] Response length: ${text?.length || 0}`);
     console.log(`[threePassExtractor] Last 200 chars: ${text?.substring(Math.max(0, text.length - 200))}`);
     
+    // Strip markdown/code fences and isolate JSON content
+    text = text.replace(/```/g, '');
+    const firstBrace = text.indexOf('{');
+    const lastBrace = text.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      text = text.substring(firstBrace, lastBrace + 1).trim();
+    }
+    
+    // Check for unbalanced braces
+    const openCount = (text.match(/{/g) || []).length;
+    const closeCount = (text.match(/}/g) || []).length;
+    if (openCount !== closeCount) {
+      console.warn(`[threePassExtractor] JSON braces unbalanced: open=${openCount}, close=${closeCount}`);
+      if (openCount === closeCount + 1) {
+        text += '}';
+        console.warn('[threePassExtractor] Added missing closing brace to JSON text');
+      } else if (closeCount === openCount + 1) {
+        text = text.slice(0, text.lastIndexOf('}'));
+        console.warn('[threePassExtractor] Removed an extra closing brace from JSON text');
+      }
+    }
+    
     const parsed = safeJSONParse(text);
     
-    // Retry logic for invalid JSON - always retry up to 4 times for reliability
-    const maxRetries = 4;
-    if (!parsed && _retryCount < maxRetries) {
-      logOncePer(
+    // Retry logic for invalid JSON - retry up to 3 attempts for reliability
+    if (!parsed && _retryCount < 2) {
+        logOncePer(
         `extraction-retry-${opts.model}`,
         5000,
-        () => console.warn(`[threePassExtractor] Retrying extraction (attempt ${_retryCount + 2}/${maxRetries + 1})...`)
-      );
-      await new Promise(r => setTimeout(r, 1000));
-      return callStrictExtraction({ ...opts, _retryCount: _retryCount + 1 });
+        () => console.warn(`[threePassExtractor] Retrying extraction (attempt ${_retryCount + 2}/3)...`)
+        );
+        await new Promise(r => setTimeout(r, 1000));
+        return callStrictExtraction({ ...opts, _retryCount: _retryCount + 1 });
     }
     
     if (!parsed) {
-      console.error(`[threePassExtractor] Invalid JSON response after ${maxRetries + 1} attempts:`, text?.substring(0, 500));
+      let parseError = '';
+      try { JSON.parse(text); } catch (e: any) { parseError = e.message; }
+      console.error(`[threePassExtractor] Invalid JSON response after 3 attempts: ${parseError}`);
+      console.error(`[threePassExtractor] Partial response: ${text.substring(0, 500)}`);
       throw new Error('OpenAI returned invalid JSON after 3 attempts');
     }
     
@@ -680,6 +704,12 @@ Return validated programs array in strict JSON format.`,
     // Step 4: Graceful fallback on complete failure
     console.error('[PACK-06] Extraction failed completely:', err.message);
     console.warn('[PACK-06] Returning empty programs array as fallback');
+    const provName = orgRef.split('-')[0] || orgRef;
+    if (err.message?.includes('invalid JSON')) {
+      telemetry.record("extraction_error", { provider: provName, error_type: "parse_error", error: err.message });
+    } else {
+      telemetry.record("extraction_error", { provider: provName, error_type: "failure", error: err.message });
+    }
     return []; // Don't crash the entire mandate flow
   }
 }
