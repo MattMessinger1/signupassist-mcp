@@ -29,3 +29,6 @@ verify_jwt = true  # SECURED: Require authentication to prevent unauthorized mas
 
 [functions.refresh-provider-feed]
 verify_jwt = true  # SECURED: Prevent unauthorized calls creating infinite Browserbase sessions
+
+[functions.refresh-provider-details]
+verify_jwt = false  # Allow cron job to call without JWT (uses MCP_ACCESS_TOKEN internally)
