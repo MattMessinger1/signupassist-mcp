@@ -52,7 +52,7 @@ import { skiClubProTools } from './providers/skiclubpro.js';
 // import { daysmartTools } from '../providers/daysmart/index';
 // import { campminderTools } from '../providers/campminder/index';
 import { programFeedTools } from './providers/programFeed.js';
-import { refreshBlackhawkPrograms } from './providers/blackhawk.js'; // Import Blackhawk refresh function
+import { refreshBlackhawkPrograms, refreshBlackhawkProgramDetail } from './providers/blackhawk.js'; // Import Blackhawk refresh functions
 import { createClient } from '@supabase/supabase-js';
 
 // Initialize Supabase client for database operations (service role)
@@ -840,6 +840,110 @@ class SignupAssistMCPServer {
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ success: false, error: err.message || 'Unknown error' }));
         }
+        return;
+      }
+
+      // --- Hydrate program details (triggers detail page scraping for specific programs)
+      if (req.method === 'POST' && url.pathname === '/hydrate-program-details') {
+        const timestamp = new Date().toISOString();
+        const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+        
+        console.log('[HYDRATE-DETAILS] Detail hydration request received', {
+          timestamp,
+          clientIp
+        });
+        
+        // Require internal authorization token
+        const authHeader = req.headers['authorization'] as string | undefined;
+        const mcpToken = process.env.MCP_ACCESS_TOKEN;
+        
+        if (!mcpToken || authHeader !== `Bearer ${mcpToken}`) {
+          console.warn('❌ Unauthorized /hydrate-program-details call (bad token)');
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Unauthorized' }));
+          return;
+        }
+        
+        let body = '';
+        req.on('data', (chunk) => (body += chunk));
+        req.on('end', async () => {
+          try {
+            const { provider = 'blackhawk', program_refs } = JSON.parse(body || '{}');
+            
+            if (provider !== 'blackhawk') {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Unsupported provider' }));
+              return;
+            }
+            
+            // Import functions dynamically
+            const { refreshBlackhawkProgramDetail } = await import('./providers/blackhawk.js');
+            const { createClient } = await import('@supabase/supabase-js');
+            
+            const supabaseUrl = process.env.SUPABASE_URL!;
+            const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+            const supabase = createClient(supabaseUrl, supabaseServiceKey);
+            
+            // Determine target program refs (either provided or all not yet hydrated)
+            let targetRefs: string[];
+            if (program_refs) {
+              targetRefs = Array.isArray(program_refs) ? program_refs : [program_refs];
+            } else {
+              const { data: feedCache } = await supabase
+                .from('cached_programs')
+                .select('programs_by_theme')
+                .eq('org_ref', 'blackhawk-ski-club')
+                .eq('category', 'all')
+                .single();
+                
+              if (!feedCache) throw new Error('No feed cache found');
+              
+              const allPrograms: any[] = [];
+              for (const progs of Object.values(feedCache.programs_by_theme)) {
+                allPrograms.push(...(progs as any[]));
+              }
+              
+              const allRefs = allPrograms.map((p: any) => p.program_ref);
+              
+              const { data: detailCache } = await supabase
+                .from('cached_provider_feed')
+                .select('program_ref')
+                .eq('org_ref', 'blackhawk-ski-club');
+                
+              const cachedRefs = new Set((detailCache || []).map((item: any) => item.program_ref));
+              targetRefs = allRefs.filter(ref => !cachedRefs.has(ref));
+            }
+            
+            // Hydrate each uncached program detail
+            let count = 0;
+            const errors: Array<{ program_ref: string; error: string }> = [];
+            
+            for (const ref of targetRefs) {
+              try {
+                await refreshBlackhawkProgramDetail(ref);
+                count++;
+              } catch (err: any) {
+                console.error(`Error hydrating details for ${ref}:`, err);
+                errors.push({ program_ref: ref, error: err.message });
+              }
+            }
+            
+            console.log(`[HYDRATE-DETAILS] ✅ Hydrated ${count}/${targetRefs.length} programs`);
+            
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ 
+              success: true, 
+              provider: 'blackhawk', 
+              hydrated: count,
+              total: targetRefs.length,
+              errors: errors.length > 0 ? errors : undefined
+            }));
+          } catch (err: any) {
+            console.error('[HYDRATE-DETAILS] ❌ Hydration failed:', err.message);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false, error: err.message }));
+          }
+        });
         return;
       }
 
