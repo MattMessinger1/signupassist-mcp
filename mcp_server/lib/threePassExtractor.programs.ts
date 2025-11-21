@@ -596,8 +596,8 @@ Rules:
           await new Promise(r => setTimeout(r, backoffMs));
         }
         
-        // Recursive split in accuracy mode (only if batch size > 1)
-        if (accuracyMode && batch.length > 1) {
+        // Recursive split for error recovery (only if batch size > 1)
+        if (batch.length > 1) {
           console.warn(`[PACK-06 Pass 2] ${batchId}: Splitting batch of ${batch.length} into smaller batches`);
           telemetry.record('extraction_batch_split', { 
             originalSize: batch.length, 
