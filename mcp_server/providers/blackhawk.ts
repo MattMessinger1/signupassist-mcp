@@ -25,7 +25,7 @@ export async function refreshBlackhawkPrograms(): Promise<number> {
   const orgRef = 'blackhawk-ski-club';
   const providerId = 'skiclubpro';
   console.log(`[${orgRef}] 🔄 Starting full program feed refresh...`);
-  telemetry.record("feed_refresh", { provider: "blackhawk", action: "start" });
+  telemetry.record("feed_refresh_start", { provider: "blackhawk" });
 
     // Try to reuse existing session or launch new one
     let session: BrowserbaseSession | null = null;
@@ -184,48 +184,18 @@ export async function refreshBlackhawkPrograms(): Promise<number> {
         const isClosedOrFull = /full|sold out|closed|waitlist only/i.test(statusText);
         
         if (isClosedOrFull) {
-          console.log(
-            `[${orgRef}] ⏭️ Skipping form discovery for closed program "${program.title}" (status=${program.status})`
-          );
-          
-          // Mark as closed in metadata for UI/AAP awareness
+          console.log(`[${orgRef}] ⏭️ Skipping form discovery for closed program "${program.title}" (status=${program.status})`);
           questionsSchema[progRef] = {
             fields: [],
-            metadata: {
-              registration_open: false,
-              skip_reason: 'program_closed',
-              status: program.status
-            }
+            metadata: { registration_open: false, skip_reason: 'program_closed', status: program.status }
           };
-          
-          console.log(`[${orgRef}] ✅ Processed program "${program.title}" (${progRef}) - SKIPPED`);
-          continue; // Skip to next program
+          console.log(`[${orgRef}] ✅ Marked program "${program.title}" (${progRef}) as closed.`);
+          continue;
         }
-
-        // Load the program's registration page to discover signup form fields
-        console.log(`[${orgRef}] 🔎 Extracting form fields for "${program.title}"...`);
         
-        // Resolve to absolute URL (handles relative paths from AI extractor)
-        const targetUrl = program.url 
-          ? resolveSkiClubProUrl(orgRef, program.url)
-          : resolveSkiClubProUrl(orgRef, `/registration/${progRef}`);
-
-        console.log(`[${orgRef}] 🌐 Navigating to: ${targetUrl}`);
-        await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
-
-        // Small delay to ensure form elements rendered
-        await page.waitForTimeout(1500);
-        const formDiscovery = await discoverFieldsSerially(page, progRef);
-        
-        questionsSchema[progRef] = {
-          fields: formDiscovery.fields || [],
-          metadata: {
-            ...formDiscovery.metadata,
-            registration_open: true,
-            partial_schema: formDiscovery.fields?.length ? undefined : true
-          }
-        };
-        console.log(`[${orgRef}] ✅ Processed program "${program.title}" (${progRef}).`);
+        // Defer detail hydration for open programs
+        console.log(`[${orgRef}] ⏩ Deferring detail hydration for "${program.title}" (${progRef})`);
+        continue;
       } catch (progErr: any) {
         console.error(`[${orgRef}] ⚠️ Error processing program "${program.title}":`, progErr.message);
         // Remove any partially added data for this program
@@ -328,7 +298,7 @@ export async function refreshBlackhawkPrograms(): Promise<number> {
     }
     
     console.log(`[${orgRef}] 🎉 Refresh complete: ${programsCount} programs cached under ${Object.keys(programsByTheme).length} themes.`);
-    telemetry.record("feed_refresh", { provider: "blackhawk", status: "complete", programs_count: programsCount });
+    telemetry.record("feed_refresh_complete", { provider: "blackhawk", programs_count: programsCount });
     return programsCount;
   } catch (err: any) {
     console.error(`[${orgRef}] ❌ Pipeline error:`, err.message);
@@ -387,6 +357,132 @@ export async function refreshBlackhawkPrograms(): Promise<number> {
         session_id: session.sessionId 
       });
       await closeBrowserbaseSession(session);
+    }
+  }
+}
+
+/**
+ * Perform a detail-page scrape for a single program and cache the results.
+ */
+export async function refreshBlackhawkProgramDetail(program_ref: string): Promise<void> {
+  const orgRef = 'blackhawk-ski-club';
+  const providerId = 'skiclubpro';
+  console.log(`[${orgRef}] 🔄 Hydrating detail for program ${program_ref}...`);
+  telemetry.record("program_detail_hydration", { provider: "blackhawk", program_ref });
+  
+  let session: BrowserbaseSession | null = null;
+  let sessionToken: string | null = null;
+  let sessionReused = false;
+  
+  try {
+    const existingSession = await getSession();
+    if (existingSession) {
+      session = existingSession.session;
+      sessionToken = existingSession.newToken;
+      sessionReused = true;
+      telemetry.record("browserbase_session", { provider: "blackhawk", action: "reused", session_id: session.sessionId });
+    } else {
+      session = await launchBrowserbaseSession();
+      sessionToken = generateToken();
+      telemetry.record("browserbase_session", { provider: "blackhawk", action: "launched", session_id: session.sessionId });
+    }
+    
+    const { page, browser } = session;
+    const baseUrl = getProvider(providerId)!.buildBaseUrl(orgRef);
+    
+    if (sessionReused) {
+      await page.goto(`${baseUrl}/registration`, { waitUntil: 'networkidle' });
+      if (!await isAuthenticated(page)) sessionReused = false;
+    }
+    
+    if (!sessionReused) {
+      const credId = process.env.SCP_SERVICE_CRED_ID!;
+      const credentials = await lookupCredentialsById(credId);
+      const loginResult = await performLogin(page, browser, baseUrl, credentials);
+      if (!loginResult.success) {
+        telemetry.record("login_failed", { provider: "blackhawk", error: loginResult.error });
+        throw new Error(`Login failed: ${loginResult.error}`);
+      }
+      telemetry.record("login_success", { provider: "blackhawk" });
+      if (sessionToken) storeSession(sessionToken, session);
+    }
+    
+    const targetUrl = `${baseUrl}/registration/${program_ref}`;
+    await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
+    await page.waitForTimeout(2000);
+    
+    // Gather prerequisites (membership, waivers, etc.)
+    const prereqResults = await runChecks(providerId, { page, baseUrl, orgRef });
+    const prereqData: Record<string, any> = {};
+    if (Array.isArray(prereqResults)) {
+      for (const result of prereqResults) {
+        const checkId = result.id || '';
+        if (checkId.includes('membership')) prereqData['membership'] = { required: true, check: checkId, message: 'Active club membership required.' };
+        else if (checkId.includes('waiver')) prereqData['waiver'] = { required: true, check: checkId, message: 'Waiver must be signed.' };
+        else if (checkId.includes('payment')) prereqData['payment_method'] = { required: true, check: checkId, message: 'Payment method on file required.' };
+        else if (result.label?.toLowerCase().includes('child profile')) {
+          prereqData['child_profile'] = { required: true, check: checkId || 'family.children', message: 'Child profile required.' };
+        }
+      }
+    }
+    
+    // Determine if registration is open (check page content for full/closed indicators)
+    const pageText = await page.content();
+    const registrationOpen = !/full|waitlist only|registration closed/i.test(pageText);
+    
+    let signupForm: any;
+    if (!registrationOpen) {
+      signupForm = {
+        fields: [],
+        metadata: {
+          registration_open: false,
+          status: pageText.match(/waitlist/i) ? 'Waitlist' : 'Full'
+        }
+      };
+    } else {
+      const formDiscovery = await discoverFieldsSerially(page, program_ref);
+      signupForm = {
+        fields: formDiscovery.fields || [],
+        metadata: {
+          ...formDiscovery.metadata,
+          registration_open: true,
+          partial_schema: formDiscovery.fields?.length ? undefined : true
+        }
+      };
+    }
+    
+    // Upsert detail data into cached_provider_feed table
+    const { data: feedCache } = await supabase.from('cached_programs').select('programs_by_theme').eq('org_ref', orgRef).eq('category', 'all').single();
+    const programSummary = feedCache ? Object.values(feedCache.programs_by_theme).flat().find((p: any) => p.program_ref === program_ref) || {} : {};
+    
+    const { error: upsertError } = await supabase.rpc('upsert_cached_provider_feed', {
+      p_org_ref: orgRef,
+      p_program_ref: program_ref,
+      p_category: (programSummary as any).theme || 'all',
+      p_program: { ...programSummary, cached_at: new Date().toISOString() },
+      p_prereq: prereqData,
+      p_signup_form: signupForm
+    });
+    
+    if (upsertError) throw new Error(`Cache upsert failed: ${upsertError.message}`);
+    
+    telemetry.record("program_detail_cached", { provider: "blackhawk", program_ref });
+    console.log(`[${orgRef}] 💾 Program ${program_ref} details cached.`);
+  } catch (err: any) {
+    console.error(`[${orgRef}] ❌ Detail hydration error for ${program_ref}:`, err.message);
+    telemetry.record("extraction_error", { provider: "blackhawk", context: "program_detail", program_ref, error: err.message });
+    throw err;
+  } finally {
+    if (session && sessionToken) {
+      if (sessionReused) {
+        storeSession(sessionToken, session);
+        telemetry.record("browserbase_session", { provider: "blackhawk", action: "ttl_refreshed", session_id: session.sessionId });
+      } else {
+        telemetry.record("browserbase_session", { provider: "blackhawk", action: "stored_for_reuse", session_id: session.sessionId });
+      }
+    } else if (session) {
+      await closeBrowserbaseSession(session);
+      telemetry.record("browserbase_session", { provider: "blackhawk", action: "closing", session_id: session.sessionId });
     }
   }
 }
