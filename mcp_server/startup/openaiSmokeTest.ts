@@ -23,7 +23,10 @@ interface SmokeTestResult {
  */
 async function testResponsesAPI(openai: OpenAI): Promise<SmokeTestResult> {
   try {
-    const model = "gpt-4o-mini"; // Fast, cheap model for testing
+    // NOTE: Intentionally using mini model for smoke test to keep boot time fast and costs low
+    // This validates API connectivity and parameter structure, not extraction accuracy
+    // Production extraction uses OPENAI_MODEL_PROGRAM_* env vars (gpt-4o)
+    const model = "gpt-4o-mini";
     const messages = [
       { role: "system", content: "Return valid JSON only." },
       { role: "user", content: '{"test": "smoke test"}' }
@@ -73,7 +76,10 @@ async function testResponsesAPI(openai: OpenAI): Promise<SmokeTestResult> {
  */
 async function testChatCompletionsAPI(openai: OpenAI): Promise<SmokeTestResult> {
   try {
-    const model = "gpt-4o-mini"; // Fast, cheap model for testing
+    // NOTE: Intentionally using mini model for smoke test to keep boot time fast and costs low
+    // This validates API connectivity and parameter structure, not extraction accuracy
+    // Production extraction uses OPENAI_MODEL_PROGRAM_* env vars (gpt-4o)
+    const model = "gpt-4o-mini";
     const messages = [
       { role: "system", content: "Return valid JSON only." },
       { role: "user", content: 'Return this JSON: {"status": "ok"}' }
