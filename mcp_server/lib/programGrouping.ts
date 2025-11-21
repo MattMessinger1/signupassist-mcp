@@ -209,15 +209,17 @@ function ungroupedFallback(
 ): GroupedProgramsResult {
   
   const mappedPrograms: GroupedProgram[] = programs.slice(0, maxPerGroup).map(p => ({
-    program_id: p.id,
+    program_id: p.program_ref,
     title: p.title,
-    brief: p.description || '',
-    age_range: p.age_range,
-    schedule: p.schedule,
+    brief: p.title, // Use title as brief since description not available
+    age_range: '', // Not available in ProgramData
+    schedule: '', // Not available in ProgramData
     price: p.price,
-    status: 'open' as const,
+    status: p.status || 'open',
     cta_label: 'Register',
-    cta_href: undefined
+    cta_href: p.cta_href,
+    program_ref: p.program_ref,
+    org_ref: p.org_ref
   }));
 
   return {
