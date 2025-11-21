@@ -166,18 +166,14 @@ async function filterProgramCandidates(
 
 
 export interface ProgramData {
-  id: string;
   program_ref: string;
   title: string;
-  description: string;
-  schedule: string;
-  age_range: string;
-  skill_level: string;
   price: string;
-  actual_id: string;
   org_ref: string;
   status?: string;
   cta_href?: string;
+  signup_start_time?: string;
+  is_full?: boolean;
 }
 
 type Models = { vision: string; extractor: string; validator: string; };
@@ -203,21 +199,17 @@ const ExtractionSchema = {
       description: "Array of program items extracted from HTML.",
       items: {
         type: "object",
-        description: "A single program item with all extracted fields.",
+        description: "A single program item with summary fields only.",
         properties: {
-          id: { type: "number", description: "Numeric index from snippet." },
           title: { type: "string", description: "Program title or name." },
-          description: { type: "string", description: "Full program description text." },
           price: { type: "string", description: "Price as displayed in the source (whitespace stripped)." },
-          schedule: { type: "string", description: "Schedule dates or times." },
-          age_range: { type: "string", description: "Age range for participants." },
-          skill_level: { type: "string", description: "Skill level requirement." },
           status: { type: "string", description: "Availability status (Open, Register, Waitlist, Full, Closed, Sold Out, Restricted, TBD, -, or empty)." },
           program_ref: { type: "string", description: "Kebab-case slug reference (letters, digits, hyphens only)." },
           org_ref: { type: "string", description: "Organization reference identifier." },
-          cta_href: { type: "string", description: "Absolute URL to register/details page if visible, else empty string." }
+          cta_href: { type: "string", description: "Absolute URL to register/details page if visible, else empty string." },
+          signup_start_time: { type: "string", description: "Registration start date/time if listed (e.g. 'opens on X'), else empty string." }
         },
-        required: ["id", "title", "description", "price", "schedule", "age_range", "skill_level", "status", "program_ref", "org_ref", "cta_href"],
+        required: ["title", "price", "status", "program_ref", "org_ref", "cta_href"],
         additionalProperties: false
       }
     }
@@ -235,20 +227,17 @@ const ValidationSchema = {
       description: "Array of validated program objects.",
       items: {
         type: "object",
-        description: "A validated program with normalized fields.",
+        description: "A validated program with normalized summary fields.",
         properties: {
           title: { type: "string", description: "Validated program title." },
           program_ref: { type: "string", description: "Valid kebab-case slug." },
           price: { type: "string", description: "Normalized price format." },
-          schedule: { type: "string", description: "Schedule information." },
-          age_range: { type: "string", description: "Age range for program." },
-          skill_level: { type: "string", description: "Required skill level." },
           status: { type: "string", description: "Program availability." },
-          description: { type: "string", description: "Program description." },
           org_ref: { type: "string", description: "Organization reference." },
-          cta_href: { type: "string", description: "Absolute URL to register/details page." }
+          cta_href: { type: "string", description: "Absolute URL to register/details page." },
+          signup_start_time: { type: "string", description: "Registration start date/time if listed, else empty string." }
         },
-        required: ["title", "program_ref", "price", "schedule", "age_range", "skill_level", "status", "description", "org_ref", "cta_href"],
+        required: ["title", "program_ref", "price", "status", "org_ref", "cta_href"],
         additionalProperties: false
       }
     }
@@ -469,17 +458,14 @@ export async function runThreePassExtractorForPrograms(
         model: models.extractor,
         system: `You extract and validate REAL program listings from HTML snippets in ONE pass.
 
-For each real program, output normalized fields:
+For each real program, output fields:
 - title: exact program name text
-- description: full text or ""
 - price: as displayed (strip whitespace), or ""
-- schedule: dates/times as displayed, or ""
-- age_range: as displayed, or ""
-- skill_level: as displayed, or ""
 - status: one of ["Open","Register","Waitlist","Full","Closed","Sold Out","Restricted","TBD","-"] or ""
 - program_ref: kebab-case slug of title (letters/digits/hyphens)
 - org_ref: provided constant
 - cta_href: absolute URL to the program's register/details page if visible, else ""
+- signup_start_time: if a registration start date/time is listed (e.g. "opens on X"), else ""
 
 Rules:
 - Skip header rows, column labels, or non-program elements entirely.
@@ -543,17 +529,14 @@ Rules:
           model: models.extractor,
           system: `You extract REAL program listings from HTML snippets. Some snippets may be headers or containers—skip those entirely.
 
-For each real program, output fields with normalization:
+For each real program, output fields:
 - title: exact program name text
-- description: full text or ""
 - price: as displayed (strip whitespace), or ""
-- schedule: dates/times as displayed, or ""
-- age_range: as displayed, or ""
-- skill_level: as displayed, or ""
 - status: one of ["Open","Register","Waitlist","Full","Closed","Sold Out","Restricted","TBD","-"] or ""
 - program_ref: kebab-case slug of title (letters/digits/hyphens)
 - org_ref: provided constant
 - cta_href: absolute URL to the program's register/details page if visible, else ""
+- signup_start_time: if a registration start date/time is listed (e.g. "opens on X"), else ""
 
 Rules:
 - If a snippet is a header row, column label (e.g., "Confirm"), or contains no program data, OUTPUT NOTHING for it.
