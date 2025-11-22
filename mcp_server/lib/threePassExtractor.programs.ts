@@ -169,11 +169,8 @@ export interface ProgramData {
   program_ref: string;
   title: string;
   price: string;
-  org_ref: string;
-  status?: string;
-  cta_href?: string;
+  status: string;
   signup_start_time?: string;
-  is_full?: boolean;
 }
 
 type Models = { vision: string; extractor: string; validator: string; };
