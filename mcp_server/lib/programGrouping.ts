@@ -215,11 +215,9 @@ function ungroupedFallback(
     age_range: '', // Not available in ProgramData
     schedule: '', // Not available in ProgramData
     price: p.price,
-    status: p.status || 'open',
+    status: p.status,
     cta_label: 'Register',
-    cta_href: p.cta_href,
-    program_ref: p.program_ref,
-    org_ref: p.org_ref
+    program_ref: p.program_ref
   }));
 
   return {
