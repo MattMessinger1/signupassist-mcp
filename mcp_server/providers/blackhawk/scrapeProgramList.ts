@@ -57,9 +57,11 @@ export async function scrapeProgramList(page: Page, baseUrl: string): Promise<Pr
           let status = '';
           if (regLinkElem && (regLinkElem as HTMLElement).innerText) {
             const linkText = (regLinkElem as HTMLElement).innerText.toLowerCase();
-            if (linkText.includes('waitlist')) status = 'Waitlist';
-            else if (linkText.includes('full') || linkText.includes('sold out') || linkText.includes('closed')) status = 'Full';
-            else status = 'Register';
+            if (linkText.includes('waitlist') || linkText.includes('full') || linkText.includes('sold out') || linkText.includes('closed')) {
+              status = 'Full';
+            } else {
+              status = 'Open';
+            }
           }
           return { title, price, url, status };
         });
@@ -75,14 +77,13 @@ export async function scrapeProgramList(page: Page, baseUrl: string): Promise<Pr
           programRef = programData.title.toLowerCase().replace(/[^a-z0-9]+/g, '-');
         }
 
-        programsList.push({
-          program_ref: programRef,
-          title: programData.title,
-          price: programData.price,
-          status: programData.status,
-          url: programData.url,
-          is_full: programData.status === 'Full' || programData.status === 'Waitlist'
-        });
+      programsList.push({
+        program_ref: programRef,
+        title: programData.title,
+        price: programData.price,
+        status: programData.status
+        // signup_start_time is not captured in fallback (defaults to undefined)
+      });
       } catch (extractErr: any) {
         console.error(`⚠️ Error extracting a program entry:`, extractErr.message);
       }
@@ -120,17 +121,18 @@ export async function scrapeProgramList(page: Page, baseUrl: string): Promise<Pr
     console.log(`[blackhawk-ski-club] ✅ AI extraction found ${extractedPrograms.length} programs`);
     telemetry.record("extraction_method", { provider: "blackhawk", method: "ai", program_count: extractedPrograms.length });
     
-    const programsList: ProgramData[] = extractedPrograms.map((prog: any) => ({
-      program_ref: (prog.cta_href && prog.cta_href.match(/\/(?:program|registration)\/(\d+)/))
-                   ? prog.cta_href.match(/\/(?:program|registration)\/(\d+)/)![1]
-                   : (prog.program_ref || ''),
-      title: prog.title || '',
-      price: prog.price || '',
-      status: (!prog.status || prog.status.toLowerCase() === 'open') ? 'Register' : prog.status,
-      url: prog.cta_href ? (prog.cta_href.startsWith('/') ? baseUrl + prog.cta_href : prog.cta_href) : '',
-      signup_start_time: prog.signup_start_time || '',
-      is_full: ['full', 'waitlist'].includes((prog.status || '').toLowerCase())
-    }));
+    const programsList: ProgramData[] = extractedPrograms.map((prog: any) => {
+      const statusText = (prog.status || '').toLowerCase();
+      return {
+        program_ref: prog.program_ref || '',
+        title: prog.title || '',
+        price: prog.price || '',
+        status: (statusText.includes('waitlist') || statusText.includes('full') || statusText.includes('closed') || statusText.includes('sold'))
+                ? 'Full'
+                : 'Open',
+        signup_start_time: prog.signup_start_time || ''
+      };
+    });
     
     return programsList;
   } catch (aiError: any) {
