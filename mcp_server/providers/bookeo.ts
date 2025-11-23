@@ -39,6 +39,42 @@ function bookeoHeaders() {
 }
 
 /**
+ * Strip HTML tags and decode entities from text
+ */
+function stripHtml(html: string): string {
+  if (!html) return '';
+  
+  // Remove HTML tags
+  let text = html.replace(/<[^>]*>/g, ' ');
+  
+  // Decode common HTML entities
+  const entities: Record<string, string> = {
+    '&rarr;': '→',
+    '&larr;': '←',
+    '&ndash;': '–',
+    '&mdash;': '—',
+    '&rsquo;': "'",
+    '&lsquo;': "'",
+    '&rdquo;': '"',
+    '&ldquo;': '"',
+    '&nbsp;': ' ',
+    '&amp;': '&',
+    '&lt;': '<',
+    '&gt;': '>',
+    '&quot;': '"'
+  };
+  
+  Object.entries(entities).forEach(([entity, char]) => {
+    text = text.replace(new RegExp(entity, 'g'), char);
+  });
+  
+  // Clean up excessive whitespace
+  text = text.replace(/\s+/g, ' ').trim();
+  
+  return text;
+}
+
+/**
  * Tool: bookeo.find_programs
  * Fetches available programs/products from Bookeo API and returns ChatGPT carousel
  */
@@ -109,7 +145,7 @@ async function findPrograms(args: {
           prog.price || 'Price varies',
           prog.signup_start_time ? new Date(prog.signup_start_time).toLocaleDateString() : 'Date TBD'
         ].join(' • '),
-        body: prog.description || '',
+        body: stripHtml(prog.description || ''),
         program_ref: prog.program_ref,
         org_ref: prog.org_ref,
         actions: [
@@ -736,7 +772,7 @@ export async function findProgramsMultiBackend(
       return {
         ref: row.program_ref,
         title: prog.title || 'Untitled Program',
-        description: prog.description || '',
+        description: stripHtml(prog.description || ''),
         schedule: prog.schedule || '',
         price: prog.price || 'Price varies',
         status: prog.status || ''
