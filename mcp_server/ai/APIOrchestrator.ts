@@ -12,6 +12,18 @@ import type {
 } from "./types.js";
 import Logger from "../utils/logger.js";
 import * as bookeoProvider from "../providers/bookeo.js";
+import { 
+  validateDesignDNA, 
+  addResponsibleDelegateFooter,
+  addAPISecurityContext 
+} from "./designDNA.js";
+import {
+  getAPIProgramsReadyMessage,
+  getAPIFormIntroMessage,
+  getAPIPaymentSummaryMessage,
+  getAPISuccessMessage,
+  getAPIErrorMessage
+} from "./apiMessageTemplates.js";
 
 // Simple flow steps for API-first providers
 enum FlowStep {
@@ -181,10 +193,34 @@ export default class APIOrchestrator {
         ]
       }));
 
-      return this.formatResponse(
-        `Here are the available classes from **${orgRef === "aim-design" ? "AIM Design" : orgRef}**:`,
+      // Use Design DNA-compliant message template
+      const message = getAPIProgramsReadyMessage({
+        provider_name: orgRef === "aim-design" ? "AIM Design" : orgRef,
+        program_count: programs.length
+      });
+
+      const response: OrchestratorResponse = {
+        message,
         cards
-      );
+      };
+
+      // Validate Design DNA compliance
+      const validation = validateDesignDNA(response, {
+        step: 'browse',
+        isWriteAction: false
+      });
+
+      if (!validation.passed) {
+        Logger.error('[DesignDNA] Validation failed:', validation.issues);
+      }
+      
+      if (validation.warnings.length > 0) {
+        Logger.warn('[DesignDNA] Warnings:', validation.warnings);
+      }
+
+      Logger.info('[DesignDNA] Validation passed ✅');
+
+      return response;
     } catch (error) {
       Logger.error("Error searching programs:", error);
       return this.formatError("Failed to load programs. Please try again.");
@@ -218,19 +254,49 @@ export default class APIOrchestrator {
       ]
     };
 
-    return this.formatResponse(
-      `Great! Let's sign you up for **${programName}**. Please provide the following information:`,
-      undefined,
-      [
-        { 
-          label: "Fill Form", 
-          action: "submit_form", 
-          payload: { signupForm },
-          variant: "accent" 
-        }
-      ],
-      { signupForm }
-    );
+    // Use Design DNA-compliant message template
+    const message = getAPIFormIntroMessage({
+      program_name: programName
+    });
+
+    const response: OrchestratorResponse = {
+      message,
+      cards: [{
+        title: "Registration Form",
+        subtitle: programName,
+        body: "Fill in the details below to continue.",
+        actions: []
+      }],
+      cta: {
+        buttons: [
+          { 
+            label: "Fill Form", 
+            action: "submit_form", 
+            payload: { signupForm },
+            variant: "accent" 
+          }
+        ]
+      },
+      metadata: { signupForm }
+    };
+
+    // Validate Design DNA compliance
+    const validation = validateDesignDNA(response, {
+      step: 'form',
+      isWriteAction: false
+    });
+
+    if (!validation.passed) {
+      Logger.error('[DesignDNA] Validation failed:', validation.issues);
+    }
+    
+    if (validation.warnings.length > 0) {
+      Logger.warn('[DesignDNA] Warnings:', validation.warnings);
+    }
+
+    Logger.info('[DesignDNA] Validation passed ✅');
+
+    return response;
   }
 
   /**
@@ -255,15 +321,54 @@ export default class APIOrchestrator {
 
     const programName = context.selectedProgram?.title || "Selected Program";
     const price = context.selectedProgram?.price || "Price varies";
+    const participantName = formData.child_name || "participant";
 
-    return this.formatResponse(
-      `Perfect! Here's your booking summary:\n\n**Program:** ${programName}\n**Price:** ${price}\n\nReady to complete your booking?`,
-      undefined,
-      [
-        { label: "Confirm & Pay", action: "confirm_payment", variant: "accent" },
-        { label: "Go Back", action: "search_programs", payload: { orgRef: context.orgRef }, variant: "secondary" }
-      ]
-    );
+    // Use Design DNA-compliant message template
+    let message = getAPIPaymentSummaryMessage({
+      program_name: programName,
+      participant_name: participantName,
+      total_cost: price
+    });
+
+    // Add security context (Design DNA requirement)
+    message = addAPISecurityContext(message, "Bookeo");
+    
+    // Add Responsible Delegate footer (Design DNA requirement)
+    message = addResponsibleDelegateFooter(message);
+
+    const response: OrchestratorResponse = {
+      message,
+      cards: [{
+        title: "Booking Confirmation",
+        subtitle: programName,
+        body: `Participant: ${participantName}\nTotal: ${price}`,
+        actions: []
+      }],
+      cta: {
+        buttons: [
+          { label: "Confirm & Pay", action: "confirm_payment", variant: "accent" },
+          { label: "Go Back", action: "search_programs", payload: { orgRef: context.orgRef }, variant: "outline" }
+        ]
+      }
+    };
+
+    // Validate Design DNA compliance
+    const validation = validateDesignDNA(response, {
+      step: 'payment',
+      isWriteAction: true
+    });
+
+    if (!validation.passed) {
+      Logger.error('[DesignDNA] Validation failed:', validation.issues);
+    }
+    
+    if (validation.warnings.length > 0) {
+      Logger.warn('[DesignDNA] Warnings:', validation.warnings);
+    }
+
+    Logger.info('[DesignDNA] Validation passed ✅');
+
+    return response;
   }
 
   /**
@@ -280,19 +385,46 @@ export default class APIOrchestrator {
       Logger.info("Processing payment for session:", sessionId);
 
       const programName = context.selectedProgram?.title || "program";
+      const bookingNumber = `BK${Date.now()}`;
 
       // Reset context for new search
       this.updateContext(sessionId, {
         step: FlowStep.BROWSE
       });
 
-      return this.formatResponse(
-        `🎉 Success! You're all signed up for **${programName}**.\n\nYou'll receive a confirmation email shortly with all the details.`,
-        undefined,
-        [
-          { label: "Browse More Classes", action: "search_programs", payload: { orgRef: context.orgRef || "aim-design" }, variant: "secondary" }
-        ]
-      );
+      // Use Design DNA-compliant success message
+      const message = getAPISuccessMessage({
+        program_name: programName,
+        booking_number: bookingNumber,
+        start_time: context.selectedProgram?.schedule || "TBD"
+      });
+
+      const response: OrchestratorResponse = {
+        message,
+        cta: {
+          buttons: [
+            { label: "Browse More Classes", action: "search_programs", payload: { orgRef: context.orgRef || "aim-design" }, variant: "outline" }
+          ]
+        }
+      };
+
+      // Validate Design DNA compliance
+      const validation = validateDesignDNA(response, {
+        step: 'browse', // Reset to browse after success
+        isWriteAction: false
+      });
+
+      if (!validation.passed) {
+        Logger.error('[DesignDNA] Validation failed:', validation.issues);
+      }
+      
+      if (validation.warnings.length > 0) {
+        Logger.warn('[DesignDNA] Warnings:', validation.warnings);
+      }
+
+      Logger.info('[DesignDNA] Validation passed ✅');
+
+      return response;
     } catch (error) {
       Logger.error("Payment error:", error);
       return this.formatError("Payment failed. Please try again or contact support.");

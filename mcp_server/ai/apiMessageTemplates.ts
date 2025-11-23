@@ -1,0 +1,76 @@
+/**
+ * API-First Message Templates
+ * Pre-written parent-friendly messages for Bookeo and other API providers
+ * (No login, no prerequisites - direct booking flow)
+ */
+
+export interface APIMessageVariables {
+  provider_name?: string;
+  program_count?: number;
+  program_name?: string;
+  participant_name?: string;
+  total_cost?: string;
+  booking_number?: string;
+  start_time?: string;
+}
+
+/**
+ * BROWSE step: Programs ready message
+ */
+export function getAPIProgramsReadyMessage(vars: APIMessageVariables): string {
+  const providerName = vars.provider_name || "your provider";
+  const count = vars.program_count || 0;
+  
+  return `✅ I found **${count}** available class${count !== 1 ? 'es' : ''} at ${providerName}. Browse below and tap any card to sign up — no login required! 🎉`;
+}
+
+/**
+ * FORM step: Signup form intro
+ */
+export function getAPIFormIntroMessage(vars: APIMessageVariables): string {
+  const programName = vars.program_name || "this program";
+  
+  return `Great choice! To sign up for **${programName}**, I'll need a few details. This info goes directly to the provider — we only collect what's essential for registration.`;
+}
+
+/**
+ * PAYMENT step: Booking summary
+ */
+export function getAPIPaymentSummaryMessage(vars: APIMessageVariables): string {
+  const programName = vars.program_name || "this program";
+  const participantName = vars.participant_name || "your participant";
+  const totalCost = vars.total_cost || "$0.00";
+  
+  return `Perfect! Here's your booking summary:
+
+**Program:** ${programName}
+**Participant:** ${participantName}
+**Total:** ${totalCost}
+
+Ready to confirm? By proceeding, you authorize SignupAssist to complete this registration on your behalf.`;
+}
+
+/**
+ * SUCCESS: Booking confirmed
+ */
+export function getAPISuccessMessage(vars: APIMessageVariables): string {
+  const programName = vars.program_name || "this program";
+  const bookingNumber = vars.booking_number || "N/A";
+  const startTime = vars.start_time || "TBD";
+  
+  return `🎉 Success! You're all signed up for **${programName}**!
+
+**Booking #${bookingNumber}**
+Starts: ${startTime}
+
+Confirmation email sent. See you there!`;
+}
+
+/**
+ * ERROR: Booking failed
+ */
+export function getAPIErrorMessage(vars: APIMessageVariables): string {
+  const providerName = vars.provider_name || "the provider";
+  
+  return `Oops, I ran into a snag connecting to ${providerName}. Let's try again — sometimes these APIs need a moment. Ready to retry?`;
+}
