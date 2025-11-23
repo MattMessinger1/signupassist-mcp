@@ -286,9 +286,11 @@ class SignupAssistMCPServer {
         return;
       }
 
-      // ==================== BOOKEO BOOKING ENDPOINTS ====================
+      // ==================== BOOKEO BOOKING ENDPOINTS (DEPRECATED) ====================
+      // These endpoints are now handled by MCP tools in mcp_server/providers/bookeo.ts
+      // Kept for backward compatibility only
       
-      // --- GET /list-programs - Fetch open programs as ChatGPT carousel
+      // --- GET /list-programs - DEPRECATED: Use bookeo.find_programs tool instead
       if (req.method === 'GET' && url.pathname === '/list-programs') {
         console.log('[BOOKEO] List programs request received');
         

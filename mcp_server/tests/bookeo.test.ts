@@ -20,6 +20,21 @@ describe('Bookeo Provider', () => {
     expect(discoverTool?.inputSchema.required).toContain('org_ref');
   });
 
+  it('should export create_hold tool', () => {
+    const createHoldTool = bookeoTools.find(t => t.name === 'bookeo.create_hold');
+    expect(createHoldTool).toBeDefined();
+    expect(createHoldTool?.inputSchema.required).toContain('eventId');
+    expect(createHoldTool?.inputSchema.required).toContain('productId');
+    expect(createHoldTool?.inputSchema.required).toContain('email');
+  });
+
+  it('should export confirm_booking tool', () => {
+    const confirmTool = bookeoTools.find(t => t.name === 'bookeo.confirm_booking');
+    expect(confirmTool).toBeDefined();
+    expect(confirmTool?.inputSchema.required).toContain('holdId');
+    expect(confirmTool?.inputSchema.required).toContain('email');
+  });
+
   it('should have proper tool structure', () => {
     bookeoTools.forEach(tool => {
       expect(tool.name).toBeTruthy();
@@ -27,6 +42,10 @@ describe('Bookeo Provider', () => {
       expect(tool.inputSchema).toBeDefined();
       expect(typeof tool.handler).toBe('function');
     });
+  });
+  
+  it('should have exactly 4 tools', () => {
+    expect(bookeoTools.length).toBe(4);
   });
 });
 

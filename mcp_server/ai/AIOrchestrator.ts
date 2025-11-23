@@ -2707,6 +2707,11 @@ Which would you prefer?`;
         throw new Error(`Tool ${toolName} returned success=false`);
       }
       
+      // Handle UI cards from tool responses (carousel, confirmation, status)
+      if (result?.ui?.cards) {
+        Logger.info(`[ToolResponse] Tool ${toolName} returned ${result.ui.cards.length} UI cards`);
+      }
+      
       this.saveToCache(cacheKey, result);
       Logger.info(`Tool ${toolName} succeeded.`);
       return result;

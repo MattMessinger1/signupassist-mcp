@@ -13,7 +13,9 @@ registerProvider({
   
   tools: {
     findPrograms: 'bookeo.find_programs',
-    discoverFields: 'bookeo.discover_required_fields'
+    discoverFields: 'bookeo.discover_required_fields',
+    createHold: 'bookeo.create_hold',
+    confirmBooking: 'bookeo.confirm_booking'
   },
   
   buildBaseUrl: (orgRef: string, customDomain?: string) => {
