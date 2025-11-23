@@ -189,9 +189,9 @@ Deno.serve(async (req) => {
       });
     }
     
-    // Date range for availability lookup (next 90 days)
+    // Date range for availability lookup (next 30 days - Bookeo API max is 31 days)
     const startDate = new Date().toISOString();
-    const endDate = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+    const endDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
     
     let syncedCount = 0;
     const errors: any[] = [];
