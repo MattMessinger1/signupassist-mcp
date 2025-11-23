@@ -47,6 +47,9 @@ function stripHtml(html: string): string {
   // Remove HTML tags
   let text = html.replace(/<[^>]*>/g, ' ');
   
+  // Remove structural prefixes like "Description → Section: General"
+  text = text.replace(/^[^:]*→\s*Section:\s*\w+\s*/i, '');
+  
   // Decode common HTML entities
   const entities: Record<string, string> = {
     '&rarr;': '→',
