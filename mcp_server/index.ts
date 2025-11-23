@@ -49,6 +49,7 @@ const __dirname = dirname(__filename);
 
 // Import tool providers
 import { skiClubProTools } from './providers/skiclubpro.js';
+import { bookeoTools } from './providers/bookeo.js';
 // import { daysmartTools } from '../providers/daysmart/index';
 // import { campminderTools } from '../providers/campminder/index';
 import { programFeedTools } from './providers/programFeed.js';
@@ -69,6 +70,7 @@ import { registerAllProviders } from './prereqs/providers.js';
 
 // Import provider and organization registries
 import './providers/skiclubpro/config.js'; // Auto-registers SkiClubPro
+import './providers/bookeo/config.js'; // Auto-registers Bookeo
 import './config/organizations.js'; // Auto-registers organizations
 // import './providers/campminder/config.js'; // Uncomment when ready
 
@@ -199,6 +201,16 @@ class SignupAssistMCPServer {
           additionalProperties: true,
         },
         handler,
+      });
+    });
+
+    // Register Bookeo tools
+    bookeoTools.forEach((tool) => {
+      this.tools.set(tool.name, {
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+        handler: tool.handler
       });
     });
 

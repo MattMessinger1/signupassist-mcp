@@ -105,4 +105,14 @@ registerOrganization({
 //   active: false // Not ready yet
 // });
 
+// Bookeo Organizations
+registerOrganization({
+  orgRef: 'bookeo-default',
+  provider: 'bookeo',
+  displayName: 'Bookeo Booking System',
+  categories: ['all', 'lessons', 'camps', 'events', 'tours'],
+  priority: 'high',
+  active: true
+});
+
 console.log('[OrgRegistry] Organization configurations loaded');

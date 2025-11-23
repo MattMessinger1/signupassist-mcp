@@ -3,6 +3,8 @@
  * Single source of truth for program status and access levels
  */
 
+export type Provider = 'skiclubpro' | 'bookeo' | 'campminder' | 'daysmart';
+
 export enum ProgramStatus {
   OPEN = 'Open',
   REGISTER = 'Register',
