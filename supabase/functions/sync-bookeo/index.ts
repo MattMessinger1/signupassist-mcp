@@ -143,6 +143,25 @@ function mapCategory(product: BookeoProduct): string {
   return 'all';
 }
 
+/**
+ * Detect organization from Bookeo product custom fields
+ * Smart namespacing based on product metadata
+ */
+function detectOrgRef(product: any): string {
+  const orgField = product.customFields?.find((f: any) => 
+    f.name.toLowerCase() === 'organization'
+  );
+  
+  if (orgField?.value) {
+    console.log(`[sync-bookeo] Product ${product.productId} → ${orgField.value}`);
+    return orgField.value;
+  }
+  
+  // Default to aim-design for existing products
+  console.log(`[sync-bookeo] Product ${product.productId} → aim-design (default)`);
+  return 'aim-design';
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -150,13 +169,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    console.log('[sync-bookeo] Starting Bookeo sync...');
-    
-    // Accept org_ref from request body (default to 'bookeo-default' for backward compatibility)
-    const requestBody = await req.json().catch(() => ({}));
-    const orgRef = requestBody.org_ref || 'bookeo-default';
-    
-    console.log(`[sync-bookeo] Syncing for organization: ${orgRef}`);
+    console.log('[sync-bookeo] Starting Bookeo sync with smart namespacing...');
     
     // Initialize Supabase admin client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -169,8 +182,7 @@ Deno.serve(async (req) => {
     if (products.length === 0) {
       return new Response(JSON.stringify({
         success: true,
-        message: `No products found for ${orgRef}`,
-        org_ref: orgRef,
+        message: 'No products found in Bookeo',
         synced: 0
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -182,11 +194,15 @@ Deno.serve(async (req) => {
     const endDate = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
     
     let syncedCount = 0;
-    const errors: string[] = [];
+    const errors: any[] = [];
+    const orgCounts: Record<string, number> = {};
     
     // Process each product
     for (const product of products) {
       try {
+        // Detect org from product metadata
+        const orgRef = detectOrgRef(product);
+        
         // Fetch availability slots for this product
         const slots = await fetchProductSlots(product.productId, startDate, endDate);
         
@@ -230,10 +246,11 @@ Deno.serve(async (req) => {
         
         if (error) {
           console.error(`[sync-bookeo] Error syncing product ${product.productId}:`, error);
-          errors.push(`${product.productId}: ${error.message}`);
+          errors.push({ productId: product.productId, error: error.message });
         } else {
           syncedCount++;
-          console.log(`[sync-bookeo] ✅ Synced product ${product.productId}: ${product.name}`);
+          orgCounts[orgRef] = (orgCounts[orgRef] || 0) + 1;
+          console.log(`[sync-bookeo] ✅ Synced ${product.productId} to ${orgRef}: ${product.name}`);
         }
         
       } catch (err) {
@@ -244,13 +261,14 @@ Deno.serve(async (req) => {
     }
     
     console.log(`[sync-bookeo] Sync complete: ${syncedCount}/${products.length} products synced`);
+    console.log('[sync-bookeo] Distribution by organization:', orgCounts);
     
     return new Response(JSON.stringify({
       success: true,
-      message: `Synced ${syncedCount}/${products.length} products for ${orgRef}`,
-      org_ref: orgRef,
+      message: `Synced ${syncedCount}/${products.length} Bookeo products across organizations`,
       synced: syncedCount,
       total: products.length,
+      organizations: orgCounts,
       errors: errors.length > 0 ? errors : undefined,
       timestamp: new Date().toISOString()
     }), {
