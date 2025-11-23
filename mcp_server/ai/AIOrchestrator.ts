@@ -460,7 +460,7 @@ class AIOrchestrator {
           const { searchOrganizations } = await import('../utils/providerSearch.js');
           const orgSearchResults = await searchOrganizations({ name: userMessage });
           
-          if (orgSearchResults.length > 0 && orgSearchResults[0].matchScore > 60) {
+          if (orgSearchResults.length > 0 && orgSearchResults[0].matchScore > 35) {
             const directOrgRef = orgSearchResults[0].orgRef;
             const orgProvider = orgSearchResults[0].provider;
             
