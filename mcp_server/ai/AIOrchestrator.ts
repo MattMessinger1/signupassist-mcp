@@ -434,6 +434,97 @@ class AIOrchestrator {
           hasLocationHint: Boolean(locationForHints)
         });
         
+        // ============================================================================
+        // PRE-TRIAGE: BROWSE MODE DETECTION
+        // If user explicitly names a provider + has browse intent, skip AAP entirely
+        // ============================================================================
+        
+        const browseIntentPatterns = [
+          /show\s+(me\s+)?(class|program|course|activit)/i,
+          /what\s+(class|program|course|activit)/i,
+          /find\s+(class|program|course|activit)/i,
+          /see\s+(class|program|course|activit)/i,
+          /browse/i,
+          /list/i
+        ];
+        
+        const hasBrowseIntent = browseIntentPatterns.some(pattern => pattern.test(userMessage));
+        
+        if (hasBrowseIntent) {
+          Logger.info('[PRE-TRIAGE] Browse intent detected, searching for explicit organization', { 
+            sessionId, 
+            userMessage: userMessage.substring(0, 100) 
+          });
+          
+          // Try to find organization in user message
+          const { searchOrganizations } = await import('../utils/providerSearch.js');
+          const orgSearchResults = await searchOrganizations({ name: userMessage });
+          
+          if (orgSearchResults.length > 0 && orgSearchResults[0].matchScore > 60) {
+            const directOrgRef = orgSearchResults[0].orgRef;
+            const orgProvider = orgSearchResults[0].provider;
+            
+            Logger.info('[PRE-TRIAGE] ✅ Direct org match, SKIPPING AAP QUESTIONS', {
+              org: orgSearchResults[0].displayName,
+              orgRef: directOrgRef,
+              provider: orgProvider,
+              score: orgSearchResults[0].matchScore
+            });
+            
+            // Execute discovery directly
+            const { findProgramsMultiBackend } = await import('../providers/bookeo.js');
+            const programs = await findProgramsMultiBackend(directOrgRef, orgProvider);
+            
+            Logger.info('[Multi-Backend] Browse mode programs found', { 
+              count: programs.length,
+              orgRef: directOrgRef 
+            });
+            
+            if (!programs || programs.length === 0) {
+              return this.formatResponse(
+                `I found ${orgSearchResults[0].displayName}, but no programs are currently available.`,
+                undefined,
+                undefined,
+                { ready_for_discovery: false }
+              );
+            }
+            
+            // Return cards
+            const cards = programs.map((prog: any) => ({
+              type: 'program',
+              title: prog.title,
+              subtitle: prog.schedule || prog.description?.substring(0, 60),
+              description: prog.description,
+              metadata: {
+                provider: orgProvider,
+                orgRef: directOrgRef,
+                programRef: prog.ref,
+                price: prog.price
+              },
+              buttons: [{
+                label: 'Select this program',
+                action: 'select_program',
+                payload: { 
+                  provider: orgProvider,
+                  orgRef: directOrgRef,
+                  programRef: prog.ref 
+                }
+              }]
+            }));
+            
+            return this.formatResponse(
+              `Here are the programs available at ${orgSearchResults[0].displayName}:`,
+              cards,
+              undefined,
+              { ready_for_discovery: true }
+            );
+          }
+        }
+        
+        // ============================================================================
+        // CONTINUE WITH NORMAL AAP TRIAGE
+        // ============================================================================
+        
         // Latency checkpoint: Before AAP triage
         t1 = Date.now();
         
@@ -500,30 +591,8 @@ class AIOrchestrator {
           aap: triageResult.aap
         });
         
-        // BROWSE MODE DETECTION: Skip AAP questions if user explicitly wants to see all programs from a provider
-        const browseMode = (
-          triageResult.aap?.provider?.status === 'known' &&
-          (
-            /show\s+(me\s+)?(class|program|course|activit)/i.test(userMessage) ||
-            /what\s+(class|program|course|activit)/i.test(userMessage) ||
-            /find\s+(class|program|course|activit)/i.test(userMessage) ||
-            /see\s+(class|program|course|activit)/i.test(userMessage) ||
-            /browse/i.test(userMessage) ||
-            /list/i.test(userMessage)
-          )
-        );
-
-        Logger.info('[BROWSE MODE CHECK]', {
-          sessionId,
-          browseMode,
-          hasProvider: triageResult.aap?.provider?.status === 'known',
-          userMessage: userMessage.substring(0, 100),
-          followupQuestionsCount: triageResult.followup_questions.length
-        });
-        
         // Combine multiple missing-field prompts into one message to avoid multi-turn loops
-        // BUT: Skip questions entirely if in browse mode
-        if (triageResult.followup_questions.length > 0 && !browseMode) {
+        if (triageResult.followup_questions.length > 0) {
           let combinedQuestion: string;
           const qList = triageResult.followup_questions;
           
@@ -554,8 +623,8 @@ class AIOrchestrator {
           });
         }
         
-        // If ready for discovery OR browse mode (provider known + user wants to see all), execute multi-backend discovery
-        if (triageResult.ready_for_discovery || browseMode) {
+        // If ready for discovery, execute multi-backend discovery
+        if (triageResult.ready_for_discovery) {
           Logger.info('[Multi-Backend] Ready for program discovery', { sessionId });
           
           // STEP 1: City Inference + Provider Search
