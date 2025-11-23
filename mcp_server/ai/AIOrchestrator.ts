@@ -502,12 +502,10 @@ class AIOrchestrator {
           // Store programs in context for filtering
           await this.updateContext(sessionId, {
             provider: { 
-              orgRef: org.orgRef, 
-              displayName: org.displayName,
-              provider: orgConfig.provider
+              name: org.displayName,
+              orgRef: org.orgRef
             },
-            programs: programs,
-            step: 'program_browsing'
+            programs: programs
           });
           
           return this.formatResponse(
@@ -552,8 +550,6 @@ class AIOrchestrator {
               }
             }]
           }));
-          
-          await this.updateContext(sessionId, { step: 'provider_selection' });
           
           return this.formatResponse(
             "Which organization would you like to explore?",
@@ -1932,8 +1928,7 @@ Example follow-up (only when needed):
         case "filter_by_age":
           Logger.info('[Filter] User wants to filter by age', { sessionId });
           await this.updateContext(sessionId, { 
-            awaitingInput: 'age', 
-            step: 'age_filtering' 
+            awaitingInput: 'age'
           });
           return this.formatResponse(
             "How old is your child? (e.g., 9 years old, 3rd grade)",
@@ -1945,8 +1940,7 @@ Example follow-up (only when needed):
         case "filter_by_activity":
           Logger.info('[Filter] User wants to filter by activity', { sessionId });
           await this.updateContext(sessionId, { 
-            awaitingInput: 'activity', 
-            step: 'activity_filtering' 
+            awaitingInput: 'activity'
           });
           return this.formatResponse(
             "What type of activity are you interested in? (e.g., STEM, sports, music, swimming)",
@@ -2017,12 +2011,10 @@ Example follow-up (only when needed):
           
           await this.updateContext(sessionId, {
             provider: { 
-              orgRef: selectedOrgRef, 
-              displayName: selectedDisplayName,
-              provider: selectedProvider
+              name: selectedDisplayName,
+              orgRef: selectedOrgRef
             },
-            programs: programs,
-            step: 'program_browsing'
+            programs: programs
           });
           
           return this.formatResponse(
