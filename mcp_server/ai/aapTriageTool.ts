@@ -1,6 +1,18 @@
 /**
- * AAP Triage Tool - OpenAI Function Call
- * Extracts and merges Age-Activity-Provider without losing context
+ * @deprecated AAP Triage Tool - DEPRECATED as of January 2025
+ * 
+ * This tool was designed for scraping-based providers that required
+ * age/activity/provider information BEFORE discovery could begin.
+ * 
+ * With API-only architecture, we now:
+ * 1. Identify provider FIRST from user message
+ * 2. Show ALL programs immediately (no blocking questions)
+ * 3. Apply age/activity as optional filters AFTER display
+ * 
+ * This file is kept for reference and backwards compatibility but
+ * is no longer used in the main provider-first discovery flow.
+ * 
+ * See: mcp_server/ai/AIOrchestrator.ts (lines ~420+) for new flow
  */
 
 import { callOpenAI_JSON } from "../lib/openaiHelpers.js";

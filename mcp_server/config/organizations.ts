@@ -98,29 +98,35 @@ export function hasOrganization(orgRef: string): boolean {
 // Organization Registrations
 // ============================================================================
 
-// SkiClubPro Organizations
-registerOrganization({
-  orgRef: 'blackhawk-ski-club',
-  provider: 'skiclubpro',
-  displayName: 'Blackhawk Ski Club',
-  searchKeywords: ['blackhawk', 'blackhawk ski', 'bsc'],
-  location: {
-    city: 'Middleton',
-    state: 'WI'
-  },
-  categories: ['all', 'lessons', 'teams', 'races', 'camps', 'clinics'],
-  apiConfig: {
-    skiclubpro: {
-      customDomain: 'blackhawk.skiclubpro.team',
-      credentialId: process.env.SCP_SERVICE_CRED_ID
-    }
-  },
-  // Keep deprecated fields for backward compatibility
-  customDomain: 'blackhawk.skiclubpro.team',
-  credentialId: process.env.SCP_SERVICE_CRED_ID,
-  priority: 'high',
-  active: true
-});
+// ============================================================================
+// DEPRECATED: Scraping-based providers
+// ============================================================================
+// As of January 2025, SignupAssist only supports API-based providers.
+// Scraping-based providers (SkiClubPro, CampMinder) are no longer supported.
+// All new provider integrations must use direct API access.
+
+// DEPRECATED: SkiClubPro / Blackhawk Ski Club
+// registerOrganization({
+//   orgRef: 'blackhawk-ski-club',
+//   provider: 'skiclubpro',
+//   displayName: 'Blackhawk Ski Club',
+//   searchKeywords: ['blackhawk', 'blackhawk ski', 'bsc'],
+//   location: {
+//     city: 'Middleton',
+//     state: 'WI'
+//   },
+//   categories: ['all', 'lessons', 'teams', 'races', 'camps', 'clinics'],
+//   apiConfig: {
+//     skiclubpro: {
+//       customDomain: 'blackhawk.skiclubpro.team',
+//       credentialId: process.env.SCP_SERVICE_CRED_ID
+//     }
+//   },
+//   customDomain: 'blackhawk.skiclubpro.team',
+//   credentialId: process.env.SCP_SERVICE_CRED_ID,
+//   priority: 'high',
+//   active: false
+// });
 
 // Example: Future SkiClubPro organizations
 // registerOrganization({
