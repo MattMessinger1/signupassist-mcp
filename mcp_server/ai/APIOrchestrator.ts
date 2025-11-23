@@ -8,7 +8,8 @@
 import type { 
   OrchestratorResponse, 
   CardSpec, 
-  ButtonSpec 
+  ButtonSpec,
+  IOrchestrator
 } from "./types.js";
 import Logger from "../utils/logger.js";
 import * as bookeoProvider from "../providers/bookeo.js";
@@ -48,8 +49,9 @@ interface APIContext {
 /**
  * APIOrchestrator
  * Handles conversation flow for API-first providers (Bookeo, future API integrations)
+ * Implements IOrchestrator for compatibility with dynamic orchestrator loading
  */
-export default class APIOrchestrator {
+export default class APIOrchestrator implements IOrchestrator {
   private sessions: Map<string, APIContext> = new Map();
 
   constructor() {

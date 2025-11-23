@@ -80,7 +80,8 @@ import { runOpenAISmokeTests } from './startup/openaiSmokeTest.js';
 // Import provider cache preloader
 import { preloadProviderCache } from './startup/preloadProviders.js';
 
-// Type-only import for AIOrchestrator (safe - doesn't execute module code)
+// Type-only imports for orchestrators (safe - doesn't execute module code)
+import type { IOrchestrator } from './ai/types.js';
 import type AIOrchestrator from './ai/AIOrchestrator.js';
 
 // Register error handlers FIRST to catch any import failures
@@ -116,7 +117,7 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 class SignupAssistMCPServer {
   private server: Server;
   private tools: Map<string, any> = new Map();
-  private orchestrator: AIOrchestrator | null = null;
+  private orchestrator: IOrchestrator | AIOrchestrator | null = null;
 
   constructor() {
     console.log('[STARTUP] SignupAssistMCPServer constructor called');
@@ -139,29 +140,46 @@ class SignupAssistMCPServer {
 
   async initializeOrchestrator() {
     try {
-      console.log('[STARTUP] Dynamically importing AIOrchestrator...');
-      const { default: AIOrchestrator } = await import('./ai/AIOrchestrator.js');
-      console.log('[STARTUP] AIOrchestrator module loaded successfully');
-      console.log('[STARTUP] AIOrchestrator type:', typeof AIOrchestrator);
+      const useAPIMode = process.env.USE_API_ORCHESTRATOR === 'true';
       
-      // Pass MCP tool caller to orchestrator
-      const mcpToolCaller = async (toolName: string, args: any) => {
-        if (!this.tools.has(toolName)) {
-          const availableTools = Array.from(this.tools.keys()).join(', ');
-          throw new Error(`Unknown MCP tool: ${toolName}. Available: ${availableTools}`);
-        }
-        const tool = this.tools.get(toolName);
-        return await tool.handler(args);
-      };
+      if (useAPIMode) {
+        console.log('[STARTUP] 🔵 API-FIRST MODE ENABLED - Loading APIOrchestrator...');
+        const { default: APIOrchestrator } = await import('./ai/APIOrchestrator.js');
+        console.log('[STARTUP] APIOrchestrator module loaded successfully');
+        
+        this.orchestrator = new APIOrchestrator();
+        console.log('✅ [API-FIRST MODE] APIOrchestrator initialized');
+        console.log('✅ API-first providers: Bookeo (aim-design)');
+        console.log('✅ No scraping, no prerequisites, no login required');
+        
+      } else {
+        console.log('[STARTUP] 🟡 LEGACY MODE - Loading AIOrchestrator...');
+        const { default: AIOrchestrator } = await import('./ai/AIOrchestrator.js');
+        console.log('[STARTUP] AIOrchestrator module loaded successfully');
+        
+        // Pass MCP tool caller to orchestrator (legacy mode only)
+        const mcpToolCaller = async (toolName: string, args: any) => {
+          if (!this.tools.has(toolName)) {
+            const availableTools = Array.from(this.tools.keys()).join(', ');
+            throw new Error(`Unknown MCP tool: ${toolName}. Available: ${availableTools}`);
+          }
+          const tool = this.tools.get(toolName);
+          return await tool.handler(args);
+        };
+        
+        this.orchestrator = new AIOrchestrator(mcpToolCaller);
+        console.log('✅ [LEGACY MODE] AIOrchestrator initialized with MCP tool access');
+        console.log(`✅ Available MCP tools: ${Array.from(this.tools.keys()).join(', ')}`);
+      }
       
-      this.orchestrator = new AIOrchestrator(mcpToolCaller);
-      console.log('✅ AIOrchestrator initialized with MCP tool access');
-      console.log(`✅ Available MCP tools: ${Array.from(this.tools.keys()).join(', ')}`);
+      console.log(`✅ Orchestrator mode: ${useAPIMode ? 'API-FIRST' : 'LEGACY (scraping)'}`);
+      
     } catch (error) {
-      console.error('❌ WARNING: AIOrchestrator failed to load - server will start without it');
+      console.error('❌ WARNING: Orchestrator failed to load - server will start without it');
       console.error('Error:', error);
       console.error('Stack:', error instanceof Error ? error.stack : 'No stack trace');
       console.error('Tip: Set OPENAI_API_KEY environment variable if using OpenAI');
+      console.error('Tip: Set USE_API_ORCHESTRATOR=true for API-first mode (Bookeo)');
       this.orchestrator = null;
     }
   }
@@ -1147,7 +1165,15 @@ class SignupAssistMCPServer {
               return;
             }
             
-            this.orchestrator.overridePrompt(sessionId, newPrompt);
+            // overridePrompt is only available in legacy AIOrchestrator
+            const isAPIMode = process.env.USE_API_ORCHESTRATOR === 'true';
+            if (isAPIMode) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Prompt override not supported in API-first mode' }));
+              return;
+            }
+            
+            (this.orchestrator as any).overridePrompt(sessionId, newPrompt);
             
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ 
@@ -1465,30 +1491,44 @@ class SignupAssistMCPServer {
 
             let result;
             
+            // Check orchestrator mode
+            const isAPIMode = process.env.USE_API_ORCHESTRATOR === 'true';
+            
             // Route to appropriate orchestrator method
             if (action) {
               // Card action (button click)
               console.log(`[Orchestrator] handleAction: ${action}`, { hasJwt: !!userJwt });
               
-              try {
-                result = await this.orchestrator.handleAction(action, payload || {}, sessionId, userJwt, { 
-                  mandate_jws: finalMandateJws, 
-                  mandate_id 
-                });
-                console.log(`[Orchestrator] handleAction result:`, result ? 'success' : 'null/undefined');
-                
-                if (!result) {
-                  throw new Error(`handleAction returned ${result} for action: ${action}`);
+              if (isAPIMode) {
+                // APIOrchestrator: Use generateResponse with action parameter
+                console.log('[API-FIRST MODE] Routing action via generateResponse');
+                result = await (this.orchestrator as any).generateResponse('', sessionId, action, payload || {});
+              } else {
+                // Legacy AIOrchestrator: Use handleAction method
+                try {
+                  console.log('[LEGACY MODE] Calling AIOrchestrator.handleAction');
+                  result = await (this.orchestrator as any).handleAction(action, payload || {}, sessionId, userJwt, { 
+                    mandate_jws: finalMandateJws, 
+                    mandate_id 
+                  });
+                  console.log(`[Orchestrator] handleAction result:`, result ? 'success' : 'null/undefined');
+                  
+                  if (!result) {
+                    throw new Error(`handleAction returned ${result} for action: ${action}`);
+                  }
+                } catch (actionError: any) {
+                  console.error(`[Orchestrator] handleAction error for ${action}:`, actionError);
+                  throw actionError; // Re-throw to outer catch
                 }
-              } catch (actionError: any) {
-                console.error(`[Orchestrator] handleAction error for ${action}:`, actionError);
-                throw actionError; // Re-throw to outer catch
               }
             } else if (message) {
               // Fetch ipapi location if not already provided via userLocation
               let finalUserLocation = userLocation;
               
-              if (!userLocation?.lat || !userLocation?.lng) {
+              // Only fetch location and update context in legacy mode
+              const isAPIMode = process.env.USE_API_ORCHESTRATOR === 'true';
+              
+              if (!isAPIMode && (!userLocation?.lat || !userLocation?.lng)) {
                 try {
                   const SUPABASE_URL = process.env.SUPABASE_URL || process.env.SB_URL;
                   const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SERVICE_ROLE_KEY;
@@ -1513,8 +1553,8 @@ class SignupAssistMCPServer {
                       const locationData = await locationRes.json();
                       console.log('[Orchestrator] ipapi location:', locationData);
                       
-                      // Store in session context for AAP triage and provider search
-                      await this.orchestrator.updateContext(sessionId, {
+                      // Store in session context for AAP triage and provider search (legacy only)
+                      await (this.orchestrator as any).updateContext(sessionId, {
                         location: {
                           lat: locationData.lat,
                           lng: locationData.lng,
@@ -1537,16 +1577,16 @@ class SignupAssistMCPServer {
                 }
               }
               
-              // Phase 3: Update context with structured AAP if provided
-              if (currentAAP) {
+              // Phase 3: Update context with structured AAP if provided (legacy only)
+              if (!isAPIMode && currentAAP) {
                 console.log(`[Orchestrator] Updating context with AAP object:`, currentAAP);
-                await this.orchestrator.updateContext(sessionId, { aap: currentAAP } as any);
+                await (this.orchestrator as any).updateContext(sessionId, { aap: currentAAP } as any);
               }
               
-              // Quick Win #1: Capture intent parameters (category, childAge) from request (legacy)
-              if (category || childAge) {
+              // Quick Win #1: Capture intent parameters (category, childAge) from request (legacy only)
+              if (!isAPIMode && (category || childAge)) {
                 console.log(`[Orchestrator] Updating context with legacy intent:`, { category, childAge });
-                await this.orchestrator.updateContext(sessionId, { category, childAge } as any);
+                await (this.orchestrator as any).updateContext(sessionId, { category, childAge } as any);
               }
               
               // Text message
@@ -1557,10 +1597,29 @@ class SignupAssistMCPServer {
                 category,
                 childAge 
               });
-              result = await this.orchestrator.generateResponse(message, sessionId, finalUserLocation, userJwt, { 
-                mandate_jws: finalMandateJws, 
-                mandate_id 
-              });
+              
+              // Check if using API-first orchestrator (no location/JWT needed)
+              const isAPIMode = process.env.USE_API_ORCHESTRATOR === 'true';
+              
+              if (isAPIMode) {
+                // APIOrchestrator: Simple signature (input, sessionId, action?, payload?)
+                console.log('[API-FIRST MODE] Calling APIOrchestrator.generateResponse');
+                result = await (this.orchestrator as any).generateResponse(message, sessionId);
+              } else {
+                // Legacy AIOrchestrator: Complex signature with location, JWT, mandate
+                console.log('[LEGACY MODE] Calling AIOrchestrator.generateResponse');
+                result = await (this.orchestrator as any).generateResponse(
+                  message, 
+                  sessionId, 
+                  finalUserLocation, 
+                  userJwt, 
+                  { 
+                    mandate_jws: finalMandateJws, 
+                    mandate_id 
+                  }
+                );
+              }
+              
               console.log(`[Orchestrator] generateResponse result:`, result ? 'success' : 'null/undefined');
               
               if (!result) {
