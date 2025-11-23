@@ -35,3 +35,7 @@ verify_jwt = false  # Allow cron job to call without JWT (uses MCP_ACCESS_TOKEN 
 
 [functions.refresh-provider-details]
 verify_jwt = false  # Allow cron job to call without JWT (uses MCP_ACCESS_TOKEN internally)
+
+[functions.sync-bookeo]
+verify_jwt = true  # SECURED: Require authentication to prevent unauthorized sync operations
+
