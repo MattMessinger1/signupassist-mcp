@@ -500,8 +500,30 @@ class AIOrchestrator {
           aap: triageResult.aap
         });
         
+        // BROWSE MODE DETECTION: Skip AAP questions if user explicitly wants to see all programs from a provider
+        const browseMode = (
+          triageResult.aap?.provider?.status === 'known' &&
+          (
+            /show\s+(me\s+)?(class|program|course|activit)/i.test(userMessage) ||
+            /what\s+(class|program|course|activit)/i.test(userMessage) ||
+            /find\s+(class|program|course|activit)/i.test(userMessage) ||
+            /see\s+(class|program|course|activit)/i.test(userMessage) ||
+            /browse/i.test(userMessage) ||
+            /list/i.test(userMessage)
+          )
+        );
+
+        Logger.info('[BROWSE MODE CHECK]', {
+          sessionId,
+          browseMode,
+          hasProvider: triageResult.aap?.provider?.status === 'known',
+          userMessage: userMessage.substring(0, 100),
+          followupQuestionsCount: triageResult.followup_questions.length
+        });
+        
         // Combine multiple missing-field prompts into one message to avoid multi-turn loops
-        if (triageResult.followup_questions.length > 0) {
+        // BUT: Skip questions entirely if in browse mode
+        if (triageResult.followup_questions.length > 0 && !browseMode) {
           let combinedQuestion: string;
           const qList = triageResult.followup_questions;
           
@@ -532,8 +554,8 @@ class AIOrchestrator {
           });
         }
         
-        // If ready for discovery and user wants programs, execute multi-backend discovery
-        if (triageResult.ready_for_discovery) {
+        // If ready for discovery OR browse mode (provider known + user wants to see all), execute multi-backend discovery
+        if (triageResult.ready_for_discovery || browseMode) {
           Logger.info('[Multi-Backend] Ready for program discovery', { sessionId });
           
           // STEP 1: City Inference + Provider Search
