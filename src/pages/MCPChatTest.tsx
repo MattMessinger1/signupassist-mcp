@@ -13,6 +13,7 @@ const MCP_BASE_URL = import.meta.env.VITE_MCP_BASE_URL || "https://signupassist-
 export default function MCPChatTest() {
   const [backendInfo, setBackendInfo] = useState<any>(null);
   const [isRefreshingCache, setIsRefreshingCache] = useState(false);
+  const [isSyncingBookeo, setIsSyncingBookeo] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -87,12 +88,51 @@ export default function MCPChatTest() {
     }
   };
 
+  const handleSyncBookeo = async (orgRef: string) => {
+    setIsSyncingBookeo(true);
+    console.log(`[Bookeo Sync] Starting sync for ${orgRef}...`);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('sync-bookeo', {
+        body: { org_ref: orgRef }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      console.log('[Bookeo Sync] Success:', data);
+      toast({
+        title: "✅ Bookeo Synced",
+        description: `${data.synced || 0} programs synced for ${data.org_ref}`,
+      });
+
+    } catch (error: any) {
+      console.error('[Bookeo Sync] Error:', error);
+      toast({
+        title: "❌ Sync Failed",
+        description: error.message || "Unknown error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSyncingBookeo(false);
+    }
+  };
+
   return (
     <div className="container mx-auto p-8 max-w-4xl">
       <div className="mb-8 space-y-4">
         <div className="flex items-center justify-between">
           <h1 className="text-4xl font-bold">SignupAssist — MCP Test Chat</h1>
           <div className="flex gap-2">
+            <Button
+              onClick={() => handleSyncBookeo('aim-design')}
+              disabled={isSyncingBookeo}
+              variant="default"
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${isSyncingBookeo ? 'animate-spin' : ''}`} />
+              {isSyncingBookeo ? 'Syncing...' : 'Sync AIM Design'}
+            </Button>
             <Button
               onClick={handleCleanupSessions}
               variant="outline"
@@ -103,7 +143,8 @@ export default function MCPChatTest() {
             <Button
               onClick={handleRefreshCache}
               disabled={isRefreshingCache}
-              variant="default"
+              variant="secondary"
+              size="sm"
             >
               <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshingCache ? 'animate-spin' : ''}`} />
               {isRefreshingCache ? 'Refreshing...' : 'Refresh Cache'}
@@ -138,9 +179,9 @@ export default function MCPChatTest() {
           <div className="space-y-2 text-sm">
             <p className="text-muted-foreground">Try these prompts in the chat below:</p>
             <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-              <li>"Show me ski programs at Blackhawk Ski Club"</li>
-              <li>"Find skating lessons in Boulder"</li>
-              <li>"List swim programs"</li>
+              <li>"I'd like to sign up for courses from AIM Design"</li>
+              <li>"Show me STEM Robotics at AIM Design for my 9 year old"</li>
+              <li>"Find ski jumping classes for kids in Madison"</li>
             </ul>
           </div>
         </Card>
