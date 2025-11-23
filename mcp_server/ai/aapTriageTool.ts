@@ -42,33 +42,36 @@ AGE
 
 ACTIVITY
 - Look for what they want to sign up for: "ski lessons", "after‑school care", "swim team", "soccer clinic".
-- Map to a simple category if possible: "skiing", "swimming", "soccer", "music".
+- Map to a simple category if possible: "skiing", "swimming", "soccer", "music", "tennis".
 
-PROVIDER (including local search)
-- Provider can be a specific organization OR a local search area.
-- Look for provider names: "Blackhawk ski", "YMCA", "Alpine Ridge Ski School", etc.
-- If the orchestrator gives you an org_ref mapping, set mode = "named".
-- If request_hints.location is provided and no specific provider is mentioned:
-  - Set mode = "local"
-  - Include locationHint in the provider field
-  - Do NOT ask "Which organization?" as a blocking question
-  - Instead, mark provider.status = "unknown" but note the location is available
-- If both location AND a named provider exist, prefer the named provider (mode = "named")
+PROVIDER (ChatGPT-specific)
+- Extract organization name if mentioned:
+  * "ABC Swim School" → provider.search_query = "ABC Swim School"
+  * "XYZ Music" → provider.search_query = "XYZ Music"
+  * "Blackhawk Ski" → provider.search_query = "Blackhawk Ski"
+- If you can map to a known org_ref, set normalized.org_ref and mode = "named"
+- If you cannot confidently map, set normalized = null and mode = "local"
 
-LOCATION RELIABILITY:
-- ipapi locations from ChatGPT environments resolve to DC exit nodes (Ashburn, Virginia) and are UNRELIABLE.
-- Treat location as unreliable if: city === "Ashburn" OR region === "Virginia" OR source === "ipapi" with mock === true.
-- When provider is NOT known AND location is unreliable/missing AND asked_location is false:
-  - Ask: "What city should I look in?"
-  - Set asked_location to true
-- Do NOT loop; only ask once per Design DNA.
-- Preserve user-provided location if they already gave one (source === "explicit" or "profile").
+LOCATION EXTRACTION (ChatGPT-specific):
+- User MUST explicitly mention city in their message
+- Examples:
+  * "Swimming in Madison" → location_hint.city = "Madison"
+  * "ABC School in Milwaukee" → location_hint.city = "Milwaukee"
+  * "Tennis near Waukesha" → location_hint.city = "Waukesha"
+- If NO city mentioned → location_hint.city = null
+- Set location_hint.source = "user_explicit" when city is provided by user
 
-IMPORTANT: For provider.normalized, you MUST return an object { org_ref: "org-slug" }, NOT a string.
-If you can map the provider to a known organization, set org_ref to the organization's identifier (lowercase, hyphenated).
-Example: "blackhawk" → { org_ref: "blackhawk-ski-club" }
-Example: "Black Hawk Ski Club" → { org_ref: "blackhawk-ski-club" }
-If you cannot confidently map to an org_ref, set normalized to null and mode to 'local'.
+IMPORTANT: For provider.normalized, you MUST return an object with this structure:
+{
+  "org_ref": "org-slug" | null,
+  "backend": "bookeo" | "skiclubpro" | "campminder" | null,
+  "display_name": "Organization Name" | null
+}
+
+Example mappings:
+- "Blackhawk" → { org_ref: "blackhawk-ski-club", backend: "skiclubpro", display_name: "Blackhawk Ski Club" }
+- "Bookeo" → { org_ref: "bookeo-default", backend: "bookeo", display_name: "Bookeo Demo Classes" }
+- Unknown provider → { org_ref: null, backend: null, display_name: null }
 
 FOLLOW‑UP QUESTIONS:
 A field is "missing" if its status is "unknown".
@@ -79,9 +82,9 @@ A field is "missing" if its status is "unknown".
 
 - Questions must be short, parent‑friendly, and target one field at a time:
   - Age: "How old is your child, or what grade are they in?"
-  - Activity: "What kind of activity are you looking for (for example: ski lessons, swim, or music)?"
-  - Provider: "Do you already have a specific provider in mind, or should I show you a few options first?"
-  - Location: "What city should I look in?"
+  - Activity: "What kind of activity are you looking for (for example: swim, ski, music, tennis)?"
+  - Provider: "Do you have a specific organization in mind, or should I show you options?"
+  - Location: "Which city are you in? (e.g., Madison, Milwaukee, Waukesha)"
 
 - If the message shows the parent is unsure ("not sure", "no idea yet"):
   - Do NOT propose another question for that field.
@@ -105,16 +108,17 @@ Return your response as a JSON object with this exact structure:
     "activity": { 
       "status": "known"|"unknown", 
       "raw": "...", 
-      "normalized": { "category": "skiing" } | null,
+      "normalized": { "category": "swimming" } | null,
       "source": "..." 
     },
     "provider": { 
       "status": "known"|"unknown", 
       "raw": "...", 
-      "normalized": { "org_ref": "blackhawk-ski-club" } | null,
+      "normalized": { "org_ref": "bookeo-default", "backend": "bookeo", "display_name": "Bookeo Demo Classes" } | null,
+      "search_query": "ABC Swim School" | null,
+      "location_hint": { "city": "Madison", "source": "user_explicit" } | null,
       "source": "...", 
-      "mode": "named"|"local", 
-      "locationHint": {...} 
+      "mode": "named"|"local"
     }
   },
   "followup_questions": ["question1", "question2"],
