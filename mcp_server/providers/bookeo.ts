@@ -5,7 +5,7 @@
 
 import { auditToolCall } from '../middleware/audit.js';
 import { createClient } from '@supabase/supabase-js';
-import type { ProviderResponse } from '../types.js';
+import type { ProviderResponse, ParentFriendlyError } from '../types.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -77,10 +77,8 @@ async function findPrograms(args: {
         data: { programs_by_theme: {}, total_programs: 0, org_ref, provider: 'bookeo' },
         ui: {
           cards: [{
-            type: 'status',
-            componentType: 'status',
             title: 'No Programs Available',
-            message: 'There are no upcoming programs available at this time.'
+            description: 'There are no upcoming programs available at this time.'
           }]
         }
       };
@@ -129,11 +127,13 @@ async function findPrograms(args: {
       session_token: undefined,
       ui: {
         cards: [{
-          type: 'carousel',
-          componentType: 'carousel',
-          componentData: {
-            type: "carousel",
-            items: carouselItems
+          title: 'Available Programs',
+          metadata: {
+            componentType: 'carousel',
+            componentData: {
+              type: "carousel",
+              items: carouselItems
+            }
           }
         }]
       }
@@ -141,13 +141,15 @@ async function findPrograms(args: {
     
   } catch (error: any) {
     console.error('[Bookeo] Error finding programs:', error);
+    const friendlyError: ParentFriendlyError = {
+      display: 'Unable to load programs at this time',
+      recovery: 'Please check your organization settings and try again',
+      severity: 'medium',
+      code: 'BOOKEO_API_ERROR'
+    };
     return {
       success: false,
-      error: {
-        message: `Failed to fetch programs: ${error.message}`,
-        code: 'BOOKEO_API_ERROR',
-        recovery_hint: 'Check API credentials and try again'
-      }
+      error: friendlyError
     };
   }
 }
@@ -246,23 +248,23 @@ async function discoverRequiredFields(args: {
       session_token: undefined,
       ui: {
         cards: [{
-          type: 'confirmation',
-          title: 'Fields Discovered',
-          message: `Found ${fields.length} required fields for ${product.name}`,
-          variant: 'success'
+          title: 'Booking Fields',
+          description: `Found ${fields.length} required fields for ${product.name}`
         }]
       }
     };
     
   } catch (error: any) {
     console.error('[Bookeo] Error discovering fields:', error);
+    const friendlyError: ParentFriendlyError = {
+      display: 'Unable to retrieve program details',
+      recovery: 'Please verify the program reference and try again',
+      severity: 'medium',
+      code: 'BOOKEO_API_ERROR'
+    };
     return {
       success: false,
-      error: {
-        message: `Failed to discover fields: ${error.message}`,
-        code: 'BOOKEO_API_ERROR',
-        recovery_hint: 'Check program reference and try again'
-      }
+      error: friendlyError
     };
   }
 }
@@ -319,26 +321,30 @@ async function createHold(args: {
   
   // Input validation
   if (!eventId || !productId || !firstName || !lastName || !email || adults < 0 || children < 0) {
+    const friendlyError: ParentFriendlyError = {
+      display: 'Please provide all required information',
+      recovery: 'Ensure first name, last name, email, and number of guests are provided',
+      severity: 'low',
+      code: 'VALIDATION_ERROR'
+    };
     return {
       success: false,
-      error: {
-        message: 'Missing or invalid required fields',
-        code: 'VALIDATION_ERROR',
-        recovery_hint: 'Ensure all required fields are provided'
-      }
+      error: friendlyError
     };
   }
   
   // Email validation
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email)) {
+    const friendlyError: ParentFriendlyError = {
+      display: 'Invalid email address',
+      recovery: 'Please provide a valid email address',
+      severity: 'low',
+      code: 'VALIDATION_ERROR'
+    };
     return {
       success: false,
-      error: {
-        message: 'Invalid email address',
-        code: 'VALIDATION_ERROR',
-        recovery_hint: 'Provide a valid email address'
-      }
+      error: friendlyError
     };
   }
   
@@ -365,8 +371,17 @@ async function createHold(args: {
     });
     
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Bookeo API error: ${response.status} ${errorText}`);
+      const errorData = await response.json().catch(() => ({}));
+      const friendlyError: ParentFriendlyError = {
+        display: errorData.message || 'Failed to create booking hold',
+        recovery: 'Please try again or contact support if the issue persists',
+        severity: 'medium',
+        code: 'BOOKEO_API_ERROR'
+      };
+      return {
+        success: false,
+        error: friendlyError
+      };
     }
     
     const holdData = await response.json();
@@ -395,31 +410,32 @@ async function createHold(args: {
       },
       ui: {
         cards: [{
-          type: 'confirmation',
-          componentType: 'confirmation',
-          componentData: {
-            type: "confirmation",
-            title: "Confirm Your Booking",
-            body: `**Program:** ${programName}\n**Guests:** ${adults} adult(s), ${children} child(ren)\n**Total:** $${(totalCost.amount / 100).toFixed(2)}\n\nShall I confirm this booking?`,
-            confirmAction: {
-              label: "✅ Confirm Booking",
-              tool: "bookeo.confirm_booking",
-              input: {
-                holdId,
-                eventId,
-                productId,
-                firstName,
-                lastName,
-                email,
-                phone,
-                adults,
-                children,
-                org_ref
+          title: 'Confirm Your Booking',
+          description: `**Program:** ${programName}\n**Guests:** ${adults} adult(s), ${children} child(ren)\n**Total:** $${(totalCost.amount / 100).toFixed(2)}\n\nShall I confirm this booking?`,
+          metadata: {
+            componentType: 'confirmation',
+            componentData: {
+              type: "confirmation",
+              confirmAction: {
+                label: "✅ Confirm Booking",
+                tool: "bookeo.confirm_booking",
+                input: {
+                  holdId,
+                  eventId,
+                  productId,
+                  firstName,
+                  lastName,
+                  email,
+                  phone,
+                  adults,
+                  children,
+                  org_ref
+                }
+              },
+              cancelAction: {
+                label: "❌ Cancel",
+                response: "Understood. Booking request canceled."
               }
-            },
-            cancelAction: {
-              label: "❌ Cancel",
-              response: "Understood. Booking request canceled."
             }
           }
         }]
@@ -428,13 +444,15 @@ async function createHold(args: {
     
   } catch (error: any) {
     console.error('[Bookeo] Error creating hold:', error);
+    const friendlyError: ParentFriendlyError = {
+      display: 'Unable to process booking at this time',
+      recovery: 'Please check your connection and try again',
+      severity: 'high',
+      code: 'BOOKEO_API_ERROR'
+    };
     return {
       success: false,
-      error: {
-        message: `Failed to create hold: ${error.message}`,
-        code: 'BOOKEO_API_ERROR',
-        recovery_hint: 'Check Bookeo API credentials and try again'
-      }
+      error: friendlyError
     };
   }
 }
@@ -461,13 +479,15 @@ async function confirmBooking(args: {
   
   // Input validation
   if (!holdId || !eventId || !productId || !firstName || !lastName || !email) {
+    const friendlyError: ParentFriendlyError = {
+      display: 'Missing required booking information',
+      recovery: 'Please provide hold ID, event ID, product ID, and customer details',
+      severity: 'medium',
+      code: 'VALIDATION_ERROR'
+    };
     return {
       success: false,
-      error: {
-        message: 'Missing required fields',
-        code: 'VALIDATION_ERROR',
-        recovery_hint: 'Ensure all required fields are provided'
-      }
+      error: friendlyError
     };
   }
   
@@ -490,8 +510,17 @@ async function confirmBooking(args: {
     });
     
     if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Bookeo API error: ${response.status} ${errorText}`);
+      const errorData = await response.json().catch(() => ({}));
+      const friendlyError: ParentFriendlyError = {
+        display: errorData.message || 'Failed to confirm booking',
+        recovery: 'Please try again or contact support if the issue persists',
+        severity: 'high',
+        code: 'BOOKEO_API_ERROR'
+      };
+      return {
+        success: false,
+        error: friendlyError
+      };
     }
     
     const bookingData = await response.json();
@@ -518,23 +547,23 @@ async function confirmBooking(args: {
       },
       ui: {
         cards: [{
-          type: 'success',
-          componentType: 'status',
           title: '✅ Booking Confirmed!',
-          message: `**Booking #${bookingNumber}**\n\n${programName}\n${new Date(startTime).toLocaleString()}\n\nConfirmation email sent to ${email}`
+          description: `**Booking #${bookingNumber}**\n\n${programName}\n${new Date(startTime).toLocaleString()}\n\nConfirmation email sent to ${email}`
         }]
       }
     };
     
   } catch (error: any) {
     console.error('[Bookeo] Error confirming booking:', error);
+    const friendlyError: ParentFriendlyError = {
+      display: 'Unable to confirm booking',
+      recovery: 'Please try again or contact support',
+      severity: 'high',
+      code: 'BOOKEO_API_ERROR'
+    };
     return {
       success: false,
-      error: {
-        message: `Failed to confirm booking: ${error.message}`,
-        code: 'BOOKEO_API_ERROR',
-        recovery_hint: 'Check Bookeo API and try again'
-      }
+      error: friendlyError
     };
   }
 }
@@ -574,7 +603,11 @@ export const bookeoTools: BookeoTool[] = [
       required: ['org_ref']
     },
     handler: async (args: any) => {
-      return auditToolCall('bookeo.find_programs', args, () => findPrograms(args));
+      return auditToolCall(
+        { plan_execution_id: null, tool: 'bookeo.find_programs' },
+        args,
+        () => findPrograms(args)
+      );
     }
   },
   {
@@ -603,7 +636,11 @@ export const bookeoTools: BookeoTool[] = [
       required: ['program_ref', 'org_ref']
     },
     handler: async (args: any) => {
-      return auditToolCall('bookeo.discover_required_fields', args, () => discoverRequiredFields(args));
+      return auditToolCall(
+        { plan_execution_id: null, tool: 'bookeo.discover_required_fields' },
+        args,
+        () => discoverRequiredFields(args)
+      );
     }
   },
   {
@@ -625,7 +662,11 @@ export const bookeoTools: BookeoTool[] = [
       required: ['eventId', 'productId', 'firstName', 'lastName', 'email', 'adults', 'children', 'org_ref']
     },
     handler: async (args: any) => {
-      return auditToolCall('bookeo.create_hold', args, () => createHold(args));
+      return auditToolCall(
+        { plan_execution_id: null, tool: 'bookeo.create_hold' },
+        args,
+        () => createHold(args)
+      );
     }
   },
   {
@@ -648,7 +689,11 @@ export const bookeoTools: BookeoTool[] = [
       required: ['holdId', 'eventId', 'productId', 'firstName', 'lastName', 'email', 'adults', 'children', 'org_ref']
     },
     handler: async (args: any) => {
-      return auditToolCall('bookeo.confirm_booking', args, () => confirmBooking(args));
+      return auditToolCall(
+        { plan_execution_id: null, tool: 'bookeo.confirm_booking' },
+        args,
+        () => confirmBooking(args)
+      );
     }
   }
 ];
