@@ -536,46 +536,8 @@ class SignupAssistMCPServer {
         });
         return;
       }
-            
-            const holdId = data.id;
-            const expiration = data.expiration;
-            
-            // Log hold creation for audit
-            console.log(`[BOOKEO] ✅ Hold created: holdId=${holdId} event=${eventId} customer=${sanitizedFirstName} ${sanitizedLastName}`);
-            
-            // Fetch program details from cache
-            const { data: programData } = await supabase
-              .from('cached_provider_feed')
-              .select('program')
-              .eq('program_ref', eventId)
-              .eq('org_ref', 'bookeo-default')
-              .single();
-            
-            const programInfo = programData?.program || {};
-            
-            // Return hold details
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-              holdId: holdId,
-              programName: programInfo.title || programInfo.name,
-              startTime: programInfo.next_available || programInfo.signup_start_time,
-              totalCost: {
-                amount: data.totalPayable?.amount || data.price?.totalGross?.amount || null,
-                currency: data.totalPayable?.currency || data.price?.totalGross?.currency || 'USD'
-              },
-              expiresAt: expiration
-            }));
-            
-          } catch (err: any) {
-            console.error('[BOOKEO] Unexpected error on create-hold:', err);
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Server error' }));
-          }
-        });
-        return;
-      }
       
-      // --- POST /confirm-booking - Finalize booking and return confirmation message
+      // --- POST /confirm-booking - DEPRECATED: Use bookeo.confirm_booking tool instead
       if (req.method === 'POST' && url.pathname === '/confirm-booking') {
         console.log('[BOOKEO] Confirm booking request received');
         
