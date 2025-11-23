@@ -136,19 +136,8 @@ async function findPrograms(args: {
       },
       session_token: undefined,
       ui: {
-        type: 'cards-grouped',
-        groups,
         message: `Found ${programs.length} programs available at ${org_ref}`,
-        cta: {
-          type: 'chips',
-          options: Object.keys(programsByTheme).map(theme => ({
-            label: `Show more ${theme}`,
-            payload: {
-              intent: 'filter_by_theme',
-              theme
-            }
-          }))
-        }
+        cards: groups
       }
     };
     

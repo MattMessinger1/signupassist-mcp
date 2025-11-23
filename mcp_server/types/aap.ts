@@ -50,7 +50,7 @@ export interface AAPProvider extends AAPField<{
   
   normalized: {
     org_ref: string | null;
-    backend: string | null;
+    backend: 'bookeo' | 'skiclubpro' | 'campminder' | null;
     display_name: string | null;
   } | null;
   mode?: 'named' | 'local';          // named provider vs local search
