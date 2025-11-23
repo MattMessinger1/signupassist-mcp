@@ -50,9 +50,9 @@ const __dirname = dirname(__filename);
 // Import tool providers
 import { skiClubProTools } from './providers/skiclubpro.js';
 import { bookeoTools } from './providers/bookeo.js';
+import { programFeedTools } from './providers/programFeed.js';
 // import { daysmartTools } from '../providers/daysmart/index';
 // import { campminderTools } from '../providers/campminder/index';
-import { programFeedTools } from './providers/programFeed.js';
 import { refreshBlackhawkPrograms, refreshBlackhawkProgramDetail } from './providers/blackhawk.js'; // Import Blackhawk refresh functions
 import { createClient } from '@supabase/supabase-js';
 

@@ -86,35 +86,45 @@ async function findPrograms(args: {
     
     console.log(`[Bookeo] Found ${programs.length} programs`);
     
-    // Build carousel items
-    const carouselItems = programs.map(row => {
-      const prog = row.program as any;
-      return {
-        title: prog.title || 'Untitled Program',
-        subtitle: `${prog.signup_start_time ? new Date(prog.signup_start_time).toLocaleDateString() : 'Date TBD'} – ${prog.status}`,
-        caption: prog.price || 'Price varies',
-        body: prog.description || '',
-        image_url: prog.image_url || 'https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=400',
-        action: {
-          label: "Reserve Spot",
-          tool: "bookeo.create_hold",
-          input: {
-            eventId: prog.event_id || row.program_ref,
-            productId: row.program_ref,
-            org_ref: org_ref
-          }
-        }
-      };
-    });
-    
-    // Group by theme for cache
+    // Group by theme (category) for UI display
     const programsByTheme: Record<string, any[]> = {};
     for (const row of programs) {
       const prog = row.program as any;
-      const theme = prog.category || 'All Programs';
+      const theme = determineTheme(prog.title || '', prog.category);
       if (!programsByTheme[theme]) programsByTheme[theme] = [];
-      programsByTheme[theme].push(prog);
+      programsByTheme[theme].push({
+        ...prog,
+        program_ref: row.program_ref,
+        org_ref: row.org_ref
+      });
     }
+    
+    // Build grouped card payload (ChatGPT-compatible format)
+    const groups = Object.entries(programsByTheme).map(([themeName, progs]) => ({
+      title: themeName,
+      cards: progs.map(prog => ({
+        title: prog.title || 'Untitled Program',
+        subtitle: `Status: ${prog.status || 'TBD'}`,
+        caption: [
+          prog.price || 'Price varies',
+          prog.signup_start_time ? new Date(prog.signup_start_time).toLocaleDateString() : 'Date TBD'
+        ].join(' • '),
+        body: prog.description || '',
+        program_ref: prog.program_ref,
+        org_ref: prog.org_ref,
+        actions: [
+          {
+            type: 'postback',
+            label: 'View Details',
+            payload: {
+              intent: 'view_program_details',
+              program_ref: prog.program_ref,
+              org_ref: prog.org_ref
+            }
+          }
+        ]
+      }))
+    }));
     
     return {
       success: true,
@@ -126,16 +136,19 @@ async function findPrograms(args: {
       },
       session_token: undefined,
       ui: {
-        cards: [{
-          title: 'Available Programs',
-          metadata: {
-            componentType: 'carousel',
-            componentData: {
-              type: "carousel",
-              items: carouselItems
+        type: 'cards-grouped',
+        groups,
+        message: `Found ${programs.length} programs available at ${org_ref}`,
+        cta: {
+          type: 'chips',
+          options: Object.keys(programsByTheme).map(theme => ({
+            label: `Show more ${theme}`,
+            payload: {
+              intent: 'filter_by_theme',
+              theme
             }
-          }
-        }]
+          }))
+        }
       }
     };
     
