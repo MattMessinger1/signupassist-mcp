@@ -575,7 +575,7 @@ class AIOrchestrator {
           undefined,
           undefined,
           { provider_search_results: orgSearchResults }
-        
+        );
       } else {
         // OLD SYSTEM: Legacy parseIntentWithAI flow
         Logger.info(`[LEGACY AAP] Using parseIntentWithAI flow`, { sessionId });
