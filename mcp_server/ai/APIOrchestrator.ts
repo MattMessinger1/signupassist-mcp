@@ -168,6 +168,15 @@ export default class APIOrchestrator implements IOrchestrator {
         return this.formatError("No programs found at this time.");
       }
       
+      // Sort programs by title (extract numeric class identifier)
+      const sortedPrograms = programs.sort((a: any, b: any) => {
+        const extractNumber = (title: string) => {
+          const match = title.match(/CLASS\s+(\d+)/i);
+          return match ? parseInt(match[1], 10) : 999;
+        };
+        return extractNumber(a.title || '') - extractNumber(b.title || '');
+      });
+      
       // Store programs in context
       this.updateContext(sessionId, {
         step: FlowStep.BROWSE,
@@ -175,7 +184,7 @@ export default class APIOrchestrator implements IOrchestrator {
       });
 
       // Build program cards
-      const cards: CardSpec[] = programs.map((prog: any) => ({
+      const cards: CardSpec[] = sortedPrograms.map((prog: any) => ({
         title: prog.title || "Untitled Program",
         subtitle: prog.schedule || "",
         caption: prog.price || "Price varies",
