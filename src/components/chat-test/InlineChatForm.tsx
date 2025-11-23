@@ -8,9 +8,11 @@ import { Button } from "@/components/ui/button";
 interface FormField {
   id: string;
   label: string;
-  type: "text" | "email" | "password" | "checkbox";
+  type: "text" | "email" | "password" | "checkbox" | "number" | "tel";
   required?: boolean;
   placeholder?: string;
+  min?: number;
+  max?: number;
 }
 
 interface InlineChatFormProps {
@@ -42,7 +44,7 @@ export function InlineChatForm({
         <CardContent className="space-y-3">
           {fields.map((field) => (
             <div key={field.id} className="space-y-2">
-              {(field.type === "text" || field.type === "email" || field.type === "password") && (
+              {(field.type === "text" || field.type === "email" || field.type === "password" || field.type === "tel" || field.type === "number") && (
                 <>
                   <Label htmlFor={field.id} className="text-sm">
                     {field.label}
@@ -53,6 +55,8 @@ export function InlineChatForm({
                     type={field.type}
                     required={field.required}
                     placeholder={field.placeholder}
+                    min={field.min}
+                    max={field.max}
                     value={values[field.id] || ""}
                     onChange={(e) => setValues({ ...values, [field.id]: e.target.value })}
                     className="h-9"
