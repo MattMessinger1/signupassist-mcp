@@ -2,8 +2,8 @@
   "schema_version": "v1",
   "name_for_human": "SignupAssist",
   "name_for_model": "signupassist",
-  "description_for_human": "Securely automates activity sign-ups for parents using a consent-first flow.",
-  "description_for_model": "Automates signup forms securely using OAuth credentials.",
+  "description_for_human": "Automates activity sign-ups for parents enrolling children in sports, lessons, camps, and classes.",
+  "description_for_model": "Automates activity registration for parents enrolling children in sports, lessons, camps, and classes. Use when user mentions signing up, registering, or finding programs for their child. Searches by organization name, activity type, city/location, and child's age. Returns available programs, checks prerequisites, and completes registration workflows with user consent.",
   "auth": {
     "type": "oauth",
     "authorization_url": "https://dev-33ngu1de5cxjtxyd.us.auth0.com/authorize",

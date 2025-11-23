@@ -67,15 +67,25 @@ export async function inferCityAndProvider(
 
   // STEP 2: Analyze results for city inference
   
-  // Case A: No matches found → ask for city
+  // Case A: No matches found → show graceful fallback with supported cities
   if (searchResults.length === 0) {
-    Logger.info('[Multi-Backend] No matches found, asking for city', { sessionId });
+    Logger.info('[Multi-Backend] No matches found, showing graceful fallback', { sessionId });
+    
+    // Import getAllActiveOrganizations dynamically to avoid circular dependency
+    const { getAllActiveOrganizations } = await import('../config/organizations.js');
+    const supportedOrgs = getAllActiveOrganizations();
+    const supportedCities = [...new Set(
+      supportedOrgs
+        .filter(o => o.location?.city)
+        .map(o => `${o.location.city}, ${o.location.state}`)
+    )];
+    
     return {
-      needsCity: true,
+      needsCity: false,
       needsDisambiguation: false,
       selectedOrg: null,
       searchResults: [],
-      message: `I couldn't find "${searchQuery}". Which city are you in? (e.g., Madison, Milwaukee, Waukesha)`
+      message: `I couldn't find any providers matching "${searchQuery}".\n\nWe currently support organizations in: ${supportedCities.join('; ')}.\n\nTry searching by city (e.g., "swim lessons in Madison") or check back soon as we're adding more providers!`
     };
   }
 
