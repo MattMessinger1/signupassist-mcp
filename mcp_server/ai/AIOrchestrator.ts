@@ -2,8 +2,8 @@ import OpenAI from "openai";
 import Logger from "../utils/logger.js";
 import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
 import { parseProviderInput, ParsedProviderInput } from "../utils/parseInput.js";
-import { lookupLocalProvider, googlePlacesSearch } from "../utils/providerSearch.js";
-import type { Provider } from "../utils/providerSearch.js";
+import { lookupLocalProvider, googlePlacesSearch, searchOrganizations } from "../utils/providerSearch.js";
+import type { Provider, OrgSearchResult } from "../utils/providerSearch.js";
 import { logAudit, extractUserIdFromJWT, logToneChange } from "../lib/auditLogger.js";
 import { loadSessionFromDB, saveSessionToDB } from "../lib/sessionPersistence.js";
 import { shouldReuseSession, getProgramCategory, TOOL_WORKFLOW, SESSION_REUSE_CONFIG } from "./toolGuidance.js";
@@ -23,6 +23,14 @@ import { parseIntentWithAI } from "../lib/aiIntentParser.js";
 import { triageAAP } from './aapTriageTool.js';
 import { planProgramDiscovery } from './aapDiscoveryPlanner.js';
 import { AAPTriad, AAPAskedFlags } from '../types/aap.js';
+
+// Multi-Backend Support (Phases 4-5)
+import { 
+  inferCityAndProvider, 
+  TOOL_MAPPING, 
+  applyAgeTolerance, 
+  buildDisambiguationCards 
+} from './orchestratorMultiBackend.js';
 
 /**
  * Prompt version tracking for tone changes
@@ -524,25 +532,178 @@ class AIOrchestrator {
           });
         }
         
-        // If ready for discovery and user wants programs, plan the feed query
+        // If ready for discovery and user wants programs, execute multi-backend discovery
         if (triageResult.ready_for_discovery) {
-          const discoveryPlan = await planProgramDiscovery(
-            triageResult.aap,
-            userMessage,
-            context  // Pass context for cache reuse
+          Logger.info('[Multi-Backend] Ready for program discovery', { sessionId });
+          
+          // STEP 1: City Inference + Provider Search
+          const inferenceResult = await inferCityAndProvider(triageResult.aap, sessionId);
+          
+          // Case A: Need to ask for city
+          if (inferenceResult.needsCity) {
+            Logger.info('[Multi-Backend] Asking user for city', { sessionId });
+            askedFlags.asked_location = true;
+            await this.updateContext(sessionId, { aap_asked_flags: askedFlags });
+            
+            return this.formatResponse(
+              inferenceResult.message || "Which city are you in? (e.g., Madison, Milwaukee, Waukesha)",
+              undefined,
+              undefined,
+              { aap: triageResult.aap, ready_for_discovery: false }
+            );
+          }
+          
+          // Case B: Need disambiguation (multiple providers in different cities)
+          if (inferenceResult.needsDisambiguation) {
+            Logger.info('[Multi-Backend] Showing disambiguation cards', {
+              sessionId,
+              count: inferenceResult.searchResults.length
+            });
+            
+            const cards = buildDisambiguationCards(inferenceResult.searchResults);
+            
+            return this.formatResponse(
+              inferenceResult.message || `I found ${cards.length} locations. Which one are you interested in?`,
+              cards,
+              undefined,
+              { 
+                aap: triageResult.aap, 
+                provider_search_results: inferenceResult.searchResults,
+                ready_for_discovery: false 
+              }
+            );
+          }
+          
+          // Case C: Provider selected (either auto-inferred or user selected)
+          if (inferenceResult.selectedOrg) {
+            const org = inferenceResult.selectedOrg;
+            Logger.info('[Multi-Backend] Provider selected, calling backend tool', {
+              sessionId,
+              orgRef: org.orgRef,
+              backend: org.provider,
+              city: org.location?.city
+            });
+            
+            // Update AAP with selected org
+            const updatedAAP: AAPTriad = {
+              ...triageResult.aap,
+              provider: {
+                ...triageResult.aap.provider,
+                status: 'known' as const,
+                normalized: {
+                  org_ref: org.orgRef,
+                  backend: org.provider as 'bookeo' | 'skiclubpro' | 'campminder',
+                  display_name: org.displayName
+                },
+                location_hint: {
+                  city: org.location?.city,
+                  state: org.location?.state,
+                  source: 'inferred' as const
+                }
+              }
+            };
+            
+            await this.updateContext(sessionId, { aap: updatedAAP });
+            
+            // STEP 2: Call backend-specific tool
+            const toolName = TOOL_MAPPING[org.provider as keyof typeof TOOL_MAPPING];
+            if (!toolName) {
+              Logger.error('[Multi-Backend] Unknown backend', { backend: org.provider });
+              return this.formatResponse(
+                `Sorry, I don't know how to search programs for ${org.displayName} yet.`,
+                undefined,
+                undefined,
+                { aap: updatedAAP }
+              );
+            }
+            
+            Logger.info('[Multi-Backend] Calling tool', { 
+              sessionId, 
+              toolName, 
+              orgRef: org.orgRef,
+              category: triageResult.aap.activity?.normalized?.category
+            });
+            
+            const toolResult = await this.callTool(toolName, {
+              org_ref: org.orgRef,
+              category: triageResult.aap.activity?.normalized?.category || 'all',
+              user_id: sessionId
+            });
+            
+            // STEP 3: Apply age tolerance filtering
+            const userAge = triageResult.aap.age?.normalized?.years;
+            let programs = toolResult?.data?.programs || toolResult?.programs || [];
+            
+            if (userAge && programs.length > 0) {
+              Logger.info('[Multi-Backend] Applying ±1 year age tolerance', {
+                sessionId,
+                userAge,
+                programCount: programs.length
+              });
+              
+              programs = applyAgeTolerance(programs, userAge, 1); // ±1 year tolerance
+              
+              Logger.info('[Multi-Backend] After age filtering', {
+                sessionId,
+                filteredCount: programs.length
+              });
+            }
+            
+            // STEP 4: Build program cards with age badges
+            if (!programs || programs.length === 0) {
+              return this.formatResponse(
+                `I didn't find any ${triageResult.aap.activity?.normalized?.category || ''} programs at ${org.displayName}${userAge ? ` for age ${userAge}` : ''}.`,
+                undefined,
+                undefined,
+                { aap: updatedAAP }
+              );
+            }
+            
+            const cards = programs.slice(0, 12).map((prog: any) => ({
+              title: prog.name || prog.title,
+              subtitle: prog.ageBadge || (prog.ageRange ? `Ages ${prog.ageRange[0]}-${prog.ageRange[1]}` : ''),
+              description: `${prog.schedule || ''} • ${prog.price || ''}`,
+              metadata: {
+                programRef: prog.id || prog.program_ref,
+                orgRef: org.orgRef,
+                backend: org.provider,
+                ageBadge: prog.ageBadge,
+                ageMatchType: prog.ageMatchType
+              },
+              buttons: [{
+                label: "View details",
+                action: "view_program",
+                payload: { 
+                  program_ref: prog.id || prog.program_ref,
+                  org_ref: org.orgRef
+                }
+              }]
+            }));
+            
+            const ageNote = userAge 
+              ? ` Programs shown are for age ${userAge} (±1 year tolerance).` 
+              : '';
+            
+            return this.formatResponse(
+              `Found ${programs.length} programs at ${org.displayName}.${ageNote}`,
+              cards,
+              undefined,
+              { 
+                aap: updatedAAP,
+                programs_displayed: programs.length,
+                total_programs: toolResult?.data?.programs?.length || programs.length
+              }
+            );
+          }
+          
+          // Fallback: No provider selected and no inference possible
+          Logger.warn('[Multi-Backend] Discovery ready but no provider inference', { sessionId });
+          return this.formatResponse(
+            "I'm ready to search for programs, but I need more information. Which organization or city are you interested in?",
+            undefined,
+            undefined,
+            { aap: triageResult.aap }
           );
-          await this.updateContext(sessionId, { aap_discovery_plan: discoveryPlan });
-          
-          Logger.info('[NEW AAP DISCOVERY PLAN]', { sessionId, plan: discoveryPlan });
-          
-          // Update legacy context fields for compatibility
-          await this.updateContext(sessionId, {
-            childAge: triageResult.aap.age?.normalized?.years || context.childAge,
-            category: triageResult.aap.activity?.normalized?.category || context.category,
-            provider: triageResult.aap.provider?.normalized?.org_ref 
-              ? { name: triageResult.aap.provider.raw || '', orgRef: triageResult.aap.provider.normalized.org_ref }
-              : context.provider
-          });
         }
         
       } else {

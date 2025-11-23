@@ -23,23 +23,38 @@ export interface AAPActivity extends AAPField<{
 }
 
 export interface LocationHint {
-  lat: number | null;  // Allow null when location is unknown
-  lng: number | null;  // Allow null when location is unknown
-  city: string | null;
-  region: string | null;
-  country: string | null;
-  radiusKm?: number;  // Optional since null location won't have radius
-  source: 'ip' | 'explicit' | 'profile' | 'user' | 'disabled_ipapi' | 'unknown';  // Extended sources
-  mock?: boolean;  // Track if using mock Madison location
-  reason?: string; // Why mock is being used
+  city?: string;         // "Madison" - explicit from user
+  state?: string;        // "WI" (optional)
+  source: 'user_explicit' | 'inferred' | 'asked';
+  asked?: boolean;       // Did we ask "What city?"
+  
+  // Legacy fields (deprecated but kept for backward compatibility)
+  lat?: number | null;
+  lng?: number | null;
+  region?: string | null;
+  country?: string | null;
+  radiusKm?: number;
+  mock?: boolean;
+  reason?: string;
 }
 
 export interface AAPProvider extends AAPField<{
   org_ref: string | null;
+  backend: 'bookeo' | 'skiclubpro' | 'campminder' | null;
+  display_name: string | null;
 }> {
-  normalized: { org_ref: string | null } | null;
-  mode: 'named' | 'local';  // NEW: named provider vs local search
-  locationHint?: LocationHint;  // NEW: local search center
+  search_query?: string;              // "ABC Swim School"
+  location_hint?: LocationHint;       // City from user OR asked
+  search_results?: any[];             // OrgSearchResult[] from provider search
+  disambiguation_required?: boolean;  // Multiple matches?
+  
+  normalized: {
+    org_ref: string | null;
+    backend: string | null;
+    display_name: string | null;
+  } | null;
+  mode?: 'named' | 'local';          // named provider vs local search
+  locationHint?: LocationHint;        // Legacy - use location_hint instead
 }
 
 export interface AAPTriad {
