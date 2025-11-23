@@ -40,7 +40,7 @@ function bookeoHeaders() {
 
 /**
  * Tool: bookeo.find_programs
- * Fetches available programs/products from Bookeo API
+ * Fetches available programs/products from Bookeo API and returns ChatGPT carousel
  */
 async function findPrograms(args: {
   org_ref: string;
@@ -54,81 +54,87 @@ async function findPrograms(args: {
   console.log(`[Bookeo] Finding programs for org: ${org_ref}, category: ${category}`);
   
   try {
-    // Fetch products from Bookeo API
-    const response = await fetch(`${BOOKEO_API_BASE}/settings/products`, {
-      headers: bookeoHeaders()
-    });
+    // Fetch from cached_provider_feed for active, open, future programs
+    const nowIso = new Date().toISOString();
+    const { data: programs, error } = await supabase
+      .from('cached_provider_feed')
+      .select('program_ref, program, org_ref, category')
+      .eq('org_ref', org_ref)
+      .filter('program->status', 'in', '("Open","Register")')
+      .gte('program->signup_start_time', nowIso)
+      .order('program->signup_start_time', { ascending: true })
+      .limit(8);
     
-    if (!response.ok) {
-      throw new Error(`Bookeo API error: ${response.status} ${response.statusText}`);
+    if (error) {
+      console.error('[Bookeo] Database error:', error);
+      throw new Error(`Database error: ${error.message}`);
     }
     
-    const data = await response.json();
-    const products = data.data || [];
-    
-    console.log(`[Bookeo] Retrieved ${products.length} products from API`);
-    
-    // Transform Bookeo products into our program format
-    const programsByTheme: Record<string, any[]> = {};
-    
-    for (const product of products) {
-      const program = {
-        program_ref: product.productId,
-        title: product.name,
-        price: product.prices?.[0]?.price?.amount 
-          ? `$${(product.prices[0].price.amount / 100).toFixed(2)}` 
-          : 'Price varies',
-        status: product.active ? 'Open' : 'Closed',
-        description: product.description || '',
-        duration: product.duration || '',
-        category: product.category?.name || 'General',
-        max_participants: product.maxParticipants || null,
-        signup_start_time: product.creationTime || new Date().toISOString()
+    if (!programs || programs.length === 0) {
+      console.log('[Bookeo] No programs found in cache');
+      return {
+        success: true,
+        data: { programs_by_theme: {}, total_programs: 0, org_ref, provider: 'bookeo' },
+        ui: {
+          cards: [{
+            type: 'status',
+            componentType: 'status',
+            title: 'No Programs Available',
+            message: 'There are no upcoming programs available at this time.'
+          }]
+        }
       };
-      
-      // Determine theme based on product category or name
-      const theme = determineTheme(product.name, product.category?.name);
-      
-      if (!programsByTheme[theme]) {
-        programsByTheme[theme] = [];
-      }
-      
-      programsByTheme[theme].push(program);
     }
     
-    // Cache the results in cached_programs table
-    const cacheResult = await supabase.rpc('upsert_cached_programs_enhanced', {
-      p_org_ref: org_ref,
-      p_provider: 'bookeo',
-      p_category: category,
-      p_programs_by_theme: programsByTheme,
-      p_metadata: {
-        fetched_at: new Date().toISOString(),
-        product_count: products.length,
-        api_version: 'v2'
-      },
-      p_ttl_hours: 24
+    console.log(`[Bookeo] Found ${programs.length} programs`);
+    
+    // Build carousel items
+    const carouselItems = programs.map(row => {
+      const prog = row.program as any;
+      return {
+        title: prog.title || 'Untitled Program',
+        subtitle: `${prog.signup_start_time ? new Date(prog.signup_start_time).toLocaleDateString() : 'Date TBD'} – ${prog.status}`,
+        caption: prog.price || 'Price varies',
+        body: prog.description || '',
+        image_url: prog.image_url || 'https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=400',
+        action: {
+          label: "Reserve Spot",
+          tool: "bookeo.create_hold",
+          input: {
+            eventId: prog.event_id || row.program_ref,
+            productId: row.program_ref,
+            org_ref: org_ref
+          }
+        }
+      };
     });
     
-    if (cacheResult.error) {
-      console.error('[Bookeo] Cache error:', cacheResult.error);
+    // Group by theme for cache
+    const programsByTheme: Record<string, any[]> = {};
+    for (const row of programs) {
+      const prog = row.program as any;
+      const theme = prog.category || 'All Programs';
+      if (!programsByTheme[theme]) programsByTheme[theme] = [];
+      programsByTheme[theme].push(prog);
     }
     
     return {
       success: true,
       data: {
         programs_by_theme: programsByTheme,
-        total_programs: products.length,
+        total_programs: programs.length,
         org_ref,
         provider: 'bookeo'
       },
       session_token: undefined,
       ui: {
         cards: [{
-          type: 'confirmation',
-          title: 'Programs Found',
-          message: `Found ${products.length} available programs`,
-          variant: 'success'
+          type: 'carousel',
+          componentType: 'carousel',
+          componentData: {
+            type: "carousel",
+            items: carouselItems
+          }
         }]
       }
     };
@@ -293,12 +299,253 @@ function determineTheme(productName: string, categoryName?: string): string {
 }
 
 /**
+ * Tool: bookeo.create_hold
+ * Create a temporary booking hold and return confirmation card
+ */
+async function createHold(args: {
+  eventId: string;
+  productId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  adults: number;
+  children: number;
+  org_ref: string;
+}): Promise<ProviderResponse<any>> {
+  const { eventId, productId, firstName, lastName, email, phone, adults, children, org_ref } = args;
+  
+  console.log(`[Bookeo] Creating hold for event: ${eventId}, product: ${productId}`);
+  
+  // Input validation
+  if (!eventId || !productId || !firstName || !lastName || !email || adults < 0 || children < 0) {
+    return {
+      success: false,
+      error: {
+        message: 'Missing or invalid required fields',
+        code: 'VALIDATION_ERROR',
+        recovery_hint: 'Ensure all required fields are provided'
+      }
+    };
+  }
+  
+  // Email validation
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return {
+      success: false,
+      error: {
+        message: 'Invalid email address',
+        code: 'VALIDATION_ERROR',
+        recovery_hint: 'Provide a valid email address'
+      }
+    };
+  }
+  
+  try {
+    // Call Bookeo API to create hold
+    const holdPayload = {
+      eventId,
+      productId,
+      customer: {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        emailAddress: email.trim(),
+        phoneNumbers: phone ? [{ number: phone.trim() }] : []
+      },
+      participants: {
+        numbers: { adults, children }
+      }
+    };
+    
+    const response = await fetch(`${BOOKEO_API_BASE}/holds`, {
+      method: 'POST',
+      headers: bookeoHeaders(),
+      body: JSON.stringify(holdPayload)
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Bookeo API error: ${response.status} ${errorText}`);
+    }
+    
+    const holdData = await response.json();
+    const holdId = holdData.holdId;
+    const expiresAt = holdData.expirationTime;
+    const totalCost = holdData.totalAmount || { amount: 0, currency: 'USD' };
+    
+    console.log(`[Bookeo] Hold created: ${holdId}, expires: ${expiresAt}`);
+    
+    // Get program name from cache
+    const { data: programData } = await supabase
+      .from('cached_provider_feed')
+      .select('program')
+      .eq('program_ref', productId)
+      .single();
+    
+    const programName = (programData?.program as any)?.title || 'Program';
+    
+    return {
+      success: true,
+      data: {
+        holdId,
+        programName,
+        totalCost,
+        expiresAt
+      },
+      ui: {
+        cards: [{
+          type: 'confirmation',
+          componentType: 'confirmation',
+          componentData: {
+            type: "confirmation",
+            title: "Confirm Your Booking",
+            body: `**Program:** ${programName}\n**Guests:** ${adults} adult(s), ${children} child(ren)\n**Total:** $${(totalCost.amount / 100).toFixed(2)}\n\nShall I confirm this booking?`,
+            confirmAction: {
+              label: "✅ Confirm Booking",
+              tool: "bookeo.confirm_booking",
+              input: {
+                holdId,
+                eventId,
+                productId,
+                firstName,
+                lastName,
+                email,
+                phone,
+                adults,
+                children,
+                org_ref
+              }
+            },
+            cancelAction: {
+              label: "❌ Cancel",
+              response: "Understood. Booking request canceled."
+            }
+          }
+        }]
+      }
+    };
+    
+  } catch (error: any) {
+    console.error('[Bookeo] Error creating hold:', error);
+    return {
+      success: false,
+      error: {
+        message: `Failed to create hold: ${error.message}`,
+        code: 'BOOKEO_API_ERROR',
+        recovery_hint: 'Check Bookeo API credentials and try again'
+      }
+    };
+  }
+}
+
+/**
+ * Tool: bookeo.confirm_booking
+ * Confirm a booking from a hold
+ */
+async function confirmBooking(args: {
+  holdId: string;
+  eventId: string;
+  productId: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  adults: number;
+  children: number;
+  org_ref: string;
+}): Promise<ProviderResponse<any>> {
+  const { holdId, eventId, productId, firstName, lastName, email, phone, adults, children, org_ref } = args;
+  
+  console.log(`[Bookeo] Confirming booking from hold: ${holdId}`);
+  
+  // Input validation
+  if (!holdId || !eventId || !productId || !firstName || !lastName || !email) {
+    return {
+      success: false,
+      error: {
+        message: 'Missing required fields',
+        code: 'VALIDATION_ERROR',
+        recovery_hint: 'Ensure all required fields are provided'
+      }
+    };
+  }
+  
+  try {
+    // Call Bookeo API to finalize booking
+    const bookingPayload = {
+      holdId,
+      customer: {
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        emailAddress: email.trim(),
+        phoneNumbers: phone ? [{ number: phone.trim() }] : []
+      }
+    };
+    
+    const response = await fetch(`${BOOKEO_API_BASE}/bookings`, {
+      method: 'POST',
+      headers: bookeoHeaders(),
+      body: JSON.stringify(bookingPayload)
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Bookeo API error: ${response.status} ${errorText}`);
+    }
+    
+    const bookingData = await response.json();
+    const bookingNumber = bookingData.bookingNumber;
+    const startTime = bookingData.startTime;
+    
+    console.log(`[Bookeo] Booking confirmed: ${bookingNumber}`);
+    
+    // Get program name
+    const { data: programData } = await supabase
+      .from('cached_provider_feed')
+      .select('program')
+      .eq('program_ref', productId)
+      .single();
+    
+    const programName = (programData?.program as any)?.title || 'Program';
+    
+    return {
+      success: true,
+      data: {
+        bookingNumber,
+        programName,
+        startTime
+      },
+      ui: {
+        cards: [{
+          type: 'success',
+          componentType: 'status',
+          title: '✅ Booking Confirmed!',
+          message: `**Booking #${bookingNumber}**\n\n${programName}\n${new Date(startTime).toLocaleString()}\n\nConfirmation email sent to ${email}`
+        }]
+      }
+    };
+    
+  } catch (error: any) {
+    console.error('[Bookeo] Error confirming booking:', error);
+    return {
+      success: false,
+      error: {
+        message: `Failed to confirm booking: ${error.message}`,
+        code: 'BOOKEO_API_ERROR',
+        recovery_hint: 'Check Bookeo API and try again'
+      }
+    };
+  }
+}
+
+/**
  * Export Bookeo tools
  */
 export const bookeoTools: BookeoTool[] = [
   {
     name: 'bookeo.find_programs',
-    description: 'Find available programs/products from Bookeo booking system',
+    description: 'Find available programs/products from Bookeo with carousel UI',
     inputSchema: {
       type: 'object',
       properties: {
@@ -357,6 +604,51 @@ export const bookeoTools: BookeoTool[] = [
     },
     handler: async (args: any) => {
       return auditToolCall('bookeo.discover_required_fields', args, () => discoverRequiredFields(args));
+    }
+  },
+  {
+    name: 'bookeo.create_hold',
+    description: 'Create a temporary booking hold with confirmation UI',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        eventId: { type: 'string', description: 'Bookeo event ID' },
+        productId: { type: 'string', description: 'Bookeo product ID' },
+        firstName: { type: 'string', description: 'Customer first name' },
+        lastName: { type: 'string', description: 'Customer last name' },
+        email: { type: 'string', format: 'email', description: 'Customer email' },
+        phone: { type: 'string', description: 'Customer phone (optional)' },
+        adults: { type: 'number', minimum: 0, description: 'Number of adults' },
+        children: { type: 'number', minimum: 0, description: 'Number of children' },
+        org_ref: { type: 'string', description: 'Organization reference' }
+      },
+      required: ['eventId', 'productId', 'firstName', 'lastName', 'email', 'adults', 'children', 'org_ref']
+    },
+    handler: async (args: any) => {
+      return auditToolCall('bookeo.create_hold', args, () => createHold(args));
+    }
+  },
+  {
+    name: 'bookeo.confirm_booking',
+    description: 'Confirm a booking from a hold',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        holdId: { type: 'string', description: 'Hold ID from create_hold' },
+        eventId: { type: 'string', description: 'Bookeo event ID' },
+        productId: { type: 'string', description: 'Bookeo product ID' },
+        firstName: { type: 'string', description: 'Customer first name' },
+        lastName: { type: 'string', description: 'Customer last name' },
+        email: { type: 'string', format: 'email', description: 'Customer email' },
+        phone: { type: 'string', description: 'Customer phone (optional)' },
+        adults: { type: 'number', minimum: 0, description: 'Number of adults' },
+        children: { type: 'number', minimum: 0, description: 'Number of children' },
+        org_ref: { type: 'string', description: 'Organization reference' }
+      },
+      required: ['holdId', 'eventId', 'productId', 'firstName', 'lastName', 'email', 'adults', 'children', 'org_ref']
+    },
+    handler: async (args: any) => {
+      return auditToolCall('bookeo.confirm_booking', args, () => confirmBooking(args));
     }
   }
 ];

@@ -473,6 +473,56 @@ function ChatTestHarnessContent() {
       return;
     }
     
+    // Handle Bookeo MCP tool calls from carousel/confirmation actions
+    if (action.startsWith('bookeo.') || action === 'cancel') {
+      setIsProcessing(true);
+      addLog("info", "mcp", `Calling tool: ${action}`, payload);
+      
+      try {
+        if (action === 'cancel') {
+          addAssistantMessage("No problem! Let me know if you'd like to explore other options.");
+          setIsProcessing(false);
+          return;
+        }
+        
+        // Call MCP tool directly
+        const result = await callMCPTool(action, payload);
+        addLog("success", "mcp", `Tool ${action} completed`, result);
+        
+        // Handle UI cards in the response
+        if (result?.ui?.cards && result.ui.cards.length > 0) {
+          const card = result.ui.cards[0];
+          const message = result.data?.message || "Here's what I found:";
+          
+          addAssistantMessage(
+            message,
+            card.componentType,
+            card.componentData || card,
+            state.step
+          );
+        } else if (result?.success) {
+          const successMessage = typeof result.data === 'string' 
+            ? result.data 
+            : result.data?.message || "Action completed successfully!";
+          addAssistantMessage(
+            successMessage,
+            undefined,
+            undefined,
+            state.step
+          );
+        } else {
+          handleError(result?.error ? String(result.error) : "An error occurred");
+        }
+      } catch (error: any) {
+        console.error('[HARNESS] Tool call error:', error);
+        addLog("error", "mcp", `Tool ${action} failed`, error.message);
+        handleError(error.message);
+      } finally {
+        setIsProcessing(false);
+      }
+      return;
+    }
+    
     setIsProcessing(true);
 
     try {

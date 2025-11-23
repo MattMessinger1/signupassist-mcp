@@ -28,6 +28,8 @@ export interface ChatMessage {
   componentData?: any;
   role?: "user" | "assistant";
   content?: string;
+  title?: string;
+  message?: string;
 }
 
 interface MessageBubbleProps {
@@ -168,6 +170,74 @@ export function MessageBubble({
               deep_link={message.componentData.deep_link}
               onAction={onAction}
             />
+          </div>
+        )}
+
+        {/* Carousel for Bookeo programs */}
+        {message.componentType === "carousel" && message.componentData && (
+          <div className="mt-3 space-y-3">
+            <div className="grid gap-3 md:grid-cols-2">
+              {message.componentData.items?.map((item: any, idx: number) => (
+                <div key={idx} className="border rounded-lg p-4 space-y-2 bg-card">
+                  {item.image_url && (
+                    <img src={item.image_url} alt={item.title} className="w-full h-32 object-cover rounded" />
+                  )}
+                  <h4 className="font-semibold">{item.title}</h4>
+                  <p className="text-sm text-muted-foreground">{item.subtitle}</p>
+                  <p className="text-sm font-medium">{item.caption}</p>
+                  {item.body && <p className="text-xs text-muted-foreground">{item.body}</p>}
+                  {item.action && (
+                    <Button
+                      onClick={() => onAction?.(item.action.tool, item.action.input)}
+                      className="w-full mt-2"
+                      size="sm"
+                    >
+                      {item.action.label}
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Confirmation card for booking approval */}
+        {message.componentType === "confirmation" && message.componentData && (
+          <div className="mt-3 border rounded-lg p-4 space-y-3 bg-card">
+            <h4 className="font-semibold text-lg">{message.componentData.title}</h4>
+            <div className="whitespace-pre-line text-sm">{message.componentData.body}</div>
+            <div className="flex gap-2">
+              {message.componentData.confirmAction && (
+                <Button
+                  onClick={() => onAction?.(
+                    message.componentData.confirmAction.tool,
+                    message.componentData.confirmAction.input
+                  )}
+                  className="flex-1"
+                  size="sm"
+                >
+                  {message.componentData.confirmAction.label}
+                </Button>
+              )}
+              {message.componentData.cancelAction && (
+                <Button
+                  onClick={() => onAction?.('cancel', {})}
+                  variant="outline"
+                  className="flex-1"
+                  size="sm"
+                >
+                  {message.componentData.cancelAction.label}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Status messages */}
+        {message.componentType === "status" && (
+          <div className="mt-3 border rounded-lg p-4 bg-card">
+            {message.title && <h4 className="font-semibold mb-2">{message.title}</h4>}
+            {message.message && <div className="whitespace-pre-line text-sm">{message.message}</div>}
           </div>
         )}
 
