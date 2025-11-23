@@ -288,7 +288,7 @@ class SignupAssistMCPServer {
 
       // ==================== BOOKEO BOOKING ENDPOINTS ====================
       
-      // --- GET /list-programs - Fetch open programs from cached_provider_feed
+      // --- GET /list-programs - Fetch open programs as ChatGPT carousel
       if (req.method === 'GET' && url.pathname === '/list-programs') {
         console.log('[BOOKEO] List programs request received');
         
@@ -309,30 +309,58 @@ class SignupAssistMCPServer {
             return;
           }
           
-          // Filter to only open/available programs and transform for response
-          const openPrograms = (programs || [])
+          if (!programs || programs.length === 0) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ type: "carousel", items: [] }));
+            return;
+          }
+          
+          // Transform programs into ChatGPT carousel format
+          const carouselItems = programs
             .filter((p: any) => {
-              const programData = p.program;
-              return programData.status === 'Open' && programData.active !== false;
+              const prog = p.program;
+              // Filter for active, open programs with future dates
+              const startTime = prog.next_available || prog.signup_start_time;
+              return prog.status === 'Open' && 
+                     prog.active !== false && 
+                     startTime && 
+                     new Date(startTime) > new Date();
             })
+            .slice(0, 8) // Limit to 8 items per ChatGPT best practices
             .map((p: any) => {
               const prog = p.program;
+              const startTime = prog.next_available || prog.signup_start_time;
+              const seats = prog.max_participants || prog.available_slots || 0;
+              const emoji = prog.emoji || '🎯';
+              const price = prog.price || null;
+              
               return {
-                event_id: p.program_ref,
-                product_id: p.program_ref,
-                name: prog.title || prog.name,
-                start_time: prog.next_available || prog.signup_start_time,
-                end_time: null, // Not tracked in our schema
-                seats: prog.max_participants || null,
-                price: prog.price,
-                description: prog.description,
-                category: prog.category
+                title: `${emoji} ${prog.title || prog.name}`,
+                subtitle: `${new Date(startTime).toLocaleDateString()} @ ${new Date(startTime).toLocaleTimeString()} – ${seats} seats left`,
+                image_url: prog.image_url || prog.imageUrl || prog.thumbnail || null,
+                action: {
+                  label: "Reserve Spot",
+                  tool: "create_hold",
+                  input: {
+                    eventId: p.program_ref,
+                    productId: p.program_ref.split('_')[0] || p.program_ref,
+                    adults: 1,
+                    children: 0,
+                    firstName: "<YourFirstName>",
+                    lastName: "<YourLastName>",
+                    email: "you@example.com",
+                    phone: "<YourPhone>"
+                  }
+                }
               };
             });
           
-          console.log(`[BOOKEO] Returning ${openPrograms.length} open programs`);
+          console.log(`[BOOKEO] Returning carousel with ${carouselItems.length} programs`);
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify(openPrograms));
+          res.end(JSON.stringify({
+            type: "carousel",
+            items: carouselItems
+          }));
         } catch (err: any) {
           console.error('[BOOKEO] Unexpected error on list-programs:', err);
           res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -341,7 +369,7 @@ class SignupAssistMCPServer {
         return;
       }
       
-      // --- POST /create-hold - Place temporary booking hold via Bookeo
+      // --- POST /create-hold - Place temporary booking hold and return confirmation card
       if (req.method === 'POST' && url.pathname === '/create-hold') {
         console.log('[BOOKEO] Create hold request received');
         
@@ -370,8 +398,8 @@ class SignupAssistMCPServer {
             }
             
             // Validate participant count
-            const numAdults = parseInt(adults) || 0;
-            const numChildren = parseInt(children) || 0;
+            const numAdults = Math.max(0, parseInt(adults) || 0);
+            const numChildren = Math.max(0, parseInt(children) || 0);
             if (numAdults + numChildren < 1) {
               res.writeHead(400, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: 'At least one participant required' }));
@@ -379,10 +407,10 @@ class SignupAssistMCPServer {
             }
             
             // Sanitize string inputs (trim and limit length)
-            const sanitizedFirstName = firstName.trim().slice(0, 100);
-            const sanitizedLastName = lastName.trim().slice(0, 100);
-            const sanitizedEmail = email.trim().toLowerCase().slice(0, 255);
-            const sanitizedPhone = phone ? String(phone).trim().slice(0, 20) : null;
+            const sanitizedFirstName = String(firstName).trim().slice(0, 100);
+            const sanitizedLastName = String(lastName).trim().slice(0, 100);
+            const sanitizedEmail = String(email).trim().toLowerCase().slice(0, 255);
+            const sanitizedPhone = phone ? String(phone).trim().slice(0, 20) : '';
             
             // Build Bookeo hold request
             const BOOKEO_API_KEY = process.env.BOOKEO_API_KEY;
@@ -460,6 +488,68 @@ class SignupAssistMCPServer {
               .single();
             
             const programInfo = programData?.program || {};
+            const programName = programInfo.title || programInfo.name || 'Program';
+            const startTime = programInfo.next_available || programInfo.signup_start_time;
+            const totalAmount = data.totalPayable?.amount || data.price?.totalGross?.amount || 0;
+            const currency = data.totalPayable?.currency || data.price?.totalGross?.currency || 'USD';
+            
+            // Format guest count for display
+            const guestParts = [];
+            if (numAdults > 0) guestParts.push(`${numAdults} adult${numAdults > 1 ? 's' : ''}`);
+            if (numChildren > 0) guestParts.push(`${numChildren} child${numChildren > 1 ? 'ren' : ''}`);
+            const guestsText = guestParts.join(', ');
+            
+            // Return ChatGPT confirmation card
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              type: "confirmation",
+              title: "Confirm Your Booking",
+              body: `Program: ${programName} (${new Date(startTime).toLocaleDateString()} @ ${new Date(startTime).toLocaleTimeString()})\nGuests: ${guestsText}\nTotal Cost: ${currency} ${(totalAmount / 100).toFixed(2)}\n\nShall I confirm this booking?`,
+              confirmAction: {
+                label: "✅ Confirm Booking",
+                tool: "confirm_booking",
+                input: {
+                  holdId: holdId,
+                  eventId: eventId,
+                  productId: productId,
+                  firstName: sanitizedFirstName,
+                  lastName: sanitizedLastName,
+                  email: sanitizedEmail,
+                  phone: sanitizedPhone,
+                  adults: numAdults,
+                  children: numChildren
+                }
+              },
+              cancelAction: {
+                label: "❌ Cancel",
+                response: "Understood. I've canceled your booking request."
+              }
+            }));
+            
+          } catch (err: any) {
+            console.error('[BOOKEO] Unexpected error on create-hold:', err);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Server error' }));
+          }
+        });
+        return;
+      }
+            
+            const holdId = data.id;
+            const expiration = data.expiration;
+            
+            // Log hold creation for audit
+            console.log(`[BOOKEO] ✅ Hold created: holdId=${holdId} event=${eventId} customer=${sanitizedFirstName} ${sanitizedLastName}`);
+            
+            // Fetch program details from cache
+            const { data: programData } = await supabase
+              .from('cached_provider_feed')
+              .select('program')
+              .eq('program_ref', eventId)
+              .eq('org_ref', 'bookeo-default')
+              .single();
+            
+            const programInfo = programData?.program || {};
             
             // Return hold details
             res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -483,7 +573,7 @@ class SignupAssistMCPServer {
         return;
       }
       
-      // --- POST /confirm-booking - Finalize booking via Bookeo
+      // --- POST /confirm-booking - Finalize booking and return confirmation message
       if (req.method === 'POST' && url.pathname === '/confirm-booking') {
         console.log('[BOOKEO] Confirm booking request received');
         
@@ -502,6 +592,104 @@ class SignupAssistMCPServer {
               }));
               return;
             }
+            
+            // Sanitize inputs
+            const sanitizedFirstName = String(firstName).trim().slice(0, 100);
+            const sanitizedLastName = String(lastName).trim().slice(0, 100);
+            const sanitizedEmail = String(email).trim().toLowerCase().slice(0, 255);
+            const sanitizedPhone = phone ? String(phone).trim().slice(0, 20) : '';
+            
+            const numAdults = parseInt(adults) || 0;
+            const numChildren = parseInt(children) || 0;
+            
+            // Build Bookeo booking payload
+            const BOOKEO_API_KEY = process.env.BOOKEO_API_KEY;
+            const BOOKEO_SECRET_KEY = process.env.BOOKEO_SECRET_KEY;
+            
+            if (!BOOKEO_API_KEY || !BOOKEO_SECRET_KEY) {
+              console.error('[BOOKEO] Missing API credentials');
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Server configuration error' }));
+              return;
+            }
+            
+            const bookingPayload = {
+              eventId: eventId,
+              productId: productId,
+              customer: {
+                firstName: sanitizedFirstName,
+                lastName: sanitizedLastName,
+                emailAddress: sanitizedEmail,
+                phoneNumbers: sanitizedPhone ? [{ number: sanitizedPhone, type: "mobile" }] : []
+              },
+              participants: {
+                numbers: []
+              }
+            };
+            
+            // Add participants
+            if (numAdults > 0) {
+              bookingPayload.participants.numbers.push({ 
+                peopleCategoryId: "Cadults", 
+                number: numAdults 
+              });
+            }
+            if (numChildren > 0) {
+              bookingPayload.participants.numbers.push({ 
+                peopleCategoryId: "Cchildren", 
+                number: numChildren 
+              });
+            }
+            
+            // Call Bookeo API to confirm booking
+            const response = await fetch(
+              `https://api.bookeo.com/v2/bookings?previousHoldId=${encodeURIComponent(holdId)}&notifyUsers=true&notifyCustomer=true`,
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Bookeo-apiKey': BOOKEO_API_KEY,
+                  'X-Bookeo-secretKey': BOOKEO_SECRET_KEY
+                },
+                body: JSON.stringify(bookingPayload)
+              }
+            );
+            
+            const data = await response.json();
+            
+            if (!response.ok) {
+              console.error('[BOOKEO] Booking confirmation failed:', data);
+              res.writeHead(response.status, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ 
+                error: data.message || 'Failed to confirm booking' 
+              }));
+              return;
+            }
+            
+            const bookingNumber = data.bookingNumber;
+            const programName = data.productName || 'Program';
+            const startTime = data.startTime;
+            
+            // Log successful booking for audit
+            console.log(`[BOOKEO] ✅ Booking confirmed: bookingNumber=${bookingNumber} holdId=${holdId} event=${eventId} customer=${sanitizedFirstName} ${sanitizedLastName}`);
+            
+            // Return success message with booking details
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              bookingNumber: bookingNumber,
+              programName: programName,
+              startTime: startTime,
+              message: `🎉 Booking confirmed! Your confirmation number is ${bookingNumber}. You will receive a confirmation email at ${sanitizedEmail}.`
+            }));
+            
+          } catch (err: any) {
+            console.error('[BOOKEO] Unexpected error on confirm-booking:', err);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Server error' }));
+          }
+        });
+        return;
+      }
             
             // Sanitize inputs
             const sanitizedFirstName = firstName.trim().slice(0, 100);
