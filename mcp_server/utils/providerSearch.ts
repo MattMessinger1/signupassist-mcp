@@ -7,6 +7,7 @@
 import axios from "axios";
 import Logger from "./logger.js";
 import { singleFlight } from "./singleflight.js";
+import { getAllActiveOrganizations, OrgConfig } from '../config/organizations.js';
 
 // Simple in-memory cache for provider search results
 const providerCacheMap = new Map<string, { result: any; timestamp: number }>();
@@ -35,6 +36,18 @@ export interface Provider {
   distance?: number; // Distance in km from user location
 }
 
+// Multi-Backend Provider Search Interfaces
+export interface SearchQuery {
+  name?: string;        // "Bookeo Demo" or "Blackhawk"
+  city?: string;        // "Madison" or "Middleton"
+  category?: string;    // "swim", "ski", "lessons"
+}
+
+export interface OrgSearchResult extends OrgConfig {
+  matchScore: number;       // 0-100 confidence score
+  matchReasons: string[];   // ["name match", "in Madison"]
+}
+
 const knownProviders: Record<string, Provider> = {
   blackhawk: {
     name: "Blackhawk Ski Club",
@@ -53,6 +66,123 @@ export async function lookupLocalProvider(name: string): Promise<Provider | null
   const key = name.toLowerCase().replace(/\s+/g, "");
   const entry = Object.keys(knownProviders).find(k => key.includes(k));
   return entry ? knownProviders[entry] : null;
+}
+
+/**
+ * Search organizations across all registered providers (Bookeo, SkiClubPro, CampMinder)
+ * Returns top 3 matches ranked by confidence score
+ * 
+ * @param query - Search criteria (name, city, category)
+ * @returns Top 3 matching organizations with scores
+ */
+export async function searchOrganizations(
+  query: SearchQuery
+): Promise<OrgSearchResult[]> {
+  
+  const allOrgs = getAllActiveOrganizations();
+  const results: OrgSearchResult[] = [];
+
+  Logger.info(`[ProviderSearch] Searching: name="${query.name}", city="${query.city}", category="${query.category}"`);
+  Logger.info(`[ProviderSearch] Total active orgs: ${allOrgs.length}`);
+
+  for (const org of allOrgs) {
+    let score = 0;
+    const reasons: string[] = [];
+
+    // 1. Name Matching (50 points) - Fuzzy match against displayName + keywords
+    if (query.name) {
+      const nameSimilarity = fuzzyMatch(query.name, [
+        org.displayName,
+        ...(org.searchKeywords || [])
+      ]);
+      score += nameSimilarity * 50;
+      
+      if (nameSimilarity > 0.6) {
+        reasons.push(`name match (${Math.round(nameSimilarity * 100)}%)`);
+      }
+    }
+
+    // 2. City Matching (30 points) - Case-insensitive exact match
+    if (query.city && org.location?.city) {
+      const cityMatch = org.location.city.toLowerCase() === query.city.toLowerCase();
+      if (cityMatch) {
+        score += 30;
+        reasons.push(`in ${org.location.city}`);
+      }
+    }
+
+    // 3. Category Matching (20 points) - Does org offer this category?
+    if (query.category) {
+      const categoryMatch = org.categories.some(cat => 
+        cat.toLowerCase().includes(query.category!.toLowerCase()) ||
+        query.category!.toLowerCase().includes(cat.toLowerCase())
+      );
+      if (categoryMatch) {
+        score += 20;
+        reasons.push(`offers ${query.category}`);
+      }
+    }
+
+    // Only include results above minimum threshold
+    if (score > 30) {
+      results.push({
+        ...org,
+        matchScore: score,
+        matchReasons: reasons
+      });
+      
+      Logger.info(`[ProviderSearch] Match: ${org.displayName} (score: ${score}, reasons: ${reasons.join(', ')})`);
+    }
+  }
+
+  // Sort by score (descending) and return top 3
+  const topResults = results
+    .sort((a, b) => b.matchScore - a.matchScore)
+    .slice(0, 3);
+
+  Logger.info(`[ProviderSearch] Returning ${topResults.length} top matches`);
+  return topResults;
+}
+
+/**
+ * Fuzzy string matching (returns 0.0 - 1.0)
+ * Handles exact match, substring match, and word overlap
+ * 
+ * @param query - Search term
+ * @param targets - Array of strings to match against
+ * @returns Similarity score (0.0 = no match, 1.0 = exact match)
+ */
+function fuzzyMatch(query: string, targets: string[]): number {
+  const q = query.toLowerCase().trim();
+  let maxScore = 0;
+
+  for (const target of targets) {
+    const t = target.toLowerCase().trim();
+    
+    // Exact match = 100%
+    if (q === t) {
+      maxScore = Math.max(maxScore, 1.0);
+      continue;
+    }
+    
+    // Substring match = 80%
+    if (t.includes(q) || q.includes(t)) {
+      maxScore = Math.max(maxScore, 0.8);
+      continue;
+    }
+    
+    // Word overlap scoring
+    const qWords = q.split(/\s+/);
+    const tWords = t.split(/\s+/);
+    const overlappingWords = qWords.filter(qw => 
+      tWords.some(tw => tw.includes(qw) || qw.includes(tw))
+    );
+    
+    const overlapRatio = overlappingWords.length / Math.max(qWords.length, tWords.length);
+    maxScore = Math.max(maxScore, overlapRatio * 0.6);
+  }
+
+  return maxScore;
 }
 
 /**
@@ -199,4 +329,28 @@ export async function googlePlacesSearch(
       return [];
     }
   });
+}
+
+/**
+ * Legacy function for backward compatibility with existing code
+ * @deprecated Use searchOrganizations() instead
+ */
+export async function searchProviders(
+  query: string,
+  userCoords?: { lat: number; lng: number }
+): Promise<Provider[]> {
+  Logger.warn('[ProviderSearch] searchProviders() is deprecated, use searchOrganizations()');
+  
+  // Try to parse query as organization name
+  const results = await searchOrganizations({ name: query });
+  
+  // Convert to legacy Provider format
+  return results.map(org => ({
+    name: org.displayName,
+    city: org.location?.city,
+    state: org.location?.state,
+    orgRef: org.orgRef,
+    source: "local" as const,
+    distance: undefined
+  }));
 }
