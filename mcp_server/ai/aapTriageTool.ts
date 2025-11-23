@@ -70,7 +70,7 @@ IMPORTANT: For provider.normalized, you MUST return an object with this structur
 
 Example mappings:
 - "Blackhawk" → { org_ref: "blackhawk-ski-club", backend: "skiclubpro", display_name: "Blackhawk Ski Club" }
-- "Bookeo" → { org_ref: "bookeo-default", backend: "bookeo", display_name: "Bookeo Demo Classes" }
+- "Bookeo" or "AIM Design" → { org_ref: "aim-design", backend: "bookeo", display_name: "AIM Design" }
 - Unknown provider → { org_ref: null, backend: null, display_name: null }
 
 FOLLOW‑UP QUESTIONS:
