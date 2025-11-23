@@ -74,6 +74,18 @@ interface ConversationState {
   ready_for_discovery?: boolean;
   feedQuery?: any;
   discoveryNotes?: string;
+  
+  // Bookeo booking flow
+  bookingUserInfo?: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone?: string;
+  };
+  pendingBookingAction?: {
+    action: string;
+    payload: any;
+  };
 }
 
 // ============= Main Component =============
@@ -473,23 +485,201 @@ function ChatTestHarnessContent() {
       return;
     }
     
-    // Handle Bookeo MCP tool calls from carousel/confirmation actions
-    if (action.startsWith('bookeo.') || action === 'cancel') {
+    // Handle Bookeo booking flow - collect user info if needed
+    if (action === 'bookeo.create_hold') {
+      // Check if we have user info
+      if (!state.bookingUserInfo) {
+        // Store the pending action and ask for user info
+        setState(prev => ({
+          ...prev,
+          pendingBookingAction: { action, payload }
+        }));
+        
+        addAssistantMessage(
+          "Great choice! To reserve your spot, I'll need a few details:\n\n" +
+          "• Your first and last name\n" +
+          "• Email address\n" +
+          "• Number of adults and children\n\n" +
+          "Please provide this information and I'll complete your reservation.",
+          "form",
+          {
+            type: "user_info_collection",
+            fields: [
+              { id: "firstName", label: "First Name", type: "text", required: true },
+              { id: "lastName", label: "Last Name", type: "text", required: true },
+              { id: "email", label: "Email", type: "email", required: true },
+              { id: "phone", label: "Phone (optional)", type: "tel", required: false },
+              { id: "adults", label: "Number of Adults", type: "number", required: true, min: 1 },
+              { id: "children", label: "Number of Children", type: "number", required: true, min: 0 }
+            ],
+            submitAction: "submit_booking_info"
+          }
+        );
+        return;
+      }
+      
+      // We have user info, proceed with creating hold
+      setIsProcessing(true);
+      addLog("info", "mcp", `Creating booking hold with user info`, payload);
+      
+      try {
+        const result = await callMCPTool('bookeo.create_hold', {
+          ...payload,
+          firstName: state.bookingUserInfo.firstName,
+          lastName: state.bookingUserInfo.lastName,
+          email: state.bookingUserInfo.email,
+          phone: state.bookingUserInfo.phone,
+          adults: payload.adults || 1,
+          children: payload.children || 0
+        });
+        
+        addLog("success", "mcp", `Hold created`, result);
+        
+        if (result?.ui?.cards && result.ui.cards.length > 0) {
+          const card = result.ui.cards[0];
+          addAssistantMessage(
+            "Perfect! Here's your reservation summary:",
+            card.componentType,
+            card.componentData || card,
+            state.step
+          );
+        } else {
+          handleError(result?.error ? String(result.error) : "Failed to create hold");
+        }
+      } catch (error: any) {
+        console.error('[HARNESS] Create hold error:', error);
+        addLog("error", "mcp", `Create hold failed`, error.message);
+        handleError(error.message);
+      } finally {
+        setIsProcessing(false);
+      }
+      return;
+    }
+    
+    // Handle user info submission
+    if (action === 'submit_booking_info') {
+      const { firstName, lastName, email, phone, adults, children } = payload;
+      
+      // Validate required fields
+      if (!firstName || !lastName || !email || adults === undefined || children === undefined) {
+        addAssistantMessage("Please fill in all required fields (first name, last name, email, number of adults and children).");
+        return;
+      }
+      
+      // Store user info in state
+      setState(prev => ({
+        ...prev,
+        bookingUserInfo: { firstName, lastName, email, phone }
+      }));
+      
+      addLog("info", "system", "User info collected", { firstName, lastName, email });
+      
+      // If we have a pending booking action, execute it now
+      if (state.pendingBookingAction) {
+        const pendingAction = state.pendingBookingAction;
+        
+        // Clear the pending action
+        setState(prev => ({
+          ...prev,
+          pendingBookingAction: undefined
+        }));
+        
+        // Call create_hold with complete data
+        setIsProcessing(true);
+        addLog("info", "mcp", `Creating hold with collected info`, pendingAction.payload);
+        
+        try {
+          const result = await callMCPTool('bookeo.create_hold', {
+            ...pendingAction.payload,
+            firstName,
+            lastName,
+            email,
+            phone,
+            adults: parseInt(adults),
+            children: parseInt(children)
+          });
+          
+          addLog("success", "mcp", `Hold created`, result);
+          
+          if (result?.ui?.cards && result.ui.cards.length > 0) {
+            const card = result.ui.cards[0];
+            addAssistantMessage(
+              "Perfect! Here's your reservation summary:",
+              card.componentType,
+              card.componentData || card,
+              state.step
+            );
+          } else {
+            handleError(result?.error ? String(result.error) : "Failed to create hold");
+          }
+        } catch (error: any) {
+          console.error('[HARNESS] Create hold error:', error);
+          addLog("error", "mcp", `Create hold failed`, error.message);
+          handleError(error.message);
+        } finally {
+          setIsProcessing(false);
+        }
+      } else {
+        addAssistantMessage("Thanks! Your information has been saved. You can now proceed with booking.");
+      }
+      return;
+    }
+    
+    // Handle booking confirmation
+    if (action === 'bookeo.confirm_booking') {
+      setIsProcessing(true);
+      addLog("info", "mcp", `Confirming booking`, payload);
+      
+      try {
+        const result = await callMCPTool('bookeo.confirm_booking', payload);
+        addLog("success", "mcp", `Booking confirmed`, result);
+        
+        if (result?.ui?.cards && result.ui.cards.length > 0) {
+          const card = result.ui.cards[0];
+          addAssistantMessage(
+            "",
+            card.componentType,
+            card.componentData || card,
+            state.step
+          );
+        } else if (result?.success) {
+          const successMessage = typeof result.data === 'string' 
+            ? result.data 
+            : result.data?.message || "Booking confirmed successfully!";
+          addAssistantMessage(successMessage);
+        } else {
+          handleError(result?.error ? String(result.error) : "Failed to confirm booking");
+        }
+      } catch (error: any) {
+        console.error('[HARNESS] Confirm booking error:', error);
+        addLog("error", "mcp", `Confirm booking failed`, error.message);
+        handleError(error.message);
+      } finally {
+        setIsProcessing(false);
+      }
+      return;
+    }
+    
+    // Handle cancel action
+    if (action === 'cancel') {
+      addAssistantMessage("No problem! Let me know if you'd like to explore other options.");
+      // Clear pending booking action if any
+      setState(prev => ({
+        ...prev,
+        pendingBookingAction: undefined
+      }));
+      return;
+    }
+    
+    // Handle other Bookeo tools
+    if (action.startsWith('bookeo.')) {
       setIsProcessing(true);
       addLog("info", "mcp", `Calling tool: ${action}`, payload);
       
       try {
-        if (action === 'cancel') {
-          addAssistantMessage("No problem! Let me know if you'd like to explore other options.");
-          setIsProcessing(false);
-          return;
-        }
-        
-        // Call MCP tool directly
         const result = await callMCPTool(action, payload);
         addLog("success", "mcp", `Tool ${action} completed`, result);
         
-        // Handle UI cards in the response
         if (result?.ui?.cards && result.ui.cards.length > 0) {
           const card = result.ui.cards[0];
           const message = result.data?.message || "Here's what I found:";
@@ -504,12 +694,7 @@ function ChatTestHarnessContent() {
           const successMessage = typeof result.data === 'string' 
             ? result.data 
             : result.data?.message || "Action completed successfully!";
-          addAssistantMessage(
-            successMessage,
-            undefined,
-            undefined,
-            state.step
-          );
+          addAssistantMessage(successMessage);
         } else {
           handleError(result?.error ? String(result.error) : "An error occurred");
         }

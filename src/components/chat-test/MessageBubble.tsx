@@ -130,6 +130,18 @@ export function MessageBubble({
             </Card>
           </div>
         ))}
+        
+        {/* Inline Form for user info collection */}
+        {message.componentType === "form" && message.componentData && (
+          <div className="mt-3">
+            <InlineChatForm
+              title={message.componentData.title || "Please provide information"}
+              fields={message.componentData.fields}
+              submitLabel={message.componentData.submitLabel || "Submit"}
+              onSubmit={(values) => onAction?.(message.componentData.submitAction, values)}
+            />
+          </div>
+        )}
 
         {/* Test Comparison View */}
         {message.componentData?.testComparison && (
