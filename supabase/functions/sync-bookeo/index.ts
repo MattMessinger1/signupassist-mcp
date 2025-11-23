@@ -152,6 +152,12 @@ Deno.serve(async (req) => {
   try {
     console.log('[sync-bookeo] Starting Bookeo sync...');
     
+    // Accept org_ref from request body (default to 'bookeo-default' for backward compatibility)
+    const requestBody = await req.json().catch(() => ({}));
+    const orgRef = requestBody.org_ref || 'bookeo-default';
+    
+    console.log(`[sync-bookeo] Syncing for organization: ${orgRef}`);
+    
     // Initialize Supabase admin client
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -163,7 +169,8 @@ Deno.serve(async (req) => {
     if (products.length === 0) {
       return new Response(JSON.stringify({
         success: true,
-        message: 'No products found',
+        message: `No products found for ${orgRef}`,
+        org_ref: orgRef,
         synced: 0
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -211,9 +218,9 @@ Deno.serve(async (req) => {
           ]
         };
         
-        // Upsert to cached_provider_feed
+        // Upsert to cached_provider_feed with dynamic org_ref
         const { error } = await supabase.rpc('upsert_cached_provider_feed', {
-          p_org_ref: 'bookeo-default',
+          p_org_ref: orgRef,
           p_program_ref: product.productId,
           p_category: mapCategory(product),
           p_program: programData,
@@ -240,7 +247,8 @@ Deno.serve(async (req) => {
     
     return new Response(JSON.stringify({
       success: true,
-      message: `Synced ${syncedCount}/${products.length} products`,
+      message: `Synced ${syncedCount}/${products.length} products for ${orgRef}`,
+      org_ref: orgRef,
       synced: syncedCount,
       total: products.length,
       errors: errors.length > 0 ? errors : undefined,

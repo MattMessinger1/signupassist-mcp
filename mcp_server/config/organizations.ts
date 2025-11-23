@@ -164,4 +164,24 @@ registerOrganization({
   active: true
 });
 
+// AIM Design - Bookeo Organization
+registerOrganization({
+  orgRef: 'aim-design',
+  provider: 'bookeo',
+  displayName: 'AIM Design',
+  searchKeywords: ['aim', 'aim design', 'robotics', 'stem', 'science', 'sensors', 'ocean', 'marine', 'ski jumping'],
+  location: {
+    city: 'Madison',
+    state: 'WI'
+  },
+  categories: ['all', 'lessons', 'stem', 'science', 'sports'],
+  apiConfig: {
+    bookeo: { 
+      accountId: 'aim-design'
+    }
+  },
+  priority: 'high',
+  active: true
+});
+
 console.log('[OrgRegistry] Organization configurations loaded');
