@@ -147,10 +147,11 @@ class SignupAssistMCPServer {
         const { default: APIOrchestrator } = await import('./ai/APIOrchestrator.js');
         console.log('[STARTUP] APIOrchestrator module loaded successfully');
         
-        this.orchestrator = new APIOrchestrator();
-        console.log('✅ [API-FIRST MODE] APIOrchestrator initialized');
+        this.orchestrator = new APIOrchestrator(this); // Pass server instance for MCP tool access
+        console.log('✅ [API-FIRST MODE] APIOrchestrator initialized with MCP tool access');
         console.log('✅ API-first providers: Bookeo (aim-design)');
         console.log('✅ No scraping, no prerequisites, no login required');
+        console.log('✅ All API calls go through MCP layer for audit compliance');
         
       } else {
         console.log('[STARTUP] 🟡 LEGACY MODE - Loading AIOrchestrator...');

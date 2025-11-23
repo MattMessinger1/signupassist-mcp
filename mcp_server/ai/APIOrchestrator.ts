@@ -12,7 +12,6 @@ import type {
   IOrchestrator
 } from "./types.js";
 import Logger from "../utils/logger.js";
-import * as bookeoProvider from "../providers/bookeo.js";
 import { 
   validateDesignDNA, 
   addResponsibleDelegateFooter,
@@ -53,9 +52,26 @@ interface APIContext {
  */
 export default class APIOrchestrator implements IOrchestrator {
   private sessions: Map<string, APIContext> = new Map();
+  private mcpServer: any;
 
-  constructor() {
-    Logger.info("APIOrchestrator initialized - API-first mode");
+  constructor(mcpServer: any) {
+    this.mcpServer = mcpServer;
+    Logger.info("APIOrchestrator initialized - API-first mode with MCP tool access");
+  }
+
+  /**
+   * Invoke MCP tool internally for audit compliance
+   * All tool calls go through the MCP layer to ensure audit logging
+   */
+  private async invokeMCPTool(toolName: string, args: any): Promise<any> {
+    if (!this.mcpServer?.tools?.has(toolName)) {
+      const available = this.mcpServer?.tools ? Array.from(this.mcpServer.tools.keys()).join(', ') : 'none';
+      throw new Error(`MCP tool not found: ${toolName}. Available: ${available}`);
+    }
+    
+    const tool = this.mcpServer.tools.get(toolName);
+    Logger.info(`[MCP] Invoking tool: ${toolName}`);
+    return await tool.handler(args);
   }
 
   /**
@@ -161,8 +177,13 @@ export default class APIOrchestrator implements IOrchestrator {
     try {
       Logger.info(`Searching programs for org: ${orgRef}`);
 
-      // Call Bookeo provider (returns array directly)
-      const programs = await bookeoProvider.findProgramsMultiBackend(orgRef, 'bookeo');
+      // Call Bookeo MCP tool (ensures audit logging)
+      const response = await this.invokeMCPTool('bookeo.find_programs', {
+        org_ref: orgRef,
+        provider: 'bookeo'
+      });
+      
+      const programs = response?.data || [];
 
       if (!programs || programs.length === 0) {
         return this.formatError("No programs found at this time.");
