@@ -5,11 +5,38 @@
 
 export interface OrgConfig {
   orgRef: string;
-  provider: string; // 'skiclubpro', 'campminder', etc.
+  provider: string; // 'skiclubpro', 'campminder', 'bookeo', etc.
   displayName: string;
+  
+  // Search & Discovery
+  searchKeywords: string[];     // ["bookeo", "booking", "classes"]
+  location?: {                  // Optional for organizations
+    city?: string;
+    state?: string;
+    lat?: number;
+    lng?: number;
+  };
+  
   categories: string[];
+  
+  // Backend-specific config (new preferred way)
+  apiConfig?: {
+    bookeo?: { 
+      accountId: string;        // "bookeo-default"
+    };
+    skiclubpro?: { 
+      customDomain: string;
+      credentialId?: string;
+    };
+    campminder?: { 
+      siteId: string;
+    };
+  };
+  
+  // DEPRECATED: Use apiConfig instead
   customDomain?: string;
   credentialId?: string; // Service credential for automated scraping
+  
   priority: 'high' | 'normal' | 'low';
   active: boolean; // Enable/disable scraping
 }
@@ -76,7 +103,19 @@ registerOrganization({
   orgRef: 'blackhawk-ski-club',
   provider: 'skiclubpro',
   displayName: 'Blackhawk Ski Club',
+  searchKeywords: ['blackhawk', 'blackhawk ski', 'bsc'],
+  location: {
+    city: 'Middleton',
+    state: 'WI'
+  },
   categories: ['all', 'lessons', 'teams', 'races', 'camps', 'clinics'],
+  apiConfig: {
+    skiclubpro: {
+      customDomain: 'blackhawk.skiclubpro.team',
+      credentialId: process.env.SCP_SERVICE_CRED_ID
+    }
+  },
+  // Keep deprecated fields for backward compatibility
   customDomain: 'blackhawk.skiclubpro.team',
   credentialId: process.env.SCP_SERVICE_CRED_ID,
   priority: 'high',
@@ -109,8 +148,18 @@ registerOrganization({
 registerOrganization({
   orgRef: 'bookeo-default',
   provider: 'bookeo',
-  displayName: 'Bookeo Booking System',
+  displayName: 'Bookeo Demo Classes',
+  searchKeywords: ['bookeo', 'booking', 'classes', 'demo'],
+  location: {
+    city: 'Madison',
+    state: 'WI'
+  },
   categories: ['all', 'lessons', 'camps', 'events', 'tours'],
+  apiConfig: {
+    bookeo: { 
+      accountId: 'bookeo-default' 
+    }
+  },
   priority: 'high',
   active: true
 });
