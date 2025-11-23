@@ -418,384 +418,163 @@ class AIOrchestrator {
           asked_location: false
         };
         
-        // Extract AAP hints from context or parse from current message
-        // These may come from frontend (currentAAP), session context, or need extraction
-        const requestHints = {
-          category: context.aap?.activity?.normalized?.category || null,
-          childAge: context.aap?.age?.normalized?.years || null,
-          provider: context.aap?.provider?.raw || null,
-          location: locationForHints,
-          hasLocationHint: Boolean(locationForHints)
-        };
-
-        Logger.info('[NEW AAP] Request hints prepared', { 
-          sessionId,
-          requestHints,
-          hasLocationHint: Boolean(locationForHints)
-        });
-        
         // ============================================================================
-        // PRE-TRIAGE: BROWSE MODE DETECTION
-        // If user explicitly names a provider + has browse intent, skip AAP entirely
+        // PROVIDER-FIRST DISCOVERY (API-Only Architecture)
+        // 1. Identify provider from user message
+        // 2. Show ALL programs immediately
+        // 3. Optional age/activity filtering after display
         // ============================================================================
         
-        const browseIntentPatterns = [
-          /show\s+(me\s+)?(class|program|course|activit)/i,
-          /what\s+(class|program|course|activit)/i,
-          /find\s+(class|program|course|activit)/i,
-          /see\s+(class|program|course|activit)/i,
-          /browse/i,
-          /list/i
-        ];
+        Logger.info('[Provider-First] Starting discovery flow', { sessionId });
         
-        const hasBrowseIntent = browseIntentPatterns.some(pattern => pattern.test(userMessage));
+        // Step 1: Search for organization in user message
+        const { searchOrganizations } = await import('../utils/providerSearch.js');
+        const { getOrganization, getAllActiveOrganizations } = await import('../config/organizations.js');
+        const orgSearchResults = await searchOrganizations({ name: userMessage });
         
-        if (hasBrowseIntent) {
-          Logger.info('[PRE-TRIAGE] Browse intent detected, searching for explicit organization', { 
-            sessionId, 
-            userMessage: userMessage.substring(0, 100) 
-          });
+        // Case A: Provider explicitly mentioned (high confidence match)
+        if (orgSearchResults.length > 0 && orgSearchResults[0].matchScore > 35) {
+          const org = orgSearchResults[0];
+          const orgConfig = getOrganization(org.orgRef);
           
-          // Try to find organization in user message
-          const { searchOrganizations } = await import('../utils/providerSearch.js');
-          const orgSearchResults = await searchOrganizations({ name: userMessage });
-          
-          if (orgSearchResults.length > 0 && orgSearchResults[0].matchScore > 35) {
-            const directOrgRef = orgSearchResults[0].orgRef;
-            const orgProvider = orgSearchResults[0].provider;
-            
-            Logger.info('[PRE-TRIAGE] ✅ Direct org match, SKIPPING AAP QUESTIONS', {
-              org: orgSearchResults[0].displayName,
-              orgRef: directOrgRef,
-              provider: orgProvider,
-              score: orgSearchResults[0].matchScore
-            });
-            
-            // Execute discovery directly
-            const { findProgramsMultiBackend } = await import('../providers/bookeo.js');
-            const programs = await findProgramsMultiBackend(directOrgRef, orgProvider);
-            
-            Logger.info('[Multi-Backend] Browse mode programs found', { 
-              count: programs.length,
-              orgRef: directOrgRef 
-            });
-            
-            if (!programs || programs.length === 0) {
-              return this.formatResponse(
-                `I found ${orgSearchResults[0].displayName}, but no programs are currently available.`,
-                undefined,
-                undefined,
-                { ready_for_discovery: false }
-              );
-            }
-            
-            // Return cards
-            const cards = programs.map((prog: any) => ({
-              type: 'program',
-              title: prog.title,
-              subtitle: prog.schedule || prog.description?.substring(0, 60),
-              description: prog.description,
-              metadata: {
-                provider: orgProvider,
-                orgRef: directOrgRef,
-                programRef: prog.ref,
-                price: prog.price
-              },
-              buttons: [{
-                label: 'Select this program',
-                action: 'select_program',
-                payload: { 
-                  provider: orgProvider,
-                  orgRef: directOrgRef,
-                  programRef: prog.ref 
-                }
-              }]
-            }));
-            
+          if (!orgConfig) {
+            Logger.error('[Provider-First] Organization config not found', { orgRef: org.orgRef });
             return this.formatResponse(
-              `Here are the programs available at ${orgSearchResults[0].displayName}:`,
-              cards,
-              undefined,
-              { ready_for_discovery: true }
-            );
-          }
-        }
-        
-        // ============================================================================
-        // CONTINUE WITH NORMAL AAP TRIAGE
-        // ============================================================================
-        
-        // Latency checkpoint: Before AAP triage
-        t1 = Date.now();
-        
-        // Run AAP triage tool with location and raw user message
-        const triageResult = await triageAAP(
-          recentMessages,
-          context.aap || null,
-          requestHints,  // Use the prepared object
-          askedFlags,
-          userMessage  // NEW: Pass raw user message for provider detection
-        );
-        
-        // Latency checkpoint: After AAP triage
-        t2 = Date.now();
-        
-        // Update locationForHints from triageResult if present
-        let finalLocation = locationForHints;
-        if (triageResult.aap?.provider?.locationHint) {
-          const hint = triageResult.aap.provider.locationHint;
-          // Map LocationHint to SessionLocation type
-          const sourceMap: Record<'ip' | 'explicit' | 'profile', 'ipapi' | 'user'> = {
-            'ip': 'ipapi',
-            'explicit': 'user',
-            'profile': 'user'
-          };
-          finalLocation = {
-            lat: hint.lat,
-            lng: hint.lng,
-            city: hint.city || undefined,
-            region: hint.region || undefined,
-            country: hint.country || undefined,
-            source: sourceMap[hint.source] || 'unknown',
-            mock: hint.mock,
-            reason: hint.reason
-          };
-        }
-        const has_location = Boolean(
-          finalLocation?.city || finalLocation?.region || finalLocation?.country ||
-          (typeof finalLocation?.lat === 'number' && typeof finalLocation?.lng === 'number')
-        );
-        
-        Logger.info('[NEW AAP TRIAGE COMPLETE]', {
-          sessionId,
-          aap: triageResult.aap,
-          provider_mode: triageResult.aap?.provider?.mode,
-          has_location,
-          location_source: finalLocation?.source,
-          location_city: finalLocation?.city,
-          followup_questions: triageResult.followup_questions,
-          ready_for_discovery: triageResult.ready_for_discovery,
-          assumptions: triageResult.assumptions
-        });
-        
-        Logger.info('[NEW AAP TRIAGE COMPLETE]', {
-          sessionId,
-          aap: triageResult.aap,
-          followup_questions: triageResult.followup_questions,
-          ready_for_discovery: triageResult.ready_for_discovery,
-          assumptions: triageResult.assumptions
-        });
-        
-        // Update session with AAP result
-        await this.updateContext(sessionId, {
-          aap: triageResult.aap
-        });
-        
-        // Combine multiple missing-field prompts into one message to avoid multi-turn loops
-        if (triageResult.followup_questions.length > 0) {
-          let combinedQuestion: string;
-          const qList = triageResult.followup_questions;
-          
-          if (qList.length > 1) {
-            // Join questions with " And ..." for a natural combined query
-            if (qList.length === 2) {
-              combinedQuestion = `${qList[0]} And ${qList[1].charAt(0).toLowerCase()}${qList[1].slice(1)}`;
-            } else {
-              // 3 questions: join first two with space, then " And " for third
-              combinedQuestion = `${qList[0]} ${qList[1]} And ${qList[2].charAt(0).toLowerCase()}${qList[2].slice(1)}`;
-            }
-          } else {
-            combinedQuestion = qList[0];
-          }
-          
-          // Mark all fields we are asking about as asked to prevent repeat prompts
-          const combinedLower = combinedQuestion.toLowerCase();
-          if (combinedLower.includes('age') || combinedLower.includes('grade')) askedFlags.asked_age = true;
-          if (combinedLower.includes('activity')) askedFlags.asked_activity = true;
-          if (combinedLower.includes('provider') || combinedLower.includes('organization')) askedFlags.asked_provider = true;
-          
-          await this.updateContext(sessionId, { aap_asked_flags: askedFlags });
-          
-          // Return the combined narrowing question(s) and halt further processing this turn
-          return this.formatResponse(combinedQuestion, undefined, undefined, {
-            aap: triageResult.aap,
-            ready_for_discovery: false
-          });
-        }
-        
-        // If ready for discovery, execute multi-backend discovery
-        if (triageResult.ready_for_discovery) {
-          Logger.info('[Multi-Backend] Ready for program discovery', { sessionId });
-          
-          // STEP 1: City Inference + Provider Search
-          const inferenceResult = await inferCityAndProvider(triageResult.aap, sessionId);
-          
-          // Case A: Need to ask for city
-          if (inferenceResult.needsCity) {
-            Logger.info('[Multi-Backend] Asking user for city', { sessionId });
-            askedFlags.asked_location = true;
-            await this.updateContext(sessionId, { aap_asked_flags: askedFlags });
-            
-            return this.formatResponse(
-              inferenceResult.message || "Which city are you in? (e.g., Madison, Milwaukee, Waukesha)",
+              `I found ${org.displayName}, but I don't have configuration for it yet.`,
               undefined,
               undefined,
-              { aap: triageResult.aap, ready_for_discovery: false }
+              {}
             );
           }
           
-          // Case B: Need disambiguation (multiple providers in different cities)
-          if (inferenceResult.needsDisambiguation) {
-            Logger.info('[Multi-Backend] Showing disambiguation cards', {
-              sessionId,
-              count: inferenceResult.searchResults.length
-            });
-            
-            const cards = buildDisambiguationCards(inferenceResult.searchResults);
-            
+          Logger.info('[Provider-First] Organization identified', {
+            org: org.displayName,
+            orgRef: org.orgRef,
+            provider: orgConfig.provider,
+            score: org.matchScore
+          });
+          
+          // Call discovery immediately - NO qualification questions
+          const { findProgramsMultiBackend } = await import('../providers/bookeo.js');
+          const programs = await findProgramsMultiBackend(org.orgRef, orgConfig.provider);
+          
+          Logger.info('[Provider-First] Programs loaded', { count: programs.length });
+          
+          if (!programs || programs.length === 0) {
             return this.formatResponse(
-              inferenceResult.message || `I found ${cards.length} locations. Which one are you interested in?`,
-              cards,
+              `I found ${org.displayName}, but no programs are currently available.`,
+              undefined,
               undefined,
               { 
-                aap: triageResult.aap, 
-                provider_search_results: inferenceResult.searchResults,
-                ready_for_discovery: false 
+                provider: { 
+                  orgRef: org.orgRef, 
+                  displayName: org.displayName,
+                  provider: orgConfig.provider
+                }
               }
             );
           }
           
-          // Case C: Provider selected (either auto-inferred or user selected)
-          if (inferenceResult.selectedOrg) {
-            const org = inferenceResult.selectedOrg;
-            Logger.info('[Multi-Backend] Provider selected, calling backend tool', {
-              sessionId,
+          // Build program cards
+          const cards = programs.map((prog: any) => ({
+            type: 'program',
+            title: prog.title,
+            subtitle: prog.schedule || prog.description?.substring(0, 60),
+            description: prog.description,
+            metadata: {
+              provider: orgConfig.provider,
               orgRef: org.orgRef,
-              backend: org.provider,
-              city: org.location?.city
-            });
-            
-            // Update AAP with selected org
-            const updatedAAP: AAPTriad = {
-              ...triageResult.aap,
-              provider: {
-                ...triageResult.aap.provider,
-                status: 'known' as const,
-                normalized: {
-                  org_ref: org.orgRef,
-                  backend: org.provider as 'bookeo' | 'skiclubpro' | 'campminder',
-                  display_name: org.displayName
-                },
-                location_hint: {
-                  city: org.location?.city,
-                  state: org.location?.state,
-                  source: 'inferred' as const
-                }
-              }
-            };
-            
-            await this.updateContext(sessionId, { aap: updatedAAP });
-            
-            // STEP 2: Call backend-specific tool
-            const toolName = TOOL_MAPPING[org.provider as keyof typeof TOOL_MAPPING];
-            if (!toolName) {
-              Logger.error('[Multi-Backend] Unknown backend', { backend: org.provider });
-              return this.formatResponse(
-                `Sorry, I don't know how to search programs for ${org.displayName} yet.`,
-                undefined,
-                undefined,
-                { aap: updatedAAP }
-              );
-            }
-            
-            Logger.info('[Multi-Backend] Calling tool', { 
-              sessionId, 
-              toolName, 
-              orgRef: org.orgRef,
-              category: triageResult.aap.activity?.normalized?.category
-            });
-            
-            const toolResult = await this.callTool(toolName, {
-              org_ref: org.orgRef,
-              category: triageResult.aap.activity?.normalized?.category || 'all',
-              user_id: sessionId
-            });
-            
-            // STEP 3: Apply age tolerance filtering
-            const userAge = triageResult.aap.age?.normalized?.years;
-            let programs = toolResult?.data?.programs || toolResult?.programs || [];
-            
-            if (userAge && programs.length > 0) {
-              Logger.info('[Multi-Backend] Applying ±1 year age tolerance', {
-                sessionId,
-                userAge,
-                programCount: programs.length
-              });
-              
-              programs = applyAgeTolerance(programs, userAge, 1); // ±1 year tolerance
-              
-              Logger.info('[Multi-Backend] After age filtering', {
-                sessionId,
-                filteredCount: programs.length
-              });
-            }
-            
-            // STEP 4: Build program cards with age badges
-            if (!programs || programs.length === 0) {
-              return this.formatResponse(
-                `I didn't find any ${triageResult.aap.activity?.normalized?.category || ''} programs at ${org.displayName}${userAge ? ` for age ${userAge}` : ''}.`,
-                undefined,
-                undefined,
-                { aap: updatedAAP }
-              );
-            }
-            
-            const cards = programs.slice(0, 12).map((prog: any) => ({
-              title: prog.name || prog.title,
-              subtitle: prog.ageBadge || (prog.ageRange ? `Ages ${prog.ageRange[0]}-${prog.ageRange[1]}` : ''),
-              description: `${prog.schedule || ''} • ${prog.price || ''}`,
-              metadata: {
-                programRef: prog.id || prog.program_ref,
+              programRef: prog.ref,
+              price: prog.price,
+              status: prog.status
+            },
+            buttons: [{
+              label: 'Select this program',
+              action: 'select_program',
+              payload: { 
+                provider: orgConfig.provider,
                 orgRef: org.orgRef,
-                backend: org.provider,
-                ageBadge: prog.ageBadge,
-                ageMatchType: prog.ageMatchType
-              },
-              buttons: [{
-                label: "View details",
-                action: "view_program",
-                payload: { 
-                  program_ref: prog.id || prog.program_ref,
-                  org_ref: org.orgRef
-                }
-              }]
-            }));
-            
-            const ageNote = userAge 
-              ? ` Programs shown are for age ${userAge} (±1 year tolerance).` 
-              : '';
-            
-            return this.formatResponse(
-              `Found ${programs.length} programs at ${org.displayName}.${ageNote}`,
-              cards,
-              undefined,
-              { 
-                aap: updatedAAP,
-                programs_displayed: programs.length,
-                total_programs: toolResult?.data?.programs?.length || programs.length
+                programRef: prog.ref 
               }
-            );
-          }
+            }]
+          }));
           
-          // Fallback: No provider selected and no inference possible
-          Logger.warn('[Multi-Backend] Discovery ready but no provider inference', { sessionId });
+          // Store programs in context for filtering
+          await this.updateContext(sessionId, {
+            provider: { 
+              orgRef: org.orgRef, 
+              displayName: org.displayName,
+              provider: orgConfig.provider
+            },
+            programs: programs,
+            step: 'program_browsing'
+          });
+          
           return this.formatResponse(
-            "I'm ready to search for programs, but I need more information. Which organization or city are you interested in?",
-            undefined,
-            undefined,
-            { aap: triageResult.aap }
+            `Here are the available classes from **${org.displayName}**:`,
+            cards,
+            [
+              { label: 'Filter by age', action: 'filter_by_age', variant: 'outline' },
+              { label: 'Filter by activity', action: 'filter_by_activity', variant: 'outline' }
+            ],
+            {}
           );
         }
+        
+        // Case B: No provider mentioned - ask which one
+        if (orgSearchResults.length === 0) {
+          Logger.info('[Provider-First] No provider identified, showing selection', { sessionId });
+          
+          const activeOrgs = getAllActiveOrganizations();
+          
+          if (activeOrgs.length === 0) {
+            return this.formatResponse(
+              "I'm sorry, no providers are currently available. Please check back later.",
+              undefined,
+              undefined,
+              {}
+            );
+          }
+          
+          // Build provider selection cards
+          const providerCards = activeOrgs.map(org => ({
+            type: 'provider',
+            title: org.displayName,
+            subtitle: org.location ? `${org.location.city}, ${org.location.state}` : undefined,
+            description: `Categories: ${org.categories.join(', ')}`,
+            buttons: [{
+              label: 'View programs',
+              action: 'select_provider_browse',
+              payload: { 
+                orgRef: org.orgRef, 
+                displayName: org.displayName,
+                provider: org.provider
+              }
+            }]
+          }));
+          
+          await this.updateContext(sessionId, { step: 'provider_selection' });
+          
+          return this.formatResponse(
+            "Which organization would you like to explore?",
+            providerCards,
+            undefined,
+            {}
+          );
+        }
+        
+        // Case C: Multiple providers with low scores - ask for clarification
+        Logger.info('[Provider-First] Multiple low-confidence matches', { 
+          sessionId,
+          count: orgSearchResults.length,
+          topScore: orgSearchResults[0]?.matchScore 
+        });
+        
+        return this.formatResponse(
+          `I found multiple organizations. Can you be more specific? (e.g., "${orgSearchResults[0].displayName}")`,
+          undefined,
+          undefined,
+          { provider_search_results: orgSearchResults }
         
       } else {
         // OLD SYSTEM: Legacy parseIntentWithAI flow
@@ -2150,6 +1929,112 @@ Example follow-up (only when needed):
     
     try {
       switch (action) {
+        case "filter_by_age":
+          Logger.info('[Filter] User wants to filter by age', { sessionId });
+          await this.updateContext(sessionId, { 
+            awaitingInput: 'age', 
+            step: 'age_filtering' 
+          });
+          return this.formatResponse(
+            "How old is your child? (e.g., 9 years old, 3rd grade)",
+            undefined,
+            undefined,
+            {}
+          );
+
+        case "filter_by_activity":
+          Logger.info('[Filter] User wants to filter by activity', { sessionId });
+          await this.updateContext(sessionId, { 
+            awaitingInput: 'activity', 
+            step: 'activity_filtering' 
+          });
+          return this.formatResponse(
+            "What type of activity are you interested in? (e.g., STEM, sports, music, swimming)",
+            undefined,
+            undefined,
+            {}
+          );
+
+        case "select_provider_browse":
+          // Handle provider selection from browse cards
+          const selectedOrgRef = payload?.orgRef;
+          const selectedDisplayName = payload?.displayName;
+          const selectedProvider = payload?.provider;
+          
+          if (!selectedOrgRef) {
+            return this.formatResponse(
+              "Sorry, I couldn't identify which provider you selected.",
+              undefined,
+              undefined,
+              {}
+            );
+          }
+          
+          Logger.info('[Provider-First] Provider selected via card', { 
+            orgRef: selectedOrgRef,
+            displayName: selectedDisplayName 
+          });
+          
+          // Execute discovery for selected provider
+          const { findProgramsMultiBackend } = await import('../providers/bookeo.js');
+          const programs = await findProgramsMultiBackend(selectedOrgRef, selectedProvider);
+          
+          Logger.info('[Provider-First] Programs loaded from selection', { 
+            count: programs.length 
+          });
+          
+          if (!programs || programs.length === 0) {
+            return this.formatResponse(
+              `I couldn't find any programs available for ${selectedDisplayName} right now.`,
+              undefined,
+              undefined,
+              {}
+            );
+          }
+          
+          // Build program cards
+          const browseCards = programs.map((prog: any) => ({
+            type: 'program',
+            title: prog.title,
+            subtitle: prog.schedule || prog.description?.substring(0, 60),
+            description: prog.description,
+            metadata: {
+              provider: selectedProvider,
+              orgRef: selectedOrgRef,
+              programRef: prog.ref,
+              price: prog.price
+            },
+            buttons: [{
+              label: 'Select this program',
+              action: 'select_program',
+              payload: { 
+                provider: selectedProvider,
+                orgRef: selectedOrgRef,
+                programRef: prog.ref 
+              }
+            }]
+          }));
+          
+          await this.updateContext(sessionId, {
+            provider: { 
+              orgRef: selectedOrgRef, 
+              displayName: selectedDisplayName,
+              provider: selectedProvider
+            },
+            programs: programs,
+            step: 'program_browsing'
+          });
+          
+          return this.formatResponse(
+            `Here are the available classes from **${selectedDisplayName}**:`,
+            browseCards,
+            [
+              { label: 'Filter by age', action: 'filter_by_age', variant: 'outline' },
+              { label: 'Filter by activity', action: 'filter_by_activity', variant: 'outline' }
+            ],
+            {}
+          );
+
         case "select_provider":
           // Step 3 → Step 4: Provider selected, move to login
           await this.updateContext(sessionId, {
