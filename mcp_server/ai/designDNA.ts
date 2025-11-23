@@ -37,7 +37,7 @@ export function validateDesignDNA(
     const hasConfirmationCard = response.cards?.some(c => 
       c.title?.toLowerCase().includes('confirm') || 
       c.title?.toLowerCase().includes('booking') ||
-      c.body?.toLowerCase().includes('confirm')
+      c.description?.toLowerCase().includes('confirm')
     );
     if (!hasConfirmationCard) {
       issues.push('Missing confirmation card before payment (OpenAI requirement)');
@@ -53,7 +53,7 @@ export function validateDesignDNA(
   // 3. Visual hierarchy (button variants)
   const buttons = [
     ...(response.cta?.buttons || []),
-    ...(response.cards?.flatMap(c => c.actions || []) || [])
+    ...(response.cards?.flatMap(c => c.buttons || []) || [])
   ];
   
   const primaryCount = buttons.filter(b => b.variant === 'accent').length;
