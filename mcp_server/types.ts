@@ -104,6 +104,8 @@ export interface SessionContext {
   userType?: 'first_time_parent' | 'returning_user' | 'unknown';
   isNewUser?: boolean;
   availablePrograms?: any[];
+  programs?: any[]; // Temporary storage for program filtering in browse mode
+  awaitingInput?: 'age' | 'activity' | string; // Awaiting specific user input type
   displayedProgramIds?: string[];
   remainingProgramIds?: string[];
   programSummary?: {
