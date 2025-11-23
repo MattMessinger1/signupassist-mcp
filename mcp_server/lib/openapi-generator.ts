@@ -235,31 +235,48 @@ function generateToolExamples(tools: MCPTool[]): Record<string, any> {
   tools.forEach((tool) => {
     const exampleName = tool.name.replace(/[.:]/g, '_');
     
-    // Create example based on tool name
+    // Create example based on tool name and provider prefix
     if (tool.name.includes('find_programs')) {
+      // Different examples for different backends
+      const isBookeo = tool.name.startsWith('bookeo.');
+      const isSCP = tool.name.startsWith('scp.');
+      
       examples[exampleName] = {
         summary: `Example: ${tool.description}`,
         value: {
           tool: tool.name,
-          args: {
-            session_id: 'example-session-123',
-            mandate_id: '550e8400-e29b-41d4-a716-446655440000',
-            query: 'ski lessons',
-            organization_id: 'blackhawk'
-          }
+          args: isBookeo 
+            ? {
+                org_ref: 'bookeo-default',
+                category: 'lessons',
+                user_id: 'user-123'
+              }
+            : {
+                session_id: 'example-session-123',
+                mandate_id: '550e8400-e29b-41d4-a716-446655440000',
+                query: 'ski lessons',
+                organization_id: 'blackhawk'
+              }
         }
       };
     } else if (tool.name.includes('discover_required_fields') || tool.name.includes('discover_fields')) {
+      const isBookeo = tool.name.startsWith('bookeo.');
+      
       examples[exampleName] = {
         summary: `Example: ${tool.description}`,
         value: {
           tool: tool.name,
-          args: {
-            session_id: 'example-session-123',
-            mandate_id: '550e8400-e29b-41d4-a716-446655440000',
-            program_id: 'blackhawk_winter_lessons',
-            organization_id: 'blackhawk'
-          }
+          args: isBookeo
+            ? {
+                program_ref: 'PRODUCT_123',
+                org_ref: 'bookeo-default'
+              }
+            : {
+                session_id: 'example-session-123',
+                mandate_id: '550e8400-e29b-41d4-a716-446655440000',
+                program_id: 'blackhawk_winter_lessons',
+                organization_id: 'blackhawk'
+              }
         }
       };
     } else if (tool.name.includes('login')) {

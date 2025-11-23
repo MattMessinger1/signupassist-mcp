@@ -9,6 +9,7 @@ import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
 import { generateOpenAPISpec, validateOpenAPISpec } from '../mcp_server/lib/openapi-generator.js';
 import { skiClubProTools } from '../mcp_server/providers/skiclubpro.js';
+import { bookeoTools } from '../mcp_server/providers/bookeo.js';
 
 const OUTPUT_PATH = resolve(process.cwd(), 'mcp', 'openapi.json');
 const VERSION_FILE = resolve(process.cwd(), 'mcp', '.openapi-version');
@@ -103,12 +104,26 @@ async function main() {
   // Generate new spec
   const baseUrl = process.env.MCP_SERVER_URL || 'https://signupassist-mcp-production.up.railway.app';
   
-  console.log(`📦 Discovered ${skiClubProTools.length} tools`);
-  skiClubProTools.forEach(tool => {
+  // Combine all provider tools
+  const allTools = [
+    ...skiClubProTools.map(t => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema
+    })),
+    ...bookeoTools.map(t => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema
+    }))
+  ];
+  
+  console.log(`📦 Discovered ${allTools.length} tools (${skiClubProTools.length} SkiClubPro + ${bookeoTools.length} Bookeo)`);
+  allTools.forEach(tool => {
     console.log(`  - ${tool.name}: ${tool.description}`);
   });
 
-  const newSpec = generateOpenAPISpec(skiClubProTools, baseUrl);
+  const newSpec = generateOpenAPISpec(allTools, baseUrl);
 
   // Validate spec
   console.log('\n✅ Validating OpenAPI spec...');
@@ -147,13 +162,13 @@ async function main() {
   console.log(`\n💾 Wrote OpenAPI spec to: ${OUTPUT_PATH}`);
 
   // Save version info
-  saveVersionInfo(version, skiClubProTools.length);
+  saveVersionInfo(version, allTools.length);
   console.log(`📝 Saved version info to: ${VERSION_FILE}`);
 
   // Print summary
   console.log('\n📋 Summary:');
   console.log(`  Version: ${version}`);
-  console.log(`  Tools: ${skiClubProTools.length}`);
+  console.log(`  Tools: ${allTools.length} (${skiClubProTools.length} SkiClubPro + ${bookeoTools.length} Bookeo)`);
   console.log(`  Server: ${baseUrl}`);
   console.log(`  File: ${OUTPUT_PATH}`);
   
