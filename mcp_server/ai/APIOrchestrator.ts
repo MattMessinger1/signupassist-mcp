@@ -161,14 +161,12 @@ export default class APIOrchestrator implements IOrchestrator {
     try {
       Logger.info(`Searching programs for org: ${orgRef}`);
 
-      // Call Bookeo provider
-      const result = await bookeoProvider.findProgramsMultiBackend({ org_ref: orgRef });
+      // Call Bookeo provider (returns array directly)
+      const programs = await bookeoProvider.findProgramsMultiBackend(orgRef, 'bookeo');
 
-      if (!result.success || !result.data?.programs) {
+      if (!programs || programs.length === 0) {
         return this.formatError("No programs found at this time.");
       }
-
-      const programs = result.data.programs;
       
       // Store programs in context
       this.updateContext(sessionId, {

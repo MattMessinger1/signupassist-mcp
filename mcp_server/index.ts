@@ -1526,7 +1526,7 @@ class SignupAssistMCPServer {
               let finalUserLocation = userLocation;
               
               // Only fetch location and update context in legacy mode
-              const isAPIMode = process.env.USE_API_ORCHESTRATOR === 'true';
+              // (isAPIMode already declared above)
               
               if (!isAPIMode && (!userLocation?.lat || !userLocation?.lng)) {
                 try {
@@ -1598,8 +1598,7 @@ class SignupAssistMCPServer {
                 childAge 
               });
               
-              // Check if using API-first orchestrator (no location/JWT needed)
-              const isAPIMode = process.env.USE_API_ORCHESTRATOR === 'true';
+              // Use isAPIMode declared above (no redeclaration)
               
               if (isAPIMode) {
                 // APIOrchestrator: Simple signature (input, sessionId, action?, payload?)
