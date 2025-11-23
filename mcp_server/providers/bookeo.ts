@@ -699,3 +699,52 @@ export const bookeoTools: BookeoTool[] = [
     }
   }
 ];
+
+/**
+ * Multi-backend program discovery (direct database query)
+ * Used by AIOrchestrator for browse mode bypass
+ */
+export async function findProgramsMultiBackend(
+  orgRef: string, 
+  provider: string
+): Promise<Array<{ ref: string; title: string; description: string; schedule?: string; price?: string; status?: string }>> {
+  console.log(`[Bookeo] findProgramsMultiBackend: ${orgRef}, ${provider}`);
+  
+  try {
+    const { data: programs, error } = await supabase
+      .from('cached_provider_feed')
+      .select('program_ref, program, org_ref')
+      .eq('org_ref', orgRef)
+      .order('program->signup_start_time', { ascending: true })
+      .limit(20);
+    
+    if (error) {
+      console.error('[Bookeo] Database error:', error);
+      return [];
+    }
+    
+    if (!programs || programs.length === 0) {
+      console.log('[Bookeo] No programs found');
+      return [];
+    }
+    
+    console.log(`[Bookeo] Found ${programs.length} programs`);
+    
+    // Transform to simple format
+    return programs.map(row => {
+      const prog = row.program as any;
+      return {
+        ref: row.program_ref,
+        title: prog.title || 'Untitled Program',
+        description: prog.description || '',
+        schedule: prog.schedule || '',
+        price: prog.price || 'Price varies',
+        status: prog.status || ''
+      };
+    });
+    
+  } catch (error: any) {
+    console.error('[Bookeo] Error in findProgramsMultiBackend:', error);
+    return [];
+  }
+}
