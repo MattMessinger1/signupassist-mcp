@@ -144,32 +144,12 @@ registerOrganization({
 //   active: false // Not ready yet
 // });
 
-// Bookeo Organizations
-registerOrganization({
-  orgRef: 'bookeo-default',
-  provider: 'bookeo',
-  displayName: 'Bookeo Demo Classes',
-  searchKeywords: ['bookeo', 'booking', 'classes', 'demo'],
-  location: {
-    city: 'Madison',
-    state: 'WI'
-  },
-  categories: ['all', 'lessons', 'camps', 'events', 'tours'],
-  apiConfig: {
-    bookeo: { 
-      accountId: 'bookeo-default' 
-    }
-  },
-  priority: 'high',
-  active: true
-});
-
-// AIM Design - Bookeo Organization
+// AIM Design - Bookeo Organization (PRIMARY)
 registerOrganization({
   orgRef: 'aim-design',
   provider: 'bookeo',
   displayName: 'AIM Design',
-  searchKeywords: ['aim', 'aim design', 'robotics', 'stem', 'science', 'sensors', 'ocean', 'marine', 'ski jumping'],
+  searchKeywords: ['bookeo', 'booking', 'classes', 'aim', 'aim design', 'robotics', 'stem', 'science', 'sensors', 'ocean', 'marine', 'ski jumping'],
   location: {
     city: 'Madison',
     state: 'WI'
