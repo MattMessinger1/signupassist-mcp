@@ -12,9 +12,8 @@ export interface ButtonSpec {
 export interface CardSpec {
   title: string;
   subtitle?: string;
-  caption?: string;
-  body?: string;
-  actions?: ButtonSpec[];
+  description?: string;
+  buttons?: ButtonSpec[];
 }
 
 export interface OrchestratorResponse {

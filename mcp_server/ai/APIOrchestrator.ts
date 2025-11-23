@@ -187,9 +187,8 @@ export default class APIOrchestrator implements IOrchestrator {
       const cards: CardSpec[] = sortedPrograms.map((prog: any) => ({
         title: prog.title || "Untitled Program",
         subtitle: prog.schedule || "",
-        caption: prog.price || "Price varies",
-        body: prog.description || "",
-        actions: [
+        description: prog.description || "",
+        buttons: [
           {
             label: "Select this program",
             action: "select_program",
@@ -273,8 +272,8 @@ export default class APIOrchestrator implements IOrchestrator {
       cards: [{
         title: "Registration Form",
         subtitle: programName,
-        body: "Fill in the details below to continue.",
-        actions: []
+        description: "Fill in the details below to continue.",
+        buttons: []
       }],
       cta: {
         buttons: [
@@ -350,8 +349,8 @@ export default class APIOrchestrator implements IOrchestrator {
       cards: [{
         title: "Booking Confirmation",
         subtitle: programName,
-        body: `Participant: ${participantName}\nTotal: ${price}`,
-        actions: []
+        description: `Participant: ${participantName}\nTotal: ${price}`,
+        buttons: []
       }],
       cta: {
         buttons: [
