@@ -9,9 +9,9 @@ import type {
   OrchestratorResponse, 
   CardSpec, 
   ButtonSpec 
-} from "./types";
-import { Logger } from "../utils/logger";
-import * as bookeoProvider from "../providers/bookeo";
+} from "./types.js";
+import Logger from "../utils/logger.js";
+import * as bookeoProvider from "../providers/bookeo.js";
 
 // Simple flow steps for API-first providers
 enum FlowStep {
