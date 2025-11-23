@@ -4,7 +4,7 @@
  */
 
 import { validateTone, determineToneContext, type ToneContext } from '../../src/lib/toneValidator.js';
-import type { OrchestratorResponse } from './types.js';
+import type { OrchestratorResponse, CardSpec } from './types.js';
 
 export interface DesignDNAValidation {
   passed: boolean;
