@@ -1,44 +1,29 @@
 /**
- * Scheduled Provider Feed Refresh
+ * Scheduled Provider Feed Refresh (API-Only)
  * 
- * This edge function refreshes the cached_provider_feed table by calling
- * scp.find_programs with the service credential. It's designed to be
- * triggered by pg_cron on a daily schedule.
+ * This edge function refreshes the cached_provider_feed table for API-based
+ * providers only. Scraping-based providers (e.g., SkiClubPro) are excluded
+ * to avoid burning Browserbase sessions.
  * 
  * What it does:
- * 1. Authenticates with the service credential (SCP_SERVICE_CRED_ID)
- * 2. Triggers full program scraping + prerequisite checks + form discovery
- * 3. Caches all data in cached_provider_feed table
+ * 1. Auto-discovers organizations that support automated sync
+ * 2. Calls appropriate sync method (edge function or MCP tool)
+ * 3. Only syncs API-based providers (Bookeo, CampMinder, etc.)
  * 
- * This keeps the cache fresh so users get instant program loading.
+ * Scraping providers remain manual-refresh only.
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { 
+  getProvider, 
+  getOrganizationsForAutomatedSync 
+} from '../_shared/providerRegistry.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface RefreshConfig {
-  org_ref: string;
-  category: string;
-  provider?: string;
-}
-
-// Organizations to refresh (can be expanded)
-const DEFAULT_ORGS: RefreshConfig[] = [
-  {
-    org_ref: 'blackhawk-ski-club',
-    category: 'all',
-    provider: 'skiclubpro'
-  },
-  {
-    org_ref: 'bookeo-default',
-    category: 'all',
-    provider: 'bookeo'
-  }
-];
 
 Deno.serve(async (req) => {
   // Handle CORS preflight requests
@@ -47,105 +32,76 @@ Deno.serve(async (req) => {
   }
 
   try {
-    console.log('[refresh-provider-feed] Starting scheduled feed refresh...');
+    console.log('[refresh-provider-feed] Starting API-based provider sync...');
     
-    // Get environment variables
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const serviceCredId = Deno.env.get('SCP_SERVICE_CRED_ID');
-    
-    if (!serviceCredId) {
-      throw new Error('SCP_SERVICE_CRED_ID not configured');
-    }
-    
-    // STEP 1: Cleanup old Browserbase sessions to ensure we have capacity
-    console.log('[refresh-provider-feed] 🧹 Cleaning up old Browserbase sessions...');
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    const { data: cleanupData, error: cleanupError } = await supabase.functions.invoke('cleanup-browserbase-sessions');
+    // Get only organizations that support automated sync (API-based)
+    const orgsToRefresh = getOrganizationsForAutomatedSync();
     
-    if (cleanupError) {
-      console.error('[refresh-provider-feed] ⚠️ Session cleanup failed:', cleanupError);
-    } else {
-      console.log(`[refresh-provider-feed] ✅ Cleanup complete: ${cleanupData?.terminated || 0} sessions terminated`);
+    console.log(`[refresh-provider-feed] Found ${orgsToRefresh.length} API-based organizations to sync`);
+    
+    if (orgsToRefresh.length === 0) {
+      return new Response(JSON.stringify({
+        success: true,
+        message: 'No API-based organizations configured for automated sync',
+        timestamp: new Date().toISOString()
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        status: 200
+      });
     }
-    
-    // Wait a moment for sessions to fully terminate
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // STEP 2: Parse request body for custom orgs (optional)
-    let orgsToRefresh = DEFAULT_ORGS;
-    try {
-      const body = await req.json();
-      if (body.orgs && Array.isArray(body.orgs)) {
-        orgsToRefresh = body.orgs;
-      }
-    } catch {
-      // Use defaults if no body provided
-    }
-    
-    // STEP 3: Refresh each organization
-    console.log(`[refresh-provider-feed] Refreshing ${orgsToRefresh.length} organization(s)...`);
     
     const results = [];
     
-    // Refresh each organization
-    for (const config of orgsToRefresh) {
+    for (const orgConfig of orgsToRefresh) {
       try {
-        console.log(`[refresh-provider-feed] Processing ${config.org_ref} (${config.provider})...`);
+        const provider = getProvider(orgConfig.providerId);
         
-        // Determine which tool to call based on provider
-        const toolName = config.provider === 'bookeo' 
-          ? 'bookeo.find_programs' 
-          : 'scp.find_programs';
+        if (!provider) {
+          console.error(`[refresh-provider-feed] Provider ${orgConfig.providerId} not found`);
+          continue;
+        }
         
-        // Call appropriate provider tool with service credential
-        const { data, error } = await supabase.functions.invoke('skiclubpro-tools', {
-          body: {
-            tool: toolName,
-            args: {
-              credential_id: config.provider === 'skiclubpro' ? serviceCredId : undefined,
-              org_ref: config.org_ref,
-              category: config.category,
-              user_jwt: 'system.cron.refresh' // Special marker for cron jobs
-            }
-          }
-        });
+        console.log(`[refresh-provider-feed] Syncing ${orgConfig.orgRef} (${provider.name})...`);
+        
+        let data, error;
+        
+        if (provider.syncConfig.method === 'edge-function') {
+          // Direct edge function call (e.g., sync-bookeo)
+          const response = await supabase.functions.invoke(
+            provider.syncConfig.functionName!,
+            { body: { org_ref: orgConfig.orgRef } }
+          );
+          data = response.data;
+          error = response.error;
+        }
         
         if (error) {
-          const errorMsg = error.message || JSON.stringify(error);
-          console.error(`[refresh-provider-feed] Error refreshing ${config.org_ref}:`, errorMsg);
-          
-          // Check for Browserbase session limit
-          if (errorMsg.includes('429') || errorMsg.includes('concurrent sessions')) {
-            console.error('[refresh-provider-feed] 🚨 Browserbase session limit reached. Stopping refresh.');
-            results.push({
-              org_ref: config.org_ref,
-              success: false,
-              error: 'Browserbase session limit reached. Please cleanup sessions and retry.'
-            });
-            break; // Stop trying other orgs
-          }
-          
+          console.error(`[refresh-provider-feed] Error: ${error.message}`);
           results.push({
-            org_ref: config.org_ref,
+            org_ref: orgConfig.orgRef,
+            provider: provider.name,
             success: false,
-            error: errorMsg
+            error: error.message
           });
           continue;
         }
         
-        console.log(`[refresh-provider-feed] ✅ Refreshed ${config.org_ref}`);
+        console.log(`[refresh-provider-feed] ✅ Synced ${orgConfig.orgRef}`);
         results.push({
-          org_ref: config.org_ref,
+          org_ref: orgConfig.orgRef,
+          provider: provider.name,
           success: true,
-          refreshed: data?.refreshed || data?.programs?.length || 0
+          synced: data?.synced || 0
         });
         
       } catch (err) {
-        console.error(`[refresh-provider-feed] Error processing ${config.org_ref}:`, err);
+        console.error(`[refresh-provider-feed] Error:`, err);
         results.push({
-          org_ref: config.org_ref,
+          org_ref: orgConfig.orgRef,
           success: false,
           error: err instanceof Error ? err.message : 'Unknown error'
         });
@@ -153,15 +109,15 @@ Deno.serve(async (req) => {
     }
     
     const successCount = results.filter(r => r.success).length;
-    const totalRefreshed = results.reduce((sum, r) => sum + (r.refreshed || 0), 0);
+    const totalSynced = results.reduce((sum, r) => sum + (r.synced || 0), 0);
     
-    console.log(`[refresh-provider-feed] Completed: ${successCount}/${results.length} orgs, ${totalRefreshed} programs refreshed`);
+    console.log(`[refresh-provider-feed] Complete: ${successCount}/${results.length} orgs, ${totalSynced} programs`);
     
     return new Response(JSON.stringify({
       success: true,
-      message: `Refreshed ${successCount}/${results.length} organizations`,
-      total_programs: totalRefreshed,
-      orgs_refreshed: successCount,
+      message: `Synced ${successCount}/${results.length} API-based organizations`,
+      total_programs: totalSynced,
+      orgs_synced: successCount,
       results,
       timestamp: new Date().toISOString()
     }), {
