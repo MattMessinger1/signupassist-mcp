@@ -60,8 +60,8 @@ async function findPrograms(args: {
       .from('cached_provider_feed')
       .select('program_ref, program, org_ref, category')
       .eq('org_ref', org_ref)
-      .filter('program->>status', 'in', '(Open,Register)')
-      .gte('program->signup_start_time', nowIso)
+      // .filter('program->>status', 'in', '(Open,Register)')
+      // .gte('program->signup_start_time', nowIso)
       .order('program->signup_start_time', { ascending: true })
       .limit(8);
     
