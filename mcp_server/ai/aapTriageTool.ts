@@ -359,7 +359,11 @@ export async function triageAAP(
       fallbackAAP.provider = createAAPProvider({
         status: 'known',
         raw: requestHints.provider,
-        normalized: { org_ref: requestHints.provider },
+        normalized: { 
+          org_ref: requestHints.provider,
+          backend: null,
+          display_name: null
+        },
         source: 'profile',
         mode: 'named',
       });
