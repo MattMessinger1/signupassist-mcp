@@ -32,6 +32,11 @@ const DEFAULT_ORGS: RefreshConfig[] = [
     org_ref: 'blackhawk-ski-club',
     category: 'all',
     provider: 'skiclubpro'
+  },
+  {
+    org_ref: 'bookeo-default',
+    category: 'all',
+    provider: 'bookeo'
   }
 ];
 
@@ -87,14 +92,19 @@ Deno.serve(async (req) => {
     // Refresh each organization
     for (const config of orgsToRefresh) {
       try {
-        console.log(`[refresh-provider-feed] Processing ${config.org_ref}...`);
+        console.log(`[refresh-provider-feed] Processing ${config.org_ref} (${config.provider})...`);
         
-        // Call skiclubpro-tools with service credential
+        // Determine which tool to call based on provider
+        const toolName = config.provider === 'bookeo' 
+          ? 'bookeo.find_programs' 
+          : 'scp.find_programs';
+        
+        // Call appropriate provider tool with service credential
         const { data, error } = await supabase.functions.invoke('skiclubpro-tools', {
           body: {
-            tool: 'scp.find_programs',
+            tool: toolName,
             args: {
-              credential_id: serviceCredId,
+              credential_id: config.provider === 'skiclubpro' ? serviceCredId : undefined,
               org_ref: config.org_ref,
               category: config.category,
               user_jwt: 'system.cron.refresh' // Special marker for cron jobs
