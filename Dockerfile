@@ -27,9 +27,10 @@ COPY package.production.json package.json
 COPY package-lock.json ./
 RUN npm ci
 
-# Copy TypeScript configs
-COPY tsconfig.json tsconfig.json
-COPY tsconfig.mcp.json tsconfig.mcp.json
+# Copy ALL TypeScript configs (prevents ENOENT errors from project references)
+# This includes: tsconfig.json, tsconfig.app.json, tsconfig.node.json, 
+#                tsconfig.mcp.json, tsconfig.scripts.json
+COPY tsconfig*.json ./
 
 # Copy source code
 COPY mcp_server ./mcp_server
@@ -50,6 +51,10 @@ COPY index.html ./
 COPY vite.config.ts ./
 COPY tailwind.config.ts ./
 RUN npx vite build
+
+# Verify frontend build succeeded
+RUN ls -la dist/client/index.html || echo "⚠️ Frontend build failed - no index.html"
+RUN ls -la dist/client/assets/*.js || echo "⚠️ Frontend build failed - no JS bundles"
 
 # ============================================
 # Runner stage (smaller final image)

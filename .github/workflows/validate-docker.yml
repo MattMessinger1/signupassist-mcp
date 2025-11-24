@@ -1,0 +1,31 @@
+name: Validate Docker Build
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - 'tsconfig*.json'
+      - '.github/workflows/validate-docker.yml'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Check TypeScript configs in Dockerfile
+        run: |
+          if ! grep -q "tsconfig" Dockerfile; then
+            echo "❌ Dockerfile doesn't copy TypeScript configs"
+            exit 1
+          fi
+          
+          # Verify all configs exist
+          for config in tsconfig.json tsconfig.app.json tsconfig.node.json tsconfig.mcp.json; do
+            if [ ! -f "$config" ]; then
+              echo "❌ Missing required config: $config"
+              exit 1
+            fi
+          done
+          
+          echo "✅ All TypeScript configs validated"

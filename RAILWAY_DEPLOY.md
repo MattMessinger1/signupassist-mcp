@@ -149,6 +149,30 @@ If the build fails with TypeScript errors:
 2. Check Dockerfile is copying frontend build: `COPY --from=builder /app/dist/client ./dist/client`
 3. Ensure Vite build completed successfully in build logs
 
+### Error: Cannot find tsconfig.*.json
+
+**Symptom**:
+```
+error during build:
+[vite:build-html] parsing /app/tsconfig.node.json failed: Error: ENOENT
+ERROR: failed to build: failed to solve: process "/bin/sh -c npx vite build" did not complete successfully: exit code: 1
+```
+
+**Cause**: Dockerfile not copying all TypeScript config files. This project uses multiple `tsconfig` files that reference each other (see [docs/TYPESCRIPT_CONFIGS.md](./docs/TYPESCRIPT_CONFIGS.md)).
+
+**Fix**: Verify Dockerfile contains the wildcard copy:
+```dockerfile
+COPY tsconfig*.json ./
+```
+
+**Verify in Railway Build Logs**:
+Look for this line during the build:
+```
+COPY tsconfig*.json ./
+```
+
+If missing, the Dockerfile needs the long-term fix (see [docs/TYPESCRIPT_CONFIGS.md](./docs/TYPESCRIPT_CONFIGS.md)).
+
 ## Current CORS Configuration
 
 After this fix, the server allows these headers:
