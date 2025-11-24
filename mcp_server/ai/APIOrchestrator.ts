@@ -663,25 +663,20 @@ export default class APIOrchestrator implements IOrchestrator {
       const mandate_id = `temp_mandate_${Date.now()}`;
       Logger.info("[confirmPayment] Using temporary mandate ID:", mandate_id);
 
-      // Step 3: Charge $20 success fee via Supabase edge function
+      // Step 3: Charge $20 success fee via MCP tool (audit-compliant)
       Logger.info("[confirmPayment] Charging success fee...");
       try {
-        const { data: feeData, error: feeError } = await this.supabase.functions.invoke(
-          'stripe-charge-success-fee',
-          {
-            body: {
-              booking_number,
-              mandate_id,
-              amount_cents: 2000 // $20 success fee
-            }
-          }
-        );
+        const feeResult = await this.invokeMCPTool('stripe.charge_success_fee', {
+          booking_number,
+          mandate_id,
+          amount_cents: 2000 // $20 success fee
+        });
 
-        if (feeError) {
-          Logger.warn("[confirmPayment] Success fee charge failed (non-fatal):", feeError);
+        if (!feeResult.success) {
+          Logger.warn("[confirmPayment] Success fee charge failed (non-fatal):", feeResult.error);
           // Don't fail the entire flow - booking was successful
-        } else if (feeData?.success) {
-          Logger.info("[confirmPayment] ✅ Success fee charged:", feeData);
+        } else {
+          Logger.info("[confirmPayment] ✅ Success fee charged:", feeResult.data?.charge_id);
         }
       } catch (feeError) {
         Logger.warn("[confirmPayment] Success fee exception (non-fatal):", feeError);
