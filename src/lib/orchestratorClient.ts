@@ -29,6 +29,7 @@ export interface OrchestratorResponse {
     action: string;
     variant?: "accent" | "outline";
   }>;
+  metadata?: any;  // Added for signupForm and other metadata
   contextUpdates?: Record<string, any>;
 }
 
