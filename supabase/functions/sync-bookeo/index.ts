@@ -24,9 +24,10 @@ interface BookeoProduct {
   productId: string;
   name: string;
   description?: string;
-  prices?: Array<{
+  defaultRates?: Array<{
+    peopleCategoryId: string;
     price: {
-      amount: number;
+      amount: string; // Bookeo returns amount as string (e.g., "85")
       currency: string;
     };
   }>;
@@ -37,6 +38,7 @@ interface BookeoProduct {
   };
   active: boolean;
   creationTime?: string;
+  customFields?: Array<{ name: string; value: string }>;
 }
 
 interface BookeoSlot {
@@ -211,8 +213,8 @@ Deno.serve(async (req) => {
           program_ref: product.productId,
           title: product.name,
           description: product.description || '',
-          price: product.prices?.[0]?.price?.amount 
-            ? `$${(product.prices[0].price.amount / 100).toFixed(2)}` 
+          price: product.defaultRates?.[0]?.price?.amount 
+            ? `$${parseFloat(product.defaultRates[0].price.amount).toFixed(2)}` 
             : 'Price varies',
           status: product.active ? determineStatus(slots) : 'Closed',
           duration: product.duration || null,
