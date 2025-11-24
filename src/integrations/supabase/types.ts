@@ -279,22 +279,25 @@ export type Database = {
         Row: {
           created_at: string
           dob: string | null
+          first_name: string
           id: string
-          name: string
+          last_name: string
           user_id: string
         }
         Insert: {
           created_at?: string
           dob?: string | null
+          first_name: string
           id?: string
-          name: string
+          last_name: string
           user_id: string
         }
         Update: {
           created_at?: string
           dob?: string | null
+          first_name?: string
           id?: string
-          name?: string
+          last_name?: string
           user_id?: string
         }
         Relationships: []
