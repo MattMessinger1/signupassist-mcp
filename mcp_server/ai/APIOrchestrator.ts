@@ -391,7 +391,7 @@ export default class APIOrchestrator implements IOrchestrator {
           }
         ]
       },
-      metadata: { signupForm }
+      metadata: { signupForm: signupForm.fields }  // Pass fields array directly for frontend .map()
     };
 
     // Validate Design DNA compliance
