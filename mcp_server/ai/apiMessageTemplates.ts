@@ -10,6 +10,7 @@ export interface APIMessageVariables {
   program_name?: string;
   participant_name?: string;
   total_cost?: string;
+  num_participants?: number;
   booking_number?: string;
   start_time?: string;
 }
@@ -40,11 +41,13 @@ export function getAPIPaymentSummaryMessage(vars: APIMessageVariables): string {
   const programName = vars.program_name || "this program";
   const participantName = vars.participant_name || "your participant";
   const totalCost = vars.total_cost || "$0.00";
+  const numParticipants = vars.num_participants || 1;
   
   return `Perfect! Here's your booking summary:
 
 **Program:** ${programName}
 **Participant:** ${participantName}
+**Number of Participants:** ${numParticipants}
 **Total:** ${totalCost}
 
 Ready to confirm? By proceeding, you authorize SignupAssist to complete this registration on your behalf.`;

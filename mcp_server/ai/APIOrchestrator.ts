@@ -39,6 +39,7 @@ interface APIContext {
   orgRef?: string;
   selectedProgram?: any;
   formData?: Record<string, any>;
+  numParticipants?: number;
   childInfo?: {
     name: string;
     age?: number;
@@ -427,21 +428,35 @@ export default class APIOrchestrator implements IOrchestrator {
       return this.formatError("Missing form data or program selection.");
     }
 
-    // Store form data
+    // Extract number of participants
+    const numParticipants = parseInt(formData.numParticipants) || 1;
+
+    // Store form data and participant count
     this.updateContext(sessionId, {
       step: FlowStep.PAYMENT,
-      formData
+      formData,
+      numParticipants
     });
 
     const programName = context.selectedProgram?.title || "Selected Program";
-    const price = context.selectedProgram?.price || "Price varies";
-    const participantName = formData.child_name || "participant";
+    
+    // Extract participant name from firstName and lastName
+    const participantName = formData.firstName && formData.lastName 
+      ? `${formData.firstName} ${formData.lastName}`
+      : "participant";
+
+    // Calculate total price based on number of participants
+    const priceString = context.selectedProgram?.price || "0";
+    const basePrice = parseFloat(priceString.replace(/[^0-9.]/g, '')) || 0;
+    const totalPrice = basePrice * numParticipants;
+    const formattedTotal = `$${totalPrice.toFixed(2)}`;
 
     // Use Design DNA-compliant message template
     let message = getAPIPaymentSummaryMessage({
       program_name: programName,
       participant_name: participantName,
-      total_cost: price
+      total_cost: formattedTotal,
+      num_participants: numParticipants
     });
 
     // Add security context (Design DNA requirement)
@@ -455,7 +470,7 @@ export default class APIOrchestrator implements IOrchestrator {
       cards: [{
         title: "Booking Confirmation",
         subtitle: programName,
-        description: `Participant: ${participantName}\nTotal: ${price}`,
+        description: `Participant: ${participantName}\nNumber of Participants: ${numParticipants}\nTotal: ${formattedTotal}`,
         buttons: []
       }],
       cta: {
