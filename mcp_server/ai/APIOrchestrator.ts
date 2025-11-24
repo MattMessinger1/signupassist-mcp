@@ -609,7 +609,8 @@ export default class APIOrchestrator implements IOrchestrator {
   }
 
   /**
-   * Confirm payment and complete booking
+   * Confirm payment and complete immediate booking (Phase A implementation)
+   * Orchestrates: 1) Verify payment method → 2) Book with Bookeo → 3) Charge success fee → 4) Return confirmation
    */
   private async confirmPayment(
     payload: any,
@@ -617,14 +618,77 @@ export default class APIOrchestrator implements IOrchestrator {
     context: APIContext
   ): Promise<OrchestratorResponse> {
     try {
-      // TODO: Call Bookeo API to create booking
-      // For now, simulate success
-      Logger.info("Processing payment for session:", sessionId);
+      Logger.info("[confirmPayment] Starting immediate booking flow");
 
+      const { delegate_data, participant_data, num_participants, event_id } = payload;
       const programName = context.selectedProgram?.title || "program";
-      const bookingNumber = `BK${Date.now()}`;
+      const programRef = context.selectedProgram?.program_ref;
+      const orgRef = context.selectedProgram?.org_ref || context.orgRef;
 
-      // Reset context for new search
+      // Validation
+      if (!delegate_data || !participant_data || !event_id || !programRef || !orgRef) {
+        Logger.error("[confirmPayment] Missing required data");
+        return this.formatError("Missing required booking information. Please try again.");
+      }
+
+      Logger.info("[confirmPayment] Validated booking data", { 
+        program_ref: programRef, 
+        org_ref: orgRef,
+        num_participants 
+      });
+
+      // Step 1: Book with Bookeo via MCP tool
+      Logger.info("[confirmPayment] Calling bookeo.confirm_booking...");
+      const bookingResponse = await this.invokeMCPTool('bookeo.confirm_booking', {
+        event_id,
+        program_ref: programRef,
+        org_ref: orgRef,
+        delegate_data,
+        participant_data,
+        num_participants
+      });
+
+      if (!bookingResponse.success || !bookingResponse.data?.booking_number) {
+        Logger.error("[confirmPayment] Booking failed", bookingResponse);
+        return this.formatError(
+          bookingResponse.error?.display || "Failed to create booking. Please try again."
+        );
+      }
+
+      const { booking_number, start_time } = bookingResponse.data;
+      Logger.info("[confirmPayment] ✅ Booking confirmed:", { booking_number });
+
+      // Step 2: Create mandate for success fee
+      // TODO: Integrate mandate creation when mandate MCP tools are available
+      const mandate_id = `temp_mandate_${Date.now()}`;
+      Logger.info("[confirmPayment] Using temporary mandate ID:", mandate_id);
+
+      // Step 3: Charge $20 success fee via Supabase edge function
+      Logger.info("[confirmPayment] Charging success fee...");
+      try {
+        const { data: feeData, error: feeError } = await this.supabase.functions.invoke(
+          'stripe-charge-success-fee',
+          {
+            body: {
+              booking_number,
+              mandate_id,
+              amount_cents: 2000 // $20 success fee
+            }
+          }
+        );
+
+        if (feeError) {
+          Logger.warn("[confirmPayment] Success fee charge failed (non-fatal):", feeError);
+          // Don't fail the entire flow - booking was successful
+        } else if (feeData?.success) {
+          Logger.info("[confirmPayment] ✅ Success fee charged:", feeData);
+        }
+      } catch (feeError) {
+        Logger.warn("[confirmPayment] Success fee exception (non-fatal):", feeError);
+        // Continue - booking was successful even if fee failed
+      }
+
+      // Step 4: Reset context and return success
       this.updateContext(sessionId, {
         step: FlowStep.BROWSE
       });
@@ -632,22 +696,27 @@ export default class APIOrchestrator implements IOrchestrator {
       // Use Design DNA-compliant success message
       const message = getAPISuccessMessage({
         program_name: programName,
-        booking_number: bookingNumber,
-        start_time: context.selectedProgram?.schedule || "TBD"
+        booking_number,
+        start_time: start_time || "TBD"
       });
 
       const successResponse: OrchestratorResponse = {
         message,
         cta: {
           buttons: [
-            { label: "Browse More Classes", action: "search_programs", payload: { orgRef: context.orgRef || "aim-design" }, variant: "outline" }
+            { 
+              label: "Browse More Classes", 
+              action: "search_programs", 
+              payload: { orgRef: orgRef || "aim-design" }, 
+              variant: "outline" 
+            }
           ]
         }
       };
 
       // Validate Design DNA compliance
       const validation = validateDesignDNA(successResponse, {
-        step: 'browse', // Reset to browse after success
+        step: 'browse',
         isWriteAction: false
       });
 
@@ -660,11 +729,12 @@ export default class APIOrchestrator implements IOrchestrator {
       }
 
       Logger.info('[DesignDNA] Validation passed ✅');
+      Logger.info("[confirmPayment] ✅ Immediate booking flow complete");
 
       return successResponse;
     } catch (error) {
-      Logger.error("Payment error:", error);
-      return this.formatError("Payment failed. Please try again or contact support.");
+      Logger.error("[confirmPayment] Unexpected error:", error);
+      return this.formatError("Booking failed due to unexpected error. Please contact support.");
     }
   }
 

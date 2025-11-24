@@ -477,29 +477,39 @@ async function createHold(args: {
 
 /**
  * Tool: bookeo.confirm_booking
- * Confirm a booking from a hold
+ * Create a direct booking with two-tier form data (delegate + participants)
+ * No hold required - books immediately
  */
 async function confirmBooking(args: {
-  holdId: string;
-  eventId: string;
-  productId: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone?: string;
-  adults: number;
-  children: number;
+  event_id: string;
+  program_ref: string;
   org_ref: string;
+  delegate_data: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone?: string;
+    dateOfBirth: string;
+    relationship: string;
+  };
+  participant_data: Array<{
+    firstName: string;
+    lastName: string;
+    dateOfBirth: string;
+    grade?: string;
+    allergies?: string;
+  }>;
+  num_participants: number;
 }): Promise<ProviderResponse<any>> {
-  const { holdId, eventId, productId, firstName, lastName, email, phone, adults, children, org_ref } = args;
+  const { event_id, program_ref, org_ref, delegate_data, participant_data, num_participants } = args;
   
-  console.log(`[Bookeo] Confirming booking from hold: ${holdId}`);
+  console.log(`[Bookeo] Creating direct booking for event: ${event_id}`);
   
   // Input validation
-  if (!holdId || !eventId || !productId || !firstName || !lastName || !email) {
+  if (!event_id || !program_ref || !delegate_data || !participant_data || num_participants < 1) {
     const friendlyError: ParentFriendlyError = {
       display: 'Missing required booking information',
-      recovery: 'Please provide hold ID, event ID, product ID, and customer details',
+      recovery: 'Please provide event ID, delegate info, and at least one participant',
       severity: 'medium',
       code: 'VALIDATION_ERROR'
     };
@@ -510,16 +520,35 @@ async function confirmBooking(args: {
   }
   
   try {
-    // Call Bookeo API to finalize booking
+    // Build Bookeo API payload
     const bookingPayload = {
-      holdId,
+      eventId: event_id,
+      productId: program_ref,
       customer: {
-        firstName: firstName.trim(),
-        lastName: lastName.trim(),
-        emailAddress: email.trim(),
-        phoneNumbers: phone ? [{ number: phone.trim() }] : []
+        firstName: delegate_data.firstName.trim(),
+        lastName: delegate_data.lastName.trim(),
+        emailAddress: delegate_data.email.trim(),
+        phoneNumbers: delegate_data.phone ? [{ number: delegate_data.phone.trim() }] : []
+      },
+      participants: {
+        numbers: { 
+          adults: 0,
+          children: num_participants 
+        },
+        details: participant_data.map((p, idx) => ({
+          personId: `participant_${idx + 1}`,
+          firstName: p.firstName.trim(),
+          lastName: p.lastName.trim(),
+          dateOfBirth: p.dateOfBirth,
+          customFields: {
+            ...(p.grade && { grade: p.grade }),
+            ...(p.allergies && { allergies: p.allergies })
+          }
+        }))
       }
     };
+    
+    console.log(`[Bookeo] Booking payload:`, JSON.stringify(bookingPayload, null, 2));
     
     const response = await fetch(`${BOOKEO_API_BASE}/bookings`, {
       method: 'POST',
@@ -529,9 +558,10 @@ async function confirmBooking(args: {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
+      console.error(`[Bookeo] API error:`, errorData);
       const friendlyError: ParentFriendlyError = {
-        display: errorData.message || 'Failed to confirm booking',
-        recovery: 'Please try again or contact support if the issue persists',
+        display: errorData.message || 'Failed to create booking',
+        recovery: 'Please verify all information and try again, or contact support',
         severity: 'high',
         code: 'BOOKEO_API_ERROR'
       };
@@ -547,11 +577,12 @@ async function confirmBooking(args: {
     
     console.log(`[Bookeo] Booking confirmed: ${bookingNumber}`);
     
-    // Get program name
+    // Get program details from cache
     const { data: programData } = await supabase
       .from('cached_provider_feed')
       .select('program')
-      .eq('program_ref', productId)
+      .eq('program_ref', program_ref)
+      .eq('org_ref', org_ref)
       .single();
     
     const programName = (programData?.program as any)?.title || 'Program';
@@ -559,14 +590,15 @@ async function confirmBooking(args: {
     return {
       success: true,
       data: {
-        bookingNumber,
-        programName,
-        startTime
+        booking_number: bookingNumber,
+        program_name: programName,
+        start_time: startTime,
+        num_participants
       },
       ui: {
         cards: [{
           title: '✅ Booking Confirmed!',
-          description: `**Booking #${bookingNumber}**\n\n${programName}\n${new Date(startTime).toLocaleString()}\n\nConfirmation email sent to ${email}`
+          description: `**Booking #${bookingNumber}**\n\n${programName}\n${new Date(startTime).toLocaleString()}\n\nConfirmation email sent to ${delegate_data.email}`
         }]
       }
     };
@@ -574,7 +606,7 @@ async function confirmBooking(args: {
   } catch (error: any) {
     console.error('[Bookeo] Error confirming booking:', error);
     const friendlyError: ParentFriendlyError = {
-      display: 'Unable to confirm booking',
+      display: 'Unable to complete booking',
       recovery: 'Please try again or contact support',
       severity: 'high',
       code: 'BOOKEO_API_ERROR'
@@ -689,22 +721,44 @@ export const bookeoTools: BookeoTool[] = [
   },
   {
     name: 'bookeo.confirm_booking',
-    description: 'Confirm a booking from a hold',
+    description: 'Create a direct booking with two-tier form data (delegate + participants)',
     inputSchema: {
       type: 'object',
       properties: {
-        holdId: { type: 'string', description: 'Hold ID from create_hold' },
-        eventId: { type: 'string', description: 'Bookeo event ID' },
-        productId: { type: 'string', description: 'Bookeo product ID' },
-        firstName: { type: 'string', description: 'Customer first name' },
-        lastName: { type: 'string', description: 'Customer last name' },
-        email: { type: 'string', format: 'email', description: 'Customer email' },
-        phone: { type: 'string', description: 'Customer phone (optional)' },
-        adults: { type: 'number', minimum: 0, description: 'Number of adults' },
-        children: { type: 'number', minimum: 0, description: 'Number of children' },
-        org_ref: { type: 'string', description: 'Organization reference' }
+        event_id: { type: 'string', description: 'Bookeo event ID' },
+        program_ref: { type: 'string', description: 'Bookeo product/program ID' },
+        org_ref: { type: 'string', description: 'Organization reference' },
+        delegate_data: {
+          type: 'object',
+          description: 'Responsible delegate information',
+          properties: {
+            firstName: { type: 'string' },
+            lastName: { type: 'string' },
+            email: { type: 'string' },
+            phone: { type: 'string' },
+            dateOfBirth: { type: 'string' },
+            relationship: { type: 'string' }
+          },
+          required: ['firstName', 'lastName', 'email', 'dateOfBirth', 'relationship']
+        },
+        participant_data: {
+          type: 'array',
+          description: 'Array of participant details',
+          items: {
+            type: 'object',
+            properties: {
+              firstName: { type: 'string' },
+              lastName: { type: 'string' },
+              dateOfBirth: { type: 'string' },
+              grade: { type: 'string' },
+              allergies: { type: 'string' }
+            },
+            required: ['firstName', 'lastName', 'dateOfBirth']
+          }
+        },
+        num_participants: { type: 'number', description: 'Number of participants' }
       },
-      required: ['holdId', 'eventId', 'productId', 'firstName', 'lastName', 'email', 'adults', 'children', 'org_ref']
+      required: ['event_id', 'program_ref', 'org_ref', 'delegate_data', 'participant_data', 'num_participants']
     },
     handler: async (args: any) => {
       return auditToolCall(
