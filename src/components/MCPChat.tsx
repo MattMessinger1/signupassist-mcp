@@ -234,6 +234,7 @@ export function MCPChat() {
                             className="w-full p-2 border rounded-md bg-background"
                             value={formData[field.name] || ''}
                             onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
+                            autoComplete="off"
                           >
                             <option value="">Select...</option>
                             {field.options?.map((opt: any, optIdx: number) => (
@@ -246,12 +247,14 @@ export function MCPChat() {
                             rows={3}
                             value={formData[field.name] || ''}
                             onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
+                            autoComplete="off"
                           />
                         ) : (
                           <Input
                             type={field.type || 'text'}
                             value={formData[field.name] || ''}
                             onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
+                            autoComplete="off"
                           />
                         )}
                       </div>
