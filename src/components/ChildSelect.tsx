@@ -11,7 +11,8 @@ import { prompts } from '@/lib/prompts';
 
 interface Child {
   id: string;
-  name: string;
+  first_name: string;
+  last_name: string;
   dob: string | null;
 }
 
@@ -23,7 +24,7 @@ interface ChildSelectProps {
 export function ChildSelect({ value, onChange }: ChildSelectProps) {
   const [children, setChildren] = useState<Child[]>([]);
   const [showAddForm, setShowAddForm] = useState(false);
-  const [newChild, setNewChild] = useState({ name: '', dob: '' });
+  const [newChild, setNewChild] = useState({ firstName: '', lastName: '', dob: '' });
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const { toast } = useToast();
@@ -68,10 +69,10 @@ export function ChildSelect({ value, onChange }: ChildSelectProps) {
   };
 
   const addChild = async () => {
-    if (!newChild.name.trim()) {
+    if (!newChild.firstName.trim() || !newChild.lastName.trim()) {
       toast({
         title: 'Error',
-        description: 'Child name is required.',
+        description: 'First name and last name are required.',
         variant: 'destructive',
       });
       return;
@@ -93,7 +94,8 @@ export function ChildSelect({ value, onChange }: ChildSelectProps) {
         .from('children')
         .insert({
           user_id: user.id,
-          name: newChild.name.trim(),
+          first_name: newChild.firstName.trim(),
+          last_name: newChild.lastName.trim(),
           dob: newChild.dob || null,
         } as any)
         .select()
@@ -118,11 +120,11 @@ export function ChildSelect({ value, onChange }: ChildSelectProps) {
         const childData = data as unknown as Child;
         // Set the new child as selected
         onChange(childData.id);
-        setNewChild({ name: '', dob: '' });
+        setNewChild({ firstName: '', lastName: '', dob: '' });
         setShowAddForm(false);
 
         toast({
-          description: prompts.ui.child.toastSelected(childData.name),
+          description: prompts.ui.child.toastSelected(`${childData.first_name} ${childData.last_name}`),
         });
       }
     } catch (error) {
@@ -159,7 +161,7 @@ export function ChildSelect({ value, onChange }: ChildSelectProps) {
                 <SelectItem key={child.id} value={child.id}>
                   <div className="flex items-center space-x-2">
                     <User className="h-4 w-4" />
-                    <span>{child.name}</span>
+                    <span>{child.first_name} {child.last_name}</span>
                     {child.dob && (
                       <span className="text-xs text-muted-foreground">
                         (DOB: {new Date(child.dob).toLocaleDateString()})
@@ -189,12 +191,21 @@ export function ChildSelect({ value, onChange }: ChildSelectProps) {
         <Card>
           <CardContent className="pt-6 space-y-4">
             <div>
-              <Label htmlFor="child-name">Name *</Label>
+              <Label htmlFor="child-first-name">First Name *</Label>
               <Input
-                id="child-name"
-                value={newChild.name}
-                onChange={(e) => setNewChild(prev => ({ ...prev, name: e.target.value }))}
-                placeholder="Enter child's name"
+                id="child-first-name"
+                value={newChild.firstName}
+                onChange={(e) => setNewChild(prev => ({ ...prev, firstName: e.target.value }))}
+                placeholder="Enter first name"
+              />
+            </div>
+            <div>
+              <Label htmlFor="child-last-name">Last Name *</Label>
+              <Input
+                id="child-last-name"
+                value={newChild.lastName}
+                onChange={(e) => setNewChild(prev => ({ ...prev, lastName: e.target.value }))}
+                placeholder="Enter last name"
               />
             </div>
             <div>
@@ -219,7 +230,7 @@ export function ChildSelect({ value, onChange }: ChildSelectProps) {
                 variant="outline"
                 onClick={() => {
                   setShowAddForm(false);
-                  setNewChild({ name: '', dob: '' });
+                  setNewChild({ firstName: '', lastName: '', dob: '' });
                 }}
               >
                 Cancel

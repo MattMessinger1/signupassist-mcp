@@ -511,12 +511,12 @@ const PlanBuilder = () => {
       if (childId && !selectedChildName) {
         const { data: childData, error } = await supabase
           .from('children')
-          .select('name')
+          .select('first_name, last_name')
           .eq('id', childId)
           .maybeSingle();
         
         if (!error && childData) {
-          setSelectedChildName(childData.name);
+          setSelectedChildName(`${childData.first_name} ${childData.last_name}`);
         }
       }
     };
