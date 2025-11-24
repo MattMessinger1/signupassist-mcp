@@ -178,12 +178,12 @@ export default class APIOrchestrator implements IOrchestrator {
       Logger.info(`Searching programs for org: ${orgRef}`);
 
       // Call Bookeo MCP tool (ensures audit logging)
-      const response = await this.invokeMCPTool('bookeo.find_programs', {
+      const programsResult = await this.invokeMCPTool('bookeo.find_programs', {
         org_ref: orgRef,
         provider: 'bookeo'
       });
       
-      const programs = response?.data || [];
+      const programs = programsResult?.data || [];
 
       if (!programs || programs.length === 0) {
         return this.formatError("No programs found at this time.");
@@ -228,13 +228,13 @@ export default class APIOrchestrator implements IOrchestrator {
         program_count: programs.length
       });
 
-      const response: OrchestratorResponse = {
+      const orchestratorResponse: OrchestratorResponse = {
         message,
         cards
       };
 
       // Validate Design DNA compliance
-      const validation = validateDesignDNA(response, {
+      const validation = validateDesignDNA(orchestratorResponse, {
         step: 'browse',
         isWriteAction: false
       });
@@ -249,7 +249,7 @@ export default class APIOrchestrator implements IOrchestrator {
 
       Logger.info('[DesignDNA] Validation passed ✅');
 
-      return response;
+      return orchestratorResponse;
     } catch (error) {
       Logger.error("Error searching programs:", error);
       return this.formatError("Failed to load programs. Please try again.");
@@ -288,7 +288,7 @@ export default class APIOrchestrator implements IOrchestrator {
       program_name: programName
     });
 
-    const response: OrchestratorResponse = {
+    const formResponse: OrchestratorResponse = {
       message,
       cards: [{
         title: "Registration Form",
@@ -310,7 +310,7 @@ export default class APIOrchestrator implements IOrchestrator {
     };
 
     // Validate Design DNA compliance
-    const validation = validateDesignDNA(response, {
+    const validation = validateDesignDNA(formResponse, {
       step: 'form',
       isWriteAction: false
     });
@@ -325,7 +325,7 @@ export default class APIOrchestrator implements IOrchestrator {
 
     Logger.info('[DesignDNA] Validation passed ✅');
 
-    return response;
+    return formResponse;
   }
 
   /**
@@ -365,7 +365,7 @@ export default class APIOrchestrator implements IOrchestrator {
     // Add Responsible Delegate footer (Design DNA requirement)
     message = addResponsibleDelegateFooter(message);
 
-    const response: OrchestratorResponse = {
+    const paymentResponse: OrchestratorResponse = {
       message,
       cards: [{
         title: "Booking Confirmation",
@@ -382,7 +382,7 @@ export default class APIOrchestrator implements IOrchestrator {
     };
 
     // Validate Design DNA compliance
-    const validation = validateDesignDNA(response, {
+    const validation = validateDesignDNA(paymentResponse, {
       step: 'payment',
       isWriteAction: true
     });
@@ -397,7 +397,7 @@ export default class APIOrchestrator implements IOrchestrator {
 
     Logger.info('[DesignDNA] Validation passed ✅');
 
-    return response;
+    return paymentResponse;
   }
 
   /**
@@ -428,7 +428,7 @@ export default class APIOrchestrator implements IOrchestrator {
         start_time: context.selectedProgram?.schedule || "TBD"
       });
 
-      const response: OrchestratorResponse = {
+      const successResponse: OrchestratorResponse = {
         message,
         cta: {
           buttons: [
@@ -438,7 +438,7 @@ export default class APIOrchestrator implements IOrchestrator {
       };
 
       // Validate Design DNA compliance
-      const validation = validateDesignDNA(response, {
+      const validation = validateDesignDNA(successResponse, {
         step: 'browse', // Reset to browse after success
         isWriteAction: false
       });
@@ -453,7 +453,7 @@ export default class APIOrchestrator implements IOrchestrator {
 
       Logger.info('[DesignDNA] Validation passed ✅');
 
-      return response;
+      return successResponse;
     } catch (error) {
       Logger.error("Payment error:", error);
       return this.formatError("Payment failed. Please try again or contact support.");
