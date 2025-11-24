@@ -345,7 +345,7 @@ export default class APIOrchestrator implements IOrchestrator {
       message += "\n\n**As the Responsible Delegate**, you'll provide your information first, then details for each participant.";
 
       // Return form schema directly from MCP tool (two-tier structure from database)
-      return {
+      const formResponse: OrchestratorResponse = {
         message,
         metadata: {
           signupForm: formDiscoveryResult.data?.program_questions || {},
@@ -353,6 +353,24 @@ export default class APIOrchestrator implements IOrchestrator {
           org_ref: orgRef
         }
       };
+
+      // Validate Design DNA compliance
+      const validation = validateDesignDNA(formResponse, {
+        step: 'form',
+        isWriteAction: false
+      });
+
+      if (!validation.passed) {
+        Logger.error('[DesignDNA] Validation failed:', validation.issues);
+      }
+
+      if (validation.warnings.length > 0) {
+        Logger.warn('[DesignDNA] Warnings:', validation.warnings);
+      }
+
+      Logger.info('[DesignDNA] Validation passed ✅');
+
+      return formResponse;
     } catch (error) {
       Logger.error('[selectProgram] Error:', error);
       return this.formatError(`Failed to load program form: ${error instanceof Error ? error.message : 'Unknown error'}`);
