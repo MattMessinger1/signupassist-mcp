@@ -353,35 +353,10 @@ export default class APIOrchestrator implements IOrchestrator {
           org_ref: orgRef
         }
       };
-        buttons: [
-          { 
-            label: "Fill Form", 
-            action: "submit_form", 
-            payload: { signupForm },
-            variant: "accent" 
-          }
-        ]
-      },
-      metadata: { signupForm: signupForm.fields }  // Pass fields array directly for frontend .map()
-    };
-
-    // Validate Design DNA compliance
-    const validation = validateDesignDNA(formResponse, {
-      step: 'form',
-      isWriteAction: false
-    });
-
-    if (!validation.passed) {
-      Logger.error('[DesignDNA] Validation failed:', validation.issues);
+    } catch (error) {
+      Logger.error('[selectProgram] Error:', error);
+      return this.formatError(`Failed to load program form: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
-    
-    if (validation.warnings.length > 0) {
-      Logger.warn('[DesignDNA] Warnings:', validation.warnings);
-    }
-
-    Logger.info('[DesignDNA] Validation passed ✅');
-
-    return formResponse;
   }
 
   /**
