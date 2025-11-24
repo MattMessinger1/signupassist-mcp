@@ -232,8 +232,8 @@ export function MCPChat() {
                         {field.type === 'select' ? (
                           <select
                             className="w-full p-2 border rounded-md bg-background"
-                            value={formData[field.name] || ''}
-                            onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
+                            value={formData[field.id] || ''}
+                            onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
                             autoComplete="off"
                           >
                             <option value="">Select...</option>
@@ -245,15 +245,15 @@ export function MCPChat() {
                           <textarea
                             className="w-full p-2 border rounded-md bg-background"
                             rows={3}
-                            value={formData[field.name] || ''}
-                            onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
+                            value={formData[field.id] || ''}
+                            onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
                             autoComplete="off"
                           />
                         ) : (
                           <Input
                             type={field.type || 'text'}
-                            value={formData[field.name] || ''}
-                            onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
+                            value={formData[field.id] || ''}
+                            onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
                             autoComplete="off"
                           />
                         )}
@@ -261,7 +261,7 @@ export function MCPChat() {
                     ))}
                     <Button
                       onClick={() => {
-                        handleCardAction('submit_registration', formData);
+                        handleCardAction('submit_form', { formData });
                         setFormData({});
                       }}
                       disabled={loading}
