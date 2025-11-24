@@ -717,13 +717,28 @@ function ChatTestHarnessContent() {
       console.log('[HARNESS] Action response:', response);
       console.log('[FLOW]', action, '→', response.cards ? `${response.cards.length} cards` : 'no cards');
       
-      // Render next assistant message with cards (with tone validation context)
-      addAssistantMessage(
-        response.message,
-        response.cards ? "cards" : undefined,
-        { cards: response.cards, cta: response.cta },
-        response.contextUpdates?.step || state.step
-      );
+      // Detect if response contains form metadata and render as form
+      if (response.metadata?.signupForm) {
+        console.log('[HARNESS] Detected signup form in metadata, rendering as form component');
+        addAssistantMessage(
+          response.message,
+          "form",
+          {
+            fields: response.metadata.signupForm.fields,
+            submitAction: "submit_form",
+            title: "Registration Form"
+          },
+          response.contextUpdates?.step || state.step
+        );
+      } else {
+        // Render next assistant message with cards (with tone validation context)
+        addAssistantMessage(
+          response.message,
+          response.cards ? "cards" : undefined,
+          { cards: response.cards, cta: response.cta },
+          response.contextUpdates?.step || state.step
+        );
+      }
       
       // Update local state
       if (response.contextUpdates) {
