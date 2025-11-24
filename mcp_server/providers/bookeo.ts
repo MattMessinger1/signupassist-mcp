@@ -27,8 +27,17 @@ export interface BookeoTool {
   handler: (args: any) => Promise<any>;
 }
 
-// Note: bookeoHeaders() removed - authentication now only needed by sync-bookeo edge function
-// Runtime field discovery reads from cached_provider_feed table (no API calls)
+/**
+ * Create Bookeo API authorization header
+ * Used by createHold and confirmBooking (not by discoverRequiredFields which reads from cache)
+ */
+function bookeoHeaders() {
+  const auth = Buffer.from(`${BOOKEO_API_KEY}:${BOOKEO_SECRET_KEY}`).toString('base64');
+  return {
+    'Authorization': `Basic ${auth}`,
+    'Content-Type': 'application/json'
+  };
+}
 
 /**
  * Strip HTML tags and decode entities from text
