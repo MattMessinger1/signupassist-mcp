@@ -293,6 +293,10 @@ export default class APIOrchestrator implements IOrchestrator {
     sessionId: string,
     context: APIContext
   ): Promise<OrchestratorResponse> {
+    console.log('[selectProgram] 🔍 Starting with sessionId:', sessionId);
+    console.log('[selectProgram] 🔍 Payload keys:', Object.keys(payload));
+    console.log('[selectProgram] 🔍 Full payload:', JSON.stringify(payload, null, 2));
+    
     const programData = payload.program_data;
     const programName = programData?.title || programData?.name || payload.program_name || "this program";
     const programRef = programData?.ref || programData?.program_ref || payload.program_ref;
@@ -311,6 +315,13 @@ export default class APIOrchestrator implements IOrchestrator {
     this.updateContext(sessionId, {
       step: FlowStep.FORM_FILL,
       selectedProgram: programData
+    });
+    
+    console.log('[selectProgram] ✅ Context updated - selectedProgram stored:', {
+      sessionId,
+      program_ref: programRef,
+      program_name: programName,
+      has_selectedProgram_in_map: !!this.sessions.get(sessionId)?.selectedProgram
     });
 
     // ✅ COMPLIANCE FIX: Call MCP tool for form discovery (ensures audit logging)
@@ -387,10 +398,22 @@ export default class APIOrchestrator implements IOrchestrator {
     sessionId: string,
     context: APIContext
   ): Promise<OrchestratorResponse> {
+    console.log('[submitForm] 🔍 Starting with sessionId:', sessionId);
+    console.log('[submitForm] 🔍 Payload keys:', Object.keys(payload));
+    console.log('[submitForm] 🔍 Context keys:', Object.keys(context));
+    console.log('[submitForm] 🔍 Context step:', context.step);
+    console.log('[submitForm] 🔍 Has selectedProgram in context:', !!context.selectedProgram);
+    console.log('[submitForm] 🔍 Full context:', JSON.stringify(context, null, 2));
+    
     const { formData } = payload;
 
     if (!formData || !context.selectedProgram) {
-      return this.formatError("Missing form data or program selection.");
+      console.log('[submitForm] ❌ VALIDATION FAILED:', {
+        hasFormData: !!formData,
+        hasSelectedProgram: !!context.selectedProgram,
+        sessionId
+      });
+      return this.formatError("❌ Missing form data or program selection.");
     }
 
     // Extract structured data from two-tier form
@@ -591,6 +614,15 @@ export default class APIOrchestrator implements IOrchestrator {
    * Get session context (auto-initialize if needed)
    */
   private getContext(sessionId: string): APIContext {
+    const exists = this.sessions.has(sessionId);
+    console.log('[getContext] 🔍', {
+      sessionId,
+      exists,
+      action: exists ? 'retrieving existing' : 'creating new',
+      currentStep: exists ? this.sessions.get(sessionId)?.step : 'none',
+      hasSelectedProgram: exists ? !!this.sessions.get(sessionId)?.selectedProgram : false
+    });
+    
     if (!this.sessions.has(sessionId)) {
       this.sessions.set(sessionId, {
         step: FlowStep.BROWSE

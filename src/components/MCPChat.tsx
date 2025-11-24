@@ -98,8 +98,9 @@ export function MCPChat() {
   }
 
   async function handleCardAction(action: string, payload: any) {
-    console.log('[MCPChat] Card action triggered:', {
+    console.log('[MCPChat] 🔍 Card action triggered:', {
       action,
+      sessionId,
       payload,
       payload_type: typeof payload,
       payload_keys: payload ? Object.keys(payload) : [],
