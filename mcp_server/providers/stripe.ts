@@ -131,6 +131,12 @@ export const stripeTools: StripeTool[] = [
       },
       required: ['booking_number', 'mandate_id', 'amount_cents']
     },
-    handler: (args) => auditToolCall('stripe.charge_success_fee', args, chargeSuccessFee)
+    handler: async (args: any) => {
+      return auditToolCall(
+        { plan_execution_id: null, tool: 'stripe.charge_success_fee' },
+        args,
+        () => chargeSuccessFee(args)
+      );
+    }
   }
 ];
