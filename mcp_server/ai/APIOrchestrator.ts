@@ -232,8 +232,17 @@ export default class APIOrchestrator implements IOrchestrator {
             label: "Select this program",
             action: "select_program",
             payload: {
-              program_ref: prog.ref,
-              program_data: prog
+              program_ref: prog.program_ref,
+              program_name: prog.title,
+              program_data: {
+                title: prog.title,
+                program_ref: prog.program_ref,
+                org_ref: prog.org_ref,
+                description: prog.description,
+                status: prog.status,
+                price: prog.price,
+                schedule: prog.schedule
+              }
             },
             variant: "accent"
           }
@@ -305,10 +314,27 @@ export default class APIOrchestrator implements IOrchestrator {
     // ✅ COMPLIANCE FIX: Call MCP tool for form discovery (ensures audit logging)
     let signupForm;
     try {
+      // Debug: Log what we're sending to form discovery
+      Logger.info('[selectProgram] Form discovery request:', {
+        programRef,
+        programName,
+        orgRef,
+        has_programData: !!programData,
+        programData_keys: programData ? Object.keys(programData) : []
+      });
+
       Logger.info('[selectProgram] Calling bookeo.discover_required_fields for audit compliance');
       const formDiscoveryResult = await this.invokeMCPTool('bookeo.discover_required_fields', {
         program_ref: programRef,
         org_ref: orgRef
+      });
+
+      Logger.info('[selectProgram] Form discovery raw response:', {
+        success: formDiscoveryResult?.success,
+        has_data: !!formDiscoveryResult?.data,
+        has_program_questions: !!formDiscoveryResult?.data?.program_questions,
+        field_count: formDiscoveryResult?.data?.program_questions?.length || 0,
+        first_field: formDiscoveryResult?.data?.program_questions?.[0]
       });
       
       // ✅ FIX: Bookeo returns fields in data.program_questions, not data.fields
@@ -321,10 +347,10 @@ export default class APIOrchestrator implements IOrchestrator {
       } else {
         signupForm = {
           fields: [
-            { id: "child_name", label: "Child's Name", type: "text", required: true },
-            { id: "child_age", label: "Child's Age", type: "number", required: true },
-            { id: "parent_email", label: "Parent Email", type: "email", required: true },
-            { id: "parent_phone", label: "Parent Phone", type: "tel", required: false }
+            { id: "firstName", label: "First Name", type: "text", required: true, category: "participant" },
+            { id: "lastName", label: "Last Name", type: "text", required: true, category: "participant" },
+            { id: "email", label: "Email", type: "email", required: true, category: "contact" },
+            { id: "numParticipants", label: "Number of Participants", type: "number", required: true, category: "booking", min: 1, max: 10 }
           ]
         };
         Logger.warn('[selectProgram] Using fallback form fields (field discovery failed)');
@@ -334,10 +360,10 @@ export default class APIOrchestrator implements IOrchestrator {
       // Fallback to default form if MCP tool fails
       signupForm = {
         fields: [
-          { id: "child_name", label: "Child's Name", type: "text", required: true },
-          { id: "child_age", label: "Child's Age", type: "number", required: true },
-          { id: "parent_email", label: "Parent Email", type: "email", required: true },
-          { id: "parent_phone", label: "Parent Phone", type: "tel", required: false }
+          { id: "firstName", label: "First Name", type: "text", required: true, category: "participant" },
+          { id: "lastName", label: "Last Name", type: "text", required: true, category: "participant" },
+          { id: "email", label: "Email", type: "email", required: true, category: "contact" },
+          { id: "numParticipants", label: "Number of Participants", type: "number", required: true, category: "booking", min: 1, max: 10 }
         ]
       };
     }
