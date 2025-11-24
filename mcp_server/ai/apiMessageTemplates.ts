@@ -35,7 +35,7 @@ export function getAPIFormIntroMessage(vars: APIMessageVariables): string {
 }
 
 /**
- * PAYMENT step: Booking summary
+ * PAYMENT step: Booking summary (legacy - kept for backward compatibility)
  */
 export function getAPIPaymentSummaryMessage(vars: APIMessageVariables): string {
   const programName = vars.program_name || "this program";
@@ -49,6 +49,36 @@ export function getAPIPaymentSummaryMessage(vars: APIMessageVariables): string {
 **Participant:** ${participantName}
 **Number of Participants:** ${numParticipants}
 **Total:** ${totalCost}
+
+Ready to confirm? By proceeding, you authorize SignupAssist to complete this registration on your behalf.`;
+}
+
+/**
+ * PAYMENT AUTHORIZATION: Dual-charge breakdown (Program Fee + $20 Success Fee)
+ */
+export function getPaymentAuthorizationMessage(vars: APIMessageVariables): string {
+  const programName = vars.program_name || "this program";
+  const participantName = vars.participant_name || "your participant";
+  const programFee = vars.total_cost || "$0.00";
+  const successFee = "$20.00";
+  const numParticipants = vars.num_participants || 1;
+  
+  // Calculate total (program fee + success fee)
+  const programFeeValue = parseFloat(programFee.replace(/[^0-9.]/g, '')) || 0;
+  const successFeeValue = 20.00;
+  const grandTotal = `$${(programFeeValue + successFeeValue).toFixed(2)}`;
+  
+  return `Perfect! Here's your booking summary:
+
+**Program:** ${programName}
+**Participant${numParticipants > 1 ? 's' : ''}:** ${participantName}
+**Number of Participants:** ${numParticipants}
+
+**Charges:**
+• **Program Fee:** ${programFee} (paid to provider via Bookeo)
+• **SignupAssist Success Fee:** ${successFee} (charged only if registration succeeds)
+
+**Total:** ${grandTotal}
 
 Ready to confirm? By proceeding, you authorize SignupAssist to complete this registration on your behalf.`;
 }

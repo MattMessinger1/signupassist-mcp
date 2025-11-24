@@ -21,6 +21,7 @@ import {
   getAPIProgramsReadyMessage,
   getAPIFormIntroMessage,
   getAPIPaymentSummaryMessage,
+  getPaymentAuthorizationMessage,
   getAPISuccessMessage,
   getAPIErrorMessage
 } from "./apiMessageTemplates.js";
@@ -437,12 +438,16 @@ export default class APIOrchestrator implements IOrchestrator {
     
     const totalPrice = basePrice * numParticipants;
     const formattedTotal = `$${totalPrice.toFixed(2)}`;
+    
+    // Calculate grand total (program fee + $20 success fee)
+    const successFee = 20.00;
+    const grandTotal = `$${(totalPrice + successFee).toFixed(2)}`;
 
-    // Use Design DNA-compliant message template
-    let message = getAPIPaymentSummaryMessage({
+    // Use Design DNA-compliant dual-charge message template
+    let message = getPaymentAuthorizationMessage({
       program_name: programName,
       participant_name: participantList,
-      total_cost: formattedTotal,
+      total_cost: formattedTotal, // This is the program fee only
       num_participants: numParticipants
     });
     
@@ -462,9 +467,9 @@ export default class APIOrchestrator implements IOrchestrator {
     const paymentResponse: OrchestratorResponse = {
       message,
       cards: [{
-        title: "Booking Confirmation",
+        title: "Payment Authorization",
         subtitle: programName,
-        description: `Participants:\n${participantList}\n\nNumber of Participants: ${numParticipants}\nTotal: ${formattedTotal}`,
+        description: `Participants:\n${participantList}\n\nCharges:\n• Program Fee: ${formattedTotal} (to provider)\n• SignupAssist Success Fee: $20.00 (only if booking succeeds)\n\nTotal: ${grandTotal}`,
         buttons: []
       }],
       cta: {
