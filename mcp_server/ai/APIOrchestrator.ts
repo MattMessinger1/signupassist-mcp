@@ -183,8 +183,24 @@ export default class APIOrchestrator implements IOrchestrator {
         provider: 'bookeo'
       });
       
-      // Extract programs array - handle both wrapped and direct array responses
-      const programs = Array.isArray(programsResult) ? programsResult : (programsResult?.data || []);
+      // Extract programs array - handle Bookeo's grouped structure
+      let programs: any[] = [];
+
+      if (Array.isArray(programsResult)) {
+        // Direct array response (future-proofing)
+        programs = programsResult;
+      } else if (programsResult?.data?.programs_by_theme) {
+        // Bookeo returns programs grouped by theme - flatten to array
+        const programsByTheme = programsResult.data.programs_by_theme;
+        programs = Object.values(programsByTheme).flat();
+        Logger.info(`[Bookeo] Flattened ${programs.length} programs from themes:`, Object.keys(programsByTheme));
+      } else if (Array.isArray(programsResult?.data)) {
+        // Fallback: data field is directly an array
+        programs = programsResult.data;
+      } else {
+        // No programs found
+        programs = [];
+      }
 
       if (!programs || programs.length === 0) {
         return this.formatError("No programs found at this time.");
