@@ -266,6 +266,8 @@ export default class APIOrchestrator implements IOrchestrator {
   ): Promise<OrchestratorResponse> {
     const programData = payload.program_data;
     const programName = programData?.title || "this program";
+    const programRef = programData?.ref || payload.program_ref;
+    const orgRef = programData?.org_ref || 'aim-design';
 
     // Update context
     this.updateContext(sessionId, {
@@ -273,15 +275,37 @@ export default class APIOrchestrator implements IOrchestrator {
       selectedProgram: programData
     });
 
-    // Get signup form schema (from cached_provider_feed)
-    const signupForm = programData?.signup_form || {
-      fields: [
-        { name: "child_name", label: "Child's Name", type: "text", required: true },
-        { name: "child_age", label: "Child's Age", type: "number", required: true },
-        { name: "parent_email", label: "Parent Email", type: "email", required: true },
-        { name: "parent_phone", label: "Parent Phone", type: "tel", required: false }
-      ]
-    };
+    // ✅ COMPLIANCE FIX: Call MCP tool for form discovery (ensures audit logging)
+    let signupForm;
+    try {
+      Logger.info('[selectProgram] Calling bookeo.discover_required_fields for audit compliance');
+      const formDiscoveryResult = await this.invokeMCPTool('bookeo.discover_required_fields', {
+        program_ref: programRef,
+        org_ref: orgRef
+      });
+      
+      signupForm = formDiscoveryResult?.data?.fields ? { fields: formDiscoveryResult.data.fields } : {
+        fields: [
+          { name: "child_name", label: "Child's Name", type: "text", required: true },
+          { name: "child_age", label: "Child's Age", type: "number", required: true },
+          { name: "parent_email", label: "Parent Email", type: "email", required: true },
+          { name: "parent_phone", label: "Parent Phone", type: "tel", required: false }
+        ]
+      };
+      
+      Logger.info('[selectProgram] Form discovery succeeded via MCP tool');
+    } catch (error) {
+      Logger.error('[selectProgram] Form discovery failed, using fallback fields:', error);
+      // Fallback to default form if MCP tool fails
+      signupForm = {
+        fields: [
+          { name: "child_name", label: "Child's Name", type: "text", required: true },
+          { name: "child_age", label: "Child's Age", type: "number", required: true },
+          { name: "parent_email", label: "Parent Email", type: "email", required: true },
+          { name: "parent_phone", label: "Parent Phone", type: "tel", required: false }
+        ]
+      };
+    }
 
     // Use Design DNA-compliant message template
     const message = getAPIFormIntroMessage({
