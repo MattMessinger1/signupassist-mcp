@@ -50,6 +50,7 @@ const __dirname = dirname(__filename);
 // Import tool providers
 import { skiClubProTools } from './providers/skiclubpro.js';
 import { bookeoTools } from './providers/bookeo.js';
+import { stripeTools } from './providers/stripe.js';
 import { programFeedTools } from './providers/programFeed.js';
 // import { daysmartTools } from '../providers/daysmart/index';
 // import { campminderTools } from '../providers/campminder/index';
@@ -225,6 +226,16 @@ class SignupAssistMCPServer {
 
     // Register Bookeo tools
     bookeoTools.forEach((tool) => {
+      this.tools.set(tool.name, {
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+        handler: tool.handler
+      });
+    });
+
+    // Register Stripe tools
+    stripeTools.forEach((tool) => {
       this.tools.set(tool.name, {
         name: tool.name,
         description: tool.description,
