@@ -183,7 +183,8 @@ export default class APIOrchestrator implements IOrchestrator {
         provider: 'bookeo'
       });
       
-      const programs = programsResult?.data || [];
+      // Extract programs array - handle both wrapped and direct array responses
+      const programs = Array.isArray(programsResult) ? programsResult : (programsResult?.data || []);
 
       if (!programs || programs.length === 0) {
         return this.formatError("No programs found at this time.");
