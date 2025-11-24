@@ -396,7 +396,15 @@ function ChatTestHarnessContent() {
    * Routes card button clicks to orchestrator backend
    */
   const handleCardAction = async (action: string, payload: any) => {
-    console.log(`[HARNESS] Card action triggered: ${action}`, payload);
+    console.log('[HARNESS] Card action triggered:', {
+      action,
+      payload,
+      payload_type: typeof payload,
+      payload_keys: payload ? Object.keys(payload) : [],
+      has_program_data: !!payload?.program_data,
+      program_data_keys: payload?.program_data ? Object.keys(payload.program_data) : [],
+      stringified: JSON.stringify(payload, null, 2)
+    });
     addLog("info", "user", `Card action: ${action}`, { payload });
     
     // Handle mandate recovery action
