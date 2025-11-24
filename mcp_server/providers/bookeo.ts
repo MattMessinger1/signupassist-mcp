@@ -27,16 +27,8 @@ export interface BookeoTool {
   handler: (args: any) => Promise<any>;
 }
 
-/**
- * Create Bookeo API authorization header
- */
-function bookeoHeaders() {
-  const auth = Buffer.from(`${BOOKEO_API_KEY}:${BOOKEO_SECRET_KEY}`).toString('base64');
-  return {
-    'Authorization': `Basic ${auth}`,
-    'Content-Type': 'application/json'
-  };
-}
+// Note: bookeoHeaders() removed - authentication now only needed by sync-bookeo edge function
+// Runtime field discovery reads from cached_provider_feed table (no API calls)
 
 /**
  * Strip HTML tags and decode entities from text
@@ -198,6 +190,7 @@ async function findPrograms(args: {
 /**
  * Tool: bookeo.discover_required_fields
  * Discovers required fields for a specific Bookeo product
+ * Reads from cached_provider_feed table (synced by sync-bookeo edge function)
  */
 async function discoverRequiredFields(args: {
   program_ref: string;
@@ -207,72 +200,32 @@ async function discoverRequiredFields(args: {
 }): Promise<ProviderResponse<any>> {
   const { program_ref, org_ref } = args;
   
-  console.log(`[Bookeo] Discovering fields for program: ${program_ref}`);
+  console.log(`[Bookeo] Discovering fields for program: ${program_ref} (reading from database cache)`);
   
   try {
-    // Fetch product details including custom fields
-    const response = await fetch(`${BOOKEO_API_BASE}/settings/products/${program_ref}`, {
-      headers: bookeoHeaders()
-    });
+    // Fetch pre-stored signup form from database (already synced by sync-bookeo)
+    const { data, error } = await supabase
+      .from('cached_provider_feed')
+      .select('signup_form, program')
+      .eq('program_ref', program_ref)
+      .eq('org_ref', org_ref)
+      .single();
     
-    if (!response.ok) {
-      throw new Error(`Bookeo API error: ${response.status} ${response.statusText}`);
+    if (error || !data) {
+      console.error('[Bookeo] Program not found in cache:', error);
+      throw new Error(`Program not found: ${program_ref}`);
     }
     
-    const product = await response.json();
+    const signupForm = data.signup_form as any;
+    const programData = data.program as any;
+    const fields = signupForm?.fields || [];
     
-    // Build field schema from Bookeo product configuration
-    const fields: any[] = [];
-    
-    // Standard participant information fields
-    fields.push(
-      {
-        id: 'firstName',
-        label: 'First Name',
-        type: 'text',
-        required: true,
-        category: 'participant'
-      },
-      {
-        id: 'lastName',
-        label: 'Last Name',
-        type: 'text',
-        required: true,
-        category: 'participant'
-      },
-      {
-        id: 'email',
-        label: 'Email',
-        type: 'email',
-        required: true,
-        category: 'contact'
-      }
-    );
-    
-    // Add custom fields if defined
-    if (product.customFields) {
-      for (const field of product.customFields) {
-        fields.push({
-          id: field.id,
-          label: field.name,
-          type: mapBookeoFieldType(field.type),
-          required: field.required || false,
-          category: 'custom',
-          options: field.choices?.map((c: any) => ({ value: c, label: c }))
-        });
-      }
+    if (fields.length === 0) {
+      console.warn('[Bookeo] No signup form fields found in cache for program:', program_ref);
+      throw new Error('No signup form fields found in cache');
     }
     
-    // Add number of participants field
-    fields.push({
-      id: 'numParticipants',
-      label: 'Number of Participants',
-      type: 'number',
-      required: true,
-      category: 'booking',
-      min: 1,
-      max: product.maxParticipants || 10
-    });
+    console.log(`[Bookeo] Found ${fields.length} fields in database cache`);
     
     return {
       success: true,
@@ -280,17 +233,18 @@ async function discoverRequiredFields(args: {
         program_ref,
         program_questions: fields,
         metadata: {
-          product_name: product.name,
-          duration: product.duration,
-          max_participants: product.maxParticipants,
-          discovered_at: new Date().toISOString()
+          product_name: programData.title,
+          duration: programData.duration,
+          max_participants: programData.max_participants,
+          discovered_at: new Date().toISOString(),
+          source: 'database_cache'
         }
       },
       session_token: undefined,
       ui: {
         cards: [{
           title: 'Booking Fields',
-          description: `Found ${fields.length} required fields for ${product.name}`
+          description: `Found ${fields.length} required fields for ${programData.title}`
         }]
       }
     };
@@ -299,9 +253,9 @@ async function discoverRequiredFields(args: {
     console.error('[Bookeo] Error discovering fields:', error);
     const friendlyError: ParentFriendlyError = {
       display: 'Unable to retrieve program details',
-      recovery: 'Please verify the program reference and try again',
+      recovery: 'Please verify the program is synced and try again',
       severity: 'medium',
-      code: 'BOOKEO_API_ERROR'
+      code: 'DATABASE_ERROR'
     };
     return {
       success: false,
