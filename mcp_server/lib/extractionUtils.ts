@@ -115,3 +115,43 @@ export const VALID_STATUSES = [
 ] as const;
 
 export type ValidStatus = typeof VALID_STATUSES[number];
+
+/**
+ * Strip HTML tags and decode entities from text
+ * Removes HTML markup and structural prefixes like "Description → Section: General"
+ */
+export function stripHtml(html: string): string {
+  if (!html) return '';
+  
+  // Remove HTML tags
+  let text = html.replace(/<[^>]*>/g, ' ');
+  
+  // Remove structural prefixes like "Description → Section: General"
+  text = text.replace(/^[^:]*→\s*Section:\s*\w+\s*/i, '');
+  
+  // Decode common HTML entities
+  const entities: Record<string, string> = {
+    '&rarr;': '→',
+    '&larr;': '←',
+    '&ndash;': '–',
+    '&mdash;': '—',
+    '&rsquo;': "'",
+    '&lsquo;': "'",
+    '&rdquo;': '"',
+    '&ldquo;': '"',
+    '&nbsp;': ' ',
+    '&amp;': '&',
+    '&lt;': '<',
+    '&gt;': '>',
+    '&quot;': '"'
+  };
+  
+  Object.entries(entities).forEach(([entity, char]) => {
+    text = text.replace(new RegExp(entity, 'g'), char);
+  });
+  
+  // Clean up excessive whitespace
+  text = text.replace(/\s+/g, ' ').trim();
+  
+  return text;
+}

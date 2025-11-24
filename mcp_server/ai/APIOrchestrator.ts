@@ -24,6 +24,7 @@ import {
   getAPISuccessMessage,
   getAPIErrorMessage
 } from "./apiMessageTemplates.js";
+import { stripHtml } from "../lib/extractionUtils.js";
 
 // Simple flow steps for API-first providers
 enum FlowStep {
@@ -221,11 +222,11 @@ export default class APIOrchestrator implements IOrchestrator {
         orgRef,
       });
 
-      // Build program cards
+      // Build program cards with cleaned descriptions (strip HTML)
       const cards: CardSpec[] = sortedPrograms.map((prog: any) => ({
         title: prog.title || "Untitled Program",
         subtitle: prog.schedule || "",
-        description: prog.description || "",
+        description: stripHtml(prog.description || ""),
         buttons: [
           {
             label: "Select this program",
@@ -282,8 +283,17 @@ export default class APIOrchestrator implements IOrchestrator {
     context: APIContext
   ): Promise<OrchestratorResponse> {
     const programData = payload.program_data;
-    const programName = programData?.title || "this program";
-    const programRef = programData?.ref || payload.program_ref;
+    const programName = programData?.title || programData?.name || payload.program_name || "this program";
+    const programRef = programData?.ref || programData?.program_ref || payload.program_ref;
+    
+    // Debug logging to catch structure issues
+    if (programName === "this program") {
+      Logger.warn('[selectProgram] Missing program name in payload:', {
+        has_program_data: !!payload.program_data,
+        payload_keys: Object.keys(payload),
+        program_data_keys: programData ? Object.keys(programData) : []
+      });
+    }
     const orgRef = programData?.org_ref || 'aim-design';
 
     // Update context
@@ -301,25 +311,33 @@ export default class APIOrchestrator implements IOrchestrator {
         org_ref: orgRef
       });
       
-      signupForm = formDiscoveryResult?.data?.fields ? { fields: formDiscoveryResult.data.fields } : {
-        fields: [
-          { name: "child_name", label: "Child's Name", type: "text", required: true },
-          { name: "child_age", label: "Child's Age", type: "number", required: true },
-          { name: "parent_email", label: "Parent Email", type: "email", required: true },
-          { name: "parent_phone", label: "Parent Phone", type: "tel", required: false }
-        ]
-      };
-      
-      Logger.info('[selectProgram] Form discovery succeeded via MCP tool');
+      // ✅ FIX: Bookeo returns fields in data.program_questions, not data.fields
+      if (formDiscoveryResult?.success && formDiscoveryResult?.data?.program_questions) {
+        signupForm = { fields: formDiscoveryResult.data.program_questions };
+        Logger.info('[selectProgram] Form fields loaded from MCP tool:', {
+          field_count: signupForm.fields.length,
+          source: 'bookeo.discover_required_fields'
+        });
+      } else {
+        signupForm = {
+          fields: [
+            { id: "child_name", label: "Child's Name", type: "text", required: true },
+            { id: "child_age", label: "Child's Age", type: "number", required: true },
+            { id: "parent_email", label: "Parent Email", type: "email", required: true },
+            { id: "parent_phone", label: "Parent Phone", type: "tel", required: false }
+          ]
+        };
+        Logger.warn('[selectProgram] Using fallback form fields (field discovery failed)');
+      }
     } catch (error) {
       Logger.error('[selectProgram] Form discovery failed, using fallback fields:', error);
       // Fallback to default form if MCP tool fails
       signupForm = {
         fields: [
-          { name: "child_name", label: "Child's Name", type: "text", required: true },
-          { name: "child_age", label: "Child's Age", type: "number", required: true },
-          { name: "parent_email", label: "Parent Email", type: "email", required: true },
-          { name: "parent_phone", label: "Parent Phone", type: "tel", required: false }
+          { id: "child_name", label: "Child's Name", type: "text", required: true },
+          { id: "child_age", label: "Child's Age", type: "number", required: true },
+          { id: "parent_email", label: "Parent Email", type: "email", required: true },
+          { id: "parent_phone", label: "Parent Phone", type: "tel", required: false }
         ]
       };
     }
