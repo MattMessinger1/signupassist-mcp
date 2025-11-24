@@ -14,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { ConfirmationCard } from "./ConfirmationCard";
 import { GroupedProgramCards } from "./GroupedProgramCards";
 import { OptionsCarousel } from "./OptionsCarousel";
-import { InlineChatForm } from "./InlineChatForm";
 import { StatusChip } from "./StatusChip";
 import { PrereqChecklistCard } from "@/components/PrereqChecklistCard";
 import { Loader2 } from "lucide-react";
@@ -139,17 +138,7 @@ export function MessageBubble({
           </div>
         ))}
         
-        {/* Inline Form for user info collection */}
-        {message.componentType === "form" && message.componentData && (
-          <div className="mt-3">
-            <InlineChatForm
-              title={message.componentData.title || "Please provide information"}
-              fields={message.componentData.fields}
-              submitLabel={message.componentData.submitLabel || "Submit"}
-              onSubmit={(values) => onAction?.(message.componentData.submitAction, values)}
-            />
-          </div>
-        )}
+        {/* Legacy form component type removed - now using ResponsibleDelegateForm in MCPChat */}
 
         {/* Test Comparison View */}
         {message.componentData?.testComparison && (

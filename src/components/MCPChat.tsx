@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { ResponsibleDelegateForm } from "./chat-test/ResponsibleDelegateForm";
 
 interface CardData {
   title: string;
@@ -219,58 +220,13 @@ export function MCPChat() {
                 </div>
               )}
 
+              {/* Render Responsible Delegate Form */}
               {msg.metadata?.signupForm && (
-                <Card className="p-4 mt-3 mr-12 bg-card">
-                  <div className="space-y-4">
-                    <div className="font-semibold">Registration Form</div>
-                    {msg.metadata.signupForm.map((field: any, fieldIdx: number) => (
-                      <div key={fieldIdx} className="space-y-2">
-                        <label className="text-sm font-medium">
-                          {field.label}
-                          {field.required && <span className="text-destructive ml-1">*</span>}
-                        </label>
-                        {field.type === 'select' ? (
-                          <select
-                            className="w-full p-2 border rounded-md bg-background"
-                            value={formData[field.id] || ''}
-                            onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
-                            autoComplete="off"
-                          >
-                            <option value="">Select...</option>
-                            {field.options?.map((opt: any, optIdx: number) => (
-                              <option key={optIdx} value={opt.value}>{opt.label}</option>
-                            ))}
-                          </select>
-                        ) : field.type === 'textarea' ? (
-                          <textarea
-                            className="w-full p-2 border rounded-md bg-background"
-                            rows={3}
-                            value={formData[field.id] || ''}
-                            onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
-                            autoComplete="off"
-                          />
-                        ) : (
-                          <Input
-                            type={field.type || 'text'}
-                            value={formData[field.id] || ''}
-                            onChange={(e) => setFormData({ ...formData, [field.id]: e.target.value })}
-                            autoComplete="off"
-                          />
-                        )}
-                      </div>
-                    ))}
-                    <Button
-                      onClick={() => {
-                        handleCardAction('submit_form', { formData });
-                        setFormData({});
-                      }}
-                      disabled={loading}
-                      className="w-full"
-                    >
-                      Submit Registration
-                    </Button>
-                  </div>
-                </Card>
+                <ResponsibleDelegateForm
+                  schema={msg.metadata.signupForm}
+                  programTitle={msg.metadata.program_ref || "Selected Program"}
+                  onSubmit={(data) => handleCardAction('submit_form', { formData: data })}
+                />
               )}
             </div>
           ))}

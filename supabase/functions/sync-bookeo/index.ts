@@ -225,15 +225,34 @@ Deno.serve(async (req) => {
           next_available: slots.find(s => s.numSeatsAvailable > 0)?.startTime || null
         };
         
-        // Build signup form schema (basic Bookeo fields)
+        // Build two-tier Responsible Delegate form schema
         const signupForm = {
-          fields: [
+          delegate_fields: [
+            { id: 'delegate_firstName', label: 'Your First Name', type: 'text', required: true },
+            { id: 'delegate_lastName', label: 'Your Last Name', type: 'text', required: true },
+            { id: 'delegate_email', label: 'Your Email', type: 'email', required: true },
+            { id: 'delegate_phone', label: 'Your Phone', type: 'tel', required: false },
+            { id: 'delegate_dob', label: 'Your Date of Birth', type: 'date', required: true,
+              helpText: 'Required to verify you are 18+ and authorized to register participants' },
+            { id: 'delegate_relationship', label: 'Relationship to Participant(s)', type: 'select', required: true,
+              options: [
+                { value: 'parent', label: 'Parent' },
+                { value: 'guardian', label: 'Legal Guardian' },
+                { value: 'grandparent', label: 'Grandparent' },
+                { value: 'other', label: 'Other Authorized Adult' }
+              ]
+            }
+          ],
+          participant_fields: [
             { id: 'firstName', label: 'First Name', type: 'text', required: true },
             { id: 'lastName', label: 'Last Name', type: 'text', required: true },
-            { id: 'email', label: 'Email', type: 'email', required: true },
-            { id: 'phone', label: 'Phone', type: 'tel', required: false },
-            { id: 'numParticipants', label: 'Number of Participants', type: 'number', required: true, min: 1, max: product.maxParticipants || 10 }
-          ]
+            { id: 'dob', label: 'Date of Birth', type: 'date', required: true },
+            { id: 'grade', label: 'Grade Level', type: 'text', required: false },
+            { id: 'allergies', label: 'Allergies/Medical Notes', type: 'textarea', required: false }
+          ],
+          max_participants: product.maxParticipants || 10,
+          requires_age_verification: true,
+          minimum_delegate_age: 18
         };
         
         // Upsert to cached_provider_feed with dynamic org_ref
