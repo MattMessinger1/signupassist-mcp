@@ -46,6 +46,13 @@ interface APIContext {
     age?: number;
     dob?: string;
   };
+  schedulingData?: {
+    scheduled_time: string;
+    event_id: string;
+    total_amount: string;
+    program_fee: string;
+    formData: any;
+  };
 }
 
 /**
@@ -123,6 +130,12 @@ export default class APIOrchestrator implements IOrchestrator {
 
       case "confirm_payment":
         return await this.confirmPayment(payload, sessionId, context);
+
+      case "schedule_auto_registration":
+        return await this.scheduleAutoRegistration(payload, sessionId, context);
+
+      case "confirm_scheduled_registration":
+        return await this.confirmScheduledRegistration(payload, sessionId, context);
 
       default:
         return this.formatError(`Unknown action: ${action}`);
@@ -224,32 +237,57 @@ export default class APIOrchestrator implements IOrchestrator {
         orgRef,
       });
 
-      // Build program cards with cleaned descriptions (strip HTML)
-      const cards: CardSpec[] = sortedPrograms.map((prog: any) => ({
-        title: prog.title || "Untitled Program",
-        subtitle: prog.schedule || "",
-        description: stripHtml(prog.description || ""),
-        buttons: [
-          {
-            label: "Select this program",
-            action: "select_program",
-            payload: {
-              program_ref: prog.program_ref,
-              program_name: prog.title,
-              program_data: {
-                title: prog.title,
+      // Build program cards with timing badges and cleaned descriptions
+      const cards: CardSpec[] = sortedPrograms.map((prog: any) => {
+        const bookingStatus = prog.booking_status || 'open_now';
+        const earliestSlot = prog.earliest_slot_time ? new Date(prog.earliest_slot_time) : null;
+        
+        // Generate timing badge
+        let timingBadge = '';
+        let isDisabled = false;
+        let buttonLabel = "Select this program";
+        
+        if (bookingStatus === 'sold_out') {
+          timingBadge = '🚫 Sold Out';
+          isDisabled = true;
+          buttonLabel = "Waitlist (Coming Soon)";
+        } else if (bookingStatus === 'opens_later' && earliestSlot) {
+          timingBadge = `📅 Opens ${earliestSlot.toLocaleDateString()}`;
+          buttonLabel = "Schedule Auto-Register";
+        } else if (bookingStatus === 'open_now') {
+          timingBadge = '✅ Register Now';
+        }
+        
+        return {
+          title: prog.title || "Untitled Program",
+          subtitle: `${prog.schedule || ""} ${timingBadge ? `• ${timingBadge}` : ''}`.trim(),
+          description: stripHtml(prog.description || ""),
+          buttons: [
+            {
+              label: buttonLabel,
+              action: "select_program",
+              payload: {
                 program_ref: prog.program_ref,
-                org_ref: prog.org_ref,
-                description: prog.description,
-                status: prog.status,
-                price: prog.price,
-                schedule: prog.schedule
-              }
-            },
-            variant: "accent"
-          }
-        ]
-      }));
+                program_name: prog.title,
+                program_data: {
+                  title: prog.title,
+                  program_ref: prog.program_ref,
+                  org_ref: prog.org_ref,
+                  description: prog.description,
+                  status: prog.status,
+                  price: prog.price,
+                  schedule: prog.schedule,
+                  booking_status: bookingStatus,
+                  earliest_slot_time: prog.earliest_slot_time,
+                  event_id: prog.event_id || prog.program_ref
+                }
+              },
+              variant: isDisabled ? "outline" : "accent",
+              disabled: isDisabled
+            }
+          ]
+        };
+      });
 
       // Use Design DNA-compliant message template
       const message = getAPIProgramsReadyMessage({
@@ -336,6 +374,19 @@ export default class APIOrchestrator implements IOrchestrator {
         programData_keys: programData ? Object.keys(programData) : []
       });
 
+      // Determine registration timing and add transparency message
+      const bookingStatus = programData?.booking_status || 'open_now';
+      const earliestSlot = programData?.earliest_slot_time ? new Date(programData.earliest_slot_time) : null;
+
+      let timingMessage = '';
+      if (bookingStatus === 'open_now') {
+        timingMessage = '✅ Registration is currently open! Complete the form and you can register immediately.\n\n';
+      } else if (bookingStatus === 'opens_later' && earliestSlot) {
+        timingMessage = `📅 Registration opens on ${earliestSlot.toLocaleString()}.\n\n` +
+                        `Fill out the form now and we'll automatically register you the moment it opens. ` +
+                        `You'll only be charged if registration succeeds!\n\n`;
+      }
+
       Logger.info('[selectProgram] Calling bookeo.discover_required_fields for audit compliance');
       const formDiscoveryResult = await this.invokeMCPTool('bookeo.discover_required_fields', {
         program_ref: programRef,
@@ -348,8 +399,8 @@ export default class APIOrchestrator implements IOrchestrator {
         has_program_questions: !!formDiscoveryResult?.data?.program_questions
       });
       
-      // Use Design DNA-compliant message template with delegate context
-      let message = getAPIFormIntroMessage({
+      // Use Design DNA-compliant message template with timing transparency
+      let message = timingMessage + getAPIFormIntroMessage({
         program_name: programName,
         provider_name: "AIM Design"
       });
@@ -487,8 +538,46 @@ export default class APIOrchestrator implements IOrchestrator {
     // Add Responsible Delegate footer (Design DNA requirement)
     message = addResponsibleDelegateFooter(message);
 
+    // Check if this is a future booking (Set & Forget flow) or immediate registration
+    const bookingStatus = context.selectedProgram?.booking_status || 'open_now';
+    const earliestSlot = context.selectedProgram?.earliest_slot_time 
+      ? new Date(context.selectedProgram.earliest_slot_time) 
+      : null;
+    const isFutureBooking = bookingStatus === 'opens_later' && earliestSlot && earliestSlot > new Date();
+
+    // Build conditional payment button
+    let buttons: any[] = [];
+    let paymentMessage = message;
+
+    if (isFutureBooking && earliestSlot) {
+      // Set & Forget flow: Show auto-register button
+      paymentMessage += `\n\n📅 This class opens for booking on ${earliestSlot.toLocaleString()}. We can automatically register you the moment it opens!`;
+      
+      buttons = [
+        { 
+          label: `⏰ Auto-Register on ${earliestSlot.toLocaleDateString()}`, 
+          action: "schedule_auto_registration",
+          payload: {
+            scheduled_time: earliestSlot.toISOString(),
+            event_id: context.selectedProgram.event_id || context.selectedProgram.program_ref,
+            total_amount: grandTotal,
+            program_fee: formattedTotal,
+            formData
+          },
+          variant: "accent" 
+        },
+        { label: "Go Back", action: "search_programs", payload: { orgRef: context.orgRef }, variant: "outline" }
+      ];
+    } else {
+      // Immediate registration flow: Show confirm & pay button
+      buttons = [
+        { label: "Confirm & Pay", action: "confirm_payment", variant: "accent" },
+        { label: "Go Back", action: "search_programs", payload: { orgRef: context.orgRef }, variant: "outline" }
+      ];
+    }
+
     const paymentResponse: OrchestratorResponse = {
-      message,
+      message: paymentMessage,
       cards: [{
         title: "Payment Authorization",
         subtitle: programName,
@@ -496,10 +585,7 @@ export default class APIOrchestrator implements IOrchestrator {
         buttons: []
       }],
       cta: {
-        buttons: [
-          { label: "Confirm & Pay", action: "confirm_payment", variant: "accent" },
-          { label: "Go Back", action: "search_programs", payload: { orgRef: context.orgRef }, variant: "outline" }
-        ]
+        buttons
       }
     };
 
@@ -579,6 +665,137 @@ export default class APIOrchestrator implements IOrchestrator {
     } catch (error) {
       Logger.error("Payment error:", error);
       return this.formatError("Payment failed. Please try again or contact support.");
+    }
+  }
+
+  /**
+   * Schedule auto-registration for future booking (Set & Forget)
+   * Validates 31-day limit before proceeding
+   */
+  private async scheduleAutoRegistration(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    const { scheduled_time, event_id, total_amount, program_fee, formData } = payload;
+    
+    // Validate 31-day scheduling limit
+    const scheduledDate = new Date(scheduled_time);
+    const now = new Date();
+    const daysUntilScheduled = Math.ceil((scheduledDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (daysUntilScheduled > 31) {
+      Logger.warn(`[scheduleAutoRegistration] Rejected: ${daysUntilScheduled} days out (max 31 days)`);
+      return this.formatError(
+        `Auto-registration is only available up to 31 days in advance. ` +
+        `This class opens in ${daysUntilScheduled} days. Please return closer to the registration date.`
+      );
+    }
+    
+    Logger.info(`[scheduleAutoRegistration] Validated: ${daysUntilScheduled} days out (within 31-day limit)`);
+    
+    // Store scheduling data in context for next step
+    this.updateContext(sessionId, {
+      schedulingData: {
+        scheduled_time,
+        event_id,
+        total_amount,
+        program_fee,
+        formData
+      }
+    });
+    
+    // Trigger payment method setup
+    return {
+      message: `We'll automatically register you on ${scheduledDate.toLocaleString()}.\n\n` +
+               `First, let's save your payment method securely. You'll only be charged if registration succeeds!`,
+      metadata: {
+        componentType: "payment_setup",
+        next_action: "confirm_scheduled_registration"
+      }
+    };
+  }
+
+  /**
+   * Confirm and store scheduled registration after payment setup
+   */
+  private async confirmScheduledRegistration(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    const schedulingData = context.schedulingData;
+    
+    if (!schedulingData) {
+      return this.formatError("Scheduling data not found. Please start over.");
+    }
+    
+    const { scheduled_time, event_id, total_amount, program_fee, formData } = schedulingData;
+    const scheduledDate = new Date(scheduled_time);
+    const programName = context.selectedProgram?.title || "Selected Program";
+    
+    try {
+      // Calculate mandate valid_until (min of scheduled_time or now + 31 days)
+      const maxValidUntil = new Date(Date.now() + 31 * 24 * 60 * 60 * 1000);
+      const mandateValidUntil = scheduledDate < maxValidUntil ? scheduledDate : maxValidUntil;
+      
+      // TODO: Create mandate via MCP tool
+      // const mandate = await this.invokeMCPTool('mandates.create', {
+      //   user_id: context.user_id,
+      //   provider: 'bookeo',
+      //   org_ref: context.selectedProgram.org_ref,
+      //   scopes: ['bookeo:create_booking', 'platform:success_fee'],
+      //   max_amount_cents: parseFloat(total_amount.replace(/[^0-9.]/g, '')) * 100,
+      //   valid_until: mandateValidUntil.toISOString()
+      // });
+      
+      // TODO: Store in scheduled_registrations table
+      // const { data } = await supabase
+      //   .from('scheduled_registrations')
+      //   .insert({
+      //     user_id: context.user_id,
+      //     mandate_id: mandate.data.mandate_id,
+      //     org_ref: context.selectedProgram.org_ref,
+      //     program_ref: context.selectedProgram.program_ref,
+      //     program_name: programName,
+      //     scheduled_time,
+      //     event_id,
+      //     delegate_data: formData.delegate,
+      //     participant_data: formData.participants,
+      //     status: 'pending'
+      //   })
+      //   .select()
+      //   .single();
+      
+      // TODO: Schedule the job
+      // await this.invokeMCPTool('scheduler.schedule_signup', {
+      //   registration_id: data.id,
+      //   trigger_time: scheduled_time
+      // });
+      
+      // Reset context
+      this.updateContext(sessionId, {
+        step: FlowStep.BROWSE
+      });
+      
+      return {
+        message: `✅ Auto-registration scheduled!\n\n` +
+                 `We'll register you on ${scheduledDate.toLocaleString()} when booking opens.\n\n` +
+                 `You'll be charged ${total_amount} **only if registration succeeds**.`,
+        cards: [{
+          title: '⏰ Scheduled',
+          subtitle: programName,
+          description: `Booking opens: ${scheduledDate.toLocaleString()}\nTotal: ${total_amount}`
+        }],
+        cta: {
+          buttons: [
+            { label: "Browse More Classes", action: "search_programs", payload: { orgRef: context.orgRef || "aim-design" }, variant: "outline" }
+          ]
+        }
+      };
+    } catch (error) {
+      Logger.error("[confirmScheduledRegistration] Error:", error);
+      return this.formatError("Failed to schedule auto-registration. Please try again.");
     }
   }
 

@@ -803,6 +803,71 @@ export type Database = {
         }
         Relationships: []
       }
+      scheduled_registrations: {
+        Row: {
+          booking_number: string | null
+          created_at: string | null
+          delegate_data: Json
+          error_message: string | null
+          event_id: string
+          executed_at: string | null
+          id: string
+          mandate_id: string
+          org_ref: string
+          participant_data: Json
+          program_name: string
+          program_ref: string
+          scheduled_time: string
+          status: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          booking_number?: string | null
+          created_at?: string | null
+          delegate_data: Json
+          error_message?: string | null
+          event_id: string
+          executed_at?: string | null
+          id?: string
+          mandate_id: string
+          org_ref: string
+          participant_data: Json
+          program_name: string
+          program_ref: string
+          scheduled_time: string
+          status?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          booking_number?: string | null
+          created_at?: string | null
+          delegate_data?: Json
+          error_message?: string | null
+          event_id?: string
+          executed_at?: string | null
+          id?: string
+          mandate_id?: string
+          org_ref?: string
+          participant_data?: Json
+          program_name?: string
+          program_ref?: string
+          scheduled_time?: string
+          status?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_registrations_mandate_id_fkey"
+            columns: ["mandate_id"]
+            isOneToOne: false
+            referencedRelation: "mandates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stored_credentials: {
         Row: {
           alias: string
