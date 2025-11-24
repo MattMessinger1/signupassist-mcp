@@ -17,6 +17,7 @@ interface CardData {
     label: string;
     action: string;
     variant?: "accent" | "outline";
+    payload?: any;
   }>;
 }
 
@@ -24,6 +25,16 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   cards?: CardData[];
+  metadata?: {
+    signupForm?: Array<{
+      name: string;
+      label: string;
+      type: string;
+      required?: boolean;
+      options?: Array<{ value: string; label: string }>;
+    }>;
+    [key: string]: any;
+  };
 }
 
 export function MCPChat() {
@@ -31,6 +42,7 @@ export function MCPChat() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [sessionId] = useState(`lovable-test-${Date.now()}`);
+  const [formData, setFormData] = useState<Record<string, any>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -61,7 +73,8 @@ export function MCPChat() {
         { 
           role: "assistant", 
           content: assistantMessage,
-          cards: assistantCards
+          cards: assistantCards,
+          metadata: response.metadata
         },
       ]);
     } catch (error) {
@@ -84,6 +97,16 @@ export function MCPChat() {
   }
 
   async function handleCardAction(action: string, payload: any) {
+    console.log('[MCPChat] Card action triggered:', {
+      action,
+      payload,
+      payload_type: typeof payload,
+      payload_keys: payload ? Object.keys(payload) : [],
+      has_program_data: !!payload?.program_data,
+      program_data_keys: payload?.program_data ? Object.keys(payload.program_data) : [],
+      stringified: JSON.stringify(payload, null, 2)
+    });
+    
     setLoading(true);
     
     try {
@@ -94,7 +117,8 @@ export function MCPChat() {
         { 
           role: "assistant", 
           content: response.message || "(no response)",
-          cards: response.cards || []
+          cards: response.cards || [],
+          metadata: response.metadata
         },
       ]);
     } catch (error) {
@@ -181,7 +205,7 @@ export function MCPChat() {
                                 key={btnIdx}
                                 variant={button.variant === "accent" ? "default" : "outline"}
                                 size="sm"
-                                onClick={() => handleCardAction(button.action, card.metadata)}
+                                onClick={() => handleCardAction(button.action, button.payload || {})}
                                 disabled={loading}
                               >
                                 {button.label}
@@ -193,6 +217,57 @@ export function MCPChat() {
                     </Card>
                   ))}
                 </div>
+              )}
+
+              {msg.metadata?.signupForm && (
+                <Card className="p-4 mt-3 mr-12 bg-card">
+                  <div className="space-y-4">
+                    <div className="font-semibold">Registration Form</div>
+                    {msg.metadata.signupForm.map((field: any, fieldIdx: number) => (
+                      <div key={fieldIdx} className="space-y-2">
+                        <label className="text-sm font-medium">
+                          {field.label}
+                          {field.required && <span className="text-destructive ml-1">*</span>}
+                        </label>
+                        {field.type === 'select' ? (
+                          <select
+                            className="w-full p-2 border rounded-md bg-background"
+                            value={formData[field.name] || ''}
+                            onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
+                          >
+                            <option value="">Select...</option>
+                            {field.options?.map((opt: any, optIdx: number) => (
+                              <option key={optIdx} value={opt.value}>{opt.label}</option>
+                            ))}
+                          </select>
+                        ) : field.type === 'textarea' ? (
+                          <textarea
+                            className="w-full p-2 border rounded-md bg-background"
+                            rows={3}
+                            value={formData[field.name] || ''}
+                            onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
+                          />
+                        ) : (
+                          <Input
+                            type={field.type || 'text'}
+                            value={formData[field.name] || ''}
+                            onChange={(e) => setFormData({ ...formData, [field.name]: e.target.value })}
+                          />
+                        )}
+                      </div>
+                    ))}
+                    <Button
+                      onClick={() => {
+                        handleCardAction('submit_registration', formData);
+                        setFormData({});
+                      }}
+                      disabled={loading}
+                      className="w-full"
+                    >
+                      Submit Registration
+                    </Button>
+                  </div>
+                </Card>
               )}
             </div>
           ))}
