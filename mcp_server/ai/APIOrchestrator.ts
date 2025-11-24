@@ -333,56 +333,26 @@ export default class APIOrchestrator implements IOrchestrator {
       Logger.info('[selectProgram] Form discovery raw response:', {
         success: formDiscoveryResult?.success,
         has_data: !!formDiscoveryResult?.data,
-        has_program_questions: !!formDiscoveryResult?.data?.program_questions,
-        field_count: formDiscoveryResult?.data?.program_questions?.length || 0,
-        first_field: formDiscoveryResult?.data?.program_questions?.[0]
+        has_program_questions: !!formDiscoveryResult?.data?.program_questions
       });
       
-      // ✅ FIX: Bookeo returns fields in data.program_questions, not data.fields
-      if (formDiscoveryResult?.success && formDiscoveryResult?.data?.program_questions) {
-        signupForm = { fields: formDiscoveryResult.data.program_questions };
-        Logger.info('[selectProgram] Form fields loaded from MCP tool:', {
-          field_count: signupForm.fields.length,
-          source: 'bookeo.discover_required_fields'
-        });
-      } else {
-        signupForm = {
-          fields: [
-            { id: "firstName", label: "First Name", type: "text", required: true, category: "participant" },
-            { id: "lastName", label: "Last Name", type: "text", required: true, category: "participant" },
-            { id: "email", label: "Email", type: "email", required: true, category: "contact" },
-            { id: "numParticipants", label: "Number of Participants", type: "number", required: true, category: "booking", min: 1, max: 10 }
-          ]
-        };
-        Logger.warn('[selectProgram] Using fallback form fields (field discovery failed)');
-      }
-    } catch (error) {
-      Logger.error('[selectProgram] Form discovery failed, using fallback fields:', error);
-      // Fallback to default form if MCP tool fails
-      signupForm = {
-        fields: [
-          { id: "firstName", label: "First Name", type: "text", required: true, category: "participant" },
-          { id: "lastName", label: "Last Name", type: "text", required: true, category: "participant" },
-          { id: "email", label: "Email", type: "email", required: true, category: "contact" },
-          { id: "numParticipants", label: "Number of Participants", type: "number", required: true, category: "booking", min: 1, max: 10 }
-        ]
+      // Use Design DNA-compliant message template with delegate context
+      let message = getAPIFormIntroMessage({
+        program_name: programName,
+        provider_name: "AIM Design"
+      });
+      
+      message += "\n\n**As the Responsible Delegate**, you'll provide your information first, then details for each participant.";
+
+      // Return form schema directly from MCP tool (two-tier structure from database)
+      return {
+        message,
+        metadata: {
+          signupForm: formDiscoveryResult.data?.program_questions || {},
+          program_ref: programRef,
+          org_ref: orgRef
+        }
       };
-    }
-
-    // Use Design DNA-compliant message template
-    const message = getAPIFormIntroMessage({
-      program_name: programName
-    });
-
-    const formResponse: OrchestratorResponse = {
-      message,
-      cards: [{
-        title: "Registration Form",
-        subtitle: programName,
-        description: "Fill in the details below to continue.",
-        buttons: []
-      }],
-      cta: {
         buttons: [
           { 
             label: "Fill Form", 
@@ -428,8 +398,19 @@ export default class APIOrchestrator implements IOrchestrator {
       return this.formatError("Missing form data or program selection.");
     }
 
-    // Extract number of participants
-    const numParticipants = parseInt(formData.numParticipants) || 1;
+    // Extract structured data from two-tier form
+    const numParticipants = formData.numParticipants || formData.participants?.length || 1;
+    const participants = formData.participants || [];
+    
+    // Build participant names list
+    const participantNames = participants.map((p: any) => 
+      `${p.firstName || ''} ${p.lastName || ''}`.trim() || "participant"
+    );
+    
+    // Format participant list for display
+    const participantList = participantNames.length === 1 
+      ? participantNames[0]
+      : participantNames.map((name: string, idx: number) => `${idx + 1}. ${name}`).join('\n');
 
     // Store form data and participant count
     this.updateContext(sessionId, {
@@ -440,11 +421,6 @@ export default class APIOrchestrator implements IOrchestrator {
 
     const programName = context.selectedProgram?.title || "Selected Program";
     
-    // Extract participant name from firstName and lastName
-    const participantName = formData.firstName && formData.lastName 
-      ? `${formData.firstName} ${formData.lastName}`
-      : "participant";
-
     // Calculate total price based on number of participants
     const priceString = context.selectedProgram?.price || "0";
     const basePrice = parseFloat(priceString.replace(/[^0-9.]/g, '')) || 0;
@@ -454,10 +430,17 @@ export default class APIOrchestrator implements IOrchestrator {
     // Use Design DNA-compliant message template
     let message = getAPIPaymentSummaryMessage({
       program_name: programName,
-      participant_name: participantName,
+      participant_name: participantList,
       total_cost: formattedTotal,
       num_participants: numParticipants
     });
+    
+    // Add delegate authorization context
+    if (formData.delegate?.delegate_firstName && formData.delegate?.delegate_lastName) {
+      const delegateName = `${formData.delegate.delegate_firstName} ${formData.delegate.delegate_lastName}`;
+      const relationship = formData.delegate.delegate_relationship || 'Responsible Delegate';
+      message += `\n\n**Authorized by:** ${delegateName} (${relationship})`;
+    }
 
     // Add security context (Design DNA requirement)
     message = addAPISecurityContext(message, "Bookeo");
@@ -470,7 +453,7 @@ export default class APIOrchestrator implements IOrchestrator {
       cards: [{
         title: "Booking Confirmation",
         subtitle: programName,
-        description: `Participant: ${participantName}\nNumber of Participants: ${numParticipants}\nTotal: ${formattedTotal}`,
+        description: `Participants:\n${participantList}\n\nNumber of Participants: ${numParticipants}\nTotal: ${formattedTotal}`,
         buttons: []
       }],
       cta: {

@@ -30,10 +30,32 @@ Deno.serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    const { provider, org_ref, scope, mandate_tier, valid_duration_minutes, child_id, program_ref, max_amount_cents } = await req.json();
+    const { provider, org_ref, scope, mandate_tier, valid_duration_minutes, child_id, program_ref, max_amount_cents, delegate, participants } = await req.json();
 
     if (!provider || !org_ref || !scope || !mandate_tier) {
       throw new Error('Missing required parameters: provider, org_ref, scope, mandate_tier');
+    }
+    
+    // Validate delegate age if provided
+    if (delegate?.delegate_dob) {
+      const birthDate = new Date(delegate.delegate_dob);
+      const today = new Date();
+      let age = today.getFullYear() - birthDate.getFullYear();
+      const monthDiff = today.getMonth() - birthDate.getMonth();
+      
+      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+        age--;
+      }
+      
+      if (age < 18) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Delegate must be at least 18 years old to authorize registration'
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          status: 400
+        });
+      }
     }
 
     console.log(`[create-mandate] Creating ${mandate_tier} mandate for user ${user.id}`);
@@ -50,8 +72,8 @@ Deno.serve(async (req) => {
     const validFrom = now.toISOString();
     const validUntil = new Date(now.getTime() + validDurationMinutes * 60 * 1000).toISOString();
 
-    // Create mandate payload
-    const mandatePayload = {
+    // Create mandate payload with delegate and participants
+    const mandatePayload: any = {
       user_id: user.id,
       provider,
       org_ref,
@@ -64,6 +86,27 @@ Deno.serve(async (req) => {
       valid_until: validUntil,
       credential_type: 'jws'
     };
+    
+    // Include delegate information if provided
+    if (delegate) {
+      mandatePayload.delegate = {
+        name: `${delegate.delegate_firstName || ''} ${delegate.delegate_lastName || ''}`.trim(),
+        email: delegate.delegate_email,
+        phone: delegate.delegate_phone,
+        dob: delegate.delegate_dob,
+        relationship: delegate.delegate_relationship
+      };
+    }
+    
+    // Include participants if provided
+    if (participants && Array.isArray(participants)) {
+      mandatePayload.participants = participants.map((p: any) => ({
+        name: `${p.firstName || ''} ${p.lastName || ''}`.trim(),
+        dob: p.dob,
+        grade: p.grade,
+        allergies: p.allergies
+      }));
+    }
 
     // Sign mandate JWS using Deno-compatible crypto
     const keyBytes = Uint8Array.from(atob(mandateSigningKey), c => c.charCodeAt(0));
