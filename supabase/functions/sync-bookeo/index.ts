@@ -205,8 +205,23 @@ Deno.serve(async (req) => {
         // Detect org from product metadata
         const orgRef = detectOrgRef(product);
         
+        // **DEBUG: Log full product structure to find pricing**
+        console.log(`\n[Bookeo Pricing Debug] ==========================================`);
+        console.log(`[Bookeo Pricing Debug] Product: ${product.name}`);
+        console.log('[Bookeo Pricing Debug] Full product object:', JSON.stringify(product, null, 2));
+        console.log('[Bookeo Pricing Debug] defaultRates:', product.defaultRates);
+        console.log('[Bookeo Pricing Debug] bookingLimits:', product.bookingLimits);
+        console.log('[Bookeo Pricing Debug] pricePerPerson:', (product as any).pricePerPerson);
+        console.log('[Bookeo Pricing Debug] price:', (product as any).price);
+        console.log(`[Bookeo Pricing Debug] ==========================================\n`);
+        
         // Fetch availability slots for this product
         const slots = await fetchProductSlots(product.productId, startDate, endDate);
+        
+        // **DEBUG: Log first slot structure**
+        if (slots.length > 0) {
+          console.log(`[Bookeo Slot Debug] First slot for ${product.name}:`, JSON.stringify(slots[0], null, 2));
+        }
         
         // Build program data
         const programData = {
