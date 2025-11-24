@@ -350,7 +350,8 @@ export default class APIOrchestrator implements IOrchestrator {
         metadata: {
           signupForm: formDiscoveryResult.data?.program_questions || {},
           program_ref: programRef,
-          org_ref: orgRef
+          org_ref: orgRef,
+          program_name: programName
         }
       };
 
