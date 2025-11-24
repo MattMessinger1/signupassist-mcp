@@ -57,7 +57,15 @@ export function MessageBubble({
 
   // Handle card button clicks
   const handleCardButtonClick = (action: string, payload: any) => {
-    console.log('[MessageBubble] Button clicked:', action, payload);
+    console.log('[MessageBubble] Button clicked:', {
+      action,
+      payload,
+      payload_type: typeof payload,
+      payload_keys: payload ? Object.keys(payload) : [],
+      has_program_data: !!payload?.program_data,
+      program_data_keys: payload?.program_data ? Object.keys(payload.program_data) : [],
+      stringified: JSON.stringify(payload)
+    });
     if (onAction) {
       onAction(action, payload);
     }
