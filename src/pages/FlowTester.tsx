@@ -23,7 +23,8 @@ import { FeeBreakdownCard } from '@/components/FeeBreakdownCard';
 
 interface Child {
   id: string;
-  name: string;
+  first_name: string;
+  last_name: string;
   dob?: string;
 }
 
@@ -119,7 +120,7 @@ export default function FlowTester() {
       // Fetch children
       const { data: childrenData } = await supabase
         .from('children')
-        .select('id, name, dob')
+        .select('id, first_name, last_name, dob')
         .eq('user_id', user.id);
       
       // Fetch credentials
@@ -398,7 +399,7 @@ export default function FlowTester() {
                           ) : (
                             children.map((child) => (
                               <SelectItem key={child.id} value={child.id}>
-                                {child.name}
+                                {child.first_name} {child.last_name}
                               </SelectItem>
                             ))
                           )}

@@ -74,7 +74,7 @@ export default function RegistrationDashboard() {
         .from('plans')
         .select(`
           *,
-          children:child_id (name),
+          children:child_id (first_name, last_name),
           plan_executions (*)
         `)
         .order('created_at', { ascending: false });
@@ -88,7 +88,7 @@ export default function RegistrationDashboard() {
         opens_at: plan.opens_at,
         created_at: plan.created_at,
         child: {
-          name: plan.children?.name || 'Unknown Child'
+          name: plan.children ? `${plan.children.first_name} ${plan.children.last_name}` : 'Unknown Child'
         },
         executions: plan.plan_executions || []
       })) || [];

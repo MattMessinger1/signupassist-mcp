@@ -245,7 +245,7 @@ export type Database = {
           amount_cents: number | null
           charged_at: string
           id: string
-          plan_execution_id: string
+          mandate_id: string | null
           status: string
           stripe_payment_intent: string | null
         }
@@ -253,7 +253,7 @@ export type Database = {
           amount_cents?: number | null
           charged_at?: string
           id?: string
-          plan_execution_id: string
+          mandate_id?: string | null
           status?: string
           stripe_payment_intent?: string | null
         }
@@ -261,16 +261,16 @@ export type Database = {
           amount_cents?: number | null
           charged_at?: string
           id?: string
-          plan_execution_id?: string
+          mandate_id?: string | null
           status?: string
           stripe_payment_intent?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "charges_plan_execution_id_fkey"
-            columns: ["plan_execution_id"]
+            foreignKeyName: "charges_mandate_id_fkey"
+            columns: ["mandate_id"]
             isOneToOne: false
-            referencedRelation: "plan_executions"
+            referencedRelation: "mandates"
             referencedColumns: ["id"]
           },
         ]

@@ -171,7 +171,8 @@ export const MANDATE_SCOPES = {
   READ_LISTINGS: 'scp:read:listings',
   REGISTER: 'scp:register',
   PAY: 'scp:pay',
-  DISCOVER_FIELDS: 'scp:discover:fields'
+  DISCOVER_FIELDS: 'scp:discover:fields',
+  PLATFORM_SUCCESS_FEE: 'platform:success_fee'
 } as const;
 
 export const SCOPE_REQUIREMENTS: Record<string, string[]> = {
