@@ -417,7 +417,24 @@ export default class APIOrchestrator implements IOrchestrator {
     
     // Calculate total price based on number of participants
     const priceString = context.selectedProgram?.price || "0";
-    const basePrice = parseFloat(priceString.replace(/[^0-9.]/g, '')) || 0;
+    
+    // Validate pricing before proceeding
+    if (priceString === "Price varies" || priceString === "0" || !priceString) {
+      Logger.warn(`[APIOrchestrator] Invalid pricing for ${context.selectedProgram?.title}: "${priceString}"`);
+      return this.formatError(
+        `We're unable to calculate pricing for ${context.selectedProgram?.title}. Please contact support or try another program.`
+      );
+    }
+    
+    const basePrice = parseFloat(priceString.replace(/[^0-9.]/g, ''));
+    
+    if (isNaN(basePrice) || basePrice <= 0) {
+      Logger.error(`[APIOrchestrator] Failed to parse price "${priceString}" for ${context.selectedProgram?.title}`);
+      return this.formatError(
+        `Pricing information is incomplete. Please try again or contact support.`
+      );
+    }
+    
     const totalPrice = basePrice * numParticipants;
     const formattedTotal = `$${totalPrice.toFixed(2)}`;
 

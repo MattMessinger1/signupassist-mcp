@@ -228,9 +228,26 @@ Deno.serve(async (req) => {
           program_ref: product.productId,
           title: product.name,
           description: product.description || '',
-          price: product.defaultRates?.[0]?.price?.amount 
-            ? `$${parseFloat(product.defaultRates[0].price.amount).toFixed(2)}` 
-            : 'Price varies',
+          price: (() => {
+            // Try defaultRates (People Categories pricing)
+            if (product.defaultRates?.[0]?.price?.amount) {
+              return `$${parseFloat(product.defaultRates[0].price.amount).toFixed(2)}`;
+            }
+            
+            // Try pricePerPerson (simple per-person pricing)
+            if ((product as any).pricePerPerson?.amount) {
+              return `$${parseFloat((product as any).pricePerPerson.amount).toFixed(2)}`;
+            }
+            
+            // Try price.amount (alternative field)
+            if ((product as any).price?.amount) {
+              return `$${parseFloat((product as any).price.amount).toFixed(2)}`;
+            }
+            
+            // Fallback
+            console.warn(`[sync-bookeo] No pricing found for product ${product.name}`);
+            return 'Price varies';
+          })(),
           status: product.active ? determineStatus(slots) : 'Closed',
           duration: product.duration || null,
           max_participants: product.maxParticipants || null,
