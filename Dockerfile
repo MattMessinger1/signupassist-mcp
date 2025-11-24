@@ -36,6 +36,7 @@ COPY mcp_server ./mcp_server
 COPY providers ./providers
 COPY mcp ./mcp
 COPY src ./src
+COPY public ./public
 
 # Build backend (single tsc run, no duplicate)
 RUN mkdir -p dist
@@ -43,6 +44,12 @@ RUN npx tsc -p tsconfig.mcp.json
 
 # Verify AIOrchestrator was built
 RUN ls -la dist/mcp_server/ai/ || echo "⚠️ AI folder not built"
+
+# Build frontend
+COPY index.html ./
+COPY vite.config.ts ./
+COPY tailwind.config.ts ./
+RUN npx vite build
 
 # ============================================
 # Runner stage (smaller final image)
@@ -60,6 +67,10 @@ RUN npm prune --production
 # Copy built backend code
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/mcp ./mcp
+
+# Copy static files for serving frontend
+COPY public ./public
+COPY index.html ./
 
 # Expose correct port (matches code default)
 EXPOSE 8080
