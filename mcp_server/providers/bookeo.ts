@@ -227,24 +227,38 @@ async function discoverRequiredFields(args: {
     
     const signupForm = data.signup_form as any;
     const programData = data.program as any;
-    const fields = signupForm?.fields || [];
-    
-    if (fields.length === 0) {
-      console.warn('[Bookeo] No signup form fields found in cache for program:', program_ref);
-      throw new Error('No signup form fields found in cache');
+
+    // Validate two-tier schema structure
+    const hasDelegateFields = Array.isArray(signupForm?.delegate_fields);
+    const hasParticipantFields = Array.isArray(signupForm?.participant_fields);
+
+    if (!hasDelegateFields || !hasParticipantFields) {
+      console.warn('[Bookeo] Invalid two-tier schema in cache for program:', program_ref);
+      console.warn('[Bookeo] Schema structure:', { 
+        hasDelegateFields, 
+        hasParticipantFields,
+        delegateCount: signupForm?.delegate_fields?.length || 0,
+        participantCount: signupForm?.participant_fields?.length || 0
+      });
+      throw new Error('Invalid form schema: missing delegate_fields or participant_fields');
     }
-    
-    console.log(`[Bookeo] Found ${fields.length} fields in database cache`);
-    
+
+    const delegateFieldCount = signupForm.delegate_fields.length;
+    const participantFieldCount = signupForm.participant_fields.length;
+
+    console.log(`[Bookeo] Found two-tier schema: ${delegateFieldCount} delegate fields, ${participantFieldCount} participant fields`);
+
     return {
       success: true,
       data: {
         program_ref,
-        program_questions: fields,
+        program_questions: signupForm, // Return entire schema with delegate_fields + participant_fields
         metadata: {
           product_name: programData.title,
           duration: programData.duration,
-          max_participants: programData.max_participants,
+          max_participants: signupForm.max_participants || 10,
+          requires_age_verification: signupForm.requires_age_verification || true,
+          minimum_delegate_age: signupForm.minimum_delegate_age || 18,
           discovered_at: new Date().toISOString(),
           source: 'database_cache'
         }
@@ -252,8 +266,8 @@ async function discoverRequiredFields(args: {
       session_token: undefined,
       ui: {
         cards: [{
-          title: 'Booking Fields',
-          description: `Found ${fields.length} required fields for ${programData.title}`
+          title: 'Registration Form',
+          description: `Two-tier form: Delegate info + ${signupForm.max_participants || 10} participants max`
         }]
       }
     };
