@@ -145,6 +145,18 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
         cardElement.clear();
         console.log('[SavePaymentMethod] Card element cleared');
 
+        // Update billing table with payment method ID
+        const { error: updateError } = await supabase
+          .from('user_billing')
+          .update({ default_payment_method_id: paymentMethod.id })
+          .eq('user_id', user.id);
+
+        if (updateError) {
+          console.error('[SavePaymentMethod] Failed to update billing table:', updateError);
+        } else {
+          console.log('[SavePaymentMethod] ✅ Payment method ID stored in user_billing');
+        }
+
         // Inform parent
         console.log('[SavePaymentMethod] Calling onPaymentMethodSaved callback');
         onPaymentMethodSaved?.();

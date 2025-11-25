@@ -883,7 +883,14 @@ export default class APIOrchestrator implements IOrchestrator {
                `First, let's save your payment method securely. You'll only be charged if registration succeeds!`,
       metadata: {
         componentType: "payment_setup",
-        next_action: "confirm_scheduled_registration"
+        next_action: "confirm_scheduled_registration",
+        schedulingData: {
+          scheduled_time,
+          event_id,
+          total_amount,
+          program_fee,
+          formData
+        }
       }
     };
   }

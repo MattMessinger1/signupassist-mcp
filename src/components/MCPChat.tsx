@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ResponsibleDelegateForm } from "./chat-test/ResponsibleDelegateForm";
+import { SavePaymentMethod } from "./SavePaymentMethod";
+import { supabase } from "@/integrations/supabase/client";
 
 interface CardData {
   title: string;
@@ -264,6 +266,65 @@ export function MCPChat() {
                   programTitle={msg.metadata.program_ref || "Selected Program"}
                   onSubmit={(data) => handleCardAction('submit_form', { formData: data })}
                 />
+              )}
+
+              {/* Render Payment Setup Form */}
+              {msg.metadata?.componentType === 'payment_setup' && (
+                <div className="mt-4 mr-12">
+                  <SavePaymentMethod
+                    onPaymentMethodSaved={async () => {
+                      console.log('[MCPChat] Payment method saved, triggering setup_payment_method action');
+                      
+                      // Get user info
+                      const { data: { user } } = await supabase.auth.getUser();
+                      if (!user) {
+                        toast({
+                          title: "Error",
+                          description: "User not authenticated",
+                          variant: "destructive"
+                        });
+                        return;
+                      }
+
+                      // Get session token
+                      const { data: { session } } = await supabase.auth.getSession();
+                      if (!session) {
+                        toast({
+                          title: "Error",
+                          description: "No active session",
+                          variant: "destructive"
+                        });
+                        return;
+                      }
+
+                      // Get payment method from Stripe
+                      const { data: billingData } = await supabase
+                        .from('user_billing')
+                        .select('default_payment_method_id')
+                        .eq('user_id', user.id)
+                        .maybeSingle();
+
+                      const payment_method_id = billingData?.default_payment_method_id;
+                      if (!payment_method_id) {
+                        toast({
+                          title: "Error",
+                          description: "Payment method not found",
+                          variant: "destructive"
+                        });
+                        return;
+                      }
+
+                      // Trigger MCP action with payment method
+                      await handleCardAction('setup_payment_method', {
+                        payment_method_id,
+                        user_id: user.id,
+                        email: user.email,
+                        user_jwt: session.access_token,
+                        schedulingData: msg.metadata?.schedulingData
+                      });
+                    }}
+                  />
+                </div>
               )}
             </div>
           ))}
