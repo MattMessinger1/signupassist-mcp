@@ -260,27 +260,20 @@ Deno.serve(async (req) => {
           next_available_slot: slots.find(s => s.numSeatsAvailable > 0)?.startTime || null,  // First available with seats
           
           // Determine booking status with business rules:
-          // 1. No slot data → assume 'open_now'
-          // 2. Future slots → 'opens_later'
-          // 3. All slots full → 'sold_out'
+          // If available slots exist, booking is OPEN NOW (Bookeo enforces advance booking rules)
+          // If no available slots, booking is SOLD OUT
           booking_status: (() => {
-            if (!slots || slots.length === 0) {
-              return 'open_now';  // Rule 1: No slot data means registration is open
-            }
-            
-            const now = new Date();
-            const firstSlot = slots[0] ? new Date(slots[0].startTime) : null;
             const availableSlot = slots.find(s => s.numSeatsAvailable > 0);
             
-            if (firstSlot && firstSlot > now) {
-              return 'opens_later';  // Future booking window
-            }
-            
             if (availableSlot) {
-              return 'open_now';  // Currently accepting registrations
+              return 'open_now';  // Bookeo shows available seats = booking is permitted
             }
             
-            return 'sold_out';  // All slots are full
+            if (slots && slots.length > 0) {
+              return 'sold_out';  // All slots are full
+            }
+            
+            return 'open_now';  // No slot data = assume open for manual inquiry
           })(),
           
           // Keep for backward compatibility
