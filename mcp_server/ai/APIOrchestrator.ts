@@ -281,7 +281,15 @@ export default class APIOrchestrator implements IOrchestrator {
 
       // Build program cards with timing badges and cleaned descriptions
       const cards: CardSpec[] = sortedPrograms.map((prog: any) => {
-        const bookingStatus = prog.booking_status || 'open_now';
+        // Determine booking status at runtime (don't trust stale cached data)
+        const determineBookingStatus = (program: any): string => {
+          const hasAvailableSlots = program.next_available_slot || (program.available_slots && program.available_slots > 0);
+          if (hasAvailableSlots) return 'open_now';
+          if (program.booking_status === 'sold_out') return 'sold_out';
+          return program.booking_status || 'open_now';
+        };
+        
+        const bookingStatus = determineBookingStatus(prog);
         const earliestSlot = prog.earliest_slot_time ? new Date(prog.earliest_slot_time) : null;
         
         // Generate timing badge
@@ -417,7 +425,15 @@ export default class APIOrchestrator implements IOrchestrator {
       });
 
       // Determine registration timing and add transparency message
-      const bookingStatus = programData?.booking_status || 'open_now';
+      // Runtime status check (don't trust stale cached data)
+      const determineBookingStatus = (program: any): string => {
+        const hasAvailableSlots = program?.next_available_slot || (program?.available_slots && program.available_slots > 0);
+        if (hasAvailableSlots) return 'open_now';
+        if (program?.booking_status === 'sold_out') return 'sold_out';
+        return program?.booking_status || 'open_now';
+      };
+      
+      const bookingStatus = determineBookingStatus(programData);
       const earliestSlot = programData?.earliest_slot_time ? new Date(programData.earliest_slot_time) : null;
 
       let timingMessage = '';
@@ -581,7 +597,15 @@ export default class APIOrchestrator implements IOrchestrator {
     message = addResponsibleDelegateFooter(message);
 
     // Check if this is a future booking (Set & Forget flow) or immediate registration
-    const bookingStatus = context.selectedProgram?.booking_status || 'open_now';
+    // Runtime status check (don't trust stale cached data)
+    const determineBookingStatus = (program: any): string => {
+      const hasAvailableSlots = program?.next_available_slot || (program?.available_slots && program.available_slots > 0);
+      if (hasAvailableSlots) return 'open_now';
+      if (program?.booking_status === 'sold_out') return 'sold_out';
+      return program?.booking_status || 'open_now';
+    };
+    
+    const bookingStatus = determineBookingStatus(context.selectedProgram);
     const earliestSlot = context.selectedProgram?.earliest_slot_time 
       ? new Date(context.selectedProgram.earliest_slot_time) 
       : null;
