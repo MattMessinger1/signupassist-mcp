@@ -137,6 +137,9 @@ export default class APIOrchestrator implements IOrchestrator {
       case "confirm_scheduled_registration":
         return await this.confirmScheduledRegistration(payload, sessionId, context);
 
+      case "setup_payment_method":
+        return await this.setupPaymentMethod(payload, sessionId, context);
+
       default:
         return this.formatError(`Unknown action: ${action}`);
     }
@@ -730,6 +733,95 @@ export default class APIOrchestrator implements IOrchestrator {
     } catch (error) {
       Logger.error("[confirmPayment] Unexpected error:", error);
       return this.formatError("Booking failed due to unexpected error. Please contact support.");
+    }
+  }
+
+  /**
+   * Set up Stripe payment method (Phase 3: MCP-compliant payment setup)
+   * Routes through Stripe MCP tools for audit compliance
+   */
+  private async setupPaymentMethod(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    try {
+      Logger.info("[setupPaymentMethod] Starting payment setup flow");
+
+      const { payment_method_id, user_id, email, user_jwt } = payload;
+
+      // Validation
+      if (!payment_method_id || !user_id || !email || !user_jwt) {
+        Logger.error("[setupPaymentMethod] Missing required data", { 
+          has_payment_method_id: !!payment_method_id,
+          has_user_id: !!user_id,
+          has_email: !!email,
+          has_user_jwt: !!user_jwt
+        });
+        return this.formatError("Missing payment information. Please try again.");
+      }
+
+      Logger.info("[setupPaymentMethod] Validated payment setup data", { 
+        payment_method_id,
+        user_id,
+        email: email.substring(0, 3) + '***' // Partial log for privacy
+      });
+
+      // Step 1: Create Stripe customer via MCP tool (audit-compliant)
+      Logger.info("[setupPaymentMethod] Creating Stripe customer...");
+      const customerResponse = await this.invokeMCPTool('stripe.create_customer', {
+        user_id,
+        email
+      });
+
+      if (!customerResponse.success || !customerResponse.data?.customer_id) {
+        Logger.error("[setupPaymentMethod] Customer creation failed", customerResponse);
+        return this.formatError(
+          customerResponse.error?.display || "Failed to set up payment account. Please try again."
+        );
+      }
+
+      const customer_id = customerResponse.data.customer_id;
+      Logger.info("[setupPaymentMethod] ✅ Customer created:", customer_id);
+
+      // Step 2: Save payment method via MCP tool (audit-compliant)
+      Logger.info("[setupPaymentMethod] Saving payment method...");
+      const saveResponse = await this.invokeMCPTool('stripe.save_payment_method', {
+        payment_method_id,
+        customer_id,
+        user_jwt
+      });
+
+      if (!saveResponse.success) {
+        Logger.error("[setupPaymentMethod] Payment method save failed", saveResponse);
+        return this.formatError(
+          saveResponse.error?.display || "Failed to save payment method. Please try again."
+        );
+      }
+
+      Logger.info("[setupPaymentMethod] ✅ Payment method saved:", payment_method_id);
+
+      // Step 3: Continue to scheduled registration confirmation
+      // The frontend should have stored schedulingData - retrieve from payload
+      const schedulingData = payload.schedulingData || context.schedulingData;
+      
+      if (!schedulingData) {
+        Logger.error("[setupPaymentMethod] No scheduling data found");
+        return this.formatError("Scheduling information missing. Please try again.");
+      }
+
+      Logger.info("[setupPaymentMethod] ✅ Payment setup complete, proceeding to confirmation");
+
+      // Call confirmScheduledRegistration directly
+      return await this.confirmScheduledRegistration(
+        { schedulingData }, 
+        sessionId, 
+        context
+      );
+
+    } catch (error) {
+      Logger.error("[setupPaymentMethod] Unexpected error:", error);
+      return this.formatError("Payment setup failed due to unexpected error. Please try again.");
     }
   }
 
