@@ -99,6 +99,138 @@ async function chargeSuccessFee(args: {
 }
 
 /**
+ * Tool: stripe.create_customer
+ * Create a Stripe customer for a user
+ */
+async function createStripeCustomer(args: {
+  user_id: string;
+  email: string;
+}): Promise<ProviderResponse<any>> {
+  const { user_id, email } = args;
+  
+  console.log(`[Stripe] Creating customer for user: ${email}`);
+  
+  try {
+    // Call the create-stripe-customer edge function via Supabase
+    const { data, error } = await supabase.functions.invoke(
+      'create-stripe-customer',
+      {
+        body: {
+          user_id,
+          email
+        }
+      }
+    );
+    
+    if (error) {
+      console.error('[Stripe] Edge function error:', error);
+      const friendlyError: ParentFriendlyError = {
+        display: 'Unable to set up payment account',
+        recovery: 'Please try again or contact support.',
+        severity: 'medium',
+        code: 'STRIPE_CUSTOMER_CREATION_FAILED'
+      };
+      return {
+        success: false,
+        error: friendlyError
+      };
+    }
+    
+    const customer_id = data?.customer_id || 'unknown';
+    console.log(`[Stripe] ✅ Customer created: ${customer_id}`);
+    
+    return {
+      success: true,
+      data: {
+        customer_id,
+        user_id,
+        email
+      }
+    };
+    
+  } catch (error: any) {
+    console.error('[Stripe] Error creating customer:', error);
+    const friendlyError: ParentFriendlyError = {
+      display: 'Payment setup error',
+      recovery: 'Please try again or contact support.',
+      severity: 'medium',
+      code: 'STRIPE_CUSTOMER_API_ERROR'
+    };
+    return {
+      success: false,
+      error: friendlyError
+    };
+  }
+}
+
+/**
+ * Tool: stripe.save_payment_method
+ * Save a payment method to a Stripe customer
+ */
+async function savePaymentMethod(args: {
+  payment_method_id: string;
+  customer_id: string;
+  user_jwt: string;
+}): Promise<ProviderResponse<any>> {
+  const { payment_method_id, customer_id, user_jwt } = args;
+  
+  console.log(`[Stripe] Saving payment method for customer: ${customer_id}`);
+  
+  try {
+    // Call the save-payment-method edge function via Supabase
+    const { data, error } = await supabase.functions.invoke(
+      'save-payment-method',
+      {
+        body: {
+          payment_method_id,
+          customer_id
+        },
+        headers: {
+          Authorization: `Bearer ${user_jwt}`
+        }
+      }
+    );
+    
+    if (error) {
+      console.error('[Stripe] Edge function error:', error);
+      const friendlyError: ParentFriendlyError = {
+        display: 'Unable to save payment method',
+        recovery: 'Please try again or contact support.',
+        severity: 'medium',
+        code: 'STRIPE_PAYMENT_METHOD_SAVE_FAILED'
+      };
+      return {
+        success: false,
+        error: friendlyError
+      };
+    }
+    
+    console.log(`[Stripe] ✅ Payment method saved: ${payment_method_id}`);
+    
+    return {
+      success: true,
+      data: {
+        payment_method_id,
+        customer_id
+      }
+    };
+    
+  } catch (error: any) {
+    console.error('[Stripe] Error saving payment method:', error);
+    const friendlyError: ParentFriendlyError = {
+      display: 'Payment setup error',
+      recovery: 'Please try again or contact support.',
+      severity: 'medium',
+      code: 'STRIPE_PAYMENT_METHOD_API_ERROR'
+    };
+    return {
+      success: false,
+      error: friendlyError
+    };
+  }
+}
+
+/**
  * Export Stripe tools for MCP server registration
  */
 export const stripeTools: StripeTool[] = [
@@ -136,6 +268,60 @@ export const stripeTools: StripeTool[] = [
         { plan_execution_id: null, tool: 'stripe.charge_success_fee' },
         args,
         () => chargeSuccessFee(args)
+      );
+    }
+  },
+  {
+    name: 'stripe.create_customer',
+    description: 'Create a Stripe customer for a user',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user_id: {
+          type: 'string',
+          description: 'Supabase user ID'
+        },
+        email: {
+          type: 'string',
+          description: 'User email address'
+        }
+      },
+      required: ['user_id', 'email']
+    },
+    handler: async (args: any) => {
+      return auditToolCall(
+        { plan_execution_id: null, tool: 'stripe.create_customer' },
+        args,
+        () => createStripeCustomer(args)
+      );
+    }
+  },
+  {
+    name: 'stripe.save_payment_method',
+    description: 'Save a payment method to a Stripe customer',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        payment_method_id: {
+          type: 'string',
+          description: 'Stripe payment method ID (from Stripe Elements)'
+        },
+        customer_id: {
+          type: 'string',
+          description: 'Stripe customer ID'
+        },
+        user_jwt: {
+          type: 'string',
+          description: 'User JWT token for authentication'
+        }
+      },
+      required: ['payment_method_id', 'customer_id', 'user_jwt']
+    },
+    handler: async (args: any) => {
+      return auditToolCall(
+        { plan_execution_id: null, tool: 'stripe.save_payment_method' },
+        args,
+        () => savePaymentMethod(args)
       );
     }
   }

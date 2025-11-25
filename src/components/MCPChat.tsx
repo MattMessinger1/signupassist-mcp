@@ -249,7 +249,7 @@ export function MCPChat() {
                       size="default"
                       onClick={() => handleCardAction(button.action, button.payload || {})}
                       disabled={loading}
-                      className={button.variant === "accent" ? "bg-accent hover:bg-accent/90" : ""}
+                      className={button.variant === "accent" ? "bg-accent text-accent-foreground hover:bg-accent/90" : ""}
                     >
                       {button.label}
                     </Button>
