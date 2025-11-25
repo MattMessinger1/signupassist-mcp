@@ -7,6 +7,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { RefreshCw } from "lucide-react";
 import { DeploymentStatusMonitor } from "@/components/DeploymentStatusMonitor";
+import { Elements } from "@stripe/react-stripe-js";
+import { loadStripe } from "@stripe/stripe-js";
+
+// Initialize Stripe
+const stripePromise = loadStripe("pk_test_51RujoPAaGNDlVi1koVlBSBBXy2yfwz7vuMBciJxkawKBKaqwR4xw07wEFUAMa73ADIUqzwB5GwbPM3YnPYu5vo4X00rAdiwPkx");
 
 const MCP_BASE_URL = import.meta.env.VITE_MCP_BASE_URL || "https://signupassist-mcp-production.up.railway.app";
 
@@ -187,7 +192,9 @@ export default function MCPChatTest() {
         </Card>
       </div>
 
-      <MCPChat />
+      <Elements stripe={stripePromise}>
+        <MCPChat />
+      </Elements>
     </div>
   );
 }
