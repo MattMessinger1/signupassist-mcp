@@ -26,6 +26,14 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   cards?: CardData[];
+  cta?: {
+    buttons: Array<{
+      label: string;
+      action: string;
+      variant?: "accent" | "outline";
+      payload?: any;
+    }>;
+  };
   metadata?: {
     signupForm?: Array<{
       name: string;
@@ -69,12 +77,17 @@ export function MCPChat() {
       const assistantMessage = response.message || "(no response)";
       const assistantCards = response.cards || [];
 
+      const ctaButtons = response.cta 
+        ? (Array.isArray(response.cta) ? response.cta : (response.cta as any).buttons)
+        : undefined;
+      
       setMessages((prev) => [
         ...prev,
         { 
           role: "assistant", 
           content: assistantMessage,
           cards: assistantCards,
+          cta: ctaButtons ? { buttons: ctaButtons } : undefined,
           metadata: response.metadata
         },
       ]);
@@ -114,12 +127,17 @@ export function MCPChat() {
     try {
       const response = await sendAction(action, payload, sessionId);
       
+      const ctaButtons = response.cta 
+        ? (Array.isArray(response.cta) ? response.cta : (response.cta as any).buttons)
+        : undefined;
+      
       setMessages((prev) => [
         ...prev,
         { 
           role: "assistant", 
           content: response.message || "(no response)",
           cards: response.cards || [],
+          cta: ctaButtons ? { buttons: ctaButtons } : undefined,
           metadata: response.metadata
         },
       ]);
@@ -217,6 +235,24 @@ export function MCPChat() {
                         )}
                       </div>
                     </Card>
+                  ))}
+                </div>
+              )}
+
+              {/* Render CTA Buttons */}
+              {msg.cta && msg.cta.buttons && msg.cta.buttons.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-3 mr-12">
+                  {msg.cta.buttons.map((button, btnIdx) => (
+                    <Button
+                      key={btnIdx}
+                      variant={button.variant === "accent" ? "default" : "outline"}
+                      size="default"
+                      onClick={() => handleCardAction(button.action, button.payload || {})}
+                      disabled={loading}
+                      className={button.variant === "accent" ? "bg-accent hover:bg-accent/90" : ""}
+                    >
+                      {button.label}
+                    </Button>
                   ))}
                 </div>
               )}
