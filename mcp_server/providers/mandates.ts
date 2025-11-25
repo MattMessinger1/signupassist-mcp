@@ -48,7 +48,7 @@ async function createMandate(args: {
   });
 
   // Validate scopes
-  const validScopes = Object.values(MANDATE_SCOPES);
+  const validScopes: readonly string[] = Object.values(MANDATE_SCOPES);
   const invalidScopes = scopes.filter(s => !validScopes.includes(s));
   if (invalidScopes.length > 0) {
     throw new Error(`Invalid scopes: ${invalidScopes.join(', ')}`);
@@ -163,10 +163,20 @@ export const mandateTools = [
       },
       required: ['user_id', 'provider', 'org_ref', 'scopes', 'valid_until']
     },
-    handler: auditToolCall(createMandate, {
-      provider: (args: any) => args.provider,
-      orgRef: (args: any) => args.org_ref,
-      userId: (args: any) => args.user_id
-    })
+    handler: async (args: any) => {
+      return auditToolCall(
+        { 
+          plan_execution_id: args.plan_execution_id || null, 
+          mandate_id: args.mandate_id,
+          mandate_jws: args.mandate_jws,
+          tool: 'mandates.create',
+          user_id: args.user_id,
+          provider: args.provider,
+          org_ref: args.org_ref
+        },
+        args,
+        () => createMandate(args)
+      );
+    }
   }
 ];

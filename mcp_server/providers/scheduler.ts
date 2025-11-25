@@ -94,10 +94,20 @@ export const schedulerTools = [
       },
       required: ['registration_id', 'trigger_time']
     },
-    handler: auditToolCall(scheduleSignup, {
-      provider: () => 'scheduler',
-      orgRef: () => 'system',
-      userId: () => 'system'
-    })
+    handler: async (args: any) => {
+      return auditToolCall(
+        { 
+          plan_execution_id: args.plan_execution_id || null,
+          mandate_id: args.mandate_id,
+          mandate_jws: args.mandate_jws,
+          tool: 'scheduler.schedule_signup',
+          user_id: 'system',
+          provider: 'scheduler',
+          org_ref: 'system'
+        },
+        args,
+        () => scheduleSignup(args)
+      );
+    }
   }
 ];
