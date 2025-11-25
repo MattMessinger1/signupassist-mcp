@@ -54,8 +54,21 @@ export function MCPChat() {
   const [loading, setLoading] = useState(false);
   const [sessionId] = useState(`lovable-test-${Date.now()}`);
   const [formData, setFormData] = useState<Record<string, any>>({});
+  const [userTimezone, setUserTimezone] = useState<string>('UTC');
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+
+  // Detect user timezone on component mount
+  useEffect(() => {
+    try {
+      const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      setUserTimezone(detected);
+      console.log('[MCPChat] User timezone detected:', detected);
+    } catch (error) {
+      console.warn('[MCPChat] Failed to detect timezone, using UTC:', error);
+      setUserTimezone('UTC');
+    }
+  }, []);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -75,7 +88,7 @@ export function MCPChat() {
     setLoading(true);
 
     try {
-      const response = await sendMessage(userMessage, sessionId);
+      const response = await sendMessage(userMessage, sessionId, undefined, undefined, undefined, undefined, undefined, userTimezone);
       const assistantMessage = response.message || "(no response)";
       const assistantCards = response.cards || [];
 
@@ -127,7 +140,7 @@ export function MCPChat() {
     setLoading(true);
     
     try {
-      const response = await sendAction(action, payload, sessionId);
+      const response = await sendAction(action, payload, sessionId, undefined, userTimezone);
       
       const ctaButtons = response.cta 
         ? (Array.isArray(response.cta) ? response.cta : (response.cta as any).buttons)

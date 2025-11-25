@@ -1425,7 +1425,7 @@ class SignupAssistMCPServer {
         req.on('end', async () => {
           try {
             const parsedBody = JSON.parse(body);
-            const { message, sessionId, action, payload, userLocation, userJwt, category, childAge, currentAAP } = parsedBody;
+            const { message, sessionId, action, payload, userLocation, userJwt, category, childAge, currentAAP, userTimezone } = parsedBody;
             
             console.log('[Orchestrator] Request params:', { 
               hasMessage: !!message,
@@ -1434,7 +1434,8 @@ class SignupAssistMCPServer {
               hasCategory: !!category,
               hasChildAge: !!childAge,
               hasLocation: !!(userLocation?.lat && userLocation?.lng),
-              location: userLocation
+              location: userLocation,
+              userTimezone
             });
             
             // Capture mandate from headers or body (with dev bypass)
@@ -1536,7 +1537,7 @@ class SignupAssistMCPServer {
               if (isAPIMode) {
                 // APIOrchestrator: Use generateResponse with action parameter
                 console.log('[API-FIRST MODE] Routing action via generateResponse');
-                result = await (this.orchestrator as any).generateResponse('', sessionId, action, payload || {});
+                result = await (this.orchestrator as any).generateResponse('', sessionId, action, payload || {}, userTimezone);
               } else {
                 // Legacy AIOrchestrator: Use handleAction method
                 try {
@@ -1635,9 +1636,9 @@ class SignupAssistMCPServer {
               // Use isAPIMode declared above (no redeclaration)
               
               if (isAPIMode) {
-                // APIOrchestrator: Simple signature (input, sessionId, action?, payload?)
+                // APIOrchestrator: Simple signature (input, sessionId, action?, payload?, userTimezone?)
                 console.log('[API-FIRST MODE] Calling APIOrchestrator.generateResponse');
-                result = await (this.orchestrator as any).generateResponse(message, sessionId);
+                result = await (this.orchestrator as any).generateResponse(message, sessionId, undefined, undefined, userTimezone);
               } else {
                 // Legacy AIOrchestrator: Complex signature with location, JWT, mandate
                 console.log('[LEGACY MODE] Calling AIOrchestrator.generateResponse');

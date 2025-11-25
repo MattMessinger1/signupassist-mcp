@@ -42,6 +42,7 @@ export interface OrchestratorResponse {
  * @param currentAAP - Optional structured AAP object from previous interaction (Phase 3)
  * @param category - Optional activity category (legacy, for backward compatibility)
  * @param childAge - Optional child age (legacy, for backward compatibility)
+ * @param userTimezone - User's IANA timezone (e.g., 'America/Chicago')
  * @returns Promise resolving to orchestrator response with cards
  */
 export async function sendMessage(
@@ -51,7 +52,8 @@ export async function sendMessage(
   userJwt?: string,
   currentAAP?: any,  // Structured AAP object (Phase 3)
   category?: string,  // Legacy fallback
-  childAge?: number   // Legacy fallback
+  childAge?: number,  // Legacy fallback
+  userTimezone?: string  // User's IANA timezone
 ): Promise<OrchestratorResponse> {
   if (!ORCHESTRATOR_BASE) {
     throw new Error('MCP Server URL not configured. Please set VITE_MCP_BASE_URL in your .env file.');
@@ -62,7 +64,8 @@ export async function sendMessage(
     hasJwt: !!userJwt,
     hasAAP: !!currentAAP,
     category,
-    childAge
+    childAge,
+    userTimezone
   });
   
   const headers: Record<string, string> = {
@@ -84,7 +87,8 @@ export async function sendMessage(
       userJwt,
       currentAAP,  // Send structured AAP object (Phase 3)
       category,    // Legacy fallback for backward compatibility
-      childAge     // Legacy fallback for backward compatibility
+      childAge,    // Legacy fallback for backward compatibility
+      userTimezone // Send user's timezone
     }),
   });
 
@@ -101,19 +105,22 @@ export async function sendMessage(
  * @param action - Action identifier from card button
  * @param payload - Action payload (provider, program, etc.)
  * @param sessionId - Unique session identifier
+ * @param userJwt - Optional JWT token for authentication
+ * @param userTimezone - User's IANA timezone (e.g., 'America/Chicago')
  * @returns Promise resolving to next orchestrator response
  */
 export async function sendAction(
   action: string,
   payload: any,
   sessionId: string,
-  userJwt?: string
+  userJwt?: string,
+  userTimezone?: string
 ): Promise<OrchestratorResponse> {
   if (!ORCHESTRATOR_BASE) {
     throw new Error('MCP Server URL not configured. Please set VITE_MCP_BASE_URL in your .env file.');
   }
   
-  console.log('[Orchestrator Client] Sending action:', action, payload, { hasJwt: !!userJwt });
+  console.log('[Orchestrator Client] Sending action:', action, payload, { hasJwt: !!userJwt, userTimezone });
   
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -127,7 +134,7 @@ export async function sendAction(
   const res = await fetch(`${ORCHESTRATOR_BASE}/orchestrator/chat`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ action, payload, sessionId, userJwt }),
+    body: JSON.stringify({ action, payload, sessionId, userJwt, userTimezone }),
   });
 
   if (!res.ok) {

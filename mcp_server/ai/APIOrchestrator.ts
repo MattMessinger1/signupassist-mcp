@@ -26,6 +26,7 @@ import {
   getAPIErrorMessage
 } from "./apiMessageTemplates.js";
 import { stripHtml } from "../lib/extractionUtils.js";
+import { formatInTimeZone } from "date-fns-tz";
 
 // Simple flow steps for API-first providers
 enum FlowStep {
@@ -39,6 +40,7 @@ interface APIContext {
   step: FlowStep;
   orgRef?: string;
   user_id?: string;
+  userTimezone?: string;  // User's IANA timezone (e.g., 'America/Chicago')
   selectedProgram?: any;
   formData?: Record<string, any>;
   numParticipants?: number;
@@ -97,16 +99,38 @@ export default class APIOrchestrator implements IOrchestrator {
   }
 
   /**
+   * Format time for user's timezone
+   * Uses user's IANA timezone from context, falls back to UTC
+   */
+  private formatTimeForUser(date: Date | string, context: APIContext): string {
+    const timezone = context.userTimezone || 'UTC';
+    const dateObj = typeof date === 'string' ? new Date(date) : date;
+    
+    return formatInTimeZone(
+      dateObj,
+      timezone,
+      'MMM d, yyyy \'at\' h:mm a zzz'
+    );
+  }
+
+  /**
    * Main entry point: process user message or action
+   * @param userTimezone - User's IANA timezone (e.g., 'America/Chicago')
    */
   async generateResponse(
     input: string,
     sessionId: string,
     action?: string,
-    payload?: any
+    payload?: any,
+    userTimezone?: string
   ): Promise<OrchestratorResponse> {
     try {
       const context = this.getContext(sessionId);
+      
+      // Store user timezone in context
+      if (userTimezone && userTimezone !== context.userTimezone) {
+        this.updateContext(sessionId, { userTimezone });
+      }
       
       // Handle explicit actions (button clicks)
       if (action) {
@@ -267,7 +291,7 @@ export default class APIOrchestrator implements IOrchestrator {
           isDisabled = true;
           buttonLabel = "Waitlist (Coming Soon)";
         } else if (bookingStatus === 'opens_later' && earliestSlot) {
-          timingBadge = `📅 Opens ${earliestSlot.toLocaleDateString()}`;
+          timingBadge = `📅 Opens ${this.formatTimeForUser(earliestSlot, context)}`;
           buttonLabel = "Schedule Auto-Register";
         } else if (bookingStatus === 'open_now') {
           timingBadge = '✅ Register Now';
@@ -397,7 +421,7 @@ export default class APIOrchestrator implements IOrchestrator {
       if (bookingStatus === 'open_now') {
         timingMessage = '✅ Registration is currently open! Complete the form and you can register immediately.\n\n';
       } else if (bookingStatus === 'opens_later' && earliestSlot) {
-        timingMessage = `📅 Registration opens on ${earliestSlot.toLocaleString()}.\n\n` +
+        timingMessage = `📅 Registration opens on ${this.formatTimeForUser(earliestSlot, context)}.\n\n` +
                         `Fill out the form now and we'll automatically register you the moment it opens. ` +
                         `You'll only be charged if registration succeeds!\n\n`;
       }
