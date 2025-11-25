@@ -169,10 +169,7 @@ export const mandateTools = [
           plan_execution_id: args.plan_execution_id || null, 
           mandate_id: args.mandate_id,
           mandate_jws: args.mandate_jws,
-          tool: 'mandates.create',
-          user_id: args.user_id,
-          provider: args.provider,
-          org_ref: args.org_ref
+          tool: 'mandates.create'
         },
         args,
         () => createMandate(args)

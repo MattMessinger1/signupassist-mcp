@@ -100,10 +100,7 @@ export const schedulerTools = [
           plan_execution_id: args.plan_execution_id || null,
           mandate_id: args.mandate_id,
           mandate_jws: args.mandate_jws,
-          tool: 'scheduler.schedule_signup',
-          user_id: 'system',
-          provider: 'scheduler',
-          org_ref: 'system'
+          tool: 'scheduler.schedule_signup'
         },
         args,
         () => scheduleSignup(args)
