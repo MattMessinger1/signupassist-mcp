@@ -38,6 +38,7 @@ enum FlowStep {
 interface APIContext {
   step: FlowStep;
   orgRef?: string;
+  user_id?: string;
   selectedProgram?: any;
   formData?: Record<string, any>;
   numParticipants?: number;
@@ -82,6 +83,17 @@ export default class APIOrchestrator implements IOrchestrator {
     const tool = this.mcpServer.tools.get(toolName);
     Logger.info(`[MCP] Invoking tool: ${toolName}`);
     return await tool.handler(args);
+  }
+
+  /**
+   * Get Supabase client for database operations
+   * Creates client on-demand with service role key
+   */
+  private getSupabaseClient() {
+    const { createClient } = require('@supabase/supabase-js');
+    const supabaseUrl = process.env.SUPABASE_URL!;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    return createClient(supabaseUrl, supabaseServiceKey);
   }
 
   /**
@@ -802,6 +814,9 @@ export default class APIOrchestrator implements IOrchestrator {
       Logger.info("[setupPaymentMethod] ✅ Payment method saved:", payment_method_id);
 
       // Step 3: Continue to scheduled registration confirmation
+      // Store user_id in context for mandate creation
+      this.updateContext(sessionId, { user_id });
+      
       // The frontend should have stored schedulingData - retrieve from payload
       const schedulingData = payload.schedulingData || context.schedulingData;
       
@@ -896,39 +911,68 @@ export default class APIOrchestrator implements IOrchestrator {
       const maxValidUntil = new Date(Date.now() + 31 * 24 * 60 * 60 * 1000);
       const mandateValidUntil = scheduledDate < maxValidUntil ? scheduledDate : maxValidUntil;
       
-      // TODO: Create mandate via MCP tool
-      // const mandate = await this.invokeMCPTool('mandates.create', {
-      //   user_id: context.user_id,
-      //   provider: 'bookeo',
-      //   org_ref: context.selectedProgram.org_ref,
-      //   scopes: ['bookeo:create_booking', 'platform:success_fee'],
-      //   max_amount_cents: parseFloat(total_amount.replace(/[^0-9.]/g, '')) * 100,
-      //   valid_until: mandateValidUntil.toISOString()
-      // });
+      // Step 1: Create mandate via MCP tool (audit-compliant)
+      Logger.info("[confirmScheduledRegistration] Creating mandate...");
+      const totalAmountCents = Math.round(parseFloat(total_amount.replace(/[^0-9.]/g, '')) * 100);
       
-      // TODO: Store in scheduled_registrations table
-      // const { data } = await supabase
-      //   .from('scheduled_registrations')
-      //   .insert({
-      //     user_id: context.user_id,
-      //     mandate_id: mandate.data.mandate_id,
-      //     org_ref: context.selectedProgram.org_ref,
-      //     program_ref: context.selectedProgram.program_ref,
-      //     program_name: programName,
-      //     scheduled_time,
-      //     event_id,
-      //     delegate_data: formData.delegate,
-      //     participant_data: formData.participants,
-      //     status: 'pending'
-      //   })
-      //   .select()
-      //   .single();
+      const mandateResponse = await this.invokeMCPTool('mandates.create', {
+        user_id: context.user_id,
+        provider: 'bookeo',
+        org_ref: context.selectedProgram.org_ref,
+        scopes: ['bookeo:create_booking', 'platform:success_fee'],
+        max_amount_cents: totalAmountCents,
+        valid_until: mandateValidUntil.toISOString()
+      });
+
+      if (!mandateResponse.success || !mandateResponse.data?.mandate_id) {
+        Logger.error("[confirmScheduledRegistration] Mandate creation failed", mandateResponse);
+        return this.formatError("Failed to create authorization. Please try again.");
+      }
+
+      const mandateId = mandateResponse.data.mandate_id;
+      Logger.info("[confirmScheduledRegistration] ✅ Mandate created:", mandateId);
+
+      // Step 2: Store in scheduled_registrations table
+      Logger.info("[confirmScheduledRegistration] Storing scheduled registration...");
+      const supabase = this.getSupabaseClient();
       
-      // TODO: Schedule the job
-      // await this.invokeMCPTool('scheduler.schedule_signup', {
-      //   registration_id: data.id,
-      //   trigger_time: scheduled_time
-      // });
+      const { data: scheduledReg, error: insertError } = await supabase
+        .from('scheduled_registrations')
+        .insert({
+          user_id: context.user_id,
+          mandate_id: mandateId,
+          org_ref: context.selectedProgram.org_ref,
+          program_ref: context.selectedProgram.program_ref,
+          program_name: programName,
+          scheduled_time,
+          event_id,
+          delegate_data: formData.delegate,
+          participant_data: formData.participants,
+          status: 'pending'
+        })
+        .select()
+        .single();
+
+      if (insertError || !scheduledReg) {
+        Logger.error("[confirmScheduledRegistration] Database insert failed", insertError);
+        return this.formatError("Failed to schedule registration. Please try again.");
+      }
+
+      Logger.info("[confirmScheduledRegistration] ✅ Scheduled registration stored:", scheduledReg.id);
+
+      // Step 3: Schedule the job via MCP tool (audit-compliant)
+      Logger.info("[confirmScheduledRegistration] Scheduling job...");
+      const scheduleResponse = await this.invokeMCPTool('scheduler.schedule_signup', {
+        registration_id: scheduledReg.id,
+        trigger_time: scheduled_time
+      });
+
+      if (!scheduleResponse.success) {
+        Logger.error("[confirmScheduledRegistration] Job scheduling failed", scheduleResponse);
+        return this.formatError("Failed to schedule auto-registration. Please try again.");
+      }
+
+      Logger.info("[confirmScheduledRegistration] ✅ Job scheduled successfully");
       
       // Reset context
       this.updateContext(sessionId, {
