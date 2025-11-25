@@ -645,7 +645,7 @@ export default class APIOrchestrator implements IOrchestrator {
     const paymentResponse: OrchestratorResponse = {
       message: paymentMessage,
       cards: [{
-        title: "Payment Authorization",
+        title: "Confirm Booking & Payment",
         subtitle: programName,
         description: `Participants:\n${participantList}\n\nCharges:\n• Program Fee: ${formattedTotal} (to provider)\n• SignupAssist Success Fee: $20.00 (only if booking succeeds)\n\nTotal: ${grandTotal}`,
         buttons: []
@@ -654,6 +654,17 @@ export default class APIOrchestrator implements IOrchestrator {
         buttons
       }
     };
+
+    // Store form data in context for confirmPayment to access
+    this.updateContext(sessionId, {
+      step: FlowStep.PAYMENT,
+      formData: {
+        delegate_data,
+        participant_data,
+        num_participants: numParticipants,
+        event_id: context.selectedProgram?.event_id || context.selectedProgram?.program_ref
+      }
+    });
 
     // Validate Design DNA compliance
     const validation = validateDesignDNA(paymentResponse, {
@@ -686,14 +697,26 @@ export default class APIOrchestrator implements IOrchestrator {
     try {
       Logger.info("[confirmPayment] Starting immediate booking flow");
 
-      const { delegate_data, participant_data, num_participants, event_id } = payload;
+      // Get booking data from context (stored by submitForm)
+      const formData = context.formData;
+      const delegate_data = formData?.delegate_data;
+      const participant_data = formData?.participant_data;
+      const num_participants = formData?.num_participants;
+      const event_id = formData?.event_id;
+      
       const programName = context.selectedProgram?.title || "program";
       const programRef = context.selectedProgram?.program_ref;
       const orgRef = context.selectedProgram?.org_ref || context.orgRef;
 
       // Validation
       if (!delegate_data || !participant_data || !event_id || !programRef || !orgRef) {
-        Logger.error("[confirmPayment] Missing required data");
+        Logger.error("[confirmPayment] Missing required data", {
+          has_formData: !!formData,
+          has_delegate: !!delegate_data,
+          has_participants: !!participant_data,
+          has_event_id: !!event_id,
+          has_program_ref: !!programRef
+        });
         return this.formatError("Missing required booking information. Please try again.");
       }
 
