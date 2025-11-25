@@ -39,31 +39,15 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     );
 
-    // Authenticate user (optional for webhook-triggered calls)
-    const authHeader = req.headers.get("Authorization");
-    let userId: string;
-    let userEmail: string;
-
-    if (authHeader) {
-      // Called by authenticated user
-      const token = authHeader.replace("Bearer ", "");
-      const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
-      if (userError || !userData.user) {
-        throw new Error("Authentication failed");
-      }
-      userId = userData.user.id;
-      userEmail = userData.user.email!;
-      logStep("User authenticated", { userId, email: userEmail });
-    } else {
-      // Called via webhook or direct call with user data in body
-      const { user_id, email } = await req.json();
-      if (!user_id || !email) {
-        throw new Error("user_id and email are required when not authenticated");
-      }
-      userId = user_id;
-      userEmail = email;
-      logStep("User data from request body", { userId, email: userEmail });
+    // Parse request body to get user data
+    const { user_id, email } = await req.json();
+    if (!user_id || !email) {
+      throw new Error("user_id and email are required");
     }
+    
+    const userId = user_id;
+    const userEmail = email;
+    logStep("Processing for user", { userId, email: userEmail });
 
     // Check if user already has a Stripe customer
     const { data: existingBilling } = await supabaseClient
