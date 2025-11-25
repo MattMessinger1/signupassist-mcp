@@ -232,6 +232,9 @@ export default class APIOrchestrator implements IOrchestrator {
     try {
       Logger.info(`Searching programs for org: ${orgRef}`);
 
+      // Get context for timezone formatting
+      const context = this.getContext(sessionId);
+
       // Call Bookeo MCP tool (ensures audit logging)
       const programsResult = await this.invokeMCPTool('bookeo.find_programs', {
         org_ref: orgRef,
