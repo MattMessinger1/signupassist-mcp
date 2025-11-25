@@ -659,8 +659,8 @@ export default class APIOrchestrator implements IOrchestrator {
     this.updateContext(sessionId, {
       step: FlowStep.PAYMENT,
       formData: {
-        delegate_data,
-        participant_data,
+        delegate_data: payload.delegate_data,
+        participant_data: payload.participant_data,
         num_participants: numParticipants,
         event_id: context.selectedProgram?.event_id || context.selectedProgram?.program_ref
       }
