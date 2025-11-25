@@ -52,6 +52,8 @@ import { skiClubProTools } from './providers/skiclubpro.js';
 import { bookeoTools } from './providers/bookeo.js';
 import { stripeTools } from './providers/stripe.js';
 import { programFeedTools } from './providers/programFeed.js';
+import { mandateTools } from './providers/mandates.js';
+import { schedulerTools } from './providers/scheduler.js';
 // import { daysmartTools } from '../providers/daysmart/index';
 // import { campminderTools } from '../providers/campminder/index';
 import { refreshBlackhawkPrograms, refreshBlackhawkProgramDetail } from './providers/blackhawk.js'; // Import Blackhawk refresh functions
@@ -236,6 +238,26 @@ class SignupAssistMCPServer {
 
     // Register Stripe tools
     stripeTools.forEach((tool) => {
+      this.tools.set(tool.name, {
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+        handler: tool.handler
+      });
+    });
+
+    // Register Mandate tools
+    mandateTools.forEach((tool) => {
+      this.tools.set(tool.name, {
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+        handler: tool.handler
+      });
+    });
+
+    // Register Scheduler tools
+    schedulerTools.forEach((tool) => {
       this.tools.set(tool.name, {
         name: tool.name,
         description: tool.description,
