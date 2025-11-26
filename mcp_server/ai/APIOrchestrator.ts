@@ -699,6 +699,13 @@ export default class APIOrchestrator implements IOrchestrator {
 
       // Get booking data from context (stored by submitForm)
       const formData = context.formData;
+      
+      // DEBUG: Log the entire formData object to see what we're working with
+      Logger.info("[confirmPayment] 🔍 Full formData from context:", {
+        formData: JSON.stringify(formData, null, 2),
+        keys: formData ? Object.keys(formData) : []
+      });
+      
       const delegate_data = formData?.delegate_data;
       const participant_data = formData?.participant_data;
       const num_participants = formData?.num_participants;
@@ -708,14 +715,17 @@ export default class APIOrchestrator implements IOrchestrator {
       const programRef = context.selectedProgram?.program_ref;
       const orgRef = context.selectedProgram?.org_ref || context.orgRef;
 
-      // Validation
+      // Validation with detailed logging
       if (!delegate_data || !participant_data || !event_id || !programRef || !orgRef) {
         Logger.error("[confirmPayment] Missing required data", {
           has_formData: !!formData,
           has_delegate: !!delegate_data,
           has_participants: !!participant_data,
           has_event_id: !!event_id,
-          has_program_ref: !!programRef
+          has_program_ref: !!programRef,
+          // Log what we actually have
+          delegate_data_preview: delegate_data ? 'exists' : 'MISSING',
+          participant_data_preview: participant_data ? 'exists' : 'MISSING'
         });
         return this.formatError("Missing required booking information. Please try again.");
       }
@@ -723,7 +733,9 @@ export default class APIOrchestrator implements IOrchestrator {
       Logger.info("[confirmPayment] Validated booking data", { 
         program_ref: programRef, 
         org_ref: orgRef,
-        num_participants 
+        num_participants,
+        delegate_email: delegate_data.email,
+        num_participants_in_array: participant_data.length
       });
 
       // Step 1: Book with Bookeo via MCP tool
