@@ -738,14 +738,32 @@ export default class APIOrchestrator implements IOrchestrator {
         num_participants_in_array: participant_data.length
       });
 
+      // Map form field names to Bookeo API format (API-first, ChatGPT compliant)
+      const mappedDelegateData = {
+        firstName: delegate_data.delegate_firstName,
+        lastName: delegate_data.delegate_lastName,
+        email: delegate_data.delegate_email,
+        phone: delegate_data.delegate_phone,
+        dateOfBirth: delegate_data.delegate_dob,
+        relationship: delegate_data.delegate_relationship
+      };
+
+      const mappedParticipantData = participant_data.map((p: any) => ({
+        firstName: p.firstName,
+        lastName: p.lastName,
+        dateOfBirth: p.dob,  // Form uses 'dob', API expects 'dateOfBirth'
+        grade: p.grade,
+        allergies: p.allergies
+      }));
+
       // Step 1: Book with Bookeo via MCP tool
       Logger.info("[confirmPayment] Calling bookeo.confirm_booking...");
       const bookingResponse = await this.invokeMCPTool('bookeo.confirm_booking', {
         event_id,
         program_ref: programRef,
         org_ref: orgRef,
-        delegate_data,
-        participant_data,
+        delegate_data: mappedDelegateData,
+        participant_data: mappedParticipantData,
         num_participants
       });
 
