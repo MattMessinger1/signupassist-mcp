@@ -577,19 +577,7 @@ async function confirmBooking(args: {
       participants: {
         numbers: [
           { peopleCategoryId: 'Cchildren', number: num_participants }
-        ],
-        details: participant_data.map((p, idx) => ({
-          peopleCategoryId: 'Cchildren',
-          categoryIndex: 0,
-          personId: `participant_${idx + 1}`,
-          firstName: p.firstName.trim(),
-          lastName: p.lastName.trim(),
-          dateOfBirth: p.dateOfBirth,
-          customFields: {
-            ...(p.grade && { grade: p.grade }),
-            ...(p.allergies && { allergies: p.allergies })
-          }
-        }))
+        ]
       }
     };
     
