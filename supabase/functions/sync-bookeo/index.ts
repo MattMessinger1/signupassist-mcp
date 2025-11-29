@@ -258,6 +258,7 @@ Deno.serve(async (req) => {
             console.warn(`[sync-bookeo] No pricing found for product ${product.name}`);
             return 'Price varies';
           })(),
+          people_category_id: product.defaultRates?.[0]?.peopleCategoryId || 'Cadults',
           status: product.active ? determineStatus(slots) : 'Closed',
           duration: product.duration || null,
           max_participants: product.maxParticipants || null,
