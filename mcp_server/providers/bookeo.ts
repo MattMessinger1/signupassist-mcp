@@ -32,9 +32,9 @@ export interface BookeoTool {
  * Used by createHold and confirmBooking (not by discoverRequiredFields which reads from cache)
  */
 function bookeoHeaders() {
-  const auth = Buffer.from(`${BOOKEO_API_KEY}:${BOOKEO_SECRET_KEY}`).toString('base64');
   return {
-    'Authorization': `Basic ${auth}`,
+    'X-Bookeo-apiKey': BOOKEO_API_KEY,
+    'X-Bookeo-secretKey': BOOKEO_SECRET_KEY,
     'Content-Type': 'application/json'
   };
 }
