@@ -223,6 +223,16 @@ Deno.serve(async (req) => {
           console.log(`[Bookeo Slot Debug] First slot for ${product.name}:`, JSON.stringify(slots[0], null, 2));
         }
         
+        // Debug: Log Bookeo slot eventId structure for verification
+        if (slots.length > 0) {
+          const firstAvailableEventId = slots.find(s => s.numSeatsAvailable > 0)?.eventId || slots[0]?.eventId;
+          console.log(`[sync-bookeo] ${product.name}: first_available_event_id="${firstAvailableEventId}", slot sample:`, JSON.stringify({
+            eventId: slots[0]?.eventId,
+            startTime: slots[0]?.startTime,
+            numSeatsAvailable: slots[0]?.numSeatsAvailable
+          }));
+        }
+        
         // Build program data
         const programData = {
           program_ref: product.productId,
@@ -259,13 +269,6 @@ Deno.serve(async (req) => {
           earliest_slot_time: slots[0]?.startTime || null,  // When booking window opens
           next_available_slot: slots.find(s => s.numSeatsAvailable > 0)?.startTime || null,  // First available with seats
           first_available_event_id: slots.find(s => s.numSeatsAvailable > 0)?.eventId || slots[0]?.eventId || null,  // Bookeo slot eventId for booking
-          
-          // Debug: Log slot structure for verification
-          ...(slots.length > 0 && console.log(`[sync-bookeo] ${product.name}: storing first_available_event_id="${slots[0]?.eventId}", slot sample:`, JSON.stringify({
-            eventId: slots[0]?.eventId,
-            startTime: slots[0]?.startTime,
-            numSeatsAvailable: slots[0]?.numSeatsAvailable
-          })) || {})
           
           // Determine booking status with business rules:
           // If available slots exist, booking is OPEN NOW (Bookeo enforces advance booking rules)
