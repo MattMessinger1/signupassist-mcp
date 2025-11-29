@@ -516,6 +516,17 @@ class SignupAssistMCPServer {
               return;
             }
             
+            // Helper to build Bookeo URLs with query param auth (matches working curl pattern)
+            function buildBookeoUrl(path: string, extra: Record<string, string> = {}) {
+              const url = new URL(`https://api.bookeo.com/v2${path}`);
+              url.searchParams.set("apiKey", BOOKEO_API_KEY!);
+              url.searchParams.set("secretKey", BOOKEO_SECRET_KEY!);
+              for (const [k, v] of Object.entries(extra)) {
+                url.searchParams.set(k, v);
+              }
+              return url.toString();
+            }
+            
             const holdPayload = {
               eventId: eventId,
               productId: productId,
@@ -545,25 +556,21 @@ class SignupAssistMCPServer {
             }
             
             // Call Bookeo API using query param auth (same as working curl)
-            const holdsUrl = new URL('https://api.bookeo.com/v2/holds');
-            holdsUrl.searchParams.set('apiKey', BOOKEO_API_KEY);
-            holdsUrl.searchParams.set('secretKey', BOOKEO_SECRET_KEY);
+            const bookeoHoldUrl = buildBookeoUrl("/holds");
             
-            console.log('[BOOKEO] POST /holds URL (redacted)', holdsUrl.toString().replace(BOOKEO_SECRET_KEY, '***'));
+            console.log("[Bookeo] HOLD URL:", bookeoHoldUrl.replace(BOOKEO_SECRET_KEY, "***"));
             
-            const response = await fetch(holdsUrl.toString(), {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify(holdPayload)
+            const bookeoHoldRes = await fetch(bookeoHoldUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(holdPayload),
             });
             
-            const data = await response.json();
+            const data = await bookeoHoldRes.json();
             
-            if (!response.ok) {
+            if (!bookeoHoldRes.ok) {
               console.error('[BOOKEO] Hold creation failed:', data);
-              res.writeHead(response.status, { 'Content-Type': 'application/json' });
+              res.writeHead(bookeoHoldRes.status, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ 
                 error: data.message || 'Failed to create hold' 
               }));
