@@ -396,7 +396,10 @@ async function createHold(args: {
         phoneNumbers: phone ? [{ number: phone.trim() }] : []
       },
       participants: {
-        numbers: { adults, children }
+        numbers: [
+          ...(adults > 0 ? [{ peopleCategoryId: 'Cadults', number: adults }] : []),
+          ...(children > 0 ? [{ peopleCategoryId: 'Cchildren', number: children }] : [])
+        ]
       }
     };
     
@@ -554,10 +557,9 @@ async function confirmBooking(args: {
         phoneNumbers: delegate_data.phone ? [{ number: delegate_data.phone.trim() }] : []
       },
       participants: {
-        numbers: { 
-          adults: 0,
-          children: num_participants 
-        },
+        numbers: [
+          { peopleCategoryId: 'Cchildren', number: num_participants }
+        ],
         details: participant_data.map((p, idx) => ({
           personId: `participant_${idx + 1}`,
           firstName: p.firstName.trim(),
