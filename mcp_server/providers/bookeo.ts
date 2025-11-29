@@ -580,6 +580,7 @@ async function confirmBooking(args: {
         ],
         details: participant_data.map((p, idx) => ({
           peopleCategoryId: 'Cchildren',
+          categoryIndex: 0,
           personId: `participant_${idx + 1}`,
           firstName: p.firstName.trim(),
           lastName: p.lastName.trim(),
