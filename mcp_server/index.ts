@@ -309,6 +309,25 @@ class SignupAssistMCPServer {
       const url = new URL(req.url || '/', `http://localhost:${port}`);
       console.log(`[REQUEST] ${req.method} ${url.pathname}`);
 
+      // --- Bookeo API Helper (for deprecated legacy endpoints)
+      // Extract Bookeo credentials once for all handlers
+      const BOOKEO_API_KEY = process.env.BOOKEO_API_KEY;
+      const BOOKEO_SECRET_KEY = process.env.BOOKEO_SECRET_KEY;
+      
+      /**
+       * Build Bookeo API URL with query parameter authentication
+       * This matches the working curl pattern and sync-bookeo edge function
+       */
+      function buildBookeoUrl(path: string, extra: Record<string, string> = {}): string {
+        const url = new URL(`https://api.bookeo.com/v2${path}`);
+        if (BOOKEO_API_KEY) url.searchParams.set("apiKey", BOOKEO_API_KEY);
+        if (BOOKEO_SECRET_KEY) url.searchParams.set("secretKey", BOOKEO_SECRET_KEY);
+        for (const [k, v] of Object.entries(extra)) {
+          url.searchParams.set(k, v);
+        }
+        return url.toString();
+      }
+
       // --- Health check endpoint
       if (req.method === 'GET' && url.pathname === '/health') {
         console.log('[HEALTH] check received');
@@ -505,26 +524,12 @@ class SignupAssistMCPServer {
             const sanitizedEmail = String(email).trim().toLowerCase().slice(0, 255);
             const sanitizedPhone = phone ? String(phone).trim().slice(0, 20) : '';
             
-            // Build Bookeo hold request
-            const BOOKEO_API_KEY = process.env.BOOKEO_API_KEY;
-            const BOOKEO_SECRET_KEY = process.env.BOOKEO_SECRET_KEY;
-            
+            // Verify Bookeo credentials are available
             if (!BOOKEO_API_KEY || !BOOKEO_SECRET_KEY) {
               console.error('[BOOKEO] Missing API credentials');
               res.writeHead(500, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: 'Server configuration error' }));
               return;
-            }
-            
-            // Helper to build Bookeo URLs with query param auth (matches working curl pattern)
-            function buildBookeoUrl(path: string, extra: Record<string, string> = {}) {
-              const url = new URL(`https://api.bookeo.com/v2${path}`);
-              url.searchParams.set("apiKey", BOOKEO_API_KEY!);
-              url.searchParams.set("secretKey", BOOKEO_SECRET_KEY!);
-              for (const [k, v] of Object.entries(extra)) {
-                url.searchParams.set(k, v);
-              }
-              return url.toString();
             }
             
             const holdPayload = {
@@ -668,10 +673,7 @@ class SignupAssistMCPServer {
             const numAdults = parseInt(adults) || 0;
             const numChildren = parseInt(children) || 0;
             
-            // Build Bookeo booking payload
-            const BOOKEO_API_KEY = process.env.BOOKEO_API_KEY;
-            const BOOKEO_SECRET_KEY = process.env.BOOKEO_SECRET_KEY;
-            
+            // Verify Bookeo credentials are available
             if (!BOOKEO_API_KEY || !BOOKEO_SECRET_KEY) {
               console.error('[BOOKEO] Missing API credentials');
               res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -708,28 +710,25 @@ class SignupAssistMCPServer {
             }
             
             // Call Bookeo API to confirm booking using query param auth (same as working curl)
-            const bookingsUrl = new URL('https://api.bookeo.com/v2/bookings');
-            bookingsUrl.searchParams.set('apiKey', BOOKEO_API_KEY);
-            bookingsUrl.searchParams.set('secretKey', BOOKEO_SECRET_KEY);
-            bookingsUrl.searchParams.set('previousHoldId', holdId);
-            bookingsUrl.searchParams.set('notifyUsers', 'true');
-            bookingsUrl.searchParams.set('notifyCustomer', 'true');
-            
-            console.log('[BOOKEO] POST /bookings URL (redacted)', bookingsUrl.toString().replace(BOOKEO_SECRET_KEY, '***'));
-            
-            const response = await fetch(bookingsUrl.toString(), {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify(bookingPayload)
+            const bookeoBookingUrl = buildBookeoUrl("/bookings", {
+              previousHoldId: holdId,
+              notifyUsers: "true",
+              notifyCustomer: "true",
+            });
+
+            console.log("[Bookeo] BOOKING URL:", bookeoBookingUrl.replace(BOOKEO_SECRET_KEY!, "***"));
+
+            const bookeoBookRes = await fetch(bookeoBookingUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(bookingPayload),
             });
             
-            const data = await response.json();
+            const data = await bookeoBookRes.json();
             
-            if (!response.ok) {
+            if (!bookeoBookRes.ok) {
               console.error('[BOOKEO] Booking confirmation failed:', data);
-              res.writeHead(response.status, { 'Content-Type': 'application/json' });
+              res.writeHead(bookeoBookRes.status, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ 
                 error: data.message || 'Failed to confirm booking' 
               }));
