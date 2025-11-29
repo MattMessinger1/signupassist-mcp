@@ -564,6 +564,31 @@ async function confirmBooking(args: {
   }
   
   try {
+    // Fetch program data to get the correct people category
+    const { data: programData, error: dbError } = await supabase
+      .from('cached_provider_feed')
+      .select('program')
+      .eq('program_ref', program_ref)
+      .eq('org_ref', org_ref)
+      .single();
+    
+    if (dbError || !programData) {
+      console.error('[Bookeo] Failed to fetch program data:', dbError);
+      const friendlyError: ParentFriendlyError = {
+        display: 'Program information not found',
+        recovery: 'Please refresh the program list and try again',
+        severity: 'high',
+        code: 'PROGRAM_NOT_FOUND'
+      };
+      return {
+        success: false,
+        error: friendlyError
+      };
+    }
+    
+    const peopleCategoryId = (programData.program as any)?.people_category_id || 'Cadults';
+    console.log(`[Bookeo] Using people category: ${peopleCategoryId} for program ${program_ref}`);
+    
     // Build Bookeo API payload
     const bookingPayload = {
       eventId: event_id,
@@ -576,7 +601,7 @@ async function confirmBooking(args: {
       },
       participants: {
         numbers: [
-          { peopleCategoryId: 'Cchildren', number: num_participants }
+          { peopleCategoryId, number: num_participants }
         ]
       }
     };
