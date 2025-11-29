@@ -338,6 +338,45 @@ class SignupAssistMCPServer {
         return;
       }
 
+      // --- Bookeo Debug Endpoint - Tests Bookeo API credentials from Railway
+      if (req.method === 'GET' && url.pathname === '/bookeo-debug') {
+        console.log('[DEBUG] Bookeo credentials test request received');
+        
+        try {
+          const apiKey = process.env.BOOKEO_API_KEY;
+          const secretKey = process.env.BOOKEO_SECRET_KEY;
+
+          if (!apiKey || !secretKey) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              error: "Missing Bookeo API key or secret key in Railway environment variables"
+            }));
+            return;
+          }
+
+          // Build the Bookeo API URL EXACTLY like your working curl
+          const debugUrl = new URL('https://api.bookeo.com/v2/settings/apikeyinfo');
+          debugUrl.searchParams.set('apiKey', apiKey);
+          debugUrl.searchParams.set('secretKey', secretKey);
+
+          console.log('[DEBUG] Calling Bookeo:', debugUrl.toString().replace(secretKey, '***'));
+
+          const r = await fetch(debugUrl, { method: 'GET' });
+          const text = await r.text();
+
+          console.log('[DEBUG] Bookeo response status:', r.status);
+          console.log('[DEBUG] Bookeo response body:', text);
+
+          res.writeHead(r.status, { 'Content-Type': 'application/json' });
+          res.end(text);
+        } catch (err: any) {
+          console.error('[DEBUG] Bookeo error:', err);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err?.message || 'Unexpected failure' }));
+        }
+        return;
+      }
+
       // ==================== BOOKEO BOOKING ENDPOINTS (DEPRECATED) ====================
       // These endpoints are now handled by MCP tools in mcp_server/providers/bookeo.ts
       // Kept for backward compatibility only
