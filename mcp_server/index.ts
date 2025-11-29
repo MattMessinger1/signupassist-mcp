@@ -505,13 +505,17 @@ class SignupAssistMCPServer {
               });
             }
             
-            // Call Bookeo API
-            const response = await fetch('https://api.bookeo.com/v2/holds', {
+            // Call Bookeo API using query param auth (same as working curl)
+            const holdsUrl = new URL('https://api.bookeo.com/v2/holds');
+            holdsUrl.searchParams.set('apiKey', BOOKEO_API_KEY);
+            holdsUrl.searchParams.set('secretKey', BOOKEO_SECRET_KEY);
+            
+            console.log('[BOOKEO] POST /holds URL (redacted)', holdsUrl.toString().replace(BOOKEO_SECRET_KEY, '***'));
+            
+            const response = await fetch(holdsUrl.toString(), {
               method: 'POST',
               headers: {
-                'Content-Type': 'application/json',
-                'X-Bookeo-apiKey': BOOKEO_API_KEY,
-                'X-Bookeo-secretKey': BOOKEO_SECRET_KEY
+                'Content-Type': 'application/json'
               },
               body: JSON.stringify(holdPayload)
             });
@@ -657,19 +661,23 @@ class SignupAssistMCPServer {
               });
             }
             
-            // Call Bookeo API to confirm booking
-            const response = await fetch(
-              `https://api.bookeo.com/v2/bookings?previousHoldId=${encodeURIComponent(holdId)}&notifyUsers=true&notifyCustomer=true`,
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'X-Bookeo-apiKey': BOOKEO_API_KEY,
-                  'X-Bookeo-secretKey': BOOKEO_SECRET_KEY
-                },
-                body: JSON.stringify(bookingPayload)
-              }
-            );
+            // Call Bookeo API to confirm booking using query param auth (same as working curl)
+            const bookingsUrl = new URL('https://api.bookeo.com/v2/bookings');
+            bookingsUrl.searchParams.set('apiKey', BOOKEO_API_KEY);
+            bookingsUrl.searchParams.set('secretKey', BOOKEO_SECRET_KEY);
+            bookingsUrl.searchParams.set('previousHoldId', holdId);
+            bookingsUrl.searchParams.set('notifyUsers', 'true');
+            bookingsUrl.searchParams.set('notifyCustomer', 'true');
+            
+            console.log('[BOOKEO] POST /bookings URL (redacted)', bookingsUrl.toString().replace(BOOKEO_SECRET_KEY, '***'));
+            
+            const response = await fetch(bookingsUrl.toString(), {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify(bookingPayload)
+            });
             
             const data = await response.json();
             
