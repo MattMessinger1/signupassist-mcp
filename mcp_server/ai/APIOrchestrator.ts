@@ -662,7 +662,7 @@ export default class APIOrchestrator implements IOrchestrator {
         delegate_data: formData.delegate,
         participant_data: formData.participants,
         num_participants: numParticipants,
-        event_id: context.selectedProgram?.event_id || context.selectedProgram?.program_ref
+        event_id: context.selectedProgram?.first_available_event_id || context.selectedProgram?.event_id
       }
     });
 

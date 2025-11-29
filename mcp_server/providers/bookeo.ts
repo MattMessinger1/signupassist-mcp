@@ -545,6 +545,21 @@ async function confirmBooking(args: {
     };
   }
   
+  // Validate eventId format (should contain underscores: productId_slotId_date)
+  if (event_id && !event_id.includes('_')) {
+    console.warn(`[Bookeo] ⚠️  Warning: eventId "${event_id}" appears to be a productId, not a slot eventId`);
+    const friendlyError: ParentFriendlyError = {
+      display: 'Invalid booking slot reference',
+      recovery: 'Please refresh the program list and try again',
+      severity: 'high',
+      code: 'INVALID_EVENT_ID'
+    };
+    return {
+      success: false,
+      error: friendlyError
+    };
+  }
+  
   try {
     // Build Bookeo API payload
     const bookingPayload = {
