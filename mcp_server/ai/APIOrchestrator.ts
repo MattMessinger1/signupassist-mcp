@@ -329,7 +329,7 @@ export default class APIOrchestrator implements IOrchestrator {
                   schedule: prog.schedule,
                   booking_status: bookingStatus,
                   earliest_slot_time: prog.earliest_slot_time,
-                  event_id: prog.event_id || prog.program_ref
+                  first_available_event_id: prog.first_available_event_id || null
                 }
               },
               variant: isDisabled ? "outline" : "accent",
@@ -662,7 +662,7 @@ export default class APIOrchestrator implements IOrchestrator {
         delegate_data: formData.delegate,
         participant_data: formData.participants,
         num_participants: numParticipants,
-        event_id: context.selectedProgram?.first_available_event_id || context.selectedProgram?.event_id
+        event_id: context.selectedProgram?.first_available_event_id
       }
     });
 
