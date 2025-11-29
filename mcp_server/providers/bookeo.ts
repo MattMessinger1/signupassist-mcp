@@ -623,9 +623,69 @@ async function confirmBooking(args: {
 }
 
 /**
+ * Tool: bookeo.test_connection
+ * Diagnostic tool to test Bookeo API credentials with a simple READ operation
+ */
+async function testConnection(): Promise<any> {
+  console.log('[Bookeo Test] Testing connection with READ operation: GET /settings/products');
+  
+  try {
+    const headers = bookeoHeaders();
+    console.log('[Bookeo Test] Headers prepared (keys present)');
+    
+    const response = await fetch(`${BOOKEO_API_BASE}/settings/products`, {
+      method: 'GET',
+      headers
+    });
+    
+    console.log(`[Bookeo Test] Response status: ${response.status}`);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Bookeo Test] FAILED - ${response.status}: ${errorText}`);
+      return {
+        success: false,
+        status: response.status,
+        error: errorText,
+        message: `Bookeo API connection test FAILED with status ${response.status}`
+      };
+    }
+    
+    const data = await response.json();
+    console.log(`[Bookeo Test] SUCCESS - Retrieved ${data.data?.length || 0} products`);
+    
+    return {
+      success: true,
+      status: response.status,
+      products_count: data.data?.length || 0,
+      message: 'Bookeo API connection test PASSED - credentials work for READ operations'
+    };
+  } catch (error) {
+    console.error('[Bookeo Test] EXCEPTION:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+      message: 'Bookeo API connection test FAILED with exception'
+    };
+  }
+}
+
+/**
  * Export Bookeo tools
  */
 export const bookeoTools: BookeoTool[] = [
+  {
+    name: 'bookeo.test_connection',
+    description: 'Diagnostic tool to test Bookeo API credentials with a READ operation',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: []
+    },
+    handler: async () => {
+      return testConnection();
+    }
+  },
   {
     name: 'bookeo.find_programs',
     description: 'Find available programs/products from Bookeo with carousel UI',
