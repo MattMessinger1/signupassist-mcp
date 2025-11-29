@@ -32,6 +32,10 @@ export interface BookeoTool {
  * Used by createHold and confirmBooking (not by discoverRequiredFields which reads from cache)
  */
 function bookeoHeaders() {
+  // Debug: Log credential info (partial, for security)
+  console.log(`[Bookeo] API Key loaded: ${BOOKEO_API_KEY ? `${BOOKEO_API_KEY.substring(0, 8)}...${BOOKEO_API_KEY.slice(-4)} (length: ${BOOKEO_API_KEY.length})` : 'MISSING'}`);
+  console.log(`[Bookeo] Secret Key loaded: ${BOOKEO_SECRET_KEY ? `${BOOKEO_SECRET_KEY.substring(0, 8)}...${BOOKEO_SECRET_KEY.slice(-4)} (length: ${BOOKEO_SECRET_KEY.length})` : 'MISSING'}`);
+  
   return {
     'X-Bookeo-apiKey': BOOKEO_API_KEY,
     'X-Bookeo-secretKey': BOOKEO_SECRET_KEY,
