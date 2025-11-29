@@ -16,6 +16,36 @@ const BOOKEO_API_KEY = process.env.BOOKEO_API_KEY!;
 const BOOKEO_SECRET_KEY = process.env.BOOKEO_SECRET_KEY!;
 const BOOKEO_API_BASE = 'https://api.bookeo.com/v2';
 
+/**
+ * Build Bookeo API URL with authentication in query params
+ * More reliable than header-based auth from certain environments
+ */
+function buildBookeoUrl(
+  path: string, 
+  extraParams?: Record<string, string | number | boolean>
+): string {
+  const url = new URL(`${BOOKEO_API_BASE}${path}`);
+  url.searchParams.set('apiKey', BOOKEO_API_KEY);
+  url.searchParams.set('secretKey', BOOKEO_SECRET_KEY);
+  
+  if (extraParams) {
+    for (const [key, value] of Object.entries(extraParams)) {
+      url.searchParams.set(key, String(value));
+    }
+  }
+  
+  return url.toString();
+}
+
+/**
+ * Minimal headers - auth is now in query string
+ */
+function bookeoHeadersMinimal() {
+  return {
+    'Content-Type': 'application/json'
+  };
+}
+
 export interface BookeoTool {
   name: string;
   description: string;
@@ -386,9 +416,14 @@ async function createHold(args: {
       }
     };
     
-    const response = await fetch(`${BOOKEO_API_BASE}/holds`, {
+    const url = buildBookeoUrl('/holds');
+    console.log('[Bookeo] POST /holds URL (redacted):', url
+      .replace(BOOKEO_API_KEY, 'API_KEY')
+      .replace(BOOKEO_SECRET_KEY, 'SECRET_KEY'));
+    
+    const response = await fetch(url, {
       method: 'POST',
-      headers: bookeoHeaders(),
+      headers: bookeoHeadersMinimal(),
       body: JSON.stringify(holdPayload)
     });
     
@@ -554,9 +589,14 @@ async function confirmBooking(args: {
     
     console.log(`[Bookeo] Booking payload:`, JSON.stringify(bookingPayload, null, 2));
     
-    const response = await fetch(`${BOOKEO_API_BASE}/bookings`, {
+    const url = buildBookeoUrl('/bookings');
+    console.log('[Bookeo] POST /bookings URL (redacted):', url
+      .replace(BOOKEO_API_KEY, 'API_KEY')
+      .replace(BOOKEO_SECRET_KEY, 'SECRET_KEY'));
+    
+    const response = await fetch(url, {
       method: 'POST',
-      headers: bookeoHeaders(),
+      headers: bookeoHeadersMinimal(),
       body: JSON.stringify(bookingPayload)
     });
     
@@ -627,15 +667,17 @@ async function confirmBooking(args: {
  * Diagnostic tool to test Bookeo API credentials with a simple READ operation
  */
 async function testConnection(): Promise<any> {
-  console.log('[Bookeo Test] Testing connection with READ operation: GET /settings/products');
+  console.log('[Bookeo Test] Testing connection with QUERY PARAM auth: GET /settings/products');
   
   try {
-    const headers = bookeoHeaders();
-    console.log('[Bookeo Test] Headers prepared (keys present)');
+    const url = buildBookeoUrl('/settings/products');
+    console.log('[Bookeo Test] URL (redacted):', url
+      .replace(BOOKEO_API_KEY, 'API_KEY')
+      .replace(BOOKEO_SECRET_KEY, 'SECRET_KEY'));
     
-    const response = await fetch(`${BOOKEO_API_BASE}/settings/products`, {
+    const response = await fetch(url, {
       method: 'GET',
-      headers
+      headers: bookeoHeadersMinimal()
     });
     
     console.log(`[Bookeo Test] Response status: ${response.status}`);
