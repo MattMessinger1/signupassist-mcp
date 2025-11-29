@@ -50,9 +50,9 @@ interface BookeoSlot {
 }
 
 /**
- * Create Bookeo API headers with authentication
+ * Build Bookeo API URL with authentication as query parameters
  */
-function createBookeoHeaders(): Record<string, string> {
+function buildBookeoUrl(path: string, params: Record<string, string> = {}): string {
   const apiKey = Deno.env.get('BOOKEO_API_KEY');
   const secretKey = Deno.env.get('BOOKEO_SECRET_KEY');
   
@@ -60,11 +60,15 @@ function createBookeoHeaders(): Record<string, string> {
     throw new Error('BOOKEO_API_KEY and BOOKEO_SECRET_KEY must be set');
   }
   
-  return {
-    'X-Bookeo-apiKey': apiKey,
-    'X-Bookeo-secretKey': secretKey,
-    'Content-Type': 'application/json'
-  };
+  const url = new URL(`${BOOKEO_API_BASE}${path}`);
+  url.searchParams.set('apiKey', apiKey);
+  url.searchParams.set('secretKey', secretKey);
+  
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+  
+  return url.toString();
 }
 
 /**
@@ -73,9 +77,8 @@ function createBookeoHeaders(): Record<string, string> {
 async function fetchBookeoProducts(): Promise<BookeoProduct[]> {
   console.log('[sync-bookeo] Fetching products from Bookeo API...');
   
-  const response = await fetch(`${BOOKEO_API_BASE}/settings/products`, {
-    headers: createBookeoHeaders()
-  });
+  const url = buildBookeoUrl('/settings/products');
+  const response = await fetch(url);
   
   if (!response.ok) {
     const errorText = await response.text();
@@ -95,15 +98,12 @@ async function fetchBookeoProducts(): Promise<BookeoProduct[]> {
 async function fetchProductSlots(productId: string, startDate: string, endDate: string): Promise<BookeoSlot[]> {
   console.log(`[sync-bookeo] Fetching slots for product ${productId}...`);
   
-  const params = new URLSearchParams({
+  const urlSlots = buildBookeoUrl('/availability/slots', {
     productId,
     startTime: startDate,
     endTime: endDate
   });
-  
-  const response = await fetch(`${BOOKEO_API_BASE}/availability/slots?${params}`, {
-    headers: createBookeoHeaders()
-  });
+  const response = await fetch(urlSlots);
   
   if (!response.ok) {
     const errorText = await response.text();
