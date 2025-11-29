@@ -664,50 +664,40 @@ async function confirmBooking(args: {
 
 /**
  * Tool: bookeo.test_connection
- * Diagnostic tool to test Bookeo API credentials with a simple READ operation
+ * Diagnostic tool to verify Bookeo API credentials from Railway
+ * Calls /settings/apikeyinfo - the exact same endpoint as the working curl test
  */
 async function testConnection(): Promise<any> {
-  console.log('[Bookeo Test] Testing connection with QUERY PARAM auth: GET /settings/products');
+  console.log('[Bookeo Test] Testing connection: GET /settings/apikeyinfo');
   
   try {
-    const url = buildBookeoUrl('/settings/products');
-    console.log('[Bookeo Test] URL (redacted):', url
-      .replace(BOOKEO_API_KEY, 'API_KEY')
-      .replace(BOOKEO_SECRET_KEY, 'SECRET_KEY'));
+    const url = buildBookeoUrl('/settings/apikeyinfo');
+    console.log('[Bookeo Test] GET', url.replace(BOOKEO_SECRET_KEY, '***'));
     
     const response = await fetch(url, {
       method: 'GET',
       headers: bookeoHeadersMinimal()
     });
     
-    console.log(`[Bookeo Test] Response status: ${response.status}`);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[Bookeo Test] FAILED - ${response.status}: ${errorText}`);
-      return {
-        success: false,
-        status: response.status,
-        error: errorText,
-        message: `Bookeo API connection test FAILED with status ${response.status}`
-      };
-    }
-    
-    const data = await response.json();
-    console.log(`[Bookeo Test] SUCCESS - Retrieved ${data.data?.length || 0} products`);
+    const text = await response.text();
+    console.log('[Bookeo Test] status', response.status, 'body', text);
     
     return {
-      success: true,
       status: response.status,
-      products_count: data.data?.length || 0,
-      message: 'Bookeo API connection test PASSED - credentials work for READ operations'
+      raw: text,
+      success: response.ok,
+      message: response.ok 
+        ? '✅ Bookeo credentials verified from Railway' 
+        : '❌ Bookeo authentication failed from Railway'
     };
   } catch (error) {
     console.error('[Bookeo Test] EXCEPTION:', error);
     return {
+      status: 0,
+      raw: '',
       success: false,
       error: error instanceof Error ? error.message : String(error),
-      message: 'Bookeo API connection test FAILED with exception'
+      message: '❌ Bookeo test connection failed with exception'
     };
   }
 }
