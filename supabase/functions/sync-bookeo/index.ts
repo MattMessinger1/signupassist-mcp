@@ -258,6 +258,7 @@ Deno.serve(async (req) => {
           // Set & Forget: Extract timing data for auto-registration
           earliest_slot_time: slots[0]?.startTime || null,  // When booking window opens
           next_available_slot: slots.find(s => s.numSeatsAvailable > 0)?.startTime || null,  // First available with seats
+          first_available_event_id: slots.find(s => s.numSeatsAvailable > 0)?.eventId || slots[0]?.eventId || null,  // Bookeo slot eventId for booking
           
           // Determine booking status with business rules:
           // If available slots exist, booking is OPEN NOW (Bookeo enforces advance booking rules)
