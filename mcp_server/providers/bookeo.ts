@@ -640,15 +640,15 @@ async function confirmBooking(args: {
     
     console.log(`[Bookeo] Booking confirmed: ${bookingNumber}`);
     
-    // Get program details from cache
-    const { data: programData } = await supabase
+    // Get program details from cache for display
+    const { data: programDetails } = await supabase
       .from('cached_provider_feed')
       .select('program')
       .eq('program_ref', program_ref)
       .eq('org_ref', org_ref)
       .single();
     
-    const programName = (programData?.program as any)?.title || 'Program';
+    const programName = (programDetails?.program as any)?.title || 'Program';
     
     return {
       success: true,
