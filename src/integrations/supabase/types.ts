@@ -166,7 +166,9 @@ export type Database = {
           category: string
           created_at: string
           deep_links: Json | null
+          earliest_slot_time: string | null
           expires_at: string
+          first_available_event_id: string | null
           id: string
           metadata: Json | null
           org_ref: string
@@ -182,7 +184,9 @@ export type Database = {
           category?: string
           created_at?: string
           deep_links?: Json | null
+          earliest_slot_time?: string | null
           expires_at: string
+          first_available_event_id?: string | null
           id?: string
           metadata?: Json | null
           org_ref: string
@@ -198,7 +202,9 @@ export type Database = {
           category?: string
           created_at?: string
           deep_links?: Json | null
+          earliest_slot_time?: string | null
           expires_at?: string
+          first_available_event_id?: string | null
           id?: string
           metadata?: Json | null
           org_ref?: string
