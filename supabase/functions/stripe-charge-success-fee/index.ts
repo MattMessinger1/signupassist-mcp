@@ -26,36 +26,26 @@ serve(async (req) => {
     }
     logStep("Stripe key verified");
 
-    // Initialize Supabase
+    // Initialize Supabase with service role (server-to-server call)
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Authenticate user
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("No authorization header");
-
-    const token = authHeader.replace("Bearer ", "");
-    const { data: userData, error: userError } = await supabaseClient.auth.getUser(token);
-    if (userError || !userData.user) throw new Error("Authentication failed");
-    
-    const userId = userData.user.id;
-    logStep("User authenticated", { userId });
-
-    // Parse request
-    const { booking_number, mandate_id, amount_cents = 2000 } = await req.json();
+    // Parse request (user_id required in body for server-to-server calls)
+    const { booking_number, mandate_id, amount_cents = 2000, user_id } = await req.json();
     
     if (!booking_number) throw new Error("booking_number is required");
     if (!mandate_id) throw new Error("mandate_id is required");
+    if (!user_id) throw new Error("user_id is required");
     
-    logStep("Request parsed", { booking_number, mandate_id, amount_cents });
+    logStep("Request parsed", { booking_number, mandate_id, amount_cents, user_id });
 
-    // Get user's payment method from user_billing
+    // Get user's payment method from user_billing (using provided user_id)
     const { data: billing, error: billingError } = await supabaseClient
       .from('user_billing')
       .select('stripe_customer_id, default_payment_method_id')
-      .eq('user_id', userId)
+      .eq('user_id', user_id)
       .single();
 
     if (billingError || !billing) {

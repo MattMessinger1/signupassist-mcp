@@ -30,22 +30,38 @@ async function chargeSuccessFee(args: {
   booking_number: string;
   mandate_id: string;
   amount_cents: number;
+  user_id?: string;
   user_jwt?: string;
   mandate_jws?: string;
 }): Promise<ProviderResponse<any>> {
-  const { booking_number, mandate_id, amount_cents } = args;
+  const { booking_number, mandate_id, amount_cents, user_id } = args;
   
   console.log(`[Stripe] Charging success fee: $${amount_cents / 100} for booking ${booking_number}`);
   
+  if (!user_id) {
+    console.error('[Stripe] Missing user_id - cannot charge success fee');
+    const friendlyError: ParentFriendlyError = {
+      display: 'Unable to process success fee',
+      recovery: 'Your booking was successful, but we need your account information to process the fee. Please contact support.',
+      severity: 'medium',
+      code: 'STRIPE_MISSING_USER_ID'
+    };
+    return {
+      success: false,
+      error: friendlyError
+    };
+  }
+  
   try {
-    // Call the stripe-charge-success-fee edge function via Supabase
+    // Call the stripe-charge-success-fee edge function via Supabase (service-to-service)
     const { data, error } = await supabase.functions.invoke(
       'stripe-charge-success-fee',
       {
         body: {
           booking_number,
           mandate_id,
-          amount_cents
+          amount_cents,
+          user_id  // Required for server-to-server call
         }
       }
     );
@@ -252,6 +268,10 @@ export const stripeTools: StripeTool[] = [
           type: 'number',
           description: 'Amount to charge in cents (e.g., 2000 for $20.00)'
         },
+        user_id: {
+          type: 'string',
+          description: 'Supabase user ID for billing lookup'
+        },
         user_jwt: {
           type: 'string',
           description: 'User JWT token for authentication (optional)'
@@ -261,7 +281,7 @@ export const stripeTools: StripeTool[] = [
           description: 'Mandate JWS for authorization verification (optional)'
         }
       },
-      required: ['booking_number', 'mandate_id', 'amount_cents']
+      required: ['booking_number', 'mandate_id', 'amount_cents', 'user_id']
     },
     handler: async (args: any) => {
       return auditToolCall(
