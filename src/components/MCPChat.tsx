@@ -88,6 +88,10 @@ export function MCPChat() {
     setLoading(true);
 
     try {
+      // Get authenticated user info for backend operations
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id;
+      
       const response = await sendMessage(userMessage, sessionId, undefined, undefined, undefined, undefined, undefined, userTimezone);
       const assistantMessage = response.message || "(no response)";
       const assistantCards = response.cards || [];
@@ -140,7 +144,14 @@ export function MCPChat() {
     setLoading(true);
     
     try {
-      const response = await sendAction(action, payload, sessionId, undefined, userTimezone);
+      // Get authenticated user info for payment-related actions
+      const { data: { user } } = await supabase.auth.getUser();
+      const userId = user?.id;
+      
+      // Include user_id in payload for backend operations (esp. payment)
+      const enrichedPayload = userId ? { ...payload, user_id: userId } : payload;
+      
+      const response = await sendAction(action, enrichedPayload, sessionId, undefined, userTimezone);
       
       const ctaButtons = response.cta 
         ? (Array.isArray(response.cta) ? response.cta : (response.cta as any).buttons)

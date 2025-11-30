@@ -539,11 +539,22 @@ export default class APIOrchestrator implements IOrchestrator {
       ? participantNames[0]
       : participantNames.map((name: string, idx: number) => `${idx + 1}. ${name}`).join('\n');
 
-    // Store form data and participant count
+    // Get user_id from payload (frontend provides this for authenticated users)
+    const userId = payload.user_id;
+    
+    if (!userId) {
+      Logger.warn('[submitForm] No user_id in payload - success fee charge may fail');
+      Logger.warn('[submitForm] Delegate email:', formData.delegate?.delegate_email);
+    } else {
+      Logger.info('[submitForm] User authenticated with user_id:', userId);
+    }
+
+    // Store form data, participant count, and user_id
     this.updateContext(sessionId, {
       step: FlowStep.PAYMENT,
       formData,
-      numParticipants
+      numParticipants,
+      user_id: userId
     });
 
     const programName = context.selectedProgram?.title || "Selected Program";
@@ -784,22 +795,32 @@ export default class APIOrchestrator implements IOrchestrator {
 
       // Step 3: Charge $20 success fee via MCP tool (audit-compliant)
       Logger.info("[confirmPayment] Charging success fee...");
-      try {
-        const feeResult = await this.invokeMCPTool('stripe.charge_success_fee', {
-          booking_number,
-          mandate_id,
-          amount_cents: 2000 // $20 success fee
-        });
+      
+      // Get user_id from context (set by submitForm during user lookup)
+      const userId = context.user_id;
+      
+      if (!userId) {
+        Logger.warn("[confirmPayment] No user_id in context - cannot charge success fee");
+        // Don't fail the booking, just log warning
+      } else {
+        try {
+          const feeResult = await this.invokeMCPTool('stripe.charge_success_fee', {
+            booking_number,
+            mandate_id,
+            amount_cents: 2000, // $20 success fee
+            user_id: userId  // Required for server-to-server call
+          });
 
-        if (!feeResult.success) {
-          Logger.warn("[confirmPayment] Success fee charge failed (non-fatal):", feeResult.error);
-          // Don't fail the entire flow - booking was successful
-        } else {
-          Logger.info("[confirmPayment] ✅ Success fee charged:", feeResult.data?.charge_id);
+          if (!feeResult.success) {
+            Logger.warn("[confirmPayment] Success fee charge failed (non-fatal):", feeResult.error);
+            // Don't fail the entire flow - booking was successful
+          } else {
+            Logger.info("[confirmPayment] ✅ Success fee charged:", feeResult.data?.charge_id);
+          }
+        } catch (feeError) {
+          Logger.warn("[confirmPayment] Success fee exception (non-fatal):", feeError);
+          // Continue - booking was successful even if fee failed
         }
-      } catch (feeError) {
-        Logger.warn("[confirmPayment] Success fee exception (non-fatal):", feeError);
-        // Continue - booking was successful even if fee failed
       }
 
       // Step 4: Reset context and return success
