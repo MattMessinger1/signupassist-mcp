@@ -3,6 +3,8 @@ import { Auth } from "@supabase/auth-ui-react";
 import { ThemeSupa } from "@supabase/auth-ui-shared";
 import { supabase } from "@/integrations/supabase/client";
 
+// Auth gate modal for lazy authentication at payment step
+
 interface AuthGateModalProps {
   isOpen: boolean;
   onClose: () => void;
