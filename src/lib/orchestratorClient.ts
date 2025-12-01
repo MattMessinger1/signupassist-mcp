@@ -43,6 +43,7 @@ export interface OrchestratorResponse {
  * @param category - Optional activity category (legacy, for backward compatibility)
  * @param childAge - Optional child age (legacy, for backward compatibility)
  * @param userTimezone - User's IANA timezone (e.g., 'America/Chicago')
+ * @param userId - Optional authenticated user ID for backend operations
  * @returns Promise resolving to orchestrator response with cards
  */
 export async function sendMessage(
@@ -53,7 +54,8 @@ export async function sendMessage(
   currentAAP?: any,  // Structured AAP object (Phase 3)
   category?: string,  // Legacy fallback
   childAge?: number,  // Legacy fallback
-  userTimezone?: string  // User's IANA timezone
+  userTimezone?: string,  // User's IANA timezone
+  userId?: string  // User's authenticated ID
 ): Promise<OrchestratorResponse> {
   if (!ORCHESTRATOR_BASE) {
     throw new Error('MCP Server URL not configured. Please set VITE_MCP_BASE_URL in your .env file.');
@@ -88,7 +90,8 @@ export async function sendMessage(
       currentAAP,  // Send structured AAP object (Phase 3)
       category,    // Legacy fallback for backward compatibility
       childAge,    // Legacy fallback for backward compatibility
-      userTimezone // Send user's timezone
+      userTimezone, // Send user's timezone
+      user_id: userId // Send authenticated user ID
     }),
   });
 
