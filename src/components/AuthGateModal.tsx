@@ -9,9 +9,10 @@ interface AuthGateModalProps {
   isOpen: boolean;
   onClose: () => void;
   onAuthSuccess: () => void;
+  delegateEmail?: string; // Pre-populate with delegate email from form
 }
 
-export function AuthGateModal({ isOpen, onClose, onAuthSuccess }: AuthGateModalProps) {
+export function AuthGateModal({ isOpen, onClose, onAuthSuccess, delegateEmail }: AuthGateModalProps) {
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[425px]">
@@ -19,6 +20,11 @@ export function AuthGateModal({ isOpen, onClose, onAuthSuccess }: AuthGateModalP
           <DialogTitle>Almost there! 🎉</DialogTitle>
           <DialogDescription className="space-y-2 pt-2">
             <p>Create an account to complete your registration.</p>
+            {delegateEmail && (
+              <p className="text-sm font-medium pt-2">
+                Using email: <span className="text-primary">{delegateEmail}</span>
+              </p>
+            )}
             <div className="text-xs space-y-1 pt-2">
               <div className="flex items-center gap-2">
                 <span>✓</span>
@@ -38,10 +44,23 @@ export function AuthGateModal({ isOpen, onClose, onAuthSuccess }: AuthGateModalP
         <div className="mt-4">
           <Auth
             supabaseClient={supabase}
-            appearance={{ theme: ThemeSupa }}
+            appearance={{ 
+              theme: ThemeSupa,
+              variables: {
+                default: {
+                  colors: {
+                    brand: 'hsl(var(--primary))',
+                    brandAccent: 'hsl(var(--primary))',
+                  }
+                }
+              }
+            }}
             providers={[]}
             theme="light"
             redirectTo={window.location.origin}
+            additionalData={{
+              email: delegateEmail
+            }}
           />
         </div>
       </DialogContent>
