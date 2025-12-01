@@ -48,7 +48,12 @@ interface Message {
   };
 }
 
-export function MCPChat() {
+interface MCPChatProps {
+  mockUserId?: string;
+  mockUserEmail?: string;
+}
+
+export function MCPChat({ mockUserId, mockUserEmail }: MCPChatProps = {}) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -88,9 +93,17 @@ export function MCPChat() {
     setLoading(true);
 
     try {
-      // Get authenticated user info for backend operations
-      const { data: { user } } = await supabase.auth.getUser();
-      const userId = user?.id;
+      // Use mock user if provided, otherwise get authenticated user
+      let userId: string | undefined;
+      
+      if (mockUserId) {
+        userId = mockUserId;
+        console.log('[MCPChat] Using mock user:', mockUserId);
+      } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        userId = user?.id;
+        console.log('[MCPChat] Using authenticated user:', userId);
+      }
       
       const response = await sendMessage(userMessage, sessionId, undefined, undefined, undefined, undefined, undefined, userTimezone, userId);
       const assistantMessage = response.message || "(no response)";
@@ -144,9 +157,17 @@ export function MCPChat() {
     setLoading(true);
     
     try {
-      // Get authenticated user info for payment-related actions
-      const { data: { user } } = await supabase.auth.getUser();
-      const userId = user?.id;
+      // Use mock user if provided, otherwise get authenticated user
+      let userId: string | undefined;
+      
+      if (mockUserId) {
+        userId = mockUserId;
+        console.log('[MCPChat] Using mock user for action:', mockUserId);
+      } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        userId = user?.id;
+        console.log('[MCPChat] Using authenticated user for action:', userId);
+      }
       
       // Include user_id in payload for backend operations (esp. payment)
       const enrichedPayload = userId ? { ...payload, user_id: userId } : payload;
@@ -183,11 +204,20 @@ export function MCPChat() {
 
   return (
     <div className="flex flex-col h-[600px] gap-4">
-      {/* Session Info */}
+      {/* Session Info & Auth Status */}
       <div className="flex items-center gap-2 px-2">
         <Badge variant="outline" className="text-xs">
           Session: {sessionId.slice(-8)}
         </Badge>
+        {mockUserId ? (
+          <Badge variant="default" className="text-xs">
+            🔐 Mock User: {mockUserEmail}
+          </Badge>
+        ) : (
+          <Badge variant="secondary" className="text-xs">
+            🔓 Unauthenticated
+          </Badge>
+        )}
         {loading && (
           <Badge variant="secondary" className="text-xs">
             <Loader2 className="w-3 h-3 mr-1 animate-spin" />

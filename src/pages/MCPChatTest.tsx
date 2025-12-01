@@ -19,7 +19,14 @@ export default function MCPChatTest() {
   const [backendInfo, setBackendInfo] = useState<any>(null);
   const [isRefreshingCache, setIsRefreshingCache] = useState(false);
   const [isSyncingBookeo, setIsSyncingBookeo] = useState(false);
+  const [mockAuthEnabled, setMockAuthEnabled] = useState(false);
   const { toast } = useToast();
+
+  // Mock test user for authenticated flow testing
+  const mockUser = mockAuthEnabled ? {
+    id: 'test-user-00000001',
+    email: 'testuser@signupassist.dev'
+  } : null;
 
   useEffect(() => {
     fetch(`${MCP_BASE_URL}/identity`)
@@ -129,7 +136,15 @@ export default function MCPChatTest() {
       <div className="mb-8 space-y-4">
         <div className="flex items-center justify-between">
           <h1 className="text-4xl font-bold">SignupAssist — MCP Test Chat</h1>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-4">
+            <Button
+              onClick={() => setMockAuthEnabled(!mockAuthEnabled)}
+              variant={mockAuthEnabled ? "default" : "outline"}
+              size="sm"
+            >
+              {mockAuthEnabled ? "🔐 Authenticated" : "🔓 Unauthenticated"}
+            </Button>
+            <div className="flex gap-2">
             <Button
               onClick={() => handleSyncBookeo('aim-design')}
               disabled={isSyncingBookeo}
@@ -154,8 +169,17 @@ export default function MCPChatTest() {
               <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshingCache ? 'animate-spin' : ''}`} />
               {isRefreshingCache ? 'Refreshing...' : 'Refresh Cache'}
             </Button>
+            </div>
           </div>
         </div>
+        
+        {mockAuthEnabled && (
+          <Card className="p-3 bg-blue-500/10 border-blue-500">
+            <p className="text-sm text-blue-700 dark:text-blue-400">
+              <strong>Mock Auth Enabled:</strong> Testing as {mockUser?.email} (ID: {mockUser?.id})
+            </p>
+          </Card>
+        )}
         
         <DeploymentStatusMonitor />
         
@@ -193,7 +217,10 @@ export default function MCPChatTest() {
       </div>
 
       <Elements stripe={stripePromise}>
-        <MCPChat />
+        <MCPChat 
+          mockUserId={mockUser?.id}
+          mockUserEmail={mockUser?.email}
+        />
       </Elements>
     </div>
   );
