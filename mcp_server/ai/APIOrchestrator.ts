@@ -901,7 +901,11 @@ export default class APIOrchestrator implements IOrchestrator {
       }
 
       // Step 3: Charge $20 success fee via MCP tool (audit-compliant)
-      Logger.info("[confirmPayment] Charging success fee...");
+      Logger.info("[confirmPayment] About to charge Stripe", { 
+        userId, 
+        contextUserId: context.user_id,
+        payloadUserId: payload.user_id 
+      });
       
       if (!userId) {
         Logger.warn("[confirmPayment] No user_id - cannot charge success fee");

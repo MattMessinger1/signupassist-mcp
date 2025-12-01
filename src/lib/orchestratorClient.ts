@@ -137,7 +137,14 @@ export async function sendAction(
   const res = await fetch(`${ORCHESTRATOR_BASE}/orchestrator/chat`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ action, payload, sessionId, userJwt, userTimezone }),
+    body: JSON.stringify({ 
+      action, 
+      payload, 
+      sessionId, 
+      userJwt, 
+      userTimezone,
+      user_id: payload?.user_id  // Extract and send at top level for server
+    }),
   });
 
   if (!res.ok) {
