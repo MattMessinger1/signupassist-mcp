@@ -281,6 +281,18 @@ export default class APIOrchestrator implements IOrchestrator {
         return extractNumber(a.title || '') - extractNumber(b.title || '');
       });
       
+      // Filter out programs whose start time has already passed
+      const now = new Date();
+      const upcomingPrograms = sortedPrograms.filter((prog: any) => {
+        if (!prog.earliest_slot_time) return true; // Keep programs without slot time (no filtering)
+        const slotTime = new Date(prog.earliest_slot_time);
+        return slotTime >= now; // Only keep future programs
+      });
+      
+      if (upcomingPrograms.length === 0) {
+        return this.formatError("No upcoming programs available at this time. All current sessions have already started.");
+      }
+      
       // Store programs in context
       this.updateContext(sessionId, {
         step: FlowStep.BROWSE,
@@ -288,7 +300,7 @@ export default class APIOrchestrator implements IOrchestrator {
       });
 
       // Build program cards with timing badges and cleaned descriptions
-      const cards: CardSpec[] = sortedPrograms.map((prog: any) => {
+      const cards: CardSpec[] = upcomingPrograms.map((prog: any) => {
         // Determine booking status at runtime (don't trust stale cached data)
         const determineBookingStatus = (program: any): string => {
           const hasAvailableSlots = program.next_available_slot || (program.available_slots && program.available_slots > 0);
@@ -350,7 +362,7 @@ export default class APIOrchestrator implements IOrchestrator {
       // Use Design DNA-compliant message template
       const message = getAPIProgramsReadyMessage({
         provider_name: orgRef === "aim-design" ? "AIM Design" : orgRef,
-        program_count: programs.length
+        program_count: upcomingPrograms.length
       });
 
       const orchestratorResponse: OrchestratorResponse = {
@@ -807,6 +819,28 @@ export default class APIOrchestrator implements IOrchestrator {
         delegate_email: delegate_data.delegate_email || delegate_data.email,
         num_participants_in_array: participant_data.length
       });
+
+      // PART 2.5: Validate event hasn't started yet
+      const slotTime = context.selectedProgram?.earliest_slot_time;
+      if (slotTime) {
+        const slotDate = new Date(slotTime);
+        const now = new Date();
+        
+        if (slotDate < now) {
+          const timezoneStr = context.userTimezone || 'America/Chicago';
+          const formattedSlotTime = this.formatTimeForUser(slotTime, timezoneStr);
+          
+          Logger.warn("[confirmPayment] Event has already started", {
+            slot_time: slotTime,
+            formatted: formattedSlotTime,
+            now: now.toISOString()
+          });
+          
+          return this.formatError(
+            `⏰ This class has already started at ${formattedSlotTime}. Please browse programs again to see available upcoming sessions.`
+          );
+        }
+      }
 
       // PART 3: Email-based user_id lookup if not in context
       let userId = context.user_id || payload.user_id;
