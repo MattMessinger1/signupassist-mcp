@@ -27,6 +27,7 @@ import {
 } from "./apiMessageTemplates.js";
 import { stripHtml } from "../lib/extractionUtils.js";
 import { formatInTimeZone } from "date-fns-tz";
+import { createClient } from '@supabase/supabase-js';
 
 // Simple flow steps for API-first providers
 enum FlowStep {
@@ -92,7 +93,6 @@ export default class APIOrchestrator implements IOrchestrator {
    * Creates client on-demand with service role key
    */
   private getSupabaseClient() {
-    const { createClient } = require('@supabase/supabase-js');
     const supabaseUrl = process.env.SUPABASE_URL!;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
     return createClient(supabaseUrl, supabaseServiceKey);
