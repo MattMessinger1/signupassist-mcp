@@ -193,6 +193,10 @@ export function MCPChat({ mockUserId, mockUserEmail, forceUnauthenticated }: MCP
       if (mockUserId) {
         userId = mockUserId;
         console.log('[MCPChat] Using mock user:', mockUserId);
+      } else if (forceUnauthenticated) {
+        // Truly unauthenticated - don't get real user
+        userId = undefined;
+        console.log('[MCPChat] Force unauthenticated - no user_id');
       } else {
         const { data: { user } } = await supabase.auth.getUser();
         userId = user?.id;
@@ -257,6 +261,10 @@ export function MCPChat({ mockUserId, mockUserEmail, forceUnauthenticated }: MCP
       if (mockUserId) {
         userId = mockUserId;
         console.log('[MCPChat] Using mock user for action:', mockUserId);
+      } else if (forceUnauthenticated) {
+        // Truly unauthenticated - don't get real user
+        userId = undefined;
+        console.log('[MCPChat] Force unauthenticated - no user_id for action');
       } else {
         const { data: { user } } = await supabase.auth.getUser();
         userId = user?.id;

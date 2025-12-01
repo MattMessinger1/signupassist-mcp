@@ -884,7 +884,7 @@ export default class APIOrchestrator implements IOrchestrator {
             org_ref: orgRef,
             scopes: ['PLATFORM_SUCCESS_FEE', 'REGISTER'],
             program_ref: programRef,
-            valid_duration_minutes: 5  // Short-lived for immediate booking
+            valid_until: new Date(Date.now() + 5 * 60 * 1000).toISOString()  // 5 minutes from now
           });
           
           if (mandateResponse.success && mandateResponse.data?.mandate_id) {
