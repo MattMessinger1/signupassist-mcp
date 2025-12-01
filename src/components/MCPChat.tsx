@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Loader2, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ResponsibleDelegateForm } from "./chat-test/ResponsibleDelegateForm";
@@ -373,8 +374,37 @@ export function MCPChat({ mockUserId, mockUserEmail }: MCPChatProps = {}) {
                 </div>
               )}
 
-              {/* Render Responsible Delegate Form - only if not already submitted */}
-              {msg.metadata?.signupForm && !submittedFormIds.has(idx) && (
+              {/* Render Fullscreen Form (ChatGPT Compliance) */}
+              {msg.metadata?.componentType === 'fullscreen_form' && !submittedFormIds.has(idx) && (
+                <Sheet open={true} onOpenChange={(open) => {
+                  if (!open) {
+                    // Don't allow closing without submitting - ChatGPT fullscreen pattern
+                  }
+                }}>
+                  <SheetContent side="bottom" className="h-[90vh] overflow-y-auto">
+                    <SheetHeader>
+                      <SheetTitle>{msg.metadata.program_name || "Registration Form"}</SheetTitle>
+                      <SheetDescription>
+                        Complete the form below to continue with your registration.
+                      </SheetDescription>
+                    </SheetHeader>
+                    <div className="mt-6">
+                      <ResponsibleDelegateForm
+                        schema={msg.metadata.signupForm}
+                        programTitle={msg.metadata.program_ref || "Selected Program"}
+                        onSubmit={(data) => {
+                          // Mark this form as submitted
+                          setSubmittedFormIds(prev => new Set(prev).add(idx));
+                          handleCardAction('submit_form', { formData: data });
+                        }}
+                      />
+                    </div>
+                  </SheetContent>
+                </Sheet>
+              )}
+              
+              {/* Legacy inline form - kept for backward compatibility */}
+              {msg.metadata?.signupForm && !msg.metadata?.componentType && !submittedFormIds.has(idx) && (
                 <ResponsibleDelegateForm
                   schema={msg.metadata.signupForm}
                   programTitle={msg.metadata.program_ref || "Selected Program"}

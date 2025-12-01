@@ -473,10 +473,12 @@ export default class APIOrchestrator implements IOrchestrator {
       
       message += "\n\n**As the Responsible Delegate**, you'll provide your information first, then details for each participant.";
 
-      // Return form schema directly from MCP tool (two-tier structure from database)
+      // Return form schema with fullscreen mode for ChatGPT compliance
       const formResponse: OrchestratorResponse = {
         message,
         metadata: {
+          componentType: 'fullscreen_form', // Triggers fullscreen mode in ChatGPT
+          displayMode: 'fullscreen',
           signupForm: formDiscoveryResult.data?.program_questions || {},
           program_ref: programRef,
           org_ref: orgRef,
