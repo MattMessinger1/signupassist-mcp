@@ -220,6 +220,7 @@ export default function MCPChatTest() {
         <MCPChat 
           mockUserId={mockUser?.id}
           mockUserEmail={mockUser?.email}
+          forceUnauthenticated={!mockAuthEnabled}
         />
       </Elements>
     </div>
