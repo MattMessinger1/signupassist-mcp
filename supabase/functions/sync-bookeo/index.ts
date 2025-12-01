@@ -266,6 +266,9 @@ Deno.serve(async (req) => {
           active: product.active,
           available_slots: slots.length,
           
+          // Store Bookeo's booking window limits for compliance
+          booking_limits: (product as any).bookingLimits || null,
+          
           // Set & Forget: Extract timing data for auto-registration
           earliest_slot_time: slots[0]?.startTime || null,  // When booking window opens
           next_available_slot: slots.find(s => s.numSeatsAvailable > 0)?.startTime || null,  // First available with seats
