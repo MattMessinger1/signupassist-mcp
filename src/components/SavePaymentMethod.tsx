@@ -9,11 +9,15 @@ import { CheckCircle, CreditCard, Loader2 } from 'lucide-react';
 interface SavePaymentMethodProps {
   onPaymentMethodSaved?: () => void;
   hasPaymentMethod?: boolean;
+  mockUserId?: string;
+  mockUserEmail?: string;
 }
 
 export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
   onPaymentMethodSaved,
   hasPaymentMethod = false,
+  mockUserId,
+  mockUserEmail,
 }) => {
   console.log('[SavePaymentMethod] 🚀 COMPONENT RENDER STARTED', { hasPaymentMethod, timestamp: new Date().toISOString() });
 
@@ -72,21 +76,31 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
 
         console.log('[SavePaymentMethod] ✅ Payment method created:', paymentMethod.id);
 
-        const {
-          data: { user },
-        } = await supabase.auth.getUser();
+        // Use mock user if provided, otherwise get authenticated user
+        let userId: string;
+        let userEmail: string;
         
-        if (!user) {
-          throw new Error('User not authenticated');
+        if (mockUserId && mockUserEmail) {
+          userId = mockUserId;
+          userEmail = mockUserEmail;
+          console.log('[SavePaymentMethod] Using mock user:', userId);
+        } else {
+          const { data: { user } } = await supabase.auth.getUser();
+          
+          if (!user) {
+            throw new Error('User not authenticated');
+          }
+          
+          userId = user.id;
+          userEmail = user.email!;
+          console.log('[SavePaymentMethod] User authenticated:', userId);
         }
-
-        console.log('[SavePaymentMethod] User authenticated:', user.id);
 
         // Get/create customer
         const { data: billingData } = await supabase
           .from('user_billing')
           .select('stripe_customer_id')
-          .eq('user_id', user.id)
+          .eq('user_id', userId)
           .maybeSingle();
 
         let customerId = billingData?.stripe_customer_id;
@@ -113,7 +127,7 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
         // Save payment method via Edge Function
         console.log('[SavePaymentMethod] 📡 Invoking save-payment-method Edge Function...', {
           url: (supabase as any)?.functions?.url,
-          user_id: user.id,
+          user_id: userId,
           payment_method_id: paymentMethod.id,
           customer_id: customerId,
         });
@@ -149,7 +163,7 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
         const { error: updateError } = await supabase
           .from('user_billing')
           .update({ default_payment_method_id: paymentMethod.id })
-          .eq('user_id', user.id);
+          .eq('user_id', userId);
 
         if (updateError) {
           console.error('[SavePaymentMethod] Failed to update billing table:', updateError);

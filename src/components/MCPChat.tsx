@@ -9,6 +9,7 @@ import { Loader2, Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ResponsibleDelegateForm } from "./chat-test/ResponsibleDelegateForm";
 import { SavePaymentMethod } from "./SavePaymentMethod";
+import { AuthGateModal } from "./AuthGateModal";
 import { supabase } from "@/integrations/supabase/client";
 
 interface CardData {
@@ -60,6 +61,10 @@ export function MCPChat({ mockUserId, mockUserEmail }: MCPChatProps = {}) {
   const [sessionId] = useState(`lovable-test-${Date.now()}`);
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [userTimezone, setUserTimezone] = useState<string>('UTC');
+  const [showAuthGate, setShowAuthGate] = useState(false);
+  const [pendingPaymentMetadata, setPendingPaymentMetadata] = useState<any>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [submittedFormIds, setSubmittedFormIds] = useState<Set<number>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -75,12 +80,67 @@ export function MCPChat({ mockUserId, mockUserEmail }: MCPChatProps = {}) {
     }
   }, []);
 
+  // Check authentication status when payment setup is triggered
+  useEffect(() => {
+    const checkAuth = async () => {
+      if (mockUserId) {
+        setIsAuthenticated(true);
+        return;
+      }
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      setIsAuthenticated(!!user);
+      
+      // If payment setup is pending and user is not authenticated, show auth gate
+      const hasPaymentSetupPending = messages.some(
+        msg => msg.metadata?.componentType === 'payment_setup'
+      );
+      
+      if (hasPaymentSetupPending && !user) {
+        const paymentMsg = messages.find(msg => msg.metadata?.componentType === 'payment_setup');
+        if (paymentMsg) {
+          console.log('[MCPChat] Payment setup detected for unauthenticated user - showing auth gate');
+          setPendingPaymentMetadata(paymentMsg.metadata);
+          setShowAuthGate(true);
+        }
+      }
+    };
+    
+    checkAuth();
+  }, [messages, mockUserId]);
+
   // Auto-scroll to bottom when messages change
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages, loading]);
+
+  // Listen for auth state changes
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[MCPChat] Auth state changed:', event, session?.user?.id);
+      
+      if (event === 'SIGNED_IN' && pendingPaymentMetadata) {
+        console.log('[MCPChat] User signed in, continuing with pending payment');
+        setShowAuthGate(false);
+        
+        // Add a message showing the payment form now that user is authenticated
+        setMessages((prev) => [
+          ...prev,
+          { 
+            role: "assistant", 
+            content: "✅ Account created! Now let's set up your payment method.",
+            metadata: pendingPaymentMetadata
+          },
+        ]);
+        
+        setPendingPaymentMetadata(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [pendingPaymentMetadata]);
 
   async function send(userMessage: string) {
     if (!userMessage.trim() || loading) return;
@@ -313,31 +373,48 @@ export function MCPChat({ mockUserId, mockUserEmail }: MCPChatProps = {}) {
                 </div>
               )}
 
-              {/* Render Responsible Delegate Form */}
-              {msg.metadata?.signupForm && (
+              {/* Render Responsible Delegate Form - only if not already submitted */}
+              {msg.metadata?.signupForm && !submittedFormIds.has(idx) && (
                 <ResponsibleDelegateForm
                   schema={msg.metadata.signupForm}
                   programTitle={msg.metadata.program_ref || "Selected Program"}
-                  onSubmit={(data) => handleCardAction('submit_form', { formData: data })}
+                  onSubmit={(data) => {
+                    // Mark this form as submitted
+                    setSubmittedFormIds(prev => new Set(prev).add(idx));
+                    handleCardAction('submit_form', { formData: data });
+                  }}
                 />
               )}
 
-              {/* Render Payment Setup Form */}
-              {msg.metadata?.componentType === 'payment_setup' && (
+              {/* Render Payment Setup Form - only if authenticated */}
+              {msg.metadata?.componentType === 'payment_setup' && isAuthenticated && (
                 <div className="mt-4 mr-12">
                   <SavePaymentMethod
+                    mockUserId={mockUserId}
+                    mockUserEmail={mockUserEmail}
                     onPaymentMethodSaved={async () => {
                       console.log('[MCPChat] Payment method saved');
                       
-                      // Get user info
-                      const { data: { user } } = await supabase.auth.getUser();
-                      if (!user) {
-                        toast({
-                          title: "Error",
-                          description: "User not authenticated",
-                          variant: "destructive"
-                        });
-                        return;
+                      // Get user info (use mock if provided)
+                      let userId: string | undefined;
+                      let userEmail: string | undefined;
+                      
+                      if (mockUserId && mockUserEmail) {
+                        userId = mockUserId;
+                        userEmail = mockUserEmail;
+                        console.log('[MCPChat] Using mock user for payment callback:', userId);
+                      } else {
+                        const { data: { user } } = await supabase.auth.getUser();
+                        if (!user) {
+                          toast({
+                            title: "Error",
+                            description: "User not authenticated",
+                            variant: "destructive"
+                          });
+                          return;
+                        }
+                        userId = user.id;
+                        userEmail = user.email!;
                       }
 
                       // Get session token
@@ -354,12 +431,11 @@ export function MCPChat({ mockUserId, mockUserEmail }: MCPChatProps = {}) {
                       // PART 4: Dynamic next action based on metadata
                       const nextAction = msg.metadata?.next_action;
                       console.log('[MCPChat] Next action from metadata:', nextAction);
-                      
                       if (nextAction === 'confirm_payment') {
                         // Immediate registration - trigger booking directly
                         console.log('[MCPChat] Triggering immediate booking after payment setup');
                         await handleCardAction('confirm_payment', {
-                          user_id: user.id,
+                          user_id: userId,
                           ...msg.metadata?.schedulingData
                         });
                       } else if (nextAction === 'confirm_scheduled_registration') {
@@ -370,7 +446,7 @@ export function MCPChat({ mockUserId, mockUserEmail }: MCPChatProps = {}) {
                         const { data: billingData } = await supabase
                           .from('user_billing')
                           .select('default_payment_method_id')
-                          .eq('user_id', user.id)
+                          .eq('user_id', userId)
                           .maybeSingle();
 
                         const payment_method_id = billingData?.default_payment_method_id;
@@ -383,11 +459,26 @@ export function MCPChat({ mockUserId, mockUserEmail }: MCPChatProps = {}) {
                           return;
                         }
 
+                        // Get session token (only if real user, not mock)
+                        let accessToken: string | undefined;
+                        if (!mockUserId) {
+                          const { data: { session } } = await supabase.auth.getSession();
+                          if (!session) {
+                            toast({
+                              title: "Error",
+                              description: "No active session",
+                              variant: "destructive"
+                            });
+                            return;
+                          }
+                          accessToken = session.access_token;
+                        }
+
                         await handleCardAction('setup_payment_method', {
                           payment_method_id,
-                          user_id: user.id,
-                          email: user.email,
-                          user_jwt: session.access_token,
+                          user_id: userId,
+                          email: userEmail,
+                          user_jwt: accessToken,
                           schedulingData: msg.metadata?.schedulingData
                         });
                       } else {
@@ -413,6 +504,16 @@ export function MCPChat({ mockUserId, mockUserEmail }: MCPChatProps = {}) {
           )}
         </div>
       </ScrollArea>
+
+      {/* Auth Gate Modal */}
+      <AuthGateModal
+        isOpen={showAuthGate}
+        onClose={() => setShowAuthGate(false)}
+        onAuthSuccess={() => {
+          console.log('[MCPChat] Auth success callback triggered');
+          // The auth state change listener will handle continuing the flow
+        }}
+      />
 
       {/* Input Area */}
       <div className="flex gap-2">
