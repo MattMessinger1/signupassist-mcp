@@ -649,6 +649,18 @@ export default class APIOrchestrator implements IOrchestrator {
       }
       // If userId is undefined, hasPaymentMethod stays false (unauthenticated users don't have saved cards)
       
+      // Always store form data in context regardless of payment method status
+      // This ensures confirmPayment can access it from context even if payload is missing
+      this.updateContext(sessionId, {
+        step: FlowStep.PAYMENT,
+        formData: {
+          delegate_data: formData.delegate,
+          participant_data: formData.participants,
+          num_participants: numParticipants,
+          event_id: context.selectedProgram?.first_available_event_id
+        }
+      });
+      
       if (!hasPaymentMethod) {
         Logger.info('[submitForm] No payment method found - prompting user to add card');
         
@@ -719,16 +731,7 @@ export default class APIOrchestrator implements IOrchestrator {
       }
     };
 
-    // Store form data in context for confirmPayment to access
-    this.updateContext(sessionId, {
-      step: FlowStep.PAYMENT,
-      formData: {
-        delegate_data: formData.delegate,
-        participant_data: formData.participants,
-        num_participants: numParticipants,
-        event_id: context.selectedProgram?.first_available_event_id
-      }
-    });
+    // Form data already stored in context earlier (before payment method check)
 
     // Validate Design DNA compliance
     const validation = validateDesignDNA(paymentResponse, {
@@ -761,11 +764,14 @@ export default class APIOrchestrator implements IOrchestrator {
     try {
       Logger.info("[confirmPayment] Starting immediate booking flow");
 
-      // Get booking data from context (stored by submitForm)
-      const formData = context.formData;
+      // Get booking data from payload (primary) or context (fallback)
+      const formData = payload.formData || context.formData;
       
       // DEBUG: Log the entire formData object to see what we're working with
-      Logger.info("[confirmPayment] 🔍 Full formData from context:", {
+      Logger.info("[confirmPayment] 🔍 FormData source:", {
+        fromPayload: !!payload.formData,
+        fromContext: !!context.formData,
+        hasFormData: !!formData,
         formData: JSON.stringify(formData, null, 2),
         keys: formData ? Object.keys(formData) : []
       });
