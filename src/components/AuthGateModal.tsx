@@ -44,6 +44,7 @@ export function AuthGateModal({ isOpen, onClose, onAuthSuccess, delegateEmail }:
         <div className="mt-4">
           <Auth
             supabaseClient={supabase}
+            view="sign_up"
             appearance={{ 
               theme: ThemeSupa,
               variables: {
