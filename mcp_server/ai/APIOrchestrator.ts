@@ -779,7 +779,7 @@ export default class APIOrchestrator implements IOrchestrator {
       const delegate_data = formData?.delegate_data;
       const participant_data = formData?.participant_data;
       const num_participants = formData?.num_participants;
-      const event_id = formData?.event_id;
+      const event_id = payload.event_id || formData?.event_id;
       
       const programName = context.selectedProgram?.title || "program";
       const programRef = context.selectedProgram?.program_ref;
