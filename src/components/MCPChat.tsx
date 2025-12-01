@@ -118,6 +118,18 @@ export function MCPChat({ mockUserId, mockUserEmail }: MCPChatProps = {}) {
     }
   }, [messages, loading]);
 
+  // Additional scroll trigger for payment form rendering
+  useEffect(() => {
+    const lastPaymentMessage = messages
+      .slice()
+      .reverse()
+      .find(msg => msg.metadata?.componentType === 'payment_setup');
+    
+    if (lastPaymentMessage && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
   // Listen for auth state changes
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
