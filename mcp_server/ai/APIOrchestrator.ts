@@ -116,16 +116,24 @@ export default class APIOrchestrator implements IOrchestrator {
   /**
    * Main entry point: process user message or action
    * @param userTimezone - User's IANA timezone (e.g., 'America/Chicago')
+   * @param userId - Optional authenticated user ID (from frontend or Auth0 JWT)
    */
   async generateResponse(
     input: string,
     sessionId: string,
     action?: string,
     payload?: any,
-    userTimezone?: string
+    userTimezone?: string,
+    userId?: string
   ): Promise<OrchestratorResponse> {
     try {
       const context = this.getContext(sessionId);
+      
+      // Store user ID and timezone in context
+      if (userId) {
+        this.updateContext(sessionId, { user_id: userId });
+        Logger.info('[APIOrchestrator] User authenticated', { userId });
+      }
       
       // Store user timezone in context
       if (userTimezone && userTimezone !== context.userTimezone) {
