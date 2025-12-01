@@ -809,13 +809,8 @@ export default class APIOrchestrator implements IOrchestrator {
         
         if (delegateEmail) {
           const supabase = this.getSupabaseClient();
-          const { data: billingData } = await supabase
-            .from('user_billing')
-            .select('user_id')
-            .eq('user_id', supabase.auth.admin.getUserByEmail(delegateEmail).data?.user?.id)
-            .maybeSingle();
           
-          // Alternative: Direct query by finding user from auth
+          // Find user by email via admin API
           const { data: { users }, error } = await supabase.auth.admin.listUsers();
           const matchingUser = users?.find((u: any) => u.email === delegateEmail);
           
