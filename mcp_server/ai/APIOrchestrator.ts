@@ -622,6 +622,43 @@ export default class APIOrchestrator implements IOrchestrator {
       : null;
     const isFutureBooking = bookingStatus === 'opens_later' && earliestSlot && earliestSlot > new Date();
 
+    // PART 1: Check if user has saved payment method for IMMEDIATE registrations
+    if (!isFutureBooking && userId) {
+      const supabase = this.getSupabaseClient();
+      const { data: billingData } = await supabase
+        .from('user_billing')
+        .select('default_payment_method_id')
+        .eq('user_id', userId)
+        .maybeSingle();
+      
+      const hasPaymentMethod = !!billingData?.default_payment_method_id;
+      
+      if (!hasPaymentMethod) {
+        Logger.info('[submitForm] No payment method found - prompting user to add card');
+        
+        // User needs to set up payment method first
+        return {
+          message: `${message}\n\n💳 First, let's save your payment method securely. You'll only be charged if registration succeeds!`,
+          metadata: {
+            componentType: "payment_setup",
+            next_action: "confirm_payment",  // <-- Different from scheduled flow!
+            schedulingData: {
+              event_id: context.selectedProgram?.first_available_event_id,
+              total_amount: grandTotal,
+              program_fee: formattedTotal,
+              formData: {
+                delegate_data: formData.delegate,
+                participant_data: formData.participants,
+                num_participants: numParticipants
+              }
+            }
+          }
+        };
+      }
+      
+      Logger.info('[submitForm] Payment method found - proceeding to payment authorization');
+    }
+
     // Build conditional payment button
     let buttons: any[] = [];
     let paymentMessage = message;
@@ -745,9 +782,39 @@ export default class APIOrchestrator implements IOrchestrator {
         program_ref: programRef, 
         org_ref: orgRef,
         num_participants,
-        delegate_email: delegate_data.email,
+        delegate_email: delegate_data.delegate_email || delegate_data.email,
         num_participants_in_array: participant_data.length
       });
+
+      // PART 3: Email-based user_id lookup if not in context
+      let userId = context.user_id || payload.user_id;
+      
+      if (!userId) {
+        Logger.warn("[confirmPayment] No user_id in context or payload - attempting email lookup");
+        const delegateEmail = delegate_data.delegate_email || delegate_data.email;
+        
+        if (delegateEmail) {
+          const supabase = this.getSupabaseClient();
+          const { data: billingData } = await supabase
+            .from('user_billing')
+            .select('user_id')
+            .eq('user_id', supabase.auth.admin.getUserByEmail(delegateEmail).data?.user?.id)
+            .maybeSingle();
+          
+          // Alternative: Direct query by finding user from auth
+          const { data: { users }, error } = await supabase.auth.admin.listUsers();
+          const matchingUser = users?.find((u: any) => u.email === delegateEmail);
+          
+          if (matchingUser) {
+            userId = matchingUser.id;
+            Logger.info("[confirmPayment] ✅ User ID found via email lookup:", userId);
+            // Store in context for future use
+            this.updateContext(sessionId, { user_id: userId });
+          } else {
+            Logger.warn("[confirmPayment] Could not find user_id via email lookup");
+          }
+        }
+      }
 
       // Map form field names to Bookeo API format (API-first, ChatGPT compliant)
       const mappedDelegateData = {
@@ -788,19 +855,39 @@ export default class APIOrchestrator implements IOrchestrator {
       const { booking_number, start_time } = bookingResponse.data;
       Logger.info("[confirmPayment] ✅ Booking confirmed:", { booking_number });
 
-      // Step 2: Create mandate for success fee
-      // TODO: Integrate mandate creation when mandate MCP tools are available
-      const mandate_id = `temp_mandate_${Date.now()}`;
-      Logger.info("[confirmPayment] Using temporary mandate ID:", mandate_id);
+      // PART 5: Create mandate for immediate booking (audit compliance)
+      Logger.info("[confirmPayment] Creating mandate for audit trail...");
+      let mandate_id: string | undefined;
+      
+      if (userId) {
+        try {
+          const mandateResponse = await this.invokeMCPTool('mandates.create', {
+            user_id: userId,
+            provider: 'bookeo',
+            org_ref: orgRef,
+            scopes: ['PLATFORM_SUCCESS_FEE', 'REGISTER'],
+            program_ref: programRef,
+            valid_duration_minutes: 5  // Short-lived for immediate booking
+          });
+          
+          if (mandateResponse.success && mandateResponse.data?.mandate_id) {
+            mandate_id = mandateResponse.data.mandate_id;
+            Logger.info("[confirmPayment] ✅ Mandate created:", mandate_id);
+          } else {
+            Logger.warn("[confirmPayment] Mandate creation failed (non-fatal):", mandateResponse.error);
+          }
+        } catch (mandateError) {
+          Logger.warn("[confirmPayment] Mandate creation exception (non-fatal):", mandateError);
+        }
+      } else {
+        Logger.warn("[confirmPayment] No userId - skipping mandate creation");
+      }
 
       // Step 3: Charge $20 success fee via MCP tool (audit-compliant)
       Logger.info("[confirmPayment] Charging success fee...");
       
-      // Get user_id from context (set by submitForm during user lookup)
-      const userId = context.user_id;
-      
       if (!userId) {
-        Logger.warn("[confirmPayment] No user_id in context - cannot charge success fee");
+        Logger.warn("[confirmPayment] No user_id - cannot charge success fee");
         // Don't fail the booking, just log warning
       } else {
         try {

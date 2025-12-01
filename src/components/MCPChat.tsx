@@ -297,7 +297,7 @@ export function MCPChat() {
                 <div className="mt-4 mr-12">
                   <SavePaymentMethod
                     onPaymentMethodSaved={async () => {
-                      console.log('[MCPChat] Payment method saved, triggering setup_payment_method action');
+                      console.log('[MCPChat] Payment method saved');
                       
                       // Get user info
                       const { data: { user } } = await supabase.auth.getUser();
@@ -321,31 +321,48 @@ export function MCPChat() {
                         return;
                       }
 
-                      // Get payment method from Stripe
-                      const { data: billingData } = await supabase
-                        .from('user_billing')
-                        .select('default_payment_method_id')
-                        .eq('user_id', user.id)
-                        .maybeSingle();
-
-                      const payment_method_id = billingData?.default_payment_method_id;
-                      if (!payment_method_id) {
-                        toast({
-                          title: "Error",
-                          description: "Payment method not found",
-                          variant: "destructive"
+                      // PART 4: Dynamic next action based on metadata
+                      const nextAction = msg.metadata?.next_action;
+                      console.log('[MCPChat] Next action from metadata:', nextAction);
+                      
+                      if (nextAction === 'confirm_payment') {
+                        // Immediate registration - trigger booking directly
+                        console.log('[MCPChat] Triggering immediate booking after payment setup');
+                        await handleCardAction('confirm_payment', {
+                          user_id: user.id,
+                          ...msg.metadata?.schedulingData
                         });
-                        return;
-                      }
+                      } else if (nextAction === 'confirm_scheduled_registration') {
+                        // Scheduled registration - existing Set & Forget flow
+                        console.log('[MCPChat] Triggering scheduled registration after payment setup');
+                        
+                        // Get payment method from Stripe
+                        const { data: billingData } = await supabase
+                          .from('user_billing')
+                          .select('default_payment_method_id')
+                          .eq('user_id', user.id)
+                          .maybeSingle();
 
-                      // Trigger MCP action with payment method
-                      await handleCardAction('setup_payment_method', {
-                        payment_method_id,
-                        user_id: user.id,
-                        email: user.email,
-                        user_jwt: session.access_token,
-                        schedulingData: msg.metadata?.schedulingData
-                      });
+                        const payment_method_id = billingData?.default_payment_method_id;
+                        if (!payment_method_id) {
+                          toast({
+                            title: "Error",
+                            description: "Payment method not found",
+                            variant: "destructive"
+                          });
+                          return;
+                        }
+
+                        await handleCardAction('setup_payment_method', {
+                          payment_method_id,
+                          user_id: user.id,
+                          email: user.email,
+                          user_jwt: session.access_token,
+                          schedulingData: msg.metadata?.schedulingData
+                        });
+                      } else {
+                        console.warn('[MCPChat] Unknown next_action:', nextAction);
+                      }
                     }}
                   />
                 </div>
