@@ -66,6 +66,7 @@ export function MCPChat({ mockUserId, mockUserEmail }: MCPChatProps = {}) {
   const [pendingPaymentMetadata, setPendingPaymentMetadata] = useState<any>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [submittedFormIds, setSubmittedFormIds] = useState<Set<number>>(new Set());
+  const [paymentCompleted, setPaymentCompleted] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -416,110 +417,125 @@ export function MCPChat({ mockUserId, mockUserEmail }: MCPChatProps = {}) {
                 />
               )}
 
-              {/* Render Payment Setup Form - only if authenticated */}
-              {msg.metadata?.componentType === 'payment_setup' && isAuthenticated && (
-                <div className="mt-4 mr-12">
-                  <SavePaymentMethod
-                    mockUserId={mockUserId}
-                    mockUserEmail={mockUserEmail}
-                    onPaymentMethodSaved={async () => {
-                      console.log('[MCPChat] Payment method saved');
-                      
-                      // Get user info (use mock if provided)
-                      let userId: string | undefined;
-                      let userEmail: string | undefined;
-                      
-                      if (mockUserId && mockUserEmail) {
-                        userId = mockUserId;
-                        userEmail = mockUserEmail;
-                        console.log('[MCPChat] Using mock user for payment callback:', userId);
-                      } else {
-                        const { data: { user } } = await supabase.auth.getUser();
-                        if (!user) {
-                          toast({
-                            title: "Error",
-                            description: "User not authenticated",
-                            variant: "destructive"
-                          });
-                          return;
-                        }
-                        userId = user.id;
-                        userEmail = user.email!;
-                      }
+              {/* Show payment setup indicator in message */}
+              {msg.metadata?.componentType === 'payment_setup' && (
+                <Badge variant="secondary" className="mt-2">
+                  💳 Payment setup in progress...
+                </Badge>
+              )}
+            </div>
+          ))}
 
-                      // Get session token
-                      const { data: { session } } = await supabase.auth.getSession();
-                      if (!session) {
+          {/* Single Payment Setup Form (ChatGPT Compliance - only one CardElement allowed) */}
+          {(() => {
+            const lastPaymentMessage = messages
+              .slice()
+              .reverse()
+              .find(msg => msg.metadata?.componentType === 'payment_setup');
+            
+            return lastPaymentMessage && isAuthenticated && !paymentCompleted && (
+              <div className="mt-4 mr-12">
+                <SavePaymentMethod
+                  mockUserId={mockUserId}
+                  mockUserEmail={mockUserEmail}
+                  onPaymentMethodSaved={async () => {
+                    console.log('[MCPChat] Payment method saved');
+                    setPaymentCompleted(true);
+                    
+                    // Get user info (use mock if provided)
+                    let userId: string | undefined;
+                    let userEmail: string | undefined;
+                    
+                    if (mockUserId && mockUserEmail) {
+                      userId = mockUserId;
+                      userEmail = mockUserEmail;
+                      console.log('[MCPChat] Using mock user for payment callback:', userId);
+                    } else {
+                      const { data: { user } } = await supabase.auth.getUser();
+                      if (!user) {
                         toast({
                           title: "Error",
-                          description: "No active session",
+                          description: "User not authenticated",
+                          variant: "destructive"
+                        });
+                        return;
+                      }
+                      userId = user.id;
+                      userEmail = user.email!;
+                    }
+
+                    // Get session token
+                    const { data: { session } } = await supabase.auth.getSession();
+                    if (!session) {
+                      toast({
+                        title: "Error",
+                        description: "No active session",
+                        variant: "destructive"
+                      });
+                      return;
+                    }
+
+                    // PART 4: Dynamic next action based on metadata
+                    const nextAction = lastPaymentMessage.metadata?.next_action;
+                    console.log('[MCPChat] Next action from metadata:', nextAction);
+                    if (nextAction === 'confirm_payment') {
+                      // Immediate registration - trigger booking directly
+                      console.log('[MCPChat] Triggering immediate booking after payment setup');
+                      await handleCardAction('confirm_payment', {
+                        user_id: userId,
+                        ...lastPaymentMessage.metadata?.schedulingData
+                      });
+                    } else if (nextAction === 'confirm_scheduled_registration') {
+                      // Scheduled registration - existing Set & Forget flow
+                      console.log('[MCPChat] Triggering scheduled registration after payment setup');
+                      
+                      // Get payment method from Stripe
+                      const { data: billingData } = await supabase
+                        .from('user_billing')
+                        .select('default_payment_method_id')
+                        .eq('user_id', userId)
+                        .maybeSingle();
+
+                      const payment_method_id = billingData?.default_payment_method_id;
+                      if (!payment_method_id) {
+                        toast({
+                          title: "Error",
+                          description: "Payment method not found",
                           variant: "destructive"
                         });
                         return;
                       }
 
-                      // PART 4: Dynamic next action based on metadata
-                      const nextAction = msg.metadata?.next_action;
-                      console.log('[MCPChat] Next action from metadata:', nextAction);
-                      if (nextAction === 'confirm_payment') {
-                        // Immediate registration - trigger booking directly
-                        console.log('[MCPChat] Triggering immediate booking after payment setup');
-                        await handleCardAction('confirm_payment', {
-                          user_id: userId,
-                          ...msg.metadata?.schedulingData
-                        });
-                      } else if (nextAction === 'confirm_scheduled_registration') {
-                        // Scheduled registration - existing Set & Forget flow
-                        console.log('[MCPChat] Triggering scheduled registration after payment setup');
-                        
-                        // Get payment method from Stripe
-                        const { data: billingData } = await supabase
-                          .from('user_billing')
-                          .select('default_payment_method_id')
-                          .eq('user_id', userId)
-                          .maybeSingle();
-
-                        const payment_method_id = billingData?.default_payment_method_id;
-                        if (!payment_method_id) {
+                      // Get session token (only if real user, not mock)
+                      let accessToken: string | undefined;
+                      if (!mockUserId) {
+                        const { data: { session } } = await supabase.auth.getSession();
+                        if (!session) {
                           toast({
                             title: "Error",
-                            description: "Payment method not found",
+                            description: "No active session",
                             variant: "destructive"
                           });
                           return;
                         }
-
-                        // Get session token (only if real user, not mock)
-                        let accessToken: string | undefined;
-                        if (!mockUserId) {
-                          const { data: { session } } = await supabase.auth.getSession();
-                          if (!session) {
-                            toast({
-                              title: "Error",
-                              description: "No active session",
-                              variant: "destructive"
-                            });
-                            return;
-                          }
-                          accessToken = session.access_token;
-                        }
-
-                        await handleCardAction('setup_payment_method', {
-                          payment_method_id,
-                          user_id: userId,
-                          email: userEmail,
-                          user_jwt: accessToken,
-                          schedulingData: msg.metadata?.schedulingData
-                        });
-                      } else {
-                        console.warn('[MCPChat] Unknown next_action:', nextAction);
+                        accessToken = session.access_token;
                       }
-                    }}
-                  />
-                </div>
-              )}
-            </div>
-          ))}
+
+                      await handleCardAction('setup_payment_method', {
+                        payment_method_id,
+                        user_id: userId,
+                        email: userEmail,
+                        user_jwt: accessToken,
+                        schedulingData: lastPaymentMessage.metadata?.schedulingData
+                      });
+                    } else {
+                      console.warn('[MCPChat] Unknown next_action:', nextAction);
+                    }
+                  }}
+                />
+              </div>
+            );
+          })()}
           
           {loading && (
             <Card className="p-4 bg-secondary/10 mr-12">
