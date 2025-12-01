@@ -107,7 +107,12 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
 
         if (!customerId) {
           console.log('[SavePaymentMethod] Creating new Stripe customer...');
-          const { data: customerData, error: customerError } = await supabase.functions.invoke('create-stripe-customer');
+          const { data: customerData, error: customerError } = await supabase.functions.invoke('create-stripe-customer', {
+            body: {
+              user_id: userId,
+              email: userEmail,
+            },
+          });
           
           if (customerError) {
             throw new Error(`Failed to create customer: ${customerError.message}`);
