@@ -1,9 +1,9 @@
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Auth } from "@supabase/auth-ui-react";
 import { ThemeSupa } from "@supabase/auth-ui-shared";
 import { supabase } from "@/integrations/supabase/client";
 
-// Auth gate modal for lazy authentication at payment step
+// Auth gate modal for lazy authentication at payment step (ChatGPT fullscreen compliance)
 
 interface AuthGateModalProps {
   isOpen: boolean;
@@ -14,11 +14,15 @@ interface AuthGateModalProps {
 
 export function AuthGateModal({ isOpen, onClose, onAuthSuccess, delegateEmail }: AuthGateModalProps) {
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>Almost there! 🎉</DialogTitle>
-          <DialogDescription className="space-y-2 pt-2">
+    <Sheet open={isOpen} onOpenChange={(open) => {
+      if (!open) {
+        // Don't allow closing without completing auth - ChatGPT fullscreen pattern
+      }
+    }}>
+      <SheetContent side="bottom" className="h-[90vh] overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>Almost there! 🎉</SheetTitle>
+          <SheetDescription className="space-y-2 pt-2">
             <p>Create an account to complete your registration.</p>
             {delegateEmail && (
               <p className="text-sm font-medium pt-2">
@@ -39,9 +43,9 @@ export function AuthGateModal({ isOpen, onClose, onAuthSuccess, delegateEmail }:
                 <span>View registration history</span>
               </div>
             </div>
-          </DialogDescription>
-        </DialogHeader>
-        <div className="mt-4">
+          </SheetDescription>
+        </SheetHeader>
+        <div className="mt-6">
           <Auth
             supabaseClient={supabase}
             view="sign_up"
@@ -64,7 +68,7 @@ export function AuthGateModal({ isOpen, onClose, onAuthSuccess, delegateEmail }:
             }}
           />
         </div>
-      </DialogContent>
-    </Dialog>
+      </SheetContent>
+    </Sheet>
   );
 }
