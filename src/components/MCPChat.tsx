@@ -53,9 +53,10 @@ interface Message {
 interface MCPChatProps {
   mockUserId?: string;
   mockUserEmail?: string;
+  forceUnauthenticated?: boolean;  // When true, treat as unauthenticated regardless of Supabase session
 }
 
-export function MCPChat({ mockUserId, mockUserEmail }: MCPChatProps = {}) {
+export function MCPChat({ mockUserId, mockUserEmail, forceUnauthenticated }: MCPChatProps = {}) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -85,11 +86,33 @@ export function MCPChat({ mockUserId, mockUserEmail }: MCPChatProps = {}) {
   // Check authentication status when payment setup is triggered
   useEffect(() => {
     const checkAuth = async () => {
+      // If force unauthenticated mode, don't check real auth
+      if (forceUnauthenticated && !mockUserId) {
+        console.log('[MCPChat] Force unauthenticated mode - bypassing Supabase auth');
+        setIsAuthenticated(false);
+        
+        // Show auth gate if payment setup is pending
+        const hasPaymentSetupPending = messages.some(
+          msg => msg.metadata?.componentType === 'payment_setup'
+        );
+        
+        if (hasPaymentSetupPending) {
+          const paymentMsg = messages.find(msg => msg.metadata?.componentType === 'payment_setup');
+          if (paymentMsg) {
+            console.log('[MCPChat] Payment setup detected for unauthenticated user - showing auth gate');
+            setPendingPaymentMetadata(paymentMsg.metadata);
+            setShowAuthGate(true);
+          }
+        }
+        return;
+      }
+      
       if (mockUserId) {
         setIsAuthenticated(true);
         return;
       }
       
+      // Real auth check only when not in force-unauthenticated mode
       const { data: { user } } = await supabase.auth.getUser();
       setIsAuthenticated(!!user);
       
@@ -109,26 +132,23 @@ export function MCPChat({ mockUserId, mockUserEmail }: MCPChatProps = {}) {
     };
     
     checkAuth();
-  }, [messages, mockUserId]);
+  }, [messages, mockUserId, forceUnauthenticated]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages, loading]);
-
-  // Additional scroll trigger for payment form rendering
-  useEffect(() => {
-    const lastPaymentMessage = messages
-      .slice()
-      .reverse()
-      .find(msg => msg.metadata?.componentType === 'payment_setup');
+    // Use setTimeout to wait for DOM to update
+    const timer = setTimeout(() => {
+      if (scrollRef.current) {
+        // Scroll the last child into view instead of manipulating scrollTop
+        const lastChild = scrollRef.current.lastElementChild;
+        if (lastChild) {
+          lastChild.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
+      }
+    }, 100);
     
-    if (lastPaymentMessage && scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [messages]);
+    return () => clearTimeout(timer);
+  }, [messages, loading]);
 
   // Listen for auth state changes
   useEffect(() => {
@@ -444,6 +464,14 @@ export function MCPChat({ mockUserId, mockUserEmail }: MCPChatProps = {}) {
               .slice()
               .reverse()
               .find(msg => msg.metadata?.componentType === 'payment_setup');
+            
+            console.log('[MCPChat] Payment form render check:', {
+              hasPaymentMessage: !!lastPaymentMessage,
+              isAuthenticated,
+              paymentCompleted,
+              forceUnauthenticated,
+              shouldShowForm: !!(lastPaymentMessage && isAuthenticated && !paymentCompleted)
+            });
             
             return lastPaymentMessage && isAuthenticated && !paymentCompleted && (
               <div className="mt-4 mr-12">
