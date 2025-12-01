@@ -281,15 +281,37 @@ export default class APIOrchestrator implements IOrchestrator {
         return extractNumber(a.title || '') - extractNumber(b.title || '');
       });
       
-      // Filter out programs whose DATE has already passed (not time)
+      // Filter programs based on Bookeo's booking window rules
       const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // Midnight today
       
       const upcomingPrograms = sortedPrograms.filter((prog: any) => {
         if (!prog.earliest_slot_time) return true; // Keep programs without slot time
-        const slotDate = new Date(prog.earliest_slot_time);
-        const slotDay = new Date(slotDate.getFullYear(), slotDate.getMonth(), slotDate.getDate()); // Midnight of slot day
-        return slotDay >= today; // Keep if slot is today or in the future
+        
+        const slotTime = new Date(prog.earliest_slot_time);
+        
+        // Apply Bookeo booking limits if present
+        if (prog.booking_limits) {
+          const limits = prog.booking_limits;
+          
+          // Check maximum advance booking (e.g., "cannot book more than 6 months in advance")
+          if (limits.maxAdvanceTime) {
+            const maxDate = new Date(now.getTime() + limits.maxAdvanceTime.amount * this.getMilliseconds(limits.maxAdvanceTime.unit));
+            if (slotTime > maxDate) return false; // Too far in future
+          }
+          
+          // Check minimum advance booking (e.g., "must book at least 1 hour in advance")
+          if (limits.minAdvanceTime) {
+            const minDate = new Date(now.getTime() + limits.minAdvanceTime.amount * this.getMilliseconds(limits.minAdvanceTime.unit));
+            if (slotTime < minDate) return false; // Too soon to book
+          }
+        } else {
+          // Fallback: date-based filtering if no booking limits
+          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          const slotDay = new Date(slotTime.getFullYear(), slotTime.getMonth(), slotTime.getDate());
+          if (slotDay < today) return false;
+        }
+        
+        return true;
       });
       
       if (upcomingPrograms.length === 0) {
@@ -823,28 +845,64 @@ export default class APIOrchestrator implements IOrchestrator {
         num_participants_in_array: participant_data.length
       });
 
-      // PART 2.5: Validate event date hasn't passed (allow same-day registration)
+      // PART 2.5: Validate booking window using Bookeo's rules
       const slotTime = context.selectedProgram?.earliest_slot_time;
+      const bookingLimits = context.selectedProgram?.booking_limits;
+      
       if (slotTime) {
         const slotDate = new Date(slotTime);
-        const slotDay = new Date(slotDate.getFullYear(), slotDate.getMonth(), slotDate.getDate());
-        
         const now = new Date();
-        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const timezoneStr = context.userTimezone || 'America/Chicago';
+        const formattedSlotTime = this.formatTimeForUser(slotTime, timezoneStr);
         
-        if (slotDay < today) {
-          // Only block if the class DATE has passed, not just the time
-          const timezoneStr = context.userTimezone || 'America/Chicago';
-          const formattedSlotTime = this.formatTimeForUser(slotTime, timezoneStr);
+        // Apply Bookeo's booking window rules
+        if (bookingLimits) {
+          // Check if too late to book (minimum advance time)
+          if (bookingLimits.minAdvanceTime) {
+            const minDate = new Date(now.getTime() + bookingLimits.minAdvanceTime.amount * this.getMilliseconds(bookingLimits.minAdvanceTime.unit));
+            if (slotDate < minDate) {
+              Logger.warn("[confirmPayment] Booking window closed (min advance time)", {
+                slot_time: slotTime,
+                min_advance: bookingLimits.minAdvanceTime,
+                now: now.toISOString()
+              });
+              
+              return this.formatError(
+                `⏰ This class requires booking at least ${bookingLimits.minAdvanceTime.amount} ${bookingLimits.minAdvanceTime.unit} in advance. The booking window has closed. Please browse programs again.`
+              );
+            }
+          }
           
-          Logger.warn("[confirmPayment] Event date has passed", {
-            slot_date: slotDay.toISOString(),
-            today: today.toISOString()
-          });
+          // Check if too early to book (maximum advance time)
+          if (bookingLimits.maxAdvanceTime) {
+            const maxDate = new Date(now.getTime() + bookingLimits.maxAdvanceTime.amount * this.getMilliseconds(bookingLimits.maxAdvanceTime.unit));
+            if (slotDate > maxDate) {
+              Logger.warn("[confirmPayment] Too early to book (max advance time)", {
+                slot_time: slotTime,
+                max_advance: bookingLimits.maxAdvanceTime,
+                now: now.toISOString()
+              });
+              
+              return this.formatError(
+                `⏰ This class cannot be booked more than ${bookingLimits.maxAdvanceTime.amount} ${bookingLimits.maxAdvanceTime.unit} in advance. Please check back closer to the date.`
+              );
+            }
+          }
+        } else {
+          // Fallback: date-based validation if no booking limits
+          const slotDay = new Date(slotDate.getFullYear(), slotDate.getMonth(), slotDate.getDate());
+          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
           
-          return this.formatError(
-            `⏰ This class was scheduled for ${formattedSlotTime} and is no longer available. Please browse programs again to see upcoming sessions.`
-          );
+          if (slotDay < today) {
+            Logger.warn("[confirmPayment] Event date has passed", {
+              slot_date: slotDay.toISOString(),
+              today: today.toISOString()
+            });
+            
+            return this.formatError(
+              `⏰ This class was scheduled for ${formattedSlotTime} and is no longer available. Please browse programs again to see upcoming sessions.`
+            );
+          }
         }
       }
 
@@ -1306,6 +1364,20 @@ export default class APIOrchestrator implements IOrchestrator {
       cards: undefined,
       cta: undefined
     };
+  }
+
+  /**
+   * Convert Bookeo time unit to milliseconds
+   */
+  private getMilliseconds(unit: string): number {
+    const units: Record<string, number> = {
+      'hours': 60 * 60 * 1000,
+      'days': 24 * 60 * 60 * 1000,
+      'weeks': 7 * 24 * 60 * 60 * 1000,
+      'months': 30 * 24 * 60 * 60 * 1000, // Approximate
+      'years': 365 * 24 * 60 * 60 * 1000  // Approximate
+    };
+    return units[unit] || 0;
   }
 
   /**
