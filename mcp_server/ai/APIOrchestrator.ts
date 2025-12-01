@@ -623,15 +623,21 @@ export default class APIOrchestrator implements IOrchestrator {
     const isFutureBooking = bookingStatus === 'opens_later' && earliestSlot && earliestSlot > new Date();
 
     // PART 1: Check if user has saved payment method for IMMEDIATE registrations
-    if (!isFutureBooking && userId) {
-      const supabase = this.getSupabaseClient();
-      const { data: billingData } = await supabase
-        .from('user_billing')
-        .select('default_payment_method_id')
-        .eq('user_id', userId)
-        .maybeSingle();
+    if (!isFutureBooking) {
+      let hasPaymentMethod = false;
       
-      const hasPaymentMethod = !!billingData?.default_payment_method_id;
+      // Only check database if user is authenticated
+      if (userId) {
+        const supabase = this.getSupabaseClient();
+        const { data: billingData } = await supabase
+          .from('user_billing')
+          .select('default_payment_method_id')
+          .eq('user_id', userId)
+          .maybeSingle();
+        
+        hasPaymentMethod = !!billingData?.default_payment_method_id;
+      }
+      // If userId is undefined, hasPaymentMethod stays false (unauthenticated users don't have saved cards)
       
       if (!hasPaymentMethod) {
         Logger.info('[submitForm] No payment method found - prompting user to add card');
@@ -641,7 +647,7 @@ export default class APIOrchestrator implements IOrchestrator {
           message: `${message}\n\n💳 First, let's save your payment method securely. You'll only be charged if registration succeeds!`,
           metadata: {
             componentType: "payment_setup",
-            next_action: "confirm_payment",  // <-- Different from scheduled flow!
+            next_action: "confirm_payment",
             schedulingData: {
               event_id: context.selectedProgram?.first_available_event_id,
               total_amount: grandTotal,
