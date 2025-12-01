@@ -852,8 +852,7 @@ export default class APIOrchestrator implements IOrchestrator {
       if (slotTime) {
         const slotDate = new Date(slotTime);
         const now = new Date();
-        const timezoneStr = context.userTimezone || 'America/Chicago';
-        const formattedSlotTime = this.formatTimeForUser(slotTime, timezoneStr);
+        const formattedSlotTime = this.formatTimeForUser(slotTime, context);
         
         // Apply Bookeo's booking window rules
         if (bookingLimits) {
