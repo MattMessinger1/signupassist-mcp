@@ -92,7 +92,7 @@ export function MCPChat() {
       const { data: { user } } = await supabase.auth.getUser();
       const userId = user?.id;
       
-      const response = await sendMessage(userMessage, sessionId, undefined, undefined, undefined, undefined, undefined, userTimezone);
+      const response = await sendMessage(userMessage, sessionId, undefined, undefined, undefined, undefined, undefined, userTimezone, userId);
       const assistantMessage = response.message || "(no response)";
       const assistantCards = response.cards || [];
 
