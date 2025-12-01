@@ -66,6 +66,7 @@ export function MCPChat({ mockUserId, mockUserEmail, forceUnauthenticated }: MCP
   const [showAuthGate, setShowAuthGate] = useState(false);
   const [pendingPaymentMetadata, setPendingPaymentMetadata] = useState<any>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [hasCompletedAuthGate, setHasCompletedAuthGate] = useState(false);
   const [submittedFormIds, setSubmittedFormIds] = useState<Set<number>>(new Set());
   const [paymentCompleted, setPaymentCompleted] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -86,6 +87,12 @@ export function MCPChat({ mockUserId, mockUserEmail, forceUnauthenticated }: MCP
   // Check authentication status when payment setup is triggered
   useEffect(() => {
     const checkAuth = async () => {
+      // If user already completed auth gate, skip re-checking
+      if (hasCompletedAuthGate) {
+        console.log('[MCPChat] Auth gate already completed - staying authenticated');
+        return;  // Don't re-run auth checks
+      }
+      
       // If force unauthenticated mode, don't check real auth
       if (forceUnauthenticated && !mockUserId) {
         console.log('[MCPChat] Force unauthenticated mode - bypassing Supabase auth');
@@ -132,7 +139,7 @@ export function MCPChat({ mockUserId, mockUserEmail, forceUnauthenticated }: MCP
     };
     
     checkAuth();
-  }, [messages, mockUserId, forceUnauthenticated]);
+  }, [messages, mockUserId, forceUnauthenticated, hasCompletedAuthGate]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -158,6 +165,8 @@ export function MCPChat({ mockUserId, mockUserEmail, forceUnauthenticated }: MCP
       if (event === 'SIGNED_IN' && pendingPaymentMetadata) {
         console.log('[MCPChat] User signed in, continuing with pending payment');
         setShowAuthGate(false);
+        setHasCompletedAuthGate(true);  // Mark that user completed auth gate
+        setIsAuthenticated(true);       // Explicitly set authenticated
         
         // Add a message showing the payment form now that user is authenticated
         setMessages((prev) => [
