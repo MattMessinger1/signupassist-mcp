@@ -281,16 +281,19 @@ export default class APIOrchestrator implements IOrchestrator {
         return extractNumber(a.title || '') - extractNumber(b.title || '');
       });
       
-      // Filter out programs whose start time has already passed
+      // Filter out programs whose DATE has already passed (not time)
       const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // Midnight today
+      
       const upcomingPrograms = sortedPrograms.filter((prog: any) => {
-        if (!prog.earliest_slot_time) return true; // Keep programs without slot time (no filtering)
-        const slotTime = new Date(prog.earliest_slot_time);
-        return slotTime >= now; // Only keep future programs
+        if (!prog.earliest_slot_time) return true; // Keep programs without slot time
+        const slotDate = new Date(prog.earliest_slot_time);
+        const slotDay = new Date(slotDate.getFullYear(), slotDate.getMonth(), slotDate.getDate()); // Midnight of slot day
+        return slotDay >= today; // Keep if slot is today or in the future
       });
       
       if (upcomingPrograms.length === 0) {
-        return this.formatError("No upcoming programs available at this time. All current sessions have already started.");
+        return this.formatError("No upcoming programs available at this time. All sessions have already passed.");
       }
       
       // Store programs in context
@@ -820,24 +823,27 @@ export default class APIOrchestrator implements IOrchestrator {
         num_participants_in_array: participant_data.length
       });
 
-      // PART 2.5: Validate event hasn't started yet
+      // PART 2.5: Validate event date hasn't passed (allow same-day registration)
       const slotTime = context.selectedProgram?.earliest_slot_time;
       if (slotTime) {
         const slotDate = new Date(slotTime);
-        const now = new Date();
+        const slotDay = new Date(slotDate.getFullYear(), slotDate.getMonth(), slotDate.getDate());
         
-        if (slotDate < now) {
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        
+        if (slotDay < today) {
+          // Only block if the class DATE has passed, not just the time
           const timezoneStr = context.userTimezone || 'America/Chicago';
           const formattedSlotTime = this.formatTimeForUser(slotTime, timezoneStr);
           
-          Logger.warn("[confirmPayment] Event has already started", {
-            slot_time: slotTime,
-            formatted: formattedSlotTime,
-            now: now.toISOString()
+          Logger.warn("[confirmPayment] Event date has passed", {
+            slot_date: slotDay.toISOString(),
+            today: today.toISOString()
           });
           
           return this.formatError(
-            `⏰ This class has already started at ${formattedSlotTime}. Please browse programs again to see available upcoming sessions.`
+            `⏰ This class was scheduled for ${formattedSlotTime} and is no longer available. Please browse programs again to see upcoming sessions.`
           );
         }
       }
