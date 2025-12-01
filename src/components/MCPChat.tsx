@@ -506,13 +506,14 @@ export function MCPChat({ mockUserId, mockUserEmail }: MCPChatProps = {}) {
       </ScrollArea>
 
       {/* Auth Gate Modal */}
-      <AuthGateModal
+      <AuthGateModal 
         isOpen={showAuthGate}
         onClose={() => setShowAuthGate(false)}
         onAuthSuccess={() => {
           console.log('[MCPChat] Auth success callback triggered');
           // The auth state change listener will handle continuing the flow
         }}
+        delegateEmail={pendingPaymentMetadata?.schedulingData?.formData?.delegate_data?.delegate_email}
       />
 
       {/* Input Area */}
