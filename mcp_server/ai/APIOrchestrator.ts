@@ -363,7 +363,12 @@ export default class APIOrchestrator implements IOrchestrator {
         };
         
         const bookingStatus = determineBookingStatus(prog);
-        const earliestSlot = prog.earliest_slot_time ? new Date(prog.earliest_slot_time) : null;
+        // Use earliest_slot_time OR booking_opens_at as fallback for date display
+        const earliestSlot = prog.earliest_slot_time 
+          ? new Date(prog.earliest_slot_time) 
+          : prog.booking_opens_at 
+            ? new Date(prog.booking_opens_at)
+            : null;
         
         // Generate timing badge
         let timingBadge = '';
@@ -374,9 +379,13 @@ export default class APIOrchestrator implements IOrchestrator {
           timingBadge = '🚫 Sold Out';
           isDisabled = true;
           buttonLabel = "Waitlist (Coming Soon)";
-        } else if (bookingStatus === 'opens_later' && earliestSlot) {
-          timingBadge = `📅 Opens ${this.formatTimeForUser(earliestSlot, context)}`;
-          buttonLabel = "Schedule Auto-Register";
+        } else if (bookingStatus === 'opens_later') {
+          if (earliestSlot) {
+            timingBadge = `📅 Registration opens ${this.formatTimeForUser(earliestSlot, context)}`;
+          } else {
+            timingBadge = '📅 Opens Soon';
+          }
+          buttonLabel = "Schedule Ahead";
         } else if (bookingStatus === 'open_now') {
           timingBadge = '✅ Register Now';
         }
@@ -405,6 +414,7 @@ export default class APIOrchestrator implements IOrchestrator {
                   schedule: prog.schedule,
                   booking_status: bookingStatus,
                   earliest_slot_time: prog.earliest_slot_time,
+                  booking_opens_at: prog.booking_opens_at,
                   first_available_event_id: prog.first_available_event_id || null
                 }
               },
