@@ -184,6 +184,9 @@ export default class APIOrchestrator implements IOrchestrator {
       case "setup_payment_method":
         return await this.setupPaymentMethod(payload, sessionId, context);
 
+      case "view_receipts":
+        return await this.viewReceipts(payload, sessionId, context);
+
       default:
         return this.formatError(`Unknown action: ${action}`);
     }
@@ -697,7 +700,8 @@ export default class APIOrchestrator implements IOrchestrator {
           delegate_data: formData.delegate,
           participant_data: formData.participants,
           num_participants: numParticipants,
-          event_id: context.selectedProgram?.first_available_event_id
+          event_id: context.selectedProgram?.first_available_event_id,
+          program_fee_cents: Math.round(totalPrice * 100)
         }
       });
       
@@ -714,6 +718,7 @@ export default class APIOrchestrator implements IOrchestrator {
               event_id: context.selectedProgram?.first_available_event_id,
               total_amount: grandTotal,
               program_fee: formattedTotal,
+              program_fee_cents: Math.round(totalPrice * 100),
               formData: {
                 delegate_data: formData.delegate,
                 participant_data: formData.participants,
@@ -1043,8 +1048,8 @@ export default class APIOrchestrator implements IOrchestrator {
             `${p.firstName || ''} ${p.lastName || ''}`.trim()
           ).filter((name: string) => name.length > 0);
           
-          // Get program cost from context (if available)
-          const amountCents = context.selectedProgram?.price_cents || 0;
+          // Get program cost from context formData (stored in submitForm)
+          const amountCents = context.formData?.program_fee_cents || 0;
           
           const registrationResult = await this.invokeMCPTool('registrations.create', {
             user_id: userId,
@@ -1092,6 +1097,12 @@ export default class APIOrchestrator implements IOrchestrator {
         message,
         cta: {
           buttons: [
+            { 
+              label: "View My Registrations", 
+              action: "view_receipts", 
+              payload: { user_id: userId },
+              variant: "accent" 
+            },
             { 
               label: "Browse More Classes", 
               action: "search_programs", 
@@ -1382,6 +1393,110 @@ export default class APIOrchestrator implements IOrchestrator {
     } catch (error) {
       Logger.error("[confirmScheduledRegistration] Error:", error);
       return this.formatError("Failed to schedule auto-registration. Please try again.");
+    }
+  }
+
+  /**
+   * View user's registrations (receipts)
+   */
+  private async viewReceipts(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    const userId = payload?.user_id || context.user_id;
+    
+    if (!userId) {
+      return this.formatError("Please sign in to view your registrations.");
+    }
+
+    try {
+      const supabase = this.getSupabaseClient();
+      const { data: registrations, error } = await supabase
+        .from('registrations')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        Logger.error("[viewReceipts] Failed to fetch registrations:", error);
+        return this.formatError("Unable to load your registrations.");
+      }
+
+      if (!registrations || registrations.length === 0) {
+        return this.formatResponse(
+          "📋 **Your Registrations**\n\nYou don't have any registrations yet.",
+          undefined,
+          [{ label: "Browse Classes", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "accent" }]
+        );
+      }
+
+      // Format currency helper (cents → dollars)
+      const formatDollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+
+      // Format date/time for display
+      const formatDateTime = (dateStr: string | null) => {
+        if (!dateStr) return 'Date TBD';
+        const date = new Date(dateStr);
+        return date.toLocaleString('en-US', {
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+          timeZoneName: 'short'
+        });
+      };
+
+      // Categorize registrations
+      const now = new Date();
+      const upcoming = registrations.filter(r => 
+        r.status === 'confirmed' && r.start_date && new Date(r.start_date) > now
+      );
+      const scheduled = registrations.filter(r => r.status === 'pending');
+      const past = registrations.filter(r => 
+        (r.status === 'confirmed' || r.status === 'completed') && 
+        r.start_date && new Date(r.start_date) <= now
+      );
+
+      // Build cards for each registration
+      const buildRegCard = (reg: any): CardSpec => ({
+        title: reg.program_name,
+        subtitle: formatDateTime(reg.start_date),
+        description: [
+          `**Booking #:** ${reg.booking_number || 'Pending'}`,
+          `**Participants:** ${(reg.participant_names || []).join(', ') || 'N/A'}`,
+          `**Program Fee:** ${formatDollars(reg.amount_cents || 0)}`,
+          `**SignupAssist Fee:** ${formatDollars(reg.success_fee_cents || 0)}`,
+          `**Total:** ${formatDollars((reg.amount_cents || 0) + (reg.success_fee_cents || 0))}`
+        ].join('\n'),
+        buttons: reg.status === 'pending' 
+          ? [{ label: 'Cancel', action: 'cancel_registration', payload: { registration_id: reg.id }, variant: 'destructive' as const }]
+          : [{ label: 'View Audit Trail', action: 'view_audit_trail', payload: { registration_id: reg.id }, variant: 'outline' as const }]
+      });
+
+      const cards: CardSpec[] = [
+        ...upcoming.map(buildRegCard),
+        ...scheduled.map(buildRegCard),
+        ...past.map(buildRegCard)
+      ];
+
+      return {
+        message: `📋 **Your Registrations**\n\n` +
+          `✅ **Upcoming:** ${upcoming.length}\n` +
+          `📅 **Scheduled:** ${scheduled.length}\n` +
+          `📦 **Past:** ${past.length}`,
+        cards,
+        cta: {
+          buttons: [
+            { label: "Browse Classes", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "accent" }
+          ]
+        }
+      };
+    } catch (err) {
+      Logger.error("[viewReceipts] Exception:", err);
+      return this.formatError("An error occurred while loading your registrations.");
     }
   }
 
