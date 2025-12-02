@@ -1472,7 +1472,7 @@ export default class APIOrchestrator implements IOrchestrator {
           `**Total:** ${formatDollars((reg.amount_cents || 0) + (reg.success_fee_cents || 0))}`
         ].join('\n'),
         buttons: reg.status === 'pending' 
-          ? [{ label: 'Cancel', action: 'cancel_registration', payload: { registration_id: reg.id }, variant: 'destructive' as const }]
+          ? [{ label: 'Cancel', action: 'cancel_registration', payload: { registration_id: reg.id }, variant: 'secondary' as const }]
           : [{ label: 'View Audit Trail', action: 'view_audit_trail', payload: { registration_id: reg.id }, variant: 'outline' as const }]
       });
 
