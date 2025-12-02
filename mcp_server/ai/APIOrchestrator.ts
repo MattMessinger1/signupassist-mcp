@@ -206,6 +206,12 @@ export default class APIOrchestrator implements IOrchestrator {
       case "view_audit_trail":
         return await this.viewAuditTrail(payload, sessionId, context);
 
+      case "cancel_registration":
+        return await this.cancelRegistrationStep1(payload, sessionId, context);
+
+      case "confirm_cancel_registration":
+        return await this.cancelRegistrationStep2(payload, sessionId, context);
+
       default:
         return this.formatError(`Unknown action: ${action}`);
     }
@@ -1716,6 +1722,167 @@ export default class APIOrchestrator implements IOrchestrator {
     } catch (err) {
       Logger.error("[viewAuditTrail] Exception:", err);
       return this.formatError("An error occurred while loading the audit trail.");
+    }
+  }
+
+  /**
+   * Cancel Registration Step 1: Show confirmation dialog
+   * Phase F: Two-step confirmation to prevent accidental cancellations
+   */
+  private async cancelRegistrationStep1(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    const { registration_id } = payload;
+    
+    if (!registration_id) {
+      return this.formatError("Registration ID required to cancel.");
+    }
+    
+    try {
+      const supabase = this.getSupabaseClient();
+      
+      // Get registration details for confirmation
+      const { data: registration, error } = await supabase
+        .from('registrations')
+        .select('id, program_name, booking_number, status, start_date, delegate_name, amount_cents, success_fee_cents')
+        .eq('id', registration_id)
+        .single();
+      
+      if (error || !registration) {
+        Logger.error("[cancelRegistration] Registration not found:", error);
+        return this.formatError("Registration not found.");
+      }
+      
+      // Check if cancellation is allowed
+      if (registration.status === 'cancelled') {
+        return this.formatError("This registration has already been cancelled.");
+      }
+      
+      if (registration.status === 'completed') {
+        return this.formatError("Completed registrations cannot be cancelled.");
+      }
+      
+      // Only pending/scheduled registrations can be fully cancelled
+      // Confirmed bookings require provider-side cancellation (not supported yet)
+      const canCancel = registration.status === 'pending';
+      const isConfirmed = registration.status === 'confirmed';
+      
+      const formatDollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+      const startDateFormatted = registration.start_date 
+        ? this.formatTimeForUser(new Date(registration.start_date), context)
+        : 'TBD';
+      
+      if (isConfirmed) {
+        // For confirmed bookings, explain limitations
+        return {
+          message: `⚠️ **Cannot Cancel Confirmed Booking**\n\n` +
+            `This registration has already been confirmed with the provider. ` +
+            `To cancel, please contact AIM Design directly.\n\n` +
+            `**Booking #:** ${registration.booking_number || 'N/A'}\n` +
+            `**Program:** ${registration.program_name}\n\n` +
+            `_Note: SignupAssist success fees are non-refundable once booking is confirmed._`,
+          cards: [],
+          cta: {
+            buttons: [
+              { label: "Back to Registrations", action: "view_receipts", variant: "outline" }
+            ]
+          }
+        };
+      }
+      
+      // Show confirmation dialog for pending registrations
+      const confirmationCard: CardSpec = {
+        title: `⚠️ Cancel Registration?`,
+        subtitle: registration.program_name,
+        description: [
+          `**Date:** ${startDateFormatted}`,
+          `**Delegate:** ${registration.delegate_name || 'N/A'}`,
+          `**Status:** ${registration.status}`,
+          ``,
+          `This will cancel your scheduled auto-registration. No charges will be made.`
+        ].join('\n'),
+        buttons: [
+          { 
+            label: "Yes, Cancel Registration", 
+            action: "confirm_cancel_registration", 
+            variant: "destructive",
+            payload: { registration_id } 
+          },
+          { 
+            label: "Keep Registration", 
+            action: "view_receipts", 
+            variant: "outline" 
+          }
+        ]
+      };
+      
+      return {
+        message: `🚨 **Confirm Cancellation**\n\n` +
+          `Are you sure you want to cancel this registration? This action cannot be undone.`,
+        cards: [confirmationCard],
+        cta: { buttons: [] }
+      };
+      
+    } catch (err) {
+      Logger.error("[cancelRegistrationStep1] Exception:", err);
+      return this.formatError("An error occurred while preparing cancellation.");
+    }
+  }
+
+  /**
+   * Cancel Registration Step 2: Execute cancellation
+   * Phase F: Actual cancellation after user confirms
+   */
+  private async cancelRegistrationStep2(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    const { registration_id } = payload;
+    const userId = context.userId;
+    
+    if (!registration_id) {
+      return this.formatError("Registration ID required to cancel.");
+    }
+    
+    if (!userId) {
+      return this.formatError("You must be logged in to cancel a registration.");
+    }
+    
+    try {
+      Logger.info(`[cancelRegistration] User ${userId} cancelling registration: ${registration_id}`);
+      
+      // Invoke the registrations.cancel MCP tool
+      const result = await this.invokeMCPTool('registrations.cancel', {
+        registration_id,
+        user_id: userId
+      });
+      
+      if (!result.success) {
+        Logger.error("[cancelRegistration] Cancel failed:", result.error);
+        return this.formatError(result.error?.message || "Failed to cancel registration.");
+      }
+      
+      Logger.info(`[cancelRegistration] Successfully cancelled: ${registration_id}`);
+      
+      return {
+        message: `✅ **Registration Cancelled**\n\n` +
+          `Your scheduled registration has been cancelled. No charges were made.\n\n` +
+          `_You can schedule a new registration anytime by browsing programs._`,
+        cards: [],
+        cta: {
+          buttons: [
+            { label: "View Registrations", action: "view_receipts", variant: "outline" },
+            { label: "Browse Programs", action: "browse_programs", variant: "accent" }
+          ]
+        }
+      };
+      
+    } catch (err) {
+      Logger.error("[cancelRegistrationStep2] Exception:", err);
+      return this.formatError("An error occurred while cancelling the registration.");
     }
   }
 
