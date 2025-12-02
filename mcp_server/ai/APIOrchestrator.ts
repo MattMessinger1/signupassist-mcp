@@ -393,10 +393,16 @@ export default class APIOrchestrator implements IOrchestrator {
         // Design DNA: Only first program gets accent (primary) button, rest get outline (secondary)
         const buttonVariant = isDisabled ? "outline" : (index === 0 ? "accent" : "outline");
         
+        // Add helpful message for opens_later programs
+        let cardDescription = stripHtml(prog.description || "");
+        if (bookingStatus === 'opens_later') {
+          cardDescription += '\n\n💡 Set up your signup now — we\'ll register you the moment registration opens!';
+        }
+        
         return {
           title: prog.title || "Untitled Program",
           subtitle: `${prog.schedule || ""} ${timingBadge ? `• ${timingBadge}` : ''}`.trim(),
-          description: stripHtml(prog.description || ""),
+          description: cardDescription,
           buttons: [
             {
               label: buttonLabel,
