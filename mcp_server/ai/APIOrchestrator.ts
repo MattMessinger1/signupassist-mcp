@@ -1007,6 +1007,8 @@ export default class APIOrchestrator implements IOrchestrator {
         payloadUserId: payload.user_id 
       });
       
+      let charge_id: string | undefined;
+      
       if (!userId) {
         Logger.warn("[confirmPayment] No user_id - cannot charge success fee");
         // Don't fail the booking, just log warning
@@ -1023,7 +1025,8 @@ export default class APIOrchestrator implements IOrchestrator {
             Logger.warn("[confirmPayment] Success fee charge failed (non-fatal):", feeResult.error);
             // Don't fail the entire flow - booking was successful
           } else {
-            Logger.info("[confirmPayment] ✅ Success fee charged:", feeResult.data?.charge_id);
+            charge_id = feeResult.data?.charge_id;
+            Logger.info("[confirmPayment] ✅ Success fee charged:", charge_id);
           }
         } catch (feeError) {
           Logger.warn("[confirmPayment] Success fee exception (non-fatal):", feeError);
@@ -1031,7 +1034,49 @@ export default class APIOrchestrator implements IOrchestrator {
         }
       }
 
-      // Step 4: Reset context and return success
+      // Step 4: Create registration record for receipts/audit trail
+      if (userId) {
+        try {
+          const delegateName = `${delegate_data.delegate_firstName || ''} ${delegate_data.delegate_lastName || ''}`.trim();
+          const delegateEmail = delegate_data.delegate_email || delegate_data.email || '';
+          const participantNames = participant_data.map((p: any) => 
+            `${p.firstName || ''} ${p.lastName || ''}`.trim()
+          ).filter((name: string) => name.length > 0);
+          
+          // Get program cost from context (if available)
+          const amountCents = context.selectedProgram?.price_cents || 0;
+          
+          const registrationResult = await this.invokeMCPTool('registrations.create', {
+            user_id: userId,
+            mandate_id,
+            charge_id,
+            program_name: programName,
+            program_ref: programRef,
+            provider: 'bookeo',
+            org_ref: orgRef,
+            start_date: start_time || context.selectedProgram?.earliest_slot_time,
+            booking_number,
+            amount_cents: amountCents,
+            success_fee_cents: 2000,
+            delegate_name: delegateName,
+            delegate_email: delegateEmail,
+            participant_names: participantNames
+          });
+
+          if (registrationResult.success) {
+            Logger.info("[confirmPayment] ✅ Registration record created:", registrationResult.data?.id);
+          } else {
+            Logger.warn("[confirmPayment] Registration record creation failed (non-fatal):", registrationResult.error);
+          }
+        } catch (regError) {
+          Logger.warn("[confirmPayment] Registration record exception (non-fatal):", regError);
+          // Continue - booking was successful even if registration record failed
+        }
+      } else {
+        Logger.warn("[confirmPayment] No userId - skipping registration record creation");
+      }
+
+      // Step 5: Reset context and return success
       this.updateContext(sessionId, {
         step: FlowStep.BROWSE
       });
