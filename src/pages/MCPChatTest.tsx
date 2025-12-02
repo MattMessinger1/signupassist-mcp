@@ -116,7 +116,7 @@ export default function MCPChatTest() {
       console.log('[Bookeo Sync] Success:', data);
       toast({
         title: "✅ Bookeo Synced",
-        description: `${data.synced || 0} programs synced for ${data.org_ref}`,
+        description: `${data.synced || 0} programs synced for ${orgRef}`,
       });
 
     } catch (error: any) {
