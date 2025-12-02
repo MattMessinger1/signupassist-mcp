@@ -980,7 +980,7 @@ export default class APIOrchestrator implements IOrchestrator {
         delegate_data: mappedDelegateData,
         participant_data: mappedParticipantData,
         num_participants
-      });
+      }, { mandate_id }); // Pass audit context for ChatGPT compliance
 
       if (!bookingResponse.success || !bookingResponse.data?.booking_number) {
         Logger.error("[confirmPayment] Booking failed", bookingResponse);
