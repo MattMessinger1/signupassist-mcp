@@ -202,14 +202,21 @@ export async function auditToolCall<T>(
   let auditId: string | null = null;
   
   try {
-    // Skip audit logging if plan_execution_id is null, empty, 'interactive', or invalid UUID
-    const shouldSkipAudit = !context.plan_execution_id || 
-                           context.plan_execution_id === 'interactive' ||
-                           context.plan_execution_id === '' ||
-                           !isValidUUID(context.plan_execution_id);
+    // Skip audit logging ONLY if no audit identifiers are present
+    // Log if we have EITHER a valid plan_execution_id OR a mandate_id
+    const hasMandateId = context.mandate_id && isValidUUID(context.mandate_id);
+    const hasPlanExecutionId = context.plan_execution_id && 
+                               context.plan_execution_id !== 'interactive' &&
+                               context.plan_execution_id !== '' &&
+                               isValidUUID(context.plan_execution_id);
+    
+    const shouldSkipAudit = !hasPlanExecutionId && !hasMandateId;
     
     if (shouldSkipAudit) {
-      console.log('Skipping audit logging: plan_execution_id is', context.plan_execution_id);
+      console.log('Skipping audit logging: no valid plan_execution_id or mandate_id', {
+        plan_execution_id: context.plan_execution_id,
+        mandate_id: context.mandate_id
+      });
     }
     
     // Start audit logging only if not skipping

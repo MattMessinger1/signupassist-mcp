@@ -284,10 +284,16 @@ export const stripeTools: StripeTool[] = [
       required: ['booking_number', 'mandate_id', 'amount_cents', 'user_id']
     },
     handler: async (args: any) => {
+      // Extract audit context from args (injected by APIOrchestrator.invokeMCPTool)
+      const { _audit, ...toolArgs } = args;
       return auditToolCall(
-        { plan_execution_id: null, tool: 'stripe.charge_success_fee' },
-        args,
-        () => chargeSuccessFee(args)
+        { 
+          plan_execution_id: _audit?.plan_execution_id || null, 
+          mandate_id: _audit?.mandate_id || toolArgs.mandate_id,
+          tool: 'stripe.charge_success_fee' 
+        },
+        toolArgs,
+        () => chargeSuccessFee(toolArgs)
       );
     }
   },
@@ -309,10 +315,16 @@ export const stripeTools: StripeTool[] = [
       required: ['user_id', 'email']
     },
     handler: async (args: any) => {
+      // Extract audit context from args (injected by APIOrchestrator.invokeMCPTool)
+      const { _audit, ...toolArgs } = args;
       return auditToolCall(
-        { plan_execution_id: null, tool: 'stripe.create_customer' },
-        args,
-        () => createStripeCustomer(args)
+        { 
+          plan_execution_id: _audit?.plan_execution_id || null, 
+          mandate_id: _audit?.mandate_id,
+          tool: 'stripe.create_customer' 
+        },
+        toolArgs,
+        () => createStripeCustomer(toolArgs)
       );
     }
   },
@@ -338,10 +350,16 @@ export const stripeTools: StripeTool[] = [
       required: ['payment_method_id', 'customer_id', 'user_jwt']
     },
     handler: async (args: any) => {
+      // Extract audit context from args (injected by APIOrchestrator.invokeMCPTool)
+      const { _audit, ...toolArgs } = args;
       return auditToolCall(
-        { plan_execution_id: null, tool: 'stripe.save_payment_method' },
-        args,
-        () => savePaymentMethod(args)
+        { 
+          plan_execution_id: _audit?.plan_execution_id || null, 
+          mandate_id: _audit?.mandate_id,
+          tool: 'stripe.save_payment_method' 
+        },
+        toolArgs,
+        () => savePaymentMethod(toolArgs)
       );
     }
   }

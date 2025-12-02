@@ -876,10 +876,16 @@ export const bookeoTools: BookeoTool[] = [
       required: ['event_id', 'program_ref', 'org_ref', 'delegate_data', 'participant_data', 'num_participants']
     },
     handler: async (args: any) => {
+      // Extract audit context from args (injected by APIOrchestrator.invokeMCPTool)
+      const { _audit, ...toolArgs } = args;
       return auditToolCall(
-        { plan_execution_id: null, tool: 'bookeo.confirm_booking' },
-        args,
-        () => confirmBooking(args)
+        { 
+          plan_execution_id: _audit?.plan_execution_id || null, 
+          mandate_id: _audit?.mandate_id,
+          tool: 'bookeo.confirm_booking' 
+        },
+        toolArgs,
+        () => confirmBooking(toolArgs)
       );
     }
   }

@@ -76,16 +76,28 @@ export default class APIOrchestrator implements IOrchestrator {
   /**
    * Invoke MCP tool internally for audit compliance
    * All tool calls go through the MCP layer to ensure audit logging
+   * @param auditContext - Optional audit context with mandate_id for audit trail linking
    */
-  private async invokeMCPTool(toolName: string, args: any): Promise<any> {
+  private async invokeMCPTool(
+    toolName: string, 
+    args: any,
+    auditContext?: { mandate_id?: string; plan_execution_id?: string }
+  ): Promise<any> {
     if (!this.mcpServer?.tools?.has(toolName)) {
       const available = this.mcpServer?.tools ? Array.from(this.mcpServer.tools.keys()).join(', ') : 'none';
       throw new Error(`MCP tool not found: ${toolName}. Available: ${available}`);
     }
     
     const tool = this.mcpServer.tools.get(toolName);
-    Logger.info(`[MCP] Invoking tool: ${toolName}`);
-    return await tool.handler(args);
+    Logger.info(`[MCP] Invoking tool: ${toolName}${auditContext?.mandate_id ? ` (mandate: ${auditContext.mandate_id.substring(0, 8)}...)` : ''}`);
+    
+    // Inject audit context into args for tool handler
+    const argsWithAudit = {
+      ...args,
+      _audit: auditContext || { plan_execution_id: null }
+    };
+    
+    return await tool.handler(argsWithAudit);
   }
 
   /**
@@ -186,6 +198,9 @@ export default class APIOrchestrator implements IOrchestrator {
 
       case "view_receipts":
         return await this.viewReceipts(payload, sessionId, context);
+
+      case "view_audit_trail":
+        return await this.viewAuditTrail(payload, sessionId, context);
 
       default:
         return this.formatError(`Unknown action: ${action}`);
@@ -1024,7 +1039,7 @@ export default class APIOrchestrator implements IOrchestrator {
             mandate_id,
             amount_cents: 2000, // $20 success fee
             user_id: userId  // Required for server-to-server call
-          });
+          }, { mandate_id }); // Pass audit context for audit trail linking
 
           if (!feeResult.success) {
             Logger.warn("[confirmPayment] Success fee charge failed (non-fatal):", feeResult.error);
@@ -1497,6 +1512,135 @@ export default class APIOrchestrator implements IOrchestrator {
     } catch (err) {
       Logger.error("[viewReceipts] Exception:", err);
       return this.formatError("An error occurred while loading your registrations.");
+    }
+  }
+
+  /**
+   * View audit trail for a specific registration
+   * Phase E: Shows mandate details and all tool calls with decisions
+   */
+  private async viewAuditTrail(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    const { registration_id } = payload;
+    
+    if (!registration_id) {
+      return this.formatError("Registration ID required to view audit trail.");
+    }
+    
+    try {
+      const supabase = this.getSupabaseClient();
+      
+      // 1. Get registration to find mandate_id
+      const { data: registration, error: regError } = await supabase
+        .from('registrations')
+        .select('mandate_id, program_name, booking_number, delegate_name, amount_cents, success_fee_cents, created_at')
+        .eq('id', registration_id)
+        .single();
+      
+      if (regError || !registration) {
+        Logger.error("[viewAuditTrail] Registration not found:", regError);
+        return this.formatError("Registration not found.");
+      }
+      
+      if (!registration.mandate_id) {
+        // No mandate linked - show registration details without audit events
+        return {
+          message: `📋 **Registration Details**\n\n` +
+            `**Program:** ${registration.program_name}\n` +
+            `**Booking #:** ${registration.booking_number || 'N/A'}\n` +
+            `**Delegate:** ${registration.delegate_name || 'N/A'}\n\n` +
+            `_No mandate authorization found for this registration._`,
+          cards: [],
+          cta: {
+            buttons: [
+              { label: "Back to Registrations", action: "view_receipts", variant: "outline" }
+            ]
+          }
+        };
+      }
+      
+      // 2. Get mandate details
+      const { data: mandate, error: mandateError } = await supabase
+        .from('mandates')
+        .select('id, scope, valid_from, valid_until, status, provider')
+        .eq('id', registration.mandate_id)
+        .single();
+      
+      if (mandateError) {
+        Logger.warn("[viewAuditTrail] Mandate lookup failed:", mandateError);
+      }
+      
+      // 3. Get audit events for this mandate
+      const { data: auditEvents, error: auditError } = await supabase
+        .from('audit_events')
+        .select('tool, decision, started_at, finished_at, event_type')
+        .eq('mandate_id', registration.mandate_id)
+        .order('started_at', { ascending: true });
+      
+      if (auditError) {
+        Logger.warn("[viewAuditTrail] Audit events lookup failed:", auditError);
+      }
+      
+      const formatDollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
+      
+      // Build audit trail timeline
+      const auditTrailItems = (auditEvents || []).map((event, index) => {
+        const time = this.formatTimeForUser(new Date(event.started_at), context);
+        const status = event.decision === 'allowed' ? '✅' : (event.decision === 'denied' ? '❌' : '⏳');
+        const toolName = event.tool || event.event_type || 'Unknown action';
+        return `${index + 1}. ${status} **${toolName}** - ${time}`;
+      });
+      
+      // Build mandate summary card
+      const mandateCard: CardSpec = {
+        title: `🔐 Mandate Authorization`,
+        subtitle: `ID: ${mandate?.id?.substring(0, 8) || 'N/A'}...`,
+        description: [
+          `**Provider:** ${mandate?.provider || 'N/A'}`,
+          `**Scopes:** ${mandate?.scope?.join(', ') || 'N/A'}`,
+          `**Valid From:** ${mandate ? this.formatTimeForUser(new Date(mandate.valid_from), context) : 'N/A'}`,
+          `**Valid Until:** ${mandate ? this.formatTimeForUser(new Date(mandate.valid_until), context) : 'N/A'}`,
+          `**Status:** ${mandate?.status || 'N/A'}`
+        ].join('\n'),
+        buttons: []
+      };
+      
+      // Build registration summary card
+      const registrationCard: CardSpec = {
+        title: `📝 Registration Summary`,
+        subtitle: registration.booking_number || 'Booking # pending',
+        description: [
+          `**Program:** ${registration.program_name}`,
+          `**Delegate:** ${registration.delegate_name || 'N/A'}`,
+          `**Program Fee:** ${formatDollars(registration.amount_cents || 0)}`,
+          `**SignupAssist Fee:** ${formatDollars(registration.success_fee_cents || 0)}`,
+          `**Total:** ${formatDollars((registration.amount_cents || 0) + (registration.success_fee_cents || 0))}`
+        ].join('\n'),
+        buttons: []
+      };
+      
+      return {
+        message: `📋 **Audit Trail**\n\n` +
+          `---\n\n` +
+          `**Actions Performed (${auditTrailItems.length} events):**\n` +
+          (auditTrailItems.length > 0 
+            ? auditTrailItems.join('\n') 
+            : '_No audit events recorded for this registration._') +
+          `\n\n---\n\n` +
+          `🔒 _All actions are logged for transparency. SignupAssist acts as your Responsible Delegate with explicit consent._`,
+        cards: [registrationCard, mandateCard],
+        cta: {
+          buttons: [
+            { label: "Back to Registrations", action: "view_receipts", variant: "outline" }
+          ]
+        }
+      };
+    } catch (err) {
+      Logger.error("[viewAuditTrail] Exception:", err);
+      return this.formatError("An error occurred while loading the audit trail.");
     }
   }
 
