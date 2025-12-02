@@ -277,6 +277,7 @@ Deno.serve(async (req) => {
           // Determine booking status with business rules:
           // If available slots exist, booking is OPEN NOW (Bookeo enforces advance booking rules)
           // If no available slots, booking is SOLD OUT
+          // If fixedCourse with no slots, booking OPENS LATER (window not yet open)
           booking_status: (() => {
             const availableSlot = slots.find(s => s.numSeatsAvailable > 0);
             
@@ -288,7 +289,23 @@ Deno.serve(async (req) => {
               return 'sold_out';  // All slots are full
             }
             
-            return 'open_now';  // No slot data = assume open for manual inquiry
+            // For scheduled courses with no slots, treat as "opens_later"
+            // (Bookeo returns 0 slots when booking window hasn't opened)
+            if (product.type === 'fixedCourse') {
+              return 'opens_later';
+            }
+            
+            return 'open_now';  // Other products - assume open for inquiry
+          })(),
+          
+          // For opens_later courses, set a placeholder booking window date
+          booking_opens_at: (() => {
+            if (slots[0]?.startTime) return slots[0].startTime;
+            // For fixedCourse with no slots, set placeholder 1 week from now
+            if (product.type === 'fixedCourse' && slots.length === 0) {
+              return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+            }
+            return null;
           })(),
           
           // Keep for backward compatibility
