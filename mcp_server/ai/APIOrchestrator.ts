@@ -1807,7 +1807,7 @@ export default class APIOrchestrator implements IOrchestrator {
           { 
             label: "Yes, Cancel Registration", 
             action: "confirm_cancel_registration", 
-            variant: "destructive",
+            variant: "secondary",
             payload: { registration_id } 
           },
           { 
@@ -1841,7 +1841,7 @@ export default class APIOrchestrator implements IOrchestrator {
     context: APIContext
   ): Promise<OrchestratorResponse> {
     const { registration_id } = payload;
-    const userId = context.userId;
+    const userId = context.user_id;
     
     if (!registration_id) {
       return this.formatError("Registration ID required to cancel.");
