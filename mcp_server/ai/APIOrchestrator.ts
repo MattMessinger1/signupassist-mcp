@@ -1518,25 +1518,37 @@ export default class APIOrchestrator implements IOrchestrator {
       );
 
       // Build cards for each registration
-      const buildRegCard = (reg: any): CardSpec => ({
-        title: reg.program_name,
-        subtitle: formatDateTime(reg.start_date),
-        description: [
-          `**Booking #:** ${reg.booking_number || 'Pending'}`,
-          `**Participants:** ${(reg.participant_names || []).join(', ') || 'N/A'}`,
-          `**Program Fee:** ${formatDollars(reg.amount_cents || 0)}`,
-          `**SignupAssist Fee:** ${formatDollars(reg.success_fee_cents || 0)}`,
-          `**Total:** ${formatDollars((reg.amount_cents || 0) + (reg.success_fee_cents || 0))}`
-        ].join('\n'),
-        buttons: reg.status === 'pending' 
-          ? [{ label: 'Cancel', action: 'cancel_registration', payload: { registration_id: reg.id }, variant: 'secondary' as const }]
-          : [{ label: 'View Audit Trail', action: 'view_audit_trail', payload: { registration_id: reg.id }, variant: 'outline' as const }]
-      });
+      const buildRegCard = (reg: any, isUpcoming: boolean = false): CardSpec => {
+        const buttons = [];
+        
+        // Always show View Audit Trail for confirmed registrations
+        if (reg.status !== 'pending') {
+          buttons.push({ label: 'View Audit Trail', action: 'view_audit_trail', payload: { registration_id: reg.id }, variant: 'outline' as const });
+        }
+        
+        // Show Cancel button for pending OR upcoming (will route to appropriate handler)
+        if (reg.status === 'pending' || isUpcoming) {
+          buttons.push({ label: 'Cancel', action: 'cancel_registration', payload: { registration_id: reg.id }, variant: 'secondary' as const });
+        }
+        
+        return {
+          title: reg.program_name,
+          subtitle: formatDateTime(reg.start_date),
+          description: [
+            `**Booking #:** ${reg.booking_number || 'Pending'}`,
+            `**Participants:** ${(reg.participant_names || []).join(', ') || 'N/A'}`,
+            `**Program Fee:** ${formatDollars(reg.amount_cents || 0)}`,
+            `**SignupAssist Fee:** ${formatDollars(reg.success_fee_cents || 0)}`,
+            `**Total:** ${formatDollars((reg.amount_cents || 0) + (reg.success_fee_cents || 0))}`
+          ].join('\n'),
+          buttons
+        };
+      };
 
       const cards: CardSpec[] = [
-        ...upcoming.map(buildRegCard),
-        ...scheduled.map(buildRegCard),
-        ...past.map(buildRegCard)
+        ...upcoming.map(r => buildRegCard(r, true)),  // isUpcoming = true, show Cancel button
+        ...scheduled.map(r => buildRegCard(r, false)), // pending status, Cancel already shown
+        ...past.map(r => buildRegCard(r, false))       // past, no cancel option
       ];
 
       return {
