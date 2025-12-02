@@ -1599,6 +1599,7 @@ export default class APIOrchestrator implements IOrchestrator {
       // Helper to extract key details from args/results for display
       const formatEventDetails = (event: any): { input: string; output: string } => {
         const args = event.args_json || {};
+        const resultSuccess = event.result_json?.success; // Check TOP level for success flag
         const result = event.result_json?.data || event.result_json || {};
         
         if (event.tool === 'bookeo.confirm_booking') {
@@ -1615,7 +1616,7 @@ export default class APIOrchestrator implements IOrchestrator {
             output: [
               `• Booking #: ${result.booking_number || 'N/A'}`,
               `• Program: ${result.program_name || 'N/A'}`,
-              `• Status: ${result.success ? 'Success' : 'Failed'}`
+              `• Status: ${resultSuccess ? 'Success' : 'Failed'}`
             ].join('\n')
           };
         }
@@ -1628,7 +1629,7 @@ export default class APIOrchestrator implements IOrchestrator {
             ].join('\n'),
             output: [
               `• Charge ID: ${result.charge_id?.substring(0, 12) || 'N/A'}...`,
-              `• Status: ${result.success ? 'Charged' : 'Failed'}`
+              `• Status: ${resultSuccess ? 'Charged' : 'Failed'}`
             ].join('\n')
           };
         }
@@ -1636,7 +1637,7 @@ export default class APIOrchestrator implements IOrchestrator {
         // Generic fallback
         return {
           input: Object.keys(args).length > 0 ? `• ${Object.keys(args).slice(0, 3).join(', ')}` : '_No input data_',
-          output: result.success !== undefined ? `• Status: ${result.success ? 'Success' : 'Failed'}` : '_No output data_'
+          output: resultSuccess !== undefined ? `• Status: ${resultSuccess ? 'Success' : 'Failed'}` : '_No output data_'
         };
       };
       
