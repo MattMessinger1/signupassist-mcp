@@ -1272,11 +1272,11 @@ export default class APIOrchestrator implements IOrchestrator {
 
       Logger.info("[setupPaymentMethod] ✅ Payment setup complete, proceeding to confirmation");
 
-      // Call confirmScheduledRegistration directly
+      // Call confirmScheduledRegistration directly with updated context including user_id
       return await this.confirmScheduledRegistration(
         { schedulingData }, 
         sessionId, 
-        context
+        { ...context, user_id }
       );
 
     } catch (error) {
