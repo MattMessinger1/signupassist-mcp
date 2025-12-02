@@ -90,13 +90,19 @@ export function getAPISuccessMessage(vars: APIMessageVariables): string {
   const programName = vars.program_name || "this program";
   const bookingNumber = vars.booking_number || "N/A";
   const startTime = vars.start_time || "TBD";
+  const providerName = vars.provider_name || "the provider";
   
   return `🎉 Success! You're all signed up for **${programName}**!
 
 **Booking #${bookingNumber}**
 Starts: ${startTime}
 
-Confirmation email sent. See you there!`;
+📧 ${providerName} will send your confirmation email directly.
+
+**What's next?**
+For any questions about your registration, class details, or changes — please contact ${providerName} directly. SignupAssist's job is done here!
+
+Thanks for letting us help with signup. Enjoy your class! 🙌`;
 }
 
 /**

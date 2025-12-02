@@ -661,7 +661,7 @@ async function confirmBooking(args: {
       ui: {
         cards: [{
           title: '✅ Booking Confirmed!',
-          description: `**Booking #${bookingNumber}**\n\n${programName}\n${new Date(startTime).toLocaleString()}\n\nConfirmation email sent to ${delegate_data.email}`
+          description: `**Booking #${bookingNumber}**\n\n${programName}\n${new Date(startTime).toLocaleString()}\n\nAIM Design will send confirmation to ${delegate_data.email}`
         }]
       }
     };
