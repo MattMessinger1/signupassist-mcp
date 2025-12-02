@@ -1577,10 +1577,10 @@ export default class APIOrchestrator implements IOrchestrator {
         Logger.warn("[viewAuditTrail] Mandate lookup failed:", mandateError);
       }
       
-      // 3. Get audit events for this mandate
+      // 3. Get audit events for this mandate (including args and results for transparency)
       const { data: auditEvents, error: auditError } = await supabase
         .from('audit_events')
-        .select('tool, decision, started_at, finished_at, event_type')
+        .select('tool, decision, started_at, finished_at, event_type, args_json, result_json')
         .eq('mandate_id', registration.mandate_id)
         .order('started_at', { ascending: true });
       
@@ -1590,12 +1590,83 @@ export default class APIOrchestrator implements IOrchestrator {
       
       const formatDollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
       
-      // Build audit trail timeline
+      // Helper to extract key details from args/results for display
+      const formatEventDetails = (event: any): { input: string; output: string } => {
+        const args = event.args_json || {};
+        const result = event.result_json?.data || event.result_json || {};
+        
+        if (event.tool === 'bookeo.confirm_booking') {
+          const delegate = args.delegate_data || {};
+          const participants = args.participant_data || [];
+          const participantNames = participants.map((p: any) => `${p.firstName} ${p.lastName}`).join(', ');
+          
+          return {
+            input: [
+              `• Delegate: ${delegate.firstName || ''} ${delegate.lastName || ''} (${delegate.email || 'N/A'})`,
+              `• Participants: ${participantNames || 'N/A'}`,
+              `• Event ID: ${args.event_id?.substring(0, 20) || 'N/A'}...`
+            ].join('\n'),
+            output: [
+              `• Booking #: ${result.booking_number || 'N/A'}`,
+              `• Program: ${result.program_name || 'N/A'}`,
+              `• Status: ${result.success ? 'Success' : 'Failed'}`
+            ].join('\n')
+          };
+        }
+        
+        if (event.tool === 'stripe.charge_success_fee') {
+          return {
+            input: [
+              `• Amount: ${formatDollars(args.amount_cents || 0)}`,
+              `• Booking #: ${args.booking_number || 'N/A'}`
+            ].join('\n'),
+            output: [
+              `• Charge ID: ${result.charge_id?.substring(0, 12) || 'N/A'}...`,
+              `• Status: ${result.success ? 'Charged' : 'Failed'}`
+            ].join('\n')
+          };
+        }
+        
+        // Generic fallback
+        return {
+          input: Object.keys(args).length > 0 ? `• ${Object.keys(args).slice(0, 3).join(', ')}` : '_No input data_',
+          output: result.success !== undefined ? `• Status: ${result.success ? 'Success' : 'Failed'}` : '_No output data_'
+        };
+      };
+      
+      // Build audit trail timeline with details
       const auditTrailItems = (auditEvents || []).map((event, index) => {
         const time = this.formatTimeForUser(new Date(event.started_at), context);
         const status = event.decision === 'allowed' ? '✅' : (event.decision === 'denied' ? '❌' : '⏳');
         const toolName = event.tool || event.event_type || 'Unknown action';
         return `${index + 1}. ${status} **${toolName}** - ${time}`;
+      });
+      
+      // Build detailed event cards for full transparency
+      const eventCards: CardSpec[] = (auditEvents || []).map((event, index) => {
+        const time = this.formatTimeForUser(new Date(event.started_at), context);
+        const status = event.decision === 'allowed' ? '✅ Allowed' : (event.decision === 'denied' ? '❌ Denied' : '⏳ Pending');
+        const toolName = event.tool || event.event_type || 'Unknown';
+        const details = formatEventDetails(event);
+        
+        // Friendly tool names
+        const friendlyNames: Record<string, string> = {
+          'bookeo.confirm_booking': '📅 Booking Confirmation',
+          'stripe.charge_success_fee': '💳 Success Fee Charge'
+        };
+        
+        return {
+          title: friendlyNames[toolName] || `🔧 ${toolName}`,
+          subtitle: `${status} • ${time}`,
+          description: [
+            `**Input Data:**`,
+            details.input,
+            ``,
+            `**Result:**`,
+            details.output
+          ].join('\n'),
+          buttons: []
+        };
       });
       
       // Build mandate summary card
@@ -1635,7 +1706,7 @@ export default class APIOrchestrator implements IOrchestrator {
             : '_No audit events recorded for this registration._') +
           `\n\n---\n\n` +
           `🔒 _All actions are logged for transparency. SignupAssist acts as your Responsible Delegate with explicit consent._`,
-        cards: [registrationCard, mandateCard],
+        cards: [registrationCard, ...eventCards, mandateCard],
         cta: {
           buttons: [
             { label: "Back to Registrations", action: "view_receipts", variant: "outline" }
