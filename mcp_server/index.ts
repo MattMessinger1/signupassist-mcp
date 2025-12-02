@@ -54,6 +54,7 @@ import { stripeTools } from './providers/stripe.js';
 import { programFeedTools } from './providers/programFeed.js';
 import { mandateTools } from './providers/mandates.js';
 import { schedulerTools } from './providers/scheduler.js';
+import { registrationTools } from './providers/registrations.js';
 // import { daysmartTools } from '../providers/daysmart/index';
 // import { campminderTools } from '../providers/campminder/index';
 import { refreshBlackhawkPrograms, refreshBlackhawkProgramDetail } from './providers/blackhawk.js'; // Import Blackhawk refresh functions
@@ -271,6 +272,16 @@ class SignupAssistMCPServer {
       this.tools.set(name, {
         name,
         description: `Program Feed tool: ${name}`,
+        inputSchema: tool.inputSchema,
+        handler: tool.handler
+      });
+    });
+
+    // Register Registration tools (receipts/audit trail)
+    registrationTools.forEach((tool) => {
+      this.tools.set(tool.name, {
+        name: tool.name,
+        description: tool.description,
         inputSchema: tool.inputSchema,
         handler: tool.handler
       });
