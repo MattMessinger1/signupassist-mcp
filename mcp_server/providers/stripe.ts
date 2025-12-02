@@ -290,6 +290,7 @@ export const stripeTools: StripeTool[] = [
         { 
           plan_execution_id: _audit?.plan_execution_id || null, 
           mandate_id: _audit?.mandate_id || toolArgs.mandate_id,
+          user_id: _audit?.user_id,
           tool: 'stripe.charge_success_fee' 
         },
         toolArgs,
@@ -321,6 +322,7 @@ export const stripeTools: StripeTool[] = [
         { 
           plan_execution_id: _audit?.plan_execution_id || null, 
           mandate_id: _audit?.mandate_id,
+          user_id: _audit?.user_id,
           tool: 'stripe.create_customer' 
         },
         toolArgs,
@@ -356,6 +358,7 @@ export const stripeTools: StripeTool[] = [
         { 
           plan_execution_id: _audit?.plan_execution_id || null, 
           mandate_id: _audit?.mandate_id,
+          user_id: _audit?.user_id,
           tool: 'stripe.save_payment_method' 
         },
         toolArgs,

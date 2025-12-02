@@ -882,6 +882,7 @@ export const bookeoTools: BookeoTool[] = [
         { 
           plan_execution_id: _audit?.plan_execution_id || null, 
           mandate_id: _audit?.mandate_id,
+          user_id: _audit?.user_id,
           tool: 'bookeo.confirm_booking' 
         },
         toolArgs,

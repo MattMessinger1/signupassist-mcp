@@ -18,6 +18,7 @@ export interface AuditContext {
   mandate_id?: string;  // UUID for database lookup (legacy)
   mandate_jws?: string; // JWS token for direct verification (preferred)
   tool: string;
+  user_id?: string;     // User ID for RLS visibility
 }
 
 /**
@@ -105,6 +106,7 @@ async function logToolCallStart(context: AuditContext, args: any): Promise<strin
         provider: 'skiclubpro',
         plan_execution_id: context.plan_execution_id,
         mandate_id: context.mandate_id,
+        user_id: context.user_id || null,
         tool: context.tool,
         args_json: args,
         args_hash: argsHash,
