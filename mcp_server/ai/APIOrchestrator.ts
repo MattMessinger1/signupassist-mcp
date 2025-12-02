@@ -325,7 +325,7 @@ export default class APIOrchestrator implements IOrchestrator {
       });
 
       // Build program cards with timing badges and cleaned descriptions
-      const cards: CardSpec[] = upcomingPrograms.map((prog: any) => {
+      const cards: CardSpec[] = upcomingPrograms.map((prog: any, index: number) => {
         // Determine booking status at runtime (don't trust stale cached data)
         const determineBookingStatus = (program: any): string => {
           const hasAvailableSlots = program.next_available_slot || (program.available_slots && program.available_slots > 0);
@@ -353,6 +353,9 @@ export default class APIOrchestrator implements IOrchestrator {
           timingBadge = '✅ Register Now';
         }
         
+        // Design DNA: Only first program gets accent (primary) button, rest get outline (secondary)
+        const buttonVariant = isDisabled ? "outline" : (index === 0 ? "accent" : "outline");
+        
         return {
           title: prog.title || "Untitled Program",
           subtitle: `${prog.schedule || ""} ${timingBadge ? `• ${timingBadge}` : ''}`.trim(),
@@ -377,7 +380,7 @@ export default class APIOrchestrator implements IOrchestrator {
                   first_available_event_id: prog.first_available_event_id || null
                 }
               },
-              variant: isDisabled ? "outline" : "accent",
+              variant: buttonVariant,
               disabled: isDisabled
             }
           ]

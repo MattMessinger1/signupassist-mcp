@@ -102,7 +102,7 @@ Starts: ${startTime}
 **What's next?**
 For any questions about your registration, class details, or changes — please contact ${providerName} directly. SignupAssist's job is done here!
 
-Thanks for letting us help with signup. Enjoy your class! 🙌`;
+Thanks for letting us help with signup. Enjoy your class!`;
 }
 
 /**
