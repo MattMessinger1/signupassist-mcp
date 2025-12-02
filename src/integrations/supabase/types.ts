@@ -809,6 +809,93 @@ export type Database = {
         }
         Relationships: []
       }
+      registrations: {
+        Row: {
+          amount_cents: number
+          booking_number: string | null
+          charge_id: string | null
+          created_at: string | null
+          delegate_email: string
+          delegate_name: string
+          error_message: string | null
+          executed_at: string | null
+          id: string
+          mandate_id: string | null
+          org_ref: string
+          participant_names: string[]
+          program_name: string
+          program_ref: string
+          provider: string
+          scheduled_for: string | null
+          start_date: string | null
+          status: string
+          success_fee_cents: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          amount_cents?: number
+          booking_number?: string | null
+          charge_id?: string | null
+          created_at?: string | null
+          delegate_email: string
+          delegate_name: string
+          error_message?: string | null
+          executed_at?: string | null
+          id?: string
+          mandate_id?: string | null
+          org_ref: string
+          participant_names?: string[]
+          program_name: string
+          program_ref: string
+          provider?: string
+          scheduled_for?: string | null
+          start_date?: string | null
+          status?: string
+          success_fee_cents?: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          amount_cents?: number
+          booking_number?: string | null
+          charge_id?: string | null
+          created_at?: string | null
+          delegate_email?: string
+          delegate_name?: string
+          error_message?: string | null
+          executed_at?: string | null
+          id?: string
+          mandate_id?: string | null
+          org_ref?: string
+          participant_names?: string[]
+          program_name?: string
+          program_ref?: string
+          provider?: string
+          scheduled_for?: string | null
+          start_date?: string | null
+          status?: string
+          success_fee_cents?: number
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "registrations_charge_id_fkey"
+            columns: ["charge_id"]
+            isOneToOne: false
+            referencedRelation: "charges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "registrations_mandate_id_fkey"
+            columns: ["mandate_id"]
+            isOneToOne: false
+            referencedRelation: "mandates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scheduled_registrations: {
         Row: {
           booking_number: string | null
@@ -908,6 +995,8 @@ export type Database = {
         Row: {
           created_at: string
           default_payment_method_id: string | null
+          payment_method_brand: string | null
+          payment_method_last4: string | null
           stripe_customer_id: string | null
           updated_at: string
           user_id: string
@@ -915,6 +1004,8 @@ export type Database = {
         Insert: {
           created_at?: string
           default_payment_method_id?: string | null
+          payment_method_brand?: string | null
+          payment_method_last4?: string | null
           stripe_customer_id?: string | null
           updated_at?: string
           user_id: string
@@ -922,6 +1013,8 @@ export type Database = {
         Update: {
           created_at?: string
           default_payment_method_id?: string | null
+          payment_method_brand?: string | null
+          payment_method_last4?: string | null
           stripe_customer_id?: string | null
           updated_at?: string
           user_id?: string
