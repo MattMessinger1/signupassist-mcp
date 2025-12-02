@@ -167,12 +167,18 @@ export async function issueMandate(
 // ============= Mandate Scope Configuration =============
 
 export const MANDATE_SCOPES = {
+  // Platform scopes
   AUTHENTICATE: 'scp:authenticate',
   READ_LISTINGS: 'scp:read:listings',
   REGISTER: 'scp:register',
   PAY: 'scp:pay',
   DISCOVER_FIELDS: 'scp:discover:fields',
-  PLATFORM_SUCCESS_FEE: 'platform:success_fee'
+  PLATFORM_SUCCESS_FEE: 'platform:success_fee',
+  
+  // Provider-specific scopes (Bookeo)
+  BOOKEO_CREATE_BOOKING: 'bookeo:create_booking',
+  BOOKEO_READ_PRODUCTS: 'bookeo:read_products',
+  BOOKEO_READ_SLOTS: 'bookeo:read_slots'
 } as const;
 
 export const SCOPE_REQUIREMENTS: Record<string, string[]> = {
@@ -180,7 +186,9 @@ export const SCOPE_REQUIREMENTS: Record<string, string[]> = {
   'scp.find_programs': [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.READ_LISTINGS],
   'scp.discover_required_fields': [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.DISCOVER_FIELDS],
   'scp.register': [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.REGISTER],
-  'scp.pay': [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.PAY]
+  'scp.pay': [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.PAY],
+  // Bookeo tool mapping
+  'bookeo.confirm_booking': [MANDATE_SCOPES.BOOKEO_CREATE_BOOKING]
 };
 
 export function getScopesForTool(toolName: string): string[] {
