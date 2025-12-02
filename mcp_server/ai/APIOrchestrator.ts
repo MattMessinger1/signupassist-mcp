@@ -695,10 +695,17 @@ export default class APIOrchestrator implements IOrchestrator {
     };
     
     const bookingStatus = determineBookingStatus(context.selectedProgram);
+    
+    // Get booking date from earliest_slot_time OR booking_opens_at, or use placeholder (1 week from now)
     const earliestSlot = context.selectedProgram?.earliest_slot_time 
       ? new Date(context.selectedProgram.earliest_slot_time) 
-      : null;
-    const isFutureBooking = bookingStatus === 'opens_later' && earliestSlot && earliestSlot > new Date();
+      : context.selectedProgram?.booking_opens_at
+        ? new Date(context.selectedProgram.booking_opens_at)
+        : null;
+    
+    // For "opens_later" programs, treat as future booking even without a specific date
+    // This allows scheduled registrations for courses where booking window hasn't opened
+    const isFutureBooking = bookingStatus === 'opens_later';
 
     // PART 1: Check if user has saved payment method for IMMEDIATE registrations
     if (!isFutureBooking) {
@@ -761,16 +768,24 @@ export default class APIOrchestrator implements IOrchestrator {
     let buttons: any[] = [];
     let paymentMessage = message;
 
-    if (isFutureBooking && earliestSlot) {
+    if (isFutureBooking) {
       // Set & Forget flow: Show auto-register button
-      paymentMessage += `\n\n📅 This class opens for booking on ${earliestSlot.toLocaleString()}. We can automatically register you the moment it opens!`;
+      // Use placeholder date if no specific slot time is known
+      const scheduledDate = earliestSlot || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const dateDisplay = earliestSlot 
+        ? `on ${this.formatTimeForUser(earliestSlot, context)}`
+        : "when registration opens";
+      
+      paymentMessage += `\n\n📅 This class isn't open for registration yet. We can automatically register you ${dateDisplay}!`;
       
       buttons = [
         { 
-          label: `⏰ Auto-Register on ${earliestSlot.toLocaleDateString()}`, 
+          label: earliestSlot 
+            ? `⏰ Auto-Register on ${scheduledDate.toLocaleDateString()}` 
+            : `⏰ Auto-Register When Available`, 
           action: "schedule_auto_registration",
           payload: {
-            scheduled_time: earliestSlot.toISOString(),
+            scheduled_time: scheduledDate.toISOString(),
             event_id: context.selectedProgram.event_id || context.selectedProgram.program_ref,
             total_amount: grandTotal,
             program_fee: formattedTotal,
