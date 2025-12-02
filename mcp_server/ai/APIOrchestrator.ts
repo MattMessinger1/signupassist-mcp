@@ -971,28 +971,7 @@ export default class APIOrchestrator implements IOrchestrator {
         allergies: p.allergies
       }));
 
-      // Step 1: Book with Bookeo via MCP tool
-      Logger.info("[confirmPayment] Calling bookeo.confirm_booking...");
-      const bookingResponse = await this.invokeMCPTool('bookeo.confirm_booking', {
-        event_id,
-        program_ref: programRef,
-        org_ref: orgRef,
-        delegate_data: mappedDelegateData,
-        participant_data: mappedParticipantData,
-        num_participants
-      }, { mandate_id }); // Pass audit context for ChatGPT compliance
-
-      if (!bookingResponse.success || !bookingResponse.data?.booking_number) {
-        Logger.error("[confirmPayment] Booking failed", bookingResponse);
-        return this.formatError(
-          bookingResponse.error?.display || "Failed to create booking. Please try again."
-        );
-      }
-
-      const { booking_number, start_time } = bookingResponse.data;
-      Logger.info("[confirmPayment] ✅ Booking confirmed:", { booking_number });
-
-      // PART 5: Create mandate for immediate booking (audit compliance)
+      // PART 5: Create mandate BEFORE booking (for audit compliance)
       Logger.info("[confirmPayment] Creating mandate for audit trail...");
       let mandate_id: string | undefined;
       
@@ -1019,6 +998,27 @@ export default class APIOrchestrator implements IOrchestrator {
       } else {
         Logger.warn("[confirmPayment] No userId - skipping mandate creation");
       }
+
+      // Step 1: Book with Bookeo via MCP tool
+      Logger.info("[confirmPayment] Calling bookeo.confirm_booking...");
+      const bookingResponse = await this.invokeMCPTool('bookeo.confirm_booking', {
+        event_id,
+        program_ref: programRef,
+        org_ref: orgRef,
+        delegate_data: mappedDelegateData,
+        participant_data: mappedParticipantData,
+        num_participants
+      }, { mandate_id }); // Pass audit context for ChatGPT compliance
+
+      if (!bookingResponse.success || !bookingResponse.data?.booking_number) {
+        Logger.error("[confirmPayment] Booking failed", bookingResponse);
+        return this.formatError(
+          bookingResponse.error?.display || "Failed to create booking. Please try again."
+        );
+      }
+
+      const { booking_number, start_time } = bookingResponse.data;
+      Logger.info("[confirmPayment] ✅ Booking confirmed:", { booking_number });
 
       // Step 3: Charge $20 success fee via MCP tool (audit-compliant)
       Logger.info("[confirmPayment] About to charge Stripe", { 
