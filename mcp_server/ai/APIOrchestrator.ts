@@ -979,7 +979,7 @@ export default class APIOrchestrator implements IOrchestrator {
             user_id: userId,
             provider: 'bookeo',
             org_ref: orgRef,
-            scopes: ['PLATFORM_SUCCESS_FEE', 'REGISTER'],
+            scopes: ['platform:success_fee', 'scp:register'],
             program_ref: programRef,
             valid_until: new Date(Date.now() + 5 * 60 * 1000).toISOString()  // 5 minutes from now
           });

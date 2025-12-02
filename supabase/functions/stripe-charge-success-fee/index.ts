@@ -76,7 +76,7 @@ serve(async (req) => {
       metadata: {
         booking_number,
         mandate_id,
-        user_id: userId,
+        user_id,
         type: 'platform_success_fee'
       }
     });
