@@ -77,6 +77,13 @@ serve(async (req) => {
     });
     logStep("Payment method attached to customer");
 
+    // Retrieve payment method details for display (last4, brand)
+    const paymentMethod = await stripe.paymentMethods.retrieve(payment_method_id);
+    const cardDetails = paymentMethod.card;
+    const last4 = cardDetails?.last4 || null;
+    const brand = cardDetails?.brand || null;
+    logStep("Payment method details retrieved", { last4, brand });
+
     // Set as default payment method for invoices
     await stripe.customers.update(customer_id, {
       invoice_settings: {
@@ -85,13 +92,15 @@ serve(async (req) => {
     });
     logStep("Payment method set as default");
 
-    // CRITICAL: Upsert user_billing table with the default payment method
+    // CRITICAL: Upsert user_billing table with the default payment method + card display info
     const { error: upsertError } = await supabaseClient
       .from('user_billing')
       .upsert({
         user_id: user.id,
         stripe_customer_id: customer_id,
         default_payment_method_id: payment_method_id,
+        payment_method_last4: last4,
+        payment_method_brand: brand ? brand.charAt(0).toUpperCase() + brand.slice(1) : null, // Capitalize brand
         updated_at: new Date().toISOString(),
       }, {
         onConflict: 'user_id'
@@ -103,7 +112,9 @@ serve(async (req) => {
     }
     logStep("User billing upserted successfully", { 
       user_id: user.id, 
-      default_payment_method_id: payment_method_id 
+      default_payment_method_id: payment_method_id,
+      last4,
+      brand
     });
 
     return new Response(JSON.stringify({ success: true }), {
