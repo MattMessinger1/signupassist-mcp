@@ -86,8 +86,8 @@ serve(async (req) => {
       status: paymentIntent.status 
     });
 
-    // Record charge in charges table
-    const { error: chargeError } = await supabaseClient
+    // Record charge in charges table and get the database UUID
+    const { data: chargeData, error: chargeError } = await supabaseClient
       .from('charges')
       .insert({
         mandate_id,
@@ -95,18 +95,23 @@ serve(async (req) => {
         amount_cents,
         status: paymentIntent.status,
         charged_at: new Date().toISOString()
-      });
+      })
+      .select('id')
+      .single();
 
+    let databaseChargeId: string | null = null;
     if (chargeError) {
       logStep("Warning: Failed to record charge in database", { error: chargeError.message });
       // Don't fail the request - payment succeeded
     } else {
-      logStep("Charge recorded in database");
+      databaseChargeId = chargeData?.id || null;
+      logStep("Charge recorded in database", { charge_id: databaseChargeId });
     }
 
     return new Response(JSON.stringify({ 
       success: true,
-      charge_id: paymentIntent.id,
+      charge_id: databaseChargeId, // Return database UUID, not Stripe ID
+      stripe_payment_intent: paymentIntent.id,
       status: paymentIntent.status,
       amount_cents
     }), {
