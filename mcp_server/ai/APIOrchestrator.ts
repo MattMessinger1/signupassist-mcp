@@ -81,7 +81,7 @@ export default class APIOrchestrator implements IOrchestrator {
   private async invokeMCPTool(
     toolName: string, 
     args: any,
-    auditContext?: { mandate_id?: string; plan_execution_id?: string }
+    auditContext?: { mandate_id?: string; plan_execution_id?: string; user_id?: string }
   ): Promise<any> {
     if (!this.mcpServer?.tools?.has(toolName)) {
       const available = this.mcpServer?.tools ? Array.from(this.mcpServer.tools.keys()).join(', ') : 'none';
@@ -91,10 +91,14 @@ export default class APIOrchestrator implements IOrchestrator {
     const tool = this.mcpServer.tools.get(toolName);
     Logger.info(`[MCP] Invoking tool: ${toolName}${auditContext?.mandate_id ? ` (mandate: ${auditContext.mandate_id.substring(0, 8)}...)` : ''}`);
     
-    // Inject audit context into args for tool handler
+    // Inject audit context into args for tool handler (including user_id for RLS)
     const argsWithAudit = {
       ...args,
-      _audit: auditContext || { plan_execution_id: null }
+      _audit: {
+        plan_execution_id: auditContext?.plan_execution_id || null,
+        mandate_id: auditContext?.mandate_id,
+        user_id: auditContext?.user_id
+      }
     };
     
     return await tool.handler(argsWithAudit);
@@ -1008,7 +1012,7 @@ export default class APIOrchestrator implements IOrchestrator {
         delegate_data: mappedDelegateData,
         participant_data: mappedParticipantData,
         num_participants
-      }, { mandate_id }); // Pass audit context for ChatGPT compliance
+      }, { mandate_id, user_id: userId }); // Pass audit context for ChatGPT compliance
 
       if (!bookingResponse.success || !bookingResponse.data?.booking_number) {
         Logger.error("[confirmPayment] Booking failed", bookingResponse);
@@ -1039,7 +1043,7 @@ export default class APIOrchestrator implements IOrchestrator {
             mandate_id,
             amount_cents: 2000, // $20 success fee
             user_id: userId  // Required for server-to-server call
-          }, { mandate_id }); // Pass audit context for audit trail linking
+          }, { mandate_id, user_id: userId }); // Pass audit context for audit trail linking
 
           if (!feeResult.success) {
             Logger.warn("[confirmPayment] Success fee charge failed (non-fatal):", feeResult.error);
