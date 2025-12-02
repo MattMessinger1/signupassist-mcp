@@ -1442,7 +1442,7 @@ export default class APIOrchestrator implements IOrchestrator {
         }],
         cta: {
           buttons: [
-            { label: "View Receipts", action: "view_receipts", payload: { user_id }, variant: "accent" },
+            { label: "View Receipts", action: "view_receipts", payload: { user_id: context.user_id }, variant: "accent" },
             { label: "Browse More Classes", action: "search_programs", payload: { orgRef: context.orgRef || "aim-design" }, variant: "outline" }
           ]
         }
