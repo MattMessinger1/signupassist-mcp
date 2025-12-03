@@ -23,8 +23,9 @@ export default function MCPChatTest() {
   const { toast } = useToast();
 
   // Mock test user for authenticated flow testing
+  // Using a valid UUID format for compatibility with Supabase tables
   const mockUser = mockAuthEnabled ? {
-    id: 'test-user-00000001',
+    id: '00000000-0000-0000-0000-000000000001',
     email: 'testuser@signupassist.dev',
     firstName: 'Test',
     lastName: 'User'
