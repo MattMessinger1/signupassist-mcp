@@ -110,7 +110,7 @@ export function ResponsibleDelegateForm({
   // Track which participants use saved children vs new entries
   const [participantSource, setParticipantSource] = useState<('saved' | 'new')[]>(['new']);
   const [selectedChildIds, setSelectedChildIds] = useState<(string | null)[]>([null]);
-  const [saveNewParticipants, setSaveNewParticipants] = useState<boolean[]>([false]);
+  const [saveNewParticipants, setSaveNewParticipants] = useState<boolean[]>([true]); // Default to saving participants for convenience
   
   // Check if profile is already saved (to decide if checkbox should show)
   const hasExistingProfile = !!(initialDelegateProfile?.delegate_dob || initialDelegateProfile?.delegate_phone);
@@ -134,7 +134,7 @@ export function ResponsibleDelegateForm({
     });
     setSaveNewParticipants(prev => {
       const newArr = [...prev];
-      while (newArr.length < numParticipants) newArr.push(false);
+      while (newArr.length < numParticipants) newArr.push(true); // Default to saving
       return newArr.slice(0, numParticipants);
     });
   }, [numParticipants]);
