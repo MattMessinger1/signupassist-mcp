@@ -397,6 +397,19 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
       
       const response = await sendAction(action, enrichedPayload, sessionId, undefined, userTimezone);
       
+      // If delegate profile was saved during form submission, update local state
+      if (action === 'submit_form' && payload.saveDelegateProfile && payload.formData) {
+        const formData = payload.formData.delegate_data || payload.formData;
+        setDelegateProfile({
+          delegate_dob: formData.delegate_dob,
+          delegate_relationship: formData.delegate_relationship,
+          delegate_phone: formData.delegate_phone,
+          delegate_firstName: formData.delegate_firstName,
+          delegate_lastName: formData.delegate_lastName
+        });
+        console.log('[MCPChat] Updated delegate profile from form submission:', formData);
+      }
+      
       const ctaButtons = response.cta 
         ? (Array.isArray(response.cta) ? response.cta : (response.cta as any).buttons)
         : undefined;
