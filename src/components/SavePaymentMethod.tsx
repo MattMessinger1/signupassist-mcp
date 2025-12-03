@@ -141,6 +141,7 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
           body: {
             payment_method_id: paymentMethod.id,
             customer_id: customerId,
+            user_id: mockUserId || undefined, // Pass mock user ID if present for E2E testing
           },
         });
 

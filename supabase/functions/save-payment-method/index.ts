@@ -56,8 +56,8 @@ serve(async (req) => {
     }
     logStep("User authenticated", { userId: user.id, email: user.email });
 
-    // Parse request body
-    const { payment_method_id, customer_id } = await req.json();
+    // Parse request body - support optional user_id override for mock users
+    const { payment_method_id, customer_id, user_id: overrideUserId } = await req.json();
     
     if (!payment_method_id) {
       throw new Error("payment_method_id is required");
@@ -66,7 +66,9 @@ serve(async (req) => {
       throw new Error("customer_id is required");
     }
     
-    logStep("Request body parsed", { payment_method_id, customer_id });
+    // Use override user_id if provided (for mock user testing), otherwise use authenticated user
+    const effectiveUserId = overrideUserId || user.id;
+    logStep("Request body parsed", { payment_method_id, customer_id, effectiveUserId, overrideUserId });
 
     // Initialize Stripe
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
@@ -96,7 +98,7 @@ serve(async (req) => {
     const { error: upsertError } = await supabaseClient
       .from('user_billing')
       .upsert({
-        user_id: user.id,
+        user_id: effectiveUserId,
         stripe_customer_id: customer_id,
         default_payment_method_id: payment_method_id,
         payment_method_last4: last4,
@@ -111,7 +113,7 @@ serve(async (req) => {
       throw new Error(`Failed to update user billing: ${upsertError.message}`);
     }
     logStep("User billing upserted successfully", { 
-      user_id: user.id, 
+      user_id: effectiveUserId, 
       default_payment_method_id: payment_method_id,
       last4,
       brand
