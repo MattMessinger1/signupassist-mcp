@@ -30,6 +30,7 @@ import {
   getCancelFailedMessage,
   getPendingCancelSuccessMessage,
   getReceiptsFooterMessage,
+  getScheduledRegistrationSuccessMessage,
   SUPPORT_EMAIL
 } from "./apiMessageTemplates.js";
 import { stripHtml } from "../lib/extractionUtils.js";
@@ -1444,18 +1445,32 @@ export default class APIOrchestrator implements IOrchestrator {
         step: FlowStep.BROWSE
       });
       
+      // Format valid_until date (mandate expiry)
+      const validUntilDate = mandateResponse.data?.valid_until 
+        ? new Date(mandateResponse.data.valid_until).toLocaleString()
+        : scheduledDate.toLocaleString();
+      
+      // Use the Responsible Delegate disclosure template
+      const successMessage = getScheduledRegistrationSuccessMessage({
+        program_name: programName,
+        scheduled_date: scheduledDate.toLocaleString(),
+        total_cost: total_amount,
+        provider_name: 'AIM Design', // TODO: get from context
+        mandate_id: mandateId,
+        valid_until: validUntilDate
+      });
+      
       return {
-        message: `✅ Auto-registration scheduled!\n\n` +
-                 `We'll register you on ${scheduledDate.toLocaleString()} when booking opens.\n\n` +
-                 `You'll be charged ${total_amount} **only if registration succeeds**.`,
+        message: successMessage,
         cards: [{
-          title: '⏰ Scheduled',
+          title: '🔐 Authorization Confirmed',
           subtitle: programName,
-          description: `Booking opens: ${scheduledDate.toLocaleString()}\nTotal: ${total_amount}`
+          description: `Booking opens: ${scheduledDate.toLocaleString()}\nTotal (if successful): ${total_amount}\nMandate ID: ${mandateId.substring(0, 8)}...`
         }],
         cta: {
           buttons: [
-            { label: "View Receipts", action: "view_receipts", payload: { user_id: context.user_id }, variant: "accent" },
+            { label: "View Audit Trail", action: "view_audit_trail", payload: { mandate_id: mandateId }, variant: "accent" },
+            { label: "View Receipts", action: "view_receipts", payload: { user_id: context.user_id }, variant: "outline" },
             { label: "Browse More Classes", action: "search_programs", payload: { orgRef: context.orgRef || "aim-design" }, variant: "outline" }
           ]
         }

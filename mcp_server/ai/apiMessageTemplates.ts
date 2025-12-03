@@ -17,6 +17,9 @@ export interface APIMessageVariables {
   booking_number?: string;
   start_time?: string;
   scheduled_date?: string;
+  mandate_id?: string;
+  valid_until?: string;
+  scopes?: string[];
 }
 
 /**
@@ -236,4 +239,94 @@ export function getReceiptsFooterMessage(): string {
   return `🔒 _Your payment information is securely stored with Stripe. SignupAssist never sees your full card number._
 
 _Questions about refunds or charges? Email ${SUPPORT_EMAIL}_`;
+}
+
+// ============================================
+// SCHEDULED REGISTRATION MESSAGES
+// ============================================
+
+/**
+ * SCHEDULED SUCCESS: Authorization confirmation with Responsible Delegate disclosure
+ */
+export function getScheduledRegistrationSuccessMessage(vars: APIMessageVariables): string {
+  const programName = vars.program_name || "this program";
+  const scheduledDate = vars.scheduled_date || "the scheduled time";
+  const totalCost = vars.total_cost || "$0.00";
+  const providerName = vars.provider_name || "the provider";
+  const mandateId = vars.mandate_id ? vars.mandate_id.substring(0, 8) + '...' : 'N/A';
+  const validUntil = vars.valid_until || "until booking opens";
+  
+  return `✅ **Auto-Registration Scheduled!**
+
+**Program:** ${programName}
+**Booking Opens:** ${scheduledDate}
+**Total (if successful):** ${totalCost}
+
+---
+
+🔐 **Authorization Summary (Responsible Delegate)**
+
+By scheduling this registration, you have authorized SignupAssist to:
+
+✓ **Log in** to ${providerName} on your behalf at the scheduled time
+✓ **Complete registration** for the program and participants you specified
+✓ **Charge your card** ${totalCost} only if registration succeeds
+
+**Authorization ID:** ${mandateId}
+**Valid Until:** ${validUntil}
+
+📋 _All actions are logged. View your audit trail anytime via "View Receipts"._
+
+---
+
+**What happens next?**
+1. At the scheduled time, we'll attempt to register you
+2. If successful: You'll be charged and receive confirmation
+3. If unsuccessful: No charge — we'll notify you
+
+_You can cancel this scheduled registration anytime before it executes._
+
+_Questions? Email ${SUPPORT_EMAIL}_`;
+}
+
+/**
+ * SCHEDULED PAYMENT AUTH: Pre-authorization disclosure for Set-and-Forget
+ */
+export function getScheduledPaymentAuthorizationMessage(vars: APIMessageVariables): string {
+  const programName = vars.program_name || "this program";
+  const scheduledDate = vars.scheduled_date || "the scheduled time";
+  const programFee = vars.total_cost || "$0.00";
+  const successFee = "$20.00";
+  const providerName = vars.provider_name || "the provider";
+  
+  // Calculate total
+  const programFeeValue = parseFloat(programFee.replace(/[^0-9.]/g, '')) || 0;
+  const successFeeValue = 20.00;
+  const grandTotal = `$${(programFeeValue + successFeeValue).toFixed(2)}`;
+  
+  return `⏰ **Schedule Auto-Registration**
+
+**Program:** ${programName}
+**Booking Opens:** ${scheduledDate}
+
+**Charges (if registration succeeds):**
+• **Program Fee:** ${programFee} (paid to ${providerName})
+• **SignupAssist Success Fee:** ${successFee}
+• **Total:** ${grandTotal}
+
+---
+
+🔐 **Responsible Delegate Authorization**
+
+By clicking "Schedule Auto-Registration", you authorize SignupAssist to act as your delegate:
+
+1. **Access:** Log in to ${providerName} using your saved credentials at ${scheduledDate}
+2. **Register:** Complete registration for the participants you specified
+3. **Payment:** Charge your saved payment method ${grandTotal} only if registration succeeds
+
+📋 _Every action is logged for your records. You can view the full audit trail anytime._
+
+**Cancellation:** Cancel anytime before execution at no charge.
+
+_Questions? Email ${SUPPORT_EMAIL}_`;
 }
