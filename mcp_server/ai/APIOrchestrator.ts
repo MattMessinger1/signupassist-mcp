@@ -1540,30 +1540,50 @@ export default class APIOrchestrator implements IOrchestrator {
         r.status === 'confirmed' && r.start_date && new Date(r.start_date) > now
       );
       const scheduled = registrations.filter(r => r.status === 'pending');
+      // Past includes: completed, cancelled, failed, and confirmed with past start_date
       const past = registrations.filter(r => 
-        (r.status === 'confirmed' || r.status === 'completed') && 
-        r.start_date && new Date(r.start_date) <= now
+        r.status === 'cancelled' || 
+        r.status === 'failed' ||
+        r.status === 'completed' ||
+        (r.status === 'confirmed' && r.start_date && new Date(r.start_date) <= now)
       );
+
+      // Status badge helper
+      const getStatusBadge = (status: string): string => {
+        switch (status) {
+          case 'cancelled': return '❌ Cancelled';
+          case 'failed': return '⚠️ Failed';
+          case 'completed': return '✅ Completed';
+          case 'confirmed': return '✅ Confirmed';
+          case 'pending': return '⏳ Scheduled';
+          default: return status;
+        }
+      };
 
       // Build cards for each registration
       const buildRegCard = (reg: any, isUpcoming: boolean = false): CardSpec => {
         const buttons = [];
         
-        // Always show View Audit Trail for confirmed registrations
+        // Always show View Audit Trail for non-pending registrations (including cancelled)
         if (reg.status !== 'pending') {
           buttons.push({ label: 'View Audit Trail', action: 'view_audit_trail', payload: { registration_id: reg.id }, variant: 'outline' as const });
         }
         
-        // Show Cancel button for pending OR upcoming (will route to appropriate handler)
-        if (reg.status === 'pending' || isUpcoming) {
+        // Show Cancel button for pending OR upcoming (but not cancelled/failed/completed)
+        if ((reg.status === 'pending' || isUpcoming) && reg.status !== 'cancelled' && reg.status !== 'failed' && reg.status !== 'completed') {
           buttons.push({ label: 'Cancel', action: 'cancel_registration', payload: { registration_id: reg.id }, variant: 'secondary' as const });
         }
         
+        // Add status badge to title for cancelled/failed
+        const titleWithStatus = (reg.status === 'cancelled' || reg.status === 'failed') 
+          ? `${reg.program_name} ${getStatusBadge(reg.status)}`
+          : reg.program_name;
+        
         return {
-          title: reg.program_name,
+          title: titleWithStatus,
           subtitle: formatDateTime(reg.start_date),
           description: [
-            `**Booking #:** ${reg.booking_number || 'Pending'}`,
+            `**Booking #:** ${reg.booking_number || 'N/A'}`,
             `**Participants:** ${(reg.participant_names || []).join(', ') || 'N/A'}`,
             `**Program Fee:** ${formatDollars(reg.amount_cents || 0)}`,
             `**SignupAssist Fee:** ${formatDollars(reg.success_fee_cents || 0)}`,
@@ -1576,7 +1596,7 @@ export default class APIOrchestrator implements IOrchestrator {
       const cards: CardSpec[] = [
         ...upcoming.map(r => buildRegCard(r, true)),  // isUpcoming = true, show Cancel button
         ...scheduled.map(r => buildRegCard(r, false)), // pending status, Cancel already shown
-        ...past.map(r => buildRegCard(r, false))       // past, no cancel option
+        ...past.map(r => buildRegCard(r, false))       // past (includes cancelled/failed), no cancel option
       ];
 
       return {
