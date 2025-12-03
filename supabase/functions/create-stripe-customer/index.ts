@@ -80,23 +80,7 @@ serve(async (req) => {
     });
     logStep("Stripe customer created", { customerId: customer.id });
 
-    // Check if this is a mock/test user ID (doesn't exist in auth.users)
-    const isMockUser = userId.startsWith('00000000-0000-0000-0000-');
-    
-    if (isMockUser) {
-      logStep("Mock user detected, skipping user_billing insert", { userId });
-      // Return success without DB write for mock users
-      return new Response(JSON.stringify({ 
-        success: true, 
-        customer_id: customer.id,
-        message: "Customer created (mock user - not persisted)"
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      });
-    }
-
-    // Save customer ID to user_billing table (real users only)
+    // Save customer ID to user_billing table (all users including mock/test users for E2E testing)
     const { error: insertError } = await supabaseClient
       .from('user_billing')
       .upsert({
