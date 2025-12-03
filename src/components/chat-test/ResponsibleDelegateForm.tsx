@@ -43,6 +43,12 @@ interface FormSchema {
 interface ResponsibleDelegateFormProps {
   schema: FormSchema | any; // Accept any format for flexibility
   programTitle: string;
+  initialDelegateData?: {
+    delegate_firstName?: string;
+    delegate_lastName?: string;
+    delegate_email?: string;
+    delegate_phone?: string;
+  };
   onSubmit: (formData: {
     delegate: Record<string, any>;
     participants: Record<string, any>[];
@@ -53,6 +59,7 @@ interface ResponsibleDelegateFormProps {
 export function ResponsibleDelegateForm({
   schema,
   programTitle,
+  initialDelegateData,
   onSubmit
 }: ResponsibleDelegateFormProps) {
   // Ensure schema has the expected structure
@@ -61,7 +68,7 @@ export function ResponsibleDelegateForm({
   const maxParticipants = schema?.max_participants || 10;
   const requiresAgeVerification = schema?.requires_age_verification ?? true;
   const minimumDelegateAge = schema?.minimum_delegate_age || 18;
-  const [delegateData, setDelegateData] = useState<Record<string, any>>({});
+  const [delegateData, setDelegateData] = useState<Record<string, any>>(initialDelegateData || {});
   const [numParticipants, setNumParticipants] = useState(1);
   const [participantsData, setParticipantsData] = useState<Record<string, any>[]>([{}]);
   const [ageVerificationError, setAgeVerificationError] = useState<string | null>(null);
