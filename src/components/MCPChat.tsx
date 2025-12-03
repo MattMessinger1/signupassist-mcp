@@ -455,15 +455,25 @@ export function MCPChat({ mockUserId, mockUserEmail, forceUnauthenticated }: MCP
               {msg.metadata?.componentType === 'fullscreen_form' && !submittedFormIds.has(idx) && (
                 <Sheet open={true} onOpenChange={(open) => {
                   if (!open) {
-                    // Don't allow closing without submitting - ChatGPT fullscreen pattern
+                    // Allow closing - mark as submitted so it doesn't reopen
+                    setSubmittedFormIds(prev => new Set(prev).add(idx));
                   }
                 }}>
                   <SheetContent side="bottom" className="h-[90vh] overflow-y-auto">
-                    <SheetHeader>
-                      <SheetTitle>{msg.metadata.program_name || "Registration Form"}</SheetTitle>
-                      <SheetDescription>
-                        Complete the form below to continue with your registration.
-                      </SheetDescription>
+                    <SheetHeader className="flex flex-row items-center justify-between">
+                      <div>
+                        <SheetTitle>{msg.metadata.program_name || "Registration Form"}</SheetTitle>
+                        <SheetDescription>
+                          Complete the form below to continue with your registration.
+                        </SheetDescription>
+                      </div>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => setSubmittedFormIds(prev => new Set(prev).add(idx))}
+                      >
+                        ← Go Back
+                      </Button>
                     </SheetHeader>
                     <div className="mt-6">
                       <ResponsibleDelegateForm
