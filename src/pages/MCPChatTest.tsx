@@ -25,7 +25,9 @@ export default function MCPChatTest() {
   // Mock test user for authenticated flow testing
   const mockUser = mockAuthEnabled ? {
     id: 'test-user-00000001',
-    email: 'testuser@signupassist.dev'
+    email: 'testuser@signupassist.dev',
+    firstName: 'Test',
+    lastName: 'User'
   } : null;
 
   useEffect(() => {
@@ -220,6 +222,8 @@ export default function MCPChatTest() {
         <MCPChat 
           mockUserId={mockUser?.id}
           mockUserEmail={mockUser?.email}
+          mockUserFirstName={mockUser?.firstName}
+          mockUserLastName={mockUser?.lastName}
           forceUnauthenticated={!mockAuthEnabled}
         />
       </Elements>
