@@ -682,6 +682,120 @@ async function confirmBooking(args: {
 }
 
 /**
+ * Tool: bookeo.cancel_booking
+ * Cancel an existing Bookeo booking
+ * Returns success if provider accepts, failure if blocked by policy
+ */
+async function cancelBooking(args: {
+  booking_number: string;
+  org_ref: string;
+}): Promise<ProviderResponse<any>> {
+  const { booking_number, org_ref } = args;
+  
+  console.log(`[Bookeo] Cancelling booking: ${booking_number}`);
+  
+  if (!booking_number) {
+    const friendlyError: ParentFriendlyError = {
+      display: 'Missing booking number',
+      recovery: 'Unable to cancel without a booking reference',
+      severity: 'medium',
+      code: 'VALIDATION_ERROR'
+    };
+    return {
+      success: false,
+      error: friendlyError
+    };
+  }
+  
+  try {
+    // Call Bookeo API to cancel booking
+    const url = buildBookeoUrl(`/bookings/${booking_number}`);
+    console.log('[Bookeo] DELETE /bookings URL (redacted):', url
+      .replace(BOOKEO_API_KEY, 'API_KEY')
+      .replace(BOOKEO_SECRET_KEY, 'SECRET_KEY'));
+    
+    const response = await fetch(url, {
+      method: 'DELETE',
+      headers: bookeoHeadersMinimal()
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error(`[Bookeo] Cancel failed:`, response.status, errorData);
+      
+      // Provider-specific error handling
+      if (response.status === 404) {
+        const friendlyError: ParentFriendlyError = {
+          display: 'Booking not found',
+          recovery: 'This booking may have already been cancelled or does not exist',
+          severity: 'medium',
+          code: 'BOOKING_NOT_FOUND'
+        };
+        return {
+          success: false,
+          error: friendlyError
+        };
+      }
+      
+      if (response.status === 400 || response.status === 403) {
+        // Provider blocked cancellation (policy violation)
+        const friendlyError: ParentFriendlyError = {
+          display: errorData.message || 'Cancellation not allowed',
+          recovery: 'The provider\'s cancellation policy may prevent this. Please contact them directly.',
+          severity: 'medium',
+          code: 'CANCELLATION_BLOCKED'
+        };
+        return {
+          success: false,
+          error: friendlyError
+        };
+      }
+      
+      const friendlyError: ParentFriendlyError = {
+        display: errorData.message || 'Failed to cancel booking',
+        recovery: 'Please try again or contact support',
+        severity: 'high',
+        code: 'BOOKEO_API_ERROR'
+      };
+      return {
+        success: false,
+        error: friendlyError
+      };
+    }
+    
+    console.log(`[Bookeo] ✅ Booking cancelled: ${booking_number}`);
+    
+    return {
+      success: true,
+      data: {
+        booking_number,
+        cancelled: true,
+        cancelled_at: new Date().toISOString()
+      },
+      ui: {
+        cards: [{
+          title: '✅ Booking Cancelled',
+          description: `Booking #${booking_number} has been cancelled with the provider.`
+        }]
+      }
+    };
+    
+  } catch (error: any) {
+    console.error('[Bookeo] Error cancelling booking:', error);
+    const friendlyError: ParentFriendlyError = {
+      display: 'Unable to cancel booking',
+      recovery: 'Please try again or contact the provider directly',
+      severity: 'high',
+      code: 'BOOKEO_API_ERROR'
+    };
+    return {
+      success: false,
+      error: friendlyError
+    };
+  }
+}
+
+/**
  * Tool: bookeo.test_connection
  * Diagnostic tool to verify Bookeo API credentials from Railway
  * Calls /settings/apikeyinfo - the exact same endpoint as the working curl test
@@ -887,6 +1001,32 @@ export const bookeoTools: BookeoTool[] = [
         },
         toolArgs,
         () => confirmBooking(toolArgs)
+      );
+    }
+  },
+  {
+    name: 'bookeo.cancel_booking',
+    description: 'Cancel an existing Bookeo booking (subject to provider cancellation policy)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        booking_number: { type: 'string', description: 'Bookeo booking number to cancel' },
+        org_ref: { type: 'string', description: 'Organization reference' }
+      },
+      required: ['booking_number', 'org_ref']
+    },
+    handler: async (args: any) => {
+      // Extract audit context from args (injected by APIOrchestrator.invokeMCPTool)
+      const { _audit, ...toolArgs } = args;
+      return auditToolCall(
+        { 
+          plan_execution_id: _audit?.plan_execution_id || null, 
+          mandate_id: _audit?.mandate_id,
+          user_id: _audit?.user_id,
+          tool: 'bookeo.cancel_booking' 
+        },
+        toolArgs,
+        () => cancelBooking(toolArgs)
       );
     }
   }

@@ -23,7 +23,14 @@ import {
   getAPIPaymentSummaryMessage,
   getPaymentAuthorizationMessage,
   getAPISuccessMessage,
-  getAPIErrorMessage
+  getAPIErrorMessage,
+  getPendingCancelConfirmMessage,
+  getConfirmedCancelConfirmMessage,
+  getCancelSuccessMessage,
+  getCancelFailedMessage,
+  getPendingCancelSuccessMessage,
+  getReceiptsFooterMessage,
+  SUPPORT_EMAIL
 } from "./apiMessageTemplates.js";
 import { stripHtml } from "../lib/extractionUtils.js";
 import { formatInTimeZone } from "date-fns-tz";
@@ -1555,7 +1562,8 @@ export default class APIOrchestrator implements IOrchestrator {
         message: `📋 **Your Registrations**\n\n` +
           `✅ **Upcoming:** ${upcoming.length}\n` +
           `📅 **Scheduled:** ${scheduled.length}\n` +
-          `📦 **Past:** ${past.length}`,
+          `📦 **Past:** ${past.length}\n\n` +
+          getReceiptsFooterMessage(),
         cards,
         cta: {
           buttons: [
@@ -1773,6 +1781,7 @@ export default class APIOrchestrator implements IOrchestrator {
   /**
    * Cancel Registration Step 1: Show confirmation dialog
    * Phase F: Two-step confirmation to prevent accidental cancellations
+   * Now supports both pending (scheduled) AND confirmed (booked) registrations
    */
   private async cancelRegistrationStep1(
     payload: any,
@@ -1791,7 +1800,7 @@ export default class APIOrchestrator implements IOrchestrator {
       // Get registration details for confirmation
       const { data: registration, error } = await supabase
         .from('registrations')
-        .select('id, program_name, booking_number, status, start_date, delegate_name, amount_cents, success_fee_cents')
+        .select('id, program_name, booking_number, status, start_date, delegate_name, amount_cents, success_fee_cents, org_ref, provider, charge_id')
         .eq('id', registration_id)
         .single();
       
@@ -1802,58 +1811,85 @@ export default class APIOrchestrator implements IOrchestrator {
       
       // Check if cancellation is allowed
       if (registration.status === 'cancelled') {
-        return this.formatError("This registration has already been cancelled.");
+        return this.formatError(`This registration has already been cancelled.\n\n_Questions? Email ${SUPPORT_EMAIL}_`);
       }
       
       if (registration.status === 'completed') {
-        return this.formatError("Completed registrations cannot be cancelled.");
+        return this.formatError(`Completed registrations cannot be cancelled.\n\n_Questions? Email ${SUPPORT_EMAIL}_`);
       }
       
-      // Only pending/scheduled registrations can be fully cancelled
-      // Confirmed bookings require provider-side cancellation (not supported yet)
-      const canCancel = registration.status === 'pending';
+      const isPending = registration.status === 'pending';
       const isConfirmed = registration.status === 'confirmed';
       
       const formatDollars = (cents: number) => `$${(cents / 100).toFixed(2)}`;
       const startDateFormatted = registration.start_date 
         ? this.formatTimeForUser(new Date(registration.start_date), context)
         : 'TBD';
+      const providerName = registration.org_ref === 'aim-design' ? 'AIM Design' : registration.org_ref;
       
       if (isConfirmed) {
-        // For confirmed bookings, explain limitations
+        // Show cancellation confirmation for confirmed bookings with refund policy
+        const message = getConfirmedCancelConfirmMessage({
+          program_name: registration.program_name,
+          provider_name: providerName,
+          booking_number: registration.booking_number
+        });
+        
+        const confirmationCard: CardSpec = {
+          title: `⚠️ Cancel Confirmed Booking?`,
+          subtitle: registration.program_name,
+          description: [
+            `**Booking #:** ${registration.booking_number || 'N/A'}`,
+            `**Date:** ${startDateFormatted}`,
+            `**Delegate:** ${registration.delegate_name || 'N/A'}`,
+            `**Program Fee:** ${formatDollars(registration.amount_cents || 0)}`,
+            `**SignupAssist Fee:** ${formatDollars(registration.success_fee_cents || 0)}`,
+            ``,
+            `If ${providerName} accepts, your $20 fee will be refunded.`
+          ].join('\n'),
+          buttons: [
+            { 
+              label: "Yes, Request Cancellation", 
+              action: "confirm_cancel_registration", 
+              variant: "secondary",
+              payload: { registration_id, is_confirmed: true } 
+            },
+            { 
+              label: "Keep Booking", 
+              action: "view_receipts", 
+              variant: "outline" 
+            }
+          ]
+        };
+        
         return {
-          message: `⚠️ **Cannot Cancel Confirmed Booking**\n\n` +
-            `This registration has already been confirmed with the provider. ` +
-            `To cancel, please contact AIM Design directly.\n\n` +
-            `**Booking #:** ${registration.booking_number || 'N/A'}\n` +
-            `**Program:** ${registration.program_name}\n\n` +
-            `_Note: SignupAssist success fees are non-refundable once booking is confirmed._`,
-          cards: [],
-          cta: {
-            buttons: [
-              { label: "Back to Registrations", action: "view_receipts", variant: "outline" }
-            ]
-          }
+          message,
+          cards: [confirmationCard],
+          cta: { buttons: [] }
         };
       }
       
-      // Show confirmation dialog for pending registrations
+      // Pending registration - simpler cancellation
+      const message = getPendingCancelConfirmMessage({
+        program_name: registration.program_name
+      });
+      
       const confirmationCard: CardSpec = {
-        title: `⚠️ Cancel Registration?`,
+        title: `⚠️ Cancel Scheduled Registration?`,
         subtitle: registration.program_name,
         description: [
           `**Date:** ${startDateFormatted}`,
           `**Delegate:** ${registration.delegate_name || 'N/A'}`,
-          `**Status:** ${registration.status}`,
+          `**Status:** Scheduled (not yet booked)`,
           ``,
-          `This will cancel your scheduled auto-registration. No charges will be made.`
+          `No booking has been made, so no charges apply.`
         ].join('\n'),
         buttons: [
           { 
             label: "Yes, Cancel Registration", 
             action: "confirm_cancel_registration", 
             variant: "secondary",
-            payload: { registration_id } 
+            payload: { registration_id, is_confirmed: false } 
           },
           { 
             label: "Keep Registration", 
@@ -1864,8 +1900,7 @@ export default class APIOrchestrator implements IOrchestrator {
       };
       
       return {
-        message: `🚨 **Confirm Cancellation**\n\n` +
-          `Are you sure you want to cancel this registration? This action cannot be undone.`,
+        message,
         cards: [confirmationCard],
         cta: { buttons: [] }
       };
@@ -1879,13 +1914,14 @@ export default class APIOrchestrator implements IOrchestrator {
   /**
    * Cancel Registration Step 2: Execute cancellation
    * Phase F: Actual cancellation after user confirms
+   * Now handles both pending AND confirmed bookings with Bookeo API + Stripe refund
    */
   private async cancelRegistrationStep2(
     payload: any,
     sessionId: string,
     context: APIContext
   ): Promise<OrchestratorResponse> {
-    const { registration_id } = payload;
+    const { registration_id, is_confirmed } = payload;
     const userId = context.user_id;
     
     if (!registration_id) {
@@ -1897,37 +1933,144 @@ export default class APIOrchestrator implements IOrchestrator {
     }
     
     try {
-      Logger.info(`[cancelRegistration] User ${userId} cancelling registration: ${registration_id}`);
+      const supabase = this.getSupabaseClient();
       
-      // Invoke the registrations.cancel MCP tool
-      const result = await this.invokeMCPTool('registrations.cancel', {
-        registration_id,
-        user_id: userId
-      });
+      // Get full registration details
+      const { data: registration, error: regError } = await supabase
+        .from('registrations')
+        .select('*')
+        .eq('id', registration_id)
+        .single();
       
-      if (!result.success) {
-        Logger.error("[cancelRegistration] Cancel failed:", result.error);
-        return this.formatError(result.error?.message || "Failed to cancel registration.");
+      if (regError || !registration) {
+        return this.formatError("Registration not found.");
       }
       
-      Logger.info(`[cancelRegistration] Successfully cancelled: ${registration_id}`);
+      const providerName = registration.org_ref === 'aim-design' ? 'AIM Design' : registration.org_ref;
       
-      return {
-        message: `✅ **Registration Cancelled**\n\n` +
-          `Your scheduled registration has been cancelled. No charges were made.\n\n` +
-          `_You can schedule a new registration anytime by browsing programs._`,
-        cards: [],
-        cta: {
-          buttons: [
-            { label: "View Registrations", action: "view_receipts", variant: "outline" },
-            { label: "Browse Programs", action: "browse_programs", variant: "accent" }
-          ]
+      // Handle PENDING registrations (simple cancellation)
+      if (registration.status === 'pending') {
+        Logger.info(`[cancelRegistration] Cancelling pending registration: ${registration_id}`);
+        
+        const result = await this.invokeMCPTool('registrations.cancel', {
+          registration_id,
+          user_id: userId
+        });
+        
+        if (!result.success) {
+          Logger.error("[cancelRegistration] Cancel failed:", result.error);
+          return this.formatError(`Failed to cancel registration.\n\n_Questions? Email ${SUPPORT_EMAIL}_`);
         }
-      };
+        
+        const message = getPendingCancelSuccessMessage({
+          program_name: registration.program_name
+        });
+        
+        return {
+          message,
+          cards: [],
+          cta: {
+            buttons: [
+              { label: "View Registrations", action: "view_receipts", variant: "outline" },
+              { label: "Browse Programs", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "accent" }
+            ]
+          }
+        };
+      }
+      
+      // Handle CONFIRMED bookings (Bookeo cancel + Stripe refund)
+      if (registration.status === 'confirmed' && registration.booking_number) {
+        Logger.info(`[cancelRegistration] Attempting Bookeo cancellation: ${registration.booking_number}`);
+        
+        // Step 1: Cancel with Bookeo
+        const bookeoResult = await this.invokeMCPTool('bookeo.cancel_booking', {
+          booking_number: registration.booking_number,
+          org_ref: registration.org_ref
+        }, {
+          mandate_id: registration.mandate_id,
+          user_id: userId
+        });
+        
+        if (!bookeoResult.success) {
+          // Provider blocked cancellation
+          Logger.warn("[cancelRegistration] Bookeo cancellation blocked:", bookeoResult.error);
+          
+          const message = getCancelFailedMessage({
+            program_name: registration.program_name,
+            provider_name: providerName,
+            booking_number: registration.booking_number
+          });
+          
+          return {
+            message,
+            cards: [],
+            cta: {
+              buttons: [
+                { label: "View Registrations", action: "view_receipts", variant: "outline" }
+              ]
+            }
+          };
+        }
+        
+        Logger.info("[cancelRegistration] ✅ Bookeo cancellation successful");
+        
+        // Step 2: Refund success fee if there's a charge
+        let refundSuccessful = false;
+        if (registration.charge_id) {
+          Logger.info(`[cancelRegistration] Refunding success fee: ${registration.charge_id}`);
+          
+          const refundResult = await this.invokeMCPTool('stripe.refund_success_fee', {
+            charge_id: registration.charge_id,
+            reason: 'booking_cancelled'
+          }, {
+            mandate_id: registration.mandate_id,
+            user_id: userId
+          });
+          
+          if (refundResult.success) {
+            Logger.info("[cancelRegistration] ✅ Success fee refunded");
+            refundSuccessful = true;
+          } else {
+            Logger.error("[cancelRegistration] Refund failed (booking still cancelled):", refundResult.error);
+            // Don't fail - booking was cancelled, refund is secondary
+          }
+        }
+        
+        // Step 3: Update registration status
+        const { error: updateError } = await supabase
+          .from('registrations')
+          .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+          .eq('id', registration_id);
+        
+        if (updateError) {
+          Logger.error("[cancelRegistration] Failed to update status:", updateError);
+        }
+        
+        const message = getCancelSuccessMessage({
+          program_name: registration.program_name,
+          provider_name: providerName
+        });
+        
+        return {
+          message: refundSuccessful 
+            ? message 
+            : message + `\n\n⚠️ _Note: Refund processing may be delayed. Contact ${SUPPORT_EMAIL} if you don't see it within 5-10 business days._`,
+          cards: [],
+          cta: {
+            buttons: [
+              { label: "View Registrations", action: "view_receipts", variant: "outline" },
+              { label: "Browse Programs", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "accent" }
+            ]
+          }
+        };
+      }
+      
+      // Fallback - shouldn't reach here
+      return this.formatError(`Unable to cancel this registration. Status: ${registration.status}\n\n_Questions? Email ${SUPPORT_EMAIL}_`);
       
     } catch (err) {
       Logger.error("[cancelRegistrationStep2] Exception:", err);
-      return this.formatError("An error occurred while cancelling the registration.");
+      return this.formatError(`An error occurred while cancelling.\n\n_Questions? Email ${SUPPORT_EMAIL}_`);
     }
   }
 

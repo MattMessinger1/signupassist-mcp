@@ -252,6 +252,7 @@ export type Database = {
           charged_at: string
           id: string
           mandate_id: string | null
+          refunded_at: string | null
           status: string
           stripe_payment_intent: string | null
         }
@@ -260,6 +261,7 @@ export type Database = {
           charged_at?: string
           id?: string
           mandate_id?: string | null
+          refunded_at?: string | null
           status?: string
           stripe_payment_intent?: string | null
         }
@@ -268,6 +270,7 @@ export type Database = {
           charged_at?: string
           id?: string
           mandate_id?: string | null
+          refunded_at?: string | null
           status?: string
           stripe_payment_intent?: string | null
         }
