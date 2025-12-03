@@ -220,6 +220,15 @@ export default class APIOrchestrator implements IOrchestrator {
       case "confirm_cancel_registration":
         return await this.cancelRegistrationStep2(payload, sessionId, context);
 
+      case "load_saved_children":
+        return await this.loadSavedChildren(payload, sessionId, context);
+
+      case "check_payment_method":
+        return await this.checkPaymentMethod(payload, sessionId, context);
+
+      case "save_child":
+        return await this.saveChild(payload, sessionId, context);
+
       default:
         return this.formatError(`Unknown action: ${action}`);
     }
@@ -2167,6 +2176,146 @@ export default class APIOrchestrator implements IOrchestrator {
       cards: undefined,
       cta: undefined
     };
+  }
+
+  /**
+   * Load saved children for user (ChatGPT App Store compliant - via MCP tool)
+   */
+  private async loadSavedChildren(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    const userId = payload.user_id || context.user_id;
+    
+    if (!userId) {
+      Logger.warn('[loadSavedChildren] No user ID provided');
+      return {
+        message: "",
+        metadata: { savedChildren: [] }
+      };
+    }
+    
+    Logger.info('[loadSavedChildren] Loading saved children via MCP tool', { userId });
+    
+    try {
+      const result = await this.invokeMCPTool('user.list_children', { user_id: userId });
+      
+      if (!result?.success) {
+        Logger.warn('[loadSavedChildren] MCP tool failed:', result?.error);
+        return {
+          message: "",
+          metadata: { savedChildren: [] }
+        };
+      }
+      
+      const children = result.data?.children || [];
+      Logger.info('[loadSavedChildren] ✅ Loaded children:', children.length);
+      
+      return {
+        message: "",
+        metadata: { savedChildren: children }
+      };
+    } catch (error) {
+      Logger.error('[loadSavedChildren] Error:', error);
+      return {
+        message: "",
+        metadata: { savedChildren: [] }
+      };
+    }
+  }
+
+  /**
+   * Check payment method for user (ChatGPT App Store compliant - via MCP tool)
+   */
+  private async checkPaymentMethod(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    const userId = payload.user_id || context.user_id;
+    
+    if (!userId) {
+      Logger.warn('[checkPaymentMethod] No user ID provided');
+      return {
+        message: "",
+        metadata: { paymentMethod: null }
+      };
+    }
+    
+    Logger.info('[checkPaymentMethod] Checking payment method via MCP tool', { userId });
+    
+    try {
+      const result = await this.invokeMCPTool('user.check_payment_method', { user_id: userId });
+      
+      if (!result?.success) {
+        Logger.warn('[checkPaymentMethod] MCP tool failed:', result?.error);
+        return {
+          message: "",
+          metadata: { paymentMethod: null }
+        };
+      }
+      
+      Logger.info('[checkPaymentMethod] ✅ Payment method check:', result.data);
+      
+      return {
+        message: "",
+        metadata: { paymentMethod: result.data }
+      };
+    } catch (error) {
+      Logger.error('[checkPaymentMethod] Error:', error);
+      return {
+        message: "",
+        metadata: { paymentMethod: null }
+      };
+    }
+  }
+
+  /**
+   * Save a new child for user (ChatGPT App Store compliant - via MCP tool)
+   */
+  private async saveChild(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    const userId = payload.user_id || context.user_id;
+    
+    if (!userId) {
+      return this.formatError("Please sign in to save participant information.");
+    }
+    
+    const { first_name, last_name, dob } = payload;
+    
+    if (!first_name || !last_name) {
+      return this.formatError("First name and last name are required.");
+    }
+    
+    Logger.info('[saveChild] Saving child via MCP tool', { userId, first_name, last_name });
+    
+    try {
+      const result = await this.invokeMCPTool('user.create_child', {
+        user_id: userId,
+        first_name,
+        last_name,
+        dob
+      });
+      
+      if (!result?.success) {
+        Logger.error('[saveChild] MCP tool failed:', result?.error);
+        return this.formatError("Unable to save participant. Please try again.");
+      }
+      
+      Logger.info('[saveChild] ✅ Child saved:', result.data?.child?.id);
+      
+      return {
+        message: "✅ Participant saved for future registrations!",
+        metadata: { savedChild: result.data?.child }
+      };
+    } catch (error) {
+      Logger.error('[saveChild] Error:', error);
+      return this.formatError("Unable to save participant. Please try again.");
+    }
   }
 
   /**

@@ -6,12 +6,25 @@ import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Loader2, Send } from "lucide-react";
+import { Loader2, Send, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ResponsibleDelegateForm } from "./chat-test/ResponsibleDelegateForm";
 import { SavePaymentMethod } from "./SavePaymentMethod";
 import { AuthGateModal } from "./AuthGateModal";
 import { supabase } from "@/integrations/supabase/client";
+
+interface SavedChild {
+  id: string;
+  first_name: string;
+  last_name: string;
+  dob?: string;
+}
+
+interface SavedPaymentMethod {
+  has_payment_method: boolean;
+  last4?: string;
+  brand?: string;
+}
 
 interface CardData {
   title: string;
@@ -76,6 +89,8 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
     firstName?: string;
     lastName?: string;
   } | null>(null);
+  const [savedChildren, setSavedChildren] = useState<SavedChild[]>([]);
+  const [savedPaymentMethod, setSavedPaymentMethod] = useState<SavedPaymentMethod | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -116,6 +131,46 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
     };
     loadUserData();
   }, [mockUserId, mockUserEmail, mockUserFirstName, mockUserLastName, forceUnauthenticated, isAuthenticated]);
+
+  // Load saved children and payment method for authenticated users (MCP compliant)
+  useEffect(() => {
+    const loadSavedUserData = async () => {
+      const userId = mockUserId || (forceUnauthenticated ? undefined : (await supabase.auth.getUser()).data.user?.id);
+      
+      if (!userId) {
+        console.log('[MCPChat] No user ID - skipping saved data load');
+        setSavedChildren([]);
+        setSavedPaymentMethod(null);
+        return;
+      }
+      
+      console.log('[MCPChat] Loading saved children and payment method for user:', userId);
+      
+      try {
+        // Load saved children via MCP tool (sends to orchestrator endpoint)
+        const childrenResponse = await sendAction('load_saved_children', { user_id: userId }, sessionId, undefined, userTimezone);
+        if (childrenResponse.metadata?.savedChildren) {
+          setSavedChildren(childrenResponse.metadata.savedChildren);
+          console.log('[MCPChat] Loaded saved children:', childrenResponse.metadata.savedChildren.length);
+        }
+        
+        // Load payment method via MCP tool
+        const paymentResponse = await sendAction('check_payment_method', { user_id: userId }, sessionId, undefined, userTimezone);
+        if (paymentResponse.metadata?.paymentMethod) {
+          setSavedPaymentMethod(paymentResponse.metadata.paymentMethod);
+          console.log('[MCPChat] Loaded saved payment method:', paymentResponse.metadata.paymentMethod);
+        }
+      } catch (error) {
+        console.error('[MCPChat] Error loading saved user data:', error);
+        // Non-fatal - continue without saved data
+      }
+    };
+    
+    // Only load when authenticated and session is ready
+    if (isAuthenticated || mockUserId) {
+      loadSavedUserData();
+    }
+  }, [isAuthenticated, mockUserId, forceUnauthenticated, sessionId, userTimezone]);
 
   // Check authentication status when payment setup is triggered
   useEffect(() => {
@@ -490,10 +545,18 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
                           delegate_firstName: authenticatedUser.firstName,
                           delegate_lastName: authenticatedUser.lastName
                         } : undefined}
+                        savedChildren={savedChildren}
                         onSubmit={(data) => {
                           // Mark this form as submitted
                           setSubmittedFormIds(prev => new Set(prev).add(idx));
-                          handleCardAction('submit_form', { formData: data });
+                          
+                          // If user wants to save new participants, include in payload
+                          const payload: any = { formData: data };
+                          if (data.saveNewChildren && data.saveNewChildren.length > 0) {
+                            payload.saveNewChildren = data.saveNewChildren;
+                          }
+                          
+                          handleCardAction('submit_form', payload);
                         }}
                       />
                     </div>

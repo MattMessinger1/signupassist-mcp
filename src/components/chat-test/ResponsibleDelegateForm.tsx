@@ -7,7 +7,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { AlertCircle } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { AlertCircle, User, UserPlus } from "lucide-react";
 
 interface FieldOption {
   value: string;
@@ -40,8 +41,15 @@ interface FormSchema {
   minimum_delegate_age?: number;
 }
 
+interface SavedChild {
+  id: string;
+  first_name: string;
+  last_name: string;
+  dob?: string;
+}
+
 interface ResponsibleDelegateFormProps {
-  schema: FormSchema | any; // Accept any format for flexibility
+  schema: FormSchema | any;
   programTitle: string;
   initialDelegateData?: {
     delegate_firstName?: string;
@@ -49,10 +57,12 @@ interface ResponsibleDelegateFormProps {
     delegate_email?: string;
     delegate_phone?: string;
   };
+  savedChildren?: SavedChild[];
   onSubmit: (formData: {
     delegate: Record<string, any>;
     participants: Record<string, any>[];
     numParticipants: number;
+    saveNewChildren?: SavedChild[];
   }) => void;
 }
 
@@ -60,25 +70,47 @@ export function ResponsibleDelegateForm({
   schema,
   programTitle,
   initialDelegateData,
+  savedChildren = [],
   onSubmit
 }: ResponsibleDelegateFormProps) {
-  // Ensure schema has the expected structure
   const delegateFields = schema?.delegate_fields || [];
   const participantFields = schema?.participant_fields || [];
   const maxParticipants = schema?.max_participants || 10;
   const requiresAgeVerification = schema?.requires_age_verification ?? true;
   const minimumDelegateAge = schema?.minimum_delegate_age || 18;
+  
   const [delegateData, setDelegateData] = useState<Record<string, any>>(initialDelegateData || {});
   const [numParticipants, setNumParticipants] = useState(1);
   const [participantsData, setParticipantsData] = useState<Record<string, any>[]>([{}]);
   const [ageVerificationError, setAgeVerificationError] = useState<string | null>(null);
+  
+  // Track which participants use saved children vs new entries
+  const [participantSource, setParticipantSource] = useState<('saved' | 'new')[]>(['new']);
+  const [selectedChildIds, setSelectedChildIds] = useState<(string | null)[]>([null]);
+  const [saveNewParticipants, setSaveNewParticipants] = useState<boolean[]>([false]);
 
-  // Update participants array when numParticipants changes
   useEffect(() => {
     const newParticipants = Array(numParticipants).fill(null).map((_, idx) => 
       participantsData[idx] || {}
     );
     setParticipantsData(newParticipants);
+    
+    // Extend source tracking arrays
+    setParticipantSource(prev => {
+      const newArr = [...prev];
+      while (newArr.length < numParticipants) newArr.push('new');
+      return newArr.slice(0, numParticipants);
+    });
+    setSelectedChildIds(prev => {
+      const newArr = [...prev];
+      while (newArr.length < numParticipants) newArr.push(null);
+      return newArr.slice(0, numParticipants);
+    });
+    setSaveNewParticipants(prev => {
+      const newArr = [...prev];
+      while (newArr.length < numParticipants) newArr.push(false);
+      return newArr.slice(0, numParticipants);
+    });
   }, [numParticipants]);
 
   const calculateAge = (dob: string): number => {
@@ -90,26 +122,21 @@ export function ResponsibleDelegateForm({
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
       age--;
     }
-    
     return age;
   };
 
   const validateDelegateAge = (dob: string): boolean => {
     const age = calculateAge(dob);
-    
     if (age < minimumDelegateAge) {
       setAgeVerificationError(`You must be at least ${minimumDelegateAge} years old to register participants.`);
       return false;
     }
-    
     setAgeVerificationError(null);
     return true;
   };
 
   const handleDelegateChange = (fieldId: string, value: any) => {
     setDelegateData(prev => ({ ...prev, [fieldId]: value }));
-    
-    // Validate age on DOB change
     if (fieldId === 'delegate_dob' && value && requiresAgeVerification) {
       validateDelegateAge(value);
     }
@@ -124,26 +151,82 @@ export function ResponsibleDelegateForm({
     setParticipantsData(newParticipants);
   };
 
+  const handleSelectSavedChild = (participantIndex: number, childId: string) => {
+    const child = savedChildren.find(c => c.id === childId);
+    if (!child) return;
+    
+    // Update the participant data with saved child info
+    const newParticipants = [...participantsData];
+    newParticipants[participantIndex] = {
+      ...newParticipants[participantIndex],
+      firstName: child.first_name,
+      lastName: child.last_name,
+      dob: child.dob || ''
+    };
+    setParticipantsData(newParticipants);
+    
+    // Update tracking
+    const newSelectedIds = [...selectedChildIds];
+    newSelectedIds[participantIndex] = childId;
+    setSelectedChildIds(newSelectedIds);
+    
+    const newSource = [...participantSource];
+    newSource[participantIndex] = 'saved';
+    setParticipantSource(newSource);
+  };
+
+  const handleSwitchToNew = (participantIndex: number) => {
+    const newParticipants = [...participantsData];
+    newParticipants[participantIndex] = {};
+    setParticipantsData(newParticipants);
+    
+    const newSelectedIds = [...selectedChildIds];
+    newSelectedIds[participantIndex] = null;
+    setSelectedChildIds(newSelectedIds);
+    
+    const newSource = [...participantSource];
+    newSource[participantIndex] = 'new';
+    setParticipantSource(newSource);
+  };
+
+  const handleSaveCheckbox = (participantIndex: number, checked: boolean) => {
+    const newSave = [...saveNewParticipants];
+    newSave[participantIndex] = checked;
+    setSaveNewParticipants(newSave);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Validate delegate age if required
     if (requiresAgeVerification && delegateData.delegate_dob) {
       if (!validateDelegateAge(delegateData.delegate_dob)) {
         return;
       }
     }
     
+    // Collect new children to save
+    const saveNewChildren: SavedChild[] = [];
+    participantsData.forEach((participant, idx) => {
+      if (participantSource[idx] === 'new' && saveNewParticipants[idx] && participant.firstName && participant.lastName) {
+        saveNewChildren.push({
+          id: '', // Will be assigned by backend
+          first_name: participant.firstName,
+          last_name: participant.lastName,
+          dob: participant.dob
+        });
+      }
+    });
+    
     onSubmit({
       delegate: delegateData,
       participants: participantsData,
-      numParticipants
+      numParticipants,
+      saveNewChildren: saveNewChildren.length > 0 ? saveNewChildren : undefined
     });
   };
 
   const renderDelegateField = (field: DelegateField) => {
     const fieldId = field.id;
-    
     return (
       <div key={fieldId} className="space-y-2">
         <Label htmlFor={fieldId} className="text-sm">
@@ -197,6 +280,7 @@ export function ResponsibleDelegateForm({
   const renderParticipantField = (field: ParticipantField, participantIndex: number) => {
     const fieldId = field.id;
     const value = participantsData[participantIndex]?.[fieldId] || '';
+    const isFromSavedChild = participantSource[participantIndex] === 'saved';
     
     return (
       <div key={`${participantIndex}-${fieldId}`} className="space-y-2">
@@ -212,6 +296,7 @@ export function ResponsibleDelegateForm({
             value={value}
             onChange={(e) => handleParticipantChange(participantIndex, fieldId, e.target.value)}
             className="min-h-[60px]"
+            disabled={isFromSavedChild && (fieldId === 'firstName' || fieldId === 'lastName' || fieldId === 'dob')}
           />
         ) : (
           <Input
@@ -223,13 +308,13 @@ export function ResponsibleDelegateForm({
             value={value}
             onChange={(e) => handleParticipantChange(participantIndex, fieldId, e.target.value)}
             className="h-9"
+            disabled={isFromSavedChild && (fieldId === 'firstName' || fieldId === 'lastName' || fieldId === 'dob')}
           />
         )}
       </div>
     );
   };
 
-  // Show error if schema is missing required fields
   if (!delegateFields.length || !participantFields.length) {
     return (
       <Card className="mt-3 border-destructive/50 bg-destructive/5">
@@ -307,7 +392,68 @@ export function ResponsibleDelegateForm({
                 </h3>
               </div>
               
+              {/* Saved Children Selection (only show if user has saved children) */}
+              {savedChildren.length > 0 && (
+                <div className="space-y-2 p-3 bg-secondary/10 rounded-md border border-secondary/20">
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <User className="w-4 h-4" />
+                    Select from your saved children
+                  </Label>
+                  <div className="flex gap-2">
+                    <Select
+                      value={selectedChildIds[participantIndex] || 'new'}
+                      onValueChange={(value) => {
+                        if (value === 'new') {
+                          handleSwitchToNew(participantIndex);
+                        } else {
+                          handleSelectSavedChild(participantIndex, value);
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-9 flex-1">
+                        <SelectValue placeholder="Select a child or add new" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="new">
+                          <span className="flex items-center gap-2">
+                            <UserPlus className="w-4 h-4" />
+                            Add new participant
+                          </span>
+                        </SelectItem>
+                        {savedChildren.map((child) => (
+                          <SelectItem key={child.id} value={child.id}>
+                            {child.first_name} {child.last_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {participantSource[participantIndex] === 'saved' && (
+                    <p className="text-xs text-muted-foreground">
+                      ✅ Using saved child information. Other fields can still be edited.
+                    </p>
+                  )}
+                </div>
+              )}
+              
               {participantFields.map(field => renderParticipantField(field, participantIndex))}
+              
+              {/* Save new participant checkbox (only for new entries) */}
+              {participantSource[participantIndex] === 'new' && (
+                <div className="flex items-center space-x-2 pt-2">
+                  <Checkbox
+                    id={`save-participant-${participantIndex}`}
+                    checked={saveNewParticipants[participantIndex]}
+                    onCheckedChange={(checked) => handleSaveCheckbox(participantIndex, !!checked)}
+                  />
+                  <Label 
+                    htmlFor={`save-participant-${participantIndex}`}
+                    className="text-sm text-muted-foreground cursor-pointer"
+                  >
+                    Save this participant for future registrations
+                  </Label>
+                </div>
+              )}
               
               {participantIndex < participantsData.length - 1 && <Separator className="mt-4" />}
             </div>

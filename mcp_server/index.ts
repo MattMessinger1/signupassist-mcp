@@ -55,6 +55,7 @@ import { programFeedTools } from './providers/programFeed.js';
 import { mandateTools } from './providers/mandates.js';
 import { schedulerTools } from './providers/scheduler.js';
 import { registrationTools } from './providers/registrations.js';
+import { userTools } from './providers/user.js';
 // import { daysmartTools } from '../providers/daysmart/index';
 // import { campminderTools } from '../providers/campminder/index';
 import { refreshBlackhawkPrograms, refreshBlackhawkProgramDetail } from './providers/blackhawk.js'; // Import Blackhawk refresh functions
@@ -279,6 +280,16 @@ class SignupAssistMCPServer {
 
     // Register Registration tools (receipts/audit trail)
     registrationTools.forEach((tool) => {
+      this.tools.set(tool.name, {
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+        handler: tool.handler
+      });
+    });
+
+    // Register User tools (children, billing - ChatGPT App Store compliance)
+    userTools.forEach((tool) => {
       this.tools.set(tool.name, {
         name: tool.name,
         description: tool.description,
