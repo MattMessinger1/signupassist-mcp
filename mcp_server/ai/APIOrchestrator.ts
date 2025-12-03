@@ -1559,14 +1559,13 @@ export default class APIOrchestrator implements IOrchestrator {
       return {
         message: successMessage,
         cards: [{
-          title: '🔐 Authorization Confirmed',
+          title: '🎉 You\'re All Set!',
           subtitle: programName,
-          description: `Booking opens: ${scheduledDate.toLocaleString()}\nTotal (if successful): ${total_amount}\nMandate ID: ${mandateId.substring(0, 8)}...`
+          description: `📅 **Auto-Registration Scheduled**\nWe'll register you on: ${scheduledDate.toLocaleString()}\n\n💰 **Total (if successful):** ${total_amount}\n\n🔐 **Mandate ID:** ${mandateId.substring(0, 8)}...`
         }],
         cta: {
           buttons: [
-            { label: "View Audit Trail", action: "view_audit_trail", payload: { mandate_id: mandateId }, variant: "accent" },
-            { label: "View Receipts", action: "view_receipts", payload: { user_id: context.user_id }, variant: "outline" },
+            { label: "View My Registrations", action: "view_receipts", payload: { user_id: context.user_id }, variant: "accent" },
             { label: "Browse More Classes", action: "search_programs", payload: { orgRef: context.orgRef || "aim-design" }, variant: "outline" }
           ]
         }
