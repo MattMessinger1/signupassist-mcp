@@ -373,6 +373,12 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
       stringified: JSON.stringify(payload, null, 2)
     });
     
+    // Reset payment state when starting a new registration flow
+    if (action === 'select_program') {
+      setPaymentCompleted(false);
+      console.log('[MCPChat] Reset paymentCompleted for new registration flow');
+    }
+    
     setLoading(true);
     
     try {
