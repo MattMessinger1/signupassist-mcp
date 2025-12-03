@@ -45,6 +45,19 @@ export interface PaymentMethodInfo {
 }
 
 /**
+ * Delegate profile structure (for parent/guardian info persistence)
+ */
+export interface DelegateProfile {
+  id?: string;
+  user_id: string;
+  first_name?: string;
+  last_name?: string;
+  phone?: string;
+  date_of_birth?: string;
+  default_relationship?: string;
+}
+
+/**
  * Tool: user.list_children
  * Lists saved children for a user (audited for compliance)
  * Required scope: user:read:children
@@ -287,6 +300,116 @@ async function updateChild(args: {
 }
 
 /**
+ * Tool: user.get_delegate_profile
+ * Gets the delegate profile for a user (audited for compliance)
+ * Required scope: user:read:profile
+ */
+async function getDelegateProfile(args: {
+  user_id: string;
+}): Promise<ProviderResponse<{ profile: DelegateProfile | null }>> {
+  const { user_id } = args;
+  
+  console.log(`[User] Getting delegate profile for user: ${user_id}`);
+  
+  try {
+    const { data: profile, error } = await supabase
+      .from('delegate_profiles')
+      .select('*')
+      .eq('user_id', user_id)
+      .maybeSingle();
+    
+    if (error) {
+      console.error('[User] Database error getting delegate profile:', error);
+      const friendlyError: ParentFriendlyError = {
+        display: 'Unable to load your profile',
+        recovery: 'Please try again in a moment.',
+        severity: 'low',
+        code: 'USER_GET_PROFILE_FAILED'
+      };
+      return { success: false, error: friendlyError };
+    }
+    
+    console.log(`[User] ✅ Delegate profile ${profile ? 'found' : 'not found'} for user`);
+    
+    return {
+      success: true,
+      data: { profile: profile as DelegateProfile | null }
+    };
+    
+  } catch (error: any) {
+    console.error('[User] Error getting delegate profile:', error);
+    const friendlyError: ParentFriendlyError = {
+      display: 'Unable to load your profile',
+      recovery: 'Please try again in a moment.',
+      severity: 'low',
+      code: 'USER_API_ERROR'
+    };
+    return { success: false, error: friendlyError };
+  }
+}
+
+/**
+ * Tool: user.update_delegate_profile
+ * Updates or creates delegate profile (audited for compliance)
+ * Required scope: user:write:profile
+ */
+async function updateDelegateProfile(args: {
+  user_id: string;
+  first_name?: string;
+  last_name?: string;
+  phone?: string;
+  date_of_birth?: string;
+  default_relationship?: string;
+}): Promise<ProviderResponse<{ profile: DelegateProfile }>> {
+  const { user_id, first_name, last_name, phone, date_of_birth, default_relationship } = args;
+  
+  console.log(`[User] Updating delegate profile for user: ${user_id}`);
+  
+  try {
+    const updates: any = { user_id };
+    if (first_name !== undefined) updates.first_name = first_name;
+    if (last_name !== undefined) updates.last_name = last_name;
+    if (phone !== undefined) updates.phone = phone;
+    if (date_of_birth !== undefined) updates.date_of_birth = date_of_birth;
+    if (default_relationship !== undefined) updates.default_relationship = default_relationship;
+    
+    const { data: profile, error } = await supabase
+      .from('delegate_profiles')
+      .upsert(updates, { onConflict: 'user_id' })
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('[User] Database error updating delegate profile:', error);
+      const friendlyError: ParentFriendlyError = {
+        display: 'Unable to save your profile',
+        recovery: 'Please try again.',
+        severity: 'low',
+        code: 'USER_UPDATE_PROFILE_FAILED'
+      };
+      return { success: false, error: friendlyError };
+    }
+    
+    console.log(`[User] ✅ Delegate profile updated for user: ${user_id}`);
+    
+    return {
+      success: true,
+      data: { profile: profile as DelegateProfile }
+    };
+    
+  } catch (error: any) {
+    console.error('[User] Error updating delegate profile:', error);
+    const friendlyError: ParentFriendlyError = {
+      display: 'Unable to save your profile',
+      recovery: 'Please try again.',
+      severity: 'low',
+      code: 'USER_API_ERROR'
+    };
+    return { success: false, error: friendlyError };
+  }
+}
+
+/**
  * Export User tools for MCP server registration
  */
 export const userTools: UserTool[] = [
@@ -399,6 +522,68 @@ export const userTools: UserTool[] = [
         { plan_execution_id: null, tool: 'user.update_child', mandate_id: args._audit?.mandate_id },
         args,
         () => updateChild(args)
+      );
+    }
+  },
+  {
+    name: 'user.get_delegate_profile',
+    description: 'Get delegate profile for a user (requires user:read:profile scope)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user_id: {
+          type: 'string',
+          description: 'Supabase user ID'
+        }
+      },
+      required: ['user_id']
+    },
+    handler: async (args: any) => {
+      return auditToolCall(
+        { plan_execution_id: null, tool: 'user.get_delegate_profile', mandate_id: args._audit?.mandate_id },
+        args,
+        () => getDelegateProfile(args)
+      );
+    }
+  },
+  {
+    name: 'user.update_delegate_profile',
+    description: 'Update or create delegate profile (requires user:write:profile scope)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user_id: {
+          type: 'string',
+          description: 'Supabase user ID'
+        },
+        first_name: {
+          type: 'string',
+          description: 'Delegate first name'
+        },
+        last_name: {
+          type: 'string',
+          description: 'Delegate last name'
+        },
+        phone: {
+          type: 'string',
+          description: 'Delegate phone number'
+        },
+        date_of_birth: {
+          type: 'string',
+          description: 'Delegate date of birth (ISO 8601 date)'
+        },
+        default_relationship: {
+          type: 'string',
+          description: 'Default relationship to participants (parent, guardian, grandparent, other)'
+        }
+      },
+      required: ['user_id']
+    },
+    handler: async (args: any) => {
+      return auditToolCall(
+        { plan_execution_id: null, tool: 'user.update_delegate_profile', mandate_id: args._audit?.mandate_id },
+        args,
+        () => updateDelegateProfile(args)
       );
     }
   }

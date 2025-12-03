@@ -183,7 +183,9 @@ export const MANDATE_SCOPES = {
   // User data scopes (ChatGPT App Store compliance)
   READ_CHILDREN: 'user:read:children',
   WRITE_CHILDREN: 'user:write:children',
-  READ_BILLING: 'user:read:billing'
+  READ_BILLING: 'user:read:billing',
+  READ_PROFILE: 'user:read:profile',
+  WRITE_PROFILE: 'user:write:profile'
 } as const;
 
 export const SCOPE_REQUIREMENTS: Record<string, string[]> = {
@@ -198,7 +200,9 @@ export const SCOPE_REQUIREMENTS: Record<string, string[]> = {
   'user.list_children': [MANDATE_SCOPES.READ_CHILDREN],
   'user.create_child': [MANDATE_SCOPES.WRITE_CHILDREN],
   'user.update_child': [MANDATE_SCOPES.WRITE_CHILDREN],
-  'user.check_payment_method': [MANDATE_SCOPES.READ_BILLING]
+  'user.check_payment_method': [MANDATE_SCOPES.READ_BILLING],
+  'user.get_delegate_profile': [MANDATE_SCOPES.READ_PROFILE],
+  'user.update_delegate_profile': [MANDATE_SCOPES.WRITE_PROFILE]
 };
 
 export function getScopesForTool(toolName: string): string[] {

@@ -229,6 +229,12 @@ export default class APIOrchestrator implements IOrchestrator {
       case "save_child":
         return await this.saveChild(payload, sessionId, context);
 
+      case "load_delegate_profile":
+        return await this.loadDelegateProfile(payload, sessionId, context);
+
+      case "save_delegate_profile":
+        return await this.saveDelegateProfile(payload, sessionId, context);
+
       default:
         return this.formatError(`Unknown action: ${action}`);
     }
@@ -658,6 +664,44 @@ export default class APIOrchestrator implements IOrchestrator {
       Logger.warn('[submitForm] Delegate email:', formData.delegate?.delegate_email);
     } else {
       Logger.info('[submitForm] User authenticated with user_id:', userId);
+    }
+
+    // Save delegate profile if requested (ChatGPT App Store compliant)
+    if (payload.saveDelegateProfile && userId && formData.delegate) {
+      Logger.info('[submitForm] Saving delegate profile for user:', userId);
+      try {
+        await this.invokeMCPTool('user.update_delegate_profile', {
+          user_id: userId,
+          first_name: formData.delegate.delegate_firstName,
+          last_name: formData.delegate.delegate_lastName,
+          phone: formData.delegate.delegate_phone,
+          date_of_birth: formData.delegate.delegate_dob,
+          default_relationship: formData.delegate.delegate_relationship
+        });
+        Logger.info('[submitForm] ✅ Delegate profile saved');
+      } catch (error) {
+        Logger.warn('[submitForm] Failed to save delegate profile (non-fatal):', error);
+        // Non-fatal - continue with registration
+      }
+    }
+
+    // Save new children if requested (ChatGPT App Store compliant)
+    if (payload.saveNewChildren && userId && Array.isArray(payload.saveNewChildren)) {
+      Logger.info('[submitForm] Saving new children for user:', userId, payload.saveNewChildren.length);
+      for (const child of payload.saveNewChildren) {
+        try {
+          await this.invokeMCPTool('user.create_child', {
+            user_id: userId,
+            first_name: child.first_name,
+            last_name: child.last_name,
+            dob: child.dob
+          });
+          Logger.info('[submitForm] ✅ Child saved:', child.first_name, child.last_name);
+        } catch (error) {
+          Logger.warn('[submitForm] Failed to save child (non-fatal):', error);
+          // Non-fatal - continue with registration
+        }
+      }
     }
 
     // Store form data, participant count, and user_id
@@ -2315,6 +2359,98 @@ export default class APIOrchestrator implements IOrchestrator {
     } catch (error) {
       Logger.error('[saveChild] Error:', error);
       return this.formatError("Unable to save participant. Please try again.");
+    }
+  }
+
+  /**
+   * Load delegate profile for user (ChatGPT App Store compliant - via MCP tool)
+   */
+  private async loadDelegateProfile(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    const userId = payload.user_id || context.user_id;
+    
+    if (!userId) {
+      Logger.warn('[loadDelegateProfile] No user ID provided');
+      return {
+        message: "",
+        metadata: { delegateProfile: null }
+      };
+    }
+    
+    Logger.info('[loadDelegateProfile] Loading delegate profile via MCP tool', { userId });
+    
+    try {
+      const result = await this.invokeMCPTool('user.get_delegate_profile', { user_id: userId });
+      
+      if (!result?.success) {
+        Logger.warn('[loadDelegateProfile] MCP tool failed:', result?.error);
+        return {
+          message: "",
+          metadata: { delegateProfile: null }
+        };
+      }
+      
+      const profile = result.data?.profile;
+      Logger.info('[loadDelegateProfile] ✅ Profile loaded:', profile ? 'found' : 'not found');
+      
+      return {
+        message: "",
+        metadata: { delegateProfile: profile }
+      };
+    } catch (error) {
+      Logger.error('[loadDelegateProfile] Error:', error);
+      return {
+        message: "",
+        metadata: { delegateProfile: null }
+      };
+    }
+  }
+
+  /**
+   * Save/update delegate profile (ChatGPT App Store compliant - via MCP tool)
+   */
+  private async saveDelegateProfile(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    const userId = payload.user_id || context.user_id;
+    
+    if (!userId) {
+      return this.formatError("Please sign in to save your profile.");
+    }
+    
+    const { first_name, last_name, phone, date_of_birth, default_relationship } = payload;
+    
+    Logger.info('[saveDelegateProfile] Saving delegate profile via MCP tool', { userId });
+    
+    try {
+      const result = await this.invokeMCPTool('user.update_delegate_profile', {
+        user_id: userId,
+        first_name,
+        last_name,
+        phone,
+        date_of_birth,
+        default_relationship
+      });
+      
+      if (!result?.success) {
+        Logger.error('[saveDelegateProfile] MCP tool failed:', result?.error);
+        return this.formatError("Unable to save your profile. Please try again.");
+      }
+      
+      Logger.info('[saveDelegateProfile] ✅ Profile saved');
+      
+      return {
+        message: "✅ Your information has been saved for future registrations!",
+        metadata: { savedProfile: result.data?.profile }
+      };
+    } catch (error) {
+      Logger.error('[saveDelegateProfile] Error:', error);
+      return this.formatError("Unable to save your profile. Please try again.");
     }
   }
 
