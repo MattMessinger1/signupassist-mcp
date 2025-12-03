@@ -1391,40 +1391,46 @@ export default class APIOrchestrator implements IOrchestrator {
       const mandateId = mandateResponse.data.mandate_id;
       Logger.info("[confirmScheduledRegistration] ✅ Mandate created:", mandateId);
 
-      // Step 2: Store in scheduled_registrations table
-      Logger.info("[confirmScheduledRegistration] Storing scheduled registration...");
-      const supabase = this.getSupabaseClient();
+      // Step 2: Create registration via MCP tool (unified registrations table)
+      Logger.info("[confirmScheduledRegistration] Creating scheduled registration via MCP tool...");
       
-      const { data: scheduledReg, error: insertError } = await supabase
-        .from('scheduled_registrations')
-        .insert({
-          user_id: context.user_id,
-          mandate_id: mandateId,
-          org_ref: context.selectedProgram.org_ref,
-          program_ref: context.selectedProgram.program_ref,
-          program_name: programName,
-          scheduled_time,
-          event_id,
-          delegate_data: formData.delegate,
-          participant_data: formData.participants,
-          status: 'pending'
-        })
-        .select()
-        .single();
+      const delegate = formData.delegate || {};
+      const participants = formData.participants || [];
+      const delegateName = `${delegate.delegate_firstName || ''} ${delegate.delegate_lastName || ''}`.trim();
+      const delegateEmail = delegate.delegate_email || '';
+      const participantNames = participants.map((p: any) => `${p.firstName || ''} ${p.lastName || ''}`.trim());
+      const programFeeCents = Math.round(parseFloat(program_fee?.replace(/[^0-9.]/g, '') || '0') * 100);
+      
+      const registrationResponse = await this.invokeMCPTool('registrations.create', {
+        user_id: context.user_id,
+        mandate_id: mandateId,
+        program_name: programName,
+        program_ref: context.selectedProgram.program_ref,
+        provider: 'bookeo',
+        org_ref: context.selectedProgram.org_ref,
+        start_date: context.selectedProgram?.start_date,
+        amount_cents: programFeeCents,
+        success_fee_cents: 2000,
+        delegate_name: delegateName,
+        delegate_email: delegateEmail,
+        participant_names: participantNames,
+        scheduled_for: scheduled_time // This makes status='pending'
+      }, { mandate_id: mandateId });
 
-      if (insertError || !scheduledReg) {
-        Logger.error("[confirmScheduledRegistration] Database insert failed", insertError);
+      if (!registrationResponse.success || !registrationResponse.data?.id) {
+        Logger.error("[confirmScheduledRegistration] Registration creation failed", registrationResponse);
         return this.formatError("Failed to schedule registration. Please try again.");
       }
 
-      Logger.info("[confirmScheduledRegistration] ✅ Scheduled registration stored:", scheduledReg.id);
+      const registrationId = registrationResponse.data.id;
+      Logger.info("[confirmScheduledRegistration] ✅ Scheduled registration created:", registrationId);
 
       // Step 3: Schedule the job via MCP tool (audit-compliant)
       Logger.info("[confirmScheduledRegistration] Scheduling job...");
       const scheduleResponse = await this.invokeMCPTool('scheduler.schedule_signup', {
-        registration_id: scheduledReg.id,
+        registration_id: registrationId,
         trigger_time: scheduled_time
-      });
+      }, { mandate_id: mandateId });
 
       if (!scheduleResponse.success) {
         Logger.error("[confirmScheduledRegistration] Job scheduling failed", scheduleResponse);

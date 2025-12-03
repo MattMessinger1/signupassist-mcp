@@ -34,9 +34,9 @@ async function scheduleSignup(args: {
     throw new Error('trigger_time must be in the future');
   }
 
-  // Validate registration exists
+  // Validate registration exists in unified registrations table
   const { data: registration, error: fetchError } = await supabase
-    .from('scheduled_registrations')
+    .from('registrations')
     .select('*')
     .eq('id', registration_id)
     .single();
@@ -45,11 +45,16 @@ async function scheduleSignup(args: {
     throw new Error(`Registration not found: ${registration_id}`);
   }
 
-  // Update scheduled_time if different
-  if (registration.scheduled_time !== triggerDate.toISOString()) {
+  // Only allow scheduling of pending registrations
+  if (registration.status !== 'pending') {
+    throw new Error(`Registration ${registration_id} is not in pending status: ${registration.status}`);
+  }
+
+  // Update scheduled_for if different
+  if (registration.scheduled_for !== triggerDate.toISOString()) {
     const { error: updateError } = await supabase
-      .from('scheduled_registrations')
-      .update({ scheduled_time: triggerDate.toISOString() })
+      .from('registrations')
+      .update({ scheduled_for: triggerDate.toISOString() })
       .eq('id', registration_id);
 
     if (updateError) {
