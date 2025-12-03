@@ -182,7 +182,7 @@ export function getCancelSuccessMessage(vars: APIMessageVariables): string {
 
 Your registration for **${programName}** has been cancelled with ${providerName}.
 
-💰 **$20 SignupAssist fee refunded** — you should see it in 5-10 business days.
+💰 **$20 SignupAssist fee refunded** — We've processed your refund with Stripe. Most banks post refunds within 2-5 business days, though some may take up to 10.
 
 _For questions about program fee refunds, please contact ${providerName} directly._
 
