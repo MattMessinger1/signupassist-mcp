@@ -790,68 +790,71 @@ export default class APIOrchestrator implements IOrchestrator {
     // This allows scheduled registrations for courses where booking window hasn't opened
     const isFutureBooking = bookingStatus === 'opens_later';
 
-    // PART 1: Check if user has saved payment method for IMMEDIATE registrations
-    if (!isFutureBooking) {
-      let hasPaymentMethod = false;
-      let cardLast4: string | null = null;
-      let cardBrand: string | null = null;
+    // PART 1: Check if user has saved payment method for ALL flows (immediate and future)
+    let hasPaymentMethod = false;
+    let cardLast4: string | null = null;
+    let cardBrand: string | null = null;
+    
+    // Only check database if user is authenticated
+    if (userId) {
+      const supabase = this.getSupabaseClient();
+      const { data: billingData } = await supabase
+        .from('user_billing')
+        .select('default_payment_method_id, payment_method_last4, payment_method_brand')
+        .eq('user_id', userId)
+        .maybeSingle();
       
-      // Only check database if user is authenticated
-      if (userId) {
-        const supabase = this.getSupabaseClient();
-        const { data: billingData } = await supabase
-          .from('user_billing')
-          .select('default_payment_method_id, payment_method_last4, payment_method_brand')
-          .eq('user_id', userId)
-          .maybeSingle();
-        
-        hasPaymentMethod = !!billingData?.default_payment_method_id;
-        cardLast4 = billingData?.payment_method_last4 || null;
-        cardBrand = billingData?.payment_method_brand || null;
-      }
-      // If userId is undefined, hasPaymentMethod stays false (unauthenticated users don't have saved cards)
+      hasPaymentMethod = !!billingData?.default_payment_method_id;
+      cardLast4 = billingData?.payment_method_last4 || null;
+      cardBrand = billingData?.payment_method_brand || null;
       
-      // Always store form data in context regardless of payment method status
-      // This ensures confirmPayment can access it from context even if payload is missing
-      this.updateContext(sessionId, {
-        step: FlowStep.PAYMENT,
-        formData: {
-          delegate_data: formData.delegate,
-          participant_data: formData.participants,
-          num_participants: numParticipants,
-          event_id: context.selectedProgram?.first_available_event_id,
-          program_fee_cents: Math.round(totalPrice * 100)
-        },
-        cardLast4,
-        cardBrand
-      });
+      Logger.info('[submitForm] Payment method check result', { hasPaymentMethod, cardBrand, cardLast4 });
+    }
+    // If userId is undefined, hasPaymentMethod stays false (unauthenticated users don't have saved cards)
+    
+    // Always store form data in context regardless of payment method status
+    // This ensures confirmPayment/confirmScheduledRegistration can access it from context
+    this.updateContext(sessionId, {
+      step: FlowStep.PAYMENT,
+      formData: {
+        delegate_data: formData.delegate,
+        participant_data: formData.participants,
+        num_participants: numParticipants,
+        event_id: context.selectedProgram?.first_available_event_id,
+        program_fee_cents: Math.round(totalPrice * 100)
+      },
+      cardLast4,
+      cardBrand
+    });
+    
+    // PART 2: Handle payment setup requirement for users WITHOUT saved payment method
+    if (!hasPaymentMethod) {
+      Logger.info('[submitForm] No payment method found - prompting user to add card');
       
-      if (!hasPaymentMethod) {
-        Logger.info('[submitForm] No payment method found - prompting user to add card');
-        
-        // User needs to set up payment method first
-        return {
-          message: `${message}\n\n💳 First, let's save your payment method securely. You'll only be charged if registration succeeds!`,
-          metadata: {
-            componentType: "payment_setup",
-            next_action: "confirm_payment",
-            schedulingData: {
-              event_id: context.selectedProgram?.first_available_event_id,
-              total_amount: grandTotal,
-              program_fee: formattedTotal,
-              program_fee_cents: Math.round(totalPrice * 100),
-              formData: {
-                delegate_data: formData.delegate,
-                participant_data: formData.participants,
-                num_participants: numParticipants
-              }
+      const nextAction = isFutureBooking ? "confirm_scheduled_registration" : "confirm_payment";
+      
+      return {
+        message: `${message}\n\n💳 First, let's save your payment method securely. You'll only be charged if registration succeeds!`,
+        metadata: {
+          componentType: "payment_setup",
+          next_action: nextAction,
+          schedulingData: {
+            event_id: context.selectedProgram?.first_available_event_id,
+            total_amount: grandTotal,
+            program_fee: formattedTotal,
+            program_fee_cents: Math.round(totalPrice * 100),
+            scheduled_time: isFutureBooking ? (earliestSlot?.toISOString() || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()) : undefined,
+            formData: {
+              delegate_data: formData.delegate,
+              participant_data: formData.participants,
+              num_participants: numParticipants
             }
           }
-        };
-      }
-      
-      Logger.info('[submitForm] Payment method found - proceeding to payment authorization', { cardBrand, cardLast4 });
+        }
+      };
     }
+    
+    Logger.info('[submitForm] Payment method found - proceeding to payment authorization', { cardBrand, cardLast4, isFutureBooking });
 
     // Build conditional payment button
     let buttons: any[] = [];
@@ -865,21 +868,35 @@ export default class APIOrchestrator implements IOrchestrator {
         ? `on ${this.formatTimeForUser(earliestSlot, context)}`
         : "when registration opens";
       
-      paymentMessage += `\n\n📅 This class isn't open for registration yet. We can automatically register you ${dateDisplay}!
+      // Different messaging based on whether card is saved
+      const cardDisplay = cardLast4 ? `${cardBrand || 'Card'} •••• ${cardLast4}` : null;
+      
+      if (cardDisplay) {
+        paymentMessage += `\n\n📅 This class isn't open for registration yet. We can automatically register you ${dateDisplay}!
+
+💳 **Using saved card:** ${cardDisplay}
+• **You won't be charged today**
+• **Only if registration succeeds:** Provider charges program fee + $20 SignupAssist fee`;
+      } else {
+        paymentMessage += `\n\n📅 This class isn't open for registration yet. We can automatically register you ${dateDisplay}!
 
 💳 **How charging works:**
 • **You won't be charged today** — we're just saving your payment method
 • **Only if registration succeeds:** Provider charges their program fee, and SignupAssist charges $20 success fee
 • **If registration fails:** No charges at all`;
+      }
       
-      const scheduledDateFormatted = earliestSlot 
-        ? this.formatTimeForUser(scheduledDate, context)
-        : "when available";
+      // If user has saved card, skip payment setup and go directly to confirm
+      const buttonLabel = cardDisplay
+        ? `📝 Confirm Auto-Registration with ${cardDisplay}`
+        : `📝 Set Up Auto-Registration for ${scheduledDate.toLocaleDateString()}`;
+      
+      const buttonAction = cardDisplay ? "confirm_scheduled_registration" : "schedule_auto_registration";
       
       buttons = [
         { 
-          label: `📝 Set Up Auto-Registration for ${scheduledDate.toLocaleDateString()}`, 
-          action: "schedule_auto_registration",
+          label: buttonLabel, 
+          action: buttonAction,
           payload: {
             scheduled_time: scheduledDate.toISOString(),
             event_id: context.selectedProgram.event_id || context.selectedProgram.program_ref,
@@ -893,8 +910,8 @@ export default class APIOrchestrator implements IOrchestrator {
       ];
     } else {
       // Immediate registration flow: Show confirm & pay button with card details
-      const cardLabel = context.cardLast4 
-        ? `Pay with ${context.cardBrand || 'Card'} •••• ${context.cardLast4}` 
+      const cardLabel = cardLast4 
+        ? `Pay with ${cardBrand || 'Card'} •••• ${cardLast4}` 
         : "Confirm & Pay";
       buttons = [
         { label: cardLabel, action: "confirm_payment", variant: "accent" },
@@ -903,20 +920,24 @@ export default class APIOrchestrator implements IOrchestrator {
     }
 
     // Build card description based on whether this is immediate or scheduled
+    const cardDisplay = cardLast4 ? `${cardBrand || 'Card'} •••• ${cardLast4}` : null;
+    
     const cardDescription = isFutureBooking
       ? `**Participants:**\n${participantList}
 
 ⏰ **Scheduled for:** ${this.formatTimeForUser(earliestSlot || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), context)}
 
-💳 **Charges (only if registration succeeds):**
+${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
+
+💰 **Charges (only if registration succeeds):**
 • Program Fee: ${formattedTotal} → Paid to provider upon signup
 • SignupAssist Fee: $20.00 → Charged only if signup succeeds
 • **Total:** ${grandTotal}
 
-🔒 **Your card will NOT be charged today.** We're just saving your payment method so we can complete registration when the booking window opens.`
+🔒 **Your card will NOT be charged today.** ${cardDisplay ? 'We\'ll use your saved card' : 'We\'re just saving your payment method'} to complete registration when the booking window opens.`
       : `**Participants:**\n${participantList}
 
-💳 **Payment Method:** ${context.cardBrand || 'Card'} •••• ${context.cardLast4 || '****'}
+💳 **Payment Method:** ${cardBrand || 'Card'} •••• ${cardLast4 || '****'}
 
 **Charges:**
 • Program Fee: ${formattedTotal} (to provider)
