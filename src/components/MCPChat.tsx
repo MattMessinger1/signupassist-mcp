@@ -639,10 +639,15 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
                 />
               )}
 
-              {/* Show payment setup indicator in message */}
-              {msg.metadata?.componentType === 'payment_setup' && (
+              {/* Show payment setup indicator in message - only when not completed */}
+              {msg.metadata?.componentType === 'payment_setup' && !paymentCompleted && (
                 <Badge variant="secondary" className="mt-2">
                   💳 Payment setup in progress...
+                </Badge>
+              )}
+              {msg.metadata?.componentType === 'payment_setup' && paymentCompleted && (
+                <Badge variant="default" className="mt-2 bg-green-600">
+                  ✅ Payment method saved
                 </Badge>
               )}
             </div>
