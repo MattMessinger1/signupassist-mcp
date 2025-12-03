@@ -441,7 +441,7 @@ export function ResponsibleDelegateForm({
                 <div className="space-y-2 p-3 bg-secondary/10 rounded-md border border-secondary/20">
                   <Label className="text-sm font-medium flex items-center gap-2">
                     <User className="w-4 h-4" />
-                    Select from your saved children
+                    Select from your saved participants
                   </Label>
                   <div className="flex gap-2">
                     <Select
@@ -474,7 +474,7 @@ export function ResponsibleDelegateForm({
                   </div>
                   {participantSource[participantIndex] === 'saved' && (
                     <p className="text-xs text-muted-foreground">
-                      ✅ Using saved child information. Other fields can still be edited.
+                      ✅ Using saved participant information. Other fields can still be edited.
                     </p>
                   )}
                 </div>
