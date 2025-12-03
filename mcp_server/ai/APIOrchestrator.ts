@@ -53,6 +53,8 @@ interface APIContext {
   selectedProgram?: any;
   formData?: Record<string, any>;
   numParticipants?: number;
+  cardLast4?: string | null;  // Last 4 digits of saved payment method
+  cardBrand?: string | null;  // Card brand (Visa, Mastercard, etc.)
   childInfo?: {
     name: string;
     age?: number;
@@ -791,17 +793,21 @@ export default class APIOrchestrator implements IOrchestrator {
     // PART 1: Check if user has saved payment method for IMMEDIATE registrations
     if (!isFutureBooking) {
       let hasPaymentMethod = false;
+      let cardLast4: string | null = null;
+      let cardBrand: string | null = null;
       
       // Only check database if user is authenticated
       if (userId) {
         const supabase = this.getSupabaseClient();
         const { data: billingData } = await supabase
           .from('user_billing')
-          .select('default_payment_method_id')
+          .select('default_payment_method_id, payment_method_last4, payment_method_brand')
           .eq('user_id', userId)
           .maybeSingle();
         
         hasPaymentMethod = !!billingData?.default_payment_method_id;
+        cardLast4 = billingData?.payment_method_last4 || null;
+        cardBrand = billingData?.payment_method_brand || null;
       }
       // If userId is undefined, hasPaymentMethod stays false (unauthenticated users don't have saved cards)
       
@@ -815,7 +821,9 @@ export default class APIOrchestrator implements IOrchestrator {
           num_participants: numParticipants,
           event_id: context.selectedProgram?.first_available_event_id,
           program_fee_cents: Math.round(totalPrice * 100)
-        }
+        },
+        cardLast4,
+        cardBrand
       });
       
       if (!hasPaymentMethod) {
@@ -842,7 +850,7 @@ export default class APIOrchestrator implements IOrchestrator {
         };
       }
       
-      Logger.info('[submitForm] Payment method found - proceeding to payment authorization');
+      Logger.info('[submitForm] Payment method found - proceeding to payment authorization', { cardBrand, cardLast4 });
     }
 
     // Build conditional payment button
@@ -884,9 +892,12 @@ export default class APIOrchestrator implements IOrchestrator {
         { label: "Go Back", action: "search_programs", payload: { orgRef: context.orgRef }, variant: "outline" }
       ];
     } else {
-      // Immediate registration flow: Show confirm & pay button
+      // Immediate registration flow: Show confirm & pay button with card details
+      const cardLabel = context.cardLast4 
+        ? `Pay with ${context.cardBrand || 'Card'} •••• ${context.cardLast4}` 
+        : "Confirm & Pay";
       buttons = [
-        { label: "Confirm & Pay", action: "confirm_payment", variant: "accent" },
+        { label: cardLabel, action: "confirm_payment", variant: "accent" },
         { label: "Go Back", action: "search_programs", payload: { orgRef: context.orgRef }, variant: "outline" }
       ];
     }
@@ -904,6 +915,8 @@ export default class APIOrchestrator implements IOrchestrator {
 
 🔒 **Your card will NOT be charged today.** We're just saving your payment method so we can complete registration when the booking window opens.`
       : `**Participants:**\n${participantList}
+
+💳 **Payment Method:** ${context.cardBrand || 'Card'} •••• ${context.cardLast4 || '****'}
 
 **Charges:**
 • Program Fee: ${formattedTotal} (to provider)
