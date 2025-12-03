@@ -682,7 +682,8 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
                   hasPaymentMethod={paymentCompleted}
                   onPaymentMethodSaved={async () => {
                     console.log('[MCPChat] Payment method saved');
-                    setPaymentCompleted(true);
+                    // NOTE: Don't set paymentCompleted until AFTER handleCardAction completes
+                    // This ensures the success message with buttons is added to messages first
                     
                     // Get user info (use mock if provided)
                     let userId: string | undefined;
@@ -727,6 +728,7 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
                         user_id: userId,
                         ...lastPaymentMessage.metadata?.schedulingData
                       });
+                      setPaymentCompleted(true);
                     } else if (nextAction === 'confirm_scheduled_registration') {
                       // Scheduled registration - existing Set & Forget flow
                       console.log('[MCPChat] Triggering scheduled registration after payment setup');
@@ -770,8 +772,10 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
                         user_jwt: accessToken,
                         schedulingData: lastPaymentMessage.metadata?.schedulingData
                       });
+                      setPaymentCompleted(true);
                     } else {
                       console.warn('[MCPChat] Unknown next_action:', nextAction);
+                      setPaymentCompleted(true); // Still hide form for unknown actions
                     }
                   }}
                 />
