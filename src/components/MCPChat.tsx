@@ -69,6 +69,11 @@ export function MCPChat({ mockUserId, mockUserEmail, forceUnauthenticated }: MCP
   const [hasCompletedAuthGate, setHasCompletedAuthGate] = useState(false);
   const [submittedFormIds, setSubmittedFormIds] = useState<Set<number>>(new Set());
   const [paymentCompleted, setPaymentCompleted] = useState(false);
+  const [authenticatedUser, setAuthenticatedUser] = useState<{
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+  } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -83,6 +88,28 @@ export function MCPChat({ mockUserId, mockUserEmail, forceUnauthenticated }: MCP
       setUserTimezone('UTC');
     }
   }, []);
+
+  // Load authenticated user data for form pre-population
+  useEffect(() => {
+    const loadUserData = async () => {
+      if (mockUserId && mockUserEmail) {
+        // For mock users, use mock email
+        setAuthenticatedUser({ email: mockUserEmail });
+        console.log('[MCPChat] Using mock user data:', mockUserEmail);
+      } else if (!forceUnauthenticated) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setAuthenticatedUser({
+            email: user.email,
+            firstName: user.user_metadata?.first_name,
+            lastName: user.user_metadata?.last_name
+          });
+          console.log('[MCPChat] Loaded authenticated user data:', user.email);
+        }
+      }
+    };
+    loadUserData();
+  }, [mockUserId, mockUserEmail, forceUnauthenticated, isAuthenticated]);
 
   // Check authentication status when payment setup is triggered
   useEffect(() => {
@@ -442,6 +469,11 @@ export function MCPChat({ mockUserId, mockUserEmail, forceUnauthenticated }: MCP
                       <ResponsibleDelegateForm
                         schema={msg.metadata.signupForm}
                         programTitle={msg.metadata.program_ref || "Selected Program"}
+                        initialDelegateData={authenticatedUser ? {
+                          delegate_email: authenticatedUser.email,
+                          delegate_firstName: authenticatedUser.firstName,
+                          delegate_lastName: authenticatedUser.lastName
+                        } : undefined}
                         onSubmit={(data) => {
                           // Mark this form as submitted
                           setSubmittedFormIds(prev => new Set(prev).add(idx));
