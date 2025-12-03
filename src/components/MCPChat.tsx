@@ -444,6 +444,12 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
           metadata: response.metadata
         },
       ]);
+      
+      // Mark payment as complete when booking succeeds (hides payment form)
+      if (action === 'confirm_payment' && response.message?.includes('Booking')) {
+        setPaymentCompleted(true);
+        console.log('[MCPChat] Booking confirmed - hiding payment form');
+      }
     } catch (error) {
       console.error("Card action error:", error);
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
@@ -670,9 +676,10 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
             
             return lastPaymentMessage && isAuthenticated && !paymentCompleted && (
               <div className="mt-4 mr-12">
-                <SavePaymentMethod
+              <SavePaymentMethod
                   mockUserId={mockUserId}
                   mockUserEmail={mockUserEmail}
+                  hasPaymentMethod={paymentCompleted}
                   onPaymentMethodSaved={async () => {
                     console.log('[MCPChat] Payment method saved');
                     setPaymentCompleted(true);
