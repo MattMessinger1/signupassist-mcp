@@ -814,6 +814,10 @@ export default class APIOrchestrator implements IOrchestrator {
     
     // Always store form data in context regardless of payment method status
     // This ensures confirmPayment/confirmScheduledRegistration can access it from context
+    const scheduledTime = isFutureBooking 
+      ? (earliestSlot?.toISOString() || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString())
+      : undefined;
+    
     this.updateContext(sessionId, {
       step: FlowStep.PAYMENT,
       formData: {
@@ -823,6 +827,19 @@ export default class APIOrchestrator implements IOrchestrator {
         event_id: context.selectedProgram?.first_available_event_id,
         program_fee_cents: Math.round(totalPrice * 100)
       },
+      // Store scheduling data for future bookings (needed by confirmScheduledRegistration)
+      schedulingData: isFutureBooking ? {
+        scheduled_time: scheduledTime,
+        event_id: context.selectedProgram?.first_available_event_id,
+        total_amount: grandTotal,
+        program_fee: formattedTotal,
+        program_fee_cents: Math.round(totalPrice * 100),
+        formData: {
+          delegate: formData.delegate,
+          participants: formData.participants,
+          num_participants: numParticipants
+        }
+      } : undefined,
       cardLast4,
       cardBrand
     });
