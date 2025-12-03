@@ -48,6 +48,14 @@ interface SavedChild {
   dob?: string;
 }
 
+interface DelegateProfile {
+  delegate_dob?: string;
+  delegate_relationship?: string;
+  delegate_phone?: string;
+  delegate_firstName?: string;
+  delegate_lastName?: string;
+}
+
 interface ResponsibleDelegateFormProps {
   schema: FormSchema | any;
   programTitle: string;
@@ -57,12 +65,14 @@ interface ResponsibleDelegateFormProps {
     delegate_email?: string;
     delegate_phone?: string;
   };
+  initialDelegateProfile?: DelegateProfile;
   savedChildren?: SavedChild[];
   onSubmit: (formData: {
     delegate: Record<string, any>;
     participants: Record<string, any>[];
     numParticipants: number;
     saveNewChildren?: SavedChild[];
+    saveDelegateProfile?: boolean;
   }) => void;
 }
 
@@ -70,6 +80,7 @@ export function ResponsibleDelegateForm({
   schema,
   programTitle,
   initialDelegateData,
+  initialDelegateProfile,
   savedChildren = [],
   onSubmit
 }: ResponsibleDelegateFormProps) {
@@ -79,15 +90,30 @@ export function ResponsibleDelegateForm({
   const requiresAgeVerification = schema?.requires_age_verification ?? true;
   const minimumDelegateAge = schema?.minimum_delegate_age || 18;
   
-  const [delegateData, setDelegateData] = useState<Record<string, any>>(initialDelegateData || {});
+  // Merge initial data from auth (name/email) with profile (phone/dob/relationship)
+  const mergedInitialData = {
+    ...initialDelegateData,
+    ...(initialDelegateProfile?.delegate_phone && { delegate_phone: initialDelegateProfile.delegate_phone }),
+    ...(initialDelegateProfile?.delegate_dob && { delegate_dob: initialDelegateProfile.delegate_dob }),
+    ...(initialDelegateProfile?.delegate_relationship && { delegate_relationship: initialDelegateProfile.delegate_relationship }),
+    // Profile can also override name if present
+    ...(initialDelegateProfile?.delegate_firstName && { delegate_firstName: initialDelegateProfile.delegate_firstName }),
+    ...(initialDelegateProfile?.delegate_lastName && { delegate_lastName: initialDelegateProfile.delegate_lastName }),
+  };
+  
+  const [delegateData, setDelegateData] = useState<Record<string, any>>(mergedInitialData || {});
   const [numParticipants, setNumParticipants] = useState(1);
   const [participantsData, setParticipantsData] = useState<Record<string, any>[]>([{}]);
   const [ageVerificationError, setAgeVerificationError] = useState<string | null>(null);
+  const [saveDelegateProfile, setSaveDelegateProfile] = useState(false);
   
   // Track which participants use saved children vs new entries
   const [participantSource, setParticipantSource] = useState<('saved' | 'new')[]>(['new']);
   const [selectedChildIds, setSelectedChildIds] = useState<(string | null)[]>([null]);
   const [saveNewParticipants, setSaveNewParticipants] = useState<boolean[]>([false]);
+  
+  // Check if profile is already saved (to decide if checkbox should show)
+  const hasExistingProfile = !!(initialDelegateProfile?.delegate_dob || initialDelegateProfile?.delegate_phone);
 
   useEffect(() => {
     const newParticipants = Array(numParticipants).fill(null).map((_, idx) => 
@@ -221,7 +247,8 @@ export function ResponsibleDelegateForm({
       delegate: delegateData,
       participants: participantsData,
       numParticipants,
-      saveNewChildren: saveNewChildren.length > 0 ? saveNewChildren : undefined
+      saveNewChildren: saveNewChildren.length > 0 ? saveNewChildren : undefined,
+      saveDelegateProfile: saveDelegateProfile && !hasExistingProfile
     });
   };
 
@@ -355,6 +382,23 @@ export function ResponsibleDelegateForm({
               <div className="flex items-start gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-md">
                 <AlertCircle className="w-4 h-4 text-destructive mt-0.5" />
                 <p className="text-sm text-destructive">{ageVerificationError}</p>
+              </div>
+            )}
+            
+            {/* Save delegate profile checkbox (only show if no existing profile) */}
+            {!hasExistingProfile && (
+              <div className="flex items-center space-x-2 pt-2">
+                <Checkbox
+                  id="save-delegate-profile"
+                  checked={saveDelegateProfile}
+                  onCheckedChange={(checked) => setSaveDelegateProfile(!!checked)}
+                />
+                <Label 
+                  htmlFor="save-delegate-profile"
+                  className="text-sm text-muted-foreground cursor-pointer"
+                >
+                  Save my information for future registrations
+                </Label>
               </div>
             )}
           </div>

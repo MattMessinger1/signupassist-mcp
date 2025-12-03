@@ -26,6 +26,14 @@ interface SavedPaymentMethod {
   brand?: string;
 }
 
+interface DelegateProfile {
+  delegate_dob?: string;
+  delegate_relationship?: string;
+  delegate_phone?: string;
+  delegate_firstName?: string;
+  delegate_lastName?: string;
+}
+
 interface CardData {
   title: string;
   subtitle?: string;
@@ -91,6 +99,7 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
   } | null>(null);
   const [savedChildren, setSavedChildren] = useState<SavedChild[]>([]);
   const [savedPaymentMethod, setSavedPaymentMethod] = useState<SavedPaymentMethod | null>(null);
+  const [delegateProfile, setDelegateProfile] = useState<DelegateProfile | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -132,7 +141,7 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
     loadUserData();
   }, [mockUserId, mockUserEmail, mockUserFirstName, mockUserLastName, forceUnauthenticated, isAuthenticated]);
 
-  // Load saved children and payment method for authenticated users (MCP compliant)
+  // Load saved children, payment method, and delegate profile for authenticated users (MCP compliant)
   useEffect(() => {
     const loadSavedUserData = async () => {
       const userId = mockUserId || (forceUnauthenticated ? undefined : (await supabase.auth.getUser()).data.user?.id);
@@ -141,10 +150,11 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
         console.log('[MCPChat] No user ID - skipping saved data load');
         setSavedChildren([]);
         setSavedPaymentMethod(null);
+        setDelegateProfile(null);
         return;
       }
       
-      console.log('[MCPChat] Loading saved children and payment method for user:', userId);
+      console.log('[MCPChat] Loading saved data for user:', userId);
       
       try {
         // Load saved children via MCP tool (sends to orchestrator endpoint)
@@ -159,6 +169,20 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
         if (paymentResponse.metadata?.paymentMethod) {
           setSavedPaymentMethod(paymentResponse.metadata.paymentMethod);
           console.log('[MCPChat] Loaded saved payment method:', paymentResponse.metadata.paymentMethod);
+        }
+        
+        // Load delegate profile via MCP tool
+        const profileResponse = await sendAction('load_delegate_profile', { user_id: userId }, sessionId, undefined, userTimezone);
+        if (profileResponse.metadata?.delegateProfile) {
+          const profile = profileResponse.metadata.delegateProfile;
+          setDelegateProfile({
+            delegate_dob: profile.date_of_birth,
+            delegate_relationship: profile.default_relationship,
+            delegate_phone: profile.phone,
+            delegate_firstName: profile.first_name,
+            delegate_lastName: profile.last_name
+          });
+          console.log('[MCPChat] Loaded delegate profile:', profile);
         }
       } catch (error) {
         console.error('[MCPChat] Error loading saved user data:', error);
@@ -545,15 +569,19 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
                           delegate_firstName: authenticatedUser.firstName,
                           delegate_lastName: authenticatedUser.lastName
                         } : undefined}
+                        initialDelegateProfile={delegateProfile || undefined}
                         savedChildren={savedChildren}
                         onSubmit={(data) => {
                           // Mark this form as submitted
                           setSubmittedFormIds(prev => new Set(prev).add(idx));
                           
-                          // If user wants to save new participants, include in payload
+                          // Build payload with form data and optional save flags
                           const payload: any = { formData: data };
                           if (data.saveNewChildren && data.saveNewChildren.length > 0) {
                             payload.saveNewChildren = data.saveNewChildren;
+                          }
+                          if (data.saveDelegateProfile) {
+                            payload.saveDelegateProfile = true;
                           }
                           
                           handleCardAction('submit_form', payload);
@@ -569,6 +597,7 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
                 <ResponsibleDelegateForm
                   schema={msg.metadata.signupForm}
                   programTitle={msg.metadata.program_ref || "Selected Program"}
+                  initialDelegateProfile={delegateProfile || undefined}
                   onSubmit={(data) => {
                     // Mark this form as submitted
                     setSubmittedFormIds(prev => new Set(prev).add(idx));
