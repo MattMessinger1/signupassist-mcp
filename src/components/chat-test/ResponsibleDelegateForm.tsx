@@ -105,7 +105,7 @@ export function ResponsibleDelegateForm({
   const [numParticipants, setNumParticipants] = useState(1);
   const [participantsData, setParticipantsData] = useState<Record<string, any>[]>([{}]);
   const [ageVerificationError, setAgeVerificationError] = useState<string | null>(null);
-  const [saveDelegateProfile, setSaveDelegateProfile] = useState(false);
+  const [saveDelegateProfile, setSaveDelegateProfile] = useState(true); // Default to saving profile for convenience
   
   // Track which participants use saved children vs new entries
   const [participantSource, setParticipantSource] = useState<('saved' | 'new')[]>(['new']);
