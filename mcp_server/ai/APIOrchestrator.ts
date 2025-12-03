@@ -690,13 +690,17 @@ export default class APIOrchestrator implements IOrchestrator {
       Logger.info('[submitForm] Saving new children for user:', userId, payload.saveNewChildren.length);
       for (const child of payload.saveNewChildren) {
         try {
-          await this.invokeMCPTool('user.create_child', {
+          const result = await this.invokeMCPTool('user.create_child', {
             user_id: userId,
             first_name: child.first_name,
             last_name: child.last_name,
             dob: child.dob
           });
-          Logger.info('[submitForm] ✅ Child saved:', child.first_name, child.last_name);
+          if (result?.success) {
+            Logger.info('[submitForm] ✅ Child saved:', child.first_name, child.last_name);
+          } else {
+            Logger.warn('[submitForm] Failed to save child (non-fatal):', result?.error || 'Unknown error');
+          }
         } catch (error) {
           Logger.warn('[submitForm] Failed to save child (non-fatal):', error);
           // Non-fatal - continue with registration

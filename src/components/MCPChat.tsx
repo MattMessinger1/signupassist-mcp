@@ -419,10 +419,11 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
       // If new children were saved during form submission, update local state
       if (action === 'submit_form' && payload.saveNewChildren && payload.saveNewChildren.length > 0) {
         // Add new children to savedChildren state (backend generates IDs, so use temp IDs)
+        // Note: saveNewChildren uses snake_case (first_name, last_name)
         const newChildren = payload.saveNewChildren.map((child: any, index: number) => ({
           id: `temp-${Date.now()}-${index}`, // Temp ID until next reload
-          first_name: child.firstName,
-          last_name: child.lastName,
+          first_name: child.first_name,
+          last_name: child.last_name,
           dob: child.dob
         }));
         setSavedChildren(prev => [...prev, ...newChildren]);
