@@ -800,13 +800,20 @@ export default class APIOrchestrator implements IOrchestrator {
         ? `on ${this.formatTimeForUser(earliestSlot, context)}`
         : "when registration opens";
       
-      paymentMessage += `\n\n📅 This class isn't open for registration yet. We can automatically register you ${dateDisplay}!`;
+      paymentMessage += `\n\n📅 This class isn't open for registration yet. We can automatically register you ${dateDisplay}!
+
+💳 **How charging works:**
+• **You won't be charged today** — we're just saving your payment method
+• **Only if registration succeeds:** Provider charges their program fee, and SignupAssist charges $20 success fee
+• **If registration fails:** No charges at all`;
+      
+      const scheduledDateFormatted = earliestSlot 
+        ? this.formatTimeForUser(scheduledDate, context)
+        : "when available";
       
       buttons = [
         { 
-          label: earliestSlot 
-            ? `⏰ Auto-Register on ${scheduledDate.toLocaleDateString()}` 
-            : `⏰ Auto-Register When Available`, 
+          label: `📝 Set Up Auto-Registration for ${scheduledDate.toLocaleDateString()}`, 
           action: "schedule_auto_registration",
           payload: {
             scheduled_time: scheduledDate.toISOString(),
@@ -827,12 +834,31 @@ export default class APIOrchestrator implements IOrchestrator {
       ];
     }
 
+    // Build card description based on whether this is immediate or scheduled
+    const cardDescription = isFutureBooking
+      ? `**Participants:**\n${participantList}
+
+⏰ **Scheduled for:** ${this.formatTimeForUser(earliestSlot || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), context)}
+
+💳 **Charges (only if registration succeeds):**
+• Program Fee: ${formattedTotal} → Paid to provider upon signup
+• SignupAssist Fee: $20.00 → Charged only if signup succeeds
+• **Total:** ${grandTotal}
+
+🔒 **Your card will NOT be charged today.** We're just saving your payment method so we can complete registration when the booking window opens.`
+      : `**Participants:**\n${participantList}
+
+**Charges:**
+• Program Fee: ${formattedTotal} (to provider)
+• SignupAssist Success Fee: $20.00 (only if booking succeeds)
+• **Total:** ${grandTotal}`;
+
     const paymentResponse: OrchestratorResponse = {
       message: paymentMessage,
       cards: [{
-        title: "Confirm Booking & Payment",
+        title: isFutureBooking ? "Set Up Auto-Registration" : "Confirm Booking & Payment",
         subtitle: programName,
-        description: `Participants:\n${participantList}\n\nCharges:\n• Program Fee: ${formattedTotal} (to provider)\n• SignupAssist Success Fee: $20.00 (only if booking succeeds)\n\nTotal: ${grandTotal}`,
+        description: cardDescription,
         buttons: []
       }],
       cta: {
