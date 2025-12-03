@@ -410,6 +410,19 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
         console.log('[MCPChat] Updated delegate profile from form submission:', formData);
       }
       
+      // If new children were saved during form submission, update local state
+      if (action === 'submit_form' && payload.saveNewChildren && payload.saveNewChildren.length > 0) {
+        // Add new children to savedChildren state (backend generates IDs, so use temp IDs)
+        const newChildren = payload.saveNewChildren.map((child: any, index: number) => ({
+          id: `temp-${Date.now()}-${index}`, // Temp ID until next reload
+          first_name: child.firstName,
+          last_name: child.lastName,
+          dob: child.dob
+        }));
+        setSavedChildren(prev => [...prev, ...newChildren]);
+        console.log('[MCPChat] Added new children to saved state:', newChildren);
+      }
+      
       const ctaButtons = response.cta 
         ? (Array.isArray(response.cta) ? response.cta : (response.cta as any).buttons)
         : undefined;
