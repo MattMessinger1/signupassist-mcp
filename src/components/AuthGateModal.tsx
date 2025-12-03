@@ -1,7 +1,9 @@
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Auth } from "@supabase/auth-ui-react";
 import { ThemeSupa } from "@supabase/auth-ui-shared";
 import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft } from "lucide-react";
 
 // Auth gate modal for lazy authentication at payment step (ChatGPT fullscreen compliance)
 
@@ -16,18 +18,29 @@ export function AuthGateModal({ isOpen, onClose, onAuthSuccess, delegateEmail }:
   return (
     <Sheet open={isOpen} onOpenChange={(open) => {
       if (!open) {
-        // Don't allow closing without completing auth - ChatGPT fullscreen pattern
+        onClose(); // Allow user to go back
       }
     }}>
       <SheetContent side="bottom" className="h-[90vh] overflow-y-auto">
         <SheetHeader>
-          <SheetTitle>Almost there! 🎉</SheetTitle>
-          <SheetDescription className="space-y-2 pt-2">
-            <p>Create an account to complete your registration.</p>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={onClose}
+              className="h-8 w-8"
+              aria-label="Go back"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <SheetTitle>Almost there! 🎉</SheetTitle>
+          </div>
+          <div className="space-y-2 pt-2 text-sm text-muted-foreground">
+            <div>Create an account to complete your registration.</div>
             {delegateEmail && (
-              <p className="text-sm font-medium pt-2">
+              <div className="font-medium pt-2">
                 Using email: <span className="text-primary">{delegateEmail}</span>
-              </p>
+              </div>
             )}
             <div className="text-xs space-y-1 pt-2">
               <div className="flex items-center gap-2">
@@ -43,7 +56,7 @@ export function AuthGateModal({ isOpen, onClose, onAuthSuccess, delegateEmail }:
                 <span>View registration history</span>
               </div>
             </div>
-          </SheetDescription>
+          </div>
         </SheetHeader>
         <div className="mt-6">
           <Auth
