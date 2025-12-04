@@ -330,3 +330,49 @@ By clicking "Schedule Auto-Registration", you authorize SignupAssist to act as y
 
 _Questions? Email ${SUPPORT_EMAIL}_`;
 }
+
+// ============================================
+// DISCOVERY ACTIVATION MESSAGES
+// ============================================
+
+/**
+ * Initial activation message (with Set & Forget promotion)
+ */
+export function getInitialActivationMessage(vars: { provider_name: string }): string {
+  const providerName = vars.provider_name || "your provider";
+  
+  return `I can help you sign up for programs at **${providerName}**! 🎯
+
+And if registration isn't open yet, I'll set up **auto-registration** so you're first in line when signups open — no need to set alarms or refresh the page.
+
+What would you like to do?`;
+}
+
+/**
+ * Fallback clarification message (MEDIUM confidence)
+ */
+export function getFallbackClarificationMessage(vars: { 
+  provider_name: string; 
+  provider_city?: string;
+}): string {
+  const providerName = vars.provider_name || "this provider";
+  const cityPart = vars.provider_city ? ` in **${vars.provider_city}**` : '';
+  
+  return `Just to make sure I point you to the right place — are you looking to sign up with **${providerName}**${cityPart}?
+
+If that's not quite right, let me know what you're searching for and I'll help find it!`;
+}
+
+/**
+ * Graceful decline message (LOW confidence - optional)
+ */
+export function getGracefulDeclineMessage(): string {
+  return `I can help with class signups and registrations! If you're looking to enroll in a class or program, just tell me the organization name and I'll see if I can help.`;
+}
+
+/**
+ * Location question for authenticated users without stored location
+ */
+export function getLocationQuestionMessage(): string {
+  return `Which city are you in? This helps me match you with local programs faster. 🗺️`;
+}
