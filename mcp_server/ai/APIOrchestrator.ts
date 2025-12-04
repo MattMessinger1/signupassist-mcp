@@ -65,6 +65,7 @@ interface APIContext {
     event_id: string;
     total_amount: string;
     program_fee: string;
+    program_fee_cents: number;
     formData: any;
   };
 }
