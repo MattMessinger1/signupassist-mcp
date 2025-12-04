@@ -206,15 +206,33 @@ export default function MCPChatTest() {
 
         <Card className="p-4 bg-blue-500/10 border-blue-500">
           <h3 className="text-lg font-semibold text-blue-700 dark:text-blue-400 mb-2">
-            🧪 Quick Test Prompts
+            🧪 Discovery Confidence Test Prompts
           </h3>
-          <div className="space-y-2 text-sm">
-            <p className="text-muted-foreground">Try these prompts in the chat below:</p>
-            <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-              <li>"I'd like to sign up for courses from AIM Design"</li>
-              <li>"Show me STEM Robotics at AIM Design for my 9 year old"</li>
-              <li>"Find ski jumping classes for kids in Madison"</li>
-            </ul>
+          <div className="space-y-3 text-sm">
+            <div>
+              <p className="font-medium text-green-600 dark:text-green-400">HIGH Confidence (→ Direct activation):</p>
+              <ul className="list-disc list-inside space-y-1 text-muted-foreground ml-2">
+                <li>"Sign up my kid for AIM Design in Madison"</li>
+                <li>"bookeo.com/aimdesign"</li>
+              </ul>
+            </div>
+            <div>
+              <p className="font-medium text-yellow-600 dark:text-yellow-400">MEDIUM Confidence (→ Clarification):</p>
+              <ul className="list-disc list-inside space-y-1 text-muted-foreground ml-2">
+                <li>"Register my daughter at AIM Design"</li>
+                <li>"Sign up for classes at AIM Design"</li>
+              </ul>
+            </div>
+            <div>
+              <p className="font-medium text-red-600 dark:text-red-400">LOW Confidence (→ Decline gracefully):</p>
+              <ul className="list-disc list-inside space-y-1 text-muted-foreground ml-2">
+                <li>"AIM Design is cool"</li>
+                <li>"I want to enroll in a class"</li>
+              </ul>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2 border-t pt-2">
+              Toggle auth mode above to test: <strong>Unauthenticated</strong> shows confirmation card, <strong>Authenticated</strong> asks for city if not saved.
+            </p>
           </div>
         </Card>
       </div>
