@@ -31,8 +31,18 @@ import {
   getPendingCancelSuccessMessage,
   getReceiptsFooterMessage,
   getScheduledRegistrationSuccessMessage,
+  getInitialActivationMessage,
+  getFallbackClarificationMessage,
+  getGracefulDeclineMessage,
+  getLocationQuestionMessage,
   SUPPORT_EMAIL
 } from "./apiMessageTemplates.js";
+import {
+  calculateActivationConfidence,
+  storedLocationMatchesProvider,
+  type ActivationResult,
+  type ProviderConfig
+} from "../utils/activationConfidence.js";
 import { stripHtml } from "../lib/extractionUtils.js";
 import { formatInTimeZone } from "date-fns-tz";
 import { createClient } from '@supabase/supabase-js';
@@ -238,28 +248,83 @@ export default class APIOrchestrator implements IOrchestrator {
       case "save_delegate_profile":
         return await this.saveDelegateProfile(payload, sessionId, context);
 
+      case "confirm_provider":
+        return await this.handleConfirmProvider(payload, sessionId, context);
+
+      case "deny_provider":
+        return await this.handleDenyProvider(payload, sessionId, context);
+
+      case "save_location":
+        return await this.handleSaveLocation(payload, sessionId, context);
+
       default:
         return this.formatError(`Unknown action: ${action}`);
     }
   }
 
   /**
-   * Handle natural language message
+   * Handle natural language message with activation confidence
    */
   private async handleMessage(
     input: string,
     sessionId: string,
     context: APIContext
   ): Promise<OrchestratorResponse> {
-    const inputLower = input.toLowerCase();
-
-    // Detect provider mention (currently only AIM Design)
-    if (inputLower.includes("aim") || inputLower.includes("design") || 
-        inputLower.includes("class") || inputLower.includes("program")) {
-      return await this.searchPrograms("aim-design", sessionId);
+    // Check if this might be a location response (simple city/state input)
+    if (context.step === FlowStep.BROWSE && this.isLocationResponse(input)) {
+      return await this.handleLocationResponse(input, sessionId, context);
     }
 
-    // Context-aware responses
+    // Get user's stored location if authenticated
+    let storedCity: string | undefined;
+    let storedState: string | undefined;
+    
+    if (context.user_id) {
+      try {
+        const profileResult = await this.invokeMCPTool('user.get_delegate_profile', {
+          user_id: context.user_id
+        });
+        if (profileResult?.data?.profile) {
+          storedCity = profileResult.data.profile.city;
+          storedState = profileResult.data.profile.state;
+        }
+      } catch (error) {
+        Logger.warn('[handleMessage] Failed to load delegate profile:', error);
+      }
+    }
+
+    // Calculate activation confidence
+    const confidence = calculateActivationConfidence(input, {
+      isAuthenticated: !!context.user_id,
+      storedCity,
+      storedState
+    });
+
+    Logger.info('[handleMessage] Activation confidence:', {
+      level: confidence.level,
+      reason: confidence.reason,
+      provider: confidence.matchedProvider?.name
+    });
+
+    // Route based on confidence level
+    if (confidence.level === 'HIGH' && confidence.matchedProvider) {
+      // HIGH: Activate immediately with Set & Forget message
+      const orgRef = confidence.matchedProvider.name.toLowerCase().replace(/\s+/g, '-');
+      return await this.activateWithInitialMessage(confidence.matchedProvider, orgRef, sessionId);
+    }
+
+    if (confidence.level === 'MEDIUM' && confidence.matchedProvider) {
+      // MEDIUM: Check if we should ask for location or show clarification
+      if (context.user_id && !storedCity) {
+        // Authenticated user without stored location - ask for city
+        return this.askForLocation(confidence.matchedProvider, sessionId);
+      }
+      
+      // Show fallback clarification
+      return this.showFallbackClarification(confidence.matchedProvider);
+    }
+
+    // LOW: Context-aware responses based on flow step
     switch (context.step) {
       case FlowStep.FORM_FILL:
         return this.formatResponse(
@@ -276,12 +341,229 @@ export default class APIOrchestrator implements IOrchestrator {
         );
 
       default:
+        // Graceful decline - offer help without forcing activation
         return this.formatResponse(
-          "I can help you find classes from AIM Design. What are you looking for?",
+          getGracefulDeclineMessage(),
           undefined,
-          [{ label: "Show All Classes", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "secondary" }]
+          [{ label: "Show Available Programs", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "secondary" }]
         );
     }
+  }
+
+  /**
+   * Check if input looks like a simple location response
+   */
+  private isLocationResponse(input: string): boolean {
+    const trimmed = input.trim();
+    // Short input (likely just city name or "City, ST")
+    if (trimmed.length > 50) return false;
+    // Match patterns like "Madison", "Madison, WI", "Chicago IL"
+    return /^[A-Za-z\s]+,?\s*[A-Z]{0,2}$/.test(trimmed);
+  }
+
+  /**
+   * Handle location response from user
+   */
+  private async handleLocationResponse(
+    input: string,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    const trimmed = input.trim();
+    
+    // Parse city and optional state
+    const cityStateMatch = trimmed.match(/^([A-Za-z\s]+),?\s*([A-Z]{2})?$/i);
+    if (!cityStateMatch) {
+      return this.formatResponse(
+        "I didn't catch that. What city are you in?",
+        undefined,
+        []
+      );
+    }
+
+    const city = cityStateMatch[1].trim();
+    const state = cityStateMatch[2]?.toUpperCase();
+
+    // Save location if authenticated
+    if (context.user_id) {
+      try {
+        await this.invokeMCPTool('user.update_delegate_profile', {
+          user_id: context.user_id,
+          city,
+          ...(state && { state })
+        });
+        Logger.info('[handleLocationResponse] Saved location:', { city, state });
+      } catch (error) {
+        Logger.warn('[handleLocationResponse] Failed to save location:', error);
+      }
+    }
+
+    // Now search for programs with the confirmed location context
+    return await this.searchPrograms("aim-design", sessionId);
+  }
+
+  /**
+   * Show initial activation message with Set & Forget promotion
+   */
+  private async activateWithInitialMessage(
+    provider: ProviderConfig,
+    orgRef: string,
+    sessionId: string
+  ): Promise<OrchestratorResponse> {
+    const message = getInitialActivationMessage({ provider_name: provider.name });
+    
+    const cards: CardSpec[] = [{
+      title: `Browse ${provider.name} Programs`,
+      subtitle: provider.city ? `📍 ${provider.city}, ${provider.state || ''}` : undefined,
+      description: 'View available classes and sign up in seconds.',
+      buttons: [
+        {
+          label: "Show Programs",
+          action: "search_programs",
+          payload: { orgRef },
+          variant: "accent"
+        }
+      ]
+    }];
+
+    return {
+      message,
+      cards
+    };
+  }
+
+  /**
+   * Ask authenticated user for their location
+   */
+  private askForLocation(provider: ProviderConfig, sessionId: string): OrchestratorResponse {
+    const message = getLocationQuestionMessage();
+    
+    // Store that we're waiting for location
+    this.updateContext(sessionId, { step: FlowStep.BROWSE });
+    
+    return {
+      message,
+      cards: [{
+        title: "Share Your Location",
+        subtitle: "Optional — helps with faster matching",
+        description: `This helps me confirm you're looking for ${provider.name} in ${provider.city || 'your area'}.`,
+        buttons: [
+          {
+            label: `Yes, I'm in ${provider.city || 'that area'}`,
+            action: "save_location",
+            payload: { city: provider.city, state: provider.state, provider_name: provider.name },
+            variant: "accent"
+          },
+          {
+            label: "Different City",
+            action: "confirm_provider",
+            payload: { provider_name: provider.name, ask_city: true },
+            variant: "outline"
+          }
+        ]
+      }]
+    };
+  }
+
+  /**
+   * Show fallback clarification for MEDIUM confidence
+   */
+  private showFallbackClarification(provider: ProviderConfig): OrchestratorResponse {
+    const message = getFallbackClarificationMessage({
+      provider_name: provider.name,
+      provider_city: provider.city
+    });
+
+    const orgRef = provider.name.toLowerCase().replace(/\s+/g, '-');
+
+    return {
+      message,
+      cards: [{
+        title: `Sign up at ${provider.name}?`,
+        subtitle: provider.city ? `📍 ${provider.city}, ${provider.state || ''}` : undefined,
+        description: 'Confirm to browse available programs.',
+        buttons: [
+          {
+            label: "Yes, that's right",
+            action: "confirm_provider",
+            payload: { provider_name: provider.name, orgRef },
+            variant: "accent"
+          },
+          {
+            label: "No, not what I meant",
+            action: "deny_provider",
+            payload: {},
+            variant: "outline"
+          }
+        ]
+      }]
+    };
+  }
+
+  /**
+   * Handle confirm_provider action (user confirms fallback clarification)
+   */
+  private async handleConfirmProvider(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    const orgRef = payload.orgRef || payload.provider_name?.toLowerCase().replace(/\s+/g, '-') || 'aim-design';
+    
+    if (payload.ask_city) {
+      // User said they're in a different city - just proceed anyway
+      return this.formatResponse(
+        "No problem! What city are you in? (Or just type your city name)",
+        undefined,
+        []
+      );
+    }
+    
+    return await this.searchPrograms(orgRef, sessionId);
+  }
+
+  /**
+   * Handle deny_provider action (user says "not what I meant")
+   */
+  private async handleDenyProvider(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    return this.formatResponse(
+      "No problem! What are you looking for? I can help with class signups and registrations.",
+      undefined,
+      []
+    );
+  }
+
+  /**
+   * Handle save_location action (user confirms location)
+   */
+  private async handleSaveLocation(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    const { city, state, provider_name } = payload;
+    
+    // Save location if authenticated
+    if (context.user_id && city) {
+      try {
+        await this.invokeMCPTool('user.update_delegate_profile', {
+          user_id: context.user_id,
+          city,
+          ...(state && { state })
+        });
+        Logger.info('[handleSaveLocation] Saved location:', { city, state });
+      } catch (error) {
+        Logger.warn('[handleSaveLocation] Failed to save location:', error);
+      }
+    }
+    
+    // Proceed to search programs
+    const orgRef = provider_name?.toLowerCase().replace(/\s+/g, '-') || 'aim-design';
+    return await this.searchPrograms(orgRef, sessionId);
   }
 
   /**
