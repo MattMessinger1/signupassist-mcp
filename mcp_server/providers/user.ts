@@ -55,6 +55,8 @@ export interface DelegateProfile {
   phone?: string;
   date_of_birth?: string;
   default_relationship?: string;
+  city?: string;      // For location-based provider matching
+  state?: string;     // For location-based provider matching
 }
 
 /**
@@ -360,8 +362,10 @@ async function updateDelegateProfile(args: {
   phone?: string;
   date_of_birth?: string;
   default_relationship?: string;
+  city?: string;       // For location-based provider matching
+  state?: string;      // For location-based provider matching
 }): Promise<ProviderResponse<{ profile: DelegateProfile }>> {
-  const { user_id, first_name, last_name, phone, date_of_birth, default_relationship } = args;
+  const { user_id, first_name, last_name, phone, date_of_birth, default_relationship, city, state } = args;
   
   console.log(`[User] Updating delegate profile for user: ${user_id}`);
   
@@ -372,6 +376,8 @@ async function updateDelegateProfile(args: {
     if (phone !== undefined) updates.phone = phone;
     if (date_of_birth !== undefined) updates.date_of_birth = date_of_birth;
     if (default_relationship !== undefined) updates.default_relationship = default_relationship;
+    if (city !== undefined) updates.city = city;
+    if (state !== undefined) updates.state = state;
     
     const { data: profile, error } = await supabase
       .from('delegate_profiles')
@@ -575,6 +581,14 @@ export const userTools: UserTool[] = [
         default_relationship: {
           type: 'string',
           description: 'Default relationship to participants (parent, guardian, grandparent, other)'
+        },
+        city: {
+          type: 'string',
+          description: 'User city for location-based provider matching'
+        },
+        state: {
+          type: 'string',
+          description: 'User state/province for location-based provider matching'
         }
       },
       required: ['user_id']
