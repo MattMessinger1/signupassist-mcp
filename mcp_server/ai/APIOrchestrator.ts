@@ -1437,7 +1437,7 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
     sessionId: string,
     context: APIContext
   ): Promise<OrchestratorResponse> {
-    const { scheduled_time, event_id, total_amount, program_fee, formData } = payload;
+    const { scheduled_time, event_id, total_amount, program_fee, program_fee_cents, formData } = payload;
     
     // Validate 31-day scheduling limit
     const scheduledDate = new Date(scheduled_time);
@@ -1461,6 +1461,7 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
         event_id,
         total_amount,
         program_fee,
+        program_fee_cents: program_fee_cents || 0,
         formData
       }
     });
