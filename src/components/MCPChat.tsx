@@ -443,6 +443,39 @@ export function MCPChat({
         console.log('[MCPChat] Using authenticated user for action:', userId);
       }
       
+      // Lazy Auth Gate: If protected action invoked without auth, prompt user first
+      const protectedActions = ["confirm_registration", "confirm_payment", "create_booking", "register", "pay", "setup_payment_method"];
+      if (!userId && protectedActions.includes(action)) {
+        console.warn(`[MCPChat] ${action} requires sign-in – showing inline auth prompt`);
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "Before we continue, **sign in to your account** is required.",
+            cards: [{
+              title: "Sign in required to continue",
+              description: "Connect your SignupAssist account to proceed with this action.",
+              buttons: [{ label: "Connect Account", action: "authenticate", variant: "accent" }]
+            }]
+          }
+        ]);
+        setLoading(false);
+        return; // Halt - do not call backend
+      }
+      
+      // Handle the "authenticate" pseudo-action (triggered by Connect Account button)
+      if (action === 'authenticate') {
+        console.log('[MCPChat] Opening auth drawer via user-initiated Connect Account');
+        // Show "Preparing authorization..." status message (avoid duplicates)
+        setMessages((prev) => {
+          if (prev.some(m => m.content.includes('Preparing authorization'))) return prev;
+          return [...prev, { role: "assistant", content: "🔐 Preparing authorization..." }];
+        });
+        setShowAuthGate(true);
+        setLoading(false);
+        return; // Don't call sendAction
+      }
+      
       // Include user_id in payload for backend operations (esp. payment)
       const enrichedPayload = userId ? { ...payload, user_id: userId } : payload;
       
