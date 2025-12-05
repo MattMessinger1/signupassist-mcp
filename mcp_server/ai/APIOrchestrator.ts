@@ -257,6 +257,12 @@ export default class APIOrchestrator implements IOrchestrator {
       case "save_location":
         return await this.handleSaveLocation(payload, sessionId, context);
 
+      case "clear_context":
+        return await this.handleClearContext(payload, sessionId, context);
+
+      case "browse_all_programs":
+        return await this.handleBrowseAllPrograms(payload, sessionId, context);
+
       default:
         return this.formatError(`Unknown action: ${action}`);
     }
@@ -530,11 +536,70 @@ export default class APIOrchestrator implements IOrchestrator {
     sessionId: string,
     context: APIContext
   ): Promise<OrchestratorResponse> {
-    return this.formatResponse(
-      "No problem! What are you looking for? I can help with class signups and registrations.",
-      undefined,
-      []
-    );
+    // Clear any provider context from session
+    this.updateContext(sessionId, {
+      confirmed_provider: undefined,
+      confirmed_org_ref: undefined
+    });
+
+    return {
+      message: "No problem! What program or activity are you looking for? I can help you find and sign up for classes, camps, and workshops.",
+      cards: [{
+        title: "What would you like to do?",
+        subtitle: "Options to continue",
+        description: "Tell me what you're looking for, or browse available programs.",
+        buttons: [
+          {
+            label: "Browse All Programs",
+            action: "browse_all_programs",
+            payload: {},
+            variant: "accent"
+          },
+          {
+            label: "Start Over",
+            action: "clear_context",
+            payload: {},
+            variant: "outline"
+          }
+        ]
+      }],
+      cta: []
+    };
+  }
+
+  /**
+   * Handle clear_context action (user wants fresh start)
+   */
+  private async handleClearContext(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    // Reset session context
+    this.updateContext(sessionId, {
+      confirmed_provider: undefined,
+      confirmed_org_ref: undefined,
+      form_data: undefined,
+      selected_program: undefined
+    });
+
+    return {
+      message: "Fresh start! What are you looking for today? I can help you sign up for classes, camps, and activities.",
+      cards: [],
+      cta: []
+    };
+  }
+
+  /**
+   * Handle browse_all_programs action
+   */
+  private async handleBrowseAllPrograms(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    // Default to aim-design for now, could be expanded to multi-provider
+    return await this.searchPrograms('aim-design', sessionId);
   }
 
   /**
