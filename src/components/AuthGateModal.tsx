@@ -1,11 +1,13 @@
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { Auth } from "@supabase/auth-ui-react";
 import { ThemeSupa } from "@supabase/auth-ui-shared";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ExternalLink } from "lucide-react";
 
-// Auth gate modal for lazy authentication at payment step (ChatGPT fullscreen compliance)
+// Auth gate modal simulating OAuth redirect flow (ChatGPT Apps SDK pattern)
+// When auth is triggered inline, ChatGPT shows "Preparing authorization..." 
+// then redirects to OAuth provider. This simulates that experience.
 
 interface AuthGateModalProps {
   isOpen: boolean;
@@ -21,7 +23,15 @@ export function AuthGateModal({ isOpen, onClose, onAuthSuccess, delegateEmail }:
         onClose(); // Allow user to go back
       }
     }}>
-      <SheetContent side="bottom" className="h-[90vh] overflow-y-auto">
+      <SheetContent side="bottom" className="h-[100vh] overflow-y-auto bg-background">
+        {/* OAuth redirect simulation header */}
+        <div className="flex items-center gap-2 text-xs text-muted-foreground border-b border-border pb-3 mb-4">
+          <ExternalLink className="h-3 w-3" />
+          <span>signupassist.ai</span>
+          <span className="text-muted-foreground/50">•</span>
+          <span>Secure authentication</span>
+        </div>
+        
         <SheetHeader>
           <div className="flex items-center gap-2">
             <Button 
@@ -29,35 +39,42 @@ export function AuthGateModal({ isOpen, onClose, onAuthSuccess, delegateEmail }:
               size="icon" 
               onClick={onClose}
               className="h-8 w-8"
-              aria-label="Go back"
+              aria-label="Go back to chat"
             >
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <SheetTitle>Almost there! 🎉</SheetTitle>
+            <SheetTitle>Connect to SignupAssist</SheetTitle>
           </div>
-          <div className="space-y-2 pt-2 text-sm text-muted-foreground">
-            <div>Create an account to complete your registration.</div>
-            {delegateEmail && (
-              <div className="font-medium pt-2">
-                Using email: <span className="text-primary">{delegateEmail}</span>
-              </div>
-            )}
-            <div className="text-xs space-y-1 pt-2">
-              <div className="flex items-center gap-2">
-                <span>✓</span>
-                <span>Your form data is saved</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span>✓</span>
-                <span>Quick checkout next time</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span>✓</span>
-                <span>View registration history</span>
-              </div>
+          <SheetDescription className="text-left">
+            Sign in to authorize SignupAssist to complete this registration on your behalf.
+          </SheetDescription>
+        </SheetHeader>
+        
+        <div className="space-y-4 pt-4">
+          {delegateEmail && (
+            <div className="text-sm bg-muted/50 rounded-lg p-3">
+              <span className="text-muted-foreground">Using email: </span>
+              <span className="font-medium text-foreground">{delegateEmail}</span>
+            </div>
+          )}
+          
+          <div className="text-xs text-muted-foreground space-y-1 bg-muted/30 rounded-lg p-3">
+            <div className="font-medium text-foreground mb-2">SignupAssist will be able to:</div>
+            <div className="flex items-center gap-2">
+              <span className="text-primary">✓</span>
+              <span>Register for programs on your behalf</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-primary">✓</span>
+              <span>Save your payment method securely</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-primary">✓</span>
+              <span>View your registration history</span>
             </div>
           </div>
-        </SheetHeader>
+        </div>
+        
         <div className="mt-6">
           <Auth
             supabaseClient={supabase}
@@ -80,6 +97,10 @@ export function AuthGateModal({ isOpen, onClose, onAuthSuccess, delegateEmail }:
               email: delegateEmail
             }}
           />
+        </div>
+        
+        <div className="mt-6 pt-4 border-t border-border text-center text-xs text-muted-foreground">
+          By signing in, you agree to SignupAssist's Terms of Service and Privacy Policy.
         </div>
       </SheetContent>
     </Sheet>

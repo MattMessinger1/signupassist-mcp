@@ -247,6 +247,15 @@ export function MCPChat({
           if (paymentMsg) {
             console.log('[MCPChat] Payment setup detected for unauthenticated user - showing auth gate');
             setPendingPaymentMetadata(paymentMsg.metadata);
+            // Add inline "Preparing authorization..." message before showing auth gate
+            setMessages((prev) => {
+              // Avoid duplicate auth messages
+              if (prev.some(m => m.content.includes('Preparing authorization'))) return prev;
+              return [
+                ...prev,
+                { role: "assistant", content: "🔐 Preparing authorization..." }
+              ];
+            });
             setShowAuthGate(true);
           }
         }
@@ -272,6 +281,15 @@ export function MCPChat({
         if (paymentMsg) {
           console.log('[MCPChat] Payment setup detected for unauthenticated user - showing auth gate');
           setPendingPaymentMetadata(paymentMsg.metadata);
+          // Add inline "Preparing authorization..." message before showing auth gate
+          setMessages((prev) => {
+            // Avoid duplicate auth messages
+            if (prev.some(m => m.content.includes('Preparing authorization'))) return prev;
+            return [
+              ...prev,
+              { role: "assistant", content: "🔐 Preparing authorization..." }
+            ];
+          });
           setShowAuthGate(true);
         }
       }
@@ -307,12 +325,13 @@ export function MCPChat({
         setHasCompletedAuthGate(true);  // Mark that user completed auth gate
         setIsAuthenticated(true);       // Explicitly set authenticated
         
-        // Add a message showing the payment form now that user is authenticated
+        // Add "Auth complete" message then continue with payment form
         setMessages((prev) => [
           ...prev,
+          { role: "assistant", content: "✅ Auth complete" },
           { 
             role: "assistant", 
-            content: "✅ Account created! Now let's set up your payment method.",
+            content: "Now let's set up your payment method.",
             metadata: pendingPaymentMetadata
           },
         ]);
