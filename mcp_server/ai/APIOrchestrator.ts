@@ -538,13 +538,13 @@ export default class APIOrchestrator implements IOrchestrator {
   ): Promise<OrchestratorResponse> {
     // Clear any provider context from session
     this.updateContext(sessionId, {
-      confirmed_provider: undefined,
-      confirmed_org_ref: undefined
+      orgRef: undefined,
+      selectedProgram: undefined
     });
 
-    return {
-      message: "No problem! What program or activity are you looking for? I can help you find and sign up for classes, camps, and workshops.",
-      cards: [{
+    return this.formatResponse(
+      "No problem! What program or activity are you looking for? I can help you find and sign up for classes, camps, and workshops.",
+      [{
         title: "What would you like to do?",
         subtitle: "Options to continue",
         description: "Tell me what you're looking for, or browse available programs.",
@@ -562,9 +562,8 @@ export default class APIOrchestrator implements IOrchestrator {
             variant: "outline"
           }
         ]
-      }],
-      cta: []
-    };
+      }]
+    );
   }
 
   /**
@@ -577,17 +576,15 @@ export default class APIOrchestrator implements IOrchestrator {
   ): Promise<OrchestratorResponse> {
     // Reset session context
     this.updateContext(sessionId, {
-      confirmed_provider: undefined,
-      confirmed_org_ref: undefined,
-      form_data: undefined,
-      selected_program: undefined
+      orgRef: undefined,
+      formData: undefined,
+      selectedProgram: undefined,
+      step: FlowStep.BROWSE
     });
 
-    return {
-      message: "Fresh start! What are you looking for today? I can help you sign up for classes, camps, and activities.",
-      cards: [],
-      cta: []
-    };
+    return this.formatResponse(
+      "Fresh start! What are you looking for today? I can help you sign up for classes, camps, and activities."
+    );
   }
 
   /**
