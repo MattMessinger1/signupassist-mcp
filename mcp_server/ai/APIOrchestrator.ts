@@ -547,7 +547,7 @@ export default class APIOrchestrator implements IOrchestrator {
       [{
         title: "What would you like to do?",
         subtitle: "Options to continue",
-        description: "Tell me what you're looking for, or browse available programs.",
+        description: "Type what you're looking for below, or use these shortcuts:",
         buttons: [
           {
             label: "Browse All Programs",
