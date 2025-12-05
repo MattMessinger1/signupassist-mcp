@@ -45,17 +45,12 @@ export default function MCPChatTest() {
       }
     );
 
-    // THEN check for existing session
+    // THEN check for existing session (but DON'T auto-skip gate)
     supabase.auth.getSession().then(({ data: { session } }) => {
       console.log('[MCPChatTest] Existing session:', session?.user?.id);
       setSession(session);
       setUser(session?.user ?? null);
-      
-      // If already authenticated, skip directly to active
-      if (session?.user) {
-        console.log('[MCPChatTest] Already authenticated - skipping to active');
-        setAppState('active');
-      }
+      // Gate stays visible - user must explicitly "Allow" even if already authenticated
     });
 
     return () => subscription.unsubscribe();
@@ -186,7 +181,15 @@ export default function MCPChatTest() {
         
         <AppActivationGate
           appName="SignupAssist"
-          onAllow={() => setAppState('authenticating')}
+          onAllow={() => {
+            // If already authenticated, skip auth step and go straight to active
+            if (user) {
+              console.log('[MCPChatTest] Already authenticated - skipping to active');
+              setAppState('active');
+            } else {
+              setAppState('authenticating');
+            }
+          }}
           onDeny={() => setAppState('denied')}
           isAuthenticating={appState === 'authenticating'}
           onAuthSuccess={() => setAppState('active')}
