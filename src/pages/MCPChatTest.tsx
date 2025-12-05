@@ -217,10 +217,10 @@ export default function MCPChatTest() {
               </ul>
             </div>
             <div>
-              <p className="font-medium text-yellow-600 dark:text-yellow-400">MEDIUM Confidence (→ Clarification):</p>
+              <p className="font-medium text-yellow-600 dark:text-yellow-400">MEDIUM Confidence (→ Clarification card):</p>
               <ul className="list-disc list-inside space-y-1 text-muted-foreground ml-2">
-                <li>"Register my daughter at AIM Design"</li>
-                <li>"Sign up for classes at AIM Design"</li>
+                <li>"Classes at AIM Design"</li>
+                <li>"AIM Design courses for kids"</li>
               </ul>
             </div>
             <div>
