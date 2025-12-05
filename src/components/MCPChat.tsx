@@ -72,14 +72,30 @@ interface Message {
 }
 
 interface MCPChatProps {
+  // New auth-first pattern props
+  authenticatedUser?: { id: string; email?: string | null } | null;
+  requireAuth?: boolean;
+  
+  // Legacy props (deprecated - kept for backward compatibility)
   mockUserId?: string;
   mockUserEmail?: string;
   mockUserFirstName?: string;
   mockUserLastName?: string;
-  forceUnauthenticated?: boolean;  // When true, treat as unauthenticated regardless of Supabase session
+  forceUnauthenticated?: boolean;
 }
 
-export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUserLastName, forceUnauthenticated }: MCPChatProps = {}) {
+export function MCPChat({ 
+  authenticatedUser: authenticatedUserProp,
+  requireAuth = false,
+  mockUserId, 
+  mockUserEmail, 
+  mockUserFirstName, 
+  mockUserLastName, 
+  forceUnauthenticated 
+}: MCPChatProps = {}) {
+  // Derive user ID and email from authenticatedUser (auth-first) or legacy mock props
+  const effectiveUserId = authenticatedUserProp?.id || mockUserId;
+  const effectiveUserEmail = authenticatedUserProp?.email || mockUserEmail;
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -88,11 +104,11 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
   const [userTimezone, setUserTimezone] = useState<string>('UTC');
   const [showAuthGate, setShowAuthGate] = useState(false);
   const [pendingPaymentMetadata, setPendingPaymentMetadata] = useState<any>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(!!authenticatedUserProp);
   const [hasCompletedAuthGate, setHasCompletedAuthGate] = useState(false);
   const [submittedFormIds, setSubmittedFormIds] = useState<Set<number>>(new Set());
   const [paymentCompleted, setPaymentCompleted] = useState(false);
-  const [authenticatedUser, setAuthenticatedUser] = useState<{
+  const [userFormData, setUserFormData] = useState<{
     email?: string;
     firstName?: string;
     lastName?: string;
@@ -118,18 +134,19 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
   // Load authenticated user data for form pre-population
   useEffect(() => {
     const loadUserData = async () => {
-      if (mockUserId && mockUserEmail) {
-        // For mock users, use mock email and name
-        setAuthenticatedUser({ 
-          email: mockUserEmail,
+      if (effectiveUserId && effectiveUserEmail) {
+        // For auth-first or mock users, use provided email and name
+        setUserFormData({ 
+          email: effectiveUserEmail,
           firstName: mockUserFirstName,
           lastName: mockUserLastName
         });
-        console.log('[MCPChat] Using mock user data:', mockUserEmail, mockUserFirstName, mockUserLastName);
-      } else if (!forceUnauthenticated) {
+        console.log('[MCPChat] Using user data:', effectiveUserEmail, mockUserFirstName, mockUserLastName);
+      } else if (!forceUnauthenticated && !requireAuth) {
+        // Legacy mode: fetch from Supabase directly
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
-          setAuthenticatedUser({
+          setUserFormData({
             email: user.email,
             firstName: user.user_metadata?.first_name,
             lastName: user.user_metadata?.last_name
@@ -139,12 +156,16 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
       }
     };
     loadUserData();
-  }, [mockUserId, mockUserEmail, mockUserFirstName, mockUserLastName, forceUnauthenticated, isAuthenticated]);
+  }, [effectiveUserId, effectiveUserEmail, mockUserFirstName, mockUserLastName, forceUnauthenticated, isAuthenticated, requireAuth]);
 
   // Load saved children, payment method, and delegate profile for authenticated users (MCP compliant)
   useEffect(() => {
     const loadSavedUserData = async () => {
-      const userId = mockUserId || (forceUnauthenticated ? undefined : (await supabase.auth.getUser()).data.user?.id);
+      // Use effectiveUserId from auth-first pattern, or fallback to Supabase lookup
+      let userId = effectiveUserId;
+      if (!userId && !forceUnauthenticated && !requireAuth) {
+        userId = (await supabase.auth.getUser()).data.user?.id;
+      }
       
       if (!userId) {
         console.log('[MCPChat] No user ID - skipping saved data load');
@@ -191,10 +212,10 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
     };
     
     // Only load when authenticated and session is ready
-    if (isAuthenticated || mockUserId) {
+    if (isAuthenticated || effectiveUserId) {
       loadSavedUserData();
     }
-  }, [isAuthenticated, mockUserId, forceUnauthenticated, sessionId, userTimezone]);
+  }, [isAuthenticated, effectiveUserId, forceUnauthenticated, sessionId, userTimezone, requireAuth]);
 
   // Check authentication status when payment setup is triggered
   useEffect(() => {
@@ -205,8 +226,14 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
         return;  // Don't re-run auth checks
       }
       
+      // Auth-first mode: use effectiveUserId from prop
+      if (requireAuth && effectiveUserId) {
+        setIsAuthenticated(true);
+        return;
+      }
+      
       // If force unauthenticated mode, don't check real auth
-      if (forceUnauthenticated && !mockUserId) {
+      if (forceUnauthenticated && !effectiveUserId) {
         console.log('[MCPChat] Force unauthenticated mode - bypassing Supabase auth');
         setIsAuthenticated(false);
         
@@ -226,7 +253,7 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
         return;
       }
       
-      if (mockUserId) {
+      if (effectiveUserId) {
         setIsAuthenticated(true);
         return;
       }
@@ -251,7 +278,7 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
     };
     
     checkAuth();
-  }, [messages, mockUserId, forceUnauthenticated, hasCompletedAuthGate]);
+  }, [messages, effectiveUserId, forceUnauthenticated, hasCompletedAuthGate, requireAuth]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -308,16 +335,16 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
     setLoading(true);
 
     try {
-      // Use mock user if provided, otherwise get authenticated user
+      // Use effectiveUserId from auth-first pattern, or fallback
       let userId: string | undefined;
       
-      if (mockUserId) {
-        userId = mockUserId;
-        console.log('[MCPChat] Using mock user:', mockUserId);
-      } else if (forceUnauthenticated) {
-        // Truly unauthenticated - don't get real user
+      if (effectiveUserId) {
+        userId = effectiveUserId;
+        console.log('[MCPChat] Using authenticated user:', userId);
+      } else if (forceUnauthenticated || requireAuth) {
+        // No user in auth-first mode means something is wrong, but handle gracefully
         userId = undefined;
-        console.log('[MCPChat] Force unauthenticated - no user_id');
+        console.log('[MCPChat] No user_id available');
       } else {
         const { data: { user } } = await supabase.auth.getUser();
         userId = user?.id;
@@ -382,16 +409,15 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
     setLoading(true);
     
     try {
-      // Use mock user if provided, otherwise get authenticated user
+      // Use effectiveUserId from auth-first pattern, or fallback
       let userId: string | undefined;
       
-      if (mockUserId) {
-        userId = mockUserId;
-        console.log('[MCPChat] Using mock user for action:', mockUserId);
-      } else if (forceUnauthenticated) {
-        // Truly unauthenticated - don't get real user
+      if (effectiveUserId) {
+        userId = effectiveUserId;
+        console.log('[MCPChat] Using authenticated user for action:', userId);
+      } else if (forceUnauthenticated || requireAuth) {
         userId = undefined;
-        console.log('[MCPChat] Force unauthenticated - no user_id for action');
+        console.log('[MCPChat] No user_id for action');
       } else {
         const { data: { user } } = await supabase.auth.getUser();
         userId = user?.id;
@@ -471,9 +497,9 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
         <Badge variant="outline" className="text-xs">
           Session: {sessionId.slice(-8)}
         </Badge>
-        {mockUserId ? (
+        {effectiveUserId ? (
           <Badge variant="default" className="text-xs">
-            🔐 Mock User: {mockUserEmail}
+            🔐 Authenticated: {effectiveUserEmail || effectiveUserId.slice(0, 8)}...
           </Badge>
         ) : (
           <Badge variant="secondary" className="text-xs">
@@ -603,10 +629,10 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
                       <ResponsibleDelegateForm
                         schema={msg.metadata.signupForm}
                         programTitle={msg.metadata.program_ref || "Selected Program"}
-                        initialDelegateData={authenticatedUser ? {
-                          delegate_email: authenticatedUser.email,
-                          delegate_firstName: authenticatedUser.firstName,
-                          delegate_lastName: authenticatedUser.lastName
+                        initialDelegateData={userFormData ? {
+                          delegate_email: userFormData.email,
+                          delegate_firstName: userFormData.firstName,
+                          delegate_lastName: userFormData.lastName
                         } : undefined}
                         initialDelegateProfile={delegateProfile || undefined}
                         savedChildren={savedChildren}
@@ -677,22 +703,22 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
             return lastPaymentMessage && isAuthenticated && !paymentCompleted && (
               <div className="mt-4 mr-12">
               <SavePaymentMethod
-                  mockUserId={mockUserId}
-                  mockUserEmail={mockUserEmail}
+                  mockUserId={effectiveUserId}
+                  mockUserEmail={effectiveUserEmail}
                   hasPaymentMethod={paymentCompleted}
                   onPaymentMethodSaved={async () => {
                     console.log('[MCPChat] Payment method saved');
                     // NOTE: Don't set paymentCompleted until AFTER handleCardAction completes
                     // This ensures the success message with buttons is added to messages first
                     
-                    // Get user info (use mock if provided)
+                    // Get user info from effectiveUserId (auth-first pattern)
                     let userId: string | undefined;
                     let userEmail: string | undefined;
                     
-                    if (mockUserId && mockUserEmail) {
-                      userId = mockUserId;
-                      userEmail = mockUserEmail;
-                      console.log('[MCPChat] Using mock user for payment callback:', userId);
+                    if (effectiveUserId && effectiveUserEmail) {
+                      userId = effectiveUserId;
+                      userEmail = effectiveUserEmail;
+                      console.log('[MCPChat] Using authenticated user for payment callback:', userId);
                     } else {
                       const { data: { user } } = await supabase.auth.getUser();
                       if (!user) {
@@ -750,9 +776,9 @@ export function MCPChat({ mockUserId, mockUserEmail, mockUserFirstName, mockUser
                         return;
                       }
 
-                      // Get session token (only if real user, not mock)
+                      // Get session token (only if real user authenticated via Supabase)
                       let accessToken: string | undefined;
-                      if (!mockUserId) {
+                      if (!requireAuth) {
                         const { data: { session } } = await supabase.auth.getSession();
                         if (!session) {
                           toast({
