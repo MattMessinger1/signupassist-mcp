@@ -14,6 +14,7 @@ export interface CardSpec {
   subtitle?: string;
   description?: string;
   buttons?: ButtonSpec[];
+  metadata?: Record<string, any>;
 }
 
 export interface OrchestratorResponse {
