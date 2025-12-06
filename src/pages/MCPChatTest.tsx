@@ -285,7 +285,7 @@ export default function MCPChatTest() {
 
       <Elements stripe={stripePromise}>
         <MCPChat 
-          authenticatedUser={user}
+          authenticatedUser={mockAuthenticated ? { id: 'mock-user-123', email: 'test@example.com' } : user}
           requireAuth={false}  // Allow anonymous browsing, lazy auth at payment
         />
       </Elements>
