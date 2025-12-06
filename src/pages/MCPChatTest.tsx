@@ -22,6 +22,7 @@ export default function MCPChatTest() {
   const [isSyncingBookeo, setIsSyncingBookeo] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+  const [mockAuthenticated, setMockAuthenticated] = useState(false);
   const { toast } = useToast();
 
   // Check existing auth on mount and listen for auth changes
@@ -171,13 +172,20 @@ export default function MCPChatTest() {
             </Badge>
           </div>
           <div className="flex items-center gap-4">
+            <Button
+              onClick={() => setMockAuthenticated(prev => !prev)}
+              variant={mockAuthenticated ? "default" : "outline"}
+              size="sm"
+            >
+              {mockAuthenticated ? "🔓 Authenticated" : "🔒 Unauthenticated"}
+            </Button>
             {user && (
               <Button
                 onClick={handleSignOut}
                 variant="outline"
                 size="sm"
               >
-                🔓 Sign Out
+                Sign Out
               </Button>
             )}
             <div className="flex gap-2">
