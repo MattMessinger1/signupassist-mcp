@@ -21,6 +21,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
+import { AuditTrailTimeline, type AuditEvent as TimelineEvent } from '@/components/AuditTrailTimeline';
+import { mapToolNameToUserTitle } from '@/copy/signupassistCopy';
 
 interface Mandate {
   id: string;
@@ -379,46 +381,22 @@ export default function MandatesAudit() {
                             </div>
                           </AccordionTrigger>
                           <AccordionContent>
-                            <div className="space-y-2">
-                              {auditEvents[mandate.id].map((event) => (
-                                <div
-                                  key={event.id}
-                                  className="border rounded p-3 space-y-2"
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-medium text-sm">
-                                        {event.event_type}
-                                      </span>
-                                      {event.tool && (
-                                        <Badge variant="outline" className="text-xs">
-                                          {event.tool}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    {event.decision && (
-                                      <Badge
-                                        variant={getDecisionColor(event.decision)}
-                                        className="text-xs"
-                                      >
-                                        {event.decision}
-                                      </Badge>
-                                    )}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {format(new Date(event.created_at), 'PPp')}
-                                  </div>
-                                  {event.result && (
-                                    <div className="text-xs">
-                                      <span className="text-muted-foreground">Result:</span>
-                                      <pre className="mt-1 bg-muted p-2 rounded overflow-x-auto">
-                                        {event.result}
-                                      </pre>
-                                    </div>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
+                            <AuditTrailTimeline 
+                              events={auditEvents[mandate.id].map((event): TimelineEvent => ({
+                                id: event.id,
+                                at: event.created_at,
+                                status: event.decision?.toLowerCase() === 'allowed' ? 'success' 
+                                  : event.decision?.toLowerCase() === 'denied' ? 'failed' 
+                                  : 'pending',
+                                userTitle: event.tool ? mapToolNameToUserTitle(event.tool) : event.event_type,
+                                userSubtitle: event.result || undefined,
+                                technical: {
+                                  ...(event.tool && { tool: event.tool }),
+                                  ...(event.decision && { decision: event.decision }),
+                                  ...(event.finished_at && { duration: `${new Date(event.finished_at).getTime() - new Date(event.started_at).getTime()}ms` }),
+                                }
+                              }))}
+                            />
                           </AccordionContent>
                         </AccordionItem>
                       )}

@@ -9,6 +9,8 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertCircle, User, UserPlus } from "lucide-react";
+import { TrustCallout } from "@/components/TrustCallout";
+import { COPY } from "@/copy/signupassistCopy";
 
 interface FieldOption {
   value: string;
@@ -504,13 +506,15 @@ export function ResponsibleDelegateForm({
           ))}
         </CardContent>
         
-        <CardFooter className="flex-col gap-2">
+        <CardFooter className="flex-col gap-3">
           <Button type="submit" size="sm" className="w-full">
             Continue to Payment Authorization
           </Button>
-          <p className="text-xs text-muted-foreground text-center">
-            📋 <strong>SignupAssist acts as your Responsible Delegate:</strong> We only proceed with your explicit consent, log every action for your review, and charge only upon successful registration.
-          </p>
+          <TrustCallout
+            title={COPY.trust.title}
+            bullets={COPY.trust.bullets}
+            footer={COPY.trust.payment}
+          />
         </CardFooter>
       </form>
     </Card>
