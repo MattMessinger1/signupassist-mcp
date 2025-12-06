@@ -1757,9 +1757,8 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
       // Build payment authorization message using Design DNA template
       const message = getPaymentAuthorizationMessage({
         program_name: programName,
-        program_fee: programFee,
-        provider_name: "AIM Design",
-        booking_opens_at: null
+        total_cost: `$${programFee}`,
+        provider_name: "AIM Design"
       });
       
       // Build authorization card with dual-charge breakdown
@@ -1769,12 +1768,6 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
           `**Program Fee:** $${programFee} (charged to provider)\n` +
           `**SignupAssist Fee:** $20.00 (charged only if registration succeeds)\n\n` +
           `**Total:** $${totalAmount}`,
-        metadata: {
-          cardLast4,
-          cardBrand,
-          programFeeCents,
-          formData
-        },
         buttons: [
           {
             label: `Pay with ${cardDisplay}`,
@@ -1794,7 +1787,7 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
       };
       
       const response: OrchestratorResponse = {
-        message: addAPISecurityContext(addResponsibleDelegateFooter(message)),
+        message: addAPISecurityContext(addResponsibleDelegateFooter(message), "AIM Design"),
         cards: [authCard]
       };
       
