@@ -242,7 +242,7 @@ export default function MCPChatTest() {
                 <p><strong>Server:</strong> {backendInfo.backend || 'Unknown'}</p>
                 <p><strong>Environment:</strong> {backendInfo.env || 'Unknown'}</p>
                 <p><strong>Version:</strong> {backendInfo.git_commit?.substring(0, 7) || 'Unknown'}</p>
-                <p><strong>Endpoint:</strong> <Badge variant="secondary">{MCP_BASE_URL}</Badge></p>
+                <div><strong>Endpoint:</strong> <Badge variant="secondary">{MCP_BASE_URL}</Badge></div>
               </>
             ) : (
               <p className="text-muted-foreground">Fetching backend info...</p>
