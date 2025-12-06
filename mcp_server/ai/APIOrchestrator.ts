@@ -31,6 +31,7 @@ import {
   getPendingCancelSuccessMessage,
   getReceiptsFooterMessage,
   getScheduledRegistrationSuccessMessage,
+  getScheduledPaymentAuthorizationMessage,
   getInitialActivationMessage,
   getFallbackClarificationMessage,
   getGracefulDeclineMessage,
@@ -1092,28 +1093,7 @@ export default class APIOrchestrator implements IOrchestrator {
     const successFee = 20.00;
     const grandTotal = `$${(totalPrice + successFee).toFixed(2)}`;
 
-    // Use Design DNA-compliant dual-charge message template
-    let message = getPaymentAuthorizationMessage({
-      program_name: programName,
-      participant_name: participantList,
-      total_cost: formattedTotal, // This is the program fee only
-      num_participants: numParticipants
-    });
-    
-    // Add delegate authorization context
-    if (formData.delegate?.delegate_firstName && formData.delegate?.delegate_lastName) {
-      const delegateName = `${formData.delegate.delegate_firstName} ${formData.delegate.delegate_lastName}`;
-      const relationship = formData.delegate.delegate_relationship || 'Responsible Delegate';
-      message += `\n\n**Authorized by:** ${delegateName} (${relationship})`;
-    }
-
-    // Add security context (Design DNA requirement)
-    message = addAPISecurityContext(message, "Bookeo");
-    
-    // Add Responsible Delegate footer (Design DNA requirement)
-    message = addResponsibleDelegateFooter(message);
-
-    // Check if this is a future booking (Set & Forget flow) or immediate registration
+    // ✅ COMPLIANCE: Determine booking status FIRST for proper confirmation messaging
     // Runtime status check (don't trust stale cached data)
     const determineBookingStatus = (program: any): string => {
       const hasAvailableSlots = program?.next_available_slot || (program?.available_slots && program.available_slots > 0);
@@ -1132,8 +1112,43 @@ export default class APIOrchestrator implements IOrchestrator {
         : null;
     
     // For "opens_later" programs, treat as future booking even without a specific date
-    // This allows scheduled registrations for courses where booking window hasn't opened
     const isFutureBooking = bookingStatus === 'opens_later';
+
+    // ✅ COMPLIANCE: Add explicit confirmation step with proper consent and security disclaimers
+    let message: string;
+    if (isFutureBooking) {
+      // Future booking (not open yet): use scheduled authorization template with consent language
+      const scheduledDate = earliestSlot || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      const scheduledDateStr = this.formatTimeForUser(scheduledDate, context);
+      const providerName = context.selectedProgram?.org_ref === 'aim-design' ? 'AIM Design' : (context.selectedProgram?.org_ref || 'the provider');
+      message = getScheduledPaymentAuthorizationMessage({
+        program_name: programName,
+        scheduled_date: scheduledDateStr,
+        total_cost: formattedTotal,
+        provider_name: providerName
+      });
+      // Include security reassurance about payment handling
+      message = addAPISecurityContext(message, "Bookeo");
+      // Add Responsible Delegate footer
+      message = addResponsibleDelegateFooter(message);
+    } else {
+      // Immediate booking: use standard payment authorization template
+      message = getPaymentAuthorizationMessage({
+        program_name: programName,
+        participant_name: participantList,
+        total_cost: formattedTotal, // This is the program fee only
+        num_participants: numParticipants
+      });
+      // Add delegate identity for transparency (who is authorizing the booking)
+      if (formData.delegate?.delegate_firstName && formData.delegate?.delegate_lastName) {
+        const delegateName = `${formData.delegate.delegate_firstName} ${formData.delegate.delegate_lastName}`;
+        const relationship = formData.delegate.delegate_relationship || 'Responsible Delegate';
+        message += `\n\n**Authorized by:** ${delegateName} (${relationship})`;
+      }
+      // Append required security note and Responsible Delegate footer
+      message = addAPISecurityContext(message, "Bookeo");
+      message = addResponsibleDelegateFooter(message);
+    }
 
     // PART 1: Check if user has saved payment method for ALL flows (immediate and future)
     let hasPaymentMethod = false;
@@ -1309,7 +1324,8 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
     const paymentResponse: OrchestratorResponse = {
       message: paymentMessage,
       cards: [{
-        title: isFutureBooking ? "Set Up Auto-Registration" : "Confirm Booking & Payment",
+        // ✅ COMPLIANCE: Use explicit confirmation phrasing for scheduled auto-registration
+        title: isFutureBooking ? "Confirm Auto-Registration" : "Confirm Booking & Payment",
         subtitle: programName,
         description: cardDescription,
         buttons: []
@@ -2349,11 +2365,13 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
       
       if (isConfirmed) {
         // Show cancellation confirmation for confirmed bookings with refund policy
-        const message = getConfirmedCancelConfirmMessage({
+        let message = getConfirmedCancelConfirmMessage({
           program_name: registration.program_name,
           provider_name: providerName,
           booking_number: registration.booking_number
         });
+        // ✅ COMPLIANCE: Include Responsible Delegate reminder for cancellation
+        message = addResponsibleDelegateFooter(message);
         
         const confirmationCard: CardSpec = {
           title: `⚠️ Cancel Confirmed Booking?`,
@@ -2390,9 +2408,11 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
       }
       
       // Pending registration - simpler cancellation
-      const message = getPendingCancelConfirmMessage({
+      let message = getPendingCancelConfirmMessage({
         program_name: registration.program_name
       });
+      // ✅ COMPLIANCE: Include Responsible Delegate reminder for cancellation
+      message = addResponsibleDelegateFooter(message);
       
       const confirmationCard: CardSpec = {
         title: `⚠️ Cancel Scheduled Registration?`,
