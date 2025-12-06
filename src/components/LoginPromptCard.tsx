@@ -2,7 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Shield, LogIn } from "lucide-react";
 import { useState } from "react";
-import { LoginCredentialDialog } from "./LoginCredentialDialog";
+import { OAuthConnectDialog } from "./OAuthConnectDialog";
 
 interface LoginPromptCardProps {
   provider: string;
@@ -81,7 +81,7 @@ export function LoginPromptCard({ provider, orgName, orgRef, onConnect }: LoginP
         </p>
       </CardContent>
 
-      <LoginCredentialDialog
+      <OAuthConnectDialog
         open={showLoginDialog}
         onOpenChange={setShowLoginDialog}
         provider={provider}

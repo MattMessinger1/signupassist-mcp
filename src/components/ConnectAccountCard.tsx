@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Shield, LogIn } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { useState } from "react";
-import { LoginCredentialDialog } from "./LoginCredentialDialog";
+import { OAuthConnectDialog } from "./OAuthConnectDialog";
 
 interface ConnectAccountCardProps {
   provider: string;
@@ -104,7 +104,7 @@ export function ConnectAccountCard({ provider, orgName, orgRef }: ConnectAccount
         </div>
       </CardContent>
 
-      <LoginCredentialDialog
+      <OAuthConnectDialog
         open={showLoginDialog}
         onOpenChange={setShowLoginDialog}
         provider={provider}

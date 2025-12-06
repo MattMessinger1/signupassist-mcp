@@ -292,7 +292,7 @@ export default function MandateSummary({
 
           <div className="grid gap-2">
             <div className="font-medium">Optional notes for our operator</div>
-            <Textarea placeholder="Anything we should know? (allergies, carpool preference, etc.)" value={notes} onChange={e => setNotes(e.target.value)} />
+            <Textarea placeholder="Anything we should know? (carpool preference, schedule notes, etc.)" value={notes} onChange={e => setNotes(e.target.value)} />
           </div>
 
           <Separator />

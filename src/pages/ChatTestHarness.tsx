@@ -33,7 +33,7 @@ import { ChatInput } from "@/components/chat-test/ChatInput";
 import { DebugPanel, LogEntry } from "@/components/chat-test/DebugPanel";
 import { TestCoveragePanel } from "@/components/chat-test/TestCoveragePanel";
 
-import { LoginCredentialDialog } from "@/components/LoginCredentialDialog";
+import { OAuthConnectDialog } from "@/components/OAuthConnectDialog";
 import { SystemUserSetup } from "@/components/SystemUserSetup";
 import type { ChatMessage } from "@/components/chat-test/MessageBubble";
 import { checkMCPHealth, type MCPHealthCheckResult, callMCPTool } from "@/lib/chatMcpClient";
@@ -1563,22 +1563,20 @@ function ChatTestHarnessContent({ mockAuthenticated, onToggleAuth }: ChatTestHar
         onClear={() => setDebugLogs([])}
       />
 
-      {/* Login Credential Dialog */}
+      {/* OAuth Connect Dialog (API-first - no password collection) */}
       {loginDialogData && (
-        <LoginCredentialDialog
+        <OAuthConnectDialog
           open={showLoginDialog}
           onOpenChange={setShowLoginDialog}
           provider={loginDialogData.provider}
           orgName={loginDialogData.orgName}
           orgRef={loginDialogData.orgRef}
-          onSuccess={(credentialData) => {
+          onSuccess={() => {
             setShowLoginDialog(false);
-            addLog("success", "system", "Credentials stored successfully", credentialData);
+            addLog("success", "system", "Provider connected successfully");
             
-            // Forward credentials to orchestrator
-            if (credentialData) {
-              handleCardAction('credentials_submitted', credentialData);
-            }
+            // Forward connection success to orchestrator
+            handleCardAction('provider_connected', { provider: loginDialogData.provider });
           }}
         />
       )}
