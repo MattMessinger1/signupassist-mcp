@@ -130,12 +130,27 @@ export default function ChatTestHarness() {
     );
   }
 
-  // Don't render if not authenticated (will redirect)
+  // Don't render if not authenticated - show sign in button
   if (!user || !session) {
     console.log('[ChatTestHarness] Not rendering - no user or session');
     return (
       <div className="flex h-screen items-center justify-center bg-background">
-        <p className="text-foreground">Redirecting...</p>
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle className="text-center">Chat Test Harness</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-center text-muted-foreground text-sm">
+              Sign in to access the test harness
+            </p>
+            <Button 
+              onClick={() => navigate('/auth')} 
+              className="w-full"
+            >
+              Sign In
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
