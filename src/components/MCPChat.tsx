@@ -848,13 +848,15 @@ export function MCPChat({
                     const nextAction = lastPaymentMessage.metadata?.next_action;
                     console.log('[MCPChat] Next action from metadata:', nextAction);
                     if (nextAction === 'confirm_payment') {
-                      // Immediate registration - trigger booking directly
-                      console.log('[MCPChat] Triggering immediate booking after payment setup');
-                      await handleCardAction('confirm_payment', {
+                      // Immediate registration - show payment authorization card first
+                      console.log('[MCPChat] Showing payment authorization card after payment setup');
+                      setPaymentCompleted(true); // Hide the payment form
+                      
+                      // Request the payment authorization card from orchestrator
+                      await handleCardAction('show_payment_authorization', {
                         user_id: userId,
-                        ...lastPaymentMessage.metadata?.schedulingData
+                        schedulingData: lastPaymentMessage.metadata?.schedulingData
                       });
-                      setPaymentCompleted(true);
                     } else if (nextAction === 'confirm_scheduled_registration') {
                       // Scheduled registration - existing Set & Forget flow
                       console.log('[MCPChat] Triggering scheduled registration after payment setup');
