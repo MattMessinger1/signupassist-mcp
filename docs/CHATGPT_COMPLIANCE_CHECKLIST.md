@@ -8,7 +8,7 @@
   - Must explain how user consent works (Responsible Delegate model)
   - Must detail Stripe payment processing and success fee
   - Must explain mandate/authorization system
-  
+   
 - [ ] **Logo Asset** at `https://signupassist.ai/logo.png`
   - Must be 512x512 pixels
   - Must be PNG format
@@ -34,15 +34,40 @@
 - ✅ Mandate system tracks all authorizations
 - ✅ Responsible Delegate footer on all payment screens
 
-### 5. Testing Before Submission
+### 5. PCI Compliance (FIXED ✅)
+- ✅ **No in-app card input** - CardElement REMOVED
+- ✅ **Stripe Checkout redirect** - Users redirected to Stripe-hosted page
+- ✅ Card details never touch SignupAssist servers
+- ✅ `SavePaymentMethod.tsx` now uses Stripe Checkout session
+- ✅ `stripe-checkout-setup` edge function created
+- ✅ `stripe-checkout-success` edge function created
+
+### 6. Authentication Compliance (FIXED ✅)
+- ✅ **No in-app password collection** - Password fields REMOVED
+- ✅ **OAuth-first approach** - `OAuthConnectDialog.tsx` created
+- ✅ API-first providers (Bookeo) don't need user credentials
+- ✅ SignupAssist uses direct API access via API keys
+
+### 7. PHI Compliance (FIXED ✅)
+- ✅ **No medical/allergies data collection** - Fields REMOVED
+- ✅ `sync-bookeo/index.ts` - allergies field removed from schema
+- ✅ `ResponsibleDelegateForm.tsx` - no longer renders allergies field
+- ✅ `APIOrchestrator.ts` - allergies removed from participant mapping
+- ✅ `bookeo.ts` - allergies removed from interface and schema
+- ✅ `fieldMapping.ts` - medical/allergies defaults removed
+- ✅ `mockData.ts` - medical conditions mock data removed
+
+### 8. Testing Before Submission
 **Test with ChatGPT App Store Preview:**
 1. OAuth flow works (user can authenticate via Auth0)
 2. MCP tools are callable from ChatGPT
 3. Audit trail populates correctly
 4. Payment authorization creates mandate
-5. Success fee charges correctly after booking
-6. Privacy policy link works
-7. Logo displays correctly
+5. Stripe Checkout redirect works (not in-app card input)
+6. Registration form has no allergies/medical fields
+7. No password input anywhere in the app
+8. Privacy policy link works
+9. Logo displays correctly
 
 ## Current Implementation Status
 
@@ -54,6 +79,9 @@
 - Responsible Delegate proof of concept
 - Two-tier form (delegate + participants)
 - Set and Forget scheduled registrations
+- **PCI Compliance: Stripe Checkout redirect (no CardElement)**
+- **Auth Compliance: OAuth-first (no password fields)**
+- **PHI Compliance: No allergies/medical data collection**
 
 ### ⚠️ Missing for Production
 1. Privacy policy content and hosting
@@ -76,3 +104,6 @@
 - Audit compliance: `mcp_server/middleware/audit.ts`
 - User ID pipeline: `mcp_server/index.ts` lines 1203, 1315, 1416
 - APIOrchestrator: `mcp_server/ai/APIOrchestrator.ts` line 120
+- Stripe Checkout: `supabase/functions/stripe-checkout-setup/index.ts`
+- OAuth Dialog: `src/components/OAuthConnectDialog.tsx`
+- Payment Method: `src/components/SavePaymentMethod.tsx` (Stripe Checkout redirect)

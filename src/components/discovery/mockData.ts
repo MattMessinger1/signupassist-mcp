@@ -130,13 +130,7 @@ export const mockProgramQuestions: ProgramQuestion[] = [
     required: true,
     description: '10-digit phone number',
   },
-  {
-    id: 'medical_conditions',
-    label: 'Medical Conditions or Allergies',
-    type: 'textarea',
-    required: false,
-    description: 'Please list any medical conditions or allergies we should be aware of',
-  },
+  // NOTE: Medical conditions field REMOVED for ChatGPT App Store compliance (PHI prohibition)
   {
     id: 'photo_consent',
     label: 'Photo and Video Consent',
@@ -186,6 +180,6 @@ export const mockProgramAnswers = {
   lesson_preference: 'group',
   emergency_contact: 'Jane Smith',
   emergency_phone: '555-123-4567',
-  medical_conditions: 'None',
+  // medical_conditions REMOVED for ChatGPT App Store compliance (PHI prohibition)
   photo_consent: true,
 };

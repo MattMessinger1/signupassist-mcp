@@ -523,7 +523,7 @@ async function confirmBooking(args: {
     lastName: string;
     dateOfBirth: string;
     grade?: string;
-    allergies?: string;
+    // allergies field REMOVED for ChatGPT App Store compliance (PHI prohibition)
   }>;
   num_participants: number;
 }): Promise<ProviderResponse<any>> {
@@ -979,8 +979,8 @@ export const bookeoTools: BookeoTool[] = [
               firstName: { type: 'string' },
               lastName: { type: 'string' },
               dateOfBirth: { type: 'string' },
-              grade: { type: 'string' },
-              allergies: { type: 'string' }
+              grade: { type: 'string' }
+              // allergies field REMOVED for ChatGPT App Store compliance (PHI prohibition)
             },
             required: ['firstName', 'lastName', 'dateOfBirth']
           }

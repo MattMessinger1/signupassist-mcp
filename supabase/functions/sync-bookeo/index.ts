@@ -334,8 +334,8 @@ Deno.serve(async (req) => {
             { id: 'firstName', label: 'First Name', type: 'text', required: true },
             { id: 'lastName', label: 'Last Name', type: 'text', required: true },
             { id: 'dob', label: 'Date of Birth', type: 'date', required: true },
-            { id: 'grade', label: 'Grade Level', type: 'text', required: false },
-            { id: 'allergies', label: 'Allergies/Medical Notes', type: 'textarea', required: false }
+            { id: 'grade', label: 'Grade Level', type: 'text', required: false }
+            // NOTE: Allergies/Medical Notes field REMOVED for ChatGPT App Store compliance (PHI prohibition)
           ],
           max_participants: product.maxParticipants || 10,
           requires_age_verification: true,

@@ -1,10 +1,18 @@
+/**
+ * SavePaymentMethod - Stripe Checkout Redirect
+ * 
+ * ChatGPT App Store Compliant: No in-app card input (PCI violation).
+ * Redirects users to Stripe's hosted checkout page for payment method setup.
+ * 
+ * This is a drop-in replacement for the old CardElement-based implementation.
+ */
+
 import React, { useState, useCallback } from 'react';
-import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { CheckCircle, CreditCard, Loader2 } from 'lucide-react';
+import { CheckCircle, CreditCard, ExternalLink, Loader2 } from 'lucide-react';
 
 interface SavePaymentMethodProps {
   onPaymentMethodSaved?: () => void;
@@ -21,180 +29,152 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
 }) => {
   console.log('[SavePaymentMethod] 🚀 COMPONENT RENDER STARTED', { hasPaymentMethod, timestamp: new Date().toISOString() });
 
-  const stripe = useStripe();
-  const elements = useElements();
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
 
-  console.log('[SavePaymentMethod] 🔌 Stripe Context:', {
-    stripe: stripe ? 'LOADED' : 'MISSING',
-    elements: elements ? 'LOADED' : 'MISSING',
-    stripeType: typeof stripe,
-    elementsType: typeof elements,
-    functionsUrl: (supabase as any)?.functions?.url ?? 'UNKNOWN',
-  });
+  const handleSetupPayment = useCallback(async () => {
+    console.log('[SavePaymentMethod] 🖱️ SETUP CLICKED', { timestamp: new Date().toISOString() });
+    setLoading(true);
 
-  const handleSaveClick = useCallback(
-    async () => {
-      console.log('[SavePaymentMethod] 🖱️ SAVE CLICKED', {
-        timestamp: new Date().toISOString(),
-        hasStripe: !!stripe,
-        hasElements: !!elements,
+    try {
+      // Determine user credentials
+      let userId: string;
+      let userEmail: string;
+
+      if (mockUserId && mockUserEmail) {
+        userId = mockUserId;
+        userEmail = mockUserEmail;
+        console.log('[SavePaymentMethod] Using mock user:', userId);
+      } else {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          throw new Error('User not authenticated');
+        }
+        userId = user.id;
+        userEmail = user.email!;
+        console.log('[SavePaymentMethod] User authenticated:', userId);
+      }
+
+      // Get current URL for redirect
+      const currentUrl = window.location.href.split('?')[0];
+      const successUrl = `${currentUrl}?payment_setup=success&session_id={CHECKOUT_SESSION_ID}`;
+      const cancelUrl = `${currentUrl}?payment_setup=canceled`;
+
+      console.log('[SavePaymentMethod] Creating Stripe Checkout session...');
+      
+      const { data, error } = await supabase.functions.invoke('stripe-checkout-setup', {
+        body: {
+          success_url: successUrl,
+          cancel_url: cancelUrl,
+          user_id: userId,
+          user_email: userEmail
+        }
       });
 
-      if (!stripe || !elements) {
-        console.error('[SavePaymentMethod] ❌ Stripe not ready');
-        toast({
-          title: 'Error',
-          description: 'Stripe has not loaded yet. Please try again.',
-          variant: 'destructive',
-        });
-        return;
+      if (error) {
+        throw new Error(error.message);
       }
 
-      setLoading(true);
-      console.log('[SavePaymentMethod] Starting payment method save process');
+      if (!data?.url) {
+        throw new Error('No checkout URL returned');
+      }
 
-      try {
-        const cardElement = elements.getElement(CardElement);
-        if (!cardElement) {
-          throw new Error('Card element not found');
-        }
+      console.log('[SavePaymentMethod] ✅ Checkout session created:', data.session_id);
 
-        console.log('[SavePaymentMethod] Creating payment method...');
-        const { error: createError, paymentMethod } = await stripe.createPaymentMethod({
-          type: 'card',
-          card: cardElement,
+      // Open Stripe Checkout in new tab
+      window.open(data.url, '_blank');
+
+      toast({
+        title: 'Redirecting to Stripe',
+        description: 'Complete your payment setup in the new tab, then click "I\'ve Added My Card" below.',
+      });
+
+      // Don't auto-call onPaymentMethodSaved - user needs to confirm
+
+    } catch (error) {
+      console.error('[SavePaymentMethod] ❌ Error:', error);
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to start payment setup',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast, mockUserId, mockUserEmail]);
+
+  // Handle manual confirmation after Stripe redirect
+  const handleConfirmPaymentSetup = useCallback(async () => {
+    setLoading(true);
+    
+    try {
+      // Check URL for session_id
+      const urlParams = new URLSearchParams(window.location.search);
+      const sessionId = urlParams.get('session_id');
+      
+      if (sessionId) {
+        // Verify with Stripe and update billing
+        const { data, error } = await supabase.functions.invoke('stripe-checkout-success', {
+          body: { session_id: sessionId }
         });
-
-        if (createError) {
-          throw new Error(createError.message);
-        }
-        if (!paymentMethod) {
-          throw new Error('Failed to create payment method');
-        }
-
-        console.log('[SavePaymentMethod] ✅ Payment method created:', paymentMethod.id);
-
-        // Use mock user if provided, otherwise get authenticated user
-        let userId: string;
-        let userEmail: string;
         
-        if (mockUserId && mockUserEmail) {
-          userId = mockUserId;
-          userEmail = mockUserEmail;
-          console.log('[SavePaymentMethod] Using mock user:', userId);
-        } else {
-          const { data: { user } } = await supabase.auth.getUser();
-          
-          if (!user) {
-            throw new Error('User not authenticated');
-          }
-          
-          userId = user.id;
-          userEmail = user.email!;
-          console.log('[SavePaymentMethod] User authenticated:', userId);
-        }
-
-        // Get/create customer
-        const { data: billingData } = await supabase
-          .from('user_billing')
-          .select('stripe_customer_id')
-          .eq('user_id', userId)
-          .maybeSingle();
-
-        let customerId = billingData?.stripe_customer_id;
-
-        if (!customerId) {
-          console.log('[SavePaymentMethod] Creating new Stripe customer...');
-          const { data: customerData, error: customerError } = await supabase.functions.invoke('create-stripe-customer', {
-            body: {
-              user_id: userId,
-              email: userEmail,
-            },
-          });
-          
-          if (customerError) {
-            throw new Error(`Failed to create customer: ${customerError.message}`);
-          }
-          
-          customerId = customerData?.customer_id;
-          
-          if (!customerId) {
-            throw new Error('Customer creation returned no ID');
-          }
-          
-          console.log('[SavePaymentMethod] ✅ Stripe customer created:', customerId);
-        } else {
-          console.log('[SavePaymentMethod] Using existing customer ID:', customerId);
-        }
-
-        // Save payment method via Edge Function
-        console.log('[SavePaymentMethod] 📡 Invoking save-payment-method Edge Function...', {
-          url: (supabase as any)?.functions?.url,
-          user_id: userId,
-          payment_method_id: paymentMethod.id,
-          customer_id: customerId,
-        });
-
-        const { data: saveData, error: saveError } = await supabase.functions.invoke('save-payment-method', {
-          body: {
-            payment_method_id: paymentMethod.id,
-            customer_id: customerId,
-            user_id: mockUserId || undefined, // Pass mock user ID if present for E2E testing
-          },
-        });
-
-        console.log('[SavePaymentMethod] 📡 Edge Function response:', { saveData, saveError });
-
-        if (saveError) {
-          throw new Error(saveError.message);
+        if (error) {
+          throw new Error(error.message);
         }
         
-        if (saveData?.error) {
-          throw new Error(saveData.error);
-        }
-
-        console.log('[SavePaymentMethod] ✅ Payment method saved successfully');
-
-        toast({ 
-          title: 'Success', 
-          description: 'Payment method saved successfully!' 
+        console.log('[SavePaymentMethod] ✅ Payment method verified:', data);
+        
+        toast({
+          title: 'Payment Method Saved!',
+          description: `Your ${data.brand} •••• ${data.last4} is ready.`,
         });
-
-        cardElement.clear();
-        console.log('[SavePaymentMethod] Card element cleared');
-
-        // Update billing table with payment method ID
-        const { error: updateError } = await supabase
-          .from('user_billing')
-          .update({ default_payment_method_id: paymentMethod.id })
-          .eq('user_id', userId);
-
-        if (updateError) {
-          console.error('[SavePaymentMethod] Failed to update billing table:', updateError);
-        } else {
-          console.log('[SavePaymentMethod] ✅ Payment method ID stored in user_billing');
-        }
-
-        // Inform parent
-        console.log('[SavePaymentMethod] Calling onPaymentMethodSaved callback');
+        
+        // Clean up URL
+        window.history.replaceState({}, '', window.location.pathname);
+        
         onPaymentMethodSaved?.();
-        console.log('[SavePaymentMethod] Callback completed');
-
-      } catch (error) {
-        console.error('[SavePaymentMethod] ❌ Error saving payment method:', error);
-        toast({
-          title: 'Error',
-          description: error instanceof Error ? error.message : 'Failed to save payment method',
-          variant: 'destructive',
-        });
-      } finally {
-        setLoading(false);
+      } else {
+        // No session_id in URL - user manually clicked confirm
+        // Check if billing was updated
+        let userId = mockUserId;
+        if (!userId) {
+          const { data: { user } } = await supabase.auth.getUser();
+          userId = user?.id;
+        }
+        
+        if (userId) {
+          const { data: billing } = await supabase
+            .from('user_billing')
+            .select('default_payment_method_id, payment_method_brand, payment_method_last4')
+            .eq('user_id', userId)
+            .maybeSingle();
+          
+          if (billing?.default_payment_method_id) {
+            toast({
+              title: 'Payment Method Confirmed!',
+              description: `Your ${billing.payment_method_brand} •••• ${billing.payment_method_last4} is ready.`,
+            });
+            onPaymentMethodSaved?.();
+          } else {
+            toast({
+              title: 'No Payment Method Found',
+              description: 'Please complete payment setup in the Stripe tab first.',
+              variant: 'destructive',
+            });
+          }
+        }
       }
-    },
-    [stripe, elements, toast, onPaymentMethodSaved]
-  );
+    } catch (error) {
+      console.error('[SavePaymentMethod] ❌ Verification error:', error);
+      toast({
+        title: 'Verification Failed',
+        description: 'Please try again or contact support.',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [mockUserId, onPaymentMethodSaved, toast]);
 
   if (hasPaymentMethod) {
     return (
@@ -216,32 +196,42 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
         <CardTitle className="flex items-center gap-2">
           <CreditCard className="h-5 w-5" /> Add Payment Method
         </CardTitle>
-        <CardDescription>Add a card to enable billing for automated registration.</CardDescription>
+        <CardDescription>
+          You'll be redirected to Stripe's secure page to add your card.
+        </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="space-y-4">
-          <div className="p-4 border rounded-md">
-            <CardElement
-              options={{
-                style: {
-                  base: {
-                    fontSize: '16px',
-                    color: '#424770',
-                    '::placeholder': { color: '#aab7c4' },
-                  },
-                },
-              }}
-            />
-          </div>
+        <div className="space-y-3">
           <Button 
-            type="button" 
-            onClick={handleSaveClick} 
-            disabled={!stripe || loading} 
+            onClick={handleSetupPayment} 
+            disabled={loading} 
             className="w-full"
           >
-            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Save Payment Method
+            {loading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Preparing...
+              </>
+            ) : (
+              <>
+                <ExternalLink className="mr-2 h-4 w-4" />
+                Set Up Payment Method
+              </>
+            )}
           </Button>
+          
+          <Button 
+            variant="outline"
+            onClick={handleConfirmPaymentSetup} 
+            disabled={loading} 
+            className="w-full"
+          >
+            I've Added My Card
+          </Button>
+          
+          <p className="text-xs text-muted-foreground text-center">
+            Secure payment powered by Stripe. Your card details are never stored on our servers.
+          </p>
         </div>
       </CardContent>
     </Card>
