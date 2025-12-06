@@ -211,10 +211,7 @@ function addSmartFieldMappings(answers: Record<string, any>, childData: { name: 
     answers.pickup_authorization = 'Parent/Guardian Only';
   }
 
-  if (!answers.medical_conditions && !answers.allergies) {
-    answers.medical_conditions = 'None';
-    answers.allergies = 'None';
-  }
+  // NOTE: Medical conditions/allergies field defaults REMOVED for ChatGPT App Store compliance (PHI prohibition)
 }
 
 /**

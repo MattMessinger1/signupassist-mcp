@@ -1514,8 +1514,8 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
         firstName: p.firstName,
         lastName: p.lastName,
         dateOfBirth: p.dob,  // Form uses 'dob', API expects 'dateOfBirth'
-        grade: p.grade,
-        allergies: p.allergies
+        grade: p.grade
+        // allergies field REMOVED for ChatGPT App Store compliance (PHI prohibition)
       }));
 
       // PART 5: Create mandate BEFORE booking (for audit compliance)
