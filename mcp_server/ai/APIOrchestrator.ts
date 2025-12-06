@@ -249,6 +249,9 @@ export default class APIOrchestrator implements IOrchestrator {
       case "save_delegate_profile":
         return await this.saveDelegateProfile(payload, sessionId, context);
 
+      case "show_payment_authorization":
+        return await this.showPaymentAuthorization(payload, sessionId, context);
+
       case "confirm_provider":
         return await this.handleConfirmProvider(payload, sessionId, context);
 
@@ -1693,6 +1696,124 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
     } catch (error) {
       Logger.error("[confirmPayment] Unexpected error:", error);
       return this.formatError("Booking failed due to unexpected error. Please contact support.");
+    }
+  }
+
+  /**
+   * Show payment authorization card after payment method is saved
+   * Displays dual-charge breakdown with saved card details before final confirmation
+   */
+  private async showPaymentAuthorization(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    try {
+      Logger.info("[showPaymentAuthorization] Preparing payment authorization card");
+      
+      const { user_id, schedulingData } = payload;
+      
+      // Get saved card details from user_billing table
+      let cardLast4 = context.cardLast4;
+      let cardBrand = context.cardBrand;
+      
+      if (!cardLast4 && user_id) {
+        try {
+          const supabase = createClient(
+            process.env.SUPABASE_URL || process.env.SB_URL || '',
+            process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SERVICE_ROLE_KEY || ''
+          );
+          
+          const { data: billingData } = await supabase
+            .from('user_billing')
+            .select('payment_method_last4, payment_method_brand')
+            .eq('user_id', user_id)
+            .maybeSingle();
+            
+          if (billingData) {
+            cardLast4 = billingData.payment_method_last4;
+            cardBrand = billingData.payment_method_brand;
+            Logger.info("[showPaymentAuthorization] Retrieved card details:", { cardBrand, cardLast4 });
+          }
+        } catch (error) {
+          Logger.warn("[showPaymentAuthorization] Failed to retrieve card details:", error);
+        }
+      }
+      
+      // Get pricing info from schedulingData or context
+      const formData = schedulingData?.formData || context.formData;
+      const programFeeCents = formData?.program_fee_cents || schedulingData?.program_fee_cents || 0;
+      const programFee = (programFeeCents / 100).toFixed(2);
+      const totalAmount = ((programFeeCents + 2000) / 100).toFixed(2);
+      const programName = context.selectedProgram?.title || formData?.program_name || "Program";
+      
+      // Format card display
+      const cardDisplay = cardLast4 && cardBrand 
+        ? `${cardBrand} •••• ${cardLast4}`
+        : cardLast4 
+          ? `Card •••• ${cardLast4}`
+          : "Saved Card";
+      
+      // Build payment authorization message using Design DNA template
+      const message = getPaymentAuthorizationMessage({
+        program_name: programName,
+        program_fee: programFee,
+        provider_name: "AIM Design",
+        booking_opens_at: null
+      });
+      
+      // Build authorization card with dual-charge breakdown
+      const authCard: CardSpec = {
+        title: "💳 Payment Authorization",
+        description: `**Payment Method:** ${cardDisplay}\n\n` +
+          `**Program Fee:** $${programFee} (charged to provider)\n` +
+          `**SignupAssist Fee:** $20.00 (charged only if registration succeeds)\n\n` +
+          `**Total:** $${totalAmount}`,
+        metadata: {
+          cardLast4,
+          cardBrand,
+          programFeeCents,
+          formData
+        },
+        buttons: [
+          {
+            label: `Pay with ${cardDisplay}`,
+            action: "confirm_payment",
+            payload: {
+              user_id,
+              ...schedulingData
+            },
+            variant: "accent"
+          },
+          {
+            label: "Go Back",
+            action: "search_programs",
+            variant: "outline"
+          }
+        ]
+      };
+      
+      const response: OrchestratorResponse = {
+        message: addAPISecurityContext(addResponsibleDelegateFooter(message)),
+        cards: [authCard]
+      };
+      
+      // Validate Design DNA compliance
+      const validation = validateDesignDNA(response, {
+        step: 'payment',
+        isWriteAction: true
+      });
+      
+      if (!validation.passed) {
+        Logger.error('[DesignDNA] Validation failed:', validation.issues);
+      }
+      
+      Logger.info("[showPaymentAuthorization] ✅ Authorization card ready");
+      return response;
+      
+    } catch (error) {
+      Logger.error("[showPaymentAuthorization] Error:", error);
+      return this.formatError("Failed to prepare payment authorization. Please try again.");
     }
   }
 
