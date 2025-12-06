@@ -21,6 +21,8 @@ interface HarnessHeaderProps {
   onRefreshCache?: () => void;
   isRefreshingCache?: boolean;
   mcpUrl?: string;
+  mockAuthenticated?: boolean;
+  onToggleAuth?: () => void;
 }
 
 export function HarnessHeader({
@@ -32,6 +34,8 @@ export function HarnessHeader({
   onRefreshCache,
   isRefreshingCache = false,
   mcpUrl,
+  mockAuthenticated = false,
+  onToggleAuth,
 }: HarnessHeaderProps) {
   // Determine if we're in production (Railway) or dev (localhost)
   const isProduction = mcpUrl?.includes('railway.app');
@@ -70,6 +74,17 @@ export function HarnessHeader({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {onToggleAuth && (
+            <Button
+              onClick={onToggleAuth}
+              size="sm"
+              variant={mockAuthenticated ? "default" : "outline"}
+              className="gap-2"
+              title="Toggle mock authentication state"
+            >
+              {mockAuthenticated ? "🔓 Authenticated" : "🔒 Unauthenticated"}
+            </Button>
+          )}
           {onRefreshCache && (
             <Button
               onClick={onRefreshCache}

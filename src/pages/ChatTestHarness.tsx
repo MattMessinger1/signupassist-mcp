@@ -91,75 +91,25 @@ interface ConversationState {
 // ============= Main Component =============
 
 export default function ChatTestHarness() {
-  // Debug: Add console log to verify component mounts
-  console.log('[ChatTestHarness] Component mounting');
+  // Mock auth toggle for testing - no real auth required
+  const [mockAuthenticated, setMockAuthenticated] = useState(false);
   
-  // Auth
-  const { user, session, loading, isSessionValid } = useAuth();
-  const navigate = useNavigate();
-  const { toast } = useToast();
-
-  // Debug: Log auth state
-  useEffect(() => {
-    console.log('[ChatTestHarness] Auth state:', { user: !!user, session: !!session, loading });
-  }, [user, session, loading]);
-
-  // Redirect to auth if not logged in
-  useEffect(() => {
-    if (!loading && !user) {
-      console.log('[ChatTestHarness] Redirecting to auth - no user');
-      toast({
-        title: "Authentication Required",
-        description: "Please log in to use the Chat Test Harness",
-        variant: "destructive",
-      });
-      navigate('/auth');
-    }
-  }, [user, loading, navigate, toast]);
-
-  // Show loading state while checking auth
-  if (loading) {
-    console.log('[ChatTestHarness] Rendering loading state');
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <div className="text-center">
-          <Activity className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
-          <p className="text-foreground">Checking authentication...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Don't render if not authenticated - show sign in button
-  if (!user || !session) {
-    console.log('[ChatTestHarness] Not rendering - no user or session');
-    return (
-      <div className="flex h-screen items-center justify-center bg-background">
-        <Card className="w-full max-w-sm">
-          <CardHeader>
-            <CardTitle className="text-center">Chat Test Harness</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-center text-muted-foreground text-sm">
-              Sign in to access the test harness
-            </p>
-            <Button 
-              onClick={() => navigate('/auth')} 
-              className="w-full"
-            >
-              Sign In
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  console.log('[ChatTestHarness] Rendering main content');
-  return <ChatTestHarnessContent />;
+  console.log('[ChatTestHarness] Component mounting, mockAuthenticated:', mockAuthenticated);
+  
+  return (
+    <ChatTestHarnessContent 
+      mockAuthenticated={mockAuthenticated} 
+      onToggleAuth={() => setMockAuthenticated(prev => !prev)} 
+    />
+  );
 }
 
-function ChatTestHarnessContent() {
+interface ChatTestHarnessContentProps {
+  mockAuthenticated: boolean;
+  onToggleAuth: () => void;
+}
+
+function ChatTestHarnessContent({ mockAuthenticated, onToggleAuth }: ChatTestHarnessContentProps) {
   const { session, isSessionValid } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -1498,6 +1448,8 @@ function ChatTestHarnessContent() {
         onRefreshCache={handleRefreshCache}
         isRefreshingCache={isRefreshingCache}
         mcpUrl={import.meta.env.VITE_MCP_BASE_URL}
+        mockAuthenticated={mockAuthenticated}
+        onToggleAuth={onToggleAuth}
       />
 
       {/* Test Coverage Report */}
