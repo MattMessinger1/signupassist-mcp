@@ -147,6 +147,16 @@ export async function sendAction(
     }),
   });
 
+  // Return 401 responses for caller to handle (auth required flow)
+  if (res.status === 401) {
+    const errorData = await res.json().catch(() => ({ error: 'authentication_required' }));
+    return { 
+      ...errorData, 
+      _status: 401,
+      message: errorData.message || 'Sign in required to perform this action'
+    } as OrchestratorResponse & { _status: number };
+  }
+
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: 'Unknown error' }));
     throw new Error(error.error || `HTTP ${res.status}`);
