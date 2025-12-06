@@ -116,6 +116,10 @@ export function MCPChat({
   const [savedChildren, setSavedChildren] = useState<SavedChild[]>([]);
   const [savedPaymentMethod, setSavedPaymentMethod] = useState<SavedPaymentMethod | null>(null);
   const [delegateProfile, setDelegateProfile] = useState<DelegateProfile | null>(null);
+  const [pendingProtectedAction, setPendingProtectedAction] = useState<{
+    action: string;
+    payload: any;
+  } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -338,6 +342,25 @@ export function MCPChat({
         
         setPendingPaymentMetadata(null);
       }
+      
+      // Auto-retry pending protected action after successful auth
+      if (event === 'SIGNED_IN' && pendingProtectedAction && session?.user?.id) {
+        console.log('[MCPChat] User signed in, retrying pending protected action:', pendingProtectedAction.action);
+        setShowAuthGate(false);
+        setHasCompletedAuthGate(true);
+        setIsAuthenticated(true);
+        
+        // Short delay to ensure auth state is fully propagated
+        setTimeout(() => {
+          if (pendingProtectedAction) {
+            handleCardAction(pendingProtectedAction.action, {
+              ...pendingProtectedAction.payload,
+              user_id: session.user.id
+            });
+            setPendingProtectedAction(null);
+          }
+        }, 500);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -443,10 +466,14 @@ export function MCPChat({
         console.log('[MCPChat] Using authenticated user for action:', userId);
       }
       
-      // Lazy Auth Gate: If protected action invoked without auth, prompt user first
-      const protectedActions = ["confirm_registration", "confirm_payment", "create_booking", "register", "pay", "setup_payment_method"];
+      // NOTE: Frontend-side protected action check is now a fallback.
+      // The server returns 401 for protected actions without auth (primary enforcement).
+      // This client-side check prevents unnecessary network requests.
+      const protectedActions = ["confirm_registration", "confirm_payment", "create_booking", "register", "pay", "setup_payment_method", "save_payment_method", "cancel_registration", "view_receipts", "view_audit_trail", "confirm_auto_registration"];
       if (!userId && protectedActions.includes(action)) {
-        console.warn(`[MCPChat] ${action} requires sign-in – showing inline auth prompt`);
+        console.warn(`[MCPChat] ${action} requires sign-in – showing inline auth prompt (client-side check)`);
+        // Store pending action for retry after auth
+        setPendingProtectedAction({ action, payload });
         setMessages((prev) => [
           ...prev,
           {
@@ -454,7 +481,7 @@ export function MCPChat({
             content: "Before we continue, **sign in to your account** is required.",
             cards: [{
               title: "Sign in required to continue",
-              description: "Connect your SignupAssist account to proceed with this action.",
+              description: `Action "${action}" requires authentication.`,
               buttons: [{ label: "Connect Account", action: "authenticate", variant: "accent" }]
             }]
           }
@@ -480,6 +507,27 @@ export function MCPChat({
       const enrichedPayload = userId ? { ...payload, user_id: userId } : payload;
       
       const response = await sendAction(action, enrichedPayload, sessionId, undefined, userTimezone);
+      
+      // Handle 401 response from server (protected action without auth)
+      if ((response as any)._status === 401) {
+        console.log('[MCPChat] Server returned 401 - protected action requires auth:', (response as any).action_requiring_auth);
+        // Store pending action for retry after auth
+        setPendingProtectedAction({ action, payload: enrichedPayload });
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: "Before we continue, **sign in to your account** is required.",
+            cards: [{
+              title: "Sign in required to continue",
+              description: `Action "${(response as any).action_requiring_auth || action}" requires authentication.`,
+              buttons: [{ label: "Connect Account", action: "authenticate", variant: "accent" }]
+            }]
+          }
+        ]);
+        setLoading(false);
+        return;
+      }
       
       // If delegate profile was saved during form submission, update local state
       if (action === 'submit_form' && payload.saveDelegateProfile && payload.formData) {

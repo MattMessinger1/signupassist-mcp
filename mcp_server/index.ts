@@ -13,6 +13,10 @@ const VERSION_INFO = {
   useNewAAP: process.env.USE_NEW_AAP === 'true'
 };
 
+// Import Auth0 middleware and protected actions config
+import { verifyAuth0Token, extractBearerToken, getAuth0Config } from './middleware/auth0.js';
+import { isProtectedAction, PROTECTED_ACTIONS } from './config/protectedActions.js';
+
 // Print build info banner on startup
 console.info(
   `[BUILD] Version: ${VERSION_INFO.commit} | Built: ${VERSION_INFO.builtAt} | USE_NEW_AAP: ${VERSION_INFO.useNewAAP}`
@@ -1235,6 +1239,60 @@ class SignupAssistMCPServer {
               userTimezone
             });
             
+            // ================================================================
+            // AUTH0 JWT VERIFICATION (Production ChatGPT App Store Flow)
+            // ================================================================
+            const authHeader = req.headers['authorization'] as string | undefined;
+            const bearerToken = extractBearerToken(authHeader);
+            
+            let authenticatedUserId: string | null = null;
+            let authSource: 'auth0' | 'test_harness' | 'none' = 'none';
+            
+            // Production: Verify Auth0 JWT if present
+            if (bearerToken) {
+              try {
+                const payload = await verifyAuth0Token(bearerToken);
+                authenticatedUserId = payload.sub;
+                authSource = 'auth0';
+                console.log('[AUTH] ✅ Auth0 JWT verified, user_id:', authenticatedUserId);
+              } catch (jwtError: any) {
+                console.warn('[AUTH] ⚠️ Auth0 JWT verification failed:', jwtError.message);
+                // JWT invalid - fall through to check test harness user_id
+              }
+            }
+            
+            // Test harness fallback: Accept user_id from body (only if no valid Auth0 token)
+            if (!authenticatedUserId && user_id) {
+              authenticatedUserId = user_id;
+              authSource = 'test_harness';
+              console.log('[AUTH] Using test harness user_id:', authenticatedUserId);
+            }
+            
+            // ================================================================
+            // PROTECTED ACTION ENFORCEMENT
+            // Return 401 for protected actions without authentication
+            // ChatGPT SDK interprets this as "trigger OAuth consent"
+            // ================================================================
+            if (action && isProtectedAction(action) && !authenticatedUserId) {
+              console.log('[AUTH] 🚫 Protected action without auth:', action);
+              res.writeHead(401, {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+                'WWW-Authenticate': `Bearer realm="SignupAssist", error="authentication_required"`
+              });
+              res.end(JSON.stringify({
+                error: 'authentication_required',
+                message: 'Sign in required to perform this action',
+                action_requiring_auth: action,
+                protected_actions: PROTECTED_ACTIONS as unknown as string[]
+              }));
+              return;
+            }
+            
+            // Use authenticated user_id for downstream operations
+            const finalUserId = authenticatedUserId;
+            console.log('[AUTH] Final user context:', { userId: finalUserId, authSource });
+            
             // Capture mandate from headers or body (with dev bypass)
             const mandate_jws = (req.headers['x-mandate-jws'] as string) 
                              || parsedBody.mandate_jws 
@@ -1333,8 +1391,8 @@ class SignupAssistMCPServer {
               
               if (isAPIMode) {
                 // APIOrchestrator: Use generateResponse with action parameter
-                console.log('[API-FIRST MODE] Routing action via generateResponse', { user_id });
-                result = await (this.orchestrator as any).generateResponse('', sessionId, action, payload || {}, userTimezone, user_id);
+                console.log('[API-FIRST MODE] Routing action via generateResponse', { finalUserId });
+                result = await (this.orchestrator as any).generateResponse('', sessionId, action, payload || {}, userTimezone, finalUserId);
               } else {
                 // Legacy AIOrchestrator: Use handleAction method
                 try {
@@ -1434,8 +1492,8 @@ class SignupAssistMCPServer {
               
               if (isAPIMode) {
                 // APIOrchestrator: Simple signature (input, sessionId, action?, payload?, userTimezone?, userId?)
-                console.log('[API-FIRST MODE] Calling APIOrchestrator.generateResponse', { user_id });
-                result = await (this.orchestrator as any).generateResponse(message, sessionId, undefined, undefined, userTimezone, user_id);
+                console.log('[API-FIRST MODE] Calling APIOrchestrator.generateResponse', { finalUserId });
+                result = await (this.orchestrator as any).generateResponse(message, sessionId, undefined, undefined, userTimezone, finalUserId);
               } else {
                 // Legacy AIOrchestrator: Complex signature with location, JWT, mandate
                 console.log('[LEGACY MODE] Calling AIOrchestrator.generateResponse');
