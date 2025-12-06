@@ -1218,6 +1218,9 @@ export default class APIOrchestrator implements IOrchestrator {
         metadata: {
           componentType: "payment_setup",
           next_action: nextAction,
+          programFeeCents: Math.round(totalPrice * 100),
+          serviceFeeCents: 2000,
+          isPaymentCard: true,
           schedulingData: {
             event_id: context.selectedProgram?.first_available_event_id,
             total_amount: grandTotal,
@@ -1331,6 +1334,13 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
         title: isFutureBooking ? "Confirm Auto-Registration" : "Confirm Booking & Payment",
         subtitle: programName,
         description: cardDescription,
+        metadata: {
+          programFeeCents: Math.round(totalPrice * 100),
+          serviceFeeCents: 2000,
+          isPaymentCard: true,
+          cardBrand,
+          cardLast4
+        },
         buttons: []
       }],
       cta: {
@@ -1768,6 +1778,13 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
           `**Program Fee:** $${programFee} (charged to provider)\n` +
           `**SignupAssist Fee:** $20.00 (charged only if registration succeeds)\n\n` +
           `**Total:** $${totalAmount}`,
+        metadata: {
+          programFeeCents,
+          serviceFeeCents: 2000,
+          isPaymentCard: true,
+          cardBrand,
+          cardLast4
+        },
         buttons: [
           {
             label: `Pay with ${cardDisplay}`,
