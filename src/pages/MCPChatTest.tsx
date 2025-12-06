@@ -287,8 +287,9 @@ export default function MCPChatTest() {
         <MCPChat 
           authenticatedUser={mockAuthenticated 
             ? { id: '00000000-0000-0000-0000-000000000001', email: 'test@example.com' } 
-            : user  // Use real Supabase session when mock is off
+            : null  // Force unauthenticated when mock is off
           }
+          forceUnauthenticated={!mockAuthenticated}
           requireAuth={false}  // Allow anonymous browsing, lazy auth at payment
         />
       </Elements>
