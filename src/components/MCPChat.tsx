@@ -11,6 +11,9 @@ import { useToast } from "@/hooks/use-toast";
 import { ResponsibleDelegateForm } from "./chat-test/ResponsibleDelegateForm";
 import { SavePaymentMethod } from "./SavePaymentMethod";
 import { AuthGateModal } from "./AuthGateModal";
+import { FeeBreakdown } from "./FeeBreakdown";
+import { TrustCallout } from "./TrustCallout";
+import { COPY } from "@/copy/signupassistCopy";
 import { supabase } from "@/integrations/supabase/client";
 
 interface SavedChild {
@@ -650,17 +653,40 @@ export function MCPChat({
                           <div className="text-sm text-muted-foreground">{card.description}</div>
                         )}
                         {card.metadata && (
-                          <div className="flex flex-wrap gap-2 text-xs">
-                            {card.metadata.orgRef && (
-                              <Badge variant="outline">Org: {card.metadata.orgRef}</Badge>
+                          <>
+                            <div className="flex flex-wrap gap-2 text-xs">
+                              {card.metadata.orgRef && (
+                                <Badge variant="outline">Org: {card.metadata.orgRef}</Badge>
+                              )}
+                              {card.metadata.location && (
+                                <Badge variant="outline">📍 {card.metadata.location}</Badge>
+                              )}
+                              {card.metadata.category && (
+                                <Badge variant="outline">{card.metadata.category}</Badge>
+                              )}
+                            </div>
+                            
+                            {/* Fee Breakdown for payment authorization cards */}
+                            {(card.metadata.programFeeCents != null || card.metadata.serviceFeeCents != null) && (
+                              <FeeBreakdown
+                                programFee={(card.metadata.programFeeCents || 0) / 100}
+                                serviceFee={(card.metadata.serviceFeeCents || 2000) / 100}
+                                total={((card.metadata.programFeeCents || 0) + (card.metadata.serviceFeeCents || 2000)) / 100}
+                                programFeeLabel={COPY.fees.programFeeLabel}
+                                serviceFeeLabel={COPY.fees.serviceFeeLabel}
+                                serviceFeeNote={COPY.fees.serviceFeeNote}
+                              />
                             )}
-                            {card.metadata.location && (
-                              <Badge variant="outline">📍 {card.metadata.location}</Badge>
+                            
+                            {/* Trust callout for payment cards */}
+                            {card.metadata.isPaymentCard && (
+                              <TrustCallout
+                                title={COPY.trust.title}
+                                bullets={COPY.trust.bullets}
+                                footer={COPY.trust.payment}
+                              />
                             )}
-                            {card.metadata.category && (
-                              <Badge variant="outline">{card.metadata.category}</Badge>
-                            )}
-                          </div>
+                          </>
                         )}
                         {card.buttons && card.buttons.length > 0 && (
                           <div className="flex flex-wrap gap-2 mt-3">
