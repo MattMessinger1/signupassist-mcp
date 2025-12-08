@@ -188,6 +188,17 @@ export function MCPChat({
     }
   }, []);
 
+  // Reset auth state when user logs out (effectiveUserId becomes undefined)
+  useEffect(() => {
+    if (!effectiveUserId && forceUnauthenticated) {
+      console.log('[MCPChat] User logged out - resetting auth state');
+      setHasCompletedAuthGate(false);
+      setIsAuthenticated(false);
+    } else if (effectiveUserId) {
+      setIsAuthenticated(true);
+    }
+  }, [effectiveUserId, forceUnauthenticated]);
+
   // CONSOLIDATED STATE RESTORATION - runs once on mount
   useEffect(() => {
     if (!isInitialMountRef.current) return;
