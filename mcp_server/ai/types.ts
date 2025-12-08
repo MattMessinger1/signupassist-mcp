@@ -1,5 +1,6 @@
 /**
  * Shared type definitions for orchestrators
+ * Build cache invalidation: 2025-12-08T16:45:00Z
  */
 
 export interface ButtonSpec {
