@@ -313,55 +313,79 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
           <CreditCard className="h-5 w-5" /> Add Payment Method
         </CardTitle>
         <CardDescription>
-          You'll be redirected to Stripe's secure page to add your card.
+          {showFallback 
+            ? "Complete payment setup in the Stripe tab, then verify below."
+            : "You'll be redirected to Stripe's secure page to add your card."
+          }
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
-          <Button 
-            onClick={handleSetupPayment} 
-            disabled={loading} 
-            className="w-full"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Redirecting to Stripe...
-              </>
-            ) : (
-              <>
-                <CreditCard className="mr-2 h-4 w-4" />
-                Set Up Payment Method
-              </>
-            )}
-          </Button>
-          
-          {/* Fallback link if redirect doesn't work */}
-          {showFallback && stripeUrl && (
-            <div className="p-3 bg-muted rounded-md text-center space-y-2">
-              <p className="text-sm text-muted-foreground">
-                Redirect not working? Click below:
-              </p>
-              <a 
-                href={stripeUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center gap-2 text-primary underline hover:no-underline font-medium"
-              >
-                <ExternalLink className="h-4 w-4" />
-                Open Stripe in New Tab
-              </a>
-            </div>
+          {/* Primary: Set Up Payment - hide when fallback is showing */}
+          {!showFallback && (
+            <Button 
+              onClick={handleSetupPayment} 
+              disabled={loading} 
+              className="w-full"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Opening Stripe...
+                </>
+              ) : (
+                <>
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  Set Up Payment Method
+                </>
+              )}
+            </Button>
           )}
           
-          <Button 
-            variant="outline"
-            onClick={handleVerifyPayment} 
-            disabled={loading} 
-            className="w-full"
-          >
-            Verify Payment Method
-          </Button>
+          {/* After Stripe opened: show verify + retry options */}
+          {showFallback && (
+            <>
+              <Button 
+                onClick={handleVerifyPayment} 
+                disabled={loading} 
+                className="w-full"
+              >
+                {loading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Verifying...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                    I've Added My Card - Verify
+                  </>
+                )}
+              </Button>
+              
+              {stripeUrl && (
+                <a 
+                  href={stripeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block w-full"
+                >
+                  <Button variant="outline" className="w-full">
+                    <ExternalLink className="mr-2 h-4 w-4" />
+                    Re-open Stripe
+                  </Button>
+                </a>
+              )}
+              
+              <Button 
+                variant="ghost"
+                onClick={() => setShowFallback(false)} 
+                className="w-full text-muted-foreground"
+              >
+                Start Over
+              </Button>
+            </>
+          )}
           
           <p className="text-xs text-muted-foreground text-center">
             Secure payment powered by Stripe. Your card details are never stored on our servers.
