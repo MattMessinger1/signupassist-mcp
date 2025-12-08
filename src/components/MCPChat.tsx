@@ -16,6 +16,15 @@ import { TrustCallout } from "./TrustCallout";
 import { COPY } from "@/copy/signupassistCopy";
 import { supabase } from "@/integrations/supabase/client";
 
+// Helper to render markdown-style text as HTML
+function renderFormattedText(text: string): string {
+  return text
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/^• (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>\n?)+/g, '<ul class="list-disc pl-4">$&</ul>');
+}
+
 // Storage key for persisted chat state (using localStorage for cross-tab persistence)
 const CHAT_STATE_KEY = 'mcp_chat_state_v2';
 
@@ -807,7 +816,10 @@ export function MCPChat({
                     ? "bg-primary text-primary-foreground" 
                     : "bg-secondary"
                 }`}>
-                  <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
+                  <div 
+                    className="text-sm whitespace-pre-wrap"
+                    dangerouslySetInnerHTML={{ __html: renderFormattedText(msg.content || '') }}
+                  />
                 </div>
                 
                 {msg.cards && msg.cards.length > 0 && (
@@ -820,7 +832,10 @@ export function MCPChat({
                             <div className="text-sm text-muted-foreground">{card.subtitle}</div>
                           )}
                           {card.description && (
-                            <div className="text-sm text-muted-foreground">{card.description}</div>
+                            <div 
+                              className="text-sm text-muted-foreground"
+                              dangerouslySetInnerHTML={{ __html: renderFormattedText(card.description || '') }}
+                            />
                           )}
                           {card.metadata && (
                             <>
