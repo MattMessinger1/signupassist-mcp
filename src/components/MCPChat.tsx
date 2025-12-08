@@ -139,13 +139,14 @@ export function MCPChat({
     }
   }, []);
 
-  // Restore state after Stripe redirect on mount
+  // Restore state after Stripe redirect OR auth redirect on mount
   useEffect(() => {
     if (stripeReturnHandled) return;
     
     const urlParams = new URLSearchParams(window.location.search);
     const paymentSetup = urlParams.get('payment_setup');
     
+    // Check for Stripe return
     if (paymentSetup === 'success' || paymentSetup === 'canceled') {
       console.log('[MCPChat] Detected Stripe return, checking for persisted state...');
       const restoredState = getAndClearStripeReturnState();
@@ -157,7 +158,6 @@ export function MCPChat({
         setFormData(restoredState.formData || {});
         setPendingPaymentMetadata(restoredState.pendingPaymentMetadata);
         
-        // Mark as restored so SavePaymentMethod can handle the verification
         toast({
           title: 'Welcome back!',
           description: paymentSetup === 'success' 
@@ -167,8 +167,36 @@ export function MCPChat({
       }
       
       setStripeReturnHandled(true);
+      return;
     }
-  }, [stripeReturnHandled, toast]);
+    
+    // Check for auth return (page loaded with persisted state but no Stripe params)
+    const persistedStateRaw = sessionStorage.getItem('mcp_chat_state');
+    if (persistedStateRaw && messages.length === 0) {
+      try {
+        const persistedState = JSON.parse(persistedStateRaw);
+        console.log('[MCPChat] Detected auth return, restoring persisted state...');
+        
+        setSessionId(persistedState.sessionId);
+        setMessages(persistedState.messages || []);
+        setFormData(persistedState.formData || {});
+        setPendingPaymentMetadata(persistedState.pendingPaymentMetadata);
+        
+        // Clear persisted state after restore
+        sessionStorage.removeItem('mcp_chat_state');
+        
+        toast({
+          title: 'Welcome back!',
+          description: 'Continuing your registration...',
+        });
+      } catch (e) {
+        console.error('[MCPChat] Failed to parse persisted state:', e);
+        sessionStorage.removeItem('mcp_chat_state');
+      }
+    }
+    
+    setStripeReturnHandled(true);
+  }, [stripeReturnHandled, toast, messages.length]);
 
   // Persist state before Stripe redirect (called from SavePaymentMethod via effect)
   useEffect(() => {
@@ -186,6 +214,19 @@ export function MCPChat({
       delete (window as any).__persistMCPChatState;
     };
   }, [sessionId, messages, formData, pendingPaymentMetadata]);
+
+  // Persist state when auth gate opens (before magic link redirect)
+  useEffect(() => {
+    if (showAuthGate && messages.length > 0) {
+      console.log('[MCPChat] Auth gate opened, persisting state for magic link return...');
+      sessionStorage.setItem('mcp_chat_state', JSON.stringify({
+        sessionId,
+        messages,
+        formData,
+        pendingPaymentMetadata
+      }));
+    }
+  }, [showAuthGate, sessionId, messages, formData, pendingPaymentMetadata]);
 
   // Load authenticated user data for form pre-population
   useEffect(() => {
