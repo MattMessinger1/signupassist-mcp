@@ -96,7 +96,7 @@ export function AuthGateModal({ isOpen, onClose, onAuthSuccess, delegateEmail }:
             }}
             providers={[]}
             theme="light"
-            redirectTo={window.location.origin + window.location.pathname}
+            redirectTo={`${window.location.origin}/mcp-chat-test`}
             localization={{
               variables: {
                 magic_link: {
