@@ -190,7 +190,10 @@ export default function MCPChatTest() {
                 Build: {backendInfo.git_commit?.substring(0, 7) || 'dev'}
               </span>
             )}
-            {user && (
+            <span className="border-l pl-3">
+              {user ? user.email : 'Not logged in'}
+            </span>
+            {user ? (
               <Button 
                 variant="ghost" 
                 size="sm" 
@@ -200,6 +203,8 @@ export default function MCPChatTest() {
                 <LogOut className="h-3 w-3 mr-1" />
                 Logout
               </Button>
+            ) : (
+              <span className="text-amber-500">●</span>
             )}
           </div>
         </div>
