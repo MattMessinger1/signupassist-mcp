@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { sendMessage, sendAction } from "@/lib/orchestratorClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,9 @@ import { FeeBreakdown } from "./FeeBreakdown";
 import { TrustCallout } from "./TrustCallout";
 import { COPY } from "@/copy/signupassistCopy";
 import { supabase } from "@/integrations/supabase/client";
+
+// Storage key for persisted chat state
+const CHAT_STATE_KEY = 'mcp_chat_state_v2';
 
 interface SavedChild {
   id: string;
@@ -111,8 +114,6 @@ export function MCPChat({
   const [hasCompletedAuthGate, setHasCompletedAuthGate] = useState(false);
   const [submittedFormIds, setSubmittedFormIds] = useState<Set<number>>(new Set());
   const [paymentCompleted, setPaymentCompleted] = useState(false);
-  const [stripeReturnHandled, setStripeReturnHandled] = useState(false);
-  const [justRestoredFromAuth, setJustRestoredFromAuth] = useState(false);
   const [userFormData, setUserFormData] = useState<{
     email?: string;
     firstName?: string;
@@ -125,6 +126,11 @@ export function MCPChat({
     action: string;
     payload: any;
   } | null>(null);
+  
+  // Refs to track state restoration (prevents race conditions)
+  const stateRestoredRef = useRef(false);
+  const isInitialMountRef = useRef(true);
+  
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
 
@@ -140,20 +146,22 @@ export function MCPChat({
     }
   }, []);
 
-  // Restore state after Stripe redirect OR auth redirect on mount
+  // CONSOLIDATED STATE RESTORATION - runs once on mount
   useEffect(() => {
-    if (stripeReturnHandled) return;
+    if (!isInitialMountRef.current) return;
+    isInitialMountRef.current = false;
     
     const urlParams = new URLSearchParams(window.location.search);
     const paymentSetup = urlParams.get('payment_setup');
     
-    // Check for Stripe return
+    // Priority 1: Check for Stripe return
     if (paymentSetup === 'success' || paymentSetup === 'canceled') {
       console.log('[MCPChat] Detected Stripe return, checking for persisted state...');
       const restoredState = getAndClearStripeReturnState();
       
       if (restoredState) {
-        console.log('[MCPChat] Restoring state from before Stripe redirect');
+        console.log('[MCPChat] Restoring state from Stripe redirect:', restoredState);
+        stateRestoredRef.current = true;
         setSessionId(restoredState.sessionId);
         setMessages(restoredState.messages);
         setFormData(restoredState.formData || {});
@@ -167,27 +175,31 @@ export function MCPChat({
         });
       }
       
-      setStripeReturnHandled(true);
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname);
       return;
     }
     
-    // Check for auth return (page loaded with persisted state but no Stripe params)
-    const persistedStateRaw = sessionStorage.getItem('mcp_chat_state');
-    if (persistedStateRaw && messages.length === 0) {
+    // Priority 2: Check for persisted state (auth return)
+    const persistedStateRaw = sessionStorage.getItem(CHAT_STATE_KEY);
+    if (persistedStateRaw) {
       try {
         const persistedState = JSON.parse(persistedStateRaw);
-        console.log('[MCPChat] Detected auth return, restoring persisted state...');
+        console.log('[MCPChat] Found persisted state, restoring...', {
+          hasMessages: persistedState.messages?.length,
+          hasFormData: Object.keys(persistedState.formData || {}).length,
+          hasPaymentMetadata: !!persistedState.pendingPaymentMetadata
+        });
         
+        stateRestoredRef.current = true;
         setSessionId(persistedState.sessionId);
         setMessages(persistedState.messages || []);
         setFormData(persistedState.formData || {});
         setPendingPaymentMetadata(persistedState.pendingPaymentMetadata);
+        setHasCompletedAuthGate(true); // User just completed auth
         
-        // Set flag to prevent checkAuth from reopening auth gate
-        setJustRestoredFromAuth(true);
-        
-        // Clear persisted state after restore
-        sessionStorage.removeItem('mcp_chat_state');
+        // Clear immediately to prevent re-restore
+        sessionStorage.removeItem(CHAT_STATE_KEY);
         
         toast({
           title: 'Welcome back!',
@@ -195,16 +207,30 @@ export function MCPChat({
         });
       } catch (e) {
         console.error('[MCPChat] Failed to parse persisted state:', e);
-        sessionStorage.removeItem('mcp_chat_state');
+        sessionStorage.removeItem(CHAT_STATE_KEY);
       }
     }
-    
-    setStripeReturnHandled(true);
-  }, [stripeReturnHandled, toast, messages.length]);
+  }, [toast]);
 
-  // Persist state before Stripe redirect (called from SavePaymentMethod via effect)
+  // Persist state function - called before redirects
+  const persistCurrentState = useCallback(() => {
+    const stateToSave = {
+      sessionId,
+      messages,
+      formData,
+      pendingPaymentMetadata,
+      timestamp: Date.now()
+    };
+    console.log('[MCPChat] Persisting state before redirect:', {
+      messageCount: messages.length,
+      hasFormData: Object.keys(formData).length,
+      hasPaymentMeta: !!pendingPaymentMetadata
+    });
+    sessionStorage.setItem(CHAT_STATE_KEY, JSON.stringify(stateToSave));
+  }, [sessionId, messages, formData, pendingPaymentMetadata]);
+
+  // Expose persist function for Stripe redirect
   useEffect(() => {
-    // Create a function that can be called before redirect
     (window as any).__persistMCPChatState = () => {
       persistStateBeforeStripeRedirect({
         sessionId,
@@ -219,18 +245,13 @@ export function MCPChat({
     };
   }, [sessionId, messages, formData, pendingPaymentMetadata]);
 
-  // Persist state when auth gate opens (before magic link redirect)
+  // Persist state when auth gate opens
   useEffect(() => {
     if (showAuthGate && messages.length > 0) {
       console.log('[MCPChat] Auth gate opened, persisting state for magic link return...');
-      sessionStorage.setItem('mcp_chat_state', JSON.stringify({
-        sessionId,
-        messages,
-        formData,
-        pendingPaymentMetadata
-      }));
+      persistCurrentState();
     }
-  }, [showAuthGate, sessionId, messages, formData, pendingPaymentMetadata]);
+  }, [showAuthGate, persistCurrentState, messages.length]);
 
   // Load authenticated user data for form pre-population
   useEffect(() => {
@@ -321,9 +342,10 @@ export function MCPChat({
   // Check authentication status when payment setup is triggered
   useEffect(() => {
     const checkAuth = async () => {
-      // If just restored from auth return, skip re-checking to prevent race condition
-      if (justRestoredFromAuth) {
-        console.log('[MCPChat] Just restored from auth - skipping checkAuth to prevent race');
+      // If state was just restored from redirect, skip re-checking to prevent race condition
+      if (stateRestoredRef.current) {
+        console.log('[MCPChat] State just restored - skipping checkAuth to prevent race');
+        stateRestoredRef.current = false; // Reset for future checks
         return;
       }
       
@@ -403,7 +425,7 @@ export function MCPChat({
     };
     
     checkAuth();
-  }, [messages, effectiveUserId, forceUnauthenticated, hasCompletedAuthGate, requireAuth, justRestoredFromAuth]);
+  }, [messages, effectiveUserId, forceUnauthenticated, hasCompletedAuthGate, requireAuth]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -421,111 +443,69 @@ export function MCPChat({
     return () => clearTimeout(timer);
   }, [messages, loading]);
 
-  // Listen for auth state changes
+  // Listen for auth state changes - handles post-auth continuation
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('[MCPChat] Auth state changed:', event, session?.user?.id);
       
-      // Handle both SIGNED_IN and INITIAL_SESSION with a valid session
-      // INITIAL_SESSION fires when page reloads after magic link redirect
-      const shouldRestoreState = (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user;
-      
-      if (shouldRestoreState) {
-        // Check for persisted state from magic link return
-        const persistedStateRaw = sessionStorage.getItem('mcp_chat_state');
-        
-        // Skip if no persisted state (normal page load, not returning from auth)
-        if (!persistedStateRaw && event === 'INITIAL_SESSION') {
-          console.log('[MCPChat] INITIAL_SESSION but no persisted state, skipping restore');
-          // Just update auth state for normal authenticated page loads
-          setIsAuthenticated(true);
-          return;
-        }
-        
-        let restoredPaymentMetadata = pendingPaymentMetadata;
-        let restoredMessages: Message[] = [];
-        let restoredSessionId: string | null = null;
-        let restoredFormData: Record<string, any> = {};
-        let hadPersistedState = false;
-        
-        if (persistedStateRaw) {
-          try {
-            const persistedState = JSON.parse(persistedStateRaw);
-            console.log('[MCPChat] Auth return with persisted state, restoring...', {
-              event,
-              hasMessages: persistedState.messages?.length,
-              hasSessionId: !!persistedState.sessionId
-            });
-            hadPersistedState = true;
-            
-            // Restore state immediately
-            restoredSessionId = persistedState.sessionId;
-            restoredMessages = persistedState.messages || [];
-            restoredFormData = persistedState.formData || {};
-            restoredPaymentMetadata = persistedState.pendingPaymentMetadata;
-            
-            // Clear persisted state
-            sessionStorage.removeItem('mcp_chat_state');
-          } catch (e) {
-            console.error('[MCPChat] Failed to parse persisted state:', e);
-            sessionStorage.removeItem('mcp_chat_state');
-          }
-        }
-        
-        // Always update auth state and clear the restore flag
+      // Handle SIGNED_IN event (user just signed in via magic link or other method)
+      if (event === 'SIGNED_IN' && session?.user) {
         setShowAuthGate(false);
         setHasCompletedAuthGate(true);
         setIsAuthenticated(true);
-        setJustRestoredFromAuth(false); // Clear flag now that auth is confirmed
         
-        // Continue with payment flow if we have payment metadata
-        if (restoredPaymentMetadata) {
-          console.log('[MCPChat] User signed in, continuing with payment setup');
-          
-          if (restoredSessionId) setSessionId(restoredSessionId);
-          setFormData(restoredFormData);
-          
-          // Add success message and payment form to restored messages
-          const newMessages: Message[] = [
-            ...restoredMessages,
-            { role: "assistant", content: "✅ **You're signed in!** Let's continue with your registration." },
-            { 
-              role: "assistant", 
-              content: "Now let's set up your payment method.",
-              metadata: restoredPaymentMetadata
-            },
-          ];
-          setMessages(newMessages);
-          setPendingPaymentMetadata(null);
-          
-          toast({
-            title: '✅ Signed in successfully!',
-            description: 'Continuing your registration...',
-          });
-          return;
-        }
-        
-        // Handle pending protected action retry
-        if (pendingProtectedAction && session?.user?.id) {
-          console.log('[MCPChat] User signed in, retrying pending protected action:', pendingProtectedAction.action);
-          
-          if (restoredSessionId) setSessionId(restoredSessionId);
-          setFormData(restoredFormData);
-          
-          // Restore messages if we have them
-          if (restoredMessages.length > 0) {
-            setMessages([
+        // Check for persisted state that wasn't already restored on mount
+        const persistedStateRaw = sessionStorage.getItem(CHAT_STATE_KEY);
+        if (persistedStateRaw && messages.length === 0) {
+          try {
+            const persistedState = JSON.parse(persistedStateRaw);
+            console.log('[MCPChat] Auth listener restoring state:', {
+              hasMessages: persistedState.messages?.length,
+              hasPaymentMeta: !!persistedState.pendingPaymentMetadata
+            });
+            
+            sessionStorage.removeItem(CHAT_STATE_KEY);
+            
+            const restoredMessages = persistedState.messages || [];
+            const restoredPaymentMetadata = persistedState.pendingPaymentMetadata;
+            
+            setSessionId(persistedState.sessionId);
+            setFormData(persistedState.formData || {});
+            
+            // Add success message and continue
+            const newMessages: Message[] = [
               ...restoredMessages,
-              { role: "assistant", content: "✅ **You're signed in!** Continuing..." }
-            ]);
+              { role: "assistant", content: "✅ **You're signed in!** Let's continue with your registration." }
+            ];
+            
+            if (restoredPaymentMetadata) {
+              newMessages.push({ 
+                role: "assistant", 
+                content: "Now let's set up your payment method.",
+                metadata: restoredPaymentMetadata
+              });
+            }
+            
+            setMessages(newMessages);
+            setPendingPaymentMetadata(null);
+            
+            toast({
+              title: '✅ Signed in successfully!',
+              description: 'Continuing your registration...',
+            });
+          } catch (e) {
+            console.error('[MCPChat] Auth listener failed to parse state:', e);
+            sessionStorage.removeItem(CHAT_STATE_KEY);
           }
+        } else if (pendingProtectedAction && session?.user?.id) {
+          // Handle pending protected action retry
+          console.log('[MCPChat] Retrying pending protected action:', pendingProtectedAction.action);
           
           toast({
             title: '✅ Signed in successfully!',
             description: 'Retrying your action...',
           });
           
-          // Short delay to ensure auth state is fully propagated
           setTimeout(() => {
             if (pendingProtectedAction) {
               handleCardAction(pendingProtectedAction.action, {
@@ -535,31 +515,17 @@ export function MCPChat({
               setPendingProtectedAction(null);
             }
           }, 500);
-          return;
         }
-        
-        // FALLBACK: Restore state even without payment metadata or pending action
-        // This handles cases where user was just browsing or at a different step
-        if (hadPersistedState && restoredMessages.length > 0) {
-          console.log('[MCPChat] User signed in, restoring previous chat state');
-          
-          if (restoredSessionId) setSessionId(restoredSessionId);
-          setFormData(restoredFormData);
-          setMessages([
-            ...restoredMessages,
-            { role: "assistant", content: "✅ **You're signed in!** You can now continue." }
-          ]);
-          
-          toast({
-            title: '✅ Signed in successfully!',
-            description: 'Your chat has been restored.',
-          });
-        }
+      }
+      
+      // Handle INITIAL_SESSION - just update auth state
+      if (event === 'INITIAL_SESSION' && session?.user) {
+        setIsAuthenticated(true);
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [pendingPaymentMetadata, pendingProtectedAction, toast]);
+  }, [pendingPaymentMetadata, pendingProtectedAction, toast, messages.length]);
 
   async function send(userMessage: string) {
     if (!userMessage.trim() || loading) return;
