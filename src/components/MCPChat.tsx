@@ -9,7 +9,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Loader2, Send, CreditCard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ResponsibleDelegateForm } from "./chat-test/ResponsibleDelegateForm";
-import { SavePaymentMethod } from "./SavePaymentMethod";
+import { SavePaymentMethod, getAndClearStripeReturnState, persistStateBeforeStripeRedirect } from "./SavePaymentMethod";
 import { AuthGateModal } from "./AuthGateModal";
 import { FeeBreakdown } from "./FeeBreakdown";
 import { TrustCallout } from "./TrustCallout";
@@ -102,7 +102,7 @@ export function MCPChat({
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [sessionId] = useState(`lovable-test-${Date.now()}`);
+  const [sessionId, setSessionId] = useState(`lovable-test-${Date.now()}`);
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [userTimezone, setUserTimezone] = useState<string>('UTC');
   const [showAuthGate, setShowAuthGate] = useState(false);
@@ -111,6 +111,7 @@ export function MCPChat({
   const [hasCompletedAuthGate, setHasCompletedAuthGate] = useState(false);
   const [submittedFormIds, setSubmittedFormIds] = useState<Set<number>>(new Set());
   const [paymentCompleted, setPaymentCompleted] = useState(false);
+  const [stripeReturnHandled, setStripeReturnHandled] = useState(false);
   const [userFormData, setUserFormData] = useState<{
     email?: string;
     firstName?: string;
@@ -137,6 +138,54 @@ export function MCPChat({
       setUserTimezone('UTC');
     }
   }, []);
+
+  // Restore state after Stripe redirect on mount
+  useEffect(() => {
+    if (stripeReturnHandled) return;
+    
+    const urlParams = new URLSearchParams(window.location.search);
+    const paymentSetup = urlParams.get('payment_setup');
+    
+    if (paymentSetup === 'success' || paymentSetup === 'canceled') {
+      console.log('[MCPChat] Detected Stripe return, checking for persisted state...');
+      const restoredState = getAndClearStripeReturnState();
+      
+      if (restoredState) {
+        console.log('[MCPChat] Restoring state from before Stripe redirect');
+        setSessionId(restoredState.sessionId);
+        setMessages(restoredState.messages);
+        setFormData(restoredState.formData || {});
+        setPendingPaymentMetadata(restoredState.pendingPaymentMetadata);
+        
+        // Mark as restored so SavePaymentMethod can handle the verification
+        toast({
+          title: 'Welcome back!',
+          description: paymentSetup === 'success' 
+            ? 'Verifying your payment method...' 
+            : 'Payment setup was canceled.',
+        });
+      }
+      
+      setStripeReturnHandled(true);
+    }
+  }, [stripeReturnHandled, toast]);
+
+  // Persist state before Stripe redirect (called from SavePaymentMethod via effect)
+  useEffect(() => {
+    // Create a function that can be called before redirect
+    (window as any).__persistMCPChatState = () => {
+      persistStateBeforeStripeRedirect({
+        sessionId,
+        messages,
+        formData,
+        pendingPaymentMetadata
+      });
+    };
+    
+    return () => {
+      delete (window as any).__persistMCPChatState;
+    };
+  }, [sessionId, messages, formData, pendingPaymentMetadata]);
 
   // Load authenticated user data for form pre-population
   useEffect(() => {
