@@ -416,48 +416,94 @@ export function MCPChat({
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('[MCPChat] Auth state changed:', event, session?.user?.id);
       
-      if (event === 'SIGNED_IN' && pendingPaymentMetadata) {
-        console.log('[MCPChat] User signed in, continuing with pending payment');
-        setShowAuthGate(false);
-        setHasCompletedAuthGate(true);  // Mark that user completed auth gate
-        setIsAuthenticated(true);       // Explicitly set authenticated
+      if (event === 'SIGNED_IN') {
+        // Check for persisted state from magic link return (may not be in React state yet)
+        const persistedStateRaw = sessionStorage.getItem('mcp_chat_state');
+        let restoredPaymentMetadata = pendingPaymentMetadata;
+        let restoredMessages: Message[] = [];
         
-        // Add "Auth complete" message then continue with payment form
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: "✅ Auth complete" },
-          { 
-            role: "assistant", 
-            content: "Now let's set up your payment method.",
-            metadata: pendingPaymentMetadata
-          },
-        ]);
-        
-        setPendingPaymentMetadata(null);
-      }
-      
-      // Auto-retry pending protected action after successful auth
-      if (event === 'SIGNED_IN' && pendingProtectedAction && session?.user?.id) {
-        console.log('[MCPChat] User signed in, retrying pending protected action:', pendingProtectedAction.action);
-        setShowAuthGate(false);
-        setHasCompletedAuthGate(true);
-        setIsAuthenticated(true);
-        
-        // Short delay to ensure auth state is fully propagated
-        setTimeout(() => {
-          if (pendingProtectedAction) {
-            handleCardAction(pendingProtectedAction.action, {
-              ...pendingProtectedAction.payload,
-              user_id: session.user.id
-            });
-            setPendingProtectedAction(null);
+        if (persistedStateRaw) {
+          try {
+            const persistedState = JSON.parse(persistedStateRaw);
+            console.log('[MCPChat] Auth return with persisted state, restoring...');
+            
+            // Restore state immediately
+            setSessionId(persistedState.sessionId);
+            restoredMessages = persistedState.messages || [];
+            setFormData(persistedState.formData || {});
+            restoredPaymentMetadata = persistedState.pendingPaymentMetadata;
+            
+            // Clear persisted state
+            sessionStorage.removeItem('mcp_chat_state');
+          } catch (e) {
+            console.error('[MCPChat] Failed to parse persisted state:', e);
+            sessionStorage.removeItem('mcp_chat_state');
           }
-        }, 500);
+        }
+        
+        // Continue with payment flow if we have payment metadata
+        if (restoredPaymentMetadata) {
+          console.log('[MCPChat] User signed in, continuing with payment setup');
+          setShowAuthGate(false);
+          setHasCompletedAuthGate(true);
+          setIsAuthenticated(true);
+          
+          // Add success message and payment form to restored messages
+          const newMessages: Message[] = [
+            ...restoredMessages,
+            { role: "assistant", content: "✅ **You're signed in!** Let's continue with your registration." },
+            { 
+              role: "assistant", 
+              content: "Now let's set up your payment method.",
+              metadata: restoredPaymentMetadata
+            },
+          ];
+          setMessages(newMessages);
+          setPendingPaymentMetadata(null);
+          
+          toast({
+            title: '✅ Signed in successfully!',
+            description: 'Continuing your registration...',
+          });
+          return;
+        }
+        
+        // Handle pending protected action retry
+        if (pendingProtectedAction && session?.user?.id) {
+          console.log('[MCPChat] User signed in, retrying pending protected action:', pendingProtectedAction.action);
+          setShowAuthGate(false);
+          setHasCompletedAuthGate(true);
+          setIsAuthenticated(true);
+          
+          // Restore messages if we have them
+          if (restoredMessages.length > 0) {
+            setMessages([
+              ...restoredMessages,
+              { role: "assistant", content: "✅ **You're signed in!** Continuing..." }
+            ]);
+          }
+          
+          toast({
+            title: '✅ Signed in successfully!',
+            description: 'Retrying your action...',
+          });
+          
+          // Short delay to ensure auth state is fully propagated
+          setTimeout(() => {
+            if (pendingProtectedAction) {
+              handleCardAction(pendingProtectedAction.action, {
+                ...pendingProtectedAction.payload,
+                user_id: session.user.id
+              });
+              setPendingProtectedAction(null);
+            }
+          }, 500);
+        }
       }
     });
 
     return () => subscription.unsubscribe();
-  }, [pendingPaymentMetadata]);
+  }, [pendingPaymentMetadata, pendingProtectedAction, toast]);
 
   async function send(userMessage: string) {
     if (!userMessage.trim() || loading) return;
