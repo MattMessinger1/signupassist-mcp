@@ -62,6 +62,15 @@ export function getAndClearStripeReturnState(): {
   return null;
 }
 
+// Helper to detect if running inside an iframe (Lovable preview)
+function isInIframe(): boolean {
+  try {
+    return window.self !== window.top;
+  } catch (e) {
+    return true; // If we can't access window.top, we're in a sandboxed iframe
+  }
+}
+
 export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
   onPaymentMethodSaved,
   hasPaymentMethod = false,
@@ -191,17 +200,28 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
         console.log('[SavePaymentMethod] Called state persistence before redirect');
       }
 
-      // Same-window redirect to maintain flow - use assign() for more reliable navigation
-      console.log('[SavePaymentMethod] Redirecting to:', data.url);
-      
-      // Try primary redirect method
-      window.location.assign(data.url);
-      
-      // Show fallback link after 3 seconds if still on page
-      setTimeout(() => {
-        console.log('[SavePaymentMethod] Showing fallback link');
-        setShowFallback(true);
-      }, 3000);
+      // Check if we're in an iframe (Lovable preview)
+      if (isInIframe()) {
+        console.log('[SavePaymentMethod] Detected iframe environment - opening Stripe in new tab');
+        // In iframe: open in new tab (iframe blocks same-window redirects to external URLs)
+        window.open(data.url, '_blank');
+        setLoading(false);
+        setShowFallback(true); // Show verification button immediately
+        toast({
+          title: "Stripe Opened",
+          description: "Complete payment setup in the new tab, then click 'Verify Payment Method'.",
+        });
+      } else {
+        // Production/deployed: same-window redirect for better UX
+        console.log('[SavePaymentMethod] Production environment - same-window redirect');
+        window.location.assign(data.url);
+        
+        // Show fallback link after 3 seconds if still on page
+        setTimeout(() => {
+          console.log('[SavePaymentMethod] Showing fallback link');
+          setShowFallback(true);
+        }, 3000);
+      }
 
     } catch (error) {
       console.error('[SavePaymentMethod] ❌ Error:', error);
