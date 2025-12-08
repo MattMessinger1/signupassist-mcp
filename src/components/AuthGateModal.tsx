@@ -3,11 +3,10 @@ import { Auth } from "@supabase/auth-ui-react";
 import { ThemeSupa } from "@supabase/auth-ui-shared";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, ExternalLink, Mail } from "lucide-react";
 
-// Auth gate modal simulating OAuth redirect flow (ChatGPT Apps SDK pattern)
-// When auth is triggered inline, ChatGPT shows "Preparing authorization..." 
-// then redirects to OAuth provider. This simulates that experience.
+// Auth gate modal using Magic Link (passwordless) for ChatGPT App Store compliance
+// No in-app password collection - users receive email link to authenticate
 
 interface AuthGateModalProps {
   isOpen: boolean;
@@ -46,7 +45,7 @@ export function AuthGateModal({ isOpen, onClose, onAuthSuccess, delegateEmail }:
             <SheetTitle>Connect to SignupAssist</SheetTitle>
           </div>
           <SheetDescription className="text-left">
-            Sign in to authorize SignupAssist to complete this registration on your behalf.
+            Enter your email to receive a secure login link. No password required.
           </SheetDescription>
         </SheetHeader>
         
@@ -57,6 +56,11 @@ export function AuthGateModal({ isOpen, onClose, onAuthSuccess, delegateEmail }:
               <span className="font-medium text-foreground">{delegateEmail}</span>
             </div>
           )}
+          
+          <div className="flex items-center gap-2 text-sm bg-primary/10 rounded-lg p-3 border border-primary/20">
+            <Mail className="h-4 w-4 text-primary" />
+            <span className="text-foreground">We'll send you a magic link - just click to sign in!</span>
+          </div>
           
           <div className="text-xs text-muted-foreground space-y-1 bg-muted/30 rounded-lg p-3">
             <div className="font-medium text-foreground mb-2">SignupAssist will be able to:</div>
@@ -78,7 +82,7 @@ export function AuthGateModal({ isOpen, onClose, onAuthSuccess, delegateEmail }:
         <div className="mt-6">
           <Auth
             supabaseClient={supabase}
-            view="sign_up"
+            view="magic_link"
             appearance={{ 
               theme: ThemeSupa,
               variables: {
@@ -92,9 +96,18 @@ export function AuthGateModal({ isOpen, onClose, onAuthSuccess, delegateEmail }:
             }}
             providers={[]}
             theme="light"
-            redirectTo={window.location.origin}
-            additionalData={{
-              email: delegateEmail
+            redirectTo={window.location.origin + window.location.pathname}
+            localization={{
+              variables: {
+                magic_link: {
+                  email_input_label: 'Your email address',
+                  email_input_placeholder: delegateEmail || 'you@example.com',
+                  button_label: 'Send Magic Link',
+                  loading_button_label: 'Sending...',
+                  link_text: '',
+                  confirmation_text: 'Check your email for the login link'
+                }
+              }
             }}
           />
         </div>

@@ -1,24 +1,65 @@
 /**
- * SavePaymentMethod - Stripe Checkout Redirect
+ * SavePaymentMethod - Stripe Checkout Redirect (Same-Window)
  * 
  * ChatGPT App Store Compliant: No in-app card input (PCI violation).
  * Redirects users to Stripe's hosted checkout page for payment method setup.
- * 
- * This is a drop-in replacement for the old CardElement-based implementation.
+ * Uses same-window redirect with sessionStorage state persistence.
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { CheckCircle, CreditCard, ExternalLink, Loader2 } from 'lucide-react';
+import { CheckCircle, CreditCard, Loader2 } from 'lucide-react';
+
+// Storage key for persisting chat state before Stripe redirect
+const STRIPE_RETURN_STATE_KEY = 'signupassist_stripe_return_state';
 
 interface SavePaymentMethodProps {
   onPaymentMethodSaved?: () => void;
   hasPaymentMethod?: boolean;
   mockUserId?: string;
   mockUserEmail?: string;
+}
+
+// Helper to persist state before redirect
+export function persistStateBeforeStripeRedirect(state: {
+  sessionId: string;
+  messages: any[];
+  formData: any;
+  pendingPaymentMetadata: any;
+}) {
+  sessionStorage.setItem(STRIPE_RETURN_STATE_KEY, JSON.stringify({
+    ...state,
+    timestamp: Date.now()
+  }));
+  console.log('[SavePaymentMethod] Persisted state before Stripe redirect');
+}
+
+// Helper to retrieve and clear state after return
+export function getAndClearStripeReturnState(): {
+  sessionId: string;
+  messages: any[];
+  formData: any;
+  pendingPaymentMetadata: any;
+  timestamp: number;
+} | null {
+  const stored = sessionStorage.getItem(STRIPE_RETURN_STATE_KEY);
+  if (stored) {
+    sessionStorage.removeItem(STRIPE_RETURN_STATE_KEY);
+    try {
+      const parsed = JSON.parse(stored);
+      // Only use state if less than 30 minutes old
+      if (Date.now() - parsed.timestamp < 30 * 60 * 1000) {
+        console.log('[SavePaymentMethod] Retrieved persisted state after Stripe return');
+        return parsed;
+      }
+    } catch (e) {
+      console.error('[SavePaymentMethod] Failed to parse persisted state:', e);
+    }
+  }
+  return null;
 }
 
 export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
@@ -30,7 +71,65 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
   console.log('[SavePaymentMethod] 🚀 COMPONENT RENDER STARTED', { hasPaymentMethod, timestamp: new Date().toISOString() });
 
   const [loading, setLoading] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const { toast } = useToast();
+
+  // Auto-detect return from Stripe on mount
+  useEffect(() => {
+    const checkStripeReturn = async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const paymentSetup = urlParams.get('payment_setup');
+      const sessionId = urlParams.get('session_id');
+      
+      if (paymentSetup === 'success' && sessionId) {
+        console.log('[SavePaymentMethod] Detected return from Stripe checkout:', sessionId);
+        setVerifying(true);
+        
+        try {
+          // Verify with Stripe and update billing
+          const { data, error } = await supabase.functions.invoke('stripe-checkout-success', {
+            body: { session_id: sessionId }
+          });
+          
+          if (error) {
+            throw new Error(error.message);
+          }
+          
+          console.log('[SavePaymentMethod] ✅ Payment method verified:', data);
+          
+          toast({
+            title: 'Payment Method Saved!',
+            description: `Your ${data.brand} •••• ${data.last4} is ready.`,
+          });
+          
+          // Clean up URL
+          window.history.replaceState({}, '', window.location.pathname);
+          
+          // Trigger callback
+          onPaymentMethodSaved?.();
+        } catch (error) {
+          console.error('[SavePaymentMethod] ❌ Verification error:', error);
+          toast({
+            title: 'Verification Issue',
+            description: 'Please click "Verify Payment Method" to complete setup.',
+            variant: 'destructive',
+          });
+        } finally {
+          setVerifying(false);
+        }
+      } else if (paymentSetup === 'canceled') {
+        console.log('[SavePaymentMethod] User canceled Stripe checkout');
+        toast({
+          title: 'Payment Setup Canceled',
+          description: 'You can try again when ready.',
+        });
+        // Clean up URL
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    };
+    
+    checkStripeReturn();
+  }, [onPaymentMethodSaved, toast]);
 
   const handleSetupPayment = useCallback(async () => {
     console.log('[SavePaymentMethod] 🖱️ SETUP CLICKED', { timestamp: new Date().toISOString() });
@@ -55,7 +154,7 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
         console.log('[SavePaymentMethod] User authenticated:', userId);
       }
 
-      // Get current URL for redirect
+      // Get current URL for redirect (same window)
       const currentUrl = window.location.href.split('?')[0];
       const successUrl = `${currentUrl}?payment_setup=success&session_id={CHECKOUT_SESSION_ID}`;
       const cancelUrl = `${currentUrl}?payment_setup=canceled`;
@@ -81,15 +180,14 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
 
       console.log('[SavePaymentMethod] ✅ Checkout session created:', data.session_id);
 
-      // Open Stripe Checkout in new tab
-      window.open(data.url, '_blank');
+      // Persist MCPChat state before redirect (if available)
+      if (typeof (window as any).__persistMCPChatState === 'function') {
+        (window as any).__persistMCPChatState();
+        console.log('[SavePaymentMethod] Called state persistence before redirect');
+      }
 
-      toast({
-        title: 'Redirecting to Stripe',
-        description: 'Complete your payment setup in the new tab, then click "I\'ve Added My Card" below.',
-      });
-
-      // Don't auto-call onPaymentMethodSaved - user needs to confirm
+      // Same-window redirect to maintain flow
+      window.location.href = data.url;
 
     } catch (error) {
       console.error('[SavePaymentMethod] ❌ Error:', error);
@@ -98,70 +196,40 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
         description: error instanceof Error ? error.message : 'Failed to start payment setup',
         variant: 'destructive',
       });
-    } finally {
       setLoading(false);
     }
   }, [toast, mockUserId, mockUserEmail]);
 
-  // Handle manual confirmation after Stripe redirect
-  const handleConfirmPaymentSetup = useCallback(async () => {
+  // Handle manual verification (fallback)
+  const handleVerifyPayment = useCallback(async () => {
     setLoading(true);
     
     try {
-      // Check URL for session_id
-      const urlParams = new URLSearchParams(window.location.search);
-      const sessionId = urlParams.get('session_id');
+      let userId = mockUserId;
+      if (!userId) {
+        const { data: { user } } = await supabase.auth.getUser();
+        userId = user?.id;
+      }
       
-      if (sessionId) {
-        // Verify with Stripe and update billing
-        const { data, error } = await supabase.functions.invoke('stripe-checkout-success', {
-          body: { session_id: sessionId }
-        });
+      if (userId) {
+        const { data: billing } = await supabase
+          .from('user_billing')
+          .select('default_payment_method_id, payment_method_brand, payment_method_last4')
+          .eq('user_id', userId)
+          .maybeSingle();
         
-        if (error) {
-          throw new Error(error.message);
-        }
-        
-        console.log('[SavePaymentMethod] ✅ Payment method verified:', data);
-        
-        toast({
-          title: 'Payment Method Saved!',
-          description: `Your ${data.brand} •••• ${data.last4} is ready.`,
-        });
-        
-        // Clean up URL
-        window.history.replaceState({}, '', window.location.pathname);
-        
-        onPaymentMethodSaved?.();
-      } else {
-        // No session_id in URL - user manually clicked confirm
-        // Check if billing was updated
-        let userId = mockUserId;
-        if (!userId) {
-          const { data: { user } } = await supabase.auth.getUser();
-          userId = user?.id;
-        }
-        
-        if (userId) {
-          const { data: billing } = await supabase
-            .from('user_billing')
-            .select('default_payment_method_id, payment_method_brand, payment_method_last4')
-            .eq('user_id', userId)
-            .maybeSingle();
-          
-          if (billing?.default_payment_method_id) {
-            toast({
-              title: 'Payment Method Confirmed!',
-              description: `Your ${billing.payment_method_brand} •••• ${billing.payment_method_last4} is ready.`,
-            });
-            onPaymentMethodSaved?.();
-          } else {
-            toast({
-              title: 'No Payment Method Found',
-              description: 'Please complete payment setup in the Stripe tab first.',
-              variant: 'destructive',
-            });
-          }
+        if (billing?.default_payment_method_id) {
+          toast({
+            title: 'Payment Method Confirmed!',
+            description: `Your ${billing.payment_method_brand} •••• ${billing.payment_method_last4} is ready.`,
+          });
+          onPaymentMethodSaved?.();
+        } else {
+          toast({
+            title: 'No Payment Method Found',
+            description: 'Please complete payment setup first.',
+            variant: 'destructive',
+          });
         }
       }
     } catch (error) {
@@ -175,6 +243,20 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
       setLoading(false);
     }
   }, [mockUserId, onPaymentMethodSaved, toast]);
+
+  if (verifying) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            Verifying Payment Method...
+          </CardTitle>
+          <CardDescription>Please wait while we confirm your payment setup.</CardDescription>
+        </CardHeader>
+      </Card>
+    );
+  }
 
   if (hasPaymentMethod) {
     return (
@@ -210,11 +292,11 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Preparing...
+                Redirecting to Stripe...
               </>
             ) : (
               <>
-                <ExternalLink className="mr-2 h-4 w-4" />
+                <CreditCard className="mr-2 h-4 w-4" />
                 Set Up Payment Method
               </>
             )}
@@ -222,11 +304,11 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
           
           <Button 
             variant="outline"
-            onClick={handleConfirmPaymentSetup} 
+            onClick={handleVerifyPayment} 
             disabled={loading} 
             className="w-full"
           >
-            I've Added My Card
+            Verify Payment Method
           </Button>
           
           <p className="text-xs text-muted-foreground text-center">
