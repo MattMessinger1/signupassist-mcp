@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, Bug, LogOut, ChevronDown, ChevronUp } from "lucide-react";
+import { Shield, Bug, LogOut, Trash2 } from "lucide-react";
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { User, Session } from "@supabase/supabase-js";
@@ -87,6 +87,15 @@ export default function MCPChatTest() {
     });
   };
 
+  const handleClearCache = () => {
+    // Clear MCPChat persisted state
+    localStorage.removeItem('mcp_chat_state_v2');
+    toast({
+      title: "Cache Cleared",
+      description: "Refresh the page to start fresh.",
+    });
+  };
+
   return (
     <div className="flex flex-col h-screen bg-background">
       {/* Clean Header */}
@@ -141,6 +150,14 @@ export default function MCPChatTest() {
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-muted-foreground">Developer Tools</span>
                 <div className="flex gap-2">
+                  <Button
+                    onClick={handleClearCache}
+                    variant="outline"
+                    size="sm"
+                  >
+                    <Trash2 className="h-3 w-3 mr-1" />
+                    Clear Cache
+                  </Button>
                   <Button
                     onClick={() => handleSyncBookeo('aim-design')}
                     disabled={isSyncingBookeo}
