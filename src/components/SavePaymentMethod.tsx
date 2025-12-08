@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { CheckCircle, CreditCard, Loader2 } from 'lucide-react';
+import { CheckCircle, CreditCard, Loader2, ExternalLink } from 'lucide-react';
 
 // Storage key for persisting chat state before Stripe redirect
 const STRIPE_RETURN_STATE_KEY = 'signupassist_stripe_return_state';
@@ -72,6 +72,8 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
 
   const [loading, setLoading] = useState(false);
   const [verifying, setVerifying] = useState(false);
+  const [stripeUrl, setStripeUrl] = useState<string | null>(null);
+  const [showFallback, setShowFallback] = useState(false);
   const { toast } = useToast();
 
   // Auto-detect return from Stripe on mount
@@ -180,14 +182,26 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
 
       console.log('[SavePaymentMethod] ✅ Checkout session created:', data.session_id);
 
+      // Store URL for fallback display
+      setStripeUrl(data.url);
+
       // Persist MCPChat state before redirect (if available)
       if (typeof (window as any).__persistMCPChatState === 'function') {
         (window as any).__persistMCPChatState();
         console.log('[SavePaymentMethod] Called state persistence before redirect');
       }
 
-      // Same-window redirect to maintain flow
-      window.location.href = data.url;
+      // Same-window redirect to maintain flow - use assign() for more reliable navigation
+      console.log('[SavePaymentMethod] Redirecting to:', data.url);
+      
+      // Try primary redirect method
+      window.location.assign(data.url);
+      
+      // Show fallback link after 3 seconds if still on page
+      setTimeout(() => {
+        console.log('[SavePaymentMethod] Showing fallback link');
+        setShowFallback(true);
+      }, 3000);
 
     } catch (error) {
       console.error('[SavePaymentMethod] ❌ Error:', error);
@@ -301,6 +315,24 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
               </>
             )}
           </Button>
+          
+          {/* Fallback link if redirect doesn't work */}
+          {showFallback && stripeUrl && (
+            <div className="p-3 bg-muted rounded-md text-center space-y-2">
+              <p className="text-sm text-muted-foreground">
+                Redirect not working? Click below:
+              </p>
+              <a 
+                href={stripeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 text-primary underline hover:no-underline font-medium"
+              >
+                <ExternalLink className="h-4 w-4" />
+                Open Stripe in New Tab
+              </a>
+            </div>
+          )}
           
           <Button 
             variant="outline"
