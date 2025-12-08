@@ -421,16 +421,20 @@ export function MCPChat({
         const persistedStateRaw = sessionStorage.getItem('mcp_chat_state');
         let restoredPaymentMetadata = pendingPaymentMetadata;
         let restoredMessages: Message[] = [];
+        let restoredSessionId: string | null = null;
+        let restoredFormData: Record<string, any> = {};
+        let hadPersistedState = false;
         
         if (persistedStateRaw) {
           try {
             const persistedState = JSON.parse(persistedStateRaw);
             console.log('[MCPChat] Auth return with persisted state, restoring...');
+            hadPersistedState = true;
             
             // Restore state immediately
-            setSessionId(persistedState.sessionId);
+            restoredSessionId = persistedState.sessionId;
             restoredMessages = persistedState.messages || [];
-            setFormData(persistedState.formData || {});
+            restoredFormData = persistedState.formData || {};
             restoredPaymentMetadata = persistedState.pendingPaymentMetadata;
             
             // Clear persisted state
@@ -441,12 +445,17 @@ export function MCPChat({
           }
         }
         
+        // Always update auth state
+        setShowAuthGate(false);
+        setHasCompletedAuthGate(true);
+        setIsAuthenticated(true);
+        
         // Continue with payment flow if we have payment metadata
         if (restoredPaymentMetadata) {
           console.log('[MCPChat] User signed in, continuing with payment setup');
-          setShowAuthGate(false);
-          setHasCompletedAuthGate(true);
-          setIsAuthenticated(true);
+          
+          if (restoredSessionId) setSessionId(restoredSessionId);
+          setFormData(restoredFormData);
           
           // Add success message and payment form to restored messages
           const newMessages: Message[] = [
@@ -471,9 +480,9 @@ export function MCPChat({
         // Handle pending protected action retry
         if (pendingProtectedAction && session?.user?.id) {
           console.log('[MCPChat] User signed in, retrying pending protected action:', pendingProtectedAction.action);
-          setShowAuthGate(false);
-          setHasCompletedAuthGate(true);
-          setIsAuthenticated(true);
+          
+          if (restoredSessionId) setSessionId(restoredSessionId);
+          setFormData(restoredFormData);
           
           // Restore messages if we have them
           if (restoredMessages.length > 0) {
@@ -498,6 +507,25 @@ export function MCPChat({
               setPendingProtectedAction(null);
             }
           }, 500);
+          return;
+        }
+        
+        // FALLBACK: Restore state even without payment metadata or pending action
+        // This handles cases where user was just browsing or at a different step
+        if (hadPersistedState && restoredMessages.length > 0) {
+          console.log('[MCPChat] User signed in, restoring previous chat state');
+          
+          if (restoredSessionId) setSessionId(restoredSessionId);
+          setFormData(restoredFormData);
+          setMessages([
+            ...restoredMessages,
+            { role: "assistant", content: "✅ **You're signed in!** You can now continue." }
+          ]);
+          
+          toast({
+            title: '✅ Signed in successfully!',
+            description: 'Your chat has been restored.',
+          });
         }
       }
     });
