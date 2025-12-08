@@ -786,220 +786,188 @@ export function MCPChat({
   }
 
   return (
-    <div className="flex flex-col h-[600px] gap-4">
-      {/* Session Info & Auth Status */}
-      <div className="flex items-center gap-2 px-2">
-        <Badge variant="outline" className="text-xs">
-          Session: {sessionId.slice(-8)}
-        </Badge>
-        {effectiveUserId ? (
-          <Badge variant="default" className="text-xs">
-            🔐 Authenticated: {effectiveUserEmail || effectiveUserId.slice(0, 8)}...
-          </Badge>
-        ) : (
-          <Badge variant="secondary" className="text-xs">
-            🔓 Unauthenticated
-          </Badge>
-        )}
-        {loading && (
-          <Badge variant="secondary" className="text-xs">
-            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-            Processing...
-          </Badge>
-        )}
-      </div>
-
+    <div className="flex flex-col h-full">
       {/* Messages */}
-      <ScrollArea className="flex-1 border rounded-lg">
-        <div ref={scrollRef} className="p-4 space-y-4">
+      <ScrollArea className="flex-1">
+        <div ref={scrollRef} className="p-4 space-y-4 max-w-3xl mx-auto">
           {messages.length === 0 && (
             <div className="flex items-center justify-center h-[400px] text-muted-foreground">
-              <div className="text-center space-y-2">
-                <p className="text-lg font-semibold">Welcome to MCP Chat Test</p>
-                <p className="text-sm">Send a message to start testing the orchestrator</p>
+              <div className="text-center space-y-3">
+                <p className="text-xl font-semibold text-foreground">Hi! I'm here to help you sign up for activities.</p>
+                <p className="text-sm">Tell me what you're looking for, like "Find art classes for my 8-year-old"</p>
               </div>
             </div>
           )}
           
           {messages.map((msg, idx) => (
-            <div key={idx}>
-              <Card className={`p-4 ${msg.role === "user" ? "bg-primary/10 ml-12" : "bg-secondary/10 mr-12"}`}>
-                <div className="flex items-center gap-2 mb-2">
-                  <Badge variant={msg.role === "user" ? "default" : "secondary"} className="text-xs">
-                    {msg.role === "user" ? "You" : "Assistant"}
-                  </Badge>
+            <div key={idx} className={msg.role === "user" ? "flex justify-end" : "flex justify-start"}>
+              <div className={`max-w-[85%] ${msg.role === "user" ? "ml-12" : "mr-12"}`}>
+                <div className={`rounded-2xl px-4 py-3 ${
+                  msg.role === "user" 
+                    ? "bg-primary text-primary-foreground" 
+                    : "bg-secondary"
+                }`}>
+                  <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
                 </div>
-                <div className="text-sm whitespace-pre-wrap">{msg.content}</div>
-              </Card>
-              
-              {msg.cards && msg.cards.length > 0 && (
-                <div className="grid grid-cols-1 gap-3 mt-3 mr-12">
-                  {msg.cards.map((card, cardIdx) => (
-                    <Card key={cardIdx} className="p-4 bg-accent/5 border-accent/20 hover:bg-accent/10 transition-colors">
-                      <div className="space-y-2">
-                        <div className="font-semibold">{card.title}</div>
-                        {card.subtitle && (
-                          <div className="text-sm text-muted-foreground">{card.subtitle}</div>
-                        )}
-                        {card.description && (
-                          <div className="text-sm text-muted-foreground">{card.description}</div>
-                        )}
-                        {card.metadata && (
-                          <>
-                            <div className="flex flex-wrap gap-2 text-xs">
-                              {card.metadata.orgRef && (
-                                <Badge variant="outline">Org: {card.metadata.orgRef}</Badge>
+                
+                {msg.cards && msg.cards.length > 0 && (
+                  <div className="grid grid-cols-1 gap-3 mt-3">
+                    {msg.cards.map((card, cardIdx) => (
+                      <Card key={cardIdx} className="p-4 border-l-4 border-l-accent shadow-sm">
+                        <div className="space-y-2">
+                          <div className="font-semibold">{card.title}</div>
+                          {card.subtitle && (
+                            <div className="text-sm text-muted-foreground">{card.subtitle}</div>
+                          )}
+                          {card.description && (
+                            <div className="text-sm text-muted-foreground">{card.description}</div>
+                          )}
+                          {card.metadata && (
+                            <>
+                              <div className="flex flex-wrap gap-2 text-xs">
+                                {card.metadata.orgRef && (
+                                  <Badge variant="outline">Org: {card.metadata.orgRef}</Badge>
+                                )}
+                                {card.metadata.location && (
+                                  <Badge variant="outline">📍 {card.metadata.location}</Badge>
+                                )}
+                                {card.metadata.category && (
+                                  <Badge variant="outline">{card.metadata.category}</Badge>
+                                )}
+                              </div>
+                              
+                              {(card.metadata.programFeeCents != null || card.metadata.serviceFeeCents != null) && (
+                                <FeeBreakdown
+                                  programFee={(card.metadata.programFeeCents || 0) / 100}
+                                  serviceFee={(card.metadata.serviceFeeCents || 2000) / 100}
+                                  total={((card.metadata.programFeeCents || 0) + (card.metadata.serviceFeeCents || 2000)) / 100}
+                                  programFeeLabel={COPY.fees.programFeeLabel}
+                                  serviceFeeLabel={COPY.fees.serviceFeeLabel}
+                                  serviceFeeNote={COPY.fees.serviceFeeNote}
+                                />
                               )}
-                              {card.metadata.location && (
-                                <Badge variant="outline">📍 {card.metadata.location}</Badge>
+                              
+                              {card.metadata.isPaymentCard && (
+                                <TrustCallout
+                                  title={COPY.trust.title}
+                                  bullets={COPY.trust.bullets}
+                                  footer={COPY.trust.payment}
+                                />
                               )}
-                              {card.metadata.category && (
-                                <Badge variant="outline">{card.metadata.category}</Badge>
-                              )}
+                            </>
+                          )}
+                          {card.buttons && card.buttons.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-3">
+                              {card.buttons.map((button, btnIdx) => (
+                                <Button
+                                  key={btnIdx}
+                                  variant={button.variant === "accent" ? "accent" : "outline"}
+                                  size="sm"
+                                  onClick={() => handleCardAction(button.action, button.payload || {})}
+                                  disabled={loading}
+                                >
+                                  {button.label}
+                                </Button>
+                              ))}
                             </div>
-                            
-                            {/* Fee Breakdown for payment authorization cards */}
-                            {(card.metadata.programFeeCents != null || card.metadata.serviceFeeCents != null) && (
-                              <FeeBreakdown
-                                programFee={(card.metadata.programFeeCents || 0) / 100}
-                                serviceFee={(card.metadata.serviceFeeCents || 2000) / 100}
-                                total={((card.metadata.programFeeCents || 0) + (card.metadata.serviceFeeCents || 2000)) / 100}
-                                programFeeLabel={COPY.fees.programFeeLabel}
-                                serviceFeeLabel={COPY.fees.serviceFeeLabel}
-                                serviceFeeNote={COPY.fees.serviceFeeNote}
-                              />
-                            )}
-                            
-                            {/* Trust callout for payment cards */}
-                            {card.metadata.isPaymentCard && (
-                              <TrustCallout
-                                title={COPY.trust.title}
-                                bullets={COPY.trust.bullets}
-                                footer={COPY.trust.payment}
-                              />
-                            )}
-                          </>
-                        )}
-                        {card.buttons && card.buttons.length > 0 && (
-                          <div className="flex flex-wrap gap-2 mt-3">
-                            {card.buttons.map((button, btnIdx) => (
-                              <Button
-                                key={btnIdx}
-                                variant={button.variant === "accent" ? "default" : "outline"}
-                                size="sm"
-                                onClick={() => handleCardAction(button.action, button.payload || {})}
-                                disabled={loading}
-                              >
-                                {button.label}
-                              </Button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              )}
+                          )}
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
 
-              {/* Render CTA Buttons */}
-              {msg.cta && msg.cta.buttons && msg.cta.buttons.length > 0 && (
-                <div className="flex flex-wrap gap-2 mt-3 mr-12">
-                  {msg.cta.buttons.map((button, btnIdx) => (
-                    <Button
-                      key={btnIdx}
-                      variant={button.variant === "accent" ? "default" : "outline"}
-                      size="default"
-                      onClick={() => handleCardAction(button.action, button.payload || {})}
-                      disabled={loading}
-                      className={button.variant === "accent" ? "bg-accent text-accent-foreground hover:bg-accent/90" : ""}
-                    >
-                      {button.label}
-                    </Button>
-                  ))}
-                </div>
-              )}
-
-              {/* Render Fullscreen Form (ChatGPT Compliance) */}
-              {msg.metadata?.componentType === 'fullscreen_form' && !submittedFormIds.has(idx) && (
-                <Sheet open={true} onOpenChange={(open) => {
-                  if (!open) {
-                    // Allow closing - mark as submitted so it doesn't reopen
-                    setSubmittedFormIds(prev => new Set(prev).add(idx));
-                  }
-                }}>
-                  <SheetContent side="bottom" className="h-[90vh] overflow-y-auto">
-                    <SheetHeader className="flex flex-row items-center justify-between">
-                      <div>
-                        <SheetTitle>{msg.metadata.program_name || "Registration Form"}</SheetTitle>
-                        <SheetDescription>
-                          Complete the form below to continue with your registration.
-                        </SheetDescription>
-                      </div>
-                      <Button 
-                        variant="ghost" 
-                        size="sm"
-                        onClick={() => setSubmittedFormIds(prev => new Set(prev).add(idx))}
+                {msg.cta && msg.cta.buttons && msg.cta.buttons.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    {msg.cta.buttons.map((button, btnIdx) => (
+                      <Button
+                        key={btnIdx}
+                        variant={button.variant === "accent" ? "accent" : "outline"}
+                        size="default"
+                        onClick={() => handleCardAction(button.action, button.payload || {})}
+                        disabled={loading}
                       >
-                        ← Go Back
+                        {button.label}
                       </Button>
-                    </SheetHeader>
-                    <div className="mt-6">
-                      <ResponsibleDelegateForm
-                        schema={msg.metadata.signupForm}
-                        programTitle={msg.metadata.program_ref || "Selected Program"}
-                        initialDelegateData={userFormData ? {
-                          delegate_email: userFormData.email,
-                          delegate_firstName: userFormData.firstName,
-                          delegate_lastName: userFormData.lastName
-                        } : undefined}
-                        initialDelegateProfile={delegateProfile || undefined}
-                        savedChildren={savedChildren}
-                        onSubmit={(data) => {
-                          // Mark this form as submitted
-                          setSubmittedFormIds(prev => new Set(prev).add(idx));
-                          
-                          // Build payload with form data and optional save flags
-                          const payload: any = { formData: data };
-                          if (data.saveNewChildren && data.saveNewChildren.length > 0) {
-                            payload.saveNewChildren = data.saveNewChildren;
-                          }
-                          if (data.saveDelegateProfile) {
-                            payload.saveDelegateProfile = true;
-                          }
-                          
-                          handleCardAction('submit_form', payload);
-                        }}
-                      />
-                    </div>
-                  </SheetContent>
-                </Sheet>
-              )}
-              
-              {/* Legacy inline form - kept for backward compatibility */}
-              {msg.metadata?.signupForm && !msg.metadata?.componentType && !submittedFormIds.has(idx) && (
-                <ResponsibleDelegateForm
-                  schema={msg.metadata.signupForm}
-                  programTitle={msg.metadata.program_ref || "Selected Program"}
-                  initialDelegateProfile={delegateProfile || undefined}
-                  onSubmit={(data) => {
-                    // Mark this form as submitted
-                    setSubmittedFormIds(prev => new Set(prev).add(idx));
-                    handleCardAction('submit_form', { formData: data });
-                  }}
-                />
-              )}
+                    ))}
+                  </div>
+                )}
 
-              {/* Show payment setup indicator in message - only when not completed */}
-              {msg.metadata?.componentType === 'payment_setup' && !paymentCompleted && (
-                <Badge variant="secondary" className="mt-2">
-                  💳 Payment setup in progress...
-                </Badge>
-              )}
-              {msg.metadata?.componentType === 'payment_setup' && paymentCompleted && (
-                <Badge variant="default" className="mt-2 bg-green-600">
-                  ✅ Payment method saved
-                </Badge>
-              )}
+                {/* Render Fullscreen Form (ChatGPT Compliance) */}
+                {msg.metadata?.componentType === 'fullscreen_form' && !submittedFormIds.has(idx) && (
+                  <Sheet open={true} onOpenChange={(open) => {
+                    if (!open) {
+                      setSubmittedFormIds(prev => new Set(prev).add(idx));
+                    }
+                  }}>
+                    <SheetContent side="bottom" className="h-[90vh] overflow-y-auto">
+                      <SheetHeader className="flex flex-row items-center justify-between">
+                        <div>
+                          <SheetTitle>{msg.metadata.program_name || "Registration Form"}</SheetTitle>
+                          <SheetDescription>
+                            Complete the form below to continue with your registration.
+                          </SheetDescription>
+                        </div>
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => setSubmittedFormIds(prev => new Set(prev).add(idx))}
+                        >
+                          ← Go Back
+                        </Button>
+                      </SheetHeader>
+                      <div className="mt-6">
+                        <ResponsibleDelegateForm
+                          schema={msg.metadata.signupForm}
+                          programTitle={msg.metadata.program_ref || "Selected Program"}
+                          initialDelegateData={userFormData ? {
+                            delegate_email: userFormData.email,
+                            delegate_firstName: userFormData.firstName,
+                            delegate_lastName: userFormData.lastName
+                          } : undefined}
+                          initialDelegateProfile={delegateProfile || undefined}
+                          savedChildren={savedChildren}
+                          onSubmit={(data) => {
+                            setSubmittedFormIds(prev => new Set(prev).add(idx));
+                            const payload: any = { formData: data };
+                            if (data.saveNewChildren && data.saveNewChildren.length > 0) {
+                              payload.saveNewChildren = data.saveNewChildren;
+                            }
+                            if (data.saveDelegateProfile) {
+                              payload.saveDelegateProfile = true;
+                            }
+                            handleCardAction('submit_form', payload);
+                          }}
+                        />
+                      </div>
+                    </SheetContent>
+                  </Sheet>
+                )}
+                
+                {/* Legacy inline form */}
+                {msg.metadata?.signupForm && !msg.metadata?.componentType && !submittedFormIds.has(idx) && (
+                  <ResponsibleDelegateForm
+                    schema={msg.metadata.signupForm}
+                    programTitle={msg.metadata.program_ref || "Selected Program"}
+                    initialDelegateProfile={delegateProfile || undefined}
+                    onSubmit={(data) => {
+                      setSubmittedFormIds(prev => new Set(prev).add(idx));
+                      handleCardAction('submit_form', { formData: data });
+                    }}
+                  />
+                )}
+
+                {msg.metadata?.componentType === 'payment_setup' && !paymentCompleted && (
+                  <Badge variant="secondary" className="mt-2">
+                    💳 Payment setup in progress...
+                  </Badge>
+                )}
+                {msg.metadata?.componentType === 'payment_setup' && paymentCompleted && (
+                  <Badge variant="default" className="mt-2 bg-green-600">
+                    ✅ Payment method saved
+                  </Badge>
+                )}
+              </div>
             </div>
           ))}
 
