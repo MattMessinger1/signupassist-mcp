@@ -416,9 +416,22 @@ export function MCPChat({
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log('[MCPChat] Auth state changed:', event, session?.user?.id);
       
-      if (event === 'SIGNED_IN') {
-        // Check for persisted state from magic link return (may not be in React state yet)
+      // Handle both SIGNED_IN and INITIAL_SESSION with a valid session
+      // INITIAL_SESSION fires when page reloads after magic link redirect
+      const shouldRestoreState = (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user;
+      
+      if (shouldRestoreState) {
+        // Check for persisted state from magic link return
         const persistedStateRaw = sessionStorage.getItem('mcp_chat_state');
+        
+        // Skip if no persisted state (normal page load, not returning from auth)
+        if (!persistedStateRaw && event === 'INITIAL_SESSION') {
+          console.log('[MCPChat] INITIAL_SESSION but no persisted state, skipping restore');
+          // Just update auth state for normal authenticated page loads
+          setIsAuthenticated(true);
+          return;
+        }
+        
         let restoredPaymentMetadata = pendingPaymentMetadata;
         let restoredMessages: Message[] = [];
         let restoredSessionId: string | null = null;
@@ -428,7 +441,11 @@ export function MCPChat({
         if (persistedStateRaw) {
           try {
             const persistedState = JSON.parse(persistedStateRaw);
-            console.log('[MCPChat] Auth return with persisted state, restoring...');
+            console.log('[MCPChat] Auth return with persisted state, restoring...', {
+              event,
+              hasMessages: persistedState.messages?.length,
+              hasSessionId: !!persistedState.sessionId
+            });
             hadPersistedState = true;
             
             // Restore state immediately
