@@ -127,7 +127,7 @@ export function AuthGateModal({ isOpen, onClose, onAuthSuccess, delegateEmail }:
           </div>
           <SheetDescription className="text-left">
             {step === 'email' 
-              ? 'Enter your email to receive a 6-digit verification code.'
+              ? "Sign in or create an account with your email. We'll send a 6-digit code."
               : `We sent a code to ${email}`
             }
           </SheetDescription>
@@ -145,7 +145,7 @@ export function AuthGateModal({ isOpen, onClose, onAuthSuccess, delegateEmail }:
               
               <div className="flex items-center gap-2 text-sm bg-primary/10 rounded-lg p-3 border border-primary/20">
                 <Mail className="h-4 w-4 text-primary" />
-                <span className="text-foreground">We'll send you a 6-digit code - enter it here to sign in!</span>
+                <span className="text-foreground">No password needed — just enter the code we email you.</span>
               </div>
               
               <form onSubmit={handleSendOtp} className="space-y-4">
@@ -237,7 +237,7 @@ export function AuthGateModal({ isOpen, onClose, onAuthSuccess, delegateEmail }:
         </div>
         
         <div className="mt-6 pt-4 border-t border-border text-center text-xs text-muted-foreground">
-          By signing in, you agree to SignupAssist's Terms of Service and Privacy Policy.
+          By continuing, you agree to SignupAssist's Terms of Service and Privacy Policy. New users will have an account created automatically.
         </div>
       </SheetContent>
     </Sheet>
