@@ -16,8 +16,50 @@ import { TrustCallout } from "./TrustCallout";
 import { COPY } from "@/copy/signupassistCopy";
 import { supabase } from "@/integrations/supabase/client";
 
-// Storage key for persisted chat state
+// Storage key for persisted chat state (using localStorage for cross-tab persistence)
 const CHAT_STATE_KEY = 'mcp_chat_state_v2';
+
+// Helper to safely access localStorage
+const getPersistedState = (): any | null => {
+  try {
+    const raw = localStorage.getItem(CHAT_STATE_KEY);
+    if (!raw) return null;
+    
+    const state = JSON.parse(raw);
+    // Check if state is stale (older than 30 minutes)
+    if (state.timestamp && Date.now() - state.timestamp > 30 * 60 * 1000) {
+      console.log('[MCPChat] Persisted state is stale, clearing');
+      localStorage.removeItem(CHAT_STATE_KEY);
+      return null;
+    }
+    return state;
+  } catch (e) {
+    console.error('[MCPChat] Failed to parse persisted state:', e);
+    localStorage.removeItem(CHAT_STATE_KEY);
+    return null;
+  }
+};
+
+const setPersistedState = (state: any) => {
+  try {
+    localStorage.setItem(CHAT_STATE_KEY, JSON.stringify({
+      ...state,
+      timestamp: Date.now()
+    }));
+    console.log('[MCPChat] State persisted to localStorage:', {
+      messageCount: state.messages?.length || 0,
+      hasFormData: Object.keys(state.formData || {}).length > 0,
+      hasPaymentMeta: !!state.pendingPaymentMetadata
+    });
+  } catch (e) {
+    console.error('[MCPChat] Failed to persist state:', e);
+  }
+};
+
+const clearPersistedState = () => {
+  localStorage.removeItem(CHAT_STATE_KEY);
+  console.log('[MCPChat] Cleared persisted state');
+};
 
 interface SavedChild {
   id: string;
@@ -180,53 +222,40 @@ export function MCPChat({
       return;
     }
     
-    // Priority 2: Check for persisted state (auth return)
-    const persistedStateRaw = sessionStorage.getItem(CHAT_STATE_KEY);
-    if (persistedStateRaw) {
-      try {
-        const persistedState = JSON.parse(persistedStateRaw);
-        console.log('[MCPChat] Found persisted state, restoring...', {
-          hasMessages: persistedState.messages?.length,
-          hasFormData: Object.keys(persistedState.formData || {}).length,
-          hasPaymentMetadata: !!persistedState.pendingPaymentMetadata
-        });
-        
-        stateRestoredRef.current = true;
-        setSessionId(persistedState.sessionId);
-        setMessages(persistedState.messages || []);
-        setFormData(persistedState.formData || {});
-        setPendingPaymentMetadata(persistedState.pendingPaymentMetadata);
-        setHasCompletedAuthGate(true); // User just completed auth
-        
-        // Clear immediately to prevent re-restore
-        sessionStorage.removeItem(CHAT_STATE_KEY);
-        
-        toast({
-          title: 'Welcome back!',
-          description: 'Continuing your registration...',
-        });
-      } catch (e) {
-        console.error('[MCPChat] Failed to parse persisted state:', e);
-        sessionStorage.removeItem(CHAT_STATE_KEY);
-      }
+    // Priority 2: Check for persisted state (auth return) - using localStorage for cross-tab
+    const persistedState = getPersistedState();
+    if (persistedState) {
+      console.log('[MCPChat] Found persisted state, restoring...', {
+        hasMessages: persistedState.messages?.length,
+        hasFormData: Object.keys(persistedState.formData || {}).length,
+        hasPaymentMetadata: !!persistedState.pendingPaymentMetadata
+      });
+      
+      stateRestoredRef.current = true;
+      setSessionId(persistedState.sessionId);
+      setMessages(persistedState.messages || []);
+      setFormData(persistedState.formData || {});
+      setPendingPaymentMetadata(persistedState.pendingPaymentMetadata);
+      setHasCompletedAuthGate(true); // User just completed auth
+      
+      // Clear immediately to prevent re-restore
+      clearPersistedState();
+      
+      toast({
+        title: 'Welcome back!',
+        description: 'Continuing your registration...',
+      });
     }
   }, [toast]);
 
   // Persist state function - called before redirects
   const persistCurrentState = useCallback(() => {
-    const stateToSave = {
+    setPersistedState({
       sessionId,
       messages,
       formData,
-      pendingPaymentMetadata,
-      timestamp: Date.now()
-    };
-    console.log('[MCPChat] Persisting state before redirect:', {
-      messageCount: messages.length,
-      hasFormData: Object.keys(formData).length,
-      hasPaymentMeta: !!pendingPaymentMetadata
+      pendingPaymentMetadata
     });
-    sessionStorage.setItem(CHAT_STATE_KEY, JSON.stringify(stateToSave));
   }, [sessionId, messages, formData, pendingPaymentMetadata]);
 
   // Expose persist function for Stripe redirect
@@ -454,49 +483,43 @@ export function MCPChat({
         setHasCompletedAuthGate(true);
         setIsAuthenticated(true);
         
-        // Check for persisted state that wasn't already restored on mount
-        const persistedStateRaw = sessionStorage.getItem(CHAT_STATE_KEY);
-        if (persistedStateRaw && messages.length === 0) {
-          try {
-            const persistedState = JSON.parse(persistedStateRaw);
-            console.log('[MCPChat] Auth listener restoring state:', {
-              hasMessages: persistedState.messages?.length,
-              hasPaymentMeta: !!persistedState.pendingPaymentMetadata
+        // Check for persisted state that wasn't already restored on mount (using localStorage)
+        const persistedState = getPersistedState();
+        if (persistedState && messages.length === 0) {
+          console.log('[MCPChat] Auth listener restoring state:', {
+            hasMessages: persistedState.messages?.length,
+            hasPaymentMeta: !!persistedState.pendingPaymentMetadata
+          });
+          
+          clearPersistedState();
+          
+          const restoredMessages = persistedState.messages || [];
+          const restoredPaymentMetadata = persistedState.pendingPaymentMetadata;
+          
+          setSessionId(persistedState.sessionId);
+          setFormData(persistedState.formData || {});
+          
+          // Add success message and continue
+          const newMessages: Message[] = [
+            ...restoredMessages,
+            { role: "assistant", content: "✅ **You're signed in!** Let's continue with your registration." }
+          ];
+          
+          if (restoredPaymentMetadata) {
+            newMessages.push({ 
+              role: "assistant", 
+              content: "Now let's set up your payment method.",
+              metadata: restoredPaymentMetadata
             });
-            
-            sessionStorage.removeItem(CHAT_STATE_KEY);
-            
-            const restoredMessages = persistedState.messages || [];
-            const restoredPaymentMetadata = persistedState.pendingPaymentMetadata;
-            
-            setSessionId(persistedState.sessionId);
-            setFormData(persistedState.formData || {});
-            
-            // Add success message and continue
-            const newMessages: Message[] = [
-              ...restoredMessages,
-              { role: "assistant", content: "✅ **You're signed in!** Let's continue with your registration." }
-            ];
-            
-            if (restoredPaymentMetadata) {
-              newMessages.push({ 
-                role: "assistant", 
-                content: "Now let's set up your payment method.",
-                metadata: restoredPaymentMetadata
-              });
-            }
-            
-            setMessages(newMessages);
-            setPendingPaymentMetadata(null);
-            
-            toast({
-              title: '✅ Signed in successfully!',
-              description: 'Continuing your registration...',
-            });
-          } catch (e) {
-            console.error('[MCPChat] Auth listener failed to parse state:', e);
-            sessionStorage.removeItem(CHAT_STATE_KEY);
           }
+          
+          setMessages(newMessages);
+          setPendingPaymentMetadata(null);
+          
+          toast({
+            title: '✅ Signed in successfully!',
+            description: 'Continuing your registration...',
+          });
         } else if (pendingProtectedAction && session?.user?.id) {
           // Handle pending protected action retry
           console.log('[MCPChat] Retrying pending protected action:', pendingProtectedAction.action);
