@@ -114,9 +114,10 @@ export function MessageBubble({
               </CardHeader>
               {card.description && (
                 <CardContent className="pb-3">
-                  <CardDescription className="text-foreground whitespace-pre-line">
-                    {card.description}
-                  </CardDescription>
+                  <CardDescription 
+                    className="text-foreground whitespace-pre-line prose prose-sm max-w-none"
+                    dangerouslySetInnerHTML={{ __html: renderFormattedText(card.description || '') }}
+                  />
                 </CardContent>
               )}
               {card.buttons && card.buttons.length > 0 && (
