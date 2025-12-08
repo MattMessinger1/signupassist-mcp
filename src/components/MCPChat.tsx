@@ -112,6 +112,7 @@ export function MCPChat({
   const [submittedFormIds, setSubmittedFormIds] = useState<Set<number>>(new Set());
   const [paymentCompleted, setPaymentCompleted] = useState(false);
   const [stripeReturnHandled, setStripeReturnHandled] = useState(false);
+  const [justRestoredFromAuth, setJustRestoredFromAuth] = useState(false);
   const [userFormData, setUserFormData] = useState<{
     email?: string;
     firstName?: string;
@@ -181,6 +182,9 @@ export function MCPChat({
         setMessages(persistedState.messages || []);
         setFormData(persistedState.formData || {});
         setPendingPaymentMetadata(persistedState.pendingPaymentMetadata);
+        
+        // Set flag to prevent checkAuth from reopening auth gate
+        setJustRestoredFromAuth(true);
         
         // Clear persisted state after restore
         sessionStorage.removeItem('mcp_chat_state');
@@ -317,6 +321,12 @@ export function MCPChat({
   // Check authentication status when payment setup is triggered
   useEffect(() => {
     const checkAuth = async () => {
+      // If just restored from auth return, skip re-checking to prevent race condition
+      if (justRestoredFromAuth) {
+        console.log('[MCPChat] Just restored from auth - skipping checkAuth to prevent race');
+        return;
+      }
+      
       // If user already completed auth gate, skip re-checking
       if (hasCompletedAuthGate) {
         console.log('[MCPChat] Auth gate already completed - staying authenticated');
@@ -393,7 +403,7 @@ export function MCPChat({
     };
     
     checkAuth();
-  }, [messages, effectiveUserId, forceUnauthenticated, hasCompletedAuthGate, requireAuth]);
+  }, [messages, effectiveUserId, forceUnauthenticated, hasCompletedAuthGate, requireAuth, justRestoredFromAuth]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -462,10 +472,11 @@ export function MCPChat({
           }
         }
         
-        // Always update auth state
+        // Always update auth state and clear the restore flag
         setShowAuthGate(false);
         setHasCompletedAuthGate(true);
         setIsAuthenticated(true);
+        setJustRestoredFromAuth(false); // Clear flag now that auth is confirmed
         
         // Continue with payment flow if we have payment metadata
         if (restoredPaymentMetadata) {
