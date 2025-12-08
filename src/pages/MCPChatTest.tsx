@@ -22,7 +22,6 @@ export default function MCPChatTest() {
   const [isSyncingBookeo, setIsSyncingBookeo] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [mockAuthenticated, setMockAuthenticated] = useState(false);
   const { toast } = useToast();
 
   // Check existing auth on mount and listen for auth changes
@@ -172,13 +171,6 @@ export default function MCPChatTest() {
             </Badge>
           </div>
           <div className="flex items-center gap-4">
-            <Button
-              onClick={() => setMockAuthenticated(prev => !prev)}
-              variant={mockAuthenticated ? "default" : "outline"}
-              size="sm"
-            >
-              {mockAuthenticated ? "🔓 Authenticated" : "🔒 Unauthenticated"}
-            </Button>
             {user && (
               <Button
                 onClick={handleSignOut}
@@ -285,11 +277,11 @@ export default function MCPChatTest() {
 
       <Elements stripe={stripePromise}>
         <MCPChat 
-          authenticatedUser={mockAuthenticated 
-            ? { id: '00000000-0000-0000-0000-000000000001', email: 'test@example.com' } 
-            : null  // Force unauthenticated when mock is off
+          authenticatedUser={user 
+            ? { id: user.id, email: user.email || undefined } 
+            : null
           }
-          forceUnauthenticated={!mockAuthenticated}
+          forceUnauthenticated={!user}
           requireAuth={false}  // Allow anonymous browsing, lazy auth at payment
         />
       </Elements>
