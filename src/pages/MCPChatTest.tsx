@@ -178,11 +178,31 @@ export default function MCPChatTest() {
         </Elements>
       </div>
 
-      {/* Footer */}
+      {/* Footer with Debug Info */}
       <div className="border-t bg-card px-4 py-2">
-        <p className="text-xs text-muted-foreground text-center">
-          SignupAssist • Your responsible registration delegate • All actions are logged and auditable
-        </p>
+        <div className="max-w-4xl mx-auto flex items-center justify-between">
+          <p className="text-xs text-muted-foreground">
+            SignupAssist • Responsible Registration
+          </p>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            {backendInfo && (
+              <span className="font-mono">
+                Build: {backendInfo.git_commit?.substring(0, 7) || 'dev'}
+              </span>
+            )}
+            {user && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-6 text-xs"
+                onClick={handleSignOut}
+              >
+                <LogOut className="h-3 w-3 mr-1" />
+                Logout
+              </Button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
