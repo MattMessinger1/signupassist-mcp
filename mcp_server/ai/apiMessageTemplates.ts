@@ -86,7 +86,9 @@ export function getAPISuccessMessage(vars: APIMessageVariables): string {
   const programName = vars.program_name || "this program";
   const bookingNumber = vars.booking_number || "N/A";
   const startTime = vars.start_time ? formatDisplayTime(vars.start_time) : "TBD";
-  const providerName = vars.provider_name || "the provider";
+  const rawProviderName = vars.provider_name || "the provider";
+  // Capitalize first letter since it starts a sentence
+  const providerName = rawProviderName.charAt(0).toUpperCase() + rawProviderName.slice(1);
   
   return `You're registered for **${programName}**!
 
