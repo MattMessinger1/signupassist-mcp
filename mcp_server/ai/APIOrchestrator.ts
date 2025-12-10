@@ -2451,15 +2451,31 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
         buttons: []
       };
       
-      return {
-        message: `📋 **Audit Trail**\n\n` +
-          `---\n\n` +
+      // Build appropriate message based on whether audit events exist
+      let auditMessage: string;
+      if (auditTrailItems.length > 0) {
+        auditMessage = `📋 **Audit Trail**\n\n` +
           `**Actions Performed (${auditTrailItems.length} events):**\n` +
-          (auditTrailItems.length > 0 
-            ? auditTrailItems.join('\n') 
-            : '_No audit events recorded for this registration._') +
-          `\n\n---\n\n` +
-          `🔒 _All actions are logged for transparency. SignupAssist acts as your Responsible Delegate with explicit consent._`,
+          auditTrailItems.join('\n') +
+          `\n\n🔒 All actions are logged for transparency.`;
+      } else {
+        // Check if this is a legacy registration (before Dec 8, 2025 when audit logging was implemented)
+        const regDate = new Date(registration.created_at);
+        const auditLoggingStartDate = new Date('2025-12-08');
+        
+        if (regDate < auditLoggingStartDate) {
+          auditMessage = `📋 **Audit Trail**\n\n` +
+            `This registration was completed on ${this.formatTimeForUser(regDate, context)}, before detailed audit logging was implemented.\n\n` +
+            `🔒 Your authorization was recorded via the mandate shown below.`;
+        } else {
+          auditMessage = `📋 **Audit Trail**\n\n` +
+            `No detailed action logs were recorded for this registration.\n\n` +
+            `🔒 Your authorization is documented in the mandate below.`;
+        }
+      }
+
+      return {
+        message: auditMessage,
         cards: [registrationCard, ...eventCards, mandateCard],
         cta: {
           buttons: [
