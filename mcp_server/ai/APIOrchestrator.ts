@@ -902,15 +902,6 @@ export default class APIOrchestrator implements IOrchestrator {
       const bookingStatus = determineBookingStatus(programData);
       const earliestSlot = programData?.earliest_slot_time ? new Date(programData.earliest_slot_time) : null;
 
-      let timingMessage = '';
-      if (bookingStatus === 'open_now') {
-        timingMessage = '✅ Registration is currently open! Complete the form and you can register immediately.\n\n';
-      } else if (bookingStatus === 'opens_later' && earliestSlot) {
-        timingMessage = `📅 Registration opens on ${this.formatTimeForUser(earliestSlot, context)}.\n\n` +
-                        `Fill out the form now and we'll automatically register you the moment it opens. ` +
-                        `You'll only be charged if registration succeeds!\n\n`;
-      }
-
       Logger.info('[selectProgram] Calling bookeo.discover_required_fields for audit compliance');
       const formDiscoveryResult = await this.invokeMCPTool('bookeo.discover_required_fields', {
         program_ref: programRef,
@@ -923,13 +914,8 @@ export default class APIOrchestrator implements IOrchestrator {
         has_program_questions: !!formDiscoveryResult?.data?.program_questions
       });
       
-      // Use Design DNA-compliant message template with timing transparency
-      let message = timingMessage + getAPIFormIntroMessage({
-        program_name: programName,
-        provider_name: "AIM Design"
-      });
-      
-      message += "\n\n**As the Responsible Delegate**, you'll provide your information first, then details for each participant.";
+      // Simplified message - timing context shown at payment step instead
+      const message = `Great choice! Let's get you signed up for **${programName}**.`;
 
       // Return form schema with fullscreen mode for ChatGPT compliance
       const formResponse: OrchestratorResponse = {
@@ -1135,8 +1121,8 @@ export default class APIOrchestrator implements IOrchestrator {
       // Add Responsible Delegate footer
       message = addResponsibleDelegateFooter(message);
     } else {
-      // Immediate booking: use standard payment authorization template
-      message = getPaymentAuthorizationMessage({
+      // Immediate booking: use standard payment authorization template with timing context
+      message = `✅ Registration is open now!\n\n` + getPaymentAuthorizationMessage({
         program_name: programName,
         participant_name: participantList,
         total_cost: formattedTotal, // This is the program fee only
