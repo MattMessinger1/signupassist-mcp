@@ -966,17 +966,59 @@ export default class APIOrchestrator implements IOrchestrator {
     console.log('[submitForm] 🔍 Context keys:', Object.keys(context));
     console.log('[submitForm] 🔍 Context step:', context.step);
     console.log('[submitForm] 🔍 Has selectedProgram in context:', !!context.selectedProgram);
-    console.log('[submitForm] 🔍 Full context:', JSON.stringify(context, null, 2));
     
     const { formData } = payload;
+
+    // Recover program context from payload if server state was lost (Railway restarts, multi-instance)
+    if (!context.selectedProgram && payload.program_ref) {
+      Logger.info('[submitForm] Recovering program context from payload:', {
+        program_ref: payload.program_ref,
+        org_ref: payload.org_ref,
+        program_name: payload.program_name
+      });
+      
+      // Fetch full program data from cache to get pricing
+      const supabase = this.getSupabaseClient();
+      const { data: programCache } = await supabase
+        .from('cached_provider_feed')
+        .select('program, signup_form')
+        .eq('program_ref', payload.program_ref)
+        .eq('org_ref', payload.org_ref || 'aim-design')
+        .maybeSingle();
+      
+      if (programCache?.program) {
+        const programData = typeof programCache.program === 'string' 
+          ? JSON.parse(programCache.program) 
+          : programCache.program;
+        
+        context.selectedProgram = {
+          ...programData,
+          program_ref: payload.program_ref,
+          org_ref: payload.org_ref || 'aim-design',
+          title: programData.title || programData.name || payload.program_name
+        };
+        
+        // Update session for subsequent calls
+        this.updateContext(sessionId, { selectedProgram: context.selectedProgram, step: FlowStep.FORM_FILL });
+        Logger.info('[submitForm] ✅ Program context recovered from database');
+      } else {
+        Logger.warn('[submitForm] Could not recover program from database, using minimal data');
+        context.selectedProgram = {
+          program_ref: payload.program_ref,
+          org_ref: payload.org_ref || 'aim-design',
+          title: payload.program_name || 'Selected Program'
+        };
+      }
+    }
 
     if (!formData || !context.selectedProgram) {
       console.log('[submitForm] ❌ VALIDATION FAILED:', {
         hasFormData: !!formData,
         hasSelectedProgram: !!context.selectedProgram,
+        hasPayloadProgramRef: !!payload.program_ref,
         sessionId
       });
-      return this.formatError("❌ Missing form data or program selection.");
+      return this.formatError("❌ Missing form data or program selection. Please select a program again.");
     }
 
     // Extract structured data from two-tier form
