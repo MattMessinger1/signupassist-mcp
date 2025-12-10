@@ -384,13 +384,26 @@ export default class APIOrchestrator implements IOrchestrator {
 
   /**
    * Check if input looks like a simple location response
+   * Must be specific to avoid matching activity keywords like "coding course"
    */
   private isLocationResponse(input: string): boolean {
     const trimmed = input.trim();
-    // Short input (likely just city name or "City, ST")
+    
+    // Too long to be just a city
     if (trimmed.length > 50) return false;
-    // Match patterns like "Madison", "Madison, WI", "Chicago IL"
-    return /^[A-Za-z\s]+,?\s*[A-Z]{0,2}$/.test(trimmed);
+    
+    // Reject if input contains activity keywords (not a location)
+    const activityKeywords = /\b(class|classes|course|courses|lesson|lessons|camp|camps|program|programs|workshop|workshops|activity|activities|coding|ski|skiing|swim|swimming|soccer|robotics|stem|dance|art|music|sports|training|session|sessions)\b/i;
+    if (activityKeywords.test(trimmed)) return false;
+    
+    // Match "City, ST" or "City ST" patterns with required state abbreviation
+    // This is more specific than the previous regex that matched almost anything
+    const hasCityAndState = /^[A-Za-z\s]+,?\s+[A-Z]{2}$/i.test(trimmed);
+    
+    // Also allow known city names without state
+    const knownCities = /^(madison|chicago|milwaukee|minneapolis|denver|austin|seattle|portland|boston|atlanta|dallas|houston|phoenix|detroit|cleveland)$/i;
+    
+    return hasCityAndState || knownCities.test(trimmed);
   }
 
   /**
