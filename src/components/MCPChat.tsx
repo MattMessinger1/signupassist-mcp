@@ -944,7 +944,13 @@ export function MCPChat({
                           savedChildren={savedChildren}
                           onSubmit={(data) => {
                             setSubmittedFormIds(prev => new Set(prev).add(idx));
-                            const payload: any = { formData: data };
+                            const payload: any = { 
+                              formData: data,
+                              // Include program context for server-side state recovery
+                              program_ref: msg.metadata?.program_ref,
+                              org_ref: msg.metadata?.org_ref,
+                              program_name: msg.metadata?.program_name
+                            };
                             if (data.saveNewChildren && data.saveNewChildren.length > 0) {
                               payload.saveNewChildren = data.saveNewChildren;
                             }
