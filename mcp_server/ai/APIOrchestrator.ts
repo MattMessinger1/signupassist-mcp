@@ -351,11 +351,33 @@ export default class APIOrchestrator implements IOrchestrator {
         );
 
       default:
-        // Graceful decline - offer help without forcing activation
+        // LOW confidence: Check if there's activity/program context but no provider
+        const { programType, enrollmentIntent } = confidence.signals;
+        const hasActivityContext = programType.length > 0 || enrollmentIntent.length > 0;
+        
+        if (hasActivityContext) {
+          // User mentioned activity type but no specific provider - ask for clarification
+          const activityMention = programType.length > 0 ? programType[0] : 'programs';
+          return this.formatResponse(
+            `I can help you find ${activityMention}! Which organization or provider are you looking to sign up with?\n\n` +
+            `For example, you could say:\n` +
+            `• "AIM Design" (for coding classes in Madison)\n` +
+            `• Or share a link to the organization's booking page`,
+            undefined,
+            [{ 
+              label: "Browse AIM Design", 
+              action: "search_programs", 
+              payload: { orgRef: "aim-design" }, 
+              variant: "secondary" 
+            }]
+          );
+        }
+        
+        // Truly generic - graceful decline
         return this.formatResponse(
           getGracefulDeclineMessage(),
           undefined,
-          [{ label: "Show Available Programs", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "secondary" }]
+          [{ label: "Browse Available Programs", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "secondary" }]
         );
     }
   }
