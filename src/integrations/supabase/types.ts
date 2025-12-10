@@ -1108,18 +1108,18 @@ export type Database = {
       find_programs_cached:
         | {
             Args: {
-              p_category: string
+              p_category?: string
               p_max_age_hours?: number
               p_org_ref: string
-              p_provider?: string
             }
             Returns: Json
           }
         | {
             Args: {
-              p_category?: string
+              p_category: string
               p_max_age_hours?: number
               p_org_ref: string
+              p_provider?: string
             }
             Returns: Json
           }
@@ -1176,7 +1176,6 @@ export type Database = {
               p_org_ref: string
               p_prerequisites_schema?: Json
               p_programs_by_theme: Json
-              p_provider?: string
               p_questions_schema?: Json
               p_ttl_hours?: number
             }
@@ -1190,6 +1189,7 @@ export type Database = {
               p_org_ref: string
               p_prerequisites_schema?: Json
               p_programs_by_theme: Json
+              p_provider?: string
               p_questions_schema?: Json
               p_ttl_hours?: number
             }
