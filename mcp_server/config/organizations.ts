@@ -10,6 +10,7 @@ export interface OrgConfig {
   
   // Search & Discovery
   searchKeywords: string[];     // ["bookeo", "booking", "classes"]
+  activityTypes?: string[];     // Normalized activity types this org offers: ["coding", "robotics", "stem"]
   location?: {                  // Optional for organizations
     city?: string;
     state?: string;
@@ -156,6 +157,7 @@ registerOrganization({
   provider: 'bookeo',
   displayName: 'AIM Design',
   searchKeywords: ['bookeo', 'booking', 'classes', 'aim', 'aim design', 'robotics', 'stem', 'science', 'sensors', 'ocean', 'marine', 'ski jumping'],
+  activityTypes: ['coding', 'robotics', 'stem', 'skiing'],  // Activities AIM Design actually offers
   location: {
     city: 'Madison',
     state: 'WI'
