@@ -358,11 +358,13 @@ export default class APIOrchestrator implements IOrchestrator {
         if (hasActivityContext) {
           // Extract the activity from user message and find matching providers
           const detectedActivity = this.extractActivityFromMessage(input);
+          Logger.info('[handleMessage] Activity detection:', { input, detectedActivity, hasActivityContext });
           
           if (detectedActivity) {
             const { findProvidersForActivity, getActivityDisplayName } = await import('../utils/activityMatcher.js');
             const matchingProviders = findProvidersForActivity(detectedActivity);
             const activityName = getActivityDisplayName(detectedActivity);
+            Logger.info('[handleMessage] Provider matching:', { detectedActivity, activityName, matchingProviders: matchingProviders.map(p => p.displayName) });
             
             if (matchingProviders.length > 0) {
               // Found providers that offer this activity - suggest them
