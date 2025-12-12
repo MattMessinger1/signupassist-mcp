@@ -379,28 +379,17 @@ export default class APIOrchestrator implements IOrchestrator {
                 }))
               );
             } else {
-              // No providers for this activity - be honest, offer notification
+              // No providers for this activity - honest decline (we're a signup tool, not discovery)
               return this.formatResponse(
-                `I don't have any ${activityName} programs in my network yet. Would you like me to notify you when ${activityName} classes become available?`,
+                `I help with signups for coding, robotics, and STEM classes. I don't have ${activityName} programs available right now.`,
                 undefined,
-                [
-                  { label: "Yes, notify me", action: "notify_when_available", payload: { activity: detectedActivity }, variant: "accent" },
-                  { label: "No thanks", action: "dismiss", variant: "secondary" }
-                ]
+                [] // No buttons - we can't help with this
               );
             }
           }
-          
-          // Activity detected but not recognized - ask for clarification
-          const activityMention = programType.length > 0 ? programType[0] : 'programs';
-          return this.formatResponse(
-            `I can help you find ${activityMention}! Which organization or provider are you looking to sign up with?`,
-            undefined,
-            []
-          );
         }
         
-        // Truly generic - graceful decline
+        // No recognized activity or truly generic - graceful decline
         return this.formatResponse(
           getGracefulDeclineMessage(),
           undefined,
