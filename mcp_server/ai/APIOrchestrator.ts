@@ -334,7 +334,16 @@ export default class APIOrchestrator implements IOrchestrator {
       return this.showFallbackClarification(confidence.matchedProvider);
     }
 
-    // LOW: Context-aware responses based on flow step
+    // LOW confidence for ANONYMOUS users = DON'T ACTIVATE
+    // SignupAssist is a high-intent signup tool, not a discovery platform
+    // We only engage when we can genuinely help (provider match or activity match with provider)
+    if (!context.user_id) {
+      Logger.info('[handleMessage] LOW confidence + anonymous user = not activating');
+      // Return null to signal "pass" - let ChatGPT route elsewhere
+      return null;
+    }
+
+    // LOW confidence for AUTHENTICATED users: Context-aware responses based on flow step
     switch (context.step) {
       case FlowStep.FORM_FILL:
         return this.formatResponse(
@@ -351,45 +360,7 @@ export default class APIOrchestrator implements IOrchestrator {
         );
 
       default:
-        // LOW confidence: Check if there's activity/program context but no provider
-        const { programType, enrollmentIntent } = confidence.signals;
-        const hasActivityContext = programType.length > 0 || enrollmentIntent.length > 0;
-        
-        if (hasActivityContext) {
-          // Extract the activity from user message and find matching providers
-          const detectedActivity = this.extractActivityFromMessage(input);
-          Logger.info('[handleMessage] Activity detection:', { input, detectedActivity, hasActivityContext });
-          
-          if (detectedActivity) {
-            const { findProvidersForActivity, getActivityDisplayName } = await import('../utils/activityMatcher.js');
-            const matchingProviders = findProvidersForActivity(detectedActivity);
-            const activityName = getActivityDisplayName(detectedActivity);
-            Logger.info('[handleMessage] Provider matching:', { detectedActivity, activityName, matchingProviders: matchingProviders.map(p => p.displayName) });
-            
-            if (matchingProviders.length > 0) {
-              // Found providers that offer this activity - suggest them
-              return this.formatResponse(
-                `Great! I found ${activityName} programs. Let me show you what's available.`,
-                undefined,
-                matchingProviders.map((p, i) => ({
-                  label: `Browse ${p.displayName}`,
-                  action: "search_programs",
-                  payload: { orgRef: p.orgRef },
-                  variant: i === 0 ? "accent" : "secondary"
-                }))
-              );
-            } else {
-              // No providers for this activity - honest decline (we're a signup tool, not discovery)
-              return this.formatResponse(
-                `I help with signups for coding, robotics, and STEM classes. I don't have ${activityName} programs available right now.`,
-                undefined,
-                [] // No buttons - we can't help with this
-              );
-            }
-          }
-        }
-        
-        // No recognized activity or truly generic - graceful decline
+        // Authenticated but LOW confidence - graceful decline
         return this.formatResponse(
           getGracefulDeclineMessage(),
           undefined,
