@@ -356,20 +356,45 @@ export default class APIOrchestrator implements IOrchestrator {
         const hasActivityContext = programType.length > 0 || enrollmentIntent.length > 0;
         
         if (hasActivityContext) {
-          // User mentioned activity type but no specific provider - ask for clarification
+          // Extract the activity from user message and find matching providers
+          const detectedActivity = this.extractActivityFromMessage(userMessage);
+          
+          if (detectedActivity) {
+            const { findProvidersForActivity, getActivityDisplayName } = await import('../utils/activityMatcher.js');
+            const matchingProviders = findProvidersForActivity(detectedActivity);
+            const activityName = getActivityDisplayName(detectedActivity);
+            
+            if (matchingProviders.length > 0) {
+              // Found providers that offer this activity - suggest them
+              return this.formatResponse(
+                `Great! I found ${activityName} programs. Let me show you what's available.`,
+                undefined,
+                matchingProviders.map((p, i) => ({
+                  label: `Browse ${p.displayName}`,
+                  action: "search_programs",
+                  payload: { orgRef: p.orgRef },
+                  variant: i === 0 ? "accent" : "secondary"
+                }))
+              );
+            } else {
+              // No providers for this activity - be honest, offer notification
+              return this.formatResponse(
+                `I don't have any ${activityName} programs in my network yet. Would you like me to notify you when ${activityName} classes become available?`,
+                undefined,
+                [
+                  { label: "Yes, notify me", action: "notify_when_available", payload: { activity: detectedActivity }, variant: "accent" },
+                  { label: "No thanks", action: "dismiss", variant: "secondary" }
+                ]
+              );
+            }
+          }
+          
+          // Activity detected but not recognized - ask for clarification
           const activityMention = programType.length > 0 ? programType[0] : 'programs';
           return this.formatResponse(
-            `I can help you find ${activityMention}! Which organization or provider are you looking to sign up with?\n\n` +
-            `For example, you could say:\n` +
-            `• "AIM Design" (for coding classes in Madison)\n` +
-            `• Or share a link to the organization's booking page`,
+            `I can help you find ${activityMention}! Which organization or provider are you looking to sign up with?`,
             undefined,
-            [{ 
-              label: "Browse AIM Design", 
-              action: "search_programs", 
-              payload: { orgRef: "aim-design" }, 
-              variant: "secondary" 
-            }]
+            []
           );
         }
         
@@ -377,9 +402,36 @@ export default class APIOrchestrator implements IOrchestrator {
         return this.formatResponse(
           getGracefulDeclineMessage(),
           undefined,
-          [{ label: "Browse Available Programs", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "secondary" }]
+          []
         );
     }
+  }
+
+  /**
+   * Extract activity type from user message using keyword matching
+   */
+  private extractActivityFromMessage(message: string): string | null {
+    // Activity keyword map (subset - full map in activityMatcher.ts)
+    const keywords: Record<string, string> = {
+      'swim': 'swimming', 'swimming': 'swimming', 'pool': 'swimming',
+      'code': 'coding', 'coding': 'coding', 'programming': 'coding',
+      'robot': 'robotics', 'robotics': 'robotics',
+      'stem': 'stem', 'science': 'stem',
+      'soccer': 'soccer', 'ski': 'skiing', 'skiing': 'skiing',
+      'dance': 'dance', 'art': 'art', 'music': 'music',
+      'basketball': 'basketball', 'tennis': 'tennis', 'golf': 'golf',
+      'gymnastics': 'gymnastics', 'hockey': 'hockey',
+      'camp': 'camp', 'theater': 'theater', 'chess': 'chess',
+    };
+    
+    const words = message.toLowerCase().split(/\s+/);
+    for (const word of words) {
+      const cleaned = word.replace(/[^a-z]/g, '');
+      if (keywords[cleaned]) {
+        return keywords[cleaned];
+      }
+    }
+    return null;
   }
 
   /**
