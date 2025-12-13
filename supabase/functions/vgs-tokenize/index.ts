@@ -56,47 +56,62 @@ serve(async (req) => {
       );
     }
 
-    // Build VGS tokenization request
-    const dataToTokenize = [];
-    if (email) {
-      dataToTokenize.push({ value: email, format: 'UUID', storage: 'PERSISTENT' });
-    }
-    if (phone) {
-      dataToTokenize.push({ value: phone, format: 'UUID', storage: 'PERSISTENT' });
-    }
-
+    // Use VGS Aliases API directly for tokenization
     const authHeader = `Basic ${btoa(`${VGS_USERNAME}:${VGS_PASSWORD}`)}`;
+    const aliasesUrl = `https://api.sandbox.verygoodvault.com/aliases`;
 
-    const vgsResponse = await fetch(`${VGS_PROXY_HOST}/post`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': authHeader,
-      },
-      body: JSON.stringify({ data: dataToTokenize }),
-    });
-
-    if (!vgsResponse.ok) {
-      const errorText = await vgsResponse.text();
-      console.error('[VGS] Tokenization failed:', vgsResponse.status, errorText);
-      return new Response(
-        JSON.stringify({ error: 'VGS tokenization failed', details: errorText }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const vgsResult = await vgsResponse.json();
-    
-    // Map VGS response to our format
     const response: TokenizeResponse = {};
-    let index = 0;
-    
-    if (email && vgsResult.data?.[index]) {
-      response.email_alias = vgsResult.data[index].aliases?.[0]?.alias || vgsResult.data[index].value;
-      index++;
+
+    // Tokenize email
+    if (email) {
+      const emailRes = await fetch(aliasesUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader,
+        },
+        body: JSON.stringify({
+          data: [{ value: email, format: 'UUID', storage: 'PERSISTENT' }],
+        }),
+      });
+
+      if (!emailRes.ok) {
+        const errorText = await emailRes.text();
+        console.error('[VGS] Email tokenization failed:', emailRes.status, errorText);
+        return new Response(
+          JSON.stringify({ error: 'VGS email tokenization failed', details: errorText }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const emailResult = await emailRes.json();
+      response.email_alias = emailResult.data?.[0]?.aliases?.[0]?.alias;
     }
-    if (phone && vgsResult.data?.[index]) {
-      response.phone_alias = vgsResult.data[index].aliases?.[0]?.alias || vgsResult.data[index].value;
+
+    // Tokenize phone
+    if (phone) {
+      const phoneRes = await fetch(aliasesUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': authHeader,
+        },
+        body: JSON.stringify({
+          data: [{ value: phone, format: 'UUID', storage: 'PERSISTENT' }],
+        }),
+      });
+
+      if (!phoneRes.ok) {
+        const errorText = await phoneRes.text();
+        console.error('[VGS] Phone tokenization failed:', phoneRes.status, errorText);
+        return new Response(
+          JSON.stringify({ error: 'VGS phone tokenization failed', details: errorText }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      const phoneResult = await phoneRes.json();
+      response.phone_alias = phoneResult.data?.[0]?.aliases?.[0]?.alias;
     }
 
     console.log('[VGS] Tokenization successful:', { 
