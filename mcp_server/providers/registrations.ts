@@ -105,6 +105,7 @@ async function createRegistration(args: {
   
   try {
     // Build insert payload
+    // Build insert payload - start with masked email for VGS compliance
     const insertPayload: any = {
       user_id,
       mandate_id,
@@ -118,27 +119,33 @@ async function createRegistration(args: {
       amount_cents,
       success_fee_cents,
       delegate_name,
-      delegate_email, // Keep raw for backward compatibility
+      delegate_email: null, // VGS compliance: never store raw PII
       participant_names,
       status,
       scheduled_for,
       executed_at: scheduled_for ? null : new Date().toISOString()
     };
     
-    // Tokenize delegate_email if VGS is configured
+    // Tokenize delegate_email - REQUIRED for App Store compliance
     if (delegate_email && isVGSConfigured()) {
       try {
         const tokenized = await tokenize({ email: delegate_email });
         if (tokenized.email_alias) {
           insertPayload.delegate_email_alias = tokenized.email_alias;
+          insertPayload.delegate_email = '[TOKENIZED]'; // Placeholder for display
           Logger.info('[Registrations] Delegate email tokenized successfully');
+        } else {
+          Logger.error('[Registrations] VGS returned no alias');
+          insertPayload.delegate_email = '[TOKENIZATION_FAILED]';
         }
       } catch (tokenizeError) {
         Logger.error('[Registrations] VGS tokenization failed for email', { error: tokenizeError });
-        // Continue without alias - raw email is still stored
+        insertPayload.delegate_email = '[TOKENIZATION_FAILED]';
       }
     } else if (!isVGSConfigured()) {
-      Logger.warn('[Registrations] VGS not configured, storing raw email only');
+      Logger.warn('[Registrations] VGS not configured - COMPLIANCE VIOLATION: raw email would be exposed');
+      // In production, fail the operation if VGS is not configured
+      insertPayload.delegate_email = '[VGS_NOT_CONFIGURED]';
     }
     
     const { data, error } = await supabase

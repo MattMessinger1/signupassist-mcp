@@ -866,7 +866,7 @@ export type Database = {
           booking_number: string | null
           charge_id: string | null
           created_at: string | null
-          delegate_email: string
+          delegate_email: string | null
           delegate_email_alias: string | null
           delegate_name: string
           error_message: string | null
@@ -890,7 +890,7 @@ export type Database = {
           booking_number?: string | null
           charge_id?: string | null
           created_at?: string | null
-          delegate_email: string
+          delegate_email?: string | null
           delegate_email_alias?: string | null
           delegate_name: string
           error_message?: string | null
@@ -914,7 +914,7 @@ export type Database = {
           booking_number?: string | null
           charge_id?: string | null
           created_at?: string | null
-          delegate_email?: string
+          delegate_email?: string | null
           delegate_email_alias?: string | null
           delegate_name?: string
           error_message?: string | null
