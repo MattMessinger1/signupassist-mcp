@@ -61,6 +61,7 @@ interface APIContext {
   orgRef?: string;
   user_id?: string;
   userTimezone?: string;  // User's IANA timezone (e.g., 'America/Chicago')
+  requestedActivity?: string;  // Track what activity user is looking for (e.g., 'swimming', 'coding')
   selectedProgram?: any;
   formData?: Record<string, any>;
   numParticipants?: number;
@@ -267,6 +268,9 @@ export default class APIOrchestrator implements IOrchestrator {
       case "browse_all_programs":
         return await this.handleBrowseAllPrograms(payload, sessionId, context);
 
+      case "clear_activity_filter":
+        return await this.handleClearActivityFilter(payload, sessionId, context);
+
       default:
         return this.formatError(`Unknown action: ${action}`);
     }
@@ -310,10 +314,19 @@ export default class APIOrchestrator implements IOrchestrator {
       storedState
     });
 
+    // Store detected activity in session context (even if we can't help)
+    // This enables filtering programs when user later picks a provider
+    const detectedActivity = this.extractActivityFromMessage(input);
+    if (detectedActivity) {
+      this.updateContext(sessionId, { requestedActivity: detectedActivity });
+      Logger.info('[handleMessage] Stored requestedActivity:', detectedActivity);
+    }
+
     Logger.info('[handleMessage] Activation confidence:', {
       level: confidence.level,
       reason: confidence.reason,
-      provider: confidence.matchedProvider?.name
+      provider: confidence.matchedProvider?.name,
+      requestedActivity: detectedActivity
     });
 
     // Route based on confidence level
@@ -682,6 +695,22 @@ export default class APIOrchestrator implements IOrchestrator {
   }
 
   /**
+   * Handle clear_activity_filter action (user wants to see all programs at provider)
+   */
+  private async handleClearActivityFilter(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    // Clear the activity filter from context
+    this.updateContext(sessionId, { requestedActivity: undefined });
+    Logger.info('[handleClearActivityFilter] Cleared activity filter');
+    
+    // Re-search without activity filter
+    const orgRef = payload.orgRef || context.orgRef || 'aim-design';
+    return await this.searchPrograms(orgRef, sessionId);
+  }
+
    * Search and display programs from API provider
    */
   private async searchPrograms(
@@ -769,6 +798,43 @@ export default class APIOrchestrator implements IOrchestrator {
         return this.formatError("No upcoming programs available at this time. All sessions have already passed.");
       }
       
+      // Filter by requestedActivity if set (respects user's original intent)
+      let filteredPrograms = upcomingPrograms;
+      if (context.requestedActivity) {
+        const { getActivityKeywords, getActivityDisplayName } = await import('../utils/activityMatcher.js');
+        const activityKeywords = getActivityKeywords(context.requestedActivity);
+        const activityName = getActivityDisplayName(context.requestedActivity);
+        
+        filteredPrograms = upcomingPrograms.filter((prog: any) => {
+          const searchText = [
+            prog.title || '',
+            prog.description || '',
+            prog.category || ''
+          ].join(' ').toLowerCase();
+          
+          return activityKeywords.some((keyword: string) => searchText.includes(keyword));
+        });
+        
+        Logger.info('[searchPrograms] Activity filter applied:', {
+          requestedActivity: context.requestedActivity,
+          activityKeywords,
+          originalCount: upcomingPrograms.length,
+          filteredCount: filteredPrograms.length
+        });
+        
+        if (filteredPrograms.length === 0) {
+          // Provider doesn't have matching programs - be honest
+          return this.formatResponse(
+            `This provider doesn't have ${activityName} programs. Would you like to see all their programs instead, or search for a different provider?`,
+            undefined,
+            [
+              { label: "Show All Programs", action: "clear_activity_filter", payload: { orgRef }, variant: "accent" },
+              { label: "Start Over", action: "clear_context", payload: {}, variant: "outline" }
+            ]
+          );
+        }
+      }
+      
       // Store programs in context
       this.updateContext(sessionId, {
         step: FlowStep.BROWSE,
@@ -776,7 +842,7 @@ export default class APIOrchestrator implements IOrchestrator {
       });
 
       // Build program cards with timing badges and cleaned descriptions
-      const cards: CardSpec[] = upcomingPrograms.map((prog: any, index: number) => {
+      const cards: CardSpec[] = filteredPrograms.map((prog: any, index: number) => {
         // Determine booking status at runtime (don't trust stale cached data)
         const determineBookingStatus = (program: any): string => {
           const hasAvailableSlots = program.next_available_slot || (program.available_slots && program.available_slots > 0);

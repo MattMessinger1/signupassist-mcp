@@ -93,6 +93,23 @@ export function normalizeActivity(activity: string): string | null {
 }
 
 /**
+ * Get all keywords that map to a normalized activity type
+ * Used for filtering programs by activity
+ */
+export function getActivityKeywords(normalizedActivity: string): string[] {
+  const keywords: string[] = [normalizedActivity];
+  
+  // Add all keywords that map to this activity
+  for (const [keyword, activity] of Object.entries(ACTIVITY_KEYWORD_MAP)) {
+    if (activity === normalizedActivity && !keywords.includes(keyword)) {
+      keywords.push(keyword);
+    }
+  }
+  
+  return keywords;
+}
+
+/**
  * Extract activity type from a user message
  * Returns the first recognized activity keyword
  */
