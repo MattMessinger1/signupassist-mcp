@@ -606,7 +606,7 @@ export function MCPChat({
           ...prev,
           { 
             role: "assistant", 
-            content: "I help with signups for activities like coding, robotics, and design. Try asking about a specific program or provider!"
+            content: "I don't have programs for that activity yet. I currently help with coding, robotics, and STEM class signups."
           },
         ]);
         return;
