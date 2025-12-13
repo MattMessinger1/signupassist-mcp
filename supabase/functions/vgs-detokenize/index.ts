@@ -97,37 +97,40 @@ serve(async (req) => {
       );
     }
 
-    // Call VGS to reveal aliases
+    // Call VGS to reveal aliases using the correct API endpoint
+    // Environment-aware: sandbox for dev, live for production
+    const vgsEnv = Deno.env.get('VGS_ENVIRONMENT') || 'sandbox';
     const authHeaderVgs = `Basic ${btoa(`${VGS_USERNAME}:${VGS_PASSWORD}`)}`;
 
-    const vgsResponse = await fetch(`${VGS_PROXY_HOST}/aliases`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': authHeaderVgs,
-      },
-      body: JSON.stringify({ aliases: aliasesToReveal }),
-    });
+    // Reveal each alias individually using the VGS Aliases API
+    if (email_alias && !email_alias.startsWith('passthrough:')) {
+      const revealUrl = `https://api.${vgsEnv}.verygoodvault.com/aliases/${email_alias}`;
+      const emailRes = await fetch(revealUrl, {
+        method: 'GET',
+        headers: { 'Authorization': authHeaderVgs },
+      });
 
-    if (!vgsResponse.ok) {
-      const errorText = await vgsResponse.text();
-      console.error('[VGS] Detokenization failed:', vgsResponse.status, errorText);
-      return new Response(
-        JSON.stringify({ error: 'VGS detokenization failed', details: errorText }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      if (emailRes.ok) {
+        const emailResult = await emailRes.json();
+        response.email = emailResult.value;
+      } else {
+        console.error('[VGS] Email reveal failed:', emailRes.status, await emailRes.text());
+      }
     }
 
-    const vgsResult = await vgsResponse.json();
-    
-    // Map VGS response back to our format
-    let index = 0;
-    if (email_alias && !email_alias.startsWith('passthrough:') && vgsResult.data?.[index]) {
-      response.email = vgsResult.data[index].value;
-      index++;
-    }
-    if (phone_alias && !phone_alias.startsWith('passthrough:') && vgsResult.data?.[index]) {
-      response.phone = vgsResult.data[index].value;
+    if (phone_alias && !phone_alias.startsWith('passthrough:')) {
+      const revealUrl = `https://api.${vgsEnv}.verygoodvault.com/aliases/${phone_alias}`;
+      const phoneRes = await fetch(revealUrl, {
+        method: 'GET',
+        headers: { 'Authorization': authHeaderVgs },
+      });
+
+      if (phoneRes.ok) {
+        const phoneResult = await phoneRes.json();
+        response.phone = phoneResult.value;
+      } else {
+        console.error('[VGS] Phone reveal failed:', phoneRes.status, await phoneRes.text());
+      }
     }
 
     // Audit log the detokenization request
