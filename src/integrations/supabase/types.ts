@@ -317,10 +317,12 @@ export type Database = {
           created_at: string
           date_of_birth: string | null
           default_relationship: string | null
+          email_alias: string | null
           first_name: string | null
           id: string
           last_name: string | null
           phone: string | null
+          phone_alias: string | null
           state: string | null
           updated_at: string
           user_id: string
@@ -330,10 +332,12 @@ export type Database = {
           created_at?: string
           date_of_birth?: string | null
           default_relationship?: string | null
+          email_alias?: string | null
           first_name?: string | null
           id?: string
           last_name?: string | null
           phone?: string | null
+          phone_alias?: string | null
           state?: string | null
           updated_at?: string
           user_id: string
@@ -343,10 +347,12 @@ export type Database = {
           created_at?: string
           date_of_birth?: string | null
           default_relationship?: string | null
+          email_alias?: string | null
           first_name?: string | null
           id?: string
           last_name?: string | null
           phone?: string | null
+          phone_alias?: string | null
           state?: string | null
           updated_at?: string
           user_id?: string
@@ -861,6 +867,7 @@ export type Database = {
           charge_id: string | null
           created_at: string | null
           delegate_email: string
+          delegate_email_alias: string | null
           delegate_name: string
           error_message: string | null
           executed_at: string | null
@@ -884,6 +891,7 @@ export type Database = {
           charge_id?: string | null
           created_at?: string | null
           delegate_email: string
+          delegate_email_alias?: string | null
           delegate_name: string
           error_message?: string | null
           executed_at?: string | null
@@ -907,6 +915,7 @@ export type Database = {
           charge_id?: string | null
           created_at?: string | null
           delegate_email?: string
+          delegate_email_alias?: string | null
           delegate_name?: string
           error_message?: string | null
           executed_at?: string | null
