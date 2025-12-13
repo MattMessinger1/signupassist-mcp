@@ -598,6 +598,20 @@ export function MCPChat({
       }
       
       const response = await sendMessage(userMessage, sessionId, undefined, undefined, undefined, undefined, undefined, userTimezone, userId);
+      
+      // Handle silent pass (LOW confidence for anonymous users - SignupAssist doesn't activate)
+      if ((response as any).silentPass) {
+        console.log('[MCPChat] Silent pass - SignupAssist not activating for this query');
+        setMessages((prev) => [
+          ...prev,
+          { 
+            role: "assistant", 
+            content: "I help with signups for activities like coding, robotics, and design. Try asking about a specific program or provider!"
+          },
+        ]);
+        return;
+      }
+      
       const assistantMessage = response.message || "(no response)";
       const assistantCards = response.cards || [];
 
