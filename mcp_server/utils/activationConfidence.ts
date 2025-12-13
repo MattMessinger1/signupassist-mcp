@@ -9,6 +9,7 @@
  */
 
 import Logger from './logger.js';
+import { extractActivityFromMessage, findProvidersForActivity, getActivityDisplayName } from './activityMatcher.js';
 
 // Known provider configurations
 export interface ProviderConfig {
@@ -331,6 +332,29 @@ export function calculateActivationConfidence(
       clarificationNeeded: true,
       reason: `Provider name "${providerMention.name}" without context`
     };
+  }
+  
+  // Rule 7: Activity matches a provider's offerings (AAP triad CAN align)
+  const detectedActivity = extractActivityFromMessage(message);
+  if (detectedActivity) {
+    const matchingProviders = findProvidersForActivity(detectedActivity);
+    if (matchingProviders.length > 0) {
+      // We have providers for this activity - ask for city to narrow down
+      Logger.info('[ActivationConfidence] MEDIUM - Activity has provider(s)', { 
+        activity: detectedActivity, 
+        providers: matchingProviders.map(p => p.displayName) 
+      });
+      return {
+        level: 'MEDIUM',
+        signals,
+        matchedProvider: null,  // No specific provider yet
+        shouldActivate: false,
+        clarificationNeeded: true,
+        reason: `Activity "${detectedActivity}" has ${matchingProviders.length} provider(s) - need location`
+      };
+    }
+    // Activity detected but NO providers → silent pass (fall through to LOW)
+    Logger.info('[ActivationConfidence] LOW - No providers for activity', { activity: detectedActivity });
   }
   
   // LOW CONFIDENCE (don't activate)

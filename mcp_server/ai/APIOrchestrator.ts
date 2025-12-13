@@ -336,15 +336,29 @@ export default class APIOrchestrator implements IOrchestrator {
       return await this.activateWithInitialMessage(confidence.matchedProvider, orgRef, sessionId);
     }
 
-    if (confidence.level === 'MEDIUM' && confidence.matchedProvider) {
-      // MEDIUM: Check if we should ask for location or show clarification
-      if (context.user_id && !storedCity) {
-        // Authenticated user without stored location - ask for city
-        return this.askForLocation(confidence.matchedProvider, sessionId);
+    if (confidence.level === 'MEDIUM') {
+      // Case A: Activity detected, providers exist, need location
+      const { extractActivityFromMessage, getActivityDisplayName } = await import('../utils/activityMatcher.js');
+      const activity = extractActivityFromMessage(message);
+      if (activity && !confidence.matchedProvider) {
+        const displayName = getActivityDisplayName(activity);
+        return this.formatResponse(
+          `I have ${displayName} programs! What city are you in?`,
+          undefined,
+          []  // Wait for text response
+        );
       }
       
-      // Show fallback clarification
-      return this.showFallbackClarification(confidence.matchedProvider);
+      // Case B: Provider name matched (existing logic)
+      if (confidence.matchedProvider) {
+        if (context.user_id && !storedCity) {
+          // Authenticated user without stored location - ask for city
+          return this.askForLocation(confidence.matchedProvider, sessionId);
+        }
+        
+        // Show fallback clarification
+        return this.showFallbackClarification(confidence.matchedProvider);
+      }
     }
 
     // LOW confidence for ANONYMOUS users = DON'T ACTIVATE

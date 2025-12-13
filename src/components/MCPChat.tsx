@@ -600,15 +600,9 @@ export function MCPChat({
       const response = await sendMessage(userMessage, sessionId, undefined, undefined, undefined, undefined, undefined, userTimezone, userId);
       
       // Handle silent pass (LOW confidence for anonymous users - SignupAssist doesn't activate)
+      // TRUE silent pass: no message shown, let ChatGPT handle
       if ((response as any).silentPass) {
         console.log('[MCPChat] Silent pass - SignupAssist not activating for this query');
-        setMessages((prev) => [
-          ...prev,
-          { 
-            role: "assistant", 
-            content: "I don't have programs for that activity yet. I currently help with coding, robotics, and STEM class signups."
-          },
-        ]);
         return;
       }
       
