@@ -1511,8 +1511,15 @@ class SignupAssistMCPServer {
               
               console.log(`[Orchestrator] generateResponse result:`, result ? 'success' : 'null/undefined');
               
+              // Handle null response (silent pass for LOW confidence anonymous users)
               if (!result) {
-                throw new Error(`generateResponse returned ${result}`);
+                console.log('[Orchestrator] generateResponse returned null - silent pass (not activating for this query)');
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ 
+                  message: null,
+                  silentPass: true 
+                }));
+                return;
               }
             } else {
               res.writeHead(400, { 'Content-Type': 'application/json' });
