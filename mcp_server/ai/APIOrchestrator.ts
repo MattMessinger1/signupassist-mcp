@@ -711,6 +711,7 @@ export default class APIOrchestrator implements IOrchestrator {
     return await this.searchPrograms(orgRef, sessionId);
   }
 
+  /**
    * Search and display programs from API provider
    */
   private async searchPrograms(
