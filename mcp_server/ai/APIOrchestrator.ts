@@ -339,7 +339,7 @@ export default class APIOrchestrator implements IOrchestrator {
     if (confidence.level === 'MEDIUM') {
       // Case A: Activity detected, providers exist, need location
       const { extractActivityFromMessage, getActivityDisplayName } = await import('../utils/activityMatcher.js');
-      const activity = extractActivityFromMessage(message);
+      const activity = extractActivityFromMessage(input);
       if (activity && !confidence.matchedProvider) {
         const displayName = getActivityDisplayName(activity);
         return this.formatResponse(
