@@ -6,6 +6,8 @@
 import { auditToolCall } from '../middleware/audit.js';
 import { createClient } from '@supabase/supabase-js';
 import type { ProviderResponse, ParentFriendlyError } from '../types.js';
+import { tokenize, isVGSConfigured } from '../lib/vgsClient.js';
+import { Logger } from '../utils/logger.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -52,6 +54,9 @@ export interface RegistrationRecord {
 /**
  * Tool: registrations.create
  * Create a registration record after successful booking
+ * 
+ * PII Tokenization: delegate_email is tokenized via VGS before storage.
+ * Both raw delegate_email and delegate_email_alias are stored for backward compat.
  */
 async function createRegistration(args: {
   user_id: string;
@@ -91,35 +96,59 @@ async function createRegistration(args: {
   // Determine status: pending for scheduled, confirmed for immediate
   const status = scheduled_for ? 'pending' : 'confirmed';
   
-  console.log(`[Registrations] Creating registration: ${program_name} for ${delegate_name} (status: ${status})`);
+  Logger.info('[Registrations] Creating registration', { 
+    program_name, 
+    delegate_name, 
+    status,
+    has_scheduled_for: !!scheduled_for 
+  });
   
   try {
+    // Build insert payload
+    const insertPayload: any = {
+      user_id,
+      mandate_id,
+      charge_id,
+      program_name,
+      program_ref,
+      provider,
+      org_ref,
+      start_date,
+      booking_number,
+      amount_cents,
+      success_fee_cents,
+      delegate_name,
+      delegate_email, // Keep raw for backward compatibility
+      participant_names,
+      status,
+      scheduled_for,
+      executed_at: scheduled_for ? null : new Date().toISOString()
+    };
+    
+    // Tokenize delegate_email if VGS is configured
+    if (delegate_email && isVGSConfigured()) {
+      try {
+        const tokenized = await tokenize({ email: delegate_email });
+        if (tokenized.email_alias) {
+          insertPayload.delegate_email_alias = tokenized.email_alias;
+          Logger.info('[Registrations] Delegate email tokenized successfully');
+        }
+      } catch (tokenizeError) {
+        Logger.error('[Registrations] VGS tokenization failed for email', { error: tokenizeError });
+        // Continue without alias - raw email is still stored
+      }
+    } else if (!isVGSConfigured()) {
+      Logger.warn('[Registrations] VGS not configured, storing raw email only');
+    }
+    
     const { data, error } = await supabase
       .from('registrations')
-      .insert({
-        user_id,
-        mandate_id,
-        charge_id,
-        program_name,
-        program_ref,
-        provider,
-        org_ref,
-        start_date,
-        booking_number,
-        amount_cents,
-        success_fee_cents,
-        delegate_name,
-        delegate_email,
-        participant_names,
-        status,
-        scheduled_for,
-        executed_at: scheduled_for ? null : new Date().toISOString()
-      })
+      .insert(insertPayload)
       .select()
       .single();
     
     if (error) {
-      console.error('[Registrations] Database error:', error);
+      Logger.error('[Registrations] Database error', { error });
       const friendlyError: ParentFriendlyError = {
         display: 'Unable to save registration record',
         recovery: 'Your booking may have succeeded. Please check your email for confirmation.',
@@ -132,7 +161,7 @@ async function createRegistration(args: {
       };
     }
     
-    console.log(`[Registrations] ✅ Registration created: ${data.id}`);
+    Logger.info('[Registrations] Registration created successfully', { id: data.id });
     
     return {
       success: true,
@@ -140,7 +169,7 @@ async function createRegistration(args: {
     };
     
   } catch (error: any) {
-    console.error('[Registrations] Error creating registration:', error);
+    Logger.error('[Registrations] Error creating registration', { error });
     const friendlyError: ParentFriendlyError = {
       display: 'Registration record error',
       recovery: 'Your booking may have succeeded. Please check your email for confirmation.',
