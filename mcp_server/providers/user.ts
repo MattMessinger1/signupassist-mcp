@@ -6,6 +6,8 @@
 import { auditToolCall } from '../middleware/audit.js';
 import { createClient } from '@supabase/supabase-js';
 import type { ProviderResponse, ParentFriendlyError } from '../types.js';
+import { tokenize, detokenize, isVGSConfigured, getMaskedValue } from '../lib/vgsClient.js';
+import { Logger } from '../utils/logger.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -53,6 +55,8 @@ export interface DelegateProfile {
   first_name?: string;
   last_name?: string;
   phone?: string;
+  phone_alias?: string;  // VGS tokenized phone
+  email_alias?: string;  // VGS tokenized email (if collected)
   date_of_birth?: string;
   default_relationship?: string;
   city?: string;      // For location-based provider matching
@@ -305,13 +309,17 @@ async function updateChild(args: {
  * Tool: user.get_delegate_profile
  * Gets the delegate profile for a user (audited for compliance)
  * Required scope: user:read:profile
+ * 
+ * Note: Returns phone_alias for display (masked), but can optionally detokenize
+ * if real phone number is needed for external service calls.
  */
 async function getDelegateProfile(args: {
   user_id: string;
+  detokenize_pii?: boolean; // Set true only when raw PII is needed for external calls
 }): Promise<ProviderResponse<{ profile: DelegateProfile | null }>> {
-  const { user_id } = args;
+  const { user_id, detokenize_pii = false } = args;
   
-  console.log(`[User] Getting delegate profile for user: ${user_id}`);
+  Logger.info('[User] Getting delegate profile', { user_id, detokenize_pii });
   
   try {
     const { data: profile, error } = await supabase
@@ -321,7 +329,7 @@ async function getDelegateProfile(args: {
       .maybeSingle();
     
     if (error) {
-      console.error('[User] Database error getting delegate profile:', error);
+      Logger.error('[User] Database error getting delegate profile', { error });
       const friendlyError: ParentFriendlyError = {
         display: 'Unable to load your profile',
         recovery: 'Please try again in a moment.',
@@ -331,15 +339,38 @@ async function getDelegateProfile(args: {
       return { success: false, error: friendlyError };
     }
     
-    console.log(`[User] ✅ Delegate profile ${profile ? 'found' : 'not found'} for user`);
+    if (!profile) {
+      Logger.info('[User] No delegate profile found for user');
+      return { success: true, data: { profile: null } };
+    }
+    
+    // If detokenization is requested and VGS is configured, reveal PII
+    if (detokenize_pii && isVGSConfigured() && profile.phone_alias) {
+      try {
+        const revealed = await detokenize({ phone_alias: profile.phone_alias });
+        if (revealed.phone) {
+          profile.phone = revealed.phone;
+        }
+        Logger.info('[User] Detokenized phone for external use');
+      } catch (detokenizeError) {
+        Logger.warn('[User] Failed to detokenize phone, using masked value', { error: detokenizeError });
+        // Fall back to masked display
+        profile.phone = getMaskedValue(profile.phone_alias, 'phone');
+      }
+    } else if (profile.phone_alias && !profile.phone) {
+      // For display purposes, show masked value
+      profile.phone = getMaskedValue(profile.phone_alias, 'phone');
+    }
+    
+    Logger.info('[User] Delegate profile retrieved successfully');
     
     return {
       success: true,
-      data: { profile: profile as DelegateProfile | null }
+      data: { profile: profile as DelegateProfile }
     };
     
   } catch (error: any) {
-    console.error('[User] Error getting delegate profile:', error);
+    Logger.error('[User] Error getting delegate profile', { error });
     const friendlyError: ParentFriendlyError = {
       display: 'Unable to load your profile',
       recovery: 'Please try again in a moment.',
@@ -354,30 +385,64 @@ async function getDelegateProfile(args: {
  * Tool: user.update_delegate_profile
  * Updates or creates delegate profile (audited for compliance)
  * Required scope: user:write:profile
+ * 
+ * PII Tokenization: Phone numbers are tokenized via VGS before storage.
+ * Both raw phone (for backward compat) and phone_alias (tokenized) are stored.
  */
 async function updateDelegateProfile(args: {
   user_id: string;
   first_name?: string;
   last_name?: string;
   phone?: string;
+  email?: string;  // Optional email for tokenization
   date_of_birth?: string;
   default_relationship?: string;
   city?: string;       // For location-based provider matching
   state?: string;      // For location-based provider matching
 }): Promise<ProviderResponse<{ profile: DelegateProfile }>> {
-  const { user_id, first_name, last_name, phone, date_of_birth, default_relationship, city, state } = args;
+  const { user_id, first_name, last_name, phone, email, date_of_birth, default_relationship, city, state } = args;
   
-  console.log(`[User] Updating delegate profile for user: ${user_id}`);
+  Logger.info('[User] Updating delegate profile', { user_id });
   
   try {
     const updates: any = { user_id };
     if (first_name !== undefined) updates.first_name = first_name;
     if (last_name !== undefined) updates.last_name = last_name;
-    if (phone !== undefined) updates.phone = phone;
     if (date_of_birth !== undefined) updates.date_of_birth = date_of_birth;
     if (default_relationship !== undefined) updates.default_relationship = default_relationship;
     if (city !== undefined) updates.city = city;
     if (state !== undefined) updates.state = state;
+    
+    // Tokenize PII if VGS is configured
+    if (phone !== undefined || email !== undefined) {
+      if (isVGSConfigured()) {
+        try {
+          const tokenizeRequest: { phone?: string; email?: string } = {};
+          if (phone) tokenizeRequest.phone = phone;
+          if (email) tokenizeRequest.email = email;
+          
+          const tokenized = await tokenize(tokenizeRequest);
+          
+          if (tokenized.phone_alias) {
+            updates.phone_alias = tokenized.phone_alias;
+            updates.phone = phone; // Keep raw for backward compatibility during transition
+            Logger.info('[User] Phone tokenized successfully');
+          }
+          if (tokenized.email_alias) {
+            updates.email_alias = tokenized.email_alias;
+            Logger.info('[User] Email tokenized successfully');
+          }
+        } catch (tokenizeError) {
+          Logger.error('[User] VGS tokenization failed, storing raw PII', { error: tokenizeError });
+          // Fallback: store raw PII if tokenization fails (but log the failure)
+          if (phone) updates.phone = phone;
+        }
+      } else {
+        // VGS not configured - store raw (development mode)
+        Logger.warn('[User] VGS not configured, storing raw PII');
+        if (phone) updates.phone = phone;
+      }
+    }
     
     const { data: profile, error } = await supabase
       .from('delegate_profiles')
@@ -386,7 +451,7 @@ async function updateDelegateProfile(args: {
       .single();
     
     if (error) {
-      console.error('[User] Database error updating delegate profile:', error);
+      Logger.error('[User] Database error updating delegate profile', { error });
       const friendlyError: ParentFriendlyError = {
         display: 'Unable to save your profile',
         recovery: 'Please try again.',
@@ -396,7 +461,7 @@ async function updateDelegateProfile(args: {
       return { success: false, error: friendlyError };
     }
     
-    console.log(`[User] ✅ Delegate profile updated for user: ${user_id}`);
+    Logger.info('[User] Delegate profile updated successfully', { user_id });
     
     return {
       success: true,
@@ -404,7 +469,7 @@ async function updateDelegateProfile(args: {
     };
     
   } catch (error: any) {
-    console.error('[User] Error updating delegate profile:', error);
+    Logger.error('[User] Error updating delegate profile', { error });
     const friendlyError: ParentFriendlyError = {
       display: 'Unable to save your profile',
       recovery: 'Please try again.',
