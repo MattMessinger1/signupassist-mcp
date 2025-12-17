@@ -73,7 +73,12 @@ export async function tokenize(data: TokenizeRequest): Promise<TokenizeResponse>
   }
 
   try {
-    const response = await fetch(`${config.proxyHost}/post`, {
+    // VGS environment: sandbox or live
+    const vgsEnv = process.env.VGS_ENVIRONMENT || 'sandbox';
+    // URL format: https://{vault_id}.{environment}.verygoodvault.com/aliases
+    const aliasesUrl = `https://${config.vaultId}.${vgsEnv}.verygoodvault.com/aliases`;
+    
+    const response = await fetch(aliasesUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -147,7 +152,12 @@ export async function detokenize(aliases: DetokenizeRequest): Promise<Detokenize
       return {};
     }
 
-    const response = await fetch(`${config.proxyHost}/aliases`, {
+    // VGS environment: sandbox or live
+    const vgsEnv = process.env.VGS_ENVIRONMENT || 'sandbox';
+    // URL format: https://{vault_id}.{environment}.verygoodvault.com/aliases
+    const aliasesUrl = `https://${config.vaultId}.${vgsEnv}.verygoodvault.com/aliases`;
+
+    const response = await fetch(aliasesUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
