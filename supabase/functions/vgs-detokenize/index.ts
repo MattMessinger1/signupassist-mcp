@@ -99,12 +99,13 @@ serve(async (req) => {
 
     // Call VGS to reveal aliases using the correct API endpoint
     // Environment-aware: sandbox for dev, live for production
+    // URL format: https://{vault_id}.{environment}.verygoodvault.com/aliases/{alias}
     const vgsEnv = Deno.env.get('VGS_ENVIRONMENT') || 'sandbox';
     const authHeaderVgs = `Basic ${btoa(`${VGS_USERNAME}:${VGS_PASSWORD}`)}`;
 
     // Reveal each alias individually using the VGS Aliases API
     if (email_alias && !email_alias.startsWith('passthrough:')) {
-      const revealUrl = `https://api.${vgsEnv}.verygoodvault.com/aliases/${email_alias}`;
+      const revealUrl = `https://${VGS_VAULT_ID}.${vgsEnv}.verygoodvault.com/aliases/${email_alias}`;
       const emailRes = await fetch(revealUrl, {
         method: 'GET',
         headers: { 'Authorization': authHeaderVgs },
@@ -119,7 +120,7 @@ serve(async (req) => {
     }
 
     if (phone_alias && !phone_alias.startsWith('passthrough:')) {
-      const revealUrl = `https://api.${vgsEnv}.verygoodvault.com/aliases/${phone_alias}`;
+      const revealUrl = `https://${VGS_VAULT_ID}.${vgsEnv}.verygoodvault.com/aliases/${phone_alias}`;
       const phoneRes = await fetch(revealUrl, {
         method: 'GET',
         headers: { 'Authorization': authHeaderVgs },

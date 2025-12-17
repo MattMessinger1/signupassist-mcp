@@ -58,9 +58,19 @@ serve(async (req) => {
 
     // Use VGS Aliases API directly for tokenization
     // Environment-aware: sandbox for dev, live for production
+    // URL format: https://{vault_id}.{environment}.verygoodvault.com/aliases
     const vgsEnv = Deno.env.get('VGS_ENVIRONMENT') || 'sandbox';
     const authHeader = `Basic ${btoa(`${VGS_USERNAME}:${VGS_PASSWORD}`)}`;
-    const aliasesUrl = `https://api.${vgsEnv}.verygoodvault.com/aliases`;
+    const aliasesUrl = `https://${VGS_VAULT_ID}.${vgsEnv}.verygoodvault.com/aliases`;
+    
+    // Debug logging (remove after verification)
+    console.log('[VGS] Config check:', {
+      vaultId: VGS_VAULT_ID?.substring(0, 4) + '...',
+      environment: vgsEnv,
+      usernamePrefix: VGS_USERNAME?.substring(0, 4) + '...',
+      passwordLength: VGS_PASSWORD?.length || 0,
+      url: aliasesUrl
+    });
 
     const response: TokenizeResponse = {};
 
