@@ -8,8 +8,8 @@
 import * as jose from 'jose';
 
 // Auth0 configuration from environment
-const AUTH0_DOMAIN = process.env.AUTH0_DOMAIN || 'dev-33ngu1de5cxjtxyd.us.auth0.com';
-const AUTH0_AUDIENCE = process.env.AUTH0_AUDIENCE || 'https://signupassist.ai/api';
+const AUTH0_DOMAIN = process.env.AUTH0_DOMAIN || 'dev-xha4aa58ytpvlqyl.us.auth0.com';
+const AUTH0_AUDIENCE = process.env.AUTH0_AUDIENCE || 'https://shipworx.ai/api';
 
 // Cache JWKS (refresh every 6 hours per Auth0 best practice)
 let jwksCache: jose.JWTVerifyGetKey | null = null;
