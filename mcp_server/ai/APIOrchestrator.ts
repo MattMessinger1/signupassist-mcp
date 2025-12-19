@@ -389,12 +389,13 @@ export default class APIOrchestrator implements IOrchestrator {
         );
 
       default: {
-        // Authenticated but LOW confidence - be explicit when org isn't recognized
-        const orgGuess = input.trim().slice(0, 80);
+        // Authenticated but LOW confidence - org not recognized
         return this.formatResponse(
-          `I don't recognize "${orgGuess}" as a supported organization yet. If you paste the registration link (or the exact org name), I can tell you whether SignupAssist can complete the signup.`,
+          `I don't have "${input.trim().slice(0, 40)}" in my supported organizations yet. Right now I can help with **AIM Design** classes in Madison, WI.`,
           undefined,
-          []
+          [
+            { label: "Browse AIM Design", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "accent" }
+          ]
         );
       }
     }
