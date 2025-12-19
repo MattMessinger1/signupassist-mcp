@@ -71,6 +71,11 @@ interface APIContext {
   user_id?: string;
   userTimezone?: string;  // User's IANA timezone (e.g., 'America/Chicago')
   requestedActivity?: string;  // Track what activity user is looking for (e.g., 'swimming', 'coding')
+
+  // Audience preference (e.g., user asked for "adults")
+  requestedAdults?: boolean;
+  ignoreAudienceMismatch?: boolean;
+
   selectedProgram?: any;
   formData?: Record<string, any>;
   numParticipants?: number;
@@ -341,8 +346,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     context: APIContext
   ): Promise<OrchestratorResponse> {
     switch (action) {
-      case "search_programs":
+      case "search_programs": {
+        const ignore = typeof payload?.ignoreAudienceMismatch === 'boolean' ? payload.ignoreAudienceMismatch : false;
+        this.updateContext(sessionId, { ignoreAudienceMismatch: ignore });
         return await this.searchPrograms(payload.orgRef || "aim-design", sessionId);
+      }
 
       case "select_program":
         return await this.selectProgram(payload, sessionId, context);
@@ -459,6 +467,15 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     if (detectedActivity) {
       this.updateContext(sessionId, { requestedActivity: detectedActivity });
       Logger.info('[handleMessage] Stored requestedActivity:', detectedActivity);
+    }
+
+    // Track audience preference (e.g., "adults") so we can warn on clear mismatches
+    const audiencePref = this.detectAudiencePreference(input);
+    if (audiencePref) {
+      this.updateContext(sessionId, {
+        requestedAdults: audiencePref === 'adults',
+        ignoreAudienceMismatch: false,
+      });
     }
 
     Logger.info('[handleMessage] Activation confidence:', {
@@ -584,6 +601,48 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
     // Also allow "City, ST" / "City ST" as a fallback (even if city isn't in our list)
     return /^[A-Za-z\s]+,?\s+[A-Z]{2}$/i.test(trimmed);
+  }
+
+  private detectAudiencePreference(input: string): 'adults' | 'kids' | null {
+    const adultPatterns = /\b(adult|adults|grown[-\s]?up|18\+|over\s*18|for\s*adults)\b/i;
+    const kidPatterns = /\b(kid|kids|child|children|youth|teen|teens|for\s*kids|for\s*children)\b/i;
+
+    if (adultPatterns.test(input)) return 'adults';
+    if (kidPatterns.test(input)) return 'kids';
+    return null;
+  }
+
+  private detectAdultsVsYouthMismatch(programs: any[]): { hasMismatch: boolean; foundAudience?: string } {
+    const ranges: Array<{ min: number; max: number; display: string }> = [];
+
+    const tryExtract = (text: string) => {
+      if (!text) return;
+      const m = text.match(/\bages?\s*(\d{1,2})\s*[-–]\s*(\d{1,2})\b/i) || text.match(/\bage\s*(\d{1,2})\s*[-–]\s*(\d{1,2})\b/i);
+      if (m) {
+        const min = parseInt(m[1], 10);
+        const max = parseInt(m[2], 10);
+        if (!Number.isNaN(min) && !Number.isNaN(max)) {
+          ranges.push({ min, max, display: `ages ${min}-${max}` });
+        }
+      }
+    };
+
+    for (const p of programs) {
+      tryExtract(p?.age_range || "");
+      tryExtract(p?.title || "");
+      tryExtract(stripHtml(p?.description || ""));
+    }
+
+    if (ranges.length === 0) return { hasMismatch: false };
+
+    const maxAgeFound = Math.max(...ranges.map(r => r.max));
+    if (maxAgeFound >= 18) return { hasMismatch: false };
+
+    const unique = [...new Set(ranges.map(r => r.display))].slice(0, 3);
+    return {
+      hasMismatch: true,
+      foundAudience: unique.length === 1 ? unique[0] : `${unique.join(', ')}${ranges.length > 3 ? '…' : ''}`
+    };
   }
 
   /**
@@ -821,7 +880,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       orgRef: undefined,
       formData: undefined,
       selectedProgram: undefined,
-      step: FlowStep.BROWSE
+      step: FlowStep.BROWSE,
+      requestedAdults: undefined,
+      ignoreAudienceMismatch: undefined,
     });
 
     return this.formatResponse(
@@ -981,24 +1042,24 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         const { getActivityKeywords, getActivityDisplayName } = await import('../utils/activityMatcher.js');
         const activityKeywords = getActivityKeywords(context.requestedActivity);
         const activityName = getActivityDisplayName(context.requestedActivity);
-        
+
         filteredPrograms = upcomingPrograms.filter((prog: any) => {
           const searchText = [
             prog.title || '',
             prog.description || '',
             prog.category || ''
           ].join(' ').toLowerCase();
-          
+
           return activityKeywords.some((keyword: string) => searchText.includes(keyword));
         });
-        
+
         Logger.info('[searchPrograms] Activity filter applied:', {
           requestedActivity: context.requestedActivity,
           activityKeywords,
           originalCount: upcomingPrograms.length,
           filteredCount: filteredPrograms.length
         });
-        
+
         if (filteredPrograms.length === 0) {
           // Provider doesn't have matching programs - be honest
           return this.formatResponse(
@@ -1011,6 +1072,23 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           );
         }
       }
+
+      // Audience mismatch check: user asked for adults, but the catalog looks like kids-only.
+      if (context.requestedAdults && !context.ignoreAudienceMismatch) {
+        const mismatch = this.detectAdultsVsYouthMismatch(filteredPrograms);
+        if (mismatch.hasMismatch) {
+          const providerDisplayName = orgRef === "aim-design" ? "AIM Design" : orgRef;
+          return this.formatResponse(
+            `I found ${filteredPrograms.length} class${filteredPrograms.length !== 1 ? 'es' : ''} at ${providerDisplayName}, but they look like kids programs (${mismatch.foundAudience || 'under 18'}). You asked for adults. Sorry!`,
+            undefined,
+            [
+              { label: "Show these anyway", action: "search_programs", payload: { orgRef, ignoreAudienceMismatch: true }, variant: "outline" },
+              { label: "Start Over", action: "clear_context", payload: {}, variant: "accent" }
+            ]
+          );
+        }
+      }
+
       
       // Store programs in context
       this.updateContext(sessionId, {
