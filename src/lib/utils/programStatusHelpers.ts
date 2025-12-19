@@ -127,3 +127,41 @@ export function formatCaptionParts(caption: string): string[] {
     .map(p => p.trim())
     .filter(p => p.length > 0);
 }
+
+/**
+ * Get button variant based on label content
+ * Standardized across the product:
+ * - "Select this program" -> accent (green)
+ * - "Schedule Ahead" / "Can Schedule" -> warning (yellow)
+ * - Link actions -> default
+ * - Everything else -> outline
+ */
+export function getButtonVariantForLabel(
+  label: string, 
+  explicitVariant?: string,
+  isLink = false
+): 'accent' | 'warning' | 'default' | 'outline' {
+  // If explicit variant is provided and valid, use it
+  if (explicitVariant === 'accent' || explicitVariant === 'warning') {
+    return explicitVariant;
+  }
+  
+  const lowerLabel = label.toLowerCase();
+  
+  // Green for selection actions
+  if (lowerLabel.includes('select this') || lowerLabel.includes('select program')) {
+    return 'accent';
+  }
+  
+  // Yellow for scheduling actions
+  if (lowerLabel.includes('schedule ahead') || lowerLabel.includes('can schedule')) {
+    return 'warning';
+  }
+  
+  // Default for links
+  if (isLink) {
+    return 'default';
+  }
+  
+  return 'outline';
+}

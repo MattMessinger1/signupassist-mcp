@@ -16,6 +16,7 @@ import { TrustCallout } from "./TrustCallout";
 import { COPY } from "@/copy/signupassistCopy";
 import { supabase } from "@/integrations/supabase/client";
 import { BrandLogo } from "./BrandLogo";
+import { getButtonVariantForLabel } from "@/lib/utils/programStatusHelpers";
 
 // Helper to render markdown-style text as HTML
 function renderFormattedText(text: string): string {
@@ -914,7 +915,7 @@ export function MCPChat({
                               {card.buttons.map((button, btnIdx) => (
                                 <Button
                                   key={btnIdx}
-                                  variant={button.variant === "accent" ? "accent" : "outline"}
+                                  variant={getButtonVariantForLabel(button.label, button.variant)}
                                   size="sm"
                                   onClick={() => handleCardAction(button.action, button.payload || {})}
                                   disabled={loading}
@@ -935,7 +936,7 @@ export function MCPChat({
                     {msg.cta.buttons.map((button, btnIdx) => (
                       <Button
                         key={btnIdx}
-                        variant={button.variant === "accent" ? "accent" : "outline"}
+                        variant={getButtonVariantForLabel(button.label, button.variant)}
                         size="default"
                         onClick={() => handleCardAction(button.action, button.payload || {})}
                         disabled={loading}
