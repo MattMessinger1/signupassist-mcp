@@ -345,6 +345,16 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
           {/* After Stripe opened: show verify + retry options */}
           {showFallback && (
             <>
+              {/* Clear return instruction banner */}
+              <div className="rounded-lg bg-primary/10 border border-primary/20 p-3 text-center">
+                <p className="text-sm font-medium text-primary">
+                  ✅ Complete payment in the Stripe tab
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Then come back here and click "Verify" below
+                </p>
+              </div>
+              
               <Button 
                 onClick={handleVerifyPayment} 
                 disabled={loading} 
