@@ -486,7 +486,7 @@ export function MCPChat({
         // Scroll the last child into view instead of manipulating scrollTop
         const lastChild = scrollRef.current.lastElementChild;
         if (lastChild) {
-          lastChild.scrollIntoView({ behavior: 'smooth', block: 'end' });
+          lastChild.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
       }
     }, 100);
