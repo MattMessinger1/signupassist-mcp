@@ -46,7 +46,9 @@ import {
 } from "../utils/activationConfidence.js";
 import { stripHtml } from "../lib/extractionUtils.js";
 import { formatInTimeZone } from "date-fns-tz";
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
+import { lookupCity } from "../utils/cityLookup.js";
+import { analyzeLocation } from "./orchestratorMultiBackend.js";
 
 // Simple flow steps for API-first providers
 enum FlowStep {
@@ -429,22 +431,19 @@ export default class APIOrchestrator implements IOrchestrator {
    */
   private isLocationResponse(input: string): boolean {
     const trimmed = input.trim();
-    
+
     // Too long to be just a city
     if (trimmed.length > 50) return false;
-    
+
     // Reject if input contains activity keywords (not a location)
     const activityKeywords = /\b(class|classes|course|courses|lesson|lessons|camp|camps|program|programs|workshop|workshops|activity|activities|coding|ski|skiing|swim|swimming|soccer|robotics|stem|dance|art|music|sports|training|session|sessions)\b/i;
     if (activityKeywords.test(trimmed)) return false;
-    
-    // Match "City, ST" or "City ST" patterns with required state abbreviation
-    // This is more specific than the previous regex that matched almost anything
-    const hasCityAndState = /^[A-Za-z\s]+,?\s+[A-Z]{2}$/i.test(trimmed);
-    
-    // Also allow known city names without state
-    const knownCities = /^(madison|chicago|milwaukee|minneapolis|denver|austin|seattle|portland|boston|atlanta|dallas|houston|phoenix|detroit|cleveland)$/i;
-    
-    return hasCityAndState || knownCities.test(trimmed);
+
+    // Prefer real city recognition over fragile regex lists
+    if (lookupCity(trimmed).found) return true;
+
+    // Also allow "City, ST" / "City ST" as a fallback (even if city isn't in our list)
+    return /^[A-Za-z\s]+,?\s+[A-Z]{2}$/i.test(trimmed);
   }
 
   /**
@@ -456,36 +455,59 @@ export default class APIOrchestrator implements IOrchestrator {
     context: APIContext
   ): Promise<OrchestratorResponse> {
     const trimmed = input.trim();
-    
-    // Parse city and optional state
-    const cityStateMatch = trimmed.match(/^([A-Za-z\s]+),?\s*([A-Z]{2})?$/i);
-    if (!cityStateMatch) {
+
+    const analysis = analyzeLocation(trimmed);
+
+    // Not recognized as a city
+    if (!analysis.found) {
+      return this.formatResponse(analysis.message || "I didn't catch that. What city are you in?", undefined, []);
+    }
+
+    // Ambiguous city: offer quick disambiguation
+    if (analysis.isAmbiguous && analysis.disambiguationOptions?.length) {
+      const providerName = context.orgRef || "aim-design";
+
       return this.formatResponse(
-        "I didn't catch that. What city are you in?",
+        analysis.message || `Which ${analysis.city || "location"} did you mean?`,
         undefined,
-        []
+        analysis.disambiguationOptions.slice(0, 4).map((opt) => ({
+          label: opt.description,
+          action: "save_location",
+          variant: "outline" as const,
+          payload: {
+            city: opt.city,
+            state: opt.state,
+            provider_name: providerName,
+          },
+        }))
       );
     }
 
-    const city = cityStateMatch[1].trim();
-    const state = cityStateMatch[2]?.toUpperCase();
+    // Out of coverage: return coverage message (don't fall into generic decline)
+    if (!analysis.isInCoverage && !analysis.isComingSoon) {
+      return this.formatResponse(analysis.message || "I don't have providers in that area yet.", undefined, []);
+    }
+
+    const city = analysis.city || trimmed;
+    const state = analysis.state;
 
     // Save location if authenticated
     if (context.user_id) {
       try {
-        await this.invokeMCPTool('user.update_delegate_profile', {
+        await this.invokeMCPTool("user.update_delegate_profile", {
           user_id: context.user_id,
           city,
-          ...(state && { state })
+          ...(state && { state }),
         });
-        Logger.info('[handleLocationResponse] Saved location:', { city, state });
+        Logger.info("[handleLocationResponse] Saved location:", { city, state });
       } catch (error) {
-        Logger.warn('[handleLocationResponse] Failed to save location:', error);
+        Logger.warn("[handleLocationResponse] Failed to save location:", error);
       }
     }
 
-    // Now search for programs with the confirmed location context
-    return await this.searchPrograms("aim-design", sessionId);
+    // Proceed to search programs (default provider if none selected)
+    const providerName = context.orgRef || "aim-design";
+    return await this.searchPrograms(providerName, sessionId);
   }
 
   /**
