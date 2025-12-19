@@ -186,15 +186,8 @@ export function getOutOfCoverageMessage(vars: LocationMessageVars): string {
   const cityDisplay = vars.detected_city 
     ? `${vars.detected_city}, ${vars.detected_state || ''}`.trim()
     : vars.detected_state || 'your area';
-  const coverageArea = vars.coverage_area || 'the Madison, Wisconsin area';
   
-  let message = `I don't have providers in **${cityDisplay}** yet — SignupAssist is currently live in **${coverageArea}**.`;
-  
-  if (vars.show_waitlist) {
-    message += `\n\n🔔 Would you like me to notify you when we expand to ${vars.detected_city || 'your area'}? I can add you to our notification list!`;
-  }
-  
-  return message;
+  return `We're not in ${cityDisplay} yet. Sorry!`;
 }
 
 /**
