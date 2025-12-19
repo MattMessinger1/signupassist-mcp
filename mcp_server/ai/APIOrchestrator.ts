@@ -518,9 +518,32 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     }
 
     // LOW confidence for ANONYMOUS users = DON'T ACTIVATE
-    // SignupAssist is a high-intent signup tool, not a discovery platform
-    // We only engage when we can genuinely help (provider match or activity match with provider)
+    // SignupAssist is a high-intent signup tool, not a discovery platform.
+    // However: if we're mid-flow (e.g., we already captured an activity and asked for city),
+    // do NOT "silent pass"—restate the pending question so the user isn't stuck.
     if (!context.user_id) {
+      const shouldContinueBrowseFlow =
+        context.step === FlowStep.BROWSE &&
+        !!context.requestedActivity &&
+        !detectedActivity &&
+        !confidence.matchedProvider;
+
+      if (shouldContinueBrowseFlow) {
+        const displayName = getActivityDisplayName(context.requestedActivity!);
+        const audienceAck =
+          context.requestedAdults === true
+            ? "Got it — adults." 
+            : context.requestedAdults === false
+              ? "Got it — kids." 
+              : "Got it.";
+
+        return this.formatResponse(
+          `${audienceAck} To find ${displayName} programs near you, what city are you in?`,
+          undefined,
+          []
+        );
+      }
+
       Logger.info('[handleMessage] LOW confidence + anonymous user = not activating');
       // Return null to signal "pass" - let ChatGPT route elsewhere
       return null;
