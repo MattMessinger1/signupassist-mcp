@@ -2677,8 +2677,24 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
   }
 
   /**
+   * Map technical scopes to user-friendly labels for ChatGPT-compatible display
+   */
+  private mapScopeToFriendly(scope: string): string {
+    const scopeMap: Record<string, string> = {
+      'scp:register': '✓ Register for programs',
+      'scp:browse': '✓ Browse programs',
+      'scp:authenticate': '✓ Authenticate',
+      'scp:read:listings': '✓ View listings',
+      'platform:success_fee': '✓ Charge success fee',
+      'platform:refund': '✓ Process refunds',
+    };
+    return scopeMap[scope] || `• ${scope}`;
+  }
+
+  /**
    * View audit trail for a specific registration
    * Phase E: Shows mandate details and all tool calls with decisions
+   * Includes SHA256 hashes for integrity verification and JWS token for cryptographic proof
    */
   private async viewAuditTrail(
     payload: any,
@@ -2723,10 +2739,10 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
         };
       }
       
-      // 2. Get mandate details
+      // 2. Get mandate details including JWS token for cryptographic verification
       const { data: mandate, error: mandateError } = await supabase
         .from('mandates')
-        .select('id, scope, valid_from, valid_until, status, provider')
+        .select('id, scope, valid_from, valid_until, status, provider, jws_compact')
         .eq('id', registration.mandate_id)
         .single();
       
@@ -2734,10 +2750,10 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
         Logger.warn("[viewAuditTrail] Mandate lookup failed:", mandateError);
       }
       
-      // 3. Get audit events for this mandate (including args and results for transparency)
+      // 3. Get audit events for this mandate (including args, results, and hashes for transparency)
       const { data: auditEvents, error: auditError } = await supabase
         .from('audit_events')
-        .select('tool, decision, started_at, finished_at, event_type, args_json, result_json')
+        .select('tool, decision, started_at, finished_at, event_type, args_json, result_json, args_hash, result_hash')
         .eq('mandate_id', registration.mandate_id)
         .order('started_at', { ascending: true });
       
@@ -2800,7 +2816,7 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
         return `${index + 1}. ${status} **${toolName}** - ${time}`;
       });
       
-      // Build detailed event cards for full transparency
+      // Build detailed event cards with SHA256 hashes for integrity verification
       const eventCards: CardSpec[] = (auditEvents || []).map((event, index) => {
         const time = this.formatTimeForUser(new Date(event.started_at), context);
         const status = event.decision === 'allowed' ? '✅ Allowed' : (event.decision === 'denied' ? '❌ Denied' : '⏳ Pending');
@@ -2813,32 +2829,56 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
           'stripe.charge_success_fee': '💳 Success Fee Charge'
         };
         
+        // Build description with optional hash display for integrity verification
+        const descriptionParts = [
+          `**Input Data:**`,
+          details.input,
+        ];
+        
+        if (event.args_hash) {
+          descriptionParts.push(`🔏 **Input Hash:** \`${event.args_hash.substring(0, 12)}...\``);
+        }
+        
+        descriptionParts.push('', `**Result:**`, details.output);
+        
+        if (event.result_hash) {
+          descriptionParts.push(`🔏 **Output Hash:** \`${event.result_hash.substring(0, 12)}...\``);
+        }
+        
         return {
           title: friendlyNames[toolName] || `🔧 ${toolName}`,
           subtitle: `${status} • ${time}`,
-          description: [
-            `**Input Data:**`,
-            details.input,
-            ``,
-            `**Result:**`,
-            details.output
-          ].join('\n'),
+          description: descriptionParts.join('\n'),
           buttons: []
         };
       });
       
-      // Build mandate summary card
+      // Build mandate summary card with friendly scopes and JWS token
+      const friendlyScopes = (mandate?.scope || []).map((s: string) => this.mapScopeToFriendly(s)).join(', ');
+      
+      const mandateDescriptionParts = [
+        `**Provider:** ${mandate?.provider || 'N/A'}`,
+        `**Scopes:** ${friendlyScopes || 'N/A'}`,
+        `**Valid From:** ${mandate ? this.formatTimeForUser(new Date(mandate.valid_from), context) : 'N/A'}`,
+        `**Valid Until:** ${mandate ? this.formatTimeForUser(new Date(mandate.valid_until), context) : 'N/A'}`,
+        `**Status:** ${mandate?.status || 'N/A'}`
+      ];
+      
+      // Include truncated JWS token for cryptographic verification
+      if (mandate?.jws_compact) {
+        mandateDescriptionParts.push('');
+        mandateDescriptionParts.push(`📜 **Cryptographic Token:** \`${mandate.jws_compact.substring(0, 40)}...\``);
+        mandateDescriptionParts.push(`_(Verifiable JWS signature - tamper-proof authorization record)_`);
+      }
+      
       const mandateCard: CardSpec = {
         title: `🔐 Mandate Authorization`,
         subtitle: `ID: ${mandate?.id?.substring(0, 8) || 'N/A'}...`,
-        description: [
-          `**Provider:** ${mandate?.provider || 'N/A'}`,
-          `**Scopes:** ${mandate?.scope?.join(', ') || 'N/A'}`,
-          `**Valid From:** ${mandate ? this.formatTimeForUser(new Date(mandate.valid_from), context) : 'N/A'}`,
-          `**Valid Until:** ${mandate ? this.formatTimeForUser(new Date(mandate.valid_until), context) : 'N/A'}`,
-          `**Status:** ${mandate?.status || 'N/A'}`
-        ].join('\n'),
-        buttons: []
+        description: mandateDescriptionParts.join('\n'),
+        buttons: [],
+        metadata: {
+          jws_compact: mandate?.jws_compact // Include full token for frontend decoding if needed
+        }
       };
       
       // Build registration summary card
