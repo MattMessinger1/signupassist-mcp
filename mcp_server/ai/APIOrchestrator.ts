@@ -394,9 +394,14 @@ export default class APIOrchestrator implements IOrchestrator {
         const userCity = storedCity?.toLowerCase().trim();
         const supportedProviderInCity = userCity && ['madison'].includes(userCity);
         
+        // Detect if input looks like an activity vs organization
+        const detectedActivity = this.extractActivityFromMessage(input);
+        const isActivity = !!detectedActivity;
+        
         if (supportedProviderInCity) {
+          const itemType = isActivity ? "activity" : "organization";
           return this.formatResponse(
-            `I don't support "${input.trim().slice(0, 40)}" yet. But I can help with **AIM Design** classes in Madison.`,
+            `I don't support that ${itemType} yet. But I can help with **AIM Design** classes in Madison.`,
             undefined,
             [
               { label: "Browse AIM Design", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "accent" }
@@ -405,8 +410,9 @@ export default class APIOrchestrator implements IOrchestrator {
         }
         
         // User not in a supported city - just decline without alternatives
+        const itemType = isActivity ? "activity" : "organization";
         return this.formatResponse(
-          `I don't support that organization yet. Sorry!`,
+          `I don't support that ${itemType} yet. Sorry!`,
           undefined,
           []
         );
