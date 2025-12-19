@@ -227,21 +227,21 @@ describe('SkiClubPro Registration and Payment', () => {
       });
     });
 
-    it('should process payment with VGS alias', async () => {
-      const vgsPayArgs: PayArgs = {
+    it('should process payment with another stored card', async () => {
+      const altPayArgs: PayArgs = {
         ...mockPayArgs,
         payment_method: {
-          type: 'vgs_alias' as const,
-          vgs_alias: 'tok_vgs_abcd1234'
+          type: 'stored' as const,
+          card_alias: 'card_alternate_456'
         }
       };
 
-      await scpPay(vgsPayArgs);
+      await scpPay(altPayArgs);
       
       expect(mockPerformSkiClubProPayment).toHaveBeenCalledWith(mockSession, {
-        registration_ref: vgsPayArgs.registration_ref,
-        amount_cents: vgsPayArgs.amount_cents,
-        payment_method: vgsPayArgs.payment_method
+        registration_ref: altPayArgs.registration_ref,
+        amount_cents: altPayArgs.amount_cents,
+        payment_method: altPayArgs.payment_method
       });
     });
 

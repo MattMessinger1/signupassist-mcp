@@ -179,8 +179,8 @@ export const skiclubproTools = [
         payment_method: {
           type: 'object',
           properties: {
-            type: { type: 'string' },
-            vgs_alias: { type: 'string' }
+            type: { type: 'string', enum: ['stored'] },
+            card_alias: { type: 'string' }
           }
         },
         mandate_id: { type: 'string' },

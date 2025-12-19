@@ -33,15 +33,5 @@ verify_jwt = true  # SECURED: Prevent unauthorized calls creating infinite Brows
 [functions.refresh-provider-details]
 verify_jwt = false  # Allow cron job to call without JWT (uses MCP_ACCESS_TOKEN internally for security)
 
-[functions.refresh-provider-details]
-verify_jwt = false  # Allow cron job to call without JWT (uses MCP_ACCESS_TOKEN internally)
-
 [functions.sync-bookeo]
 verify_jwt = true  # SECURED: Require authentication to prevent unauthorized sync operations
-
-[functions.vgs-tokenize]
-verify_jwt = false  # Allow internal service calls for tokenization
-
-[functions.vgs-detokenize]
-verify_jwt = true  # SECURED: Require authentication before revealing PII
-
