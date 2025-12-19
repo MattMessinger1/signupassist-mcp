@@ -497,6 +497,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       // Case A: Activity detected, providers exist, need location
       const activity = matcherExtractActivity(input);
       if (activity && !confidence.matchedProvider) {
+        // Store that we're waiting for a city so follow-ups like "for adults?" don't dead-end.
+        this.updateContext(sessionId, { step: FlowStep.BROWSE });
+
         const displayName = getActivityDisplayName(activity);
         return this.formatResponse(
           `I have ${displayName} programs! What city are you in?`,
