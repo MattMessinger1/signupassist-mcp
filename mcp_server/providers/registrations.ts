@@ -6,7 +6,7 @@
 import { auditToolCall } from '../middleware/audit.js';
 import { createClient } from '@supabase/supabase-js';
 import type { ProviderResponse, ParentFriendlyError } from '../types.js';
-import { Logger } from '../utils/logger.js';
+import Logger from '../utils/logger.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
