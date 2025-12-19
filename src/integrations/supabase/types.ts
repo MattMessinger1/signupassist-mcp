@@ -218,6 +218,7 @@ export type Database = {
       }
       cached_provider_feed: {
         Row: {
+          audience: string | null
           cached_at: string | null
           category: string | null
           org_ref: string
@@ -227,6 +228,7 @@ export type Database = {
           signup_form: Json | null
         }
         Insert: {
+          audience?: string | null
           cached_at?: string | null
           category?: string | null
           org_ref: string
@@ -236,6 +238,7 @@ export type Database = {
           signup_form?: Json | null
         }
         Update: {
+          audience?: string | null
           cached_at?: string | null
           category?: string | null
           org_ref?: string

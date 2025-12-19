@@ -56,6 +56,7 @@ import {
 } from "../utils/activityMatcher.js";
 import { getAllActiveOrganizations } from "../config/organizations.js";
 import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
+import { checkAudienceMismatch } from "../utils/audienceParser.js";
 
 // Simple flow steps for API-first providers
 enum FlowStep {
@@ -1073,13 +1074,21 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         }
       }
 
-      // Audience mismatch check: user asked for adults, but the catalog looks like kids-only.
+      // Audience mismatch check using the shared audienceParser utility
       if (context.requestedAdults && !context.ignoreAudienceMismatch) {
-        const mismatch = this.detectAdultsVsYouthMismatch(filteredPrograms);
+        const mismatch = checkAudienceMismatch(
+          filteredPrograms.map((p: any) => ({
+            audience: p.audience,
+            age_range: p.age_range,
+            title: p.title,
+            description: p.description,
+          })),
+          'adults'
+        );
         if (mismatch.hasMismatch) {
           const providerDisplayName = orgRef === "aim-design" ? "AIM Design" : orgRef;
           return this.formatResponse(
-            `I found ${filteredPrograms.length} class${filteredPrograms.length !== 1 ? 'es' : ''} at ${providerDisplayName}, but they look like kids programs (${mismatch.foundAudience || 'under 18'}). You asked for adults. Sorry!`,
+            `I found ${mismatch.programCount} class${mismatch.programCount !== 1 ? 'es' : ''} at ${providerDisplayName}, but they're for ${mismatch.foundAudience || 'kids'}—not adults. We don't have adult classes at this provider yet. Sorry!`,
             undefined,
             [
               { label: "Show these anyway", action: "search_programs", payload: { orgRef, ignoreAudienceMismatch: true }, variant: "outline" },
