@@ -116,6 +116,78 @@ export interface GroupedCardsPayload {
 }
 
 /**
+ * Detect if the user is requesting adult programs
+ * Returns true if "adult", "grown-up", "18+", etc. is in the query
+ */
+export function detectAdultRequest(query?: string): boolean {
+  if (!query) return false;
+  const adultPatterns = /\b(adult|adults|grown[-\s]?up|18\+|seniors?|elderly|over\s*18|for\s*me)\b/i;
+  return adultPatterns.test(query);
+}
+
+/**
+ * Analyze programs for age mismatch with user's request
+ * Returns info about whether there's a mismatch and what ages were found
+ */
+export interface AgeMismatchResult {
+  hasMismatch: boolean;
+  requestedAudience?: string;
+  foundAudience?: string;
+  maxAgeFound: number;
+}
+
+export function detectAgeMismatch(
+  programs: Array<{ age_range?: string }>,
+  userRequestedAdults: boolean
+): AgeMismatchResult {
+  if (!userRequestedAdults || programs.length === 0) {
+    return { hasMismatch: false, maxAgeFound: 99 };
+  }
+  
+  // Extract all age ranges from programs
+  const ageRanges: Array<{ min: number; max: number; display: string }> = [];
+  
+  for (const program of programs) {
+    if (!program.age_range) continue;
+    
+    const rangeMatch = program.age_range.match(/(\d+)[\s-]+(\d+)/);
+    if (rangeMatch) {
+      ageRanges.push({
+        min: parseInt(rangeMatch[1], 10),
+        max: parseInt(rangeMatch[2], 10),
+        display: program.age_range
+      });
+    }
+  }
+  
+  if (ageRanges.length === 0) {
+    // No age ranges specified - assume programs could be for anyone
+    return { hasMismatch: false, maxAgeFound: 99 };
+  }
+  
+  // Find the maximum age across all programs
+  const maxAgeFound = Math.max(...ageRanges.map(r => r.max));
+  
+  // If max age is under 18, these are clearly youth programs
+  if (maxAgeFound < 18) {
+    // Compile a summary of the age ranges found
+    const uniqueAges = [...new Set(ageRanges.map(r => r.display))];
+    const foundAudience = uniqueAges.length === 1 
+      ? uniqueAges[0] 
+      : `youth (${ageRanges.map(r => `${r.min}-${r.max}`).slice(0, 3).join(', ')}${ageRanges.length > 3 ? '...' : ''})`;
+    
+    return {
+      hasMismatch: true,
+      requestedAudience: 'adults',
+      foundAudience,
+      maxAgeFound
+    };
+  }
+  
+  return { hasMismatch: false, maxAgeFound };
+}
+
+/**
  * Prompt D Step 1: Filter programs by target_age
  * Drop items where age_range clearly EXCLUDES the target age
  */
