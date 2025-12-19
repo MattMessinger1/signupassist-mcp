@@ -60,6 +60,13 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        // Brand colors for direct use
+        brand: {
+          navy: "hsl(var(--brand-navy))",
+          "navy-light": "hsl(var(--brand-navy-light))",
+          gold: "hsl(var(--brand-gold))",
+          green: "hsl(var(--brand-green))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
