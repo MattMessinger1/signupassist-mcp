@@ -83,9 +83,85 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
   const [verifying, setVerifying] = useState(false);
   const [stripeUrl, setStripeUrl] = useState<string | null>(null);
   const [showFallback, setShowFallback] = useState(false);
+  const [isPolling, setIsPolling] = useState(false);
   const { toast } = useToast();
 
-  // Auto-detect return from Stripe on mount
+  // Auto-polling for payment completion (when Stripe opens in new tab)
+  useEffect(() => {
+    if (!showFallback || hasPaymentMethod) {
+      return; // Only poll when in fallback mode and no payment method yet
+    }
+
+    console.log('[SavePaymentMethod] 🔄 Starting auto-poll for payment completion');
+    setIsPolling(true);
+    
+    const POLL_INTERVAL = 3000; // 3 seconds
+    const MAX_POLL_TIME = 5 * 60 * 1000; // 5 minutes timeout
+    const startTime = Date.now();
+
+    const pollForPayment = async () => {
+      try {
+        let userId = mockUserId;
+        if (!userId) {
+          const { data: { user } } = await supabase.auth.getUser();
+          userId = user?.id;
+        }
+
+        if (!userId) {
+          console.log('[SavePaymentMethod] No user ID for polling');
+          return false;
+        }
+
+        const { data: billing } = await supabase
+          .from('user_billing')
+          .select('default_payment_method_id, payment_method_brand, payment_method_last4')
+          .eq('user_id', userId)
+          .maybeSingle();
+
+        if (billing?.default_payment_method_id) {
+          console.log('[SavePaymentMethod] ✅ Auto-detected payment method!', billing);
+          toast({
+            title: 'Payment Method Saved!',
+            description: `Your ${billing.payment_method_brand} •••• ${billing.payment_method_last4} is ready.`,
+          });
+          setIsPolling(false);
+          onPaymentMethodSaved?.();
+          return true; // Payment found
+        }
+        
+        return false; // Keep polling
+      } catch (error) {
+        console.error('[SavePaymentMethod] Polling error:', error);
+        return false;
+      }
+    };
+
+    const intervalId = setInterval(async () => {
+      // Check timeout
+      if (Date.now() - startTime > MAX_POLL_TIME) {
+        console.log('[SavePaymentMethod] Polling timeout reached');
+        setIsPolling(false);
+        clearInterval(intervalId);
+        return;
+      }
+
+      const found = await pollForPayment();
+      if (found) {
+        clearInterval(intervalId);
+      }
+    }, POLL_INTERVAL);
+
+    // Initial check immediately
+    pollForPayment();
+
+    return () => {
+      console.log('[SavePaymentMethod] Cleaning up polling');
+      setIsPolling(false);
+      clearInterval(intervalId);
+    };
+  }, [showFallback, hasPaymentMethod, mockUserId, onPaymentMethodSaved, toast]);
+
+  // Auto-detect return from Stripe on mount (URL params)
   useEffect(() => {
     const checkStripeReturn = async () => {
       const urlParams = new URLSearchParams(window.location.search);
@@ -345,17 +421,31 @@ export const SavePaymentMethod: React.FC<SavePaymentMethodProps> = ({
           {/* After Stripe opened: show verify + retry options */}
           {showFallback && (
             <>
-              {/* Clear return instruction banner */}
+              {/* Auto-polling status banner */}
               <div className="rounded-lg bg-primary/10 border border-primary/20 p-3 text-center">
-                <p className="text-sm font-medium text-primary">
-                  ✅ Complete payment in the Stripe tab
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Then come back here and click "Verify" below
-                </p>
+                {isPolling ? (
+                  <>
+                    <p className="text-sm font-medium text-primary flex items-center justify-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Waiting for payment completion...
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Complete setup in the Stripe tab — we'll detect it automatically
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium text-primary">
+                      ✅ Complete payment in the Stripe tab
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Or click "Verify" below when done
+                    </p>
+                  </>
+                )}
               </div>
               
-              <Button 
+              <Button
                 onClick={handleVerifyPayment} 
                 disabled={loading} 
                 className="w-full"
