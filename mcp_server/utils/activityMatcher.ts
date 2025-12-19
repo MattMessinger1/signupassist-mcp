@@ -6,13 +6,29 @@
 import { getAllActiveOrganizations, OrgConfig } from '../config/organizations.js';
 
 // Maps user keywords to normalized activity types
+// Multi-word phrase patterns (checked first for compound activities)
+const ACTIVITY_PHRASE_MAP: Record<string, string> = {
+  'basket weaving': 'crafts',
+  'ice skating': 'skating',
+  'figure skating': 'skating',
+  'martial arts': 'martial-arts',
+  'rock climbing': 'climbing',
+  'horseback riding': 'equestrian',
+  'scuba diving': 'diving',
+  'flag football': 'football',
+  'cross country': 'running',
+  'track and field': 'athletics',
+  'arts and crafts': 'crafts',
+  'creative writing': 'writing',
+};
+
+// Single-word keyword map
 const ACTIVITY_KEYWORD_MAP: Record<string, string> = {
   // Swimming
   'swim': 'swimming',
   'swimming': 'swimming',
   'pool': 'swimming',
   'aquatics': 'swimming',
-  'water': 'swimming',
   
   // Coding/Programming
   'code': 'coding',
@@ -35,7 +51,7 @@ const ACTIVITY_KEYWORD_MAP: Record<string, string> = {
   
   // Sports
   'soccer': 'soccer',
-  'football': 'soccer',
+  'football': 'football',
   'ski': 'skiing',
   'skiing': 'skiing',
   'snowboard': 'snowboarding',
@@ -54,8 +70,19 @@ const ACTIVITY_KEYWORD_MAP: Record<string, string> = {
   'karate': 'martial-arts',
   'taekwondo': 'martial-arts',
   'judo': 'martial-arts',
+  'archery': 'archery',
+  'fencing': 'fencing',
+  'wrestling': 'wrestling',
+  'boxing': 'boxing',
+  'yoga': 'yoga',
+  'pilates': 'pilates',
+  'climbing': 'climbing',
+  'skating': 'skating',
+  'running': 'running',
+  'track': 'athletics',
+  'athletics': 'athletics',
   
-  // Arts
+  // Arts & Crafts
   'dance': 'dance',
   'dancing': 'dance',
   'ballet': 'dance',
@@ -63,6 +90,11 @@ const ACTIVITY_KEYWORD_MAP: Record<string, string> = {
   'arts': 'art',
   'painting': 'art',
   'drawing': 'art',
+  'pottery': 'crafts',
+  'ceramics': 'crafts',
+  'weaving': 'crafts',
+  'crafts': 'crafts',
+  'craft': 'crafts',
   'music': 'music',
   'piano': 'music',
   'guitar': 'music',
@@ -76,12 +108,29 @@ const ACTIVITY_KEYWORD_MAP: Record<string, string> = {
   'acting': 'theater',
   'drama': 'theater',
   
-  // Other
+  // Other activities
   'camp': 'camp',
   'cooking': 'cooking',
+  'baking': 'cooking',
   'chess': 'chess',
   'tutoring': 'tutoring',
   'tutor': 'tutoring',
+  'darts': 'darts',
+  'photography': 'photography',
+  'writing': 'writing',
+  'gardening': 'gardening',
+  'sewing': 'crafts',
+  'knitting': 'crafts',
+  'fishing': 'fishing',
+  'hunting': 'hunting',
+  'sailing': 'sailing',
+  'rowing': 'rowing',
+  'kayak': 'kayaking',
+  'kayaking': 'kayaking',
+  'canoeing': 'canoeing',
+  'diving': 'diving',
+  'equestrian': 'equestrian',
+  'riding': 'equestrian',
 };
 
 /**
@@ -111,13 +160,22 @@ export function getActivityKeywords(normalizedActivity: string): string[] {
 
 /**
  * Extract activity type from a user message
- * Returns the first recognized activity keyword
+ * Checks multi-word phrases first, then single keywords
+ * Returns the first recognized activity
  */
 export function extractActivityFromMessage(message: string): string | null {
-  const words = message.toLowerCase().split(/\s+/);
+  const lower = message.toLowerCase();
   
+  // Check phrases first (multi-word activities)
+  for (const [phrase, activity] of Object.entries(ACTIVITY_PHRASE_MAP)) {
+    if (lower.includes(phrase)) {
+      return activity;
+    }
+  }
+  
+  // Then check single-word keywords
+  const words = lower.split(/\s+/);
   for (const word of words) {
-    // Clean punctuation
     const cleaned = word.replace(/[^a-z]/g, '');
     const normalized = normalizeActivity(cleaned);
     if (normalized) {
