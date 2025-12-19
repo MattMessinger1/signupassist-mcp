@@ -560,6 +560,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           []
         );
       }
+    }
+  }
 
   // NOTE: extractActivityFromMessage removed - using matcherExtractActivity from activityMatcher.ts
 
