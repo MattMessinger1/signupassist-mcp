@@ -1196,7 +1196,7 @@ export default class APIOrchestrator implements IOrchestrator {
 
     // Save new children if requested (ChatGPT App Store compliant)
     if (payload.saveNewChildren && userId && Array.isArray(payload.saveNewChildren)) {
-      Logger.info('[submitForm] Saving new children for user:', userId, payload.saveNewChildren.length);
+      Logger.info('[submitForm] Saving new children for user:', { userId, count: payload.saveNewChildren.length });
       for (const child of payload.saveNewChildren) {
         try {
           const result = await this.invokeMCPTool('user.create_child', {
@@ -1206,7 +1206,7 @@ export default class APIOrchestrator implements IOrchestrator {
             dob: child.dob
           });
           if (result?.success) {
-            Logger.info('[submitForm] ✅ Child saved:', child.first_name, child.last_name);
+            Logger.info('[submitForm] ✅ Child saved:', { firstName: child.first_name, lastName: child.last_name });
           } else {
             Logger.warn('[submitForm] Failed to save child (non-fatal):', result?.error || 'Unknown error');
           }

@@ -62,6 +62,39 @@ function redactValue(value: unknown, depth = 0): unknown {
 }
 
 /**
+ * Normalize any payload to Record<string, unknown>
+ * Handles strings, arrays, and other primitives by wrapping them
+ */
+function normalizePayload(payload: unknown): Record<string, unknown> {
+  if (payload === null || payload === undefined) {
+    return {};
+  }
+  
+  if (typeof payload === 'string') {
+    return { value: payload };
+  }
+  
+  if (Array.isArray(payload)) {
+    return { items: payload };
+  }
+  
+  if (typeof payload === 'object') {
+    // Handle Error objects specially
+    if (payload instanceof Error) {
+      return { 
+        error: payload.message, 
+        name: payload.name,
+        stack: payload.stack 
+      };
+    }
+    return payload as Record<string, unknown>;
+  }
+  
+  // Primitives (number, boolean, etc.)
+  return { value: payload };
+}
+
+/**
  * Redact sensitive data from an object payload
  * Handles nested objects and arrays
  */
@@ -84,15 +117,15 @@ export function redactPayload(payload: Record<string, unknown>, depth = 0): Reco
 /**
  * Format log entry as structured JSON
  */
-function formatLogEntry(level: string, message: string, payload?: Record<string, unknown>): string {
+function formatLogEntry(level: string, message: string, payload?: unknown): string {
   const entry: Record<string, unknown> = {
     level,
     ts: new Date().toISOString(),
     msg: redactPatterns(message),
   };
   
-  if (payload) {
-    entry.data = redactPayload(payload);
+  if (payload !== undefined) {
+    entry.data = redactPayload(normalizePayload(payload));
   }
   
   return JSON.stringify(entry);
@@ -101,33 +134,34 @@ function formatLogEntry(level: string, message: string, payload?: Record<string,
 /**
  * Logger with automatic PII redaction
  * All log methods automatically redact sensitive data
+ * Accepts any payload type - strings, arrays, objects, errors, etc.
  */
 export default class Logger {
   /**
    * Log informational message
    */
-  static info(message: string, payload?: Record<string, unknown>) {
+  static info(message: string, payload?: unknown) {
     console.log(formatLogEntry('info', message, payload));
   }
   
   /**
    * Log warning message
    */
-  static warn(message: string, payload?: Record<string, unknown>) {
+  static warn(message: string, payload?: unknown) {
     console.warn(formatLogEntry('warn', message, payload));
   }
   
   /**
    * Log error message
    */
-  static error(message: string, payload?: Record<string, unknown>) {
+  static error(message: string, payload?: unknown) {
     console.error(formatLogEntry('error', message, payload));
   }
   
   /**
    * Log debug message (only in development)
    */
-  static debug(message: string, payload?: Record<string, unknown>) {
+  static debug(message: string, payload?: unknown) {
     if (process.env.LOG_LEVEL === 'debug' || process.env.NODE_ENV === 'development') {
       console.log(formatLogEntry('debug', message, payload));
     }
@@ -139,14 +173,14 @@ export default class Logger {
   static withContext(context: Record<string, unknown>) {
     const safeContext = redactPayload(context);
     return {
-      info: (message: string, payload?: Record<string, unknown>) => 
-        Logger.info(message, { ...safeContext, ...payload }),
-      warn: (message: string, payload?: Record<string, unknown>) => 
-        Logger.warn(message, { ...safeContext, ...payload }),
-      error: (message: string, payload?: Record<string, unknown>) => 
-        Logger.error(message, { ...safeContext, ...payload }),
-      debug: (message: string, payload?: Record<string, unknown>) => 
-        Logger.debug(message, { ...safeContext, ...payload }),
+      info: (message: string, payload?: unknown) => 
+        Logger.info(message, { ...safeContext, ...normalizePayload(payload) }),
+      warn: (message: string, payload?: unknown) => 
+        Logger.warn(message, { ...safeContext, ...normalizePayload(payload) }),
+      error: (message: string, payload?: unknown) => 
+        Logger.error(message, { ...safeContext, ...normalizePayload(payload) }),
+      debug: (message: string, payload?: unknown) => 
+        Logger.debug(message, { ...safeContext, ...normalizePayload(payload) }),
     };
   }
 }
