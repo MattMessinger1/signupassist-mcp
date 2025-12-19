@@ -388,13 +388,15 @@ export default class APIOrchestrator implements IOrchestrator {
           [{ label: "Confirm Payment", action: "confirm_payment", variant: "accent" }]
         );
 
-      default:
-        // Authenticated but LOW confidence - graceful decline
+      default: {
+        // Authenticated but LOW confidence - be explicit when org isn't recognized
+        const orgGuess = input.trim().slice(0, 80);
         return this.formatResponse(
-          getGracefulDeclineMessage(),
+          `I don't recognize "${orgGuess}" as a supported organization yet. If you paste the registration link (or the exact org name), I can tell you whether SignupAssist can complete the signup.`,
           undefined,
           []
         );
+      }
     }
   }
 
