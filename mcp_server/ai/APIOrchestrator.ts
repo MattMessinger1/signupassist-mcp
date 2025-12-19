@@ -390,12 +390,25 @@ export default class APIOrchestrator implements IOrchestrator {
 
       default: {
         // Authenticated but LOW confidence - org not recognized
+        // Only show alternatives if user is in a supported city
+        const userCity = storedCity?.toLowerCase().trim();
+        const supportedProviderInCity = userCity && ['madison'].includes(userCity);
+        
+        if (supportedProviderInCity) {
+          return this.formatResponse(
+            `I don't support "${input.trim().slice(0, 40)}" yet. But I can help with **AIM Design** classes in Madison.`,
+            undefined,
+            [
+              { label: "Browse AIM Design", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "accent" }
+            ]
+          );
+        }
+        
+        // User not in a supported city - just decline without alternatives
         return this.formatResponse(
-          `I don't have "${input.trim().slice(0, 40)}" in my supported organizations yet. Right now I can help with **AIM Design** classes in Madison, WI.`,
+          `I don't support that organization yet.`,
           undefined,
-          [
-            { label: "Browse AIM Design", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "accent" }
-          ]
+          []
         );
       }
     }
