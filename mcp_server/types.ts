@@ -262,3 +262,18 @@ export interface ProviderResponse<T = any> extends Record<string, any> {
    */
   timestamp?: string;
 }
+
+// ============================================================================
+// Input Classification Types
+// ============================================================================
+
+/**
+ * Result of classifying user input as activity, organization, or ambiguous.
+ * Used by APIOrchestrator's tiered classification system.
+ */
+export interface InputClassification {
+  type: 'activity' | 'organization' | 'ambiguous';
+  confidence: number;       // 0.0 - 1.0
+  source: 'heuristic' | 'cache' | 'llm';
+  detectedValue?: string;   // The normalized activity or org name detected
+}

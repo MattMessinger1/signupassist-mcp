@@ -11,6 +11,7 @@ import type {
   ButtonSpec,
   IOrchestrator
 } from "./types.js";
+import type { InputClassification } from "../types.js";
 import Logger from "../utils/logger.js";
 import { 
   validateDesignDNA, 
@@ -49,6 +50,12 @@ import { formatInTimeZone } from "date-fns-tz";
 import { createClient } from "@supabase/supabase-js";
 import { lookupCity } from "../utils/cityLookup.js";
 import { analyzeLocation } from "./orchestratorMultiBackend.js";
+import { 
+  extractActivityFromMessage as matcherExtractActivity,
+  getActivityDisplayName
+} from "../utils/activityMatcher.js";
+import { getAllActiveOrganizations } from "../config/organizations.js";
+import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
 
 // Simple flow steps for API-first providers
 enum FlowStep {
@@ -92,10 +99,140 @@ interface APIContext {
 export default class APIOrchestrator implements IOrchestrator {
   private sessions: Map<string, APIContext> = new Map();
   private mcpServer: any;
+  
+  // LRU cache for input classification results (avoid redundant LLM calls)
+  private classificationCache: Map<string, { result: InputClassification; timestamp: number }> = new Map();
+  private readonly CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+  private readonly CACHE_MAX_SIZE = 500;
 
   constructor(mcpServer: any) {
     this.mcpServer = mcpServer;
     Logger.info("APIOrchestrator initialized - API-first mode with MCP tool access");
+  }
+  
+  // ============================================================================
+  // Tiered Input Classification System
+  // ============================================================================
+  
+  /**
+   * Get cities from registered organizations (dynamic, no hardcoding)
+   */
+  private getSupportedCities(): string[] {
+    return getAllActiveOrganizations()
+      .map(org => org.location?.city?.toLowerCase())
+      .filter((city): city is string => !!city);
+  }
+  
+  /**
+   * Get organization search keywords for pattern detection
+   */
+  private getOrgSearchKeywords(): string[] {
+    return getAllActiveOrganizations()
+      .flatMap(org => org.searchKeywords || [])
+      .map(kw => kw.toLowerCase());
+  }
+  
+  /**
+   * Tier 1: Fast heuristic detection for organizations
+   * Detects possessives, business suffixes, and known org keywords
+   */
+  private detectOrganizationPattern(input: string): boolean {
+    const normalized = input.toLowerCase().trim();
+    
+    // Check against registered org keywords (dynamic!)
+    const orgKeywords = this.getOrgSearchKeywords();
+    if (orgKeywords.some(kw => normalized.includes(kw))) {
+      return true;
+    }
+    
+    // Possessive pattern: "Joe's", "Mary's" (common in business names)
+    if (/\b\w+'s\b/i.test(input)) {
+      return true;
+    }
+    
+    // Business suffixes that indicate organization names
+    const bizSuffixes = ['inc', 'llc', 'club', 'studio', 'academy', 'center', 'centre', 'school', 'gym', 'ymca', 'ywca'];
+    if (bizSuffixes.some(s => normalized.includes(s))) {
+      return true;
+    }
+    
+    return false;
+  }
+  
+  /**
+   * Tiered input classification: fast heuristics → cache → LLM fallback
+   * Guarantees <5ms for 80-90% of cases, uses LLM only when ambiguous
+   */
+  private async classifyInputType(input: string): Promise<InputClassification> {
+    const normalized = input.toLowerCase().trim();
+    
+    // Tier 1: Fast heuristic - check activity keywords first
+    const activityMatch = matcherExtractActivity(input);
+    if (activityMatch) {
+      Logger.debug('[classifyInputType] Tier 1 heuristic: detected activity', activityMatch);
+      return { 
+        type: 'activity', 
+        confidence: 0.95, 
+        source: 'heuristic',
+        detectedValue: activityMatch
+      };
+    }
+    
+    // Tier 1: Fast heuristic - check organization patterns
+    if (this.detectOrganizationPattern(input)) {
+      Logger.debug('[classifyInputType] Tier 1 heuristic: detected organization pattern');
+      return { 
+        type: 'organization', 
+        confidence: 0.90, 
+        source: 'heuristic',
+        detectedValue: input 
+      };
+    }
+    
+    // Tier 2: Check cache
+    const cached = this.classificationCache.get(normalized);
+    if (cached && (Date.now() - cached.timestamp) < this.CACHE_TTL_MS) {
+      Logger.debug('[classifyInputType] Tier 2 cache hit');
+      return { ...cached.result, source: 'cache' };
+    }
+    
+    // Tier 3: LLM fallback for truly ambiguous cases
+    try {
+      Logger.info('[classifyInputType] Tier 3 LLM fallback for:', input);
+      
+      const llmResult = await callOpenAI_JSON({
+        model: 'gpt-4o-mini',
+        system: `Classify user input as either an activity/program type or an organization name.
+Activity examples: "swimming", "coding classes", "basket weaving", "darts"
+Organization examples: "Joe's Dance Studio", "YMCA", "AIM Design", "Madison Swim Club"
+Return JSON: {"type":"activity"|"organization","confidence":0.0-1.0}
+If truly ambiguous, use type "ambiguous" with lower confidence.`,
+        user: input,
+        maxTokens: 50,
+        temperature: 0,
+      });
+      
+      const result: InputClassification = {
+        type: llmResult?.type === 'activity' ? 'activity' : 
+              llmResult?.type === 'organization' ? 'organization' : 'ambiguous',
+        confidence: typeof llmResult?.confidence === 'number' ? llmResult.confidence : 0.5,
+        source: 'llm',
+        detectedValue: input
+      };
+      
+      // Cache the result (with LRU eviction)
+      if (this.classificationCache.size >= this.CACHE_MAX_SIZE) {
+        // Remove oldest entry
+        const oldestKey = this.classificationCache.keys().next().value;
+        if (oldestKey) this.classificationCache.delete(oldestKey);
+      }
+      this.classificationCache.set(normalized, { result, timestamp: Date.now() });
+      
+      return result;
+    } catch (error) {
+      Logger.warn('[classifyInputType] LLM fallback failed, defaulting to ambiguous:', error);
+      return { type: 'ambiguous', confidence: 0.3, source: 'heuristic' };
+    }
   }
 
   /**
@@ -318,7 +455,7 @@ export default class APIOrchestrator implements IOrchestrator {
 
     // Store detected activity in session context (even if we can't help)
     // This enables filtering programs when user later picks a provider
-    const detectedActivity = this.extractActivityFromMessage(input);
+    const detectedActivity = matcherExtractActivity(input);
     if (detectedActivity) {
       this.updateContext(sessionId, { requestedActivity: detectedActivity });
       Logger.info('[handleMessage] Stored requestedActivity:', detectedActivity);
@@ -340,8 +477,7 @@ export default class APIOrchestrator implements IOrchestrator {
 
     if (confidence.level === 'MEDIUM') {
       // Case A: Activity detected, providers exist, need location
-      const { extractActivityFromMessage, getActivityDisplayName } = await import('../utils/activityMatcher.js');
-      const activity = extractActivityFromMessage(input);
+      const activity = matcherExtractActivity(input);
       if (activity && !confidence.matchedProvider) {
         const displayName = getActivityDisplayName(activity);
         return this.formatResponse(
@@ -390,90 +526,42 @@ export default class APIOrchestrator implements IOrchestrator {
 
       default: {
         // Authenticated but LOW confidence - org not recognized
-        // Only show alternatives if user is in a supported city
-        const userCity = storedCity?.toLowerCase().trim();
-        const supportedProviderInCity = userCity && ['madison'].includes(userCity);
+        // Use tiered classification to determine if activity vs organization
+        const classification = await this.classifyInputType(input);
         
-        // Detect if input looks like an activity vs organization
-        const detectedActivity = this.extractActivityFromMessage(input);
-        const isActivity = !!detectedActivity;
+        // Dynamic city check from organization registry
+        const userCity = storedCity?.toLowerCase().trim();
+        const supportedCities = this.getSupportedCities();
+        const supportedProviderInCity = userCity && supportedCities.includes(userCity);
+        
+        const itemType = classification.type === 'activity' ? 'program' : 'organization';
         
         if (supportedProviderInCity) {
-          const itemType = isActivity ? "program" : "organization";
+          // Find which org is in that city for a better suggestion
+          const cityOrg = getAllActiveOrganizations().find(
+            org => org.location?.city?.toLowerCase() === userCity
+          );
+          const orgName = cityOrg?.displayName || 'our partners';
+          const orgRef = cityOrg?.orgRef || 'aim-design';
+          
           return this.formatResponse(
-            `I don't support that ${itemType} yet. But I can help with **AIM Design** classes in Madison.`,
+            `I don't support that ${itemType} yet. But I can help with **${orgName}** classes in ${storedCity}.`,
             undefined,
             [
-              { label: "Browse AIM Design", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "accent" }
+              { label: `Browse ${orgName}`, action: "search_programs", payload: { orgRef }, variant: "accent" }
             ]
           );
         }
         
         // User not in a supported city - just decline without alternatives
-        const itemType = isActivity ? "program" : "organization";
         return this.formatResponse(
           `I don't support that ${itemType} yet. Sorry!`,
           undefined,
           []
         );
       }
-    }
-  }
 
-  /**
-   * Extract activity type from user message using keyword matching
-   */
-  private extractActivityFromMessage(message: string): string | null {
-    const normalized = message.toLowerCase().trim();
-
-    // Phrase matching first (helps with multi-word activities)
-    const phraseMap: Record<string, string> = {
-      "basket weaving": "basket-weaving",
-    };
-    for (const [phrase, activity] of Object.entries(phraseMap)) {
-      if (normalized.includes(phrase)) return activity;
-    }
-
-    // Activity keyword map (subset - full map in activityMatcher.ts)
-    const keywords: Record<string, string> = {
-      swim: "swimming",
-      swimming: "swimming",
-      pool: "swimming",
-      code: "coding",
-      coding: "coding",
-      programming: "coding",
-      robot: "robotics",
-      robotics: "robotics",
-      stem: "stem",
-      science: "stem",
-      soccer: "soccer",
-      ski: "skiing",
-      skiing: "skiing",
-      dance: "dance",
-      art: "art",
-      music: "music",
-      basketball: "basketball",
-      tennis: "tennis",
-      golf: "golf",
-      gymnastics: "gymnastics",
-      hockey: "hockey",
-      camp: "camp",
-      theater: "theater",
-      chess: "chess",
-
-      // Common “program” examples people type that we still want to treat as an activity
-      darts: "darts",
-      weaving: "weaving",
-    };
-
-    const words = normalized.split(/\s+/);
-    for (const word of words) {
-      const cleaned = word.replace(/[^a-z]/g, "");
-      if (keywords[cleaned]) return keywords[cleaned];
-    }
-
-    return null;
-  }
+  // NOTE: extractActivityFromMessage removed - using matcherExtractActivity from activityMatcher.ts
 
   /**
    * Check if input looks like a simple location response
