@@ -22,7 +22,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { AuditTrailTimeline, type AuditEvent as TimelineEvent } from '@/components/AuditTrailTimeline';
-import { mapToolNameToUserTitle } from '@/copy/signupassistCopy';
+import { mapToolNameToUserTitle, mapScopeToFriendly } from '@/copy/signupassistCopy';
 
 interface Mandate {
   id: string;
@@ -47,6 +47,10 @@ interface AuditEvent {
   finished_at: string | null;
   details: any;
   result: string | null;
+  // New fields for enhanced audit trail
+  args_hash: string | null;
+  result_hash: string | null;
+  mandate_id: string | null;
 }
 
 interface MandateAuditLog {
@@ -348,11 +352,14 @@ export default function MandatesAudit() {
                       <div>
                         <span className="text-muted-foreground">Scopes:</span>
                         <div className="flex flex-wrap gap-1 mt-1">
-                          {mandate.scope.map((s) => (
-                            <Badge key={s} variant="outline" className="text-xs">
-                              {s}
-                            </Badge>
-                          ))}
+                          {mandate.scope.map((s) => {
+                            const { icon, label } = mapScopeToFriendly(s);
+                            return (
+                              <Badge key={s} variant="outline" className="text-xs">
+                                {icon} {label}
+                              </Badge>
+                            );
+                          })}
                         </div>
                       </div>
                     </div>
@@ -390,6 +397,11 @@ export default function MandatesAudit() {
                                   : 'pending',
                                 userTitle: event.tool ? mapToolNameToUserTitle(event.tool) : event.event_type,
                                 userSubtitle: event.result || undefined,
+                                // Include integrity hashes
+                                argsHash: event.args_hash || undefined,
+                                resultHash: event.result_hash || undefined,
+                                // Include mandate JWS for viewer
+                                mandateJws: mandate.jws_compact,
                                 technical: {
                                   ...(event.tool && { tool: event.tool }),
                                   ...(event.decision && { decision: event.decision }),
