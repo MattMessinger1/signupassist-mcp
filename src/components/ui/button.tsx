@@ -17,6 +17,8 @@ const buttonVariants = cva(
         link: "text-primary underline-offset-4 hover:underline",
         // Accent variant for primary CTAs (green)
         accent: "bg-accent text-accent-foreground hover:bg-accent/90 shadow-sm",
+        // Warning variant for scheduling/timing CTAs (yellow/amber)
+        warning: "bg-amber-500 text-white hover:bg-amber-600 shadow-sm",
       },
       size: {
         default: "h-11 px-5 py-2",

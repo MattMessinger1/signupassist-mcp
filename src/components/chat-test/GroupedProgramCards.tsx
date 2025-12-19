@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ExternalLink, Info, Lock } from "lucide-react";
-import { getStatusDisplay, detectProgramRestrictions, formatCaptionParts } from "@/lib/utils/programStatusHelpers";
+import { getStatusDisplay, detectProgramRestrictions, formatCaptionParts, getButtonVariantForLabel } from "@/lib/utils/programStatusHelpers";
 import type { ProgramCard as ProgramCardType } from "@/types/program";
 
 interface CardAction {
@@ -202,27 +202,31 @@ export function GroupedProgramCards({ payload, onAction }: GroupedProgramCardsPr
                   
                   {!card.isHeader && card.actions && card.actions.length > 0 && (
                     <CardFooter className="flex gap-2">
-                      {card.actions.map((action, actionIdx) => (
-                        <Button
-                          key={actionIdx}
-                          variant={action.type === "link" ? "default" : "outline"}
-                          size="sm"
-                          onClick={() => handleAction(action, card)}
-                          className="flex-1"
-                        >
-                          {action.type === "link" ? (
-                            <>
-                              {action.label}
-                              <ExternalLink className="ml-1 h-3 w-3" />
-                            </>
-                          ) : (
-                            <>
-                              <Info className="mr-1 h-3 w-3" />
-                              {action.label}
-                            </>
-                          )}
-                        </Button>
-                      ))}
+                      {card.actions.map((action, actionIdx) => {
+                        const variant = getButtonVariantForLabel(action.label, undefined, action.type === 'link');
+                        
+                        return (
+                          <Button
+                            key={actionIdx}
+                            variant={variant}
+                            size="sm"
+                            onClick={() => handleAction(action, card)}
+                            className="flex-1"
+                          >
+                            {action.type === "link" ? (
+                              <>
+                                {action.label}
+                                <ExternalLink className="ml-1 h-3 w-3" />
+                              </>
+                            ) : (
+                              <>
+                                {variant !== 'accent' && variant !== 'warning' && <Info className="mr-1 h-3 w-3" />}
+                                {action.label}
+                              </>
+                            )}
+                          </Button>
+                        );
+                      })}
                     </CardFooter>
                   )}
                 </Card>
