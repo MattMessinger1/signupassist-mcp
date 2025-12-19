@@ -519,10 +519,67 @@ class AIOrchestrator {
           );
         }
         
-        // Case B: No provider mentioned - ask which one
+        // Case B: No provider mentioned - check if it's a location first
         if (orgSearchResults.length === 0) {
-          Logger.info('[Provider-First] No provider identified, showing selection', { sessionId });
+          Logger.info('[Provider-First] No provider identified, checking if location', { sessionId });
           
+          // Check if user message is a city/location
+          const { lookupCity } = await import('../utils/cityLookup.js');
+          const { analyzeLocation } = await import('./orchestratorMultiBackend.js');
+          
+          const cityLookup = lookupCity(userMessage);
+          
+          if (cityLookup.found) {
+            // User mentioned a city - analyze coverage
+            const locationAnalysis = analyzeLocation(userMessage);
+            
+            if (!locationAnalysis.isInCoverage) {
+              // Out of coverage - return graceful message
+              Logger.info('[Provider-First] Location out of coverage', {
+                sessionId,
+                city: locationAnalysis.city,
+                state: locationAnalysis.state
+              });
+              
+              return this.formatResponse(
+                locationAnalysis.message || "I don't have providers in that area yet. I'm currently focused on the Madison, Wisconsin area.",
+                undefined,
+                locationAnalysis.showWaitlist ? [{
+                  label: "Notify me when available",
+                  action: "join_waitlist",
+                  payload: { city: locationAnalysis.city, state: locationAnalysis.state },
+                  variant: 'outline'
+                }] : undefined,
+                { locationAnalysis }
+              );
+            }
+            
+            if (locationAnalysis.isAmbiguous && locationAnalysis.disambiguationOptions) {
+              // Ambiguous city - ask for clarification
+              Logger.info('[Provider-First] Ambiguous city detected', {
+                sessionId,
+                city: cityLookup.matches?.[0]?.city,
+                options: locationAnalysis.disambiguationOptions
+              });
+              
+              return this.formatResponse(
+                locationAnalysis.message || `I found multiple cities named "${cityLookup.matches?.[0]?.city}". Which state are you in?`,
+                undefined,
+                locationAnalysis.disambiguationOptions?.map(opt => ({
+                  label: `${opt.city}, ${opt.state}`,
+                  action: 'select_location',
+                  payload: opt,
+                  variant: 'outline'
+                })),
+                {}
+              );
+            }
+            
+            // City is in coverage - fall through to show providers
+            Logger.info('[Provider-First] Location in coverage, showing providers', { sessionId });
+          }
+          
+          // Not a recognized city or in coverage - show provider selection
           const activeOrgs = getAllActiveOrganizations();
           
           if (activeOrgs.length === 0) {
