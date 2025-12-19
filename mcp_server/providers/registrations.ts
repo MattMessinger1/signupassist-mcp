@@ -6,7 +6,6 @@
 import { auditToolCall } from '../middleware/audit.js';
 import { createClient } from '@supabase/supabase-js';
 import type { ProviderResponse, ParentFriendlyError } from '../types.js';
-import { tokenize, isVGSConfigured } from '../lib/vgsClient.js';
 import { Logger } from '../utils/logger.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
@@ -55,8 +54,7 @@ export interface RegistrationRecord {
  * Tool: registrations.create
  * Create a registration record after successful booking
  * 
- * PII Tokenization: delegate_email is tokenized via VGS before storage.
- * Both raw delegate_email and delegate_email_alias are stored for backward compat.
+ * Email stored directly - Supabase encrypts data at rest
  */
 async function createRegistration(args: {
   user_id: string;
@@ -104,8 +102,7 @@ async function createRegistration(args: {
   });
   
   try {
-    // Build insert payload
-    // Build insert payload - start with masked email for VGS compliance
+    // Build insert payload - store email directly (Supabase encrypts at rest)
     const insertPayload: any = {
       user_id,
       mandate_id,
@@ -119,34 +116,12 @@ async function createRegistration(args: {
       amount_cents,
       success_fee_cents,
       delegate_name,
-      delegate_email: null, // VGS compliance: never store raw PII
+      delegate_email,
       participant_names,
       status,
       scheduled_for,
       executed_at: scheduled_for ? null : new Date().toISOString()
     };
-    
-    // Tokenize delegate_email - REQUIRED for App Store compliance
-    if (delegate_email && isVGSConfigured()) {
-      try {
-        const tokenized = await tokenize({ email: delegate_email });
-        if (tokenized.email_alias) {
-          insertPayload.delegate_email_alias = tokenized.email_alias;
-          insertPayload.delegate_email = '[TOKENIZED]'; // Placeholder for display
-          Logger.info('[Registrations] Delegate email tokenized successfully');
-        } else {
-          Logger.error('[Registrations] VGS returned no alias');
-          insertPayload.delegate_email = '[TOKENIZATION_FAILED]';
-        }
-      } catch (tokenizeError) {
-        Logger.error('[Registrations] VGS tokenization failed for email', { error: tokenizeError });
-        insertPayload.delegate_email = '[TOKENIZATION_FAILED]';
-      }
-    } else if (!isVGSConfigured()) {
-      Logger.warn('[Registrations] VGS not configured - COMPLIANCE VIOLATION: raw email would be exposed');
-      // In production, fail the operation if VGS is not configured
-      insertPayload.delegate_email = '[VGS_NOT_CONFIGURED]';
-    }
     
     const { data, error } = await supabase
       .from('registrations')

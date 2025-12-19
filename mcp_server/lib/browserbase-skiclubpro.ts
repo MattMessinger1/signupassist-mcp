@@ -189,8 +189,7 @@ export async function purchaseMembership(
   opts: { 
     plan: string; 
     payment_method: { 
-      type: "stored" | "vgs_alias"; 
-      vgs_alias?: string;
+      type: "stored";
       card_alias?: string;
     } 
   }
@@ -205,10 +204,8 @@ export async function purchaseMembership(
   await page.click(`text=${opts.plan}`);
   await page.waitForNavigation({ waitUntil: "networkidle" });
   
-  // Payment section
-  if (opts.payment_method.type === "vgs_alias") {
-    await page.fill('input[name="vgs_alias"], input[data-vgs]', opts.payment_method.vgs_alias ?? "");
-  } else if (opts.payment_method.type === "stored" && opts.payment_method.card_alias) {
+  // Payment section - use stored payment method
+  if (opts.payment_method.type === "stored" && opts.payment_method.card_alias) {
     await page.click(`[data-card-alias="${opts.payment_method.card_alias}"], .stored-payment-method`);
   }
   

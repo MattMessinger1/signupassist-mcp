@@ -82,6 +82,7 @@
 - **PCI Compliance: Stripe Checkout redirect (no CardElement)**
 - **Auth Compliance: OAuth-first (no password fields)**
 - **PHI Compliance: No allergies/medical data collection**
+- **PII Storage: Supabase at-rest encryption (no VGS dependency)**
 
 ### ⚠️ Missing for Production
 1. Privacy policy content and hosting

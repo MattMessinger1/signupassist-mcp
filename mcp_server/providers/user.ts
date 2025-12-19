@@ -6,7 +6,6 @@
 import { auditToolCall } from '../middleware/audit.js';
 import { createClient } from '@supabase/supabase-js';
 import type { ProviderResponse, ParentFriendlyError } from '../types.js';
-import { tokenize, detokenize, isVGSConfigured, getMaskedValue } from '../lib/vgsClient.js';
 import { Logger } from '../utils/logger.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
@@ -48,6 +47,7 @@ export interface PaymentMethodInfo {
 
 /**
  * Delegate profile structure (for parent/guardian info persistence)
+ * Note: phone and email stored directly (Supabase encrypts at rest)
  */
 export interface DelegateProfile {
   id?: string;
@@ -55,8 +55,7 @@ export interface DelegateProfile {
   first_name?: string;
   last_name?: string;
   phone?: string;
-  phone_alias?: string;  // VGS tokenized phone
-  email_alias?: string;  // VGS tokenized email (if collected)
+  email?: string;
   date_of_birth?: string;
   default_relationship?: string;
   city?: string;      // For location-based provider matching
@@ -309,17 +308,13 @@ async function updateChild(args: {
  * Tool: user.get_delegate_profile
  * Gets the delegate profile for a user (audited for compliance)
  * Required scope: user:read:profile
- * 
- * Note: Returns phone_alias for display (masked), but can optionally detokenize
- * if real phone number is needed for external service calls.
  */
 async function getDelegateProfile(args: {
   user_id: string;
-  detokenize_pii?: boolean; // Set true only when raw PII is needed for external calls
 }): Promise<ProviderResponse<{ profile: DelegateProfile | null }>> {
-  const { user_id, detokenize_pii = false } = args;
+  const { user_id } = args;
   
-  Logger.info('[User] Getting delegate profile', { user_id, detokenize_pii });
+  Logger.info('[User] Getting delegate profile', { user_id });
   
   try {
     const { data: profile, error } = await supabase
@@ -342,24 +337,6 @@ async function getDelegateProfile(args: {
     if (!profile) {
       Logger.info('[User] No delegate profile found for user');
       return { success: true, data: { profile: null } };
-    }
-    
-    // If detokenization is requested and VGS is configured, reveal PII
-    if (detokenize_pii && isVGSConfigured() && profile.phone_alias) {
-      try {
-        const revealed = await detokenize({ phone_alias: profile.phone_alias });
-        if (revealed.phone) {
-          profile.phone = revealed.phone;
-        }
-        Logger.info('[User] Detokenized phone for external use');
-      } catch (detokenizeError) {
-        Logger.warn('[User] Failed to detokenize phone, using masked value', { error: detokenizeError });
-        // Fall back to masked display
-        profile.phone = getMaskedValue(profile.phone_alias, 'phone');
-      }
-    } else if (profile.phone_alias && !profile.phone) {
-      // For display purposes, show masked value
-      profile.phone = getMaskedValue(profile.phone_alias, 'phone');
     }
     
     Logger.info('[User] Delegate profile retrieved successfully');
@@ -386,19 +363,18 @@ async function getDelegateProfile(args: {
  * Updates or creates delegate profile (audited for compliance)
  * Required scope: user:write:profile
  * 
- * PII Tokenization: Phone numbers are tokenized via VGS before storage.
- * Both raw phone (for backward compat) and phone_alias (tokenized) are stored.
+ * PII stored directly - Supabase encrypts data at rest
  */
 async function updateDelegateProfile(args: {
   user_id: string;
   first_name?: string;
   last_name?: string;
   phone?: string;
-  email?: string;  // Optional email for tokenization
+  email?: string;
   date_of_birth?: string;
   default_relationship?: string;
-  city?: string;       // For location-based provider matching
-  state?: string;      // For location-based provider matching
+  city?: string;
+  state?: string;
 }): Promise<ProviderResponse<{ profile: DelegateProfile }>> {
   const { user_id, first_name, last_name, phone, email, date_of_birth, default_relationship, city, state } = args;
   
@@ -412,37 +388,8 @@ async function updateDelegateProfile(args: {
     if (default_relationship !== undefined) updates.default_relationship = default_relationship;
     if (city !== undefined) updates.city = city;
     if (state !== undefined) updates.state = state;
-    
-    // Tokenize PII if VGS is configured
-    if (phone !== undefined || email !== undefined) {
-      if (isVGSConfigured()) {
-        try {
-          const tokenizeRequest: { phone?: string; email?: string } = {};
-          if (phone) tokenizeRequest.phone = phone;
-          if (email) tokenizeRequest.email = email;
-          
-          const tokenized = await tokenize(tokenizeRequest);
-          
-          if (tokenized.phone_alias) {
-            updates.phone_alias = tokenized.phone_alias;
-            updates.phone = phone; // Keep raw for backward compatibility during transition
-            Logger.info('[User] Phone tokenized successfully');
-          }
-          if (tokenized.email_alias) {
-            updates.email_alias = tokenized.email_alias;
-            Logger.info('[User] Email tokenized successfully');
-          }
-        } catch (tokenizeError) {
-          Logger.error('[User] VGS tokenization failed, storing raw PII', { error: tokenizeError });
-          // Fallback: store raw PII if tokenization fails (but log the failure)
-          if (phone) updates.phone = phone;
-        }
-      } else {
-        // VGS not configured - store raw (development mode)
-        Logger.warn('[User] VGS not configured, storing raw PII');
-        if (phone) updates.phone = phone;
-      }
-    }
+    if (phone !== undefined) updates.phone = phone;
+    // Note: email stored in auth.users, but can be cached here if needed
     
     const { data: profile, error } = await supabase
       .from('delegate_profiles')
