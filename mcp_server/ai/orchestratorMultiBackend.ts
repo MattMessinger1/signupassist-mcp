@@ -6,6 +6,124 @@
 import Logger from "../utils/logger.js";
 import { searchOrganizations, OrgSearchResult } from "../utils/providerSearch.js";
 import { AAPTriad } from "../types/aap.js";
+import { lookupCity, CityLookupResult, isAmbiguousCity, getAmbiguousCityOptions } from "../utils/cityLookup.js";
+import { 
+  isInActiveServiceArea, 
+  isInComingSoonArea, 
+  isWaitlistEligible,
+  getActiveServiceAreaDisplay,
+  buildCoverageMessage 
+} from "../config/serviceAreas.js";
+import { 
+  getOutOfCoverageMessage, 
+  getAmbiguousCityMessage, 
+  getComingSoonMessage,
+  getInCoverageMessage,
+  getNoProviderMatchMessage 
+} from "./messageTemplates.js";
+
+/**
+ * Location analysis result
+ */
+export interface LocationAnalysis {
+  found: boolean;
+  city?: string;
+  state?: string;
+  isInCoverage: boolean;
+  isComingSoon: boolean;
+  isAmbiguous: boolean;
+  showWaitlist: boolean;
+  message?: string;
+  disambiguationOptions?: Array<{ city: string; state: string; description: string }>;
+}
+
+/**
+ * Analyze a location string and determine coverage status
+ */
+export function analyzeLocation(locationText: string): LocationAnalysis {
+  const cityLookup = lookupCity(locationText);
+  
+  if (!cityLookup.found) {
+    return {
+      found: false,
+      isInCoverage: false,
+      isComingSoon: false,
+      isAmbiguous: false,
+      showWaitlist: false,
+      message: `I couldn't recognize "${locationText}" as a city. Could you tell me which city you're in?`
+    };
+  }
+  
+  // Handle ambiguous cities (same name in multiple states)
+  if (cityLookup.needsDisambiguation && cityLookup.disambiguationOptions) {
+    return {
+      found: true,
+      city: cityLookup.suggestedMatch!.city,
+      isInCoverage: false,
+      isComingSoon: false,
+      isAmbiguous: true,
+      showWaitlist: false,
+      disambiguationOptions: cityLookup.disambiguationOptions,
+      message: getAmbiguousCityMessage({
+        detected_city: cityLookup.suggestedMatch!.city,
+        ambiguous_options: cityLookup.disambiguationOptions
+      })
+    };
+  }
+  
+  const match = cityLookup.suggestedMatch!;
+  const city = match.city;
+  const state = match.state;
+  
+  // Check coverage status
+  const isInCoverage = isInActiveServiceArea(city, state);
+  const isComingSoon = isInComingSoonArea(city, state);
+  const showWaitlist = !isInCoverage && isWaitlistEligible(state);
+  
+  if (isInCoverage) {
+    return {
+      found: true,
+      city,
+      state,
+      isInCoverage: true,
+      isComingSoon: false,
+      isAmbiguous: false,
+      showWaitlist: false,
+      message: getInCoverageMessage({ detected_city: city, detected_state: state })
+    };
+  }
+  
+  if (isComingSoon) {
+    return {
+      found: true,
+      city,
+      state,
+      isInCoverage: false,
+      isComingSoon: true,
+      isAmbiguous: false,
+      showWaitlist: true,
+      message: getComingSoonMessage({ detected_city: city, detected_state: state })
+    };
+  }
+  
+  // Out of coverage
+  const coverageArea = getActiveServiceAreaDisplay();
+  return {
+    found: true,
+    city,
+    state,
+    isInCoverage: false,
+    isComingSoon: false,
+    isAmbiguous: false,
+    showWaitlist,
+    message: getOutOfCoverageMessage({
+      detected_city: city,
+      detected_state: state,
+      coverage_area: coverageArea,
+      show_waitlist: showWaitlist
+    })
+  };
+}
 
 /**
  * City Inference + Provider Search Logic
@@ -23,6 +141,7 @@ export async function inferCityAndProvider(
   selectedOrg: OrgSearchResult | null;
   searchResults: OrgSearchResult[];
   message?: string;
+  locationAnalysis?: LocationAnalysis;
 }> {
   
   Logger.info('[Multi-Backend] Starting city inference', { 
@@ -32,18 +151,57 @@ export async function inferCityAndProvider(
     providerStatus: aap.provider?.status
   });
 
+  // STEP 0: Check if we have a location hint and analyze it
+  const locationHint = aap.provider?.location_hint?.city;
+  let locationAnalysis: LocationAnalysis | undefined;
+  
+  if (locationHint) {
+    locationAnalysis = analyzeLocation(locationHint);
+    
+    // If location is ambiguous, need disambiguation first
+    if (locationAnalysis.isAmbiguous) {
+      return {
+        needsCity: false,
+        needsDisambiguation: true,
+        selectedOrg: null,
+        searchResults: [],
+        message: locationAnalysis.message,
+        locationAnalysis
+      };
+    }
+    
+    // If location is out of coverage, return graceful message
+    if (!locationAnalysis.isInCoverage && !locationAnalysis.isComingSoon) {
+      Logger.info('[Multi-Backend] Location out of coverage', { 
+        sessionId, 
+        city: locationAnalysis.city, 
+        state: locationAnalysis.state 
+      });
+      
+      return {
+        needsCity: false,
+        needsDisambiguation: false,
+        selectedOrg: null,
+        searchResults: [],
+        message: locationAnalysis.message,
+        locationAnalysis
+      };
+    }
+  }
+
   // If no provider search query, can't infer
   if (!aap.provider?.search_query) {
     return {
       needsCity: false,
       needsDisambiguation: false,
       selectedOrg: null,
-      searchResults: []
+      searchResults: [],
+      locationAnalysis
     };
   }
 
   const searchQuery = aap.provider.search_query;
-  const city = aap.provider.location_hint?.city;
+  const city = locationAnalysis?.city || aap.provider.location_hint?.city;
 
   // STEP 1: Search organizations by name (city-agnostic)
   const searchResults = await searchOrganizations({
@@ -67,25 +225,23 @@ export async function inferCityAndProvider(
 
   // STEP 2: Analyze results for city inference
   
-  // Case A: No matches found → show graceful fallback with supported cities
+  // Case A: No matches found → show graceful fallback with coverage info
   if (searchResults.length === 0) {
     Logger.info('[Multi-Backend] No matches found, showing graceful fallback', { sessionId });
     
-    // Import getAllActiveOrganizations dynamically to avoid circular dependency
-    const { getAllActiveOrganizations } = await import('../config/organizations.js');
-    const supportedOrgs = getAllActiveOrganizations();
-    const supportedCities = [...new Set(
-      supportedOrgs
-        .filter(o => o.location?.city)
-        .map(o => `${o.location.city}, ${o.location.state}`)
-    )];
+    const coverageArea = getActiveServiceAreaDisplay();
+    const message = getNoProviderMatchMessage({
+      search_query: searchQuery,
+      coverage_area: coverageArea
+    });
     
     return {
       needsCity: false,
       needsDisambiguation: false,
       selectedOrg: null,
       searchResults: [],
-      message: `I couldn't find any providers matching "${searchQuery}".\n\nWe currently support organizations in: ${supportedCities.join('; ')}.\n\nTry searching by city (e.g., "swim lessons in Madison") or check back soon as we're adding more providers!`
+      message,
+      locationAnalysis
     };
   }
 

@@ -165,12 +165,100 @@ export function getMandateRecoveryMessage(vars: MessageVariables): string {
   return `🔐 I wasn't able to verify your secure connection with ${providerName} just now. Let's reconnect safely — I'll generate a fresh authorization and keep your data protected.`;
 }
 
+// ============================================================================
+// LOCATION & COVERAGE MESSAGES
+// ============================================================================
+
+export interface LocationMessageVars extends MessageVariables {
+  detected_city?: string;
+  detected_state?: string;
+  coverage_area?: string;
+  show_waitlist?: boolean;
+  ambiguous_options?: Array<{ city: string; state: string; description: string }>;
+}
+
+/**
+ * ASSISTANT__OUT_OF_COVERAGE
+ * 
+ * Message when user's location is outside our service area
+ */
+export function getOutOfCoverageMessage(vars: LocationMessageVars): string {
+  const cityDisplay = vars.detected_city 
+    ? `${vars.detected_city}, ${vars.detected_state || ''}`.trim()
+    : vars.detected_state || 'your area';
+  const coverageArea = vars.coverage_area || 'the Madison, Wisconsin area';
+  
+  let message = `I don't have providers in **${cityDisplay}** yet — SignupAssist is currently live in **${coverageArea}**.`;
+  
+  if (vars.show_waitlist) {
+    message += `\n\n🔔 Would you like me to notify you when we expand to ${vars.detected_city || 'your area'}? I can add you to our notification list!`;
+  }
+  
+  return message;
+}
+
+/**
+ * ASSISTANT__AMBIGUOUS_CITY
+ * 
+ * Message when user mentions a city that exists in multiple states
+ */
+export function getAmbiguousCityMessage(vars: LocationMessageVars): string {
+  const cityName = vars.detected_city || 'that city';
+  const options = vars.ambiguous_options || [];
+  
+  let message = `There are a few places called **${cityName}**! Which one are you in?\n`;
+  
+  options.slice(0, 4).forEach(opt => {
+    message += `\n• ${opt.description}`;
+  });
+  
+  return message;
+}
+
+/**
+ * ASSISTANT__COMING_SOON
+ * 
+ * Message when user's location is in a planned expansion area
+ */
+export function getComingSoonMessage(vars: LocationMessageVars): string {
+  const cityDisplay = vars.detected_city 
+    ? `${vars.detected_city}, ${vars.detected_state || ''}`.trim()
+    : 'your area';
+  
+  return `Great news! SignupAssist is coming to **${cityDisplay}** soon! Would you like me to notify you when we launch there? I'll add you to our early access list. 🚀`;
+}
+
+/**
+ * ASSISTANT__IN_COVERAGE
+ * 
+ * Positive confirmation when user is in a covered area
+ */
+export function getInCoverageMessage(vars: LocationMessageVars): string {
+  const cityDisplay = vars.detected_city 
+    ? `${vars.detected_city}, ${vars.detected_state || ''}`.trim()
+    : 'your area';
+  
+  return `I can help with that in **${cityDisplay}**! Let me find what's available for you...`;
+}
+
+/**
+ * ASSISTANT__NO_PROVIDER_MATCH
+ * 
+ * Message when we couldn't find the provider they're looking for
+ */
+export function getNoProviderMatchMessage(vars: MessageVariables & { search_query?: string; coverage_area?: string }): string {
+  const query = vars.search_query || 'that organization';
+  const coverageArea = vars.coverage_area || 'the Madison, Wisconsin area';
+  
+  return `I couldn't find any providers matching "${query}".\n\nWe currently support organizations in **${coverageArea}**.\n\nTry searching by city (e.g., "swim lessons in Madison") or tell me what activity you're looking for and I can show you what's available!`;
+}
+
 /**
  * Helper to select the appropriate message based on flow state
  */
 export function getMessageForState(
-  state: "post_login" | "post_login_v2" | "loading" | "programs_ready" | "programs_ready_v2" | "no_programs" | "error" | "program_discovery_error" | "session_expired" | "confirmation" | "selection_ack" | "mandate_recovery",
-  vars: MessageVariables = {}
+  state: "post_login" | "post_login_v2" | "loading" | "programs_ready" | "programs_ready_v2" | "no_programs" | "error" | "program_discovery_error" | "session_expired" | "confirmation" | "selection_ack" | "mandate_recovery" | "out_of_coverage" | "ambiguous_city" | "coming_soon" | "in_coverage" | "no_provider_match",
+  vars: MessageVariables | LocationMessageVars = {}
 ): string {
   switch (state) {
     case "post_login":
@@ -197,6 +285,16 @@ export function getMessageForState(
       return getSelectionAckMessage(vars);
     case "mandate_recovery":
       return getMandateRecoveryMessage(vars);
+    case "out_of_coverage":
+      return getOutOfCoverageMessage(vars as LocationMessageVars);
+    case "ambiguous_city":
+      return getAmbiguousCityMessage(vars as LocationMessageVars);
+    case "coming_soon":
+      return getComingSoonMessage(vars as LocationMessageVars);
+    case "in_coverage":
+      return getInCoverageMessage(vars as LocationMessageVars);
+    case "no_provider_match":
+      return getNoProviderMatchMessage(vars as MessageVariables & { search_query?: string; coverage_area?: string });
     default:
       return "Let me know how I can help!";
   }
