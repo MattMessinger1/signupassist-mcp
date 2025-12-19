@@ -399,7 +399,7 @@ export default class APIOrchestrator implements IOrchestrator {
         const isActivity = !!detectedActivity;
         
         if (supportedProviderInCity) {
-          const itemType = isActivity ? "activity" : "organization";
+          const itemType = isActivity ? "program" : "organization";
           return this.formatResponse(
             `I don't support that ${itemType} yet. But I can help with **AIM Design** classes in Madison.`,
             undefined,
@@ -410,7 +410,7 @@ export default class APIOrchestrator implements IOrchestrator {
         }
         
         // User not in a supported city - just decline without alternatives
-        const itemType = isActivity ? "activity" : "organization";
+        const itemType = isActivity ? "program" : "organization";
         return this.formatResponse(
           `I don't support that ${itemType} yet. Sorry!`,
           undefined,
@@ -424,26 +424,54 @@ export default class APIOrchestrator implements IOrchestrator {
    * Extract activity type from user message using keyword matching
    */
   private extractActivityFromMessage(message: string): string | null {
+    const normalized = message.toLowerCase().trim();
+
+    // Phrase matching first (helps with multi-word activities)
+    const phraseMap: Record<string, string> = {
+      "basket weaving": "basket-weaving",
+    };
+    for (const [phrase, activity] of Object.entries(phraseMap)) {
+      if (normalized.includes(phrase)) return activity;
+    }
+
     // Activity keyword map (subset - full map in activityMatcher.ts)
     const keywords: Record<string, string> = {
-      'swim': 'swimming', 'swimming': 'swimming', 'pool': 'swimming',
-      'code': 'coding', 'coding': 'coding', 'programming': 'coding',
-      'robot': 'robotics', 'robotics': 'robotics',
-      'stem': 'stem', 'science': 'stem',
-      'soccer': 'soccer', 'ski': 'skiing', 'skiing': 'skiing',
-      'dance': 'dance', 'art': 'art', 'music': 'music',
-      'basketball': 'basketball', 'tennis': 'tennis', 'golf': 'golf',
-      'gymnastics': 'gymnastics', 'hockey': 'hockey',
-      'camp': 'camp', 'theater': 'theater', 'chess': 'chess',
+      swim: "swimming",
+      swimming: "swimming",
+      pool: "swimming",
+      code: "coding",
+      coding: "coding",
+      programming: "coding",
+      robot: "robotics",
+      robotics: "robotics",
+      stem: "stem",
+      science: "stem",
+      soccer: "soccer",
+      ski: "skiing",
+      skiing: "skiing",
+      dance: "dance",
+      art: "art",
+      music: "music",
+      basketball: "basketball",
+      tennis: "tennis",
+      golf: "golf",
+      gymnastics: "gymnastics",
+      hockey: "hockey",
+      camp: "camp",
+      theater: "theater",
+      chess: "chess",
+
+      // Common “program” examples people type that we still want to treat as an activity
+      darts: "darts",
+      weaving: "weaving",
     };
-    
-    const words = message.toLowerCase().split(/\s+/);
+
+    const words = normalized.split(/\s+/);
     for (const word of words) {
-      const cleaned = word.replace(/[^a-z]/g, '');
-      if (keywords[cleaned]) {
-        return keywords[cleaned];
-      }
+      const cleaned = word.replace(/[^a-z]/g, "");
+      if (keywords[cleaned]) return keywords[cleaned];
     }
+
     return null;
   }
 
