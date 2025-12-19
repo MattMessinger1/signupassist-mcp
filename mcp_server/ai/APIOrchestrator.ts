@@ -406,7 +406,7 @@ export default class APIOrchestrator implements IOrchestrator {
         
         // User not in a supported city - just decline without alternatives
         return this.formatResponse(
-          `I don't support that organization yet.`,
+          `I don't support that organization yet. Sorry!`,
           undefined,
           []
         );
