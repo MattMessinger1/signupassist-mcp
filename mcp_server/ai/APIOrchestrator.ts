@@ -1117,7 +1117,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             `I found ${mismatch.programCount} class${mismatch.programCount !== 1 ? 'es' : ''} at ${providerDisplayName}, but they're for ${mismatch.foundAudience || 'kids'}—not adults. We don't have adult classes at this provider yet. Sorry!`,
             undefined,
             [
-              { label: "Show these anyway", action: "search_programs", payload: { orgRef, ignoreAudienceMismatch: true }, variant: "outline" },
               { label: "Start Over", action: "clear_context", payload: {}, variant: "accent" }
             ]
           );
