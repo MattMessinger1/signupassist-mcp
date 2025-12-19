@@ -904,6 +904,7 @@ export function MCPChat({
                                   title={COPY.trust.title}
                                   bullets={COPY.trust.bullets}
                                   footer={COPY.trust.payment}
+                                  refundHelp={COPY.trust.refundHelp}
                                 />
                               )}
                             </>
