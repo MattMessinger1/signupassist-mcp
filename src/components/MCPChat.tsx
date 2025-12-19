@@ -602,9 +602,31 @@ export function MCPChat({
       const response = await sendMessage(userMessage, sessionId, undefined, undefined, undefined, undefined, undefined, userTimezone, userId);
       
       // Handle silent pass (LOW confidence for anonymous users - SignupAssist doesn't activate)
-      // TRUE silent pass: no message shown, let ChatGPT handle
+      // In /mcp-chat-test this can feel like the chat is "stuck", so provide a helpful nudge.
       if ((response as any).silentPass) {
         console.log('[MCPChat] Silent pass - SignupAssist not activating for this query');
+
+        const adultPatterns = /\b(adult|adults|grown[-\s]?up|18\+|over\s*18|for\s*adults)\b/i;
+        const isAdultsFollowup = adultPatterns.test(userMessage);
+
+        setMessages((prev) => {
+          const lastAssistant = [...prev].reverse().find((m) => m.role === 'assistant');
+          const lastAskedCity = (lastAssistant?.content || '').toLowerCase().includes('city are you in');
+
+          if (lastAskedCity && isAdultsFollowup) {
+            return [...prev, { role: 'assistant', content: 'Got it — adults. What city are you in?' }];
+          }
+
+          return prev;
+        });
+
+        if (isAdultsFollowup) {
+          toast({
+            title: 'Quick check',
+            description: 'To find adult classes near you, I still need your city (e.g., Madison).',
+          });
+        }
+
         return;
       }
       
