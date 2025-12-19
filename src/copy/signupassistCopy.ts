@@ -4,8 +4,10 @@ export const COPY = {
     bullets: [
       "Nothing is booked or charged until you press Confirm.",
       "Every step is recorded in your Audit Trail.",
+      "Program fee refunds are handled by the provider. Success fee refunds are handled by SignupAssist (by Shipworx).",
     ],
     payment: "Payments are handled by Stripe / the provider. SignupAssist never sees your full card number.",
+    refundHelp: "Need help with a refund? Email matt@shipworx.ai",
   },
   fees: {
     programFeeLabel: "Program fee (paid to provider)",

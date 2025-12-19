@@ -4,9 +4,10 @@ interface TrustCalloutProps {
   title: string;
   bullets: string[];
   footer?: string;
+  refundHelp?: string;
 }
 
-export function TrustCallout({ title, bullets, footer }: TrustCalloutProps) {
+export function TrustCallout({ title, bullets, footer, refundHelp }: TrustCalloutProps) {
   return (
     <div className="mt-3 rounded-2xl border border-border bg-muted p-4">
       <div className="text-sm font-semibold text-foreground">{title}</div>
@@ -20,6 +21,9 @@ export function TrustCallout({ title, bullets, footer }: TrustCalloutProps) {
       </ul>
       {footer && (
         <div className="mt-3 text-xs text-muted-foreground">{footer}</div>
+      )}
+      {refundHelp && (
+        <div className="mt-2 text-xs text-muted-foreground">{refundHelp}</div>
       )}
     </div>
   );
