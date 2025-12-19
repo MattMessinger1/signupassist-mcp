@@ -14,6 +14,8 @@ export interface MessageVariables {
   child_name?: string;
   program_name?: string;
   error_details?: string;
+  requested_audience?: string; // e.g., "adults", "kids", "seniors"
+  found_audience?: string; // e.g., "Ages 9-13", "Ages 5-12"
 }
 
 /**
@@ -66,6 +68,24 @@ export function getNoProgramsMessage(vars: MessageVariables): string {
 • I can also keep an eye out and let you know when new sessions appear.
 
 (Your login is still active—we won't ask you to re‑enter it.)`;
+}
+
+/**
+ * ASSISTANT__AGE_MISMATCH_WARNING
+ * 
+ * Graceful fallback when programs found don't match requested audience (e.g., user asked for adults but only kids programs exist)
+ */
+export function getAgeMismatchMessage(vars: MessageVariables): string {
+  const providerName = vars.provider_name || "this provider";
+  const requestedAudience = vars.requested_audience || "the age group you specified";
+  const foundAudience = vars.found_audience || "different ages";
+  const total = vars.counts?.total || 0;
+  
+  return `I found ${total} program${total !== 1 ? 's' : ''} at ${providerName}, but they're designed for ${foundAudience}—not ${requestedAudience}. Sorry!
+
+Would you like to:
+• See these programs anyway
+• Search for a different activity or provider that serves ${requestedAudience}`;
 }
 
 /**
@@ -250,7 +270,7 @@ export function getNoProviderMatchMessage(vars: MessageVariables & { search_quer
  * Helper to select the appropriate message based on flow state
  */
 export function getMessageForState(
-  state: "post_login" | "post_login_v2" | "loading" | "programs_ready" | "programs_ready_v2" | "no_programs" | "error" | "program_discovery_error" | "session_expired" | "confirmation" | "selection_ack" | "mandate_recovery" | "out_of_coverage" | "ambiguous_city" | "coming_soon" | "in_coverage" | "no_provider_match",
+  state: "post_login" | "post_login_v2" | "loading" | "programs_ready" | "programs_ready_v2" | "no_programs" | "age_mismatch" | "error" | "program_discovery_error" | "session_expired" | "confirmation" | "selection_ack" | "mandate_recovery" | "out_of_coverage" | "ambiguous_city" | "coming_soon" | "in_coverage" | "no_provider_match",
   vars: MessageVariables | LocationMessageVars = {}
 ): string {
   switch (state) {
@@ -266,6 +286,8 @@ export function getMessageForState(
       return getProgramsReadyMessageV2(vars);
     case "no_programs":
       return getNoProgramsMessage(vars);
+    case "age_mismatch":
+      return getAgeMismatchMessage(vars);
     case "error":
       return getErrorRecoveryMessage(vars);
     case "program_discovery_error":

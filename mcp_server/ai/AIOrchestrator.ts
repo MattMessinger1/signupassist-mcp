@@ -8,7 +8,7 @@ import { logAudit, extractUserIdFromJWT, logToneChange } from "../lib/auditLogge
 import { loadSessionFromDB, saveSessionToDB } from "../lib/sessionPersistence.js";
 import { shouldReuseSession, getProgramCategory, TOOL_WORKFLOW, SESSION_REUSE_CONFIG } from "./toolGuidance.js";
 import { getMessageForState } from "./messageTemplates.js";
-import { buildGroupedCardsPayload, buildSimpleCardsFromGrouped } from "./cardPayloadBuilder.js";
+import { buildGroupedCardsPayload, buildSimpleCardsFromGrouped, detectAdultRequest, detectAgeMismatch } from "./cardPayloadBuilder.js";
 import { filterByAge, classifyIntentStrength, pickLikelyProgram, type ParsedIntent, type ExtendedIntent } from "../lib/intentParser.js";
 import { normalizeEmailWithAI, generatePersonalizedMessage } from "../lib/aiIntentParser.js";
 import { singleFlight } from "../utils/singleflight.js";
@@ -1419,6 +1419,42 @@ Example follow-up (only when needed):
           noProgramsMsg,
           [],
           [{ label: "Try Again", action: "retry_program_search", variant: "accent" }],
+          {}
+        );
+      }
+      
+      // Check for age mismatch (e.g., user asked for "adults" but only youth programs found)
+      const userQuery = context.lastUserMessage || intentCategory || '';
+      const requestedAdults = detectAdultRequest(userQuery);
+      const ageMismatch = detectAgeMismatch(programs, requestedAdults);
+      
+      if (ageMismatch.hasMismatch) {
+        Logger.info('[handleProgramSearch] Age mismatch detected', {
+          requestedAudience: ageMismatch.requestedAudience,
+          foundAudience: ageMismatch.foundAudience,
+          maxAgeFound: ageMismatch.maxAgeFound
+        });
+        
+        // Store programs anyway so user can view them if they choose
+        await this.updateContext(sessionId, {
+          availablePrograms: programs,
+          step: FlowStep.PROGRAM_SELECTION
+        });
+        
+        const ageMismatchMsg = getMessageForState("age_mismatch", {
+          provider_name: context.provider.name,
+          counts: { total: programs.length },
+          requested_audience: ageMismatch.requestedAudience,
+          found_audience: ageMismatch.foundAudience
+        });
+        
+        return this.formatResponse(
+          ageMismatchMsg,
+          [],
+          [
+            { label: "Show these programs anyway", action: "view_all_programs", variant: "outline" },
+            { label: "Search for something else", action: "reset", variant: "accent" }
+          ],
           {}
         );
       }
