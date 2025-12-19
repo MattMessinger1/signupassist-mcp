@@ -1424,7 +1424,8 @@ Example follow-up (only when needed):
       }
       
       // Check for age mismatch (e.g., user asked for "adults" but only youth programs found)
-      const userQuery = context.lastUserMessage || intentCategory || '';
+      // Use category or intent.category as the user's original query context
+      const userQuery = context.category || context.intent?.category || intentCategory || '';
       const requestedAdults = detectAdultRequest(userQuery);
       const ageMismatch = detectAgeMismatch(programs, requestedAdults);
       
