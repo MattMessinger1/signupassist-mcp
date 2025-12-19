@@ -309,7 +309,7 @@ You agree to **indemnify and hold harmless** Shipworx and its affiliates, office
 ## 16. Governing Law and Disputes
 
 ### Governing Law
-These Terms are governed by the laws of the **State of Delaware**, without regard to conflicts of law principles.
+These Terms are governed by the laws of the **State of Wisconsin**, without regard to conflicts of law principles.
 
 ### Dispute Resolution
 Any dispute arising out of or relating to these Terms or the Services will be resolved as follows:
@@ -323,7 +323,7 @@ Any dispute arising out of or relating to these Terms or the Services will be re
 4. **Exceptions**: Either party may seek injunctive relief in court for intellectual property violations or security threats.
 
 ### Venue
-For any disputes not subject to arbitration, you consent to exclusive jurisdiction and venue in the state or federal courts located in **New Castle County, Delaware**.
+For any disputes not subject to arbitration, you consent to exclusive jurisdiction and venue in the state or federal courts located in **Dane County, Wisconsin**.
 
 ---
 
@@ -394,7 +394,7 @@ United States
 | **Restricted Data** | No payment cards, PHI, SSNs, or credentials in chat |
 | **Mandate Model** | Time-limited, scope-limited, fully audited |
 | **Liability Cap** | Greater of $100 or 12-month payment amount |
-| **Governing Law** | Delaware |
+| **Governing Law** | Wisconsin |
 | **Disputes** | Arbitration with class action waiver |
 | **Updates** | Check "Last Updated" date |
 
