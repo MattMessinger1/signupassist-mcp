@@ -45,3 +45,29 @@ export function mapToolNameToUserTitle(tool: string): string {
   if (tool.includes("create_hold")) return "Reserved your spot temporarily";
   return "Completed an action";
 }
+
+/**
+ * Maps technical scope strings to user-friendly labels with icons.
+ */
+export function mapScopeToFriendly(scope: string): { icon: string; label: string } {
+  const scopeMap: Record<string, { icon: string; label: string }> = {
+    'scp:register': { icon: '✓', label: 'Register for programs' },
+    'scp:browse': { icon: '✓', label: 'Browse programs' },
+    'scp:discover': { icon: '✓', label: 'Discover form fields' },
+    'scp:login': { icon: '✓', label: 'Access provider account' },
+    'platform:success_fee': { icon: '✓', label: 'Charge success fee' },
+    'platform:refund': { icon: '✓', label: 'Process refunds' },
+    'platform:billing': { icon: '✓', label: 'Manage billing' },
+  };
+  return scopeMap[scope] || { icon: '•', label: scope };
+}
+
+/**
+ * Formats an array of scopes into a user-friendly string.
+ */
+export function formatScopesForDisplay(scopes: string[]): string {
+  return scopes.map(s => {
+    const { icon, label } = mapScopeToFriendly(s);
+    return `${icon} ${label}`;
+  }).join(', ');
+}
