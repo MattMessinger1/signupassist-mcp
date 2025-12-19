@@ -803,11 +803,11 @@ export function MCPChat({
     }
   }
 
-  // Suggested prompts for empty state
+  // Suggested prompts for high-intent users (execution-focused, not discovery)
   const suggestedPrompts = [
-    "Sign up my daughter for soccer",
-    "Find art classes for my 8-year-old",
-    "Swimming lessons near Madison",
+    "Register Emma for Blackhawk ski lessons",
+    "Sign up for the Saturday soccer session",
+    "Complete my AIM Design camp registration",
   ];
 
   return (
@@ -821,10 +821,10 @@ export function MCPChat({
                 <BrandLogo size="xl" className="mx-auto" />
                 <div className="space-y-2">
                   <h2 className="text-2xl font-semibold text-foreground">
-                    Hi! I'm your registration assistant.
+                    Ready to register?
                   </h2>
                   <p className="text-muted-foreground">
-                    Tell me what activities you're looking for, and I'll help you sign up.
+                    Tell me what to sign up for and I'll handle the rest.
                   </p>
                 </div>
                 <div className="flex flex-wrap justify-center gap-2 pt-2">
@@ -1184,7 +1184,7 @@ export function MCPChat({
       <div className="p-4 border-t bg-card/50 backdrop-blur-sm">
         <div className="flex gap-3 max-w-3xl mx-auto">
           <Input
-            placeholder="What activities are you looking for?"
+            placeholder="What would you like me to register you for?"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {
