@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Loader2, Send, CreditCard } from "lucide-react";
+import { Loader2, Send, CreditCard, Sparkles, ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ResponsibleDelegateForm } from "./chat-test/ResponsibleDelegateForm";
 import { SavePaymentMethod, getAndClearStripeReturnState, persistStateBeforeStripeRedirect } from "./SavePaymentMethod";
@@ -15,6 +15,7 @@ import { FeeBreakdown } from "./FeeBreakdown";
 import { TrustCallout } from "./TrustCallout";
 import { COPY } from "@/copy/signupassistCopy";
 import { supabase } from "@/integrations/supabase/client";
+import { BrandLogo } from "./BrandLogo";
 
 // Helper to render markdown-style text as HTML
 function renderFormattedText(text: string): string {
@@ -802,16 +803,44 @@ export function MCPChat({
     }
   }
 
+  // Suggested prompts for empty state
+  const suggestedPrompts = [
+    "Sign up my daughter for soccer",
+    "Find art classes for my 8-year-old",
+    "Swimming lessons near Madison",
+  ];
+
   return (
     <div className="flex flex-col h-full">
       {/* Messages */}
       <ScrollArea className="flex-1">
         <div ref={scrollRef} className="p-4 space-y-4 max-w-3xl mx-auto">
           {messages.length === 0 && (
-            <div className="flex items-center justify-center h-[400px] text-muted-foreground">
-              <div className="text-center space-y-3">
-                <p className="text-xl font-semibold text-foreground">Hi! I'm here to help you sign up for activities.</p>
-                <p className="text-sm">Tell me what you're looking for, like "Find art classes for my 8-year-old"</p>
+            <div className="flex items-center justify-center min-h-[400px]">
+              <div className="text-center space-y-6 max-w-md px-4">
+                <BrandLogo size="xl" className="mx-auto" />
+                <div className="space-y-2">
+                  <h2 className="text-2xl font-semibold text-foreground">
+                    Hi! I'm your registration assistant.
+                  </h2>
+                  <p className="text-muted-foreground">
+                    Tell me what activities you're looking for, and I'll help you sign up.
+                  </p>
+                </div>
+                <div className="flex flex-wrap justify-center gap-2 pt-2">
+                  {suggestedPrompts.map((prompt, idx) => (
+                    <Button
+                      key={idx}
+                      variant="outline"
+                      size="sm"
+                      className="text-sm border-brand-navy/20 hover:bg-brand-navy/5 hover:border-brand-navy/40"
+                      onClick={() => send(prompt)}
+                    >
+                      <Sparkles className="w-3 h-3 mr-2 text-brand-gold" />
+                      {prompt}
+                    </Button>
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -819,10 +848,10 @@ export function MCPChat({
           {messages.map((msg, idx) => (
             <div key={idx} className={msg.role === "user" ? "flex justify-end" : "flex justify-start"}>
               <div className={`max-w-[85%] ${msg.role === "user" ? "ml-12" : "mr-12"}`}>
-                <div className={`rounded-2xl px-4 py-3 ${
+                <div className={`rounded-2xl px-4 py-3 shadow-sm ${
                   msg.role === "user" 
-                    ? "bg-primary text-primary-foreground" 
-                    : "bg-secondary"
+                    ? "bg-brand-navy text-white" 
+                    : "bg-card border border-border"
                 }`}>
                   <div 
                     className="text-sm whitespace-pre-wrap"
@@ -833,7 +862,7 @@ export function MCPChat({
                 {msg.cards && msg.cards.length > 0 && (
                   <div className="grid grid-cols-1 gap-3 mt-3">
                     {msg.cards.map((card, cardIdx) => (
-                      <Card key={cardIdx} className="p-4 border-l-4 border-l-accent shadow-sm">
+                      <Card key={cardIdx} className="p-4 border-l-4 border-l-brand-gold shadow-md hover:shadow-lg transition-shadow bg-card">
                         <div className="space-y-2">
                           <div className="font-semibold">{card.title}</div>
                           {card.subtitle && (
@@ -1151,28 +1180,34 @@ export function MCPChat({
         delegateEmail={pendingPaymentMetadata?.schedulingData?.formData?.delegate_data?.delegate_email}
       />
 
-      {/* Input Area */}
-      <div className="flex gap-2">
-        <Input
-          placeholder="Type a message to test the MCP orchestrator..."
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              send(input);
-            }
-          }}
-          disabled={loading}
-          className="flex-1"
-        />
-        <Button 
-          onClick={() => send(input)} 
-          disabled={loading || !input.trim()}
-          size="icon"
-        >
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-        </Button>
+      {/* Polished Input Area */}
+      <div className="p-4 border-t bg-card/50 backdrop-blur-sm">
+        <div className="flex gap-3 max-w-3xl mx-auto">
+          <Input
+            placeholder="What activities are you looking for?"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                send(input);
+              }
+            }}
+            disabled={loading}
+            className="flex-1 h-12 text-base border-muted-foreground/20 focus:border-brand-navy focus:ring-brand-navy/20 bg-background"
+          />
+          <Button 
+            onClick={() => send(input)} 
+            disabled={loading || !input.trim()}
+            size="lg"
+            className="h-12 px-5 bg-brand-navy hover:bg-brand-navy/90"
+          >
+            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+          </Button>
+        </div>
+        <p className="text-center text-xs text-muted-foreground mt-2">
+          Powered by SignupAssist • Your Responsible Delegate
+        </p>
       </div>
     </div>
   );

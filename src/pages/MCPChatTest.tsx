@@ -3,10 +3,11 @@ import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, Bug, LogOut, Trash2 } from "lucide-react";
+import { Bug, LogOut, Trash2 } from "lucide-react";
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { User, Session } from "@supabase/supabase-js";
+import { BrandLogo } from "@/components/BrandLogo";
 import {
   Collapsible,
   CollapsibleContent,
@@ -98,34 +99,32 @@ export default function MCPChatTest() {
 
   return (
     <div className="flex flex-col h-screen bg-background">
-      {/* Clean Header */}
-      <header className="border-b bg-card px-4 py-3">
+      {/* Polished Header */}
+      <header className="border-b bg-card/95 backdrop-blur-sm px-4 py-3 sticky top-0 z-50">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shadow-sm">
-              <Shield className="w-5 h-5 text-primary-foreground" />
-            </div>
+            <BrandLogo size="lg" className="drop-shadow-sm" />
             <div>
-              <h1 className="text-lg font-semibold text-primary">SignupAssist</h1>
-              <p className="text-xs text-muted-foreground">Responsible Registration</p>
+              <h1 className="text-lg font-semibold text-brand-navy">SignupAssist</h1>
+              <p className="text-xs text-muted-foreground">Your Responsible Delegate</p>
             </div>
           </div>
           
           <div className="flex items-center gap-2">
             {user ? (
               <>
-                <span className="text-sm text-muted-foreground hidden sm:inline">
+                <span className="text-sm text-muted-foreground hidden sm:inline truncate max-w-[180px]">
                   {user.email}
                 </span>
-                <Button variant="outline" size="sm" onClick={handleSignOut}>
+                <Button variant="outline" size="sm" onClick={handleSignOut} className="border-muted-foreground/20">
                   <LogOut className="h-4 w-4 mr-2" />
                   Sign out
                 </Button>
               </>
             ) : (
-              <span className="text-sm text-muted-foreground">
-                <span className="inline-block w-2 h-2 rounded-full bg-amber-400 mr-2"></span>
-                Browsing anonymously
+              <span className="text-sm text-muted-foreground flex items-center gap-2">
+                <span className="inline-block w-2 h-2 rounded-full bg-brand-gold animate-pulse"></span>
+                Browsing as guest
               </span>
             )}
             
@@ -133,7 +132,7 @@ export default function MCPChatTest() {
             <Button 
               variant="ghost" 
               size="icon"
-              className="text-muted-foreground"
+              className="text-muted-foreground hover:text-foreground"
               onClick={() => setShowDevTools(prev => !prev)}
             >
               <Bug className="h-4 w-4" />
@@ -195,33 +194,20 @@ export default function MCPChatTest() {
         </Elements>
       </div>
 
-      {/* Footer with Debug Info */}
-      <div className="border-t bg-card px-4 py-2">
+      {/* Minimal Footer */}
+      <div className="border-t bg-card/50 px-4 py-2">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
-            SignupAssist • Responsible Registration
+            © SignupAssist • Trusted by families
           </p>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             {backendInfo && (
-              <span className="font-mono">
-                Build: {backendInfo.git_commit?.substring(0, 7) || 'dev'}
+              <span className="font-mono opacity-60">
+                v{backendInfo.git_commit?.substring(0, 7) || 'dev'}
               </span>
             )}
-            <span className="border-l pl-3">
-              {user ? user.email : 'Not logged in'}
-            </span>
-            {user ? (
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="h-6 text-xs"
-                onClick={handleSignOut}
-              >
-                <LogOut className="h-3 w-3 mr-1" />
-                Logout
-              </Button>
-            ) : (
-              <span className="text-amber-500">●</span>
+            {user && (
+              <span className="text-brand-green">● Connected</span>
             )}
           </div>
         </div>

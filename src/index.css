@@ -3,33 +3,36 @@
 @tailwind utilities;
 
 /* SignupAssist Design System
- * Brand Colors:
- * - Primary Navy: #0A0F2D (professional, trustworthy)
- * - Accent Green: #00A674 (action, success, CTAs)
- * - All colors in HSL format
+ * Brand Colors (from logo):
+ * - Navy Dark: #0E3A57 (shield base, professional)
+ * - Navy Light: #1F5A7A (shield gradient top)
+ * - Blue Accent: #2C86B3 (dark mode highlight)
+ * - Gold/Amber: #FFB454 (heart, warmth, accent)
+ * - Success Green: #00A674 (CTAs, confirmations)
+ * All colors in HSL format
  */
 
 @layer base {
   :root {
     /* Background & Surface */
     --background: 0 0% 100%;
-    --foreground: 233 64% 11%;
+    --foreground: 200 42% 20%;
 
     /* Cards & Containers */
     --card: 0 0% 100%;
-    --card-foreground: 233 64% 11%;
+    --card-foreground: 200 42% 20%;
 
     /* Popovers */
     --popover: 0 0% 100%;
-    --popover-foreground: 233 64% 11%;
+    --popover-foreground: 200 42% 20%;
 
     /* Primary: Navy Blue */
-    --primary: 233 64% 11%;
+    --primary: 200 42% 20%;
     --primary-foreground: 0 0% 100%;
 
     /* Secondary: Light gray for less prominent elements */
     --secondary: 210 20% 96%;
-    --secondary-foreground: 233 64% 11%;
+    --secondary-foreground: 200 42% 20%;
 
     /* Muted: Subtle backgrounds and text */
     --muted: 210 20% 96%;
@@ -46,15 +49,21 @@
     /* Borders & Inputs */
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 162 100% 33%;
+    --ring: 200 42% 30%;
 
     /* Border Radius */
     --radius: 0.75rem;
 
+    /* Brand Colors - direct values */
+    --brand-navy: 200 42% 20%;
+    --brand-navy-light: 200 35% 30%;
+    --brand-gold: 36 100% 66%;
+    --brand-green: 162 100% 33%;
+
     /* Sidebar (kept for compatibility) */
     --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 233 64% 11%;
-    --sidebar-primary: 233 64% 11%;
+    --sidebar-foreground: 200 42% 20%;
+    --sidebar-primary: 200 42% 20%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 162 100% 33%;
     --sidebar-accent-foreground: 0 0% 100%;
@@ -64,41 +73,47 @@
 
   .dark {
     /* Dark mode - Navy-based dark theme */
-    --background: 233 64% 6%;
+    --background: 200 42% 6%;
     --foreground: 210 20% 96%;
 
-    --card: 233 50% 10%;
+    --card: 200 35% 10%;
     --card-foreground: 210 20% 96%;
 
-    --popover: 233 50% 10%;
+    --popover: 200 35% 10%;
     --popover-foreground: 210 20% 96%;
 
     --primary: 210 20% 96%;
-    --primary-foreground: 233 64% 11%;
+    --primary-foreground: 200 42% 15%;
 
-    --secondary: 233 40% 18%;
+    --secondary: 200 30% 18%;
     --secondary-foreground: 210 20% 96%;
 
-    --muted: 233 40% 18%;
+    --muted: 200 30% 18%;
     --muted-foreground: 215 20% 65%;
 
     --accent: 162 100% 40%;
-    --accent-foreground: 233 64% 6%;
+    --accent-foreground: 200 42% 6%;
 
     --destructive: 0 62% 30%;
     --destructive-foreground: 210 20% 96%;
 
-    --border: 233 40% 18%;
-    --input: 233 40% 18%;
-    --ring: 162 100% 40%;
+    --border: 200 30% 18%;
+    --input: 200 30% 18%;
+    --ring: 200 35% 40%;
 
-    --sidebar-background: 233 64% 8%;
+    /* Brand Colors - dark mode */
+    --brand-navy: 200 35% 40%;
+    --brand-navy-light: 200 40% 50%;
+    --brand-gold: 36 100% 66%;
+    --brand-green: 162 100% 40%;
+
+    --sidebar-background: 200 42% 8%;
     --sidebar-foreground: 210 20% 96%;
     --sidebar-primary: 162 100% 40%;
-    --sidebar-primary-foreground: 233 64% 6%;
-    --sidebar-accent: 233 40% 18%;
+    --sidebar-primary-foreground: 200 42% 6%;
+    --sidebar-accent: 200 30% 18%;
     --sidebar-accent-foreground: 210 20% 96%;
-    --sidebar-border: 233 40% 18%;
+    --sidebar-border: 200 30% 18%;
     --sidebar-ring: 162 100% 40%;
   }
 }

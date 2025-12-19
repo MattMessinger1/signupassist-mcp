@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
+  <title id="title">Signup Assist</title>
+  <desc id="desc">A friendly shield with a heart to represent trusted, secure help for families. Optimized for dark backgrounds.</desc>
+
+  <defs>
+    <!-- Slightly brighter shield gradient so it reads on dark surfaces -->
+    <linearGradient id="shield" x1="18" y1="12" x2="46" y2="52">
+      <stop offset="0" stop-color="#2C86B3"/>
+      <stop offset="1" stop-color="#0E3A57"/>
+    </linearGradient>
+
+    <!-- Soft light glow to separate the mark from dark backgrounds -->
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="0" stdDeviation="1.8" flood-color="#FFFFFF" flood-opacity="0.28"/>
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+
+  <!-- Shield -->
+  <g filter="url(#glow)">
+    <path d="M32 12
+             C27 15 23 16 20 16
+             V30
+             C20 41 26.5 48.5 32 52
+             C37.5 48.5 44 41 44 30
+             V16
+             C41 16 37 15 32 12
+             Z"
+          fill="url(#shield)"/>
+
+    <!-- Stronger light outline for dark backgrounds -->
+    <path d="M32 12
+             C27 15 23 16 20 16
+             V30
+             C20 41 26.5 48.5 32 52
+             C37.5 48.5 44 41 44 30
+             V16
+             C41 16 37 15 32 12
+             Z"
+          fill="none" stroke="#FFFFFF" stroke-opacity="0.75" stroke-width="1.8" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Heart -->
+  <path d="M32 40
+           C27.7 36.4 24 33.8 24 29.8
+           C24 27.0 26.2 25.0 28.9 25.0
+           C30.6 25.0 31.8 25.8 32 26.8
+           C32.2 25.8 33.4 25.0 35.1 25.0
+           C37.8 25.0 40 27.0 40 29.8
+           C40 33.8 36.3 36.4 32 40
+           Z"
+        fill="#FFB454"/>
+</svg>
