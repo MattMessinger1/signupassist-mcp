@@ -6,8 +6,8 @@
   "description_for_model": "Automates signup forms securely using OAuth credentials.",
   "auth": {
     "type": "oauth",
-    "authorization_url": "https://dev-xha4aa58ytpvlqyl.us.auth0.com/authorize",
-    "token_url": "https://dev-xha4aa58ytpvlqyl.us.auth0.com/oauth/token",
+    "authorization_url": "https://signupassist-mcp-production.up.railway.app/oauth/authorize",
+    "token_url": "https://signupassist-mcp-production.up.railway.app/oauth/token",
     "scope": "openid profile email",
     "redirect_urls": ["https://oauth.openai.com/v1/callback"]
   },
