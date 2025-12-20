@@ -852,21 +852,44 @@ class SignupAssistMCPServer {
           // Continue to tool execution below
         } else {
           // Production auth validation
-          const authHeader = req.headers['authorization'];
-          const token = authHeader?.replace('Bearer ', '');
+          // Accept either:
+          // 1) Internal service token (MCP_ACCESS_TOKEN)
+          // 2) Auth0 JWT access token (from ChatGPT OAuth flow)
+          const authHeader = req.headers['authorization'] as string | undefined;
           const expectedToken = process.env.MCP_ACCESS_TOKEN;
-          
-          if (!token || token !== expectedToken) {
+
+          let isAuthorized = false;
+          let authSource: 'mcp_access_token' | 'auth0' | 'none' = 'none';
+
+          // Internal token path (used by internal scripts/ops)
+          if (expectedToken && authHeader === `Bearer ${expectedToken}`) {
+            isAuthorized = true;
+            authSource = 'mcp_access_token';
+          } else {
+            // Auth0 token path (used by ChatGPT actions)
+            const bearerToken = extractBearerToken(authHeader);
+            if (bearerToken) {
+              try {
+                await verifyAuth0Token(bearerToken);
+                isAuthorized = true;
+                authSource = 'auth0';
+              } catch (e: any) {
+                console.warn('[AUTH] Auth0 JWT rejected for /tools/call:', e?.message);
+              }
+            }
+          }
+
+          if (!isAuthorized) {
             res.writeHead(401, {
               "Content-Type": "application/json",
-              "WWW-Authenticate": "Bearer realm=\"signupassist\", error=\"invalid_token\", error_description=\"Invalid or missing access token\""
+              "WWW-Authenticate": "Bearer realm=\"signupassist\", error=\"authentication_required\""
             });
-            res.end(JSON.stringify({ error: "Unauthorized - Invalid or missing token" }));
+            res.end(JSON.stringify({ error: "Unauthorized - Valid OAuth token required" }));
             console.log('[AUTH] Unauthorized access attempt to /tools/call');
             return;
           }
-          
-          console.log('[AUTH] Authorized request to /tools/call');
+
+          console.log(`[AUTH] Authorized request to /tools/call via ${authSource}`);
         }
 
         if (req.method !== 'POST') {
