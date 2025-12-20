@@ -91,7 +91,9 @@ export function generateOpenAPISpec(
               authorizationUrl: 'https://dev-xha4aa58ytpvlqyl.us.auth0.com/authorize',
               tokenUrl: 'https://dev-xha4aa58ytpvlqyl.us.auth0.com/oauth/token',
               scopes: {
-                user: 'Access user data and perform actions on behalf of the user'
+                openid: 'OpenID Connect',
+                profile: 'User profile information',
+                email: 'User email address'
               }
             }
           }

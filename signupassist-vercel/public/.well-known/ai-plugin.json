@@ -8,7 +8,7 @@
     "type": "oauth",
     "authorization_url": "https://dev-xha4aa58ytpvlqyl.us.auth0.com/authorize",
     "token_url": "https://dev-xha4aa58ytpvlqyl.us.auth0.com/oauth/token",
-    "scope": "user",
+    "scope": "openid profile email",
     "redirect_urls": ["https://oauth.openai.com/v1/callback"]
   },
   "api": {
