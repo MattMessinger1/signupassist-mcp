@@ -934,8 +934,7 @@ class SignupAssistMCPServer {
          url.pathname === "/mcp/.well-known/ai-plugin.json")
       ) {
         try {
-          // use your existing manifest file
-          const manifestPath = path.resolve(process.cwd(), "mcp", "manifest.json");
+          const manifestPath = path.resolve(process.cwd(), "public", ".well-known", "ai-plugin.json");
           const manifest = readFileSync(manifestPath, "utf8");
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(manifest);
@@ -955,7 +954,7 @@ class SignupAssistMCPServer {
          url.pathname === "/mcp/.well-known/openai-connector.json")
       ) {
         try {
-          const manifestPath = path.resolve(process.cwd(), "mcp", "manifest.json");
+          const manifestPath = path.resolve(process.cwd(), "public", ".well-known", "openai-connector.json");
           const manifest = readFileSync(manifestPath, "utf8");
           res.writeHead(200, { "Content-Type": "application/json" });
           res.end(manifest);
