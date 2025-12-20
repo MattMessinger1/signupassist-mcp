@@ -1,5 +1,5 @@
 {
-  "schema_version": "v2.0.0",
+  "schema_version": "v1",
   "name_for_human": "SignupAssist",
   "name_for_model": "signupassist",
   "description_for_human": "Securely automates activity sign-ups for parents using a consent-first flow.",
@@ -15,7 +15,8 @@
     "type": "openapi",
     "url": "https://signupassist-mcp-production.up.railway.app/mcp/openapi.json"
   },
-  "logo_url": "https://shipworx.ai/logo.png",
+  "logo_url": "https://shipworx.ai/logo-512.svg",
   "contact_email": "support@shipworx.ai",
   "legal_info_url": "https://shipworx.ai/privacy"
 }
+
