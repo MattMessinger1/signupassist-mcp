@@ -354,6 +354,116 @@ class SignupAssistMCPServer {
         return url.toString();
       }
 
+      // ==================== OAUTH PROXY ENDPOINTS ====================
+      // These proxy Auth0 endpoints through Railway to satisfy GPT Builder's
+      // same-domain requirement (all URLs must share the same root domain)
+      
+      const AUTH0_DOMAIN = process.env.AUTH0_DOMAIN || 'dev-xha4aa58ytpvlqyl.us.auth0.com';
+      const AUTH0_CLIENT_ID = process.env.AUTH0_CLIENT_ID;
+      const AUTH0_CLIENT_SECRET = process.env.AUTH0_CLIENT_SECRET;
+      const AUTH0_AUDIENCE = process.env.AUTH0_AUDIENCE || 'https://shipworx.ai/api';
+      
+      // --- OAuth Authorization Proxy (GET /oauth/authorize)
+      // Redirects to Auth0 with all query params preserved
+      if (req.method === 'GET' && url.pathname === '/oauth/authorize') {
+        console.log('[OAUTH] Authorization request received, proxying to Auth0');
+        
+        const auth0Url = new URL(`https://${AUTH0_DOMAIN}/authorize`);
+        
+        // Forward all query params from ChatGPT
+        url.searchParams.forEach((value, key) => {
+          auth0Url.searchParams.set(key, value);
+        });
+        
+        // Ensure audience is set for API access
+        if (!auth0Url.searchParams.has('audience')) {
+          auth0Url.searchParams.set('audience', AUTH0_AUDIENCE);
+        }
+        
+        console.log('[OAUTH] Redirecting to:', auth0Url.toString().replace(/client_secret=[^&]+/, 'client_secret=***'));
+        
+        res.writeHead(302, { 'Location': auth0Url.toString() });
+        res.end();
+        return;
+      }
+      
+      // --- OAuth Token Proxy (POST /oauth/token)
+      // Forwards token exchange request to Auth0
+      if (req.method === 'POST' && url.pathname === '/oauth/token') {
+        console.log('[OAUTH] Token exchange request received, proxying to Auth0');
+        
+        try {
+          // Read request body
+          let body = '';
+          for await (const chunk of req) {
+            body += chunk;
+          }
+          
+          // Parse the body (could be JSON or form-urlencoded)
+          let tokenParams: Record<string, string> = {};
+          const contentType = req.headers['content-type'] || '';
+          
+          if (contentType.includes('application/json')) {
+            tokenParams = JSON.parse(body);
+          } else if (contentType.includes('application/x-www-form-urlencoded')) {
+            const parsed = new URLSearchParams(body);
+            parsed.forEach((value, key) => {
+              tokenParams[key] = value;
+            });
+          } else {
+            // Try to parse as form-urlencoded by default
+            const parsed = new URLSearchParams(body);
+            parsed.forEach((value, key) => {
+              tokenParams[key] = value;
+            });
+          }
+          
+          console.log('[OAUTH] Token request params (redacted):', {
+            grant_type: tokenParams.grant_type,
+            code: tokenParams.code ? '***' : undefined,
+            redirect_uri: tokenParams.redirect_uri,
+            client_id: tokenParams.client_id ? '***' : undefined
+          });
+          
+          // Add client credentials if not provided (ChatGPT may not send them)
+          if (!tokenParams.client_id && AUTH0_CLIENT_ID) {
+            tokenParams.client_id = AUTH0_CLIENT_ID;
+          }
+          if (!tokenParams.client_secret && AUTH0_CLIENT_SECRET) {
+            tokenParams.client_secret = AUTH0_CLIENT_SECRET;
+          }
+          
+          // Forward to Auth0 token endpoint
+          const auth0TokenUrl = `https://${AUTH0_DOMAIN}/oauth/token`;
+          
+          const auth0Response = await fetch(auth0TokenUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(tokenParams)
+          });
+          
+          const responseData = await auth0Response.text();
+          
+          console.log('[OAUTH] Auth0 token response status:', auth0Response.status);
+          
+          // Forward Auth0's response back to ChatGPT
+          res.writeHead(auth0Response.status, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          });
+          res.end(responseData);
+        } catch (error: any) {
+          console.error('[OAUTH] Token exchange error:', error);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Token exchange failed', details: error?.message }));
+        }
+        return;
+      }
+      
+      // ==================== END OAUTH PROXY ENDPOINTS ====================
+
       // --- Health check endpoint
       if (req.method === 'GET' && url.pathname === '/health') {
         console.log('[HEALTH] check received');
