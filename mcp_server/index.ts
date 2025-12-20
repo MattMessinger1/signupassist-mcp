@@ -788,8 +788,13 @@ class SignupAssistMCPServer {
         return;
       }
 
-      // --- Serve OpenAPI spec at /mcp/openapi.json AND /openapi.json
-      if (req.method === 'GET' && (url.pathname === '/mcp/openapi.json' || url.pathname === '/openapi.json')) {
+      // --- Serve OpenAPI spec at /mcp/openapi.json AND /openapi.json AND /.well-known/openapi.json
+      if (
+        req.method === 'GET' &&
+        (url.pathname === '/mcp/openapi.json' ||
+          url.pathname === '/openapi.json' ||
+          url.pathname === '/.well-known/openapi.json')
+      ) {
         try {
           // Load openapi.json with fallback for Railway builds
           let openapiPath = path.resolve(process.cwd(), 'dist', 'mcp', 'openapi.json');
