@@ -102,7 +102,7 @@ async function main() {
   }
 
   // Generate new spec
-  const baseUrl = process.env.MCP_SERVER_URL || 'https://signupassist-mcp-production.up.railway.app';
+  const baseUrl = process.env.MCP_SERVER_URL || 'https://signupassist-production.up.railway.app';
   
   // Combine all provider tools
   const allTools = [
