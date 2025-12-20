@@ -10,7 +10,7 @@
   },
   "servers": [
     {
-      "url": "https://signupassist-mcp-production.up.railway.app",
+      "url": "https://signupassist-production.up.railway.app",
       "description": "Production MCP Server"
     }
   ],
