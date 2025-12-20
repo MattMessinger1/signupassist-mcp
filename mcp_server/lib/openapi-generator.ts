@@ -88,8 +88,8 @@ export function generateOpenAPISpec(
           type: 'oauth2',
           flows: {
             authorizationCode: {
-              authorizationUrl: 'https://dev-xha4aa58ytpvlqyl.us.auth0.com/authorize',
-              tokenUrl: 'https://dev-xha4aa58ytpvlqyl.us.auth0.com/oauth/token',
+              authorizationUrl: `${baseUrl}/oauth/authorize`,
+              tokenUrl: `${baseUrl}/oauth/token`,
               scopes: {
                 openid: 'OpenID Connect',
                 profile: 'User profile information',
