@@ -61,7 +61,7 @@ function convertInputSchema(toolName: string, inputSchema: any): any {
  */
 export function generateOpenAPISpec(
   tools: MCPTool[],
-  baseUrl: string = 'https://signupassist-mcp-production.up.railway.app',
+  baseUrl: string = 'https://signupassist-production.up.railway.app',
   version: string = '1.0.0'
 ): OpenAPISpec {
   const spec: OpenAPISpec = {
