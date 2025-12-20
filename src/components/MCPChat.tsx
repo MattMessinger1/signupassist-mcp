@@ -183,6 +183,7 @@ export function MCPChat({
   // Refs to track state restoration (prevents race conditions)
   const stateRestoredRef = useRef(false);
   const isInitialMountRef = useRef(true);
+  const paymentCallbackFiredRef = useRef(false); // Guard against double payment callback
   
   const scrollRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
@@ -681,6 +682,7 @@ export function MCPChat({
     // Reset payment state when starting a new registration flow
     if (action === 'select_program') {
       setPaymentCompleted(false);
+      paymentCallbackFiredRef.current = false; // Reset guard for new flow
       console.log('[MCPChat] Reset paymentCompleted for new registration flow');
     }
     
@@ -1075,6 +1077,13 @@ export function MCPChat({
                   mockUserEmail={effectiveUserEmail}
                   hasPaymentMethod={paymentCompleted}
                   onPaymentMethodSaved={async () => {
+                    // Guard against double-execution (polling + URL detection can both fire)
+                    if (paymentCallbackFiredRef.current) {
+                      console.log('[MCPChat] Payment callback already fired, skipping duplicate');
+                      return;
+                    }
+                    paymentCallbackFiredRef.current = true;
+                    
                     console.log('[MCPChat] Payment method saved');
                     // NOTE: Don't set paymentCompleted until AFTER handleCardAction completes
                     // This ensures the success message with buttons is added to messages first
@@ -1095,6 +1104,7 @@ export function MCPChat({
                           description: "User not authenticated",
                           variant: "destructive"
                         });
+                        paymentCallbackFiredRef.current = false; // Reset on error
                         return;
                       }
                       userId = user.id;
@@ -1109,6 +1119,7 @@ export function MCPChat({
                         description: "No active session",
                         variant: "destructive"
                       });
+                      paymentCallbackFiredRef.current = false; // Reset on error
                       return;
                     }
 
