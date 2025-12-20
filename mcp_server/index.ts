@@ -936,7 +936,11 @@ class SignupAssistMCPServer {
         try {
           const manifestPath = path.resolve(process.cwd(), "public", ".well-known", "ai-plugin.json");
           const manifest = readFileSync(manifestPath, "utf8");
-          res.writeHead(200, { "Content-Type": "application/json" });
+          res.writeHead(200, { 
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache"
+          });
           res.end(manifest);
           console.log("[ROUTE] Served ai-plugin.json for", url.pathname);
         } catch (error: any) {
@@ -956,7 +960,11 @@ class SignupAssistMCPServer {
         try {
           const manifestPath = path.resolve(process.cwd(), "public", ".well-known", "openai-connector.json");
           const manifest = readFileSync(manifestPath, "utf8");
-          res.writeHead(200, { "Content-Type": "application/json" });
+          res.writeHead(200, { 
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Pragma": "no-cache"
+          });
           res.end(manifest);
           console.log("[ROUTE] Served openai-connector.json for", url.pathname);
         } catch (error: any) {
