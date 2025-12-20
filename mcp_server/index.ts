@@ -678,8 +678,8 @@ class SignupAssistMCPServer {
         return;
       }
 
-      // --- Serve OpenAPI spec at /mcp/openapi.json
-      if (req.method === 'GET' && url.pathname === '/mcp/openapi.json') {
+      // --- Serve OpenAPI spec at /mcp/openapi.json AND /openapi.json
+      if (req.method === 'GET' && (url.pathname === '/mcp/openapi.json' || url.pathname === '/openapi.json')) {
         try {
           // Load openapi.json with fallback for Railway builds
           let openapiPath = path.resolve(process.cwd(), 'dist', 'mcp', 'openapi.json');
@@ -687,19 +687,26 @@ class SignupAssistMCPServer {
             // Fallback: use source copy
             openapiPath = path.resolve(process.cwd(), 'mcp', 'openapi.json');
           }
-          console.log('[DEBUG] Using OpenAPI spec at:', openapiPath);
+          if (!existsSync(openapiPath)) {
+            // Last resort: try relative path
+            openapiPath = './mcp/openapi.json';
+          }
+          console.log('[DEBUG] Using OpenAPI spec at:', openapiPath, 'exists:', existsSync(openapiPath));
           const spec = readFileSync(openapiPath, 'utf8');
           res.writeHead(200, { 
             'Content-Type': 'application/json',
-            'Access-Control-Allow-Origin': '*'
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-store, no-cache, must-revalidate'
           });
           res.end(spec);
-          console.log('[ROUTE] Served /mcp/openapi.json');
+          console.log('[ROUTE] Served', url.pathname);
         } catch (error: any) {
           console.error('[OPENAPI ERROR]', error);
           res.writeHead(404, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ 
-            error: 'OpenAPI spec not found. Run: npm run openapi:generate' 
+            error: 'OpenAPI spec not found',
+            details: error.message,
+            cwd: process.cwd()
           }));
         }
         return;
