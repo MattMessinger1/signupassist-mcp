@@ -5,7 +5,7 @@
     "version": "2.0.0",
     "description": "API-first activity registration system. Supports program discovery, registration form discovery, booking, and payment via direct API integrations (Bookeo, and more coming soon).",
     "contact": {
-      "email": "support@signupassist.ai"
+      "email": "matt@shipworx.ai"
     }
   },
   "servers": [
