@@ -968,6 +968,22 @@ class SignupAssistMCPServer {
         return;
       }
 
+      // --- OpenAI Domain Verification (for ChatGPT app submission)
+      if (
+        req.method === "GET" &&
+        (url.pathname === "/.well-known/openai-verification.txt" ||
+         url.pathname === "/mcp/.well-known/openai-verification.txt")
+      ) {
+        const verificationToken = process.env.OPENAI_VERIFICATION_TOKEN || '';
+        if (!verificationToken) {
+          console.warn("[ROUTE] OPENAI_VERIFICATION_TOKEN not set");
+        }
+        res.writeHead(200, { "Content-Type": "text/plain" });
+        res.end(verificationToken);
+        console.log("[ROUTE] Served openai-verification.txt for", url.pathname);
+        return;
+      }
+
       // --- Prompt override endpoint for tone training
       if (url.pathname === '/api/override-prompt') {
         if (req.method === 'OPTIONS') {
