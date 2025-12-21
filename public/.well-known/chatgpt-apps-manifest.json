@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0.0",
+  "name_for_human": "SignupAssist",
+  "name_for_model": "signupassist",
+  "description_for_human": "Securely automates activity sign-ups for parents using a consent-first flow.",
+  "description_for_model": "SignupAssist helps parents register children for activities. It shows program cards, collects signup info step-by-step, and handles payment securely. Use the signupassist tools to search programs, select programs, fill forms, and complete registrations.",
+  "auth": {
+    "type": "oauth",
+    "authorization_url": "https://signupassist-mcp-production.up.railway.app/oauth/authorize",
+    "token_url": "https://signupassist-mcp-production.up.railway.app/oauth/token",
+    "scope": "openid profile email",
+    "redirect_urls": ["https://oauth.openai.com/v1/callback"]
+  },
+  "api": {
+    "type": "openapi",
+    "url": "https://signupassist-mcp-production.up.railway.app/mcp/openapi.json"
+  },
+  "widget": {
+    "url": "https://signupassist-mcp-production.up.railway.app/widget/app.html",
+    "prefersBorder": true,
+    "domain": "https://chatgpt.com"
+  },
+  "logo_url": "https://signupassist-mcp-production.up.railway.app/logo-512.svg",
+  "contact_email": "support@shipworx.ai",
+  "legal_info_url": "https://shipworx.ai/privacy"
+}

@@ -298,21 +298,31 @@ export function WidgetRoot() {
   const toolOutput = useToolOutput() as ToolOutput | null;
   const [widgetState, setWidgetState] = useWidgetState<OpenAIWidgetState>();
 
+  // ChatGPT Apps SDK: Also check _meta for widget-specific data
+  // The backend sends cards in both toolOutput.cards AND toolOutput._meta.cards
+  const widgetMeta = (toolOutput as any)?._meta || {};
+  const cardsFromMeta = widgetMeta.cards as CardSpec[] | undefined;
+  
+  // Prefer cards from _meta (ChatGPT Apps SDK format), fallback to top-level cards
+  const effectiveCards = cardsFromMeta || toolOutput?.cards;
+  const effectiveComponentType = widgetMeta.componentType || toolOutput?.metadata?.componentType;
+
   // DEBUG: Log raw toolOutput to help diagnose card rendering issues
   if (process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && (window as any).__WIDGET_DEBUG__)) {
     console.log('[WidgetRoot] 📦 Raw toolOutput:', JSON.stringify(toolOutput, null, 2));
     console.log('[WidgetRoot] 🔍 Parsed:', {
       hasMessage: !!toolOutput?.message,
-      hasCards: !!toolOutput?.cards,
-      cardsCount: toolOutput?.cards?.length || 0,
+      hasCards: !!effectiveCards,
+      cardsCount: effectiveCards?.length || 0,
       hasCta: !!toolOutput?.cta,
-      componentType: toolOutput?.metadata?.componentType,
+      componentType: effectiveComponentType,
       hasPayload: !!toolOutput?.payload,
+      hasMeta: !!widgetMeta.componentType,
     });
   }
 
-  // Extract routing info
-  const componentType = toolOutput?.metadata?.componentType;
+  // Extract routing info - use effectiveComponentType from ChatGPT Apps SDK _meta
+  const componentType = effectiveComponentType;
   const metadata = toolOutput?.metadata || {};
 
   // Handle program selection
@@ -374,16 +384,16 @@ export function WidgetRoot() {
 
     // ============ Program Discovery ============
     case 'program_list':
-      // Backend sends cards at top level, not in payload
-      if (toolOutput?.cards && toolOutput.cards.length > 0) {
+      // Use effectiveCards which checks both _meta and top-level cards
+      if (effectiveCards && effectiveCards.length > 0) {
         return (
           <div className="p-4">
-            {toolOutput.message && (
+            {toolOutput?.message && (
               <p className="text-sm text-muted-foreground mb-4">{toolOutput.message}</p>
             )}
             <ProgramCardList
-              cards={toolOutput.cards}
-              cta={toolOutput.cta}
+              cards={effectiveCards}
+              cta={toolOutput?.cta}
               onSelect={handleProgramSelect}
               onChipClick={(payload) => {
                 if (window.openai?.postback) {
@@ -479,15 +489,16 @@ export function WidgetRoot() {
     // ============ Default/Fallback ============
     default:
       // Check if backend returned cards array (program listing without explicit componentType)
-      if (toolOutput?.cards && toolOutput.cards.length > 0) {
+      // Use effectiveCards which checks both _meta and top-level cards
+      if (effectiveCards && effectiveCards.length > 0) {
         return (
           <div className="p-4">
-            {toolOutput.message && (
+            {toolOutput?.message && (
               <p className="text-sm text-muted-foreground mb-4">{toolOutput.message}</p>
             )}
             <ProgramCardList
-              cards={toolOutput.cards}
-              cta={toolOutput.cta}
+              cards={effectiveCards}
+              cta={toolOutput?.cta}
               onSelect={handleProgramSelect}
               onChipClick={(payload) => {
                 if (window.openai?.postback) {

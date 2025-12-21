@@ -64,6 +64,9 @@ RUN cd app/web && npm install --legacy-peer-deps 2>/dev/null || true
 RUN cd app/web && npx esbuild src/component.tsx --bundle --format=esm --outfile=dist/component.js --external:react --external:react-dom --loader:.tsx=tsx --loader:.ts=ts 2>/dev/null || echo "⚠️ Widget build skipped (optional)"
 RUN ls -la app/web/dist/component.js 2>/dev/null || echo "⚠️ Widget bundle not built (will use placeholder)"
 
+# Copy widget HTML template (ChatGPT Apps SDK entry point)
+COPY app/web/dist/app.html app/web/dist/app.html 2>/dev/null || echo "⚠️ Widget HTML not found (will use inline fallback)"
+
 # ============================================
 # Runner stage (smaller final image)
 # ============================================
@@ -85,9 +88,12 @@ COPY --from=builder /app/mcp ./mcp
 COPY public ./public
 COPY index.html ./
 
-# Copy ChatGPT Apps SDK widget bundle (optional - may not exist)
+# Copy ChatGPT Apps SDK widget bundle and HTML (optional - may not exist)
 RUN mkdir -p app/web/dist
 COPY --from=builder /app/app/web/dist/ ./app/web/dist/
+
+# Copy ChatGPT Apps manifest
+COPY public/.well-known/chatgpt-apps-manifest.json ./public/.well-known/chatgpt-apps-manifest.json 2>/dev/null || true
 
 # Expose correct port (matches code default)
 EXPOSE 8080

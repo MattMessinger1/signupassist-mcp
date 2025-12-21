@@ -25,6 +25,19 @@ export interface OrchestratorResponse {
     buttons: ButtonSpec[];
   };
   metadata?: any;
+  
+  // ChatGPT Apps SDK fields
+  /** Structured content visible to the model for reasoning */
+  structuredContent?: Record<string, any>;
+  /** Widget metadata - only visible to widget, not model */
+  _meta?: {
+    componentType?: string;
+    cards?: CardSpec[];
+    orgRef?: string;
+    programRef?: string;
+    formData?: Record<string, any>;
+    [key: string]: any;
+  };
 }
 
 /**

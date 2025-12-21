@@ -2237,6 +2237,25 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           orgRef,
           programCount: upcomingPrograms.length,
           _build: APIOrchestrator.BUILD_STAMP
+        },
+        // ChatGPT Apps SDK: structured content for model reasoning
+        structuredContent: {
+          type: 'program_list',
+          orgRef,
+          programCount: upcomingPrograms.length,
+          programs: programListForMessage.map(p => ({
+            index: p.index,
+            title: p.title,
+            price: p.price,
+            status: p.status
+          }))
+        },
+        // ChatGPT Apps SDK: widget-only metadata (not visible to model)
+        _meta: {
+          componentType: 'program_list',
+          cards,  // Full card data for widget rendering
+          orgRef,
+          programCount: upcomingPrograms.length
         }
       };
 
