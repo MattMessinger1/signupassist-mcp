@@ -5,8 +5,8 @@
  * Supports all widget component types from the orchestrator.
  */
 
-import React from 'react';
-import { useToolOutput, useWidgetState } from './hooks/useOpenAiGlobal';
+import React, { Component, type ReactNode } from 'react';
+import { useToolOutput, useWidgetState, useSendMessage } from './hooks/useOpenAiGlobal';
 import { MultiStepRegistrationForm } from './components/MultiStepRegistrationForm';
 import { AuthCheck } from './components/AuthCheck';
 import { ProgramSelector, type ProgramSelectorPayload } from './components/ProgramSelector';
@@ -14,6 +14,77 @@ import { ProviderConnect } from './components/ProviderConnect';
 import { AuditTrailSummary, type AuditEvent } from './components/AuditTrailSummary';
 import { ConfirmationStep } from './components/form/ConfirmationStep';
 import type { OpenAIWidgetState } from './types/openai';
+
+// ============ Error Boundary ============
+
+interface ErrorBoundaryProps {
+  children: ReactNode;
+  fallback?: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class WidgetErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('[Widget] Error caught by boundary:', error, errorInfo);
+  }
+
+  handleRetry = () => {
+    this.setState({ hasError: false, error: null });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      if (this.props.fallback) {
+        return this.props.fallback;
+      }
+
+      return (
+        <div className="p-6 text-center">
+          <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
+            <svg className="h-6 w-6 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <h2 className="text-lg font-semibold text-foreground mb-2">Something went wrong</h2>
+          <p className="text-sm text-muted-foreground mb-4">
+            We encountered an unexpected error. Please try again.
+          </p>
+          <button
+            onClick={this.handleRetry}
+            className="inline-flex items-center px-4 py-2 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            Try Again
+          </button>
+          {process.env.NODE_ENV === 'development' && this.state.error && (
+            <details className="mt-4 text-left text-xs text-muted-foreground">
+              <summary className="cursor-pointer">Error Details</summary>
+              <pre className="mt-2 p-2 bg-muted rounded overflow-auto max-h-32">
+                {this.state.error.message}
+                {'\n'}
+                {this.state.error.stack}
+              </pre>
+            </details>
+          )}
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 // ============ Types ============
 
@@ -274,5 +345,16 @@ export function WidgetRoot() {
   }
 }
 
-// Export for ChatGPT Apps SDK
-export default WidgetRoot;
+/**
+ * Wrapped WidgetRoot with error boundary for production safety
+ */
+export function WidgetRootWithErrorBoundary() {
+  return (
+    <WidgetErrorBoundary>
+      <WidgetRoot />
+    </WidgetErrorBoundary>
+  );
+}
+
+// Export wrapped version as default for ChatGPT Apps SDK
+export default WidgetRootWithErrorBoundary;
