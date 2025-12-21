@@ -17,7 +17,7 @@ export interface OpenAIWidgetState {
 export interface ToolOutput {
   message?: string;
   metadata?: {
-    componentType?: 'program_list' | 'fullscreen_form' | 'payment_setup' | 'confirmation' | 'form_step';
+    componentType?: 'program_list' | 'fullscreen_form' | 'payment_setup' | 'confirmation' | 'form_step' | 'mandate_consent';
     step?: number;
     totalSteps?: number;
     stepTitle?: string;
@@ -27,6 +27,18 @@ export interface ToolOutput {
     savedChildren?: SavedChild[];
     delegateProfile?: DelegateProfile;
     summary?: any;
+    programRef?: string;
+    programName?: string;
+    orgRef?: string;
+    provider?: string;
+    programFeeCents?: number;
+    serviceFeePercent?: number;
+    /** ISO string for when registration opens (for scheduled registrations) */
+    registrationOpensAt?: string;
+    /** Maximum cost limit for mandate */
+    maxAmountCents?: number;
+    /** Mandate validity period */
+    validUntil?: string;
   };
   programs?: any[];
   ui_payload?: any;
