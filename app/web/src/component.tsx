@@ -226,7 +226,6 @@ export function WidgetRoot() {
       return (
         <div className="p-4">
           <ConfirmationView
-            message={toolOutput?.message}
             confirmationNumber={metadata.confirmationNumber}
             programName={metadata.programName}
           />
