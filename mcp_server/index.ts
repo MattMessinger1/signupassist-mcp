@@ -770,13 +770,13 @@ class SignupAssistMCPServer {
       // --- Serve manifest JSON directly at /mcp (ChatGPT OAuth discovery)
       if (req.method === 'GET' && (url.pathname === '/mcp' || url.pathname === '/mcp/')) {
         try {
-          // Load manifest.json with fallback for Railway builds
-          let manifestPath = path.resolve(process.cwd(), 'dist', 'mcp', 'manifest.json');
+          // Prefer source manifest to avoid stale dist artifacts (Railway cache)
+          let manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
           if (!existsSync(manifestPath)) {
-            // Fallback: use source copy
-            manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
+            // Fallback: dist build output
+            manifestPath = path.resolve(process.cwd(), 'dist', 'mcp', 'manifest.json');
           }
-          console.log('[DEBUG] Using manifest at:', manifestPath);
+          console.log('[DEBUG] Using manifest at:', manifestPath, 'exists:', existsSync(manifestPath));
           const manifest = readFileSync(manifestPath, 'utf8');
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(manifest);
@@ -796,24 +796,55 @@ class SignupAssistMCPServer {
           url.pathname === '/.well-known/openapi.json')
       ) {
         try {
-          // Load openapi.json with fallback for Railway builds
-          let openapiPath = path.resolve(process.cwd(), 'dist', 'mcp', 'openapi.json');
+          // Prefer source OpenAPI to avoid stale dist artifacts (Railway cache)
+          let openapiPath = path.resolve(process.cwd(), 'mcp', 'openapi.json');
           if (!existsSync(openapiPath)) {
-            // Fallback: use source copy
-            openapiPath = path.resolve(process.cwd(), 'mcp', 'openapi.json');
+            // Fallback: dist build output
+            openapiPath = path.resolve(process.cwd(), 'dist', 'mcp', 'openapi.json');
           }
           if (!existsSync(openapiPath)) {
             // Last resort: try relative path
             openapiPath = './mcp/openapi.json';
           }
           console.log('[DEBUG] Using OpenAPI spec at:', openapiPath, 'exists:', existsSync(openapiPath));
-          const spec = readFileSync(openapiPath, 'utf8');
-          res.writeHead(200, { 
+
+          const specText = readFileSync(openapiPath, 'utf8');
+
+          // Ensure GPT Builder "same root domain" requirement by forcing OAuth URLs to our proxy.
+          // (We rewrite at response-time to prevent stale build artifacts from leaking Auth0 URLs.)
+          let out = specText;
+          try {
+            const specJson = JSON.parse(specText);
+            const proto = (req.headers['x-forwarded-proto'] as string | undefined) || 'https';
+            const host = (req.headers['x-forwarded-host'] as string | undefined) || (req.headers['host'] as string | undefined);
+            const baseUrl = host ? `${proto}://${host}` : 'https://signupassist-mcp-production.up.railway.app';
+
+            if (Array.isArray(specJson.servers) && specJson.servers[0]?.url) {
+              specJson.servers[0].url = baseUrl;
+            }
+
+            const schemes = specJson?.components?.securitySchemes;
+            if (schemes && typeof schemes === 'object') {
+              for (const scheme of Object.values(schemes as Record<string, any>)) {
+                const authCode = scheme?.flows?.authorizationCode;
+                if (authCode) {
+                  authCode.authorizationUrl = `${baseUrl}/oauth/authorize`;
+                  authCode.tokenUrl = `${baseUrl}/oauth/token`;
+                }
+              }
+            }
+
+            out = JSON.stringify(specJson, null, 2);
+          } catch (e: any) {
+            console.warn('[OPENAPI] Failed to rewrite OAuth URLs:', e?.message);
+          }
+
+          res.writeHead(200, {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*',
             'Cache-Control': 'no-store, no-cache, must-revalidate'
           });
-          res.end(spec);
+          res.end(out);
           console.log('[ROUTE] Served', url.pathname);
         } catch (error: any) {
           console.error('[OPENAPI ERROR]', error);
@@ -830,16 +861,37 @@ class SignupAssistMCPServer {
       // --- Serve manifest at .well-known path (legacy plugin compatibility)
       if (req.method === 'GET' && url.pathname === '/.well-known/ai-plugin.json') {
         try {
-          // Load manifest.json with fallback for Railway builds
-          let manifestPath = path.resolve(process.cwd(), 'dist', 'mcp', 'manifest.json');
+          // Prefer source manifest to avoid stale dist artifacts (Railway cache)
+          let manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
           if (!existsSync(manifestPath)) {
-            // Fallback: use source copy
-            manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
+            // Fallback: dist build output
+            manifestPath = path.resolve(process.cwd(), 'dist', 'mcp', 'manifest.json');
           }
-          console.log('[DEBUG] Using manifest at:', manifestPath);
-          const manifest = readFileSync(manifestPath, 'utf8');
+          console.log('[DEBUG] Using manifest at:', manifestPath, 'exists:', existsSync(manifestPath));
+
+          const manifestText = readFileSync(manifestPath, 'utf8');
+          let out = manifestText;
+          try {
+            const manifestJson = JSON.parse(manifestText);
+            const proto = (req.headers['x-forwarded-proto'] as string | undefined) || 'https';
+            const host = (req.headers['x-forwarded-host'] as string | undefined) || (req.headers['host'] as string | undefined);
+            const baseUrl = host ? `${proto}://${host}` : 'https://signupassist-mcp-production.up.railway.app';
+
+            if (manifestJson?.auth?.type === 'oauth') {
+              manifestJson.auth.authorization_url = `${baseUrl}/oauth/authorize`;
+              manifestJson.auth.token_url = `${baseUrl}/oauth/token`;
+            }
+            if (manifestJson?.api?.type === 'openapi') {
+              manifestJson.api.url = `${baseUrl}/mcp/openapi.json`;
+            }
+
+            out = JSON.stringify(manifestJson, null, 2);
+          } catch (e: any) {
+            console.warn('[MANIFEST] Failed to rewrite OAuth URLs:', e?.message);
+          }
+
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(manifest);
+          res.end(out);
           console.log('[ROUTE] Served /.well-known/ai-plugin.json');
         } catch (error: any) {
           console.error('[WELL-KNOWN ERROR]', error);
