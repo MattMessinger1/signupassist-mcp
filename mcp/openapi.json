@@ -2,11 +2,12 @@
   "openapi": "3.1.0",
   "info": {
     "title": "SignupAssist MCP API",
-    "version": "2.1.0",
-    "description": "AI-powered activity registration assistant. Use the /chat endpoint for natural language queries like 'find robotics classes in Madison' - it handles location matching, activity detection, and provider discovery automatically. The /tools/call endpoint is for direct tool execution when you know the exact tool and parameters.",
+    "version": "2.2.0",
+    "description": "AI-powered activity registration assistant for finding and booking children's activities (robotics, STEM, swim lessons, camps, sports, art, music) across the United States.\n\n**For ChatGPT:** Use the `/orchestrator/chat` endpoint for all queries. Send natural language like 'find robotics classes in Madison WI for my 8 year old' and the system handles location matching, activity detection, age filtering, and provider discovery automatically.\n\n**Supported Activities:** robotics, STEM, coding, swim lessons, summer camps, sports, art, music, dance, martial arts, tutoring, and more.\n\n**Geographic Coverage:** US-based providers, primarily in the Midwest (Wisconsin, Illinois, Minnesota) with expanding coverage.",
     "contact": {
       "email": "matt@shipworx.ai"
-    }
+    },
+    "x-openai-isConversational": true
   },
   "servers": [
     {
@@ -18,7 +19,7 @@
     "/orchestrator/chat": {
       "post": {
         "summary": "Chat with SignupAssist (RECOMMENDED)",
-        "description": "Send natural language messages to find and register for activities. This is the PRIMARY endpoint for ChatGPT - it understands queries like 'find robotics classes in Madison WI' or 'show me swim lessons for my 7 year old' and automatically maps them to the correct organizations and programs. Maintains conversation context across messages.",
+        "description": "Send natural language messages to find and register for activities. This is the PRIMARY endpoint for ChatGPT.\n\n**What it understands:**\n- Activity searches: 'find robotics classes', 'show me swim lessons', 'what coding camps are available'\n- Location context: 'in Madison WI', 'near Chicago', 'in the 53703 area'\n- Age filtering: 'for my 7 year old', 'for kids ages 5-8', 'for teens'\n- Organization queries: 'What does AIM Design offer?', 'Show me Blackhawk Ski Club programs'\n\n**Conversation flow:** The system maintains context. Start with a search, then select programs, answer questions, and confirm bookings.\n\n**Protected actions:** Payment confirmations and bookings require OAuth authentication.",
         "operationId": "chat",
         "requestBody": {
           "required": true,
@@ -26,28 +27,40 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["message", "session_id"],
+                "required": ["message", "sessionId"],
                 "properties": {
                   "message": {
                     "type": "string",
                     "description": "Natural language message from the user (e.g., 'find robotics programs in Madison', 'show me swim lessons for kids')"
                   },
-                  "session_id": {
+                  "sessionId": {
                     "type": "string",
                     "description": "Unique session ID for conversation continuity. Use the same ID across messages in a conversation."
                   },
                   "action": {
                     "type": "string",
-                    "description": "Optional action to execute (e.g., 'select_program', 'confirm_payment'). Usually populated from button clicks in the response."
+                    "enum": [
+                      "select_program",
+                      "select_child",
+                      "answer_questions",
+                      "confirm_booking",
+                      "cancel_booking",
+                      "show_more_programs",
+                      "change_filters",
+                      "back",
+                      "start_over"
+                    ],
+                    "description": "Action to execute when responding to a card button click. Usually populated from the action field of button responses."
                   },
                   "payload": {
                     "type": "object",
-                    "description": "Optional payload for the action",
+                    "description": "Data payload for the action (e.g., program_ref for select_program, answers for answer_questions)",
                     "additionalProperties": true
                   },
-                  "user_timezone": {
+                  "userTimezone": {
                     "type": "string",
-                    "description": "User's IANA timezone (e.g., 'America/Chicago'). Used for displaying times correctly."
+                    "description": "User's IANA timezone (e.g., 'America/Chicago'). Used for displaying times correctly.",
+                    "default": "America/Chicago"
                   }
                 }
               },
@@ -56,22 +69,34 @@
                   "summary": "Find robotics programs in Madison",
                   "value": {
                     "message": "Find robotics classes in Madison WI",
-                    "session_id": "chatgpt-session-123"
+                    "sessionId": "chatgpt-session-123"
                   }
                 },
-                "find_swim_lessons": {
-                  "summary": "Find swim lessons for kids",
+                "find_swim_lessons_with_age": {
+                  "summary": "Find swim lessons for a specific age",
                   "value": {
                     "message": "Show me swim lessons for my 8 year old",
-                    "session_id": "chatgpt-session-123",
-                    "user_timezone": "America/Chicago"
+                    "sessionId": "chatgpt-session-123",
+                    "userTimezone": "America/Chicago"
                   }
                 },
                 "find_by_org_name": {
                   "summary": "Find programs at a specific organization",
                   "value": {
                     "message": "What programs does AIM Design offer?",
-                    "session_id": "chatgpt-session-123"
+                    "sessionId": "chatgpt-session-123"
+                  }
+                },
+                "select_program_action": {
+                  "summary": "Select a program from results",
+                  "value": {
+                    "message": "",
+                    "sessionId": "chatgpt-session-123",
+                    "action": "select_program",
+                    "payload": {
+                      "program_ref": "robotics-101",
+                      "org_ref": "aim-design"
+                    }
                   }
                 }
               }
@@ -90,13 +115,15 @@
             }
           },
           "401": {
-            "description": "Unauthorized - OAuth token invalid or missing",
+            "description": "Unauthorized - OAuth token required for protected actions (booking, payment)",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "error": { "type": "string" }
+                    "error": { "type": "string" },
+                    "requiresAuth": { "type": "boolean" },
+                    "authUrl": { "type": "string" }
                   }
                 }
               }
@@ -116,13 +143,17 @@
               }
             }
           }
-        }
+        },
+        "security": [
+          {},
+          { "oauth2": ["openid", "profile", "email"] }
+        ]
       }
     },
     "/tools/call": {
       "post": {
         "summary": "Execute MCP tool directly (advanced)",
-        "description": "Execute a specific MCP tool by name. Use /orchestrator/chat instead for natural language queries - this endpoint requires knowing the exact tool name and org_ref. Only use this for advanced integrations.",
+        "description": "Execute a specific MCP tool by name. **Use /orchestrator/chat instead** for natural language queries - this endpoint requires knowing the exact tool name and org_ref. Only use this for advanced integrations or debugging.",
         "operationId": "callTool",
         "requestBody": {
           "required": true,
@@ -253,7 +284,7 @@
     "schemas": {
       "ChatResponse": {
         "type": "object",
-        "description": "Response from the chat orchestrator",
+        "description": "Response from the chat orchestrator containing the assistant message and optional UI elements",
         "required": ["message"],
         "properties": {
           "message": {
@@ -263,24 +294,85 @@
           "cards": {
             "type": "array",
             "items": { "$ref": "#/components/schemas/UICard" },
-            "description": "Optional UI cards for programs, forms, or confirmations"
+            "description": "UI cards for programs, forms, confirmations, or other structured content"
+          },
+          "cta": {
+            "type": "object",
+            "description": "Call-to-action buttons for the response",
+            "properties": {
+              "buttons": {
+                "type": "array",
+                "items": { "$ref": "#/components/schemas/Button" }
+              }
+            }
           },
           "actions": {
             "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "action": { "type": "string" },
-                "label": { "type": "string" },
-                "payload": { "type": "object" }
-              }
+            "items": { "$ref": "#/components/schemas/Button" },
+            "description": "Available actions the user can take (legacy format, prefer cta.buttons)"
+          },
+          "contextUpdates": {
+            "type": "object",
+            "description": "State changes from this interaction (for debugging/tracking)",
+            "properties": {
+              "currentStep": { "type": "string" },
+              "selectedProgram": { "type": "string" },
+              "selectedChild": { "type": "string" },
+              "provider": { "type": "string" }
             },
-            "description": "Available actions the user can take"
+            "additionalProperties": true
+          },
+          "suggestedQueries": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Suggested follow-up queries the user might want to ask",
+            "examples": [
+              ["Show me the schedule", "What ages is this for?", "How much does it cost?"]
+            ]
+          },
+          "error": {
+            "type": "object",
+            "description": "Error information if the request failed",
+            "properties": {
+              "code": { "type": "string" },
+              "message": { "type": "string" },
+              "recoveryHint": { "type": "string" }
+            }
           },
           "session_context": {
             "type": "object",
             "description": "Current session state (for debugging)",
             "additionalProperties": true
+          }
+        }
+      },
+      "Button": {
+        "type": "object",
+        "description": "Interactive button for user actions",
+        "required": ["label", "action"],
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "Button text displayed to user"
+          },
+          "action": {
+            "type": "string",
+            "description": "Action identifier to send back when clicked"
+          },
+          "payload": {
+            "type": "object",
+            "description": "Data to include when this action is triggered",
+            "additionalProperties": true
+          },
+          "variant": {
+            "type": "string",
+            "enum": ["accent", "outline", "destructive"],
+            "default": "accent"
+          },
+          "requiresAuth": {
+            "type": "boolean",
+            "description": "Whether this action requires OAuth authentication",
+            "default": false
           }
         }
       },
@@ -310,30 +402,33 @@
       },
       "UICard": {
         "type": "object",
-        "description": "UI card specification for consistent rendering",
+        "description": "UI card specification for consistent rendering of programs, forms, and confirmations",
         "required": ["title"],
         "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["program", "form", "confirmation", "error", "info"],
+            "description": "Card type for rendering hints"
+          },
           "title": { "type": "string" },
           "subtitle": { "type": "string" },
           "description": { "type": "string" },
+          "imageUrl": { "type": "string", "format": "uri" },
           "metadata": {
             "type": "object",
+            "description": "Structured data (price, dates, age range, etc.)",
+            "properties": {
+              "price": { "type": "string" },
+              "ageRange": { "type": "string" },
+              "dates": { "type": "string" },
+              "location": { "type": "string" },
+              "spotsAvailable": { "type": "integer" }
+            },
             "additionalProperties": true
           },
           "buttons": {
             "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["label", "action"],
-              "properties": {
-                "label": { "type": "string" },
-                "action": { "type": "string" },
-                "variant": {
-                  "type": "string",
-                  "enum": ["accent", "outline"]
-                }
-              }
-            }
+            "items": { "$ref": "#/components/schemas/Button" }
           }
         }
       },
@@ -520,6 +615,7 @@
     "securitySchemes": {
       "oauth2": {
         "type": "oauth2",
+        "description": "OAuth 2.0 authentication for protected actions (booking confirmations, payments). Public queries (finding programs) do not require authentication.",
         "flows": {
           "authorizationCode": {
             "authorizationUrl": "https://signupassist-mcp-production.up.railway.app/oauth/authorize",
