@@ -13,6 +13,15 @@ const VERSION_INFO = {
   useNewAAP: process.env.USE_NEW_AAP === 'true'
 };
 
+// ChatGPT Apps SDK Widget Metadata
+// This tells ChatGPT which UI template to render for tool outputs
+const CHATGPT_APPS_WIDGET_META = {
+  "openai/outputTemplate": "ui://widget/app.html",
+  "openai/widgetAccessible": true,
+  "openai/toolInvocation/invoking": "Loading...",
+  "openai/toolInvocation/invoked": "Ready!"
+};
+
 // Import Auth0 middleware and protected actions config
 import { verifyAuth0Token, extractBearerToken, getAuth0Config } from './middleware/auth0.js';
 import { isProtectedAction, PROTECTED_ACTIONS } from './config/protectedActions.js';
@@ -197,11 +206,18 @@ class SignupAssistMCPServer {
   private setupRequestHandlers() {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
       // Filter to only API-compatible tools (hide scraping/internal tools)
-      const apiTools = Array.from(this.tools.values()).filter(tool => 
-        tool.name.startsWith('bookeo.') || 
-        tool.name.startsWith('user.') ||
-        tool.name.startsWith('mandate.')
-      );
+      const apiTools = Array.from(this.tools.values())
+        .filter(tool => 
+          tool.name.startsWith('bookeo.') || 
+          tool.name.startsWith('user.') ||
+          tool.name.startsWith('mandate.')
+        )
+        .map(tool => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: tool.inputSchema,
+          _meta: tool._meta  // Include ChatGPT Apps SDK widget metadata
+        }));
       return { tools: apiTools };
     });
 
@@ -238,13 +254,18 @@ class SignupAssistMCPServer {
       });
     });
 
-    // Register Bookeo tools
+    // Register Bookeo tools with ChatGPT Apps SDK widget metadata
     bookeoTools.forEach((tool) => {
       this.tools.set(tool.name, {
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema,
-        handler: tool.handler
+        handler: tool.handler,
+        _meta: {
+          ...CHATGPT_APPS_WIDGET_META,
+          "openai/toolInvocation/invoking": "Searching programs...",
+          "openai/toolInvocation/invoked": "Found programs!"
+        }
       });
     });
 
@@ -258,13 +279,18 @@ class SignupAssistMCPServer {
       });
     });
 
-    // Register Mandate tools
+    // Register Mandate tools with ChatGPT Apps SDK widget metadata
     mandateTools.forEach((tool) => {
       this.tools.set(tool.name, {
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema,
-        handler: tool.handler
+        handler: tool.handler,
+        _meta: {
+          ...CHATGPT_APPS_WIDGET_META,
+          "openai/toolInvocation/invoking": "Processing mandate...",
+          "openai/toolInvocation/invoked": "Mandate ready!"
+        }
       });
     });
 
@@ -304,7 +330,12 @@ class SignupAssistMCPServer {
         name: tool.name,
         description: tool.description,
         inputSchema: tool.inputSchema,
-        handler: tool.handler
+        handler: tool.handler,
+        _meta: {
+          ...CHATGPT_APPS_WIDGET_META,
+          "openai/toolInvocation/invoking": "Loading user data...",
+          "openai/toolInvocation/invoked": "User data ready!"
+        }
       });
     });
 
