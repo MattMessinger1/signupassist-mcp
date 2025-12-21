@@ -2214,7 +2214,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       const orchestratorResponse: OrchestratorResponse = {
         message,
-        cards
+        cards,
+        metadata: {
+          componentType: 'program_list',
+          orgRef,
+          programCount: upcomingPrograms.length,
+          _build: APIOrchestrator.BUILD_STAMP
+        }
       };
 
       // Validate Design DNA compliance
