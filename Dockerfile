@@ -1,5 +1,6 @@
 # ============================================
 # Optimized Dockerfile for Railway (cache + speed)
+# Build version: 2025-12-21-v2
 # ============================================
 
 # Base image with build tools
