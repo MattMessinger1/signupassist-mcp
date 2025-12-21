@@ -129,9 +129,9 @@ export default class APIOrchestrator implements IOrchestrator {
   
   // Build stamp for debugging which version is running in production
   private static readonly BUILD_STAMP = {
-    build_id: '2025-06-22T03:00:00Z',
+    build_id: '2025-06-22T03:30:00Z',
     orchestrator_mode: 'api-first',
-    version: '2.2.0-single-turn-optimization'
+    version: '2.3.0-session-persistence'
   };
   
   // LRU cache for input classification results (avoid redundant LLM calls)
@@ -634,7 +634,18 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     userId?: string
   ): Promise<OrchestratorResponse> {
     try {
-      const context = this.getContext(sessionId);
+      // ✅ CRITICAL: Use async context loading to restore from Supabase if needed
+      // This fixes ChatGPT multi-turn conversations losing context between API calls
+      const context = await this.getContextAsync(sessionId);
+      
+      Logger.info('[generateResponse] Context loaded', {
+        sessionId,
+        step: context.step,
+        hasSelectedProgram: !!context.selectedProgram,
+        hasFormData: !!context.formData,
+        hasSchedulingData: !!context.schedulingData,
+        requestedActivity: context.requestedActivity
+      });
       
       // Store user ID and timezone in context
       if (userId) {
@@ -4534,33 +4545,157 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
     return units[unit] || 0;
   }
 
+  // ============================================================================
+  // Session Persistence Layer (Supabase browser_sessions table)
+  // Fixes: ChatGPT multi-turn conversations losing context between API calls
+  // ============================================================================
+  
+  private readonly SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
+  private readonly SESSION_KEY_PREFIX = 'orchestrator:api:';
+  
+  /**
+   * Load session context from Supabase
+   * Called when context not found in memory (e.g., ChatGPT calls with same sessionId)
+   */
+  private async loadSessionFromDB(sessionId: string): Promise<APIContext | null> {
+    try {
+      const supabase = this.getSupabaseClient();
+      const sessionKey = this.SESSION_KEY_PREFIX + sessionId;
+      
+      const { data, error } = await supabase
+        .from('browser_sessions')
+        .select('session_data, expires_at')
+        .eq('session_key', sessionKey)
+        .maybeSingle();
+      
+      if (error) {
+        Logger.warn('[loadSessionFromDB] Error loading session:', error.message);
+        return null;
+      }
+      
+      if (!data) {
+        Logger.debug('[loadSessionFromDB] No session found in DB for:', sessionId);
+        return null;
+      }
+      
+      // Check expiry
+      if (new Date(data.expires_at) < new Date()) {
+        Logger.info('[loadSessionFromDB] Session expired, deleting:', sessionId);
+        await supabase.from('browser_sessions').delete().eq('session_key', sessionKey);
+        return null;
+      }
+      
+      const sessionData = data.session_data as APIContext;
+      Logger.info('[loadSessionFromDB] ✅ Session restored from DB', {
+        sessionId,
+        step: sessionData.step,
+        hasSelectedProgram: !!sessionData.selectedProgram,
+        hasFormData: !!sessionData.formData,
+        requestedActivity: sessionData.requestedActivity
+      });
+      
+      return sessionData;
+    } catch (error) {
+      Logger.error('[loadSessionFromDB] Failed to load session:', error);
+      return null;
+    }
+  }
+  
+  /**
+   * Persist session context to Supabase
+   * Called after every updateContext to ensure durability
+   */
+  private async persistSessionToDB(sessionId: string, context: APIContext): Promise<void> {
+    try {
+      const supabase = this.getSupabaseClient();
+      const sessionKey = this.SESSION_KEY_PREFIX + sessionId;
+      const expiresAt = new Date(Date.now() + this.SESSION_TTL_MS).toISOString();
+      
+      const { error } = await supabase
+        .from('browser_sessions')
+        .upsert({
+          session_key: sessionKey,
+          session_data: context,
+          expires_at: expiresAt,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'session_key'
+        });
+      
+      if (error) {
+        Logger.warn('[persistSessionToDB] Error persisting session:', error.message);
+      } else {
+        Logger.debug('[persistSessionToDB] ✅ Session persisted', {
+          sessionId,
+          step: context.step,
+          hasSelectedProgram: !!context.selectedProgram
+        });
+      }
+    } catch (error) {
+      Logger.error('[persistSessionToDB] Failed to persist session:', error);
+      // Don't throw - session persistence is non-critical
+    }
+  }
+
   /**
    * Get session context (auto-initialize if needed)
+   * Now checks Supabase if not in memory (for ChatGPT multi-turn support)
    */
   private getContext(sessionId: string): APIContext {
     const exists = this.sessions.has(sessionId);
     console.log('[getContext] 🔍', {
       sessionId,
       exists,
-      action: exists ? 'retrieving existing' : 'creating new',
+      action: exists ? 'retrieving existing' : 'checking DB then creating new',
       currentStep: exists ? this.sessions.get(sessionId)?.step : 'none',
       hasSelectedProgram: exists ? !!this.sessions.get(sessionId)?.selectedProgram : false
     });
     
     if (!this.sessions.has(sessionId)) {
+      // Initialize with empty context - async DB load happens in getContextAsync
       this.sessions.set(sessionId, {
         step: FlowStep.BROWSE
       });
     }
     return this.sessions.get(sessionId)!;
   }
+  
+  /**
+   * Get session context with async DB loading (for ChatGPT multi-turn support)
+   * Use this at the start of generateResponse to ensure DB context is loaded
+   */
+  private async getContextAsync(sessionId: string): Promise<APIContext> {
+    // Check memory first (fast path)
+    if (this.sessions.has(sessionId)) {
+      return this.sessions.get(sessionId)!;
+    }
+    
+    // Try loading from DB (slow path - for ChatGPT calls with persisted context)
+    const dbContext = await this.loadSessionFromDB(sessionId);
+    if (dbContext) {
+      // Restore to memory cache
+      this.sessions.set(sessionId, dbContext);
+      return dbContext;
+    }
+    
+    // Initialize new context
+    const newContext: APIContext = { step: FlowStep.BROWSE };
+    this.sessions.set(sessionId, newContext);
+    return newContext;
+  }
 
   /**
-   * Update session context
+   * Update session context (now also persists to Supabase)
    */
   private updateContext(sessionId: string, updates: Partial<APIContext>): void {
     const current = this.getContext(sessionId);
-    this.sessions.set(sessionId, { ...current, ...updates });
+    const updated = { ...current, ...updates };
+    this.sessions.set(sessionId, updated);
+    
+    // Async persist to DB (fire-and-forget for performance)
+    this.persistSessionToDB(sessionId, updated).catch(err => {
+      Logger.warn('[updateContext] Background persist failed:', err);
+    });
   }
 
   /**
@@ -4568,5 +4703,14 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
    */
   public resetContext(sessionId: string): void {
     this.sessions.delete(sessionId);
+    
+    // Also delete from DB
+    const sessionKey = this.SESSION_KEY_PREFIX + sessionId;
+    this.getSupabaseClient()
+      .from('browser_sessions')
+      .delete()
+      .eq('session_key', sessionKey)
+      .then(() => Logger.debug('[resetContext] Session deleted from DB:', sessionId))
+      .catch(err => Logger.warn('[resetContext] Failed to delete from DB:', err));
   }
 }
