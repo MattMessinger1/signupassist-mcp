@@ -4,11 +4,14 @@
  */
 
 export interface OpenAIWidgetState {
-  step: 'browse' | 'form_guardian' | 'form_participant' | 'review' | 'payment' | 'complete';
+  step: 'browse' | 'auth' | 'form_guardian' | 'form_participant' | 'review' | 'payment' | 'confirmation' | 'complete';
   guardianData: Record<string, any>;
   participantData: Record<string, any>[];
   selectedProgram: any | null;
   numParticipants: number;
+  consentGiven?: boolean;
+  paymentVerified?: boolean;
+  confirmationNumber?: string;
 }
 
 export interface ToolOutput {

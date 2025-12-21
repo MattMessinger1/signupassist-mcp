@@ -1,9 +1,9 @@
 /**
  * ReviewStep - Step 3 of the registration form
- * Review all information before submitting
+ * Review all information, show fee breakdown, and get consent before payment
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Card, 
   CardContent, 
@@ -13,12 +13,14 @@ import {
   CardFooter,
   Button,
   Badge,
-  Separator
+  Separator,
+  Checkbox,
+  Label
 } from '../ui';
 import { TrustCallout } from '../ui/TrustCallout';
-import { CheckCircle, User, Users, CreditCard } from 'lucide-react';
+import { FeeBreakdown, calculateServiceFee } from '../ui/FeeBreakdown';
 import { COPY } from '../../lib/copy';
-import type { DelegateProfile, SavedChild } from '../../types/openai';
+import type { DelegateProfile } from '../../types/openai';
 
 interface ParticipantData {
   firstName: string;
@@ -33,12 +35,26 @@ interface ReviewStepProps {
   program?: {
     title: string;
     price?: string;
+    priceCents?: number;
     startDate?: string;
   };
   onConfirm: () => void;
   onBack: () => void;
   isSubmitting?: boolean;
 }
+
+interface ConsentItem {
+  id: string;
+  label: string;
+  required: boolean;
+}
+
+const CONSENT_ITEMS: ConsentItem[] = [
+  { id: 'login', label: 'Authorize SignupAssist to log in to the activity provider on my behalf', required: true },
+  { id: 'fill', label: 'Allow form fields to be filled with my provided information', required: true },
+  { id: 'payment', label: 'Process payment for the program fee through the provider', required: true },
+  { id: 'delegate', label: 'I understand SignupAssist acts as my authorized delegate', required: true },
+];
 
 export function ReviewStep({ 
   guardianData, 
@@ -48,14 +64,28 @@ export function ReviewStep({
   onBack,
   isSubmitting = false
 }: ReviewStepProps) {
+  const [consents, setConsents] = useState<Record<string, boolean>>({});
+  
+  const allConsentsGiven = CONSENT_ITEMS.every(
+    item => !item.required || consents[item.id]
+  );
+
+  const handleConsentChange = (id: string, checked: boolean) => {
+    setConsents(prev => ({ ...prev, [id]: checked }));
+  };
+
+  // Calculate fees
+  const programFeeCents = program?.priceCents || 0;
+  const serviceFeeCents = programFeeCents > 0 ? calculateServiceFee(programFeeCents) : 0;
+
   return (
     <Card className="w-full max-w-2xl mx-auto">
       <CardHeader>
         <div className="flex items-center gap-2 mb-2">
           <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-            Step 3 of 3
+            Step 3 of 4
           </Badge>
-          <CheckCircle className="h-4 w-4 text-green-600" />
+          <span className="text-green-600">✓</span>
         </div>
         <CardTitle>{COPY.form.reviewTitle}</CardTitle>
         <CardDescription>{COPY.form.reviewSubtitle}</CardDescription>
@@ -85,7 +115,7 @@ export function ReviewStep({
         {/* Guardian Summary */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <User className="h-4 w-4 text-gray-600" />
+            <span className="text-gray-600">👤</span>
             <h4 className="font-semibold text-gray-900">Responsible Delegate</h4>
           </div>
           <div className="pl-6 space-y-1 text-sm">
@@ -121,7 +151,7 @@ export function ReviewStep({
         {/* Participants Summary */}
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-gray-600" />
+            <span className="text-gray-600">👥</span>
             <h4 className="font-semibold text-gray-900">
               Participant{participantData.length > 1 ? 's' : ''} ({participantData.length})
             </h4>
@@ -145,25 +175,59 @@ export function ReviewStep({
 
         <Separator />
 
+        {/* Fee Breakdown */}
+        {programFeeCents > 0 && (
+          <>
+            <div className="space-y-2">
+              <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+                💰 Fee Summary
+              </h4>
+              <FeeBreakdown
+                programFeeCents={programFeeCents}
+                serviceFeeCents={serviceFeeCents}
+                serviceFeeNote="Service fee covers secure processing and support"
+              />
+            </div>
+            <Separator />
+          </>
+        )}
+
+        {/* Consent Checkboxes */}
+        <div className="space-y-4">
+          <h4 className="font-semibold text-gray-900 flex items-center gap-2">
+            ✅ Authorization
+          </h4>
+          <div className="space-y-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            {CONSENT_ITEMS.map((item) => (
+              <div key={item.id} className="flex items-start gap-3">
+                <Checkbox
+                  id={item.id}
+                  checked={consents[item.id] || false}
+                  onCheckedChange={(checked) => handleConsentChange(item.id, !!checked)}
+                  className="mt-0.5"
+                />
+                <Label htmlFor={item.id} className="text-sm text-gray-700 cursor-pointer">
+                  {item.label}
+                  {item.required && <span className="text-red-500 ml-1">*</span>}
+                </Label>
+              </div>
+            ))}
+          </div>
+          {!allConsentsGiven && (
+            <p className="text-xs text-gray-500">
+              Please check all required boxes to proceed
+            </p>
+          )}
+        </div>
+
+        <Separator />
+
         {/* Trust Messaging */}
         <TrustCallout
           title={COPY.trust.title}
           bullets={COPY.trust.bullets}
           footer={COPY.trust.payment}
         />
-
-        {/* Payment Note */}
-        <div className="p-4 bg-gray-50 rounded-lg border border-gray-200 flex items-start gap-3">
-          <CreditCard className="h-5 w-5 text-gray-500 mt-0.5" />
-          <div>
-            <p className="text-sm font-medium text-gray-900">
-              Payment handled securely by Stripe
-            </p>
-            <p className="text-xs text-gray-500 mt-1">
-              You'll be redirected to complete payment after confirmation.
-            </p>
-          </div>
-        </div>
       </CardContent>
 
       <CardFooter className="flex justify-between gap-4">
@@ -173,7 +237,7 @@ export function ReviewStep({
         <Button 
           variant="accent" 
           onClick={onConfirm}
-          disabled={isSubmitting}
+          disabled={isSubmitting || !allConsentsGiven}
           className="min-w-[200px]"
         >
           {isSubmitting ? (
@@ -182,7 +246,7 @@ export function ReviewStep({
               Processing...
             </>
           ) : (
-            '✓ Confirm & Submit'
+            '💳 Authorize & Continue to Payment'
           )}
         </Button>
       </CardFooter>
