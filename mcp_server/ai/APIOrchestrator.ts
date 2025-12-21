@@ -129,9 +129,9 @@ export default class APIOrchestrator implements IOrchestrator {
   
   // Build stamp for debugging which version is running in production
   private static readonly BUILD_STAMP = {
-    build_id: '2025-06-22T02:15:00Z',
+    build_id: '2025-06-22T03:00:00Z',
     orchestrator_mode: 'api-first',
-    version: '2.1.1-full-gating'
+    version: '2.2.0-single-turn-optimization'
   };
   
   // LRU cache for input classification results (avoid redundant LLM calls)
@@ -362,6 +362,81 @@ export default class APIOrchestrator implements IOrchestrator {
       .replace(/\b(area|region|city|metro|vicinity)\b/gi, '')
       .trim()
       .replace(/\s+/g, ' '); // Collapse multiple spaces
+  }
+  
+  /**
+   * Extract a city name from a message that may contain other content
+   * Handles: "STEM classes in Madison", "Find robotics near Madison WI", "swimming in Madison, Wisconsin"
+   * 
+   * Uses pattern matching to find city references within longer messages
+   */
+  private extractCityFromMessage(input: string): string | null {
+    const normalized = input.toLowerCase().trim();
+    
+    // Pattern 1: "in [City]" or "in [City], [State]" or "in [City] [State]"
+    const inCityMatch = input.match(/\bin\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*,?\s*([A-Z]{2})?/i);
+    if (inCityMatch) {
+      const city = inCityMatch[1].trim();
+      const state = inCityMatch[2];
+      const result = lookupCity(state ? `${city}, ${state}` : city);
+      if (result.found) {
+        return state ? `${city}, ${state}` : city;
+      }
+    }
+    
+    // Pattern 2: "near [City]" or "near [City], [State]"
+    const nearCityMatch = input.match(/\bnear\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*,?\s*([A-Z]{2})?/i);
+    if (nearCityMatch) {
+      const city = nearCityMatch[1].trim();
+      const state = nearCityMatch[2];
+      const result = lookupCity(state ? `${city}, ${state}` : city);
+      if (result.found) {
+        return state ? `${city}, ${state}` : city;
+      }
+    }
+    
+    // Pattern 3: "[City], [State]" anywhere in the message
+    const cityStateMatch = input.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s*,\s*([A-Z]{2})\b/);
+    if (cityStateMatch) {
+      const city = cityStateMatch[1].trim();
+      const state = cityStateMatch[2];
+      const result = lookupCity(`${city}, ${state}`);
+      if (result.found) {
+        return `${city}, ${state}`;
+      }
+    }
+    
+    // Pattern 4: Check known supported cities in the message
+    const supportedCities = this.getSupportedCities();
+    for (const city of supportedCities) {
+      // Case-insensitive check for city name
+      const cityRegex = new RegExp(`\\b${city}\\b`, 'i');
+      if (cityRegex.test(normalized)) {
+        // Found a supported city - verify with lookup
+        const result = lookupCity(city);
+        if (result.found) {
+          return result.suggestedMatch!.city;
+        }
+      }
+    }
+    
+    // Pattern 5: Try to find any city-like word (capitalized word at word boundary)
+    // and verify it with lookupCity
+    const potentialCities = input.match(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\b/g);
+    if (potentialCities) {
+      for (const potential of potentialCities) {
+        // Skip common non-city words
+        const skipWords = ['I', 'STEM', 'Find', 'Looking', 'Need', 'Want', 'Please', 'Help', 'For', 'My', 'The', 'And', 'Or', 'In', 'Near', 'At'];
+        if (skipWords.includes(potential)) continue;
+        
+        const result = lookupCity(potential);
+        if (result.found && !result.needsDisambiguation) {
+          return result.suggestedMatch!.city;
+        }
+      }
+    }
+    
+    return null;
   }
   
   // ============================================================================
@@ -858,6 +933,60 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       provider: confidence.matchedProvider?.name,
       requestedActivity: detectedActivity
     });
+
+    // ========================================================================
+    // SINGLE-TURN OPTIMIZATION: Activity + City in one message → immediate search
+    // This is the "Set & Forget" philosophy - less back and forth
+    // ========================================================================
+    if (detectedActivity) {
+      // Try to extract city from the same message
+      const cityMatch = this.extractCityFromMessage(input);
+      if (cityMatch) {
+        const locationCheck = analyzeLocation(cityMatch);
+        if (locationCheck.found && locationCheck.isInCoverage) {
+          Logger.info('[handleMessage] ✅ SINGLE-TURN: Activity + City detected, immediate search', {
+            activity: detectedActivity,
+            city: locationCheck.city,
+            state: locationCheck.state
+          });
+          
+          // Store context and proceed directly to search
+          this.updateContext(sessionId, { 
+            requestedActivity: detectedActivity,
+            requestedLocation: cityMatch,
+            step: FlowStep.BROWSE
+          });
+          
+          // Save location if authenticated
+          if (context.user_id && locationCheck.city) {
+            try {
+              await this.invokeMCPTool("user.update_delegate_profile", {
+                user_id: context.user_id,
+                city: locationCheck.city,
+                ...(locationCheck.state && { state: locationCheck.state }),
+              });
+            } catch (error) {
+              Logger.warn("[handleMessage] Failed to save location:", error);
+            }
+          }
+          
+          // Get the default org for this coverage area (aim-design for now)
+          const orgRef = "aim-design";
+          return await this.searchPrograms(orgRef, sessionId);
+        }
+        
+        // City detected but out of coverage - store context and handle gracefully
+        if (locationCheck.found && !locationCheck.isInCoverage) {
+          this.updateContext(sessionId, { 
+            requestedActivity: detectedActivity,
+            requestedLocation: cityMatch,
+            step: FlowStep.BROWSE
+          });
+          
+          return await this.handleLocationResponse(cityMatch, sessionId, this.getContext(sessionId));
+        }
+      }
+    }
 
     // Route based on confidence level
     if (confidence.level === 'HIGH' && confidence.matchedProvider) {
