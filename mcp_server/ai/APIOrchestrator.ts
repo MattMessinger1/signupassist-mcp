@@ -129,9 +129,9 @@ export default class APIOrchestrator implements IOrchestrator {
   
   // Build stamp for debugging which version is running in production
   private static readonly BUILD_STAMP = {
-    build_id: '2025-12-21T07:00:00Z',
+    build_id: '2025-12-21T08:00:00Z',
     orchestrator_mode: 'api-first',
-    version: '2.6.0-program-recovery'
+    version: '2.7.0-session-state-recovery'
   };
   
   // LRU cache for input classification results (avoid redundant LLM calls)
@@ -933,10 +933,31 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       );
     }
     
+    // ============================================================================
+    // SESSION STATE RECOVERY: Fix corrupted states from race conditions
+    // If we're in FORM_FILL or PAYMENT but missing critical context, reset to BROWSE
+    // ============================================================================
+    const isInvalidFormFillState = context.step === FlowStep.FORM_FILL && !context.selectedProgram;
+    const isInvalidPaymentState = context.step === FlowStep.PAYMENT && !context.selectedProgram;
+    
+    if (isInvalidFormFillState || isInvalidPaymentState) {
+      console.log('[handleMessage] ⚠️ RECOVERY: Detected invalid session state, resetting to BROWSE', {
+        currentStep: context.step,
+        hasSelectedProgram: !!context.selectedProgram,
+        sessionId
+      });
+      this.updateContext(sessionId, { step: FlowStep.BROWSE });
+      context = this.getContext(sessionId); // Refresh context after update
+    }
+    
     // Check if this might be a location response (simple city/state input)
     // Use normalizeLocationInput to handle fuzzy inputs like "near Chicago"
+    // Handle location responses in BROWSE step OR when we're in an active session without a selected program
     const normalizedForLocation = this.normalizeLocationInput(input);
-    if (context.step === FlowStep.BROWSE && this.isLocationResponse(normalizedForLocation)) {
+    const shouldHandleAsLocation = this.isLocationResponse(normalizedForLocation) && 
+      (context.step === FlowStep.BROWSE || !context.selectedProgram);
+    
+    if (shouldHandleAsLocation) {
       return await this.handleLocationResponse(normalizedForLocation, sessionId, context);
     }
 
