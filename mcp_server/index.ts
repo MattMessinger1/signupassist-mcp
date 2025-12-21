@@ -508,6 +508,8 @@ class SignupAssistMCPServer {
           ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
           : `https://signupassist-mcp-production.up.railway.app`;
         
+        // RFC 8414 metadata - explicitly NOT including registration_endpoint
+        // to indicate we don't support RFC 7591 Dynamic Client Registration
         const metadata = {
           issuer: baseUrl,
           authorization_endpoint: `${baseUrl}/oauth/authorize`,
@@ -516,7 +518,10 @@ class SignupAssistMCPServer {
           grant_types_supported: ["authorization_code", "refresh_token"],
           response_types_supported: ["code"],
           scopes_supported: ["openid", "profile", "email", "offline_access"],
-          code_challenge_methods_supported: ["S256", "plain"]
+          code_challenge_methods_supported: ["S256", "plain"],
+          // Explicitly indicate PKCE is supported (ChatGPT uses this)
+          service_documentation: `${baseUrl}/docs`,
+          ui_locales_supported: ["en"]
         };
         
         res.writeHead(200, { 
@@ -524,6 +529,19 @@ class SignupAssistMCPServer {
           'Cache-Control': 'public, max-age=3600'
         });
         res.end(JSON.stringify(metadata, null, 2));
+        return;
+      }
+      
+      // --- OAuth Dynamic Client Registration (RFC 7591) - NOT SUPPORTED
+      // Return proper error per spec section 3.2.2
+      if (req.method === 'POST' && url.pathname === '/oauth/register') {
+        console.log('[OAUTH] Dynamic client registration request - not supported');
+        
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          error: "invalid_client_metadata",
+          error_description: "Dynamic client registration is not supported. Please use pre-configured OAuth credentials."
+        }));
         return;
       }
       
