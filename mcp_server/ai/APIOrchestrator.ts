@@ -671,9 +671,59 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         return await this.handleShowOutOfAreaPrograms(payload, sessionId, context);
 
       case "authorize_payment":
-        // User clicked explicit "Authorize Payment" button - set flag and proceed
+        // ⚠️ HARD STEP GATES - prevent NL bypass of payment flow
+        
+        // Gate 1: Must have selected a program
+        if (!context.selectedProgram?.program_ref) {
+          Logger.warn('[authorize_payment] ⛔ STEP GATE: No selected program');
+          return this.formatResponse(
+            "Let me help you find a program first. Which activity are you looking for?",
+            undefined,
+            [{ label: "Browse Programs", action: "search_programs", payload: { orgRef: context.orgRef || "aim-design" }, variant: "accent" }]
+          );
+        }
+        
+        // Gate 2: Must be in PAYMENT step
+        if (context.step !== FlowStep.PAYMENT) {
+          Logger.warn('[authorize_payment] ⛔ STEP GATE: Not in PAYMENT step', { currentStep: context.step });
+          return this.formatResponse(
+            "We need to collect some information first before I can process your authorization.",
+            undefined,
+            [{ label: "Continue Registration", action: "select_program", payload: { program_ref: context.selectedProgram.program_ref }, variant: "accent" }]
+          );
+        }
+        
+        // Gate 3: Must have payment method
+        if (!context.cardLast4 && !context.cardBrand) {
+          Logger.warn('[authorize_payment] ⛔ STEP GATE: No payment method in context');
+          return {
+            message: "Before I can complete your booking, I need to save a payment method.",
+            metadata: {
+              componentType: "payment_setup",
+              next_action: context.schedulingData ? "confirm_scheduled_registration" : "confirm_payment",
+              _build: APIOrchestrator.BUILD_STAMP
+            },
+            cta: {
+              buttons: [
+                { label: "Add Payment Method", action: "setup_payment", variant: "accent" }
+              ]
+            }
+          };
+        }
+        
+        // Gate 4: Must have form data
+        if (!context.formData) {
+          Logger.warn('[authorize_payment] ⛔ STEP GATE: No form data in context');
+          return this.formatResponse(
+            "I'm missing your registration details. Let me help you select a program first.",
+            undefined,
+            [{ label: "Browse Programs", action: "search_programs", payload: { orgRef: context.orgRef || "aim-design" }, variant: "accent" }]
+          );
+        }
+        
+        // All gates passed - proceed with authorization
         this.updateContext(sessionId, { paymentAuthorized: true });
-        Logger.info('[authorize_payment] ✅ Payment explicitly authorized by user');
+        Logger.info('[authorize_payment] ✅ Payment explicitly authorized by user - all gates passed');
         if (context.schedulingData) {
           return await this.confirmScheduledRegistration(payload, sessionId, this.getContext(sessionId));
         }
