@@ -129,9 +129,9 @@ export default class APIOrchestrator implements IOrchestrator {
   
   // Build stamp for debugging which version is running in production
   private static readonly BUILD_STAMP = {
-    build_id: '2025-06-22T01:30:00Z',
+    build_id: '2025-06-22T02:15:00Z',
     orchestrator_mode: 'api-first',
-    version: '2.1.0-step-gating'
+    version: '2.1.1-full-gating'
   };
   
   // LRU cache for input classification results (avoid redundant LLM calls)
@@ -1493,7 +1493,21 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     sessionId: string,
     context: APIContext
   ): Promise<OrchestratorResponse> {
-    const orgRef = payload.orgRef || payload.provider_name?.toLowerCase().replace(/\s+/g, '-') || 'aim-design';
+    // ⚠️ HARD STEP GATE - prevent NL bypass of provider confirmation
+    // Must have a pending confirmation or valid provider in payload
+    const providerFromPayload = payload.orgRef || payload.provider_name;
+    const providerFromContext = context.pendingProviderConfirmation;
+    
+    if (!providerFromPayload && !providerFromContext) {
+      Logger.warn('[handleConfirmProvider] ⛔ STEP GATE: No provider to confirm');
+      return this.formatResponse(
+        "I'm not sure which provider you're confirming. What program or activity are you looking for?",
+        undefined,
+        [{ label: "Start Fresh", action: "clear_context", payload: {}, variant: "outline" }]
+      );
+    }
+    
+    const orgRef = providerFromPayload?.toLowerCase().replace(/\s+/g, '-') || providerFromContext?.toLowerCase().replace(/\s+/g, '-') || 'aim-design';
     
     // Clear pending confirmation
     this.updateContext(sessionId, { pendingProviderConfirmation: undefined });
@@ -1957,6 +1971,16 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     sessionId: string,
     context: APIContext
   ): Promise<OrchestratorResponse> {
+    // ⚠️ HARD STEP GATE - must have confirmed provider first
+    if (!context.orgRef && !context.confirmedProvider && !payload.program_data?.org_ref) {
+      Logger.warn('[selectProgram] ⛔ STEP GATE: No confirmed provider');
+      return this.formatResponse(
+        "Let me help you find a program first. Which activity or provider are you looking for?",
+        undefined,
+        [{ label: "Browse Programs", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "accent" }]
+      );
+    }
+    
     console.log('[selectProgram] 🔍 Starting with sessionId:', sessionId);
     console.log('[selectProgram] 🔍 Payload keys:', Object.keys(payload));
     console.log('[selectProgram] 🔍 Full payload:', JSON.stringify(payload, null, 2));
@@ -3036,6 +3060,28 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
   ): Promise<OrchestratorResponse> {
     try {
       Logger.info("[setupPaymentMethod] Starting payment setup flow");
+      
+      // ⚠️ HARD STEP GATES - prevent NL bypass of payment setup
+      
+      // Gate 1: Must have selected a program
+      if (!context.selectedProgram?.program_ref) {
+        Logger.warn('[setupPaymentMethod] ⛔ STEP GATE: No selected program');
+        return this.formatResponse(
+          "Let me help you find a program first before setting up payment.",
+          undefined,
+          [{ label: "Browse Programs", action: "search_programs", payload: { orgRef: context.orgRef || "aim-design" }, variant: "accent" }]
+        );
+      }
+      
+      // Gate 2: Must be in FORM_FILL or PAYMENT step
+      if (context.step !== FlowStep.FORM_FILL && context.step !== FlowStep.PAYMENT) {
+        Logger.warn('[setupPaymentMethod] ⛔ STEP GATE: Not in FORM_FILL or PAYMENT step', { currentStep: context.step });
+        return this.formatResponse(
+          "We need to collect your registration details first before setting up payment.",
+          undefined,
+          [{ label: "Continue Registration", action: "select_program", payload: { program_ref: context.selectedProgram.program_ref }, variant: "accent" }]
+        );
+      }
 
       const { payment_method_id, user_id, email, user_jwt } = payload;
 
