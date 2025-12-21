@@ -101,6 +101,9 @@ interface APIContext {
     formData: any;
   };
   
+  // Explicit payment authorization flag - prevents NL parser from skipping consent
+  paymentAuthorized?: boolean;
+  
   // ChatGPT NL compatibility: store displayed programs for title/ordinal matching
   displayedPrograms?: Array<{ title: string; program_ref: string; program_data?: any }>;
   
@@ -659,6 +662,32 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       case "show_out_of_area_programs":
         return await this.handleShowOutOfAreaPrograms(payload, sessionId, context);
 
+      case "authorize_payment":
+        // User clicked explicit "Authorize Payment" button - set flag and proceed
+        this.updateContext(sessionId, { paymentAuthorized: true });
+        Logger.info('[authorize_payment] ✅ Payment explicitly authorized by user');
+        if (context.schedulingData) {
+          return await this.confirmScheduledRegistration(payload, sessionId, this.getContext(sessionId));
+        }
+        return await this.confirmPayment(payload, sessionId, this.getContext(sessionId));
+
+      case "setup_payment":
+        // Redirect to payment setup flow
+        return await this.setupPaymentMethod(payload, sessionId, context);
+
+      case "cancel_flow":
+        // User cancelled the flow
+        this.updateContext(sessionId, { 
+          step: FlowStep.BROWSE,
+          schedulingData: undefined,
+          paymentAuthorized: undefined
+        });
+        return this.formatResponse(
+          "No problem! Let me know if you'd like to browse other programs.",
+          undefined,
+          [{ label: "Browse Programs", action: "search_programs", payload: { orgRef: context.orgRef || "aim-design" }, variant: "accent" }]
+        );
+
       default:
         return this.formatError(`Unknown action: ${action}`);
     }
@@ -999,8 +1028,48 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           Logger.info('[NL Parse] Payment confirmation detected from NL input', {
             source: 'natural_language',
             hasSchedulingData: !!context.schedulingData,
-            userInput: input
+            userInput: input,
+            hasPaymentMethod: !!context.cardLast4,
+            paymentAuthorized: !!context.paymentAuthorized
           });
+          
+          // ⚠️ GUARD 1: Check for saved payment method before allowing confirmation
+          if (!context.cardLast4 && context.user_id) {
+            Logger.warn('[NL Parse] Payment confirmation attempted without saved payment method');
+            return {
+              message: "Before I can schedule your registration, I need to save a payment method. You'll only be charged if registration succeeds!",
+              metadata: {
+                componentType: "payment_setup",
+                next_action: context.schedulingData ? "confirm_scheduled_registration" : "confirm_payment",
+                schedulingData: context.schedulingData
+              },
+              cta: {
+                buttons: [
+                  { label: "Add Payment Method", action: "setup_payment", variant: "accent" }
+                ]
+              }
+            };
+          }
+          
+          // ⚠️ GUARD 2: Require explicit authorization (not just "yes")
+          if (!context.paymentAuthorized) {
+            Logger.info('[NL Parse] Payment method saved but explicit authorization not yet given');
+            const amount = context.schedulingData?.total_amount || context.selectedProgram?.price || 'the program fee';
+            const scheduledTime = context.schedulingData?.scheduled_time;
+            const scheduledDate = scheduledTime ? new Date(scheduledTime).toLocaleString() : null;
+            
+            return {
+              message: scheduledDate
+                ? `Great! I have your payment method on file (${context.cardBrand} •••${context.cardLast4}). Click "Authorize Payment" to confirm:\n\n💰 **Amount:** ${amount}\n📅 **Scheduled for:** ${scheduledDate}\n\nYou'll only be charged if registration succeeds.`
+                : `Great! I have your payment method on file (${context.cardBrand} •••${context.cardLast4}). Click "Authorize Payment" to complete your booking.\n\n💰 **Amount:** ${amount}`,
+              cta: {
+                buttons: [
+                  { label: "Authorize Payment", action: "authorize_payment", variant: "accent" },
+                  { label: "Cancel", action: "cancel_flow", variant: "ghost" }
+                ]
+              }
+            };
+          }
           
           // Route to appropriate confirmation handler
           if (context.schedulingData) {
@@ -3016,6 +3085,44 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
     sessionId: string,
     context: APIContext
   ): Promise<OrchestratorResponse> {
+    // ⚠️ SAFETY NET: Payment method guard
+    if (!context.cardLast4 && !context.cardBrand) {
+      Logger.warn('[confirmScheduledRegistration] ⚠️ No payment method in context - prompting for setup');
+      return {
+        message: "Before I can schedule your registration, I need to save a payment method. You'll only be charged if registration succeeds!",
+        metadata: {
+          componentType: "payment_setup",
+          next_action: "confirm_scheduled_registration",
+          schedulingData: context.schedulingData
+        },
+        cta: {
+          buttons: [
+            { label: "Add Payment Method", action: "setup_payment", variant: "accent" }
+          ]
+        }
+      };
+    }
+    
+    // ⚠️ SAFETY NET: Explicit authorization guard
+    if (!context.paymentAuthorized) {
+      Logger.warn('[confirmScheduledRegistration] ⚠️ Payment not explicitly authorized - prompting for authorization');
+      const amount = context.schedulingData?.total_amount || context.selectedProgram?.price || 'the program fee';
+      const scheduledTime = context.schedulingData?.scheduled_time;
+      const scheduledDate = scheduledTime ? new Date(scheduledTime).toLocaleString() : null;
+      
+      return {
+        message: scheduledDate
+          ? `I have your payment method on file (${context.cardBrand} •••${context.cardLast4}). Please click "Authorize Payment" to confirm:\n\n💰 **Amount:** ${amount}\n📅 **Scheduled for:** ${scheduledDate}\n\nYou'll only be charged if registration succeeds.`
+          : `I have your payment method on file (${context.cardBrand} •••${context.cardLast4}). Please click "Authorize Payment" to complete your booking.\n\n💰 **Amount:** ${amount}`,
+        cta: {
+          buttons: [
+            { label: "Authorize Payment", action: "authorize_payment", variant: "accent" },
+            { label: "Cancel", action: "cancel_flow", variant: "ghost" }
+          ]
+        }
+      };
+    }
+    
     const schedulingData = context.schedulingData;
     
     if (!schedulingData) {
