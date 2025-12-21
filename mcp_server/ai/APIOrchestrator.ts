@@ -129,9 +129,9 @@ export default class APIOrchestrator implements IOrchestrator {
   
   // Build stamp for debugging which version is running in production
   private static readonly BUILD_STAMP = {
-    build_id: '2025-12-21T05:00:00Z',
+    build_id: '2025-12-21T07:00:00Z',
     orchestrator_mode: 'api-first',
-    version: '2.5.0-trace-session-persistence'
+    version: '2.6.0-program-recovery'
   };
   
   // LRU cache for input classification results (avoid redundant LLM calls)
@@ -2176,9 +2176,66 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       displayedProgramsCount: context.displayedPrograms?.length || 0
     });
     
-    const programData = payload.program_data;
+    // ============================================================================
+    // THREE-LAYER PROGRAM DATA RECOVERY
+    // Fixes: ChatGPT stripping program_data from payload, only sending program_ref
+    // ============================================================================
+    let programData = payload.program_data;
+    const programRef = payload.program_ref || payload.program_data?.ref || payload.program_data?.program_ref;
+    
+    // LAYER 1: If programData missing, recover from displayedPrograms in context
+    if (!programData && programRef && context.displayedPrograms?.length) {
+      const found = context.displayedPrograms.find(p => p.program_ref === programRef);
+      if (found?.program_data) {
+        programData = found.program_data;
+        console.log('[selectProgram] ✅ RECOVERY L1: Found programData from displayedPrograms', {
+          program_ref: programRef,
+          program_name: programData?.name || programData?.title
+        });
+      }
+    }
+    
+    // LAYER 2: If still missing, query cached_provider_feed database
+    if (!programData && programRef) {
+      console.log('[selectProgram] 🔄 RECOVERY L2: Querying cached_provider_feed for', programRef);
+      try {
+        const supabase = this.getSupabaseClient();
+        const { data: feedData, error } = await supabase
+          .from('cached_provider_feed')
+          .select('program, org_ref, category')
+          .eq('program_ref', programRef)
+          .maybeSingle();
+        
+        if (feedData?.program && !error) {
+          programData = {
+            ...feedData.program,
+            program_ref: programRef,
+            org_ref: feedData.org_ref
+          };
+          console.log('[selectProgram] ✅ RECOVERY L2: Found programData from cached_provider_feed', {
+            program_ref: programRef,
+            program_name: programData?.name || programData?.title,
+            org_ref: feedData.org_ref
+          });
+        } else if (error) {
+          console.log('[selectProgram] ⚠️ RECOVERY L2 DB error:', error.message);
+        }
+      } catch (dbError) {
+        console.log('[selectProgram] ⚠️ RECOVERY L2 exception:', dbError);
+      }
+    }
+    
+    // LAYER 3: If still missing, return error
+    if (!programData) {
+      console.error('[selectProgram] ❌ RECOVERY FAILED: No programData found for', programRef);
+      return this.formatResponse(
+        "I couldn't find that program's details. Could you please select it again from the list?",
+        undefined,
+        { errorCode: 'PROGRAM_DATA_MISSING', program_ref: programRef }
+      );
+    }
+    
     const programName = programData?.title || programData?.name || payload.program_name || "this program";
-    const programRef = programData?.ref || programData?.program_ref || payload.program_ref;
     
     // Debug logging to catch structure issues
     if (programName === "this program") {
@@ -2191,13 +2248,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     const orgRef = programData?.org_ref || 'aim-design';
 
     // Update context (clear displayedPrograms since we're moving to next step)
-    console.log('[selectProgram] 🔍 TRACE: About to call updateContext with selectedProgram:', {
+    // CRITICAL: Use awaited persist to prevent race conditions
+    console.log('[selectProgram] 🔍 TRACE: About to call updateContextAndAwait with selectedProgram:', {
       programData_exists: !!programData,
       programData_ref: programData?.ref || programData?.program_ref,
       programData_name: programData?.name || programData?.title
     });
     
-    this.updateContext(sessionId, {
+    await this.updateContextAndAwait(sessionId, {
       step: FlowStep.FORM_FILL,
       selectedProgram: programData,
       displayedPrograms: undefined // Clear to prevent stale data
@@ -4801,6 +4859,33 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
         console.error('[updateContext] ❌ TRACE: Persist FAILED for', sessionId, err);
         Logger.warn('[updateContext] Background persist failed:', err);
       });
+  }
+  
+  /**
+   * Update session context with AWAITED DB persistence
+   * Use this for critical state transitions (e.g., selectedProgram) to prevent race conditions
+   * in multi-instance environments like Railway where fire-and-forget can cause data loss
+   */
+  private async updateContextAndAwait(sessionId: string, updates: Partial<APIContext>): Promise<void> {
+    const current = this.getContext(sessionId);
+    const updated = { ...current, ...updates };
+    this.sessions.set(sessionId, updated);
+    
+    // 🔍 TRACE: Log what we're persisting
+    const tracePayload = {
+      sessionId,
+      updateKeys: Object.keys(updates),
+      hasSelectedProgram: !!updated.selectedProgram,
+      selectedProgramName: updated.selectedProgram?.name || updated.selectedProgram?.title || 'none',
+      step: updated.step,
+      timestamp: new Date().toISOString()
+    };
+    
+    console.log('[updateContextAndAwait] 📝 TRACE: Updating session (awaited):', JSON.stringify(tracePayload, null, 2));
+    
+    // AWAIT the persist to ensure data is saved before returning
+    await this.persistSessionToDB(sessionId, updated);
+    console.log('[updateContextAndAwait] ✅ TRACE: Persist COMPLETED for', sessionId);
   }
 
   /**
