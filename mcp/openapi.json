@@ -109,18 +109,23 @@
                     "sessionId": "chatgpt-session-123"
                   }
                 },
-                "select_program_action": {
-                  "summary": "Select a program from results",
-                  "value": {
-                    "message": "",
-                    "sessionId": "chatgpt-session-123",
-                    "action": "select_program",
-                    "payload": {
-                      "program_ref": "robotics-101",
-                      "org_ref": "aim-design"
-                    }
-                  }
-                },
+"select_program_action": {
+  "summary": "Select a program - MUST pass payload from displayed card button",
+  "description": "When user confirms a program selection, use the EXACT payload from the displayed card's button. The payload contains program_ref and program_data which are required for registration. If only one program was shown and user says 'yes', the backend will auto-select it.",
+  "value": {
+    "message": "yes",
+    "sessionId": "chatgpt-session-123",
+    "action": "select_program",
+    "payload": {
+      "program_ref": "robotics-sensors-9-13",
+      "program_data": {
+        "title": "STEM Robotics Lab – Intro to Sensors (Ages 9–13)",
+        "org_ref": "aim-design",
+        "price": "$40.00"
+      }
+    }
+  }
+},
                 "submit_registration_form": {
                   "summary": "Submit registration form with delegate and participant info",
                   "value": {

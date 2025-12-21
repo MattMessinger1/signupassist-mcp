@@ -226,6 +226,7 @@ export default class APIOrchestrator implements IOrchestrator {
   /**
    * Parse program selection from natural language
    * Handles: "The Coding Course", "the first one", "option 2", "number 3"
+   * Also handles confirmation phrases ("yes", "sign me up") when only 1 program is displayed
    * For ChatGPT compatibility where users type instead of clicking buttons
    */
   private parseProgramSelection(input: string, displayedPrograms: Array<{ title: string; program_ref: string; program_data?: any }>): { title: string; program_ref: string; program_data?: any } | null {
@@ -241,6 +242,18 @@ export default class APIOrchestrator implements IOrchestrator {
     }
     
     const normalized = input.toLowerCase().trim();
+    
+    // CONFIRMATION PHRASE DETECTION: When user says "yes" and only 1 program is displayed
+    const confirmationPatterns = /^(yes|yep|yeah|yup|sure|ok|okay|do it|go ahead|sign me up|let's do it|let's go|sounds good|book it|register|proceed|continue|absolutely|definitely|i confirm|yes please|that's right|correct|sign up|start signup|start registration)\.?!?$/i;
+    if (confirmationPatterns.test(normalized) && displayedPrograms.length === 1) {
+      console.log('[parseProgramSelection] ✅ TRACE: Confirmation phrase with single program - auto-selecting');
+      Logger.info('[NL Parse] Confirmation phrase matched with single program', { 
+        source: 'natural_language', 
+        phrase: input,
+        matchedTitle: displayedPrograms[0].title 
+      });
+      return displayedPrograms[0];
+    }
     
     // Match by title (fuzzy contains match)
     const titleMatch = displayedPrograms.find(p => {
@@ -2216,12 +2229,29 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     });
     
     // ============================================================================
-    // FOUR-LAYER PROGRAM DATA RECOVERY
+    // FIVE-LAYER PROGRAM DATA RECOVERY
+    // Layer -1: Auto-select single program when payload is empty
     // Layer 0: Parse from NL input (e.g., "Class 3") when payload is empty
     // Fixes: ChatGPT sending empty payload when user types ordinal selection
     // ============================================================================
     let programData = payload.program_data;
     let programRef = payload.program_ref || payload.program_data?.ref || payload.program_data?.program_ref;
+    
+    // LAYER -1: If only ONE program displayed and no payload, auto-select it
+    // This handles when ChatGPT sends empty payload after user confirms
+    if (!programData && !programRef && context.displayedPrograms?.length === 1) {
+      const singleProgram = context.displayedPrograms[0];
+      console.log('[selectProgram] ✅ RECOVERY L-1: Auto-selecting single displayed program', {
+        program_ref: singleProgram.program_ref,
+        program_name: singleProgram.title
+      });
+      Logger.info('[selectProgram] ✅ RECOVERY L-1: Auto-selecting single displayed program', {
+        program_ref: singleProgram.program_ref,
+        program_name: singleProgram.title
+      });
+      programData = singleProgram.program_data;
+      programRef = singleProgram.program_ref;
+    }
     
     // LAYER 0: If payload is empty/missing, try parsing from user's NL input
     if (!programData && !programRef && input && context.displayedPrograms?.length) {
