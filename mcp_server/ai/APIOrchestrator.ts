@@ -725,7 +725,22 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     context: APIContext,
     input?: string  // Optional: user's natural language message for fallback parsing
   ): Promise<OrchestratorResponse> {
-    switch (action) {
+    // Backward-compatible action aliases for deprecated action names
+    const ACTION_ALIASES: Record<string, string> = {
+      'confirm_booking': 'authorize_payment',    // Old ChatGPT action name
+      'cancel_booking': 'cancel_registration',   // Old ChatGPT action name
+      'answer_questions': 'submit_form',         // Old ChatGPT action name
+      'start_over': 'clear_context',             // Old ChatGPT action name
+      'show_more_programs': 'search_programs',   // Alias for browse
+      'back': 'clear_context',                   // Treat back as reset
+    };
+    
+    const resolvedAction = ACTION_ALIASES[action] || action;
+    if (resolvedAction !== action) {
+      Logger.info(`[handleAction] Aliased deprecated action: ${action} → ${resolvedAction}`);
+    }
+    
+    switch (resolvedAction) {
       case "search_programs": {
         const ignore = typeof payload?.ignoreAudienceMismatch === 'boolean' ? payload.ignoreAudienceMismatch : false;
         this.updateContext(sessionId, { ignoreAudienceMismatch: ignore });

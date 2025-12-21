@@ -40,17 +40,18 @@
                   "action": {
                     "type": "string",
                     "enum": [
+                      "search_programs",
                       "select_program",
-                      "select_child",
-                      "answer_questions",
-                      "confirm_booking",
-                      "cancel_booking",
-                      "show_more_programs",
-                      "change_filters",
-                      "back",
-                      "start_over"
+                      "submit_form",
+                      "authorize_payment",
+                      "confirm_payment",
+                      "setup_payment_method",
+                      "cancel_registration",
+                      "confirm_provider",
+                      "view_receipts",
+                      "clear_context"
                     ],
-                    "description": "Action to execute when responding to a card button click. Usually populated from the action field of button responses."
+                    "description": "Optional action from a button click. Most conversations should just use 'message' with natural language - actions are automatically returned in response button payloads. Do not manually construct actions."
                   },
                   "payload": {
                     "type": "object",
