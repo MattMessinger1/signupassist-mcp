@@ -95,6 +95,12 @@ interface APIContext {
     program_fee_cents: number;
     formData: any;
   };
+  
+  // ChatGPT NL compatibility: store displayed programs for title/ordinal matching
+  displayedPrograms?: Array<{ title: string; program_ref: string; program_data?: any }>;
+  
+  // ChatGPT NL compatibility: pending provider confirmation (for "Yes" responses)
+  pendingProviderConfirmation?: string;
 }
 
 /**
@@ -114,6 +120,134 @@ export default class APIOrchestrator implements IOrchestrator {
   constructor(mcpServer: any) {
     this.mcpServer = mcpServer;
     Logger.info("APIOrchestrator initialized - API-first mode with MCP tool access");
+  }
+  
+  // ============================================================================
+  // ChatGPT Natural Language Parsing Helpers
+  // ============================================================================
+  
+  /**
+   * Parse child info from natural language input
+   * Handles: "Percy Messinger, 11", "Percy (11)", "Name: Percy, Age: 11"
+   * For ChatGPT compatibility where users type instead of clicking buttons
+   */
+  private parseChildInfoFromMessage(input: string): { name: string; age?: number; firstName?: string; lastName?: string } | null {
+    const trimmed = input.trim();
+    
+    // Pattern 1: "Name, Age" - e.g., "Percy Messinger, 11"
+    const commaAgePattern = /^(.+?),?\s*(\d{1,2})(?:\s*(?:years?\s*old|yo))?$/i;
+    const commaMatch = trimmed.match(commaAgePattern);
+    if (commaMatch) {
+      const fullName = commaMatch[1].trim();
+      const nameParts = fullName.split(/\s+/);
+      return {
+        name: fullName,
+        age: parseInt(commaMatch[2], 10),
+        firstName: nameParts[0],
+        lastName: nameParts.slice(1).join(' ') || ''
+      };
+    }
+    
+    // Pattern 2: "Name (Age)" - e.g., "Percy (11)"
+    const parenPattern = /^(.+?)\s*\((\d{1,2})\)$/;
+    const parenMatch = trimmed.match(parenPattern);
+    if (parenMatch) {
+      const fullName = parenMatch[1].trim();
+      const nameParts = fullName.split(/\s+/);
+      return {
+        name: fullName,
+        age: parseInt(parenMatch[2], 10),
+        firstName: nameParts[0],
+        lastName: nameParts.slice(1).join(' ') || ''
+      };
+    }
+    
+    // Pattern 3: "Name: X, Age: Y" - e.g., "Name: Percy, Age: 11"
+    const labeledPattern = /^(?:name:?\s*)?(.+?)\s*,?\s*(?:age:?\s*)?(\d{1,2})$/i;
+    const labeledMatch = trimmed.match(labeledPattern);
+    if (labeledMatch && labeledMatch[1].length < 50) {
+      const fullName = labeledMatch[1].trim();
+      const nameParts = fullName.split(/\s+/);
+      return {
+        name: fullName,
+        age: parseInt(labeledMatch[2], 10),
+        firstName: nameParts[0],
+        lastName: nameParts.slice(1).join(' ') || ''
+      };
+    }
+    
+    // Pattern 4: Just a name (no age) - e.g., "Percy Messinger"
+    // Must look like a proper name (capitalized words, reasonable length)
+    if (/^[A-Z][a-z]+(\s+[A-Z][a-z]+)*$/.test(trimmed) && trimmed.length >= 2 && trimmed.length < 50) {
+      const nameParts = trimmed.split(/\s+/);
+      return {
+        name: trimmed,
+        firstName: nameParts[0],
+        lastName: nameParts.slice(1).join(' ') || ''
+      };
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Detect if input is a user confirmation
+   * Handles: "Yes", "Yeah", "Sure", "Ok", "Confirm", "Go ahead", etc.
+   * For ChatGPT compatibility where users type instead of clicking buttons
+   */
+  private isUserConfirmation(input: string): boolean {
+    const confirmPatterns = /^(yes|yeah|yep|yup|sure|ok|okay|confirm|go ahead|please|do it|book it|let's do it|let's go|sounds good|authorize|proceed|continue|absolutely|definitely|i confirm|yes please|that's right|correct)\.?!?$/i;
+    return confirmPatterns.test(input.trim());
+  }
+  
+  /**
+   * Parse program selection from natural language
+   * Handles: "The Coding Course", "the first one", "option 2", "number 3"
+   * For ChatGPT compatibility where users type instead of clicking buttons
+   */
+  private parseProgramSelection(input: string, displayedPrograms: Array<{ title: string; program_ref: string; program_data?: any }>): { title: string; program_ref: string; program_data?: any } | null {
+    if (!displayedPrograms || displayedPrograms.length === 0) return null;
+    
+    const normalized = input.toLowerCase().trim();
+    
+    // Match by title (fuzzy contains match)
+    const titleMatch = displayedPrograms.find(p => {
+      const progTitle = (p.title || '').toLowerCase();
+      // Check if user's input contains the program title or vice versa
+      return normalized.includes(progTitle) || progTitle.includes(normalized);
+    });
+    if (titleMatch) {
+      Logger.info('[NL Parse] Program matched by title', { 
+        source: 'natural_language', 
+        matchedTitle: titleMatch.title,
+        userInput: input 
+      });
+      return titleMatch;
+    }
+    
+    // Match by ordinal: "the first one", "option 2", "number 3", "the second"
+    const ordinalMatch = normalized.match(/\b(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|1|2|3|4|5|one|two|three|four|five)\b/);
+    if (ordinalMatch) {
+      const ordinalMap: Record<string, number> = {
+        'first': 0, '1st': 0, '1': 0, 'one': 0,
+        'second': 1, '2nd': 1, '2': 1, 'two': 1,
+        'third': 2, '3rd': 2, '3': 2, 'three': 2,
+        'fourth': 3, '4th': 3, '4': 3, 'four': 3,
+        'fifth': 4, '5th': 4, '5': 4, 'five': 4,
+      };
+      const idx = ordinalMap[ordinalMatch[1]] ?? -1;
+      if (idx >= 0 && idx < displayedPrograms.length) {
+        Logger.info('[NL Parse] Program matched by ordinal', { 
+          source: 'natural_language', 
+          ordinal: ordinalMatch[1],
+          index: idx,
+          matchedTitle: displayedPrograms[idx].title 
+        });
+        return displayedPrograms[idx];
+      }
+    }
+    
+    return null;
   }
   
   // ============================================================================
@@ -516,7 +650,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         }
         
         // Show fallback clarification
-        return this.showFallbackClarification(confidence.matchedProvider);
+        return this.showFallbackClarification(confidence.matchedProvider, sessionId);
       }
     }
 
@@ -553,20 +687,102 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     }
 
     // LOW confidence for AUTHENTICATED users: Context-aware responses based on flow step
+    // Also handles ChatGPT NL parsing for form fill and payment steps
     switch (context.step) {
-      case FlowStep.FORM_FILL:
+      case FlowStep.BROWSE: {
+        // ChatGPT NL: Check for program selection by title or ordinal
+        if (context.displayedPrograms?.length) {
+          const selectedProgram = this.parseProgramSelection(input, context.displayedPrograms);
+          if (selectedProgram) {
+            Logger.info('[NL Parse] Auto-selecting program from NL input', {
+              source: 'natural_language',
+              program_ref: selectedProgram.program_ref,
+              userInput: input
+            });
+            return await this.selectProgram({
+              program_ref: selectedProgram.program_ref,
+              program_name: selectedProgram.title,
+              program_data: selectedProgram.program_data
+            }, sessionId, context);
+          }
+        }
+        
+        // ChatGPT NL: Check for provider confirmation ("Yes" after clarification)
+        if (this.isUserConfirmation(input) && context.pendingProviderConfirmation) {
+          Logger.info('[NL Parse] Auto-confirming provider from NL input', {
+            source: 'natural_language',
+            provider: context.pendingProviderConfirmation
+          });
+          return await this.handleConfirmProvider(
+            { provider_name: context.pendingProviderConfirmation },
+            sessionId,
+            context
+          );
+        }
+        break; // Fall through to default behavior
+      }
+      
+      case FlowStep.FORM_FILL: {
+        // ChatGPT NL: Try to parse child info from natural language
+        const childInfo = this.parseChildInfoFromMessage(input);
+        if (childInfo?.name) {
+          Logger.info('[NL Parse] Child info extracted from NL input', {
+            source: 'natural_language',
+            parsed: childInfo,
+            userInput: input
+          });
+          
+          // Build form data with extracted child info
+          const formData = {
+            participants: [{
+              firstName: childInfo.firstName || childInfo.name.split(' ')[0],
+              lastName: childInfo.lastName || childInfo.name.split(' ').slice(1).join(' ') || '',
+              age: childInfo.age
+            }]
+          };
+          
+          return await this.submitForm({
+            formData,
+            program_ref: context.selectedProgram?.program_ref,
+            org_ref: context.orgRef || context.selectedProgram?.org_ref
+          }, sessionId, context);
+        }
+        
+        // Fallback: ask for child info explicitly
         return this.formatResponse(
-          "Please fill out the signup form to continue.",
+          "Please share your child's name and age (e.g., 'Percy, 11').",
           undefined,
           [{ label: "Continue", action: "submit_form", variant: "accent" }]
         );
+      }
 
-      case FlowStep.PAYMENT:
+      case FlowStep.PAYMENT: {
+        // ChatGPT NL: Detect confirmation from natural language
+        if (this.isUserConfirmation(input)) {
+          Logger.info('[NL Parse] Payment confirmation detected from NL input', {
+            source: 'natural_language',
+            hasSchedulingData: !!context.schedulingData,
+            userInput: input
+          });
+          
+          // Route to appropriate confirmation handler
+          if (context.schedulingData) {
+            return await this.confirmScheduledRegistration({}, sessionId, context);
+          }
+          return await this.confirmPayment({}, sessionId, context);
+        }
+        
+        // Fallback: prompt for confirmation
         return this.formatResponse(
-          "Ready to complete your booking?",
+          "Ready to complete your booking? Say 'yes' to confirm.",
           undefined,
-          [{ label: "Confirm Payment", action: "confirm_payment", variant: "accent" }]
+          [{ 
+            label: "Confirm", 
+            action: context.schedulingData ? "confirm_scheduled_registration" : "confirm_payment", 
+            variant: "accent" 
+          }]
         );
+      }
 
       default: {
         // Authenticated but LOW confidence - org not recognized
@@ -801,14 +1017,18 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
   /**
    * Show fallback clarification for MEDIUM confidence
+   * Also stores pendingProviderConfirmation for ChatGPT NL parsing
    */
-  private showFallbackClarification(provider: ProviderConfig): OrchestratorResponse {
+  private showFallbackClarification(provider: ProviderConfig, sessionId: string): OrchestratorResponse {
     const message = getFallbackClarificationMessage({
       provider_name: provider.name,
       provider_city: provider.city
     });
 
     const orgRef = provider.name.toLowerCase().replace(/\s+/g, '-');
+    
+    // Store pending provider for ChatGPT NL "Yes" detection
+    this.updateContext(sessionId, { pendingProviderConfirmation: provider.name });
 
     return {
       message,
@@ -836,6 +1056,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
   /**
    * Handle confirm_provider action (user confirms fallback clarification)
+   * Also handles ChatGPT NL "Yes" responses via pendingProviderConfirmation
    */
   private async handleConfirmProvider(
     payload: any,
@@ -843,6 +1064,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     context: APIContext
   ): Promise<OrchestratorResponse> {
     const orgRef = payload.orgRef || payload.provider_name?.toLowerCase().replace(/\s+/g, '-') || 'aim-design';
+    
+    // Clear pending confirmation
+    this.updateContext(sessionId, { pendingProviderConfirmation: undefined });
     
     if (payload.ask_city) {
       // User said they're in a different city - just proceed anyway
@@ -864,10 +1088,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     sessionId: string,
     context: APIContext
   ): Promise<OrchestratorResponse> {
-    // Clear any provider context from session
+    // Clear any provider context from session (including NL tracking state)
     this.updateContext(sessionId, {
       orgRef: undefined,
-      selectedProgram: undefined
+      selectedProgram: undefined,
+      displayedPrograms: undefined,
+      pendingProviderConfirmation: undefined
     });
 
     return this.formatResponse(
@@ -902,7 +1128,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     sessionId: string,
     context: APIContext
   ): Promise<OrchestratorResponse> {
-    // Reset session context
+    // Reset session context (including NL tracking state)
     this.updateContext(sessionId, {
       orgRef: undefined,
       formData: undefined,
@@ -910,6 +1136,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       step: FlowStep.BROWSE,
       requestedAdults: undefined,
       ignoreAudienceMismatch: undefined,
+      displayedPrograms: undefined,
+      pendingProviderConfirmation: undefined,
     });
 
     return this.formatResponse(
@@ -1124,10 +1352,30 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       }
 
       
-      // Store programs in context
+      // Store programs in context (including displayedPrograms for ChatGPT NL selection)
+      const displayedPrograms = filteredPrograms.map((prog: any) => ({
+        title: prog.title || "Untitled Program",
+        program_ref: prog.program_ref,
+        program_data: {
+          title: prog.title,
+          program_ref: prog.program_ref,
+          org_ref: prog.org_ref || orgRef,
+          description: prog.description,
+          status: prog.status,
+          price: prog.price,
+          schedule: prog.schedule,
+          booking_status: prog.booking_status || 'open_now',
+          earliest_slot_time: prog.earliest_slot_time,
+          booking_opens_at: prog.booking_opens_at,
+          first_available_event_id: prog.first_available_event_id || null
+        }
+      }));
+      
       this.updateContext(sessionId, {
         step: FlowStep.BROWSE,
         orgRef,
+        displayedPrograms, // For ChatGPT NL program selection by title/ordinal
+        pendingProviderConfirmation: undefined, // Clear any pending confirmation
       });
 
       // Build program cards with timing badges and cleaned descriptions
@@ -1269,10 +1517,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     }
     const orgRef = programData?.org_ref || 'aim-design';
 
-    // Update context
+    // Update context (clear displayedPrograms since we're moving to next step)
     this.updateContext(sessionId, {
       step: FlowStep.FORM_FILL,
-      selectedProgram: programData
+      selectedProgram: programData,
+      displayedPrograms: undefined // Clear to prevent stale data
     });
     
     console.log('[selectProgram] ✅ Context updated - selectedProgram stored:', {
