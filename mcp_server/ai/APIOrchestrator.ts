@@ -129,9 +129,9 @@ export default class APIOrchestrator implements IOrchestrator {
   
   // Build stamp for debugging which version is running in production
   private static readonly BUILD_STAMP = {
-    build_id: '2025-06-22T03:30:00Z',
+    build_id: '2025-12-21T04:10:00Z',
     orchestrator_mode: 'api-first',
-    version: '2.3.0-session-persistence'
+    version: '2.4.0-auth0-session-fix'
   };
   
   // LRU cache for input classification results (avoid redundant LLM calls)
@@ -634,9 +634,21 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     userId?: string
   ): Promise<OrchestratorResponse> {
     try {
-      // Prefer a stable identifier for multi-turn flows.
-      // In ChatGPT integrations, sessionId may change between calls; userId is stable once authenticated.
+      // ================================================================
+      // AUTH0 SESSION FIX: Use userId as stable key for multi-turn flows
+      // ChatGPT sends different sessionIds each turn, but Auth0 userId is stable
+      // This ensures context persists correctly across conversation turns
+      // ================================================================
       const contextSessionId = userId || sessionId;
+      const isAuth0Session = !!userId;
+      
+      console.log('[AUTH0-SESSION] 🔑 Session key resolution:', {
+        originalSessionId: sessionId,
+        auth0UserId: userId || 'NOT_AUTHENTICATED',
+        contextSessionId,
+        isAuth0Session,
+        timestamp: new Date().toISOString()
+      });
 
       // ✅ CRITICAL: Use async context loading to restore from Supabase if needed
       // This fixes ChatGPT multi-turn conversations losing context between API calls
@@ -645,6 +657,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       Logger.info('[generateResponse] Context loaded', {
         sessionId,
         contextSessionId,
+        isAuth0Session,
         step: context.step,
         hasSelectedProgram: !!context.selectedProgram,
         hasFormData: !!context.formData,
@@ -4567,6 +4580,16 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
       const supabase = this.getSupabaseClient();
       const sessionKey = this.SESSION_KEY_PREFIX + sessionId;
       
+      // Check if this looks like an Auth0 userId vs a ChatGPT sessionId
+      const isAuth0Key = sessionId.startsWith('auth0|') || sessionId.startsWith('google-oauth2|');
+      
+      console.log('[loadSessionFromDB] 🔍 Looking up session:', {
+        sessionId,
+        sessionKey,
+        isAuth0Key,
+        timestamp: new Date().toISOString()
+      });
+      
       const { data, error } = await supabase
         .from('browser_sessions')
         .select('session_data, expires_at')
@@ -4579,7 +4602,12 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
       }
       
       if (!data) {
-        Logger.debug('[loadSessionFromDB] No session found in DB for:', sessionId);
+        console.log('[loadSessionFromDB] ❌ No session found in DB:', {
+          sessionId,
+          sessionKey,
+          isAuth0Key,
+          suggestion: isAuth0Key ? 'First request with this Auth0 user' : 'Session may have expired or never existed'
+        });
         return null;
       }
       
@@ -4591,12 +4619,16 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
       }
       
       const sessionData = data.session_data as APIContext;
-      Logger.info('[loadSessionFromDB] ✅ Session restored from DB', {
+      console.log('[loadSessionFromDB] ✅ Session RESTORED from DB:', {
         sessionId,
+        sessionKey,
+        isAuth0Key,
         step: sessionData.step,
         hasSelectedProgram: !!sessionData.selectedProgram,
+        programName: sessionData.selectedProgram?.name || sessionData.selectedProgram?.title,
         hasFormData: !!sessionData.formData,
-        requestedActivity: sessionData.requestedActivity
+        requestedActivity: sessionData.requestedActivity,
+        timestamp: new Date().toISOString()
       });
       
       return sessionData;
@@ -4616,6 +4648,9 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
       const sessionKey = this.SESSION_KEY_PREFIX + sessionId;
       const expiresAt = new Date(Date.now() + this.SESSION_TTL_MS).toISOString();
       
+      // Check if this looks like an Auth0 userId vs a ChatGPT sessionId
+      const isAuth0Key = sessionId.startsWith('auth0|') || sessionId.startsWith('google-oauth2|');
+      
       const { error } = await supabase
         .from('browser_sessions')
         .upsert({
@@ -4630,10 +4665,15 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
       if (error) {
         Logger.warn('[persistSessionToDB] Error persisting session:', error.message);
       } else {
-        Logger.debug('[persistSessionToDB] ✅ Session persisted', {
+        console.log('[persistSessionToDB] 💾 Session SAVED to DB:', {
           sessionId,
+          sessionKey,
+          isAuth0Key,
           step: context.step,
-          hasSelectedProgram: !!context.selectedProgram
+          hasSelectedProgram: !!context.selectedProgram,
+          programName: context.selectedProgram?.name || context.selectedProgram?.title,
+          expiresAt,
+          timestamp: new Date().toISOString()
         });
       }
     } catch (error) {
