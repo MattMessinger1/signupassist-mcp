@@ -18,8 +18,14 @@ import {
   Label
 } from '../ui';
 import { TrustCallout } from '../ui/TrustCallout';
-import { FeeBreakdown, calculateServiceFee } from '../ui/FeeBreakdown';
-import { COPY } from '../../lib/copy';
+import { FeeBreakdown } from '../ui/FeeBreakdown';
+import { 
+  COPY,
+  STANDARD_CONSENTS,
+  areAllConsentsGiven,
+  calculateServiceFee,
+  type ConsentRequirement
+} from '../../lib/core';
 import type { DelegateProfile } from '../../types/openai';
 
 interface ParticipantData {
@@ -43,19 +49,6 @@ interface ReviewStepProps {
   isSubmitting?: boolean;
 }
 
-interface ConsentItem {
-  id: string;
-  label: string;
-  required: boolean;
-}
-
-const CONSENT_ITEMS: ConsentItem[] = [
-  { id: 'login', label: 'Authorize SignupAssist to log in to the activity provider on my behalf', required: true },
-  { id: 'fill', label: 'Allow form fields to be filled with my provided information', required: true },
-  { id: 'payment', label: 'Process payment for the program fee through the provider', required: true },
-  { id: 'delegate', label: 'I understand SignupAssist acts as my authorized delegate', required: true },
-];
-
 export function ReviewStep({ 
   guardianData, 
   participantData, 
@@ -66,9 +59,7 @@ export function ReviewStep({
 }: ReviewStepProps) {
   const [consents, setConsents] = useState<Record<string, boolean>>({});
   
-  const allConsentsGiven = CONSENT_ITEMS.every(
-    item => !item.required || consents[item.id]
-  );
+  const allConsentsGiven = areAllConsentsGiven(consents, STANDARD_CONSENTS);
 
   const handleConsentChange = (id: string, checked: boolean) => {
     setConsents(prev => ({ ...prev, [id]: checked }));
@@ -195,10 +186,10 @@ export function ReviewStep({
         {/* Consent Checkboxes */}
         <div className="space-y-4">
           <h4 className="font-semibold text-gray-900 flex items-center gap-2">
-            ✅ Authorization
+            ✅ {COPY.consent.authorizationTitle}
           </h4>
           <div className="space-y-3 p-4 bg-gray-50 rounded-lg border border-gray-200">
-            {CONSENT_ITEMS.map((item) => (
+            {STANDARD_CONSENTS.map((item: ConsentRequirement) => (
               <div key={item.id} className="flex items-start gap-3">
                 <Checkbox
                   id={item.id}

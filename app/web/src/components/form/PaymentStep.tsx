@@ -15,7 +15,14 @@ import {
   Badge,
   Alert
 } from '../ui';
-import { useCallTool, useWidgetState } from '../../hooks/useOpenAiGlobal';
+import { useWidgetState } from '../../hooks/useOpenAiGlobal';
+import { 
+  PAYMENT_CONFIG, 
+  formatMoney, 
+  COPY,
+  type PaymentStatus 
+} from '../../lib/core';
+import { tools } from '../../lib/adapters/toolAdapter';
 import type { OpenAIWidgetState } from '../../types/openai';
 
 interface PaymentStepProps {
@@ -25,19 +32,15 @@ interface PaymentStepProps {
   totalAmount?: number;
 }
 
-const POLL_INTERVAL_MS = 3000;
-const MAX_POLL_ATTEMPTS = 60; // 3 minutes max
-
 export function PaymentStep({ 
   onPaymentComplete, 
   onBack,
   programName,
   totalAmount
 }: PaymentStepProps) {
-  const callTool = useCallTool();
   const [widgetState] = useWidgetState<OpenAIWidgetState>();
   
-  const [status, setStatus] = useState<'idle' | 'loading' | 'polling' | 'success' | 'error'>('idle');
+  const [status, setStatus] = useState<PaymentStatus>('idle');
   const [stripeOpened, setStripeOpened] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const pollCountRef = useRef(0);
@@ -57,25 +60,20 @@ export function PaymentStep({
     setStatus('loading');
     setErrorMessage(null);
 
-    try {
-      // Call MCP tool to create Stripe checkout session
-      const result = await callTool('stripe.create_checkout_session', {
-        program_ref: widgetState.selectedProgram?.program_ref,
-        return_url: window.location.origin,
-      });
+    const result = await tools.stripe.createCheckoutSession({
+      program_ref: widgetState.selectedProgram?.program_ref,
+      return_url: window.location.origin,
+    });
 
-      if (result?.url) {
-        // Open Stripe Checkout in new tab (we're in an iframe)
-        window.open(result.url, '_blank');
-        setStripeOpened(true);
-        setStatus('polling');
-        startPolling();
-      } else {
-        throw new Error(result?.error || 'Failed to create checkout session');
-      }
-    } catch (error: any) {
-      console.error('[PaymentStep] Error:', error);
-      setErrorMessage(error?.message || 'Failed to start payment process');
+    if (result.success && result.data?.url) {
+      // Open Stripe Checkout in new tab (we're in an iframe)
+      window.open(result.data.url, '_blank');
+      setStripeOpened(true);
+      setStatus('polling');
+      startPolling();
+    } else {
+      console.error('[PaymentStep] Error:', result.error);
+      setErrorMessage(result.error || 'Failed to start payment process');
       setStatus('error');
     }
   };
@@ -87,50 +85,40 @@ export function PaymentStep({
     pollIntervalRef.current = setInterval(async () => {
       pollCountRef.current++;
       
-      if (pollCountRef.current > MAX_POLL_ATTEMPTS) {
+      if (pollCountRef.current > PAYMENT_CONFIG.maxPollAttempts) {
         clearInterval(pollIntervalRef.current!);
-        setStatus('error');
-        setErrorMessage('Payment verification timed out. Click "Verify Payment" if you completed payment.');
+        setStatus('timeout');
+        setErrorMessage(COPY.payment.timeoutMessage);
         return;
       }
 
-      try {
-        const result = await callTool('stripe.check_payment_status', {});
-        
-        if (result?.hasPaymentMethod) {
-          clearInterval(pollIntervalRef.current!);
-          setStatus('success');
-          // Brief delay then proceed
-          setTimeout(() => {
-            onPaymentComplete();
-          }, 1500);
-        }
-      } catch (error) {
-        console.warn('[PaymentStep] Poll error:', error);
-        // Continue polling even on error
+      const result = await tools.stripe.checkPaymentStatus();
+      
+      if (result.success && result.data?.hasPaymentMethod) {
+        clearInterval(pollIntervalRef.current!);
+        setStatus('success');
+        // Brief delay then proceed
+        setTimeout(() => {
+          onPaymentComplete();
+        }, PAYMENT_CONFIG.successDelayMs);
       }
-    }, POLL_INTERVAL_MS);
+    }, PAYMENT_CONFIG.pollIntervalMs);
   };
 
   // Manual verification
   const handleVerifyPayment = async () => {
     setStatus('loading');
     
-    try {
-      const result = await callTool('stripe.check_payment_status', {});
-      
-      if (result?.hasPaymentMethod) {
-        setStatus('success');
-        setTimeout(() => {
-          onPaymentComplete();
-        }, 1500);
-      } else {
-        setStatus('polling');
-        setErrorMessage('Payment method not yet detected. Please complete payment in the Stripe window.');
-      }
-    } catch (error: any) {
-      setErrorMessage(error?.message || 'Verification failed');
-      setStatus('error');
+    const result = await tools.stripe.checkPaymentStatus();
+    
+    if (result.success && result.data?.hasPaymentMethod) {
+      setStatus('success');
+      setTimeout(() => {
+        onPaymentComplete();
+      }, PAYMENT_CONFIG.successDelayMs);
+    } else {
+      setStatus('polling');
+      setErrorMessage('Payment method not yet detected. Please complete payment in the Stripe window.');
     }
   };
 
@@ -140,9 +128,6 @@ export function PaymentStep({
     await handleSetupPayment();
   };
 
-  const formatMoney = (cents: number) => 
-    (cents / 100).toLocaleString(undefined, { style: 'currency', currency: 'USD' });
-
   return (
     <Card className="w-full max-w-2xl mx-auto">
       <CardHeader>
@@ -151,10 +136,8 @@ export function PaymentStep({
             Step 4 of 4
           </Badge>
         </div>
-        <CardTitle>💳 Secure Payment</CardTitle>
-        <CardDescription>
-          Complete your registration with a secure payment via Stripe
-        </CardDescription>
+        <CardTitle>💳 {COPY.payment.title}</CardTitle>
+        <CardDescription>{COPY.payment.subtitle}</CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-6">
@@ -179,10 +162,8 @@ export function PaymentStep({
             <div className="flex items-center gap-3">
               <span className="animate-spin text-xl">⏳</span>
               <div>
-                <p className="font-medium text-blue-900">Waiting for payment...</p>
-                <p className="text-sm text-blue-700">
-                  Complete payment in the Stripe window. This page will update automatically.
-                </p>
+                <p className="font-medium text-blue-900">{COPY.payment.waitingTitle}</p>
+                <p className="text-sm text-blue-700">{COPY.payment.waitingSubtitle}</p>
               </div>
             </div>
           </Alert>
@@ -193,14 +174,14 @@ export function PaymentStep({
             <div className="flex items-center gap-3">
               <span className="text-xl">✅</span>
               <div>
-                <p className="font-medium text-green-900">Payment method verified!</p>
-                <p className="text-sm text-green-700">Proceeding to confirmation...</p>
+                <p className="font-medium text-green-900">{COPY.payment.successTitle}</p>
+                <p className="text-sm text-green-700">{COPY.payment.successSubtitle}</p>
               </div>
             </div>
           </Alert>
         )}
 
-        {status === 'error' && errorMessage && (
+        {(status === 'error' || status === 'timeout') && errorMessage && (
           <Alert variant="destructive">
             <div className="flex items-center gap-3">
               <span className="text-xl">⚠️</span>
@@ -216,10 +197,8 @@ export function PaymentStep({
           <div className="flex items-start gap-3">
             <span className="text-lg">🔒</span>
             <div>
-              <p className="text-sm font-medium text-green-900">Secure Payment</p>
-              <p className="text-xs text-green-700 mt-1">
-                Payment is processed securely by Stripe. Your card information is never stored on our servers.
-              </p>
+              <p className="text-sm font-medium text-green-900">{COPY.payment.title}</p>
+              <p className="text-xs text-green-700 mt-1">{COPY.payment.securityNote}</p>
             </div>
           </div>
         </div>
