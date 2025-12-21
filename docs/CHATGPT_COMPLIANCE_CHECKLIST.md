@@ -80,6 +80,22 @@
 - ✅ **pendingProviderConfirmation tracking** - Enables "Yes" detection
 - ✅ **Audit trail for NL actions** - All NL-parsed actions logged with `source: "natural_language"`
 
+### 10. Multi-Participant & Secondary Actions (ChatGPT Flow) ✅
+- ✅ **Multi-child parsing** - "Percy, 11 and Alice, 9" parsed into array
+- ✅ **Sequential participant entry** - "Anyone else?" follow-up after each entry
+- ✅ **Done detection** - "done", "that's all", "no more", "finished" recognized
+- ✅ **Implicit done detection** - "ok", "proceed", "continue" with pending participants
+- ✅ **Delegate email parsing** - "my email is x@y.com" extracted
+- ✅ **Email collection flow** - Prompts for email when needed (unauthenticated users)
+- ✅ **View registrations NL** - "show my registrations", "view bookings" detected
+- ✅ **Cancel registration NL** - "cancel my booking", "remove registration" detected
+- ✅ **View audit trail NL** - "show audit trail", "view history" detected
+- ✅ **Enhanced location parsing** - "near Chicago", "Madison area" normalized before lookup
+- ✅ **pendingParticipants context** - Tracks multi-participant collection state
+- ✅ **pendingDelegateInfo context** - Tracks delegate info collection state
+- ✅ **awaitingDelegateEmail context** - Tracks email collection step
+- ✅ **All NL actions audit logged** - Secondary actions and participant parsing logged
+
 
 ## Current Implementation Status
 
