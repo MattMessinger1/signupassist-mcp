@@ -1651,7 +1651,9 @@ class SignupAssistMCPServer {
               if (isAPIMode) {
                 // APIOrchestrator: Use generateResponse with action parameter
                 console.log('[API-FIRST MODE] Routing action via generateResponse', { finalUserId });
-                result = await (this.orchestrator as any).generateResponse('', stableSessionId, action, payload || {}, userTimezone, finalUserId);
+                // IMPORTANT: preserve the incoming message so APIOrchestrator can do NL fallback parsing
+                // (ChatGPT sometimes sends empty payloads for card actions)
+                result = await (this.orchestrator as any).generateResponse(message || '', stableSessionId, action, payload || {}, userTimezone, finalUserId);
               } else {
                 // Legacy AIOrchestrator: Use handleAction method
                 try {
