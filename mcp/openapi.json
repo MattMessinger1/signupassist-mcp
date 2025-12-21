@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "SignupAssist MCP API",
-    "version": "2.0.0",
-    "description": "API-first activity registration system. Supports program discovery, registration form discovery, booking, and payment via direct API integrations (Bookeo, and more coming soon).",
+    "version": "2.1.0",
+    "description": "AI-powered activity registration assistant. Use the /chat endpoint for natural language queries like 'find robotics classes in Madison' - it handles location matching, activity detection, and provider discovery automatically. The /tools/call endpoint is for direct tool execution when you know the exact tool and parameters.",
     "contact": {
       "email": "matt@shipworx.ai"
     }
@@ -15,10 +15,114 @@
     }
   ],
   "paths": {
+    "/orchestrator/chat": {
+      "post": {
+        "summary": "Chat with SignupAssist (RECOMMENDED)",
+        "description": "Send natural language messages to find and register for activities. This is the PRIMARY endpoint for ChatGPT - it understands queries like 'find robotics classes in Madison WI' or 'show me swim lessons for my 7 year old' and automatically maps them to the correct organizations and programs. Maintains conversation context across messages.",
+        "operationId": "chat",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["message", "session_id"],
+                "properties": {
+                  "message": {
+                    "type": "string",
+                    "description": "Natural language message from the user (e.g., 'find robotics programs in Madison', 'show me swim lessons for kids')"
+                  },
+                  "session_id": {
+                    "type": "string",
+                    "description": "Unique session ID for conversation continuity. Use the same ID across messages in a conversation."
+                  },
+                  "action": {
+                    "type": "string",
+                    "description": "Optional action to execute (e.g., 'select_program', 'confirm_payment'). Usually populated from button clicks in the response."
+                  },
+                  "payload": {
+                    "type": "object",
+                    "description": "Optional payload for the action",
+                    "additionalProperties": true
+                  },
+                  "user_timezone": {
+                    "type": "string",
+                    "description": "User's IANA timezone (e.g., 'America/Chicago'). Used for displaying times correctly."
+                  }
+                }
+              },
+              "examples": {
+                "find_robotics_madison": {
+                  "summary": "Find robotics programs in Madison",
+                  "value": {
+                    "message": "Find robotics classes in Madison WI",
+                    "session_id": "chatgpt-session-123"
+                  }
+                },
+                "find_swim_lessons": {
+                  "summary": "Find swim lessons for kids",
+                  "value": {
+                    "message": "Show me swim lessons for my 8 year old",
+                    "session_id": "chatgpt-session-123",
+                    "user_timezone": "America/Chicago"
+                  }
+                },
+                "find_by_org_name": {
+                  "summary": "Find programs at a specific organization",
+                  "value": {
+                    "message": "What programs does AIM Design offer?",
+                    "session_id": "chatgpt-session-123"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Chat response with message and optional UI cards",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - OAuth token invalid or missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": { "type": "string" },
+                    "details": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/tools/call": {
       "post": {
-        "summary": "Execute MCP tool",
-        "description": "Execute any registered MCP tool by name with provided arguments. All tools go through MCP audit layer for compliance.",
+        "summary": "Execute MCP tool directly (advanced)",
+        "description": "Execute a specific MCP tool by name. Use /orchestrator/chat instead for natural language queries - this endpoint requires knowing the exact tool name and org_ref. Only use this for advanced integrations.",
         "operationId": "callTool",
         "requestBody": {
           "required": true,
@@ -62,62 +166,6 @@
                   "summary": "Find programs at a Bookeo-powered organization",
                   "value": {
                     "tool": "bookeo.find_programs",
-                    "args": {
-                      "org_ref": "aim-design",
-                      "category": "all"
-                    }
-                  }
-                },
-                "bookeo_find_programs_robotics": {
-                  "summary": "Find robotics programs in Madison",
-                  "value": {
-                    "tool": "bookeo.find_programs",
-                    "args": {
-                      "org_ref": "aim-design",
-                      "category": "stem"
-                    }
-                  }
-                },
-                "bookeo_discover_required_fields": {
-                  "summary": "Discover registration form fields for a program",
-                  "value": {
-                    "tool": "bookeo.discover_required_fields",
-                    "args": {
-                      "program_ref": "41567PWU9J419AAC02D5B2",
-                      "org_ref": "aim-design"
-                    }
-                  }
-                },
-                "bookeo_create_hold": {
-                  "summary": "Create a temporary booking hold",
-                  "value": {
-                    "tool": "bookeo.create_hold",
-                    "args": {
-                      "eventId": "event-123",
-                      "productId": "product-456",
-                      "firstName": "Jane",
-                      "lastName": "Doe",
-                      "email": "jane@example.com",
-                      "adults": 0,
-                      "children": 1,
-                      "org_ref": "aim-design"
-                    }
-                  }
-                },
-                "bookeo_confirm_booking": {
-                  "summary": "Confirm a booking hold",
-                  "value": {
-                    "tool": "bookeo.confirm_booking",
-                    "args": {
-                      "holdId": "hold-789",
-                      "org_ref": "aim-design"
-                    }
-                  }
-                },
-                "program_feed_get": {
-                  "summary": "Get cached programs (fast lookup)",
-                  "value": {
-                    "tool": "program_feed.get",
                     "args": {
                       "org_ref": "aim-design",
                       "category": "all"
@@ -203,6 +251,39 @@
   },
   "components": {
     "schemas": {
+      "ChatResponse": {
+        "type": "object",
+        "description": "Response from the chat orchestrator",
+        "required": ["message"],
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "The assistant's response message to display to the user"
+          },
+          "cards": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/UICard" },
+            "description": "Optional UI cards for programs, forms, or confirmations"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "action": { "type": "string" },
+                "label": { "type": "string" },
+                "payload": { "type": "object" }
+              }
+            },
+            "description": "Available actions the user can take"
+          },
+          "session_context": {
+            "type": "object",
+            "description": "Current session state (for debugging)",
+            "additionalProperties": true
+          }
+        }
+      },
       "ToolMetadata": {
         "type": "object",
         "description": "Metadata hints for AI tone and UX guidance",
