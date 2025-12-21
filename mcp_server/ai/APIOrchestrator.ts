@@ -2228,10 +2228,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // LAYER 3: If still missing, return error
     if (!programData) {
       console.error('[selectProgram] ❌ RECOVERY FAILED: No programData found for', programRef);
+      Logger.error('[selectProgram] RECOVERY FAILED', { program_ref: programRef });
       return this.formatResponse(
-        "I couldn't find that program's details. Could you please select it again from the list?",
-        undefined,
-        { errorCode: 'PROGRAM_DATA_MISSING', program_ref: programRef }
+        "I couldn't find that program's details. Could you please select it again from the list?"
       );
     }
     
