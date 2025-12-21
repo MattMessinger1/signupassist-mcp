@@ -471,6 +471,29 @@ class SignupAssistMCPServer {
         res.end(JSON.stringify({ ok: true }));
         return;
       }
+
+      // --- Status endpoint - returns build info for debugging deployments
+      if (req.method === 'GET' && url.pathname === '/status') {
+        console.log('[STATUS] build info request received');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: true,
+          build: {
+            build_id: '2025-06-22T01:30:00Z',
+            orchestrator_mode: 'api-first',
+            version: '2.1.0-step-gating',
+            step_gating: true
+          },
+          server: {
+            env: process.env.NODE_ENV || 'unknown',
+            git_commit: process.env.RAILWAY_GIT_COMMIT_SHA || 'dev',
+            started_at: VERSION_INFO.builtAt,
+            node_version: process.version
+          },
+          timestamp: new Date().toISOString()
+        }));
+        return;
+      }
       
       // --- Keep-warm ping endpoint to prevent cold starts
       if (req.method === 'GET' && url.pathname === '/ping') {
