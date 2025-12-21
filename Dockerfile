@@ -97,8 +97,7 @@ COPY index.html ./
 RUN mkdir -p app/web/dist
 COPY --from=builder /app/app/web/dist/ ./app/web/dist/
 
-# Copy ChatGPT Apps manifest
-COPY public/.well-known/chatgpt-apps-manifest.json ./public/.well-known/chatgpt-apps-manifest.json 2>/dev/null || true
+# ChatGPT Apps manifest is already in public/.well-known/ which was copied earlier
 
 # Expose correct port (matches code default)
 EXPOSE 8080
