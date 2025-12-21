@@ -37,6 +37,7 @@ import {
   getFallbackClarificationMessage,
   getGracefulDeclineMessage,
   getLocationQuestionMessage,
+  getOutOfAreaProgramsMessage,
   SUPPORT_EMAIL
 } from "./apiMessageTemplates.js";
 import {
@@ -76,6 +77,10 @@ interface APIContext {
   // Audience preference (e.g., user asked for "adults")
   requestedAdults?: boolean;
   ignoreAudienceMismatch?: boolean;
+  
+  // Location handling: bypass location filter to show out-of-area programs
+  ignoreLocationFilter?: boolean;
+  requestedLocation?: string;  // Original location user asked for
 
   selectedProgram?: any;
   formData?: Record<string, any>;
@@ -651,6 +656,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       case "clear_activity_filter":
         return await this.handleClearActivityFilter(payload, sessionId, context);
 
+      case "show_out_of_area_programs":
+        return await this.handleShowOutOfAreaPrograms(payload, sessionId, context);
+
       default:
         return this.formatError(`Unknown action: ${action}`);
     }
@@ -1154,8 +1162,74 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       );
     }
 
-    // Out of coverage: return coverage message (don't fall into generic decline)
+    // Out of coverage: Check if we have programs elsewhere to offer
     if (!analysis.isInCoverage && !analysis.isComingSoon) {
+      // Store the requested location for context
+      this.updateContext(sessionId, { requestedLocation: trimmed });
+      
+      // Check if we have ANY programs available (in any location)
+      const supabase = this.getSupabaseClient();
+      const { data: availablePrograms } = await supabase
+        .from('cached_provider_feed')
+        .select('org_ref, program, category')
+        .limit(10);
+      
+      if (availablePrograms && availablePrograms.length > 0) {
+        // We have programs but not in user's area - offer to show them anyway
+        const firstProgram = availablePrograms[0];
+        const programData = typeof firstProgram.program === 'string' 
+          ? JSON.parse(firstProgram.program) 
+          : firstProgram.program;
+        
+        // Get location from organizations config
+        const allOrgs = getAllActiveOrganizations();
+        const matchingOrg = allOrgs.find(org => org.orgRef === firstProgram.org_ref);
+        const availableCity = matchingOrg?.location?.city || 'Anna Maria Island';
+        const availableState = matchingOrg?.location?.state || 'FL';
+        
+        // Get activity if user specified one
+        const activityType = context.requestedActivity 
+          ? getActivityDisplayName(context.requestedActivity)
+          : undefined;
+        
+        const message = getOutOfAreaProgramsMessage({
+          requested_city: trimmed,
+          available_city: availableCity,
+          available_state: availableState,
+          program_count: availablePrograms.length,
+          activity_type: activityType
+        });
+        
+        Logger.info('[handleLocationResponse] Out of coverage but programs available elsewhere', {
+          requestedCity: trimmed,
+          availableCity,
+          programCount: availablePrograms.length
+        });
+        
+        return this.formatResponse(
+          message,
+          undefined,
+          [
+            {
+              label: `Show Programs in ${availableCity}`,
+              action: "show_out_of_area_programs",
+              payload: { 
+                orgRef: firstProgram.org_ref,
+                ignoreLocationFilter: true 
+              },
+              variant: "accent" as const
+            },
+            {
+              label: "No thanks",
+              action: "clear_context",
+              payload: {},
+              variant: "outline" as const
+            }
+          ]
+        );
+      }
+      
+      // No programs available anywhere
       return this.formatResponse(analysis.message || "I don't have providers in that area yet.", undefined, []);
     }
 
@@ -1433,6 +1507,30 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     
     // Re-search without activity filter
     const orgRef = payload.orgRef || context.orgRef || 'aim-design';
+    return await this.searchPrograms(orgRef, sessionId);
+  }
+
+  /**
+   * Handle show_out_of_area_programs action (user accepts seeing programs from different location)
+   */
+  private async handleShowOutOfAreaPrograms(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    // Mark that user has accepted out-of-area programs
+    this.updateContext(sessionId, { 
+      ignoreLocationFilter: true,
+      orgRef: payload.orgRef 
+    });
+    
+    Logger.info('[handleShowOutOfAreaPrograms] User accepted out-of-area programs', {
+      orgRef: payload.orgRef,
+      requestedLocation: context.requestedLocation
+    });
+    
+    // Search programs at the available provider
+    const orgRef = payload.orgRef || 'aim-design';
     return await this.searchPrograms(orgRef, sessionId);
   }
 
@@ -1897,14 +1995,35 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       }
     }
 
-    if (!formData || !context.selectedProgram) {
-      console.log('[submitForm] ❌ VALIDATION FAILED:', {
+    // FLOW INTEGRITY GUARD: Ensure we have a valid program before proceeding
+    // This prevents ChatGPT NL from jumping to submission without proper program selection
+    if (!context.selectedProgram?.program_ref) {
+      Logger.warn('[submitForm] ⚠️ Flow integrity guard triggered - no selectedProgram', {
+        sessionId,
         hasFormData: !!formData,
-        hasSelectedProgram: !!context.selectedProgram,
         hasPayloadProgramRef: !!payload.program_ref,
-        sessionId
+        step: context.step
       });
-      return this.formatError("❌ Missing form data or program selection. Please select a program again.");
+      
+      // User-friendly recovery: redirect to program search
+      const orgRef = context.orgRef || 'aim-design';
+      return this.formatResponse(
+        "Let me help you find a program first. Which activity are you looking for?",
+        undefined,
+        [
+          { 
+            label: "Browse Programs", 
+            action: "search_programs", 
+            payload: { orgRef },
+            variant: "accent" as const
+          }
+        ]
+      );
+    }
+    
+    if (!formData) {
+      Logger.warn('[submitForm] ⚠️ Missing form data', { sessionId, hasSelectedProgram: true });
+      return this.formatError("I need your registration details. Please fill out the form and try again.");
     }
 
     // Extract structured data from two-tier form
