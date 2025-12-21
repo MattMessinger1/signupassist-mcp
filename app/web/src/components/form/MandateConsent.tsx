@@ -1,5 +1,15 @@
+/**
+ * MandateConsent - Authorization UI for scheduled registrations
+ * Uses shared core library for consent sections
+ */
+
 import { useState } from 'react';
-import { Shield, Check, AlertCircle, Loader2 } from 'lucide-react';
+import { 
+  COPY, 
+  buildMandateConsentSections, 
+  formatDateTimeFull,
+  type ConsentSection 
+} from '../../lib/core';
 
 interface MandateConsentProps {
   programName: string;
@@ -24,69 +34,16 @@ export function MandateConsent({
 }: MandateConsentProps) {
   const [agreed, setAgreed] = useState(false);
 
-  const formatDate = (date: Date) => {
-    return new Intl.DateTimeFormat('en-US', {
-      dateStyle: 'full',
-      timeStyle: 'short'
-    }).format(date);
-  };
-
-  const sections = [
-    {
-      title: "What we're asking permission for",
-      icon: '✓',
-      items: [
-        'Log into your account when registration opens',
-        `Fill out and submit the registration form for ${childName}`,
-        `Process payment up to ${maxAmount} using your saved payment method`,
-      ]
-    },
-    {
-      title: 'How it works',
-      icon: '✓',
-      items: [
-        'We create a cryptographically signed "mandate" (permission token)',
-        `This mandate authorizes these specific actions until ${validUntil}`,
-        'The mandate cannot be reused after expiration',
-      ]
-    },
-    {
-      title: 'Security guarantees',
-      icon: '🔐',
-      items: [
-        'Your credentials are encrypted end-to-end',
-        'We never see your full credit card number',
-        'Registration happens in an isolated browser session',
-        'Session is destroyed immediately after completion',
-      ]
-    },
-    {
-      title: 'Full transparency',
-      icon: '📋',
-      items: [
-        'Every action is logged in your audit trail',
-        'Screenshots captured at key moments (form filled, confirmation)',
-        'Final outcome recorded (success or any blockers)',
-      ]
-    },
-    {
-      title: 'Your control',
-      icon: '🎮',
-      items: [
-        'You can revoke this at any time from your audit trail',
-        'Mandate expires automatically after registration',
-        "If we hit a blocker (CAPTCHA, new waiver), we'll pause and notify you",
-      ]
-    },
-  ];
+  // Build consent sections using shared logic
+  const sections: ConsentSection[] = buildMandateConsentSections(childName, maxAmount, validUntil);
 
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center gap-3 pb-4 border-b border-border">
-        <Shield className="h-6 w-6 text-primary" />
+        <span className="text-2xl">🛡️</span>
         <div>
-          <h2 className="text-lg font-semibold">Authorization Required</h2>
+          <h2 className="text-lg font-semibold">{COPY.consent.mandateTitle}</h2>
           <p className="text-sm text-muted-foreground">
             Set up automatic registration for {childName} in {programName}
           </p>
@@ -96,11 +53,11 @@ export function MandateConsent({
       {/* Scheduled Time Notice */}
       {opensAt && (
         <div className="flex items-center gap-3 p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
-          <AlertCircle className="h-5 w-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+          <span className="text-xl flex-shrink-0">ℹ️</span>
           <div>
             <p className="font-medium text-blue-900 dark:text-blue-100">Scheduled Registration</p>
             <p className="text-sm text-blue-700 dark:text-blue-300">
-              We'll automatically register on {formatDate(opensAt)}
+              We'll automatically register on {formatDateTimeFull(opensAt)}
             </p>
           </div>
         </div>
@@ -147,10 +104,9 @@ export function MandateConsent({
           className="mt-0.5 h-4 w-4 rounded border-input"
         />
         <div className="text-sm">
-          <span className="font-medium">I understand and authorize</span>
+          <span className="font-medium">{COPY.consent.agreementLabel}</span>
           <p className="text-muted-foreground mt-1">
-            I authorize SignupAssist to act as my delegate and perform the actions described above
-            on my behalf. I understand my credentials are encrypted and all actions are logged.
+            {COPY.consent.agreementDescription}
           </p>
         </div>
       </label>
@@ -164,12 +120,12 @@ export function MandateConsent({
         >
           {isLoading ? (
             <>
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="animate-spin">⏳</span>
               Creating Mandate...
             </>
           ) : (
             <>
-              <Check className="h-4 w-4" />
+              <span>✓</span>
               Authorize & Create Plan
             </>
           )}
