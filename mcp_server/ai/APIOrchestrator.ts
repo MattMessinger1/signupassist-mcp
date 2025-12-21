@@ -704,7 +704,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       // Handle explicit actions (button clicks)
       if (action) {
-        return await this.handleAction(action, payload, contextSessionId, context);
+        return await this.handleAction(action, payload, contextSessionId, context, input);
       }
 
       // Handle natural language messages
@@ -722,7 +722,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     action: string,
     payload: any,
     sessionId: string,
-    context: APIContext
+    context: APIContext,
+    input?: string  // Optional: user's natural language message for fallback parsing
   ): Promise<OrchestratorResponse> {
     switch (action) {
       case "search_programs": {
@@ -732,7 +733,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       }
 
       case "select_program":
-        return await this.selectProgram(payload, sessionId, context);
+        return await this.selectProgram(payload, sessionId, context, input);
 
       case "submit_form":
         return await this.submitForm(payload, sessionId, context);
@@ -2174,7 +2175,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
   private async selectProgram(
     payload: any,
     sessionId: string,
-    context: APIContext
+    context: APIContext,
+    input?: string  // Optional: user's NL message for ordinal parsing fallback
   ): Promise<OrchestratorResponse> {
     // ⚠️ HARD STEP GATE - must have confirmed provider first
     // orgRef is set when provider is confirmed (via handleConfirmProvider or searchPrograms)
@@ -2198,11 +2200,27 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     });
     
     // ============================================================================
-    // THREE-LAYER PROGRAM DATA RECOVERY
-    // Fixes: ChatGPT stripping program_data from payload, only sending program_ref
+    // FOUR-LAYER PROGRAM DATA RECOVERY
+    // Layer 0: Parse from NL input (e.g., "Class 3") when payload is empty
+    // Fixes: ChatGPT sending empty payload when user types ordinal selection
     // ============================================================================
     let programData = payload.program_data;
-    const programRef = payload.program_ref || payload.program_data?.ref || payload.program_data?.program_ref;
+    let programRef = payload.program_ref || payload.program_data?.ref || payload.program_data?.program_ref;
+    
+    // LAYER 0: If payload is empty/missing, try parsing from user's NL input
+    if (!programData && !programRef && input && context.displayedPrograms?.length) {
+      console.log('[selectProgram] 🔄 RECOVERY L0: Attempting NL parse from input:', input);
+      const nlMatch = this.parseProgramSelection(input, context.displayedPrograms);
+      if (nlMatch) {
+        programData = nlMatch.program_data;
+        programRef = nlMatch.program_ref;
+        console.log('[selectProgram] ✅ RECOVERY L0: Matched from NL input', {
+          input,
+          program_ref: programRef,
+          program_name: programData?.name || programData?.title
+        });
+      }
+    }
     
     // LAYER 1: If programData missing, recover from displayedPrograms in context
     if (!programData && programRef && context.displayedPrograms?.length) {
