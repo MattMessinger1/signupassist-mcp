@@ -634,40 +634,45 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     userId?: string
   ): Promise<OrchestratorResponse> {
     try {
+      // Prefer a stable identifier for multi-turn flows.
+      // In ChatGPT integrations, sessionId may change between calls; userId is stable once authenticated.
+      const contextSessionId = userId || sessionId;
+
       // ✅ CRITICAL: Use async context loading to restore from Supabase if needed
       // This fixes ChatGPT multi-turn conversations losing context between API calls
-      const context = await this.getContextAsync(sessionId);
-      
+      const context = await this.getContextAsync(contextSessionId);
+
       Logger.info('[generateResponse] Context loaded', {
         sessionId,
+        contextSessionId,
         step: context.step,
         hasSelectedProgram: !!context.selectedProgram,
         hasFormData: !!context.formData,
         hasSchedulingData: !!context.schedulingData,
         requestedActivity: context.requestedActivity
       });
-      
+
       // Store user ID and timezone in context
       if (userId) {
-        this.updateContext(sessionId, { user_id: userId });
+        this.updateContext(contextSessionId, { user_id: userId });
         Logger.info('[APIOrchestrator] User authenticated', { userId });
       }
-      
+
       // Store user timezone in context
       if (userTimezone && userTimezone !== context.userTimezone) {
-        this.updateContext(sessionId, { userTimezone });
+        this.updateContext(contextSessionId, { userTimezone });
       }
-      
+
       // Handle explicit actions (button clicks)
       if (action) {
-        return await this.handleAction(action, payload, sessionId, context);
+        return await this.handleAction(action, payload, contextSessionId, context);
       }
 
       // Handle natural language messages
-      return await this.handleMessage(input, sessionId, context);
+      return await this.handleMessage(input, contextSessionId, context);
     } catch (error) {
-      Logger.error("APIOrchestrator error:", error);
-      return this.formatError("Sorry, something went wrong. Please try again.");
+      Logger.error('APIOrchestrator error:', error);
+      return this.formatError('Sorry, something went wrong. Please try again.');
     }
   }
 
