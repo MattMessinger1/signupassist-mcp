@@ -127,6 +127,13 @@ export default class APIOrchestrator implements IOrchestrator {
   private sessions: Map<string, APIContext> = new Map();
   private mcpServer: any;
   
+  // Build stamp for debugging which version is running in production
+  private static readonly BUILD_STAMP = {
+    build_id: '2025-06-22T01:30:00Z',
+    orchestrator_mode: 'api-first',
+    version: '2.1.0-step-gating'
+  };
+  
   // LRU cache for input classification results (avoid redundant LLM calls)
   private classificationCache: Map<string, { result: InputClassification; timestamp: number }> = new Map();
   private readonly CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -135,6 +142,7 @@ export default class APIOrchestrator implements IOrchestrator {
   constructor(mcpServer: any) {
     this.mcpServer = mcpServer;
     Logger.info("APIOrchestrator initialized - API-first mode with MCP tool access");
+    Logger.info(`[BUILD] ${JSON.stringify(APIOrchestrator.BUILD_STAMP)}`);
   }
   
   // ============================================================================
@@ -2483,6 +2491,44 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
     try {
       Logger.info("[confirmPayment] Starting immediate booking flow");
 
+      // ⚠️ HARD STEP GATE: Must have selected a program
+      if (!context.selectedProgram?.program_ref) {
+        Logger.warn('[confirmPayment] ⛔ STEP GATE: No selected program - cannot proceed');
+        return this.formatResponse(
+          "Let me help you find a program first. Which activity are you looking for?",
+          undefined,
+          [{ label: "Browse Programs", action: "search_programs", payload: { orgRef: context.orgRef || "aim-design" }, variant: "accent" }]
+        );
+      }
+
+      // ⚠️ HARD STEP GATE: Must be in PAYMENT step
+      if (context.step !== FlowStep.PAYMENT) {
+        Logger.warn('[confirmPayment] ⛔ STEP GATE: Not in PAYMENT step', { currentStep: context.step });
+        return this.formatResponse(
+          "We need to collect some information first before completing payment.",
+          undefined,
+          [{ label: "Continue Registration", action: "select_program", payload: { program_ref: context.selectedProgram.program_ref }, variant: "accent" }]
+        );
+      }
+
+      // ⚠️ HARD STEP GATE: Must have payment method for immediate booking
+      if (!context.cardLast4 && !context.cardBrand) {
+        Logger.warn('[confirmPayment] ⛔ STEP GATE: No payment method in context');
+        return {
+          message: "Before I can complete your booking, I need to save a payment method.",
+          metadata: {
+            componentType: "payment_setup",
+            next_action: "confirm_payment",
+            _build: APIOrchestrator.BUILD_STAMP
+          },
+          cta: {
+            buttons: [
+              { label: "Add Payment Method", action: "setup_payment", variant: "accent" }
+            ]
+          }
+        };
+      }
+
       // Get booking data from payload (primary) or context (fallback)
       const formData = payload.formData || context.formData;
       
@@ -3030,7 +3076,33 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
     sessionId: string,
     context: APIContext
   ): Promise<OrchestratorResponse> {
+    // ⚠️ HARD STEP GATE: Must have selected a program
+    if (!context.selectedProgram?.program_ref) {
+      Logger.warn('[scheduleAutoRegistration] ⛔ STEP GATE: No selected program');
+      return this.formatResponse(
+        "Let me help you find a program first. Which activity are you looking for?",
+        undefined,
+        [{ label: "Browse Programs", action: "search_programs", payload: { orgRef: context.orgRef || "aim-design" }, variant: "accent" }]
+      );
+    }
+
+    // ⚠️ HARD STEP GATE: Must be in PAYMENT step
+    if (context.step !== FlowStep.PAYMENT) {
+      Logger.warn('[scheduleAutoRegistration] ⛔ STEP GATE: Not in PAYMENT step', { currentStep: context.step });
+      return this.formatResponse(
+        "We need to collect participant information first.",
+        undefined,
+        [{ label: "Continue Registration", action: "select_program", payload: { program_ref: context.selectedProgram.program_ref }, variant: "accent" }]
+      );
+    }
+
     const { scheduled_time, event_id, total_amount, program_fee, program_fee_cents, formData } = payload;
+    
+    // ⚠️ HARD STEP GATE: Must have scheduling time
+    if (!scheduled_time) {
+      Logger.warn('[scheduleAutoRegistration] ⛔ STEP GATE: No scheduled_time in payload');
+      return this.formatError("Missing scheduling information. Please try selecting the program again.");
+    }
     
     // Validate 31-day scheduling limit
     const scheduledDate = new Date(scheduled_time);
@@ -3072,7 +3144,8 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
           total_amount,
           program_fee,
           formData
-        }
+        },
+        _build: APIOrchestrator.BUILD_STAMP
       }
     };
   }
@@ -3085,6 +3158,16 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
     sessionId: string,
     context: APIContext
   ): Promise<OrchestratorResponse> {
+    // ⚠️ HARD STEP GATE: Must have selected a program
+    if (!context.selectedProgram?.program_ref) {
+      Logger.warn('[confirmScheduledRegistration] ⛔ STEP GATE: No selected program');
+      return this.formatResponse(
+        "Let me help you find a program first. Which activity are you looking for?",
+        undefined,
+        [{ label: "Browse Programs", action: "search_programs", payload: { orgRef: context.orgRef || "aim-design" }, variant: "accent" }]
+      );
+    }
+
     // ⚠️ SAFETY NET: Payment method guard
     if (!context.cardLast4 && !context.cardBrand) {
       Logger.warn('[confirmScheduledRegistration] ⚠️ No payment method in context - prompting for setup');
@@ -3093,7 +3176,8 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
         metadata: {
           componentType: "payment_setup",
           next_action: "confirm_scheduled_registration",
-          schedulingData: context.schedulingData
+          schedulingData: context.schedulingData,
+          _build: APIOrchestrator.BUILD_STAMP
         },
         cta: {
           buttons: [
@@ -3114,6 +3198,9 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
         message: scheduledDate
           ? `I have your payment method on file (${context.cardBrand} •••${context.cardLast4}). Please click "Authorize Payment" to confirm:\n\n💰 **Amount:** ${amount}\n📅 **Scheduled for:** ${scheduledDate}\n\nYou'll only be charged if registration succeeds.`
           : `I have your payment method on file (${context.cardBrand} •••${context.cardLast4}). Please click "Authorize Payment" to complete your booking.\n\n💰 **Amount:** ${amount}`,
+        metadata: {
+          _build: APIOrchestrator.BUILD_STAMP
+        },
         cta: {
           buttons: [
             { label: "Authorize Payment", action: "authorize_payment", variant: "accent" },
@@ -3954,7 +4041,10 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
       message,
       cards,
       cta: buttons ? { buttons } : undefined,
-      metadata
+      metadata: {
+        ...metadata,
+        _build: APIOrchestrator.BUILD_STAMP
+      }
     };
   }
 
@@ -3965,7 +4055,10 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
     return {
       message: `❌ ${message}`,
       cards: undefined,
-      cta: undefined
+      cta: undefined,
+      metadata: {
+        _build: APIOrchestrator.BUILD_STAMP
+      }
     };
   }
 
