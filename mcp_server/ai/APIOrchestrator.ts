@@ -2206,26 +2206,26 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         };
       });
 
-      // Use Design DNA-compliant message template
+      // Build program list for inline text display in native ChatGPT
+      const programListForMessage = upcomingPrograms.map((prog, idx) => ({
+        index: idx + 1,
+        title: prog.title || "Untitled",
+        price: prog.price,
+        schedule: prog.schedule,
+        status: this.getBookingStatus(prog) === 'open_now' ? 'open' : 
+                this.getBookingStatus(prog) === 'opens_later' ? 'coming_soon' : 'waitlist'
+      }));
+
+      // Use Design DNA-compliant message template with inline program list
       const message = getAPIProgramsReadyMessage({
         provider_name: orgRef === "aim-design" ? "AIM Design" : orgRef,
-        program_count: upcomingPrograms.length
+        program_count: upcomingPrograms.length,
+        programs: programListForMessage
       });
-
-      // Build CTA buttons for each card so GPT can show them as clickable options
-      const ctaButtons = cards.slice(0, 4).map((card, idx) => ({
-        label: `${idx + 1}. ${card.title.substring(0, 50)}${card.title.length > 50 ? '...' : ''}`,
-        action: 'select_program',
-        payload: card.buttons?.[0]?.payload || { program_ref: (card as any).program_ref },
-        variant: 'default' as const
-      }));
 
       const orchestratorResponse: OrchestratorResponse = {
         message,
-        cards,
-        cta: {
-          buttons: ctaButtons
-        },
+        cards,  // Keep cards for widget compatibility
         metadata: {
           componentType: 'program_list',
           orgRef,
