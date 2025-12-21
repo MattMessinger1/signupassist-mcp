@@ -1972,7 +1972,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     context: APIContext
   ): Promise<OrchestratorResponse> {
     // ⚠️ HARD STEP GATE - must have confirmed provider first
-    if (!context.orgRef && !context.confirmedProvider && !payload.program_data?.org_ref) {
+    // orgRef is set when provider is confirmed (via handleConfirmProvider or searchPrograms)
+    if (!context.orgRef && !payload.program_data?.org_ref) {
       Logger.warn('[selectProgram] ⛔ STEP GATE: No confirmed provider');
       return this.formatResponse(
         "Let me help you find a program first. Which activity or provider are you looking for?",
