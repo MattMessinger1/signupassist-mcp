@@ -2190,6 +2190,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     }
     
     console.log('[selectProgram] 🔍 TRACE: Starting with sessionId:', sessionId);
+    console.log('[selectProgram] 🔍 TRACE: Input message:', input || '(none)');
     console.log('[selectProgram] 🔍 TRACE: Payload keys:', Object.keys(payload));
     console.log('[selectProgram] 🔍 TRACE: Full payload:', JSON.stringify(payload, null, 2));
     console.log('[selectProgram] 🔍 TRACE: Current context BEFORE update:', {
