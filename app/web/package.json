@@ -1,0 +1,29 @@
+{
+  "name": "signupassist-chatgpt-widget",
+  "version": "1.0.0",
+  "description": "ChatGPT Apps SDK widget for SignupAssist registration forms",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/component.tsx --bundle --format=esm --outfile=dist/component.js --jsx=automatic --minify --sourcemap",
+    "build:dev": "esbuild src/component.tsx --bundle --format=esm --outfile=dist/component.js --jsx=automatic --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.3.1",
+    "class-variance-authority": "^0.7.1",
+    "lucide-react": "^0.544.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.7.3"
+  },
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  }
+}
