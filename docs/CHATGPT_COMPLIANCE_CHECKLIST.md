@@ -69,6 +69,18 @@
 8. Privacy policy link works
 9. Logo displays correctly
 
+### 9. Natural Language Parsing (ChatGPT Compatibility) ✅
+- ✅ **Program selection by title** - "The Coding Course" parsed and matched
+- ✅ **Program selection by ordinal** - "the first one", "option 2" parsed
+- ✅ **Child info parsing** - "Percy, 11" or "Percy Messinger, 11" extracted
+- ✅ **Confirmation detection** - "Yes", "authorize", "go ahead" detected
+- ✅ **Provider confirmation in BROWSE step** - "Yes" after clarification
+- ✅ **Scheduled registration confirmation** - Handles scheduling flow
+- ✅ **displayedPrograms context storage** - Enables title/ordinal matching
+- ✅ **pendingProviderConfirmation tracking** - Enables "Yes" detection
+- ✅ **Audit trail for NL actions** - All NL-parsed actions logged with `source: "natural_language"`
+
+
 ## Current Implementation Status
 
 ### ✅ Completed
