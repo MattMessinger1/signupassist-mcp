@@ -18,20 +18,25 @@ import {
 import { useSendMessage, useToolOutput } from '../../hooks/useOpenAiGlobal';
 
 interface ConfirmationStepProps {
-  guardianData: Record<string, any>;
-  participantData: Record<string, any>[];
+  /** Optional guardian/delegate data */
+  guardianData?: Record<string, any>;
+  /** Optional participants data */
+  participantData?: Record<string, any>[];
+  /** Program details */
   program?: {
     title: string;
     price?: string;
     startDate?: string;
   };
+  /** Booking confirmation number */
   confirmationNumber?: string;
+  /** Callback when user clicks Done */
   onDone?: () => void;
 }
 
 export function ConfirmationStep({ 
-  guardianData, 
-  participantData,
+  guardianData = {}, 
+  participantData = [],
   program,
   confirmationNumber,
   onDone

@@ -12,6 +12,14 @@ export interface OpenAIWidgetState {
   consentGiven?: boolean;
   paymentVerified?: boolean;
   confirmationNumber?: string;
+  /** Selected organization reference */
+  selectedOrg?: string;
+  /** Last user action for flow tracking */
+  lastAction?: string;
+  /** Whether provider account is connected */
+  providerConnected?: boolean;
+  /** Whether user is authenticated */
+  authenticated?: boolean;
 }
 
 export interface ToolOutput {
@@ -83,6 +91,9 @@ declare global {
       
       // Send follow-up message to the assistant
       sendFollowUpMessage: (message: string) => void;
+      
+      // Postback data to ChatGPT (for widget → assistant communication)
+      postback: (payload: Record<string, any>) => void;
       
       // Request fullscreen mode
       requestFullscreen: () => void;

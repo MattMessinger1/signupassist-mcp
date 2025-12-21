@@ -93,19 +93,16 @@ function ErrorState({ message }: { message?: string }) {
 }
 
 function ConfirmationView({ 
-  message, 
   confirmationNumber,
   programName 
 }: { 
-  message?: string;
   confirmationNumber?: string;
   programName?: string;
 }) {
   return (
     <ConfirmationStep
       confirmationNumber={confirmationNumber}
-      programName={programName}
-      registrationData={{}}
+      program={programName ? { title: programName } : undefined}
     />
   );
 }
@@ -220,7 +217,7 @@ export function WidgetRoot() {
     case 'auth_required':
       return (
         <div className="p-4">
-          <AuthCheck onAuthSuccess={handleAuthSuccess} />
+          <AuthCheck onAuthenticated={handleAuthSuccess} />
         </div>
       );
 
