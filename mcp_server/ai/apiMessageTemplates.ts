@@ -286,3 +286,22 @@ export function getGracefulDeclineMessage(): string {
 export function getLocationQuestionMessage(): string {
   return `Which city are you in? This helps me find local programs faster.`;
 }
+
+/**
+ * Out-of-area programs offer message
+ * Shows when we have programs but not in the user's location
+ */
+export function getOutOfAreaProgramsMessage(vars: {
+  requested_city: string;
+  available_city: string;
+  available_state?: string;
+  program_count?: number;
+  activity_type?: string;
+}): string {
+  const { requested_city, available_city, available_state, program_count, activity_type } = vars;
+  const activityText = activity_type ? `${activity_type} programs` : 'programs';
+  const locationText = available_state ? `${available_city}, ${available_state}` : available_city;
+  const countText = program_count ? `${program_count} ` : '';
+  
+  return `I found ${countText}${activityText}, but they're in **${locationText}**, not ${requested_city}. Would you like to see them anyway?`;
+}
