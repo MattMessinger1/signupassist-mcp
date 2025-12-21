@@ -298,6 +298,19 @@ export function WidgetRoot() {
   const toolOutput = useToolOutput() as ToolOutput | null;
   const [widgetState, setWidgetState] = useWidgetState<OpenAIWidgetState>();
 
+  // DEBUG: Log raw toolOutput to help diagnose card rendering issues
+  if (process.env.NODE_ENV === 'development' || (typeof window !== 'undefined' && (window as any).__WIDGET_DEBUG__)) {
+    console.log('[WidgetRoot] 📦 Raw toolOutput:', JSON.stringify(toolOutput, null, 2));
+    console.log('[WidgetRoot] 🔍 Parsed:', {
+      hasMessage: !!toolOutput?.message,
+      hasCards: !!toolOutput?.cards,
+      cardsCount: toolOutput?.cards?.length || 0,
+      hasCta: !!toolOutput?.cta,
+      componentType: toolOutput?.metadata?.componentType,
+      hasPayload: !!toolOutput?.payload,
+    });
+  }
+
   // Extract routing info
   const componentType = toolOutput?.metadata?.componentType;
   const metadata = toolOutput?.metadata || {};
@@ -361,23 +374,44 @@ export function WidgetRoot() {
 
     // ============ Program Discovery ============
     case 'program_list':
-      const programPayload = toolOutput?.payload as ProgramSelectorPayload | undefined;
-      if (!programPayload) {
-        return <MessageDisplay message="No programs available." type="info" />;
+      // Backend sends cards at top level, not in payload
+      if (toolOutput?.cards && toolOutput.cards.length > 0) {
+        return (
+          <div className="p-4">
+            {toolOutput.message && (
+              <p className="text-sm text-muted-foreground mb-4">{toolOutput.message}</p>
+            )}
+            <ProgramCardList
+              cards={toolOutput.cards}
+              cta={toolOutput.cta}
+              onSelect={handleProgramSelect}
+              onChipClick={(payload) => {
+                if (window.openai?.postback) {
+                  window.openai.postback(payload);
+                }
+              }}
+            />
+          </div>
+        );
       }
-      return (
-        <div className="p-4">
-          <ProgramSelector
-            payload={programPayload}
-            onSelect={handleProgramSelect}
-            onChipClick={(payload) => {
-              if (window.openai?.postback) {
-                window.openai.postback(payload);
-              }
-            }}
-          />
-        </div>
-      );
+      // Fallback to payload-based ProgramSelector if available
+      const programPayload = toolOutput?.payload as ProgramSelectorPayload | undefined;
+      if (programPayload) {
+        return (
+          <div className="p-4">
+            <ProgramSelector
+              payload={programPayload}
+              onSelect={handleProgramSelect}
+              onChipClick={(payload) => {
+                if (window.openai?.postback) {
+                  window.openai.postback(payload);
+                }
+              }}
+            />
+          </div>
+        );
+      }
+      return <MessageDisplay message="No programs available." type="info" />;
 
     // ============ Provider Connection ============
     case 'provider_connect':
