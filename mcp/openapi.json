@@ -19,7 +19,7 @@
     "/orchestrator/chat": {
       "post": {
         "summary": "Chat with SignupAssist (RECOMMENDED)",
-        "description": "Send natural language messages to find and register for activities. This is the PRIMARY endpoint for ChatGPT.\n\n**What it understands:**\n- Activity searches: 'find robotics classes', 'show me swim lessons', 'what coding camps are available'\n- Location context: 'in Madison WI', 'near Chicago', 'in the 53703 area'\n- Age filtering: 'for my 7 year old', 'for kids ages 5-8', 'for teens'\n- Organization queries: 'What does AIM Design offer?', 'Show me Blackhawk Ski Club programs'\n\n**Conversation flow:** The system maintains context. Start with a search, then select programs, answer questions, and confirm bookings.\n\n**Protected actions:** Payment confirmations and bookings require OAuth authentication.",
+        "description": "Send natural language messages to find and register for activities. Understands locations, ages, activity types. Maintains conversation context across messages.",
         "operationId": "chat",
         "requestBody": {
           "required": true,
