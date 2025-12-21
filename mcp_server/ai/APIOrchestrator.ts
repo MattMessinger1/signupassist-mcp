@@ -255,11 +255,42 @@ export default class APIOrchestrator implements IOrchestrator {
       return displayedPrograms[0];
     }
     
-    // Match by title (fuzzy contains match)
+    // Strip common prefixes from input: "select ", "choose ", "I want ", etc.
+    const cleanedInput = normalized
+      .replace(/^(select|choose|pick|i want|i'd like|sign up for|register for|book)\s+/i, '')
+      .trim();
+    
+    // Match by title (fuzzy contains match with improved keyword extraction)
     const titleMatch = displayedPrograms.find(p => {
       const progTitle = (p.title || '').toLowerCase();
       // Check if user's input contains the program title or vice versa
-      return normalized.includes(progTitle) || progTitle.includes(normalized);
+      if (cleanedInput.includes(progTitle) || progTitle.includes(cleanedInput)) {
+        return true;
+      }
+      
+      // Extract meaningful keywords from program title (skip CLASS prefixes, ages, etc.)
+      const progKeywords = progTitle
+        .replace(/^class\s*\d+:\s*/i, '') // Remove "CLASS N:" prefix
+        .replace(/\s*\(ages?\s*\d+[-–]\d+\)\s*/gi, '') // Remove "(Ages X-Y)"
+        .replace(/\s*ages?\s*\d+[-–]\d+\s*/gi, '') // Remove "Ages X-Y" without parens
+        .replace(/\s*–\s*/g, ' ') // Replace em-dash with space
+        .trim()
+        .toLowerCase();
+      
+      // Check if cleaned input matches the core program name
+      if (cleanedInput.includes(progKeywords) || progKeywords.includes(cleanedInput)) {
+        return true;
+      }
+      
+      // Check for significant word overlap (at least 2 words match)
+      const inputWords = cleanedInput.split(/\s+/).filter(w => w.length > 2);
+      const progWords = progKeywords.split(/\s+/).filter(w => w.length > 2);
+      const matchingWords = inputWords.filter(w => progWords.some(pw => pw.includes(w) || w.includes(pw)));
+      if (matchingWords.length >= 2) {
+        return true;
+      }
+      
+      return false;
     });
     if (titleMatch) {
       console.log('[parseProgramSelection] ✅ TRACE: Matched by title', { 
@@ -275,36 +306,48 @@ export default class APIOrchestrator implements IOrchestrator {
     }
     
     // Match by ordinal: "the first one", "option 2", "number 3", "the second", "Class 2"
-    const ordinalMatch = normalized.match(/\b(?:class\s*)?(\d)\b|\b(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|one|two|three|four|five)\b/i);
-    if (ordinalMatch) {
-      const matched = ordinalMatch[1] || ordinalMatch[2];
-      const ordinalMap: Record<string, number> = {
-        'first': 0, '1st': 0, '1': 0, 'one': 0,
-        'second': 1, '2nd': 1, '2': 1, 'two': 1,
-        'third': 2, '3rd': 2, '3': 2, 'three': 2,
-        'fourth': 3, '4th': 3, '4': 3, 'four': 3,
-        'fifth': 4, '5th': 4, '5': 4, 'five': 4,
-      };
-      const idx = ordinalMap[matched] ?? -1;
-      console.log('[parseProgramSelection] 🔍 TRACE: Ordinal match attempt', {
-        matched,
-        idx,
-        programsAvailable: displayedPrograms.length
-      });
-      if (idx >= 0 && idx < displayedPrograms.length) {
-        console.log('[parseProgramSelection] ✅ TRACE: Matched by ordinal', {
-          ordinal: matched,
-          index: idx,
-          matchedTitle: displayedPrograms[idx].title,
-          program_ref: displayedPrograms[idx].program_ref
+    // IMPORTANT: Only match ordinals that appear to be intentional selections, not ages in program names
+    // Use strict patterns that require ordinal context (e.g., "class 2", "the first", "option 1")
+    const ordinalPatterns = [
+      /^(?:class|option|program|number|#)\s*(\d)$/i,                  // "class 2", "option 1", "#3"
+      /^(\d)(?:st|nd|rd|th)?(?:\s+(?:one|class|option|program))?$/i,  // "2nd", "3rd one", "1st class"
+      /^the\s+(first|second|third|fourth|fifth)\s*(?:one|class|option|program)?$/i, // "the first one"
+      /^(first|second|third|fourth|fifth)\s*(?:one|class|option|program)?$/i,       // "first one", "second"
+    ];
+    
+    for (const pattern of ordinalPatterns) {
+      const ordinalMatch = cleanedInput.match(pattern);
+      if (ordinalMatch) {
+        const matched = (ordinalMatch[1] || '').toLowerCase();
+        const ordinalMap: Record<string, number> = {
+          'first': 0, '1st': 0, '1': 0, 'one': 0,
+          'second': 1, '2nd': 1, '2': 1, 'two': 1,
+          'third': 2, '3rd': 2, '3': 2, 'three': 2,
+          'fourth': 3, '4th': 3, '4': 3, 'four': 3,
+          'fifth': 4, '5th': 4, '5': 4, 'five': 4,
+        };
+        const idx = ordinalMap[matched] ?? -1;
+        console.log('[parseProgramSelection] 🔍 TRACE: Ordinal match attempt', {
+          pattern: pattern.source,
+          matched,
+          idx,
+          programsAvailable: displayedPrograms.length
         });
-        Logger.info('[NL Parse] Program matched by ordinal', { 
-          source: 'natural_language', 
-          ordinal: matched,
-          index: idx,
-          matchedTitle: displayedPrograms[idx].title 
-        });
-        return displayedPrograms[idx];
+        if (idx >= 0 && idx < displayedPrograms.length) {
+          console.log('[parseProgramSelection] ✅ TRACE: Matched by ordinal', {
+            ordinal: matched,
+            index: idx,
+            matchedTitle: displayedPrograms[idx].title,
+            program_ref: displayedPrograms[idx].program_ref
+          });
+          Logger.info('[NL Parse] Program matched by ordinal', { 
+            source: 'natural_language', 
+            ordinal: matched,
+            index: idx,
+            matchedTitle: displayedPrograms[idx].title 
+          });
+          return displayedPrograms[idx];
+        }
       }
     }
     
