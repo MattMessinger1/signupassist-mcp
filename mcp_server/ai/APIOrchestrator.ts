@@ -2207,14 +2207,20 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       });
 
       // Build program list for inline text display in native ChatGPT
-      const programListForMessage = upcomingPrograms.map((prog, idx) => ({
-        index: idx + 1,
-        title: prog.title || "Untitled",
-        price: prog.price,
-        schedule: prog.schedule,
-        status: this.getBookingStatus(prog) === 'open_now' ? 'open' : 
-                this.getBookingStatus(prog) === 'opens_later' ? 'coming_soon' : 'waitlist'
-      }));
+      const programListForMessage = upcomingPrograms.map((prog, idx) => {
+        // Determine status inline (no separate method needed)
+        const hasAvailability = prog.availableSpots !== undefined ? prog.availableSpots > 0 : true;
+        const opensLater = prog.opensAt && new Date(prog.opensAt) > new Date();
+        const status = opensLater ? 'coming_soon' : (hasAvailability ? 'open' : 'waitlist');
+        
+        return {
+          index: idx + 1,
+          title: prog.title || "Untitled",
+          price: prog.price,
+          schedule: prog.schedule,
+          status
+        };
+      });
 
       // Use Design DNA-compliant message template with inline program list
       const message = getAPIProgramsReadyMessage({
