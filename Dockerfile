@@ -38,6 +38,7 @@ COPY providers ./providers
 COPY mcp ./mcp
 COPY src ./src
 COPY public ./public
+COPY app ./app
 
 # Build backend (single tsc run, no duplicate)
 RUN mkdir -p dist
@@ -55,6 +56,13 @@ RUN npx vite build
 # Verify frontend build succeeded
 RUN ls -la dist/client/index.html || echo "⚠️ Frontend build failed - no index.html"
 RUN ls -la dist/client/assets/*.js || echo "⚠️ Frontend build failed - no JS bundles"
+
+# Build ChatGPT Apps SDK widget bundle
+RUN echo "🎯 Building ChatGPT Apps SDK widget..."
+RUN mkdir -p app/web/dist
+RUN cd app/web && npm install --legacy-peer-deps 2>/dev/null || true
+RUN cd app/web && npx esbuild src/component.tsx --bundle --format=esm --outfile=dist/component.js --external:react --external:react-dom --loader:.tsx=tsx --loader:.ts=ts 2>/dev/null || echo "⚠️ Widget build skipped (optional)"
+RUN ls -la app/web/dist/component.js 2>/dev/null || echo "⚠️ Widget bundle not built (will use placeholder)"
 
 # ============================================
 # Runner stage (smaller final image)
@@ -76,6 +84,10 @@ COPY --from=builder /app/mcp ./mcp
 # Copy static files for serving frontend
 COPY public ./public
 COPY index.html ./
+
+# Copy ChatGPT Apps SDK widget bundle (optional - may not exist)
+RUN mkdir -p app/web/dist
+COPY --from=builder /app/app/web/dist/ ./app/web/dist/
 
 # Expose correct port (matches code default)
 EXPOSE 8080
