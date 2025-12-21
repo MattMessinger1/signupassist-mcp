@@ -196,7 +196,13 @@ class SignupAssistMCPServer {
 
   private setupRequestHandlers() {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      return { tools: Array.from(this.tools.values()) };
+      // Filter to only API-compatible tools (hide scraping/internal tools)
+      const apiTools = Array.from(this.tools.values()).filter(tool => 
+        tool.name.startsWith('bookeo.') || 
+        tool.name.startsWith('user.') ||
+        tool.name.startsWith('mandate.')
+      );
+      return { tools: apiTools };
     });
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -991,18 +997,35 @@ class SignupAssistMCPServer {
         req.on('end', async () => {
           try {
             const parsed = JSON.parse(body);
-            const { tool, args } = parsed;
+            let { tool, args } = parsed;
             if (!tool) {
               res.writeHead(400, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: 'Missing required field: tool' }));
               return;
             }
 
+            // Tool aliases for ChatGPT compatibility (OpenAPI uses clearer names)
+            // Internal names are preserved for audit trail consistency
+            const TOOL_ALIASES: Record<string, string> = {
+              'bookeo.get_registration_form': 'bookeo.discover_required_fields',
+              'bookeo.reserve_spot': 'bookeo.create_hold',
+            };
+            
+            const originalToolName = tool;
+            if (TOOL_ALIASES[tool]) {
+              tool = TOOL_ALIASES[tool];
+              console.log(`[TOOLS] Alias: ${originalToolName} → ${tool}`);
+            }
+
             if (!this.tools.has(tool)) {
+              // Return only API-friendly tools in error message (exclude internal/scraping tools)
+              const apiTools = Array.from(this.tools.keys())
+                .filter(t => t.startsWith('bookeo.') && !t.includes('test'))
+                .sort();
               res.writeHead(404, { 'Content-Type': 'application/json' });
               res.end(
                 JSON.stringify({
-                  error: `Tool '${tool}' not found. Available: ${Array.from(this.tools.keys()).join(', ')}`,
+                  error: `Tool '${originalToolName}' not found. Available tools: ${apiTools.join(', ')}`,
                 })
               );
               return;
