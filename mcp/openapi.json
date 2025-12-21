@@ -1,9 +1,9 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "SignupAssist MCP API",
-    "version": "2.2.0",
-    "description": "AI-powered activity registration assistant for finding and booking children's activities (robotics, STEM, swim lessons, camps, sports, art, music) across the United States.\n\n**For ChatGPT:** Use the `/orchestrator/chat` endpoint for all queries. Send natural language like 'find robotics classes in Madison WI for my 8 year old' and the system handles location matching, activity detection, age filtering, and provider discovery automatically.\n\n**Supported Activities:** robotics, STEM, coding, swim lessons, summer camps, sports, art, music, dance, martial arts, tutoring, and more.\n\n**Geographic Coverage:** US-based providers, primarily in the Midwest (Wisconsin, Illinois, Minnesota) with expanding coverage.",
+    "title": "SignupAssist",
+    "version": "2.3.0",
+    "description": "**SignupAssist helps parents find and register their children for activities.** Just tell me what you're looking for!\n\n**How to use:** Simply describe what you need - like 'find robotics classes for my 8 year old in Madison WI' or 'sign up for swim lessons'. I understand natural language and will guide you through the entire registration process.\n\n**What I can help with:** robotics, STEM, coding, swim lessons, summer camps, sports, art, music, dance, martial arts, and more.\n\n**Coverage:** US-based providers, primarily in the Midwest with expanding coverage.",
     "contact": {
       "email": "matt@shipworx.ai"
     },
@@ -18,8 +18,8 @@
   "paths": {
     "/orchestrator/chat": {
       "post": {
-        "summary": "Chat with SignupAssist (RECOMMENDED)",
-        "description": "Send natural language messages to find and register for activities. Understands locations, ages, activity types. Maintains conversation context across messages.",
+        "summary": "Talk to SignupAssist",
+        "description": "Send natural language messages to find and register for children's activities. Example: 'find robotics classes in Madison WI for my 8 year old'. I'll find matching programs, show you options, and help complete registration.",
         "operationId": "chat",
         "requestBody": {
           "required": true,
@@ -152,8 +152,8 @@
     },
     "/tools/call": {
       "post": {
-        "summary": "Execute MCP tool directly (advanced)",
-        "description": "Execute a specific MCP tool by name. **Use /orchestrator/chat instead** for natural language queries - this endpoint requires knowing the exact tool name and org_ref. Only use this for advanced integrations or debugging.",
+        "summary": "Direct tool access (internal use only)",
+        "description": "Execute a specific registration tool directly. **Most users should use /orchestrator/chat instead** - it's easier and handles everything automatically.",
         "operationId": "callTool",
         "requestBody": {
           "required": true,
@@ -167,13 +167,12 @@
                     "type": "string",
                     "enum": [
                       "bookeo.find_programs",
-                      "bookeo.discover_required_fields",
-                      "bookeo.create_hold",
+                      "bookeo.get_registration_form",
+                      "bookeo.reserve_spot",
                       "bookeo.confirm_booking",
-                      "bookeo.cancel_booking",
-                      "program_feed.get"
+                      "bookeo.cancel_booking"
                     ],
-                    "description": "Name of the tool to execute"
+                    "description": "Tool to execute. Use 'bookeo.find_programs' to search for classes, 'bookeo.get_registration_form' to see what info is needed, 'bookeo.reserve_spot' to hold a spot, 'bookeo.confirm_booking' to finalize."
                   },
                   "args": {
                     "type": "object",
@@ -490,73 +489,76 @@
       },
       "bookeo.find_programs_input": {
         "type": "object",
+        "description": "Search for available classes and programs at an organization",
         "properties": {
           "org_ref": {
             "type": "string",
-            "description": "Organization reference (e.g., 'aim-design' for Madison robotics/STEM)"
+            "description": "Organization ID (e.g., 'aim-design' for AIM Design in Madison)"
           },
           "category": {
             "type": "string",
-            "description": "Optional category filter (e.g., 'stem', 'all')"
+            "description": "Activity type filter: 'stem', 'robotics', 'art', 'all'"
           }
         },
         "required": ["org_ref"],
         "additionalProperties": false
       },
-      "bookeo.discover_required_fields_input": {
+      "bookeo.get_registration_form_input": {
         "type": "object",
+        "description": "Get the registration form fields needed to sign up for a class",
         "properties": {
           "program_ref": {
             "type": "string",
-            "description": "Program reference ID from find_programs"
+            "description": "Program ID from find_programs results"
           },
           "org_ref": {
             "type": "string",
-            "description": "Organization reference"
+            "description": "Organization ID"
           }
         },
         "required": ["program_ref", "org_ref"],
         "additionalProperties": false
       },
-      "bookeo.create_hold_input": {
+      "bookeo.reserve_spot_input": {
         "type": "object",
+        "description": "Temporarily reserve a spot in a class while completing registration",
         "properties": {
           "eventId": {
             "type": "string",
-            "description": "Bookeo event ID"
+            "description": "Class session ID"
           },
           "productId": {
             "type": "string",
-            "description": "Bookeo product ID"
+            "description": "Program ID"
           },
           "firstName": {
             "type": "string",
-            "description": "Customer first name"
+            "description": "Parent's first name"
           },
           "lastName": {
             "type": "string",
-            "description": "Customer last name"
+            "description": "Parent's last name"
           },
           "email": {
             "type": "string",
             "format": "email",
-            "description": "Customer email"
+            "description": "Parent's email"
           },
           "phone": {
             "type": "string",
-            "description": "Customer phone (optional)"
+            "description": "Parent's phone (optional)"
           },
           "adults": {
             "type": "integer",
-            "description": "Number of adult participants"
+            "description": "Number of adults attending"
           },
           "children": {
             "type": "integer",
-            "description": "Number of child participants"
+            "description": "Number of children to register"
           },
           "org_ref": {
             "type": "string",
-            "description": "Organization reference"
+            "description": "Organization ID"
           }
         },
         "required": ["eventId", "productId", "firstName", "lastName", "email", "adults", "children", "org_ref"],
@@ -564,14 +566,15 @@
       },
       "bookeo.confirm_booking_input": {
         "type": "object",
+        "description": "Complete the registration and confirm the booking",
         "properties": {
           "holdId": {
             "type": "string",
-            "description": "Hold ID from create_hold"
+            "description": "Reservation ID from reserve_spot"
           },
           "org_ref": {
             "type": "string",
-            "description": "Organization reference"
+            "description": "Organization ID"
           }
         },
         "required": ["holdId", "org_ref"],
@@ -579,36 +582,18 @@
       },
       "bookeo.cancel_booking_input": {
         "type": "object",
+        "description": "Cancel an existing registration",
         "properties": {
           "bookingNumber": {
             "type": "string",
-            "description": "Booking number to cancel"
+            "description": "Confirmation number to cancel"
           },
           "org_ref": {
             "type": "string",
-            "description": "Organization reference"
+            "description": "Organization ID"
           }
         },
         "required": ["bookingNumber", "org_ref"],
-        "additionalProperties": false
-      },
-      "program_feed.get_input": {
-        "type": "object",
-        "properties": {
-          "org_ref": {
-            "type": "string",
-            "description": "Organization reference"
-          },
-          "category": {
-            "type": "string",
-            "description": "Category filter"
-          },
-          "age_hint": {
-            "type": "integer",
-            "description": "Optional age for filtering age-appropriate programs"
-          }
-        },
-        "required": ["org_ref"],
         "additionalProperties": false
       }
     },
