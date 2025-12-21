@@ -57,15 +57,20 @@ RUN npx vite build
 RUN ls -la dist/client/index.html || echo "⚠️ Frontend build failed - no index.html"
 RUN ls -la dist/client/assets/*.js || echo "⚠️ Frontend build failed - no JS bundles"
 
-# Build ChatGPT Apps SDK widget bundle
+# Build ChatGPT Apps SDK widget bundle (MUST succeed)
 RUN echo "🎯 Building ChatGPT Apps SDK widget..."
 RUN mkdir -p app/web/dist
-RUN cd app/web && npm install --legacy-peer-deps 2>/dev/null || true
-RUN cd app/web && npx esbuild src/component.tsx --bundle --format=esm --outfile=dist/component.js --external:react --external:react-dom --loader:.tsx=tsx --loader:.ts=ts 2>/dev/null || echo "⚠️ Widget build skipped (optional)"
-RUN ls -la app/web/dist/component.js 2>/dev/null || echo "⚠️ Widget bundle not built (will use placeholder)"
 
-# Copy widget HTML template (ChatGPT Apps SDK entry point)
-COPY app/web/dist/app.html app/web/dist/app.html 2>/dev/null || echo "⚠️ Widget HTML not found (will use inline fallback)"
+# Copy widget HTML first (it's in the repo)
+COPY app/web/dist/app.html app/web/dist/app.html
+
+# Install widget deps and build
+RUN cd app/web && npm install --legacy-peer-deps 2>/dev/null || true
+RUN cd app/web && npx esbuild src/component.tsx --bundle --format=esm --outfile=dist/component.js --external:react --external:react-dom --loader:.tsx=tsx --loader:.ts=ts
+
+# Verify widget build succeeded
+RUN ls -la app/web/dist/component.js && echo "✅ Widget bundle built successfully"
+RUN ls -la app/web/dist/app.html && echo "✅ Widget HTML present"
 
 # ============================================
 # Runner stage (smaller final image)
