@@ -112,11 +112,25 @@ interface ToolOutputMetadata {
   [key: string]: unknown;
 }
 
+interface CardSpec {
+  title: string;
+  subtitle?: string;
+  description?: string;
+  buttons?: Array<{
+    label: string;
+    action?: string;
+    payload?: Record<string, unknown>;
+  }>;
+  metadata?: Record<string, unknown>;
+}
+
 interface ToolOutput {
   message?: string;
   metadata?: ToolOutputMetadata;
   payload?: unknown;
   events?: AuditEvent[];
+  cards?: CardSpec[]; // Backend returns cards at top level
+  cta?: Array<{ label: string; action?: string; payload?: Record<string, unknown> }>;
 }
 
 // ============ Sub-Components ============
@@ -159,6 +173,103 @@ function ErrorState({ message }: { message?: string }) {
       <p className="text-sm text-muted-foreground">
         {message || 'An error occurred. Please try again.'}
       </p>
+    </div>
+  );
+}
+
+/**
+ * Renders program cards from the flat `cards` array returned by the backend.
+ * Converts backend CardSpec format to clickable program cards.
+ */
+interface ProgramCardListProps {
+  cards: CardSpec[];
+  cta?: Array<{ label: string; action?: string; payload?: Record<string, unknown> }>;
+  onSelect?: (programRef: string, orgRef: string, action: string) => void;
+  onChipClick?: (payload: Record<string, unknown>) => void;
+}
+
+function ProgramCardList({ cards, cta, onSelect, onChipClick }: ProgramCardListProps) {
+  type ButtonType = NonNullable<CardSpec['buttons']>[number];
+  
+  const handleButtonClick = (card: CardSpec, button: ButtonType) => {
+    if (!button) return;
+    
+    // Extract program_ref and org_ref from button payload (where backend puts them)
+    const programData = button.payload?.program_data as Record<string, unknown> | undefined;
+    const programRef = (programData?.program_ref as string) || 
+                       (button.payload?.program_ref as string) || 
+                       card.title;
+    const orgRef = (programData?.org_ref as string) || 
+                   (button.payload?.org_ref as string) || 
+                   '';
+    const action = button.action || 'select_program';
+    
+    if (onSelect) {
+      onSelect(programRef, orgRef, action);
+    }
+    
+    if (window.openai?.postback) {
+      window.openai.postback({
+        intent: action,
+        program_ref: programRef,
+        org_ref: orgRef,
+        program_title: card.title,
+        ...button.payload,
+      });
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      {cards.map((card, idx) => (
+        <div
+          key={idx}
+          className="border border-border rounded-lg p-4 bg-card hover:shadow-md transition-shadow"
+        >
+          <h3 className="font-semibold text-foreground mb-1">{card.title}</h3>
+          {card.subtitle && (
+            <p className="text-sm text-muted-foreground mb-2">{card.subtitle}</p>
+          )}
+          {card.description && (
+            <p className="text-sm text-muted-foreground mb-3">{card.description}</p>
+          )}
+          {card.buttons && card.buttons.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {card.buttons.map((btn, btnIdx) => (
+                <button
+                  key={btnIdx}
+                  onClick={() => handleButtonClick(card, btn)}
+                  className="inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+                >
+                  {btn.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+      
+      {/* CTA chips at bottom */}
+      {cta && cta.length > 0 && (
+        <div className="flex flex-wrap gap-2 pt-2 border-t border-border mt-4">
+          {cta.map((chip, idx) => (
+            <button
+              key={idx}
+              onClick={() => {
+                if (onChipClick && chip.payload) {
+                  onChipClick(chip.payload);
+                }
+                if (window.openai?.postback && chip.payload) {
+                  window.openai.postback(chip.payload);
+                }
+              }}
+              className="inline-flex items-center px-3 py-1.5 rounded-full text-sm font-medium bg-muted text-muted-foreground hover:bg-muted/80 transition-colors"
+            >
+              {chip.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -333,6 +444,27 @@ export function WidgetRoot() {
 
     // ============ Default/Fallback ============
     default:
+      // Check if backend returned cards array (program listing without explicit componentType)
+      if (toolOutput?.cards && toolOutput.cards.length > 0) {
+        return (
+          <div className="p-4">
+            {toolOutput.message && (
+              <p className="text-sm text-muted-foreground mb-4">{toolOutput.message}</p>
+            )}
+            <ProgramCardList
+              cards={toolOutput.cards}
+              cta={toolOutput.cta}
+              onSelect={handleProgramSelect}
+              onChipClick={(payload) => {
+                if (window.openai?.postback) {
+                  window.openai.postback(payload);
+                }
+              }}
+            />
+          </div>
+        );
+      }
+      
       // Show message if present, otherwise nothing
       if (toolOutput?.message) {
         return (
