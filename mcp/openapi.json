@@ -2,12 +2,16 @@
   "openapi": "3.1.0",
   "info": {
     "title": "SignupAssist",
-    "version": "2.3.0",
-    "description": "**SignupAssist helps parents find and register their children for activities.** Just tell me what you're looking for!\n\n**How to use:** Simply describe what you need - like 'find robotics classes for my 8 year old in Madison WI' or 'sign up for swim lessons'. I understand natural language and will guide you through the entire registration process.\n\n**What I can help with:** robotics, STEM, coding, swim lessons, summer camps, sports, art, music, dance, martial arts, and more.\n\n**Coverage:** US-based providers, primarily in the Midwest with expanding coverage.",
+    "version": "2.4.0",
+    "description": "**SignupAssist helps parents find and register their children for activities.** Just tell me what you're looking for!\n\n**How to use:** Simply describe what you need - like 'find robotics classes for my 8 year old in Madison WI' or 'sign up for swim lessons'. I understand natural language and will guide you through the entire registration process.\n\n**What I can help with:** robotics, STEM, coding, swim lessons, summer camps, sports, art, music, dance, martial arts, and more.\n\n**Coverage:** US-based providers, primarily in the Midwest with expanding coverage.\n\n---\n\n## Trust & Security\n\n**Nothing is booked or charged until you press Confirm.** Every step is recorded in your Audit Trail for full transparency.\n\n- **Payment Security:** Payments are handled by Stripe. SignupAssist never sees your full card number.\n- **Refunds:** Program fee refunds are handled by the provider. SignupAssist success fee refunds are handled by SignupAssist.\n- **Responsible Delegate:** All actions are audited with timestamps and mandate tracking for compliance.\n\n---\n\n## Payment Flow\n\n1. Browse & select a program\n2. Fill out the registration form\n3. Set up payment method (Stripe)\n4. Review & authorize payment\n5. Confirm booking\n\n---\n\n## Action Categories\n\n**Discovery:** search_programs, browse_all_programs, clear_activity_filter, show_out_of_area_programs, confirm_provider, deny_provider\n\n**Selection:** select_program\n\n**Registration:** submit_form, load_saved_children, save_child\n\n**Profile:** load_delegate_profile, save_delegate_profile, save_location\n\n**Payment:** setup_payment_method, setup_payment, check_payment_method, show_payment_authorization, authorize_payment, confirm_payment\n\n**Scheduling:** schedule_auto_registration, confirm_scheduled_registration\n\n**Audit:** view_receipts, view_audit_trail\n\n**Cancellation:** cancel_registration, confirm_cancel_registration\n\n**Flow Control:** cancel_flow, clear_context",
     "contact": {
       "email": "matt@shipworx.ai"
     },
-    "x-openai-isConversational": true
+    "x-openai-isConversational": true,
+    "x-rateLimit": {
+      "requests": 60,
+      "period": "minute"
+    }
   },
   "servers": [
     {
@@ -19,7 +23,7 @@
     "/orchestrator/chat": {
       "post": {
         "summary": "Talk to SignupAssist",
-        "description": "Send natural language messages to find and register for children's activities. Example: 'find robotics classes in Madison WI for my 8 year old'. I'll find matching programs, show you options, and help complete registration.",
+        "description": "Send natural language messages to find and register for children's activities. Example: 'find robotics classes in Madison WI for my 8 year old'. I'll find matching programs, show you options, and help complete registration.\n\n**IMPORTANT:** Nothing is booked or charged until the user explicitly confirms. Always show the audit trail option after any action.",
         "operationId": "chat",
         "requestBody": {
           "required": true,
@@ -46,16 +50,33 @@
                       "authorize_payment",
                       "confirm_payment",
                       "setup_payment_method",
+                      "setup_payment",
                       "cancel_registration",
+                      "confirm_cancel_registration",
                       "confirm_provider",
+                      "deny_provider",
                       "view_receipts",
+                      "view_audit_trail",
+                      "schedule_auto_registration",
+                      "confirm_scheduled_registration",
+                      "load_saved_children",
+                      "check_payment_method",
+                      "save_child",
+                      "load_delegate_profile",
+                      "save_delegate_profile",
+                      "save_location",
+                      "browse_all_programs",
+                      "clear_activity_filter",
+                      "show_out_of_area_programs",
+                      "show_payment_authorization",
+                      "cancel_flow",
                       "clear_context"
                     ],
                     "description": "Optional action from a button click. Most conversations should just use 'message' with natural language - actions are automatically returned in response button payloads. Do not manually construct actions."
                   },
                   "payload": {
                     "type": "object",
-                    "description": "Data payload for the action (e.g., program_ref for select_program, answers for answer_questions)",
+                    "description": "Data payload for the action (e.g., program_ref for select_program, answers for submit_form, child data for save_child)",
                     "additionalProperties": true
                   },
                   "userTimezone": {
@@ -97,6 +118,49 @@
                     "payload": {
                       "program_ref": "robotics-101",
                       "org_ref": "aim-design"
+                    }
+                  }
+                },
+                "submit_registration_form": {
+                  "summary": "Submit registration form with delegate and participant info",
+                  "value": {
+                    "message": "",
+                    "sessionId": "chatgpt-session-123",
+                    "action": "submit_form",
+                    "payload": {
+                      "delegate": {
+                        "first_name": "Jane",
+                        "last_name": "Doe",
+                        "email": "jane@example.com",
+                        "date_of_birth": "1985-03-15",
+                        "relationship": "parent"
+                      },
+                      "participants": [
+                        {
+                          "first_name": "Tommy",
+                          "last_name": "Doe",
+                          "date_of_birth": "2015-06-20"
+                        }
+                      ]
+                    }
+                  }
+                },
+                "view_audit_trail": {
+                  "summary": "View the audit trail of actions",
+                  "value": {
+                    "message": "",
+                    "sessionId": "chatgpt-session-123",
+                    "action": "view_audit_trail"
+                  }
+                },
+                "authorize_payment": {
+                  "summary": "Authorize payment for registration",
+                  "value": {
+                    "message": "",
+                    "sessionId": "chatgpt-session-123",
+                    "action": "authorize_payment",
+                    "payload": {
+                      "mandate_id": "uuid-mandate-id"
                     }
                   }
                 }
@@ -322,6 +386,41 @@
             },
             "additionalProperties": true
           },
+          "metadata": {
+            "type": "object",
+            "description": "Response metadata for tracking and UI hints",
+            "properties": {
+              "componentType": {
+                "type": "string",
+                "enum": ["payment_setup", "form", "confirmation", "audit_trail", "program_list", "profile", "schedule"],
+                "description": "UI component type hint for rendering"
+              },
+              "next_action": {
+                "type": "string",
+                "description": "Suggested next action for the flow"
+              },
+              "mandate_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "Mandate ID for audit trail tracking"
+              },
+              "audit_trail_id": {
+                "type": "string",
+                "description": "Audit trail entry ID for this action"
+              },
+              "registration_id": {
+                "type": "string",
+                "format": "uuid",
+                "description": "Registration ID when a booking is created"
+              },
+              "_build": {
+                "type": "object",
+                "description": "Build metadata for debugging",
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true
+          },
           "suggestedQueries": {
             "type": "array",
             "items": { "type": "string" },
@@ -407,7 +506,7 @@
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["program", "form", "confirmation", "error", "info"],
+            "enum": ["program", "form", "confirmation", "error", "info", "audit_trail", "payment", "schedule"],
             "description": "Card type for rendering hints"
           },
           "title": { "type": "string" },
@@ -422,7 +521,9 @@
               "ageRange": { "type": "string" },
               "dates": { "type": "string" },
               "location": { "type": "string" },
-              "spotsAvailable": { "type": "integer" }
+              "spotsAvailable": { "type": "integer" },
+              "mandate_id": { "type": "string" },
+              "registration_id": { "type": "string" }
             },
             "additionalProperties": true
           },
