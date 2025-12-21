@@ -101,6 +101,13 @@ interface APIContext {
   
   // ChatGPT NL compatibility: pending provider confirmation (for "Yes" responses)
   pendingProviderConfirmation?: string;
+  
+  // ChatGPT NL compatibility: multi-participant flow
+  pendingParticipants?: Array<{ firstName: string; lastName: string; age?: number }>;
+  
+  // ChatGPT NL compatibility: delegate info collection
+  pendingDelegateInfo?: { email?: string; firstName?: string; lastName?: string; phone?: string };
+  awaitingDelegateEmail?: boolean;
 }
 
 /**
@@ -248,6 +255,97 @@ export default class APIOrchestrator implements IOrchestrator {
     }
     
     return null;
+  }
+  
+  /**
+   * Parse multiple children from a single natural language message
+   * Handles: "Percy, 11 and Alice, 9", "John Smith 8, Jane Smith 6"
+   * For ChatGPT multi-participant registration flow
+   */
+  private parseMultipleChildrenFromMessage(input: string): Array<{ name: string; age?: number; firstName?: string; lastName?: string }> {
+    const results: Array<{ name: string; age?: number; firstName?: string; lastName?: string }> = [];
+    
+    // Split by common delimiters: "and", "&", newlines, semicolons
+    const segments = input.split(/\s+(?:and|&)\s+|[;\n]+/i).map(s => s.trim()).filter(Boolean);
+    
+    for (const segment of segments) {
+      const parsed = this.parseChildInfoFromMessage(segment);
+      if (parsed) {
+        results.push(parsed);
+      }
+    }
+    
+    // If no splits worked, try parsing the whole input as a single child
+    if (results.length === 0) {
+      const singleParsed = this.parseChildInfoFromMessage(input);
+      if (singleParsed) {
+        results.push(singleParsed);
+      }
+    }
+    
+    return results;
+  }
+  
+  /**
+   * Detect if input indicates user is done adding participants
+   * Handles: "done", "that's all", "no more", "finished", "nope", etc.
+   */
+  private isDoneIndicator(input: string): boolean {
+    const donePatterns = /^(done|that's all|thats all|no more|finished|complete|nobody else|just (them|those|that)|nope|no|i'm done|im done|that's it|thats it|all set|we're good|were good)\.?!?$/i;
+    return donePatterns.test(input.trim());
+  }
+  
+  /**
+   * Parse delegate email from natural language input
+   * Handles: "my email is john@example.com", "john@example.com", "email: john@test.com"
+   */
+  private parseDelegateEmail(input: string): string | null {
+    const emailPattern = /[\w.+-]+@[\w.-]+\.\w{2,}/;
+    const match = input.match(emailPattern);
+    return match ? match[0].toLowerCase() : null;
+  }
+  
+  /**
+   * Parse secondary actions from natural language
+   * Handles: "show my registrations", "cancel my booking", "view audit trail"
+   */
+  private parseSecondaryAction(input: string): { action: string; payload?: any } | null {
+    const normalized = input.toLowerCase().trim();
+    
+    // View registrations / receipts / bookings
+    if (/\b(show|view|see|list|my)\b.*\b(registrations?|bookings?|receipts?|signups?|enrollments?)\b/i.test(normalized) ||
+        /\b(registrations?|bookings?|receipts?)\b.*\b(please|show|view)?\b/i.test(normalized)) {
+      Logger.info('[NL Parse] Secondary action detected: view_receipts', { source: 'natural_language', input });
+      return { action: 'view_receipts' };
+    }
+    
+    // Cancel registration
+    if (/\b(cancel|remove|delete|undo)\b.*\b(registration|booking|signup|enrollment)\b/i.test(normalized) ||
+        /\b(registration|booking)\b.*\b(cancel|remove)\b/i.test(normalized)) {
+      Logger.info('[NL Parse] Secondary action detected: cancel_registration', { source: 'natural_language', input });
+      return { action: 'cancel_registration' };
+    }
+    
+    // View audit trail / history
+    if (/\b(audit|trail|history|log|activity)\b/i.test(normalized) && 
+        /\b(show|view|see|my)\b/i.test(normalized)) {
+      Logger.info('[NL Parse] Secondary action detected: view_audit_trail', { source: 'natural_language', input });
+      return { action: 'view_audit_trail' };
+    }
+    
+    return null;
+  }
+  
+  /**
+   * Normalize location input by stripping common qualifiers
+   * Handles: "near Chicago", "around Madison", "in the Madison area"
+   */
+  private normalizeLocationInput(input: string): string {
+    return input
+      .replace(/\b(near|around|close to|in|at|the)\b/gi, '')
+      .replace(/\b(area|region|city|metro|vicinity)\b/gi, '')
+      .trim()
+      .replace(/\s+/g, ' '); // Collapse multiple spaces
   }
   
   // ============================================================================
@@ -566,9 +664,55 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     sessionId: string,
     context: APIContext
   ): Promise<OrchestratorResponse> {
+    // ChatGPT NL: Check for secondary actions FIRST (view receipts, cancel, audit trail)
+    const secondaryAction = this.parseSecondaryAction(input);
+    if (secondaryAction) {
+      Logger.info('[NL Parse] Secondary action detected at start of handleMessage', {
+        source: 'natural_language',
+        action: secondaryAction.action,
+        userInput: input
+      });
+      return await this.handleAction(secondaryAction.action, secondaryAction.payload || {}, sessionId, context);
+    }
+    
+    // ChatGPT NL: Check if user is awaiting delegate email collection
+    if (context.awaitingDelegateEmail) {
+      const email = this.parseDelegateEmail(input);
+      if (email) {
+        Logger.info('[NL Parse] Delegate email extracted', { source: 'natural_language', email });
+        // Store email and proceed with form submission
+        const pendingParticipants = context.pendingParticipants || [];
+        this.updateContext(sessionId, { 
+          awaitingDelegateEmail: false,
+          pendingDelegateInfo: { ...context.pendingDelegateInfo, email }
+        });
+        
+        // Now submit with collected data
+        const formData = {
+          participants: pendingParticipants,
+          delegate: { delegate_email: email }
+        };
+        
+        return await this.submitForm({
+          formData,
+          program_ref: context.selectedProgram?.program_ref,
+          org_ref: context.orgRef || context.selectedProgram?.org_ref
+        }, sessionId, context);
+      }
+      
+      // Email not detected - ask again
+      return this.formatResponse(
+        "I didn't catch that email. Please share your email address (e.g., 'john@example.com').",
+        undefined,
+        []
+      );
+    }
+    
     // Check if this might be a location response (simple city/state input)
-    if (context.step === FlowStep.BROWSE && this.isLocationResponse(input)) {
-      return await this.handleLocationResponse(input, sessionId, context);
+    // Use normalizeLocationInput to handle fuzzy inputs like "near Chicago"
+    const normalizedForLocation = this.normalizeLocationInput(input);
+    if (context.step === FlowStep.BROWSE && this.isLocationResponse(normalizedForLocation)) {
+      return await this.handleLocationResponse(normalizedForLocation, sessionId, context);
     }
 
     // Get user's stored location if authenticated
@@ -723,23 +867,33 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       }
       
       case FlowStep.FORM_FILL: {
-        // ChatGPT NL: Try to parse child info from natural language
-        const childInfo = this.parseChildInfoFromMessage(input);
-        if (childInfo?.name) {
-          Logger.info('[NL Parse] Child info extracted from NL input', {
+        // ChatGPT NL: Multi-participant flow - check for "done" indicator first
+        if (this.isDoneIndicator(input) && context.pendingParticipants?.length) {
+          Logger.info('[NL Parse] Done indicator detected - submitting with pending participants', {
             source: 'natural_language',
-            parsed: childInfo,
+            participantCount: context.pendingParticipants.length,
             userInput: input
           });
           
-          // Build form data with extracted child info
+          // Check if we need delegate email (for unauthenticated or new users)
+          const needsDelegateEmail = !context.user_id && !context.pendingDelegateInfo?.email;
+          if (needsDelegateEmail) {
+            this.updateContext(sessionId, { awaitingDelegateEmail: true });
+            return this.formatResponse(
+              `Great! I have ${context.pendingParticipants.length} participant${context.pendingParticipants.length > 1 ? 's' : ''} ready.\n\nWhat's your email address? (as the responsible adult)`,
+              undefined,
+              []
+            );
+          }
+          
+          // Submit with collected participants
           const formData = {
-            participants: [{
-              firstName: childInfo.firstName || childInfo.name.split(' ')[0],
-              lastName: childInfo.lastName || childInfo.name.split(' ').slice(1).join(' ') || '',
-              age: childInfo.age
-            }]
+            participants: context.pendingParticipants,
+            delegate: context.pendingDelegateInfo ? { delegate_email: context.pendingDelegateInfo.email } : undefined
           };
+          
+          // Clear pending participants after submission
+          this.updateContext(sessionId, { pendingParticipants: undefined });
           
           return await this.submitForm({
             formData,
@@ -748,11 +902,86 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           }, sessionId, context);
         }
         
+        // ChatGPT NL: Try to parse multiple children from natural language
+        const parsedChildren = this.parseMultipleChildrenFromMessage(input);
+        if (parsedChildren.length > 0) {
+          Logger.info('[NL Parse] Child info extracted from NL input', {
+            source: 'natural_language',
+            parsedCount: parsedChildren.length,
+            parsed: parsedChildren,
+            userInput: input
+          });
+          
+          // Add to pending participants
+          const existingParticipants = context.pendingParticipants || [];
+          const allParticipants = [...existingParticipants, ...parsedChildren.map(child => ({
+            firstName: child.firstName || child.name.split(' ')[0],
+            lastName: child.lastName || child.name.split(' ').slice(1).join(' ') || '',
+            age: child.age
+          }))];
+          
+          this.updateContext(sessionId, { pendingParticipants: allParticipants });
+          
+          // Build participant name list for confirmation
+          const nameList = parsedChildren.map(c => c.name).join(' and ');
+          const totalCount = allParticipants.length;
+          
+          // Ask if there are more participants
+          return this.formatResponse(
+            `Got it! ${nameList} added (${totalCount} total).\n\nAnyone else to register? Say "done" when that's everyone.`,
+            undefined,
+            [
+              { label: "Done - that's everyone", action: "submit_form", payload: { finalize: true }, variant: "accent" },
+              { label: "Add more participants", action: "continue_form", variant: "outline" }
+            ]
+          );
+        }
+        
+        // Check if we have pending participants but no new ones parsed - might be a "done" variant
+        if (context.pendingParticipants?.length && input.trim().length < 20) {
+          // Short input that's not a name might be trying to say "done" in different ways
+          const mightBeDone = /^(ok|okay|proceed|continue|go|yes|yep|submit|register|book)\.?!?$/i.test(input.trim());
+          if (mightBeDone) {
+            Logger.info('[NL Parse] Implicit done indicator detected', { source: 'natural_language', input });
+            
+            // Check if we need delegate email
+            const needsDelegateEmail = !context.user_id && !context.pendingDelegateInfo?.email;
+            if (needsDelegateEmail) {
+              this.updateContext(sessionId, { awaitingDelegateEmail: true });
+              return this.formatResponse(
+                `Great! What's your email address? (as the responsible adult)`,
+                undefined,
+                []
+              );
+            }
+            
+            const formData = {
+              participants: context.pendingParticipants,
+              delegate: context.pendingDelegateInfo ? { delegate_email: context.pendingDelegateInfo.email } : undefined
+            };
+            
+            this.updateContext(sessionId, { pendingParticipants: undefined });
+            
+            return await this.submitForm({
+              formData,
+              program_ref: context.selectedProgram?.program_ref,
+              org_ref: context.orgRef || context.selectedProgram?.org_ref
+            }, sessionId, context);
+          }
+        }
+        
         // Fallback: ask for child info explicitly
+        const pendingCount = context.pendingParticipants?.length || 0;
+        const prompt = pendingCount > 0
+          ? `Who else would you like to register? (or say "done" if that's everyone)`
+          : "Please share your child's name and age (e.g., 'Percy, 11'). You can add multiple by saying 'Percy, 11 and Alice, 9'.";
+        
         return this.formatResponse(
-          "Please share your child's name and age (e.g., 'Percy, 11').",
+          prompt,
           undefined,
-          [{ label: "Continue", action: "submit_form", variant: "accent" }]
+          pendingCount > 0 
+            ? [{ label: "Done - that's everyone", action: "submit_form", payload: { finalize: true }, variant: "accent" }]
+            : [{ label: "Continue", action: "submit_form", variant: "accent" }]
         );
       }
 
@@ -1138,6 +1367,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       ignoreAudienceMismatch: undefined,
       displayedPrograms: undefined,
       pendingProviderConfirmation: undefined,
+      // Multi-participant and delegate flow state
+      pendingParticipants: undefined,
+      pendingDelegateInfo: undefined,
+      awaitingDelegateEmail: undefined,
     });
 
     return this.formatResponse(
