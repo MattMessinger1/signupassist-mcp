@@ -37,13 +37,42 @@ export function formatDisplayTime(isoTime: string): string {
 }
 
 /**
- * BROWSE step: Programs ready message
+ * Program info for text-based listing
  */
-export function getAPIProgramsReadyMessage(vars: APIMessageVariables): string {
+export interface ProgramListItem {
+  index: number;
+  title: string;
+  price?: string;
+  schedule?: string;
+  status?: string;
+}
+
+/**
+ * BROWSE step: Programs ready message with inline listing for native ChatGPT
+ */
+export function getAPIProgramsReadyMessage(vars: APIMessageVariables & { programs?: ProgramListItem[] }): string {
   const providerName = vars.provider_name || "your provider";
   const count = vars.program_count || 0;
+  const programs = vars.programs || [];
   
-  return `Found ${count} class${count !== 1 ? 'es' : ''} at ${providerName}. Tap any card to sign up.`;
+  let message = `Found ${count} class${count !== 1 ? 'es' : ''} at **${providerName}**:\n\n`;
+  
+  // Add program listings directly in the message for native ChatGPT
+  if (programs.length > 0) {
+    programs.forEach((prog, idx) => {
+      const num = idx + 1;
+      const statusEmoji = prog.status === 'open' ? '✅' : prog.status === 'waitlist' ? '⏳' : '📅';
+      message += `**${num}. ${prog.title}**\n`;
+      if (prog.price) message += `   💲 ${prog.price}`;
+      if (prog.schedule) message += ` · 📅 ${prog.schedule}`;
+      message += ` · ${statusEmoji} ${prog.status === 'open' ? 'Open' : prog.status === 'waitlist' ? 'Waitlist' : 'Coming Soon'}\n\n`;
+    });
+    message += `Reply with a number (1-${programs.length}) or program name to sign up.`;
+  } else {
+    message += `Reply with a program name or number to sign up.`;
+  }
+  
+  return message;
 }
 
 /**
