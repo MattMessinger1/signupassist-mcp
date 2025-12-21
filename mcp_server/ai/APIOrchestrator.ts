@@ -129,9 +129,9 @@ export default class APIOrchestrator implements IOrchestrator {
   
   // Build stamp for debugging which version is running in production
   private static readonly BUILD_STAMP = {
-    build_id: '2025-12-21T04:10:00Z',
+    build_id: '2025-12-21T05:00:00Z',
     orchestrator_mode: 'api-first',
-    version: '2.4.0-auth0-session-fix'
+    version: '2.5.0-trace-session-persistence'
   };
   
   // LRU cache for input classification results (avoid redundant LLM calls)
@@ -229,7 +229,16 @@ export default class APIOrchestrator implements IOrchestrator {
    * For ChatGPT compatibility where users type instead of clicking buttons
    */
   private parseProgramSelection(input: string, displayedPrograms: Array<{ title: string; program_ref: string; program_data?: any }>): { title: string; program_ref: string; program_data?: any } | null {
-    if (!displayedPrograms || displayedPrograms.length === 0) return null;
+    console.log('[parseProgramSelection] 🔍 TRACE: Starting parse', {
+      input,
+      displayedProgramsCount: displayedPrograms?.length || 0,
+      displayedTitles: displayedPrograms?.map(p => p.title).join(', ') || 'none'
+    });
+    
+    if (!displayedPrograms || displayedPrograms.length === 0) {
+      console.log('[parseProgramSelection] ❌ TRACE: No displayed programs to match against');
+      return null;
+    }
     
     const normalized = input.toLowerCase().trim();
     
@@ -240,6 +249,10 @@ export default class APIOrchestrator implements IOrchestrator {
       return normalized.includes(progTitle) || progTitle.includes(normalized);
     });
     if (titleMatch) {
+      console.log('[parseProgramSelection] ✅ TRACE: Matched by title', { 
+        matchedTitle: titleMatch.title,
+        program_ref: titleMatch.program_ref
+      });
       Logger.info('[NL Parse] Program matched by title', { 
         source: 'natural_language', 
         matchedTitle: titleMatch.title,
@@ -248,9 +261,10 @@ export default class APIOrchestrator implements IOrchestrator {
       return titleMatch;
     }
     
-    // Match by ordinal: "the first one", "option 2", "number 3", "the second"
-    const ordinalMatch = normalized.match(/\b(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|1|2|3|4|5|one|two|three|four|five)\b/);
+    // Match by ordinal: "the first one", "option 2", "number 3", "the second", "Class 2"
+    const ordinalMatch = normalized.match(/\b(?:class\s*)?(\d)\b|\b(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|one|two|three|four|five)\b/i);
     if (ordinalMatch) {
+      const matched = ordinalMatch[1] || ordinalMatch[2];
       const ordinalMap: Record<string, number> = {
         'first': 0, '1st': 0, '1': 0, 'one': 0,
         'second': 1, '2nd': 1, '2': 1, 'two': 1,
@@ -258,11 +272,22 @@ export default class APIOrchestrator implements IOrchestrator {
         'fourth': 3, '4th': 3, '4': 3, 'four': 3,
         'fifth': 4, '5th': 4, '5': 4, 'five': 4,
       };
-      const idx = ordinalMap[ordinalMatch[1]] ?? -1;
+      const idx = ordinalMap[matched] ?? -1;
+      console.log('[parseProgramSelection] 🔍 TRACE: Ordinal match attempt', {
+        matched,
+        idx,
+        programsAvailable: displayedPrograms.length
+      });
       if (idx >= 0 && idx < displayedPrograms.length) {
+        console.log('[parseProgramSelection] ✅ TRACE: Matched by ordinal', {
+          ordinal: matched,
+          index: idx,
+          matchedTitle: displayedPrograms[idx].title,
+          program_ref: displayedPrograms[idx].program_ref
+        });
         Logger.info('[NL Parse] Program matched by ordinal', { 
           source: 'natural_language', 
-          ordinal: ordinalMatch[1],
+          ordinal: matched,
           index: idx,
           matchedTitle: displayedPrograms[idx].title 
         });
@@ -270,6 +295,7 @@ export default class APIOrchestrator implements IOrchestrator {
       }
     }
     
+    console.log('[parseProgramSelection] ❌ TRACE: No match found');
     return null;
   }
   
@@ -2140,9 +2166,15 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       );
     }
     
-    console.log('[selectProgram] 🔍 Starting with sessionId:', sessionId);
-    console.log('[selectProgram] 🔍 Payload keys:', Object.keys(payload));
-    console.log('[selectProgram] 🔍 Full payload:', JSON.stringify(payload, null, 2));
+    console.log('[selectProgram] 🔍 TRACE: Starting with sessionId:', sessionId);
+    console.log('[selectProgram] 🔍 TRACE: Payload keys:', Object.keys(payload));
+    console.log('[selectProgram] 🔍 TRACE: Full payload:', JSON.stringify(payload, null, 2));
+    console.log('[selectProgram] 🔍 TRACE: Current context BEFORE update:', {
+      step: context.step,
+      hasSelectedProgram: !!context.selectedProgram,
+      hasDisplayedPrograms: !!context.displayedPrograms,
+      displayedProgramsCount: context.displayedPrograms?.length || 0
+    });
     
     const programData = payload.program_data;
     const programName = programData?.title || programData?.name || payload.program_name || "this program";
@@ -2159,17 +2191,27 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     const orgRef = programData?.org_ref || 'aim-design';
 
     // Update context (clear displayedPrograms since we're moving to next step)
+    console.log('[selectProgram] 🔍 TRACE: About to call updateContext with selectedProgram:', {
+      programData_exists: !!programData,
+      programData_ref: programData?.ref || programData?.program_ref,
+      programData_name: programData?.name || programData?.title
+    });
+    
     this.updateContext(sessionId, {
       step: FlowStep.FORM_FILL,
       selectedProgram: programData,
       displayedPrograms: undefined // Clear to prevent stale data
     });
     
-    console.log('[selectProgram] ✅ Context updated - selectedProgram stored:', {
+    // Verify update succeeded
+    const verifyContext = this.sessions.get(sessionId);
+    console.log('[selectProgram] ✅ TRACE: Context AFTER update:', {
       sessionId,
       program_ref: programRef,
       program_name: programName,
-      has_selectedProgram_in_map: !!this.sessions.get(sessionId)?.selectedProgram
+      has_selectedProgram_in_map: !!verifyContext?.selectedProgram,
+      verified_step: verifyContext?.step,
+      verified_program_name: verifyContext?.selectedProgram?.name || verifyContext?.selectedProgram?.title
     });
 
     // ✅ COMPLIANCE FIX: Call MCP tool for form discovery (ensures audit logging)
@@ -4731,16 +4773,34 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
 
   /**
    * Update session context (now also persists to Supabase)
+   * ENHANCED: Added detailed tracing to debug session persistence issues
    */
   private updateContext(sessionId: string, updates: Partial<APIContext>): void {
     const current = this.getContext(sessionId);
     const updated = { ...current, ...updates };
     this.sessions.set(sessionId, updated);
     
+    // 🔍 TRACE: Log what we're persisting
+    const tracePayload = {
+      sessionId,
+      updateKeys: Object.keys(updates),
+      hasSelectedProgram: !!updated.selectedProgram,
+      selectedProgramName: updated.selectedProgram?.name || updated.selectedProgram?.title || 'none',
+      step: updated.step,
+      timestamp: new Date().toISOString()
+    };
+    
+    console.log('[updateContext] 📝 TRACE: Updating session:', JSON.stringify(tracePayload, null, 2));
+    
     // Async persist to DB (fire-and-forget for performance)
-    this.persistSessionToDB(sessionId, updated).catch(err => {
-      Logger.warn('[updateContext] Background persist failed:', err);
-    });
+    this.persistSessionToDB(sessionId, updated)
+      .then(() => {
+        console.log('[updateContext] ✅ TRACE: Persist completed for', sessionId);
+      })
+      .catch(err => {
+        console.error('[updateContext] ❌ TRACE: Persist FAILED for', sessionId, err);
+        Logger.warn('[updateContext] Background persist failed:', err);
+      });
   }
 
   /**
