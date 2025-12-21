@@ -464,11 +464,19 @@ class SignupAssistMCPServer {
       
       // ==================== END OAUTH PROXY ENDPOINTS ====================
 
-      // --- Health check endpoint
+      // --- Health check endpoint (includes version info for deploy verification)
       if (req.method === 'GET' && url.pathname === '/health') {
         console.log('[HEALTH] check received');
         res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true }));
+        res.end(JSON.stringify({
+          ok: true,
+          version: process.env.APP_VERSION || '2.1.1-full-gating',
+          build_id: process.env.APP_BUILD_ID || '2025-06-22T02:30:00Z',
+          git_commit: VERSION_INFO.commit,
+          started_at: VERSION_INFO.builtAt,
+          useNewAAP: VERSION_INFO.useNewAAP,
+          ts: Date.now()
+        }));
         return;
       }
 
@@ -479,9 +487,9 @@ class SignupAssistMCPServer {
         res.end(JSON.stringify({
           ok: true,
           build: {
-            build_id: '2025-06-22T01:30:00Z',
+            build_id: process.env.APP_BUILD_ID || '2025-06-22T02:30:00Z',
             orchestrator_mode: 'api-first',
-            version: '2.1.0-step-gating',
+            version: process.env.APP_VERSION || '2.1.1-full-gating',
             step_gating: true
           },
           server: {
