@@ -63,13 +63,7 @@ export interface BookeoTool {
 function stripHtml(html: string): string {
   if (!html) return '';
   
-  // Remove HTML tags
-  let text = html.replace(/<[^>]*>/g, ' ');
-  
-  // Remove structural prefixes like "Description → Section: General"
-  text = text.replace(/^[^:]*→\s*Section:\s*\w+\s*/i, '');
-  
-  // Decode common HTML entities
+  // Decode common HTML entities FIRST (before stripping tags)
   const entities: Record<string, string> = {
     '&rarr;': '→',
     '&larr;': '←',
@@ -86,9 +80,16 @@ function stripHtml(html: string): string {
     '&quot;': '"'
   };
   
+  let text = html;
   Object.entries(entities).forEach(([entity, char]) => {
     text = text.replace(new RegExp(entity, 'g'), char);
   });
+  
+  // Remove HTML tags
+  text = text.replace(/<[^>]*>/g, ' ');
+  
+  // Remove structural prefixes like "Description → Section: General" ANYWHERE in text
+  text = text.replace(/Description\s*→\s*Section:\s*\w+/gi, '');
   
   // Clean up excessive whitespace
   text = text.replace(/\s+/g, ' ').trim();
