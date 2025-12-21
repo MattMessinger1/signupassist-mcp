@@ -1636,6 +1636,14 @@ class SignupAssistMCPServer {
             const isAPIMode = process.env.USE_API_ORCHESTRATOR === 'true';
             
             // Route to appropriate orchestrator method
+            // ================================================================
+            // SESSION KEY: Use userId as the stable session identifier
+            // ChatGPT may send different sessionIds each turn, but userId (from Auth0) is stable
+            // This ensures multi-turn conversations find the same session context
+            // ================================================================
+            const stableSessionId = finalUserId || sessionId;
+            console.log('[SESSION] Using stable session key:', { stableSessionId, originalSessionId: sessionId, finalUserId });
+            
             if (action) {
               // Card action (button click)
               console.log(`[Orchestrator] handleAction: ${action}`, { hasJwt: !!userJwt });
@@ -1643,7 +1651,7 @@ class SignupAssistMCPServer {
               if (isAPIMode) {
                 // APIOrchestrator: Use generateResponse with action parameter
                 console.log('[API-FIRST MODE] Routing action via generateResponse', { finalUserId });
-                result = await (this.orchestrator as any).generateResponse('', sessionId, action, payload || {}, userTimezone, finalUserId);
+                result = await (this.orchestrator as any).generateResponse('', stableSessionId, action, payload || {}, userTimezone, finalUserId);
               } else {
                 // Legacy AIOrchestrator: Use handleAction method
                 try {
@@ -1743,14 +1751,14 @@ class SignupAssistMCPServer {
               
               if (isAPIMode) {
                 // APIOrchestrator: Simple signature (input, sessionId, action?, payload?, userTimezone?, userId?)
-                console.log('[API-FIRST MODE] Calling APIOrchestrator.generateResponse', { finalUserId });
-                result = await (this.orchestrator as any).generateResponse(message, sessionId, undefined, undefined, userTimezone, finalUserId);
+                console.log('[API-FIRST MODE] Calling APIOrchestrator.generateResponse', { finalUserId, stableSessionId });
+                result = await (this.orchestrator as any).generateResponse(message, stableSessionId, undefined, undefined, userTimezone, finalUserId);
               } else {
                 // Legacy AIOrchestrator: Complex signature with location, JWT, mandate
                 console.log('[LEGACY MODE] Calling AIOrchestrator.generateResponse');
                 result = await (this.orchestrator as any).generateResponse(
                   message, 
-                  sessionId, 
+                  stableSessionId, 
                   finalUserLocation, 
                   userJwt, 
                   { 
