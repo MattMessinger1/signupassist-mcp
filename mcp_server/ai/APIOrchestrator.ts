@@ -4704,13 +4704,18 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
   public resetContext(sessionId: string): void {
     this.sessions.delete(sessionId);
     
-    // Also delete from DB
+    // Also delete from DB (fire and forget with proper Promise handling)
     const sessionKey = this.SESSION_KEY_PREFIX + sessionId;
-    this.getSupabaseClient()
-      .from('browser_sessions')
-      .delete()
-      .eq('session_key', sessionKey)
-      .then(() => Logger.debug('[resetContext] Session deleted from DB:', sessionId))
-      .catch(err => Logger.warn('[resetContext] Failed to delete from DB:', err));
+    (async () => {
+      try {
+        await this.getSupabaseClient()
+          .from('browser_sessions')
+          .delete()
+          .eq('session_key', sessionKey);
+        Logger.debug('[resetContext] Session deleted from DB:', sessionId);
+      } catch (err) {
+        Logger.warn('[resetContext] Failed to delete from DB:', err);
+      }
+    })();
   }
 }
