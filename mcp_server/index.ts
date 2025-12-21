@@ -499,6 +499,34 @@ class SignupAssistMCPServer {
         return;
       }
       
+      // --- OAuth Authorization Server Metadata (RFC 8414)
+      // ChatGPT requires this to discover OAuth endpoints
+      if (req.method === 'GET' && url.pathname === '/.well-known/oauth-authorization-server') {
+        console.log('[OAUTH] Authorization server metadata request');
+        
+        const baseUrl = process.env.RAILWAY_PUBLIC_DOMAIN 
+          ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+          : `https://signupassist-mcp-production.up.railway.app`;
+        
+        const metadata = {
+          issuer: baseUrl,
+          authorization_endpoint: `${baseUrl}/oauth/authorize`,
+          token_endpoint: `${baseUrl}/oauth/token`,
+          token_endpoint_auth_methods_supported: ["client_secret_post", "client_secret_basic"],
+          grant_types_supported: ["authorization_code", "refresh_token"],
+          response_types_supported: ["code"],
+          scopes_supported: ["openid", "profile", "email", "offline_access"],
+          code_challenge_methods_supported: ["S256", "plain"]
+        };
+        
+        res.writeHead(200, { 
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=3600'
+        });
+        res.end(JSON.stringify(metadata, null, 2));
+        return;
+      }
+      
       // ==================== END OAUTH PROXY ENDPOINTS ====================
 
       // --- Health check endpoint (includes version info for deploy verification)
