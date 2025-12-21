@@ -24,6 +24,10 @@ export type { ProgramSelectorPayload } from './ProgramSelector';
 export { ProviderConnect } from './ProviderConnect';
 export type { ProviderConnectProps } from './ProviderConnect';
 
+// Audit Trail
+export { AuditTrailSummary } from './AuditTrailSummary';
+export type { AuditEvent, AuditTrailSummaryProps } from './AuditTrailSummary';
+
 // UI Primitives
 export * from './ui/primitives';
 export { FeeBreakdown } from './ui/FeeBreakdown';
