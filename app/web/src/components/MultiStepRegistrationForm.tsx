@@ -53,15 +53,25 @@ export function MultiStepRegistrationForm() {
   const handleReviewConfirm = async () => {
     setIsSubmitting(true);
     try {
-      // Prepare registration (creates pending charge, etc.)
-      await callTool('prepare_registration', {
+      // Calculate total amount (program fee + service fee)
+      const programFeeCents = widgetState.selectedProgram?.priceCents || 0;
+      const serviceFeeCents = Math.round(programFeeCents * 0.05); // 5% service fee
+      const totalAmountCents = programFeeCents + serviceFeeCents;
+      
+      // Prepare registration (creates mandate, validates data)
+      const result = await callTool('mandates.prepare_registration', {
+        user_id: 'widget-user', // Widget doesn't have full auth, backend will resolve
         delegate: widgetState.guardianData,
         participants: widgetState.participantData,
         program_ref: widgetState.selectedProgram?.program_ref,
+        org_ref: widgetState.selectedProgram?.org_ref || 'aim-design',
+        provider: 'bookeo',
+        total_amount_cents: totalAmountCents
       });
       
       setWidgetState({ 
         consentGiven: true,
+        mandateId: result?.data?.mandate_id,
         step: 'payment' 
       });
     } catch (error) {
@@ -75,16 +85,20 @@ export function MultiStepRegistrationForm() {
   const handlePaymentComplete = async () => {
     setIsSubmitting(true);
     try {
-      // Submit the final registration
-      const result = await callTool('submit_registration', {
+      // Submit the final registration using mandate
+      const result = await callTool('mandates.submit_registration', {
+        user_id: 'widget-user',
+        mandate_id: (widgetState as any).mandateId,
         delegate: widgetState.guardianData,
         participants: widgetState.participantData,
         program_ref: widgetState.selectedProgram?.program_ref,
+        org_ref: widgetState.selectedProgram?.org_ref || 'aim-design',
+        provider: 'bookeo'
       });
       
       setWidgetState({ 
         paymentVerified: true,
-        confirmationNumber: result?.confirmationNumber,
+        confirmationNumber: result?.data?.confirmation_number,
         step: 'confirmation' 
       });
     } catch (error) {

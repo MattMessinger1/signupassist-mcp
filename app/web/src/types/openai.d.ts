@@ -12,6 +12,8 @@ export interface OpenAIWidgetState {
   consentGiven?: boolean;
   paymentVerified?: boolean;
   confirmationNumber?: string;
+  /** Mandate ID from prepare_registration */
+  mandateId?: string;
   /** Selected organization reference */
   selectedOrg?: string;
   /** Last user action for flow tracking */

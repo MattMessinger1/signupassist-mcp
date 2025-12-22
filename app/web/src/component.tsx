@@ -105,10 +105,16 @@ interface ToolOutputMetadata {
   provider?: string;
   orgName?: string;
   orgRef?: string;
+  org_ref?: string;
   programRef?: string;
+  program_ref?: string;
+  programName?: string;
+  program_name?: string;
+  programFeeCents?: number;
+  numParticipants?: number;
   mandateScopes?: string[];
   confirmationNumber?: string;
-  programName?: string;
+  signupForm?: Record<string, any>;
   [key: string]: unknown;
 }
 
@@ -379,8 +385,30 @@ export function WidgetRoot() {
   switch (componentType) {
     // ============ Form Components ============
     case 'fullscreen_form':
-    case 'form_step':
+    case 'form_step': {
+      // Initialize widget state for form flow if not already set
+      const needsInit = widgetState.step === 'browse' || !widgetState.step;
+      if (needsInit) {
+        // Extract program info from metadata
+        const programData = {
+          title: metadata.programName || metadata.program_name || 'Program',
+          program_ref: metadata.programRef || metadata.program_ref,
+          org_ref: metadata.orgRef || metadata.org_ref,
+          priceCents: metadata.programFeeCents || 0,
+        };
+        
+        // Set initial form state
+        setWidgetState({
+          ...widgetState,
+          step: 'form_guardian',
+          selectedProgram: programData,
+          numParticipants: (metadata as any).numParticipants || 1,
+          guardianData: {},
+          participantData: [],
+        });
+      }
       return <MultiStepRegistrationForm />;
+    }
 
     // ============ Program Discovery ============
     case 'program_list':
