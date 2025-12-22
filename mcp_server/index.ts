@@ -44,6 +44,7 @@ export * from './types.js';
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import {
   CallToolRequestSchema,
   ErrorCode,
@@ -136,6 +137,7 @@ class SignupAssistMCPServer {
   private server: Server;
   private tools: Map<string, any> = new Map();
   private orchestrator: IOrchestrator | AIOrchestrator | null = null;
+  private sseTransports: Map<string, SSEServerTransport> = new Map(); // SSE session storage
 
   constructor() {
     console.log('[STARTUP] SignupAssistMCPServer constructor called');
@@ -546,6 +548,104 @@ class SignupAssistMCPServer {
       }
       
       // ==================== END OAUTH PROXY ENDPOINTS ====================
+
+      // ==================== MCP SSE TRANSPORT ENDPOINTS ====================
+      // These endpoints allow ChatGPT Apps Connector to communicate via SSE
+      // instead of stdio (which ChatGPT cannot use)
+      
+      // SSE session storage is now a class property (this.sseTransports)
+      
+      // --- SSE Connection Endpoint (GET /sse)
+      // Establishes a Server-Sent Events connection for ChatGPT
+      if (req.method === 'GET' && url.pathname === '/sse') {
+        console.log('[SSE] New SSE connection request');
+        
+        // Set SSE headers
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache, no-transform',
+          'Connection': 'keep-alive',
+          'X-Accel-Buffering': 'no', // Disable NGINX buffering
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+        });
+        
+        // Create SSE transport with the messages endpoint path
+        const transport = new SSEServerTransport('/messages', res);
+        
+        // Store the transport for message handling
+        const sessionId = crypto.randomUUID();
+        this.sseTransports.set(sessionId, transport);
+        
+        console.log(`[SSE] Created SSE session: ${sessionId}`);
+        
+        // Connect the transport to our MCP server
+        try {
+          await this.server.connect(transport);
+          console.log(`[SSE] MCP server connected to SSE transport: ${sessionId}`);
+        } catch (error) {
+          console.error(`[SSE] Failed to connect MCP server:`, error);
+          this.sseTransports.delete(sessionId);
+          res.end();
+          return;
+        }
+        
+        // Handle connection close
+        req.on('close', () => {
+          console.log(`[SSE] Connection closed: ${sessionId}`);
+          this.sseTransports.delete(sessionId);
+        });
+        
+        // Keep the connection open (don't call res.end())
+        return;
+      }
+      
+      // --- SSE Message Endpoint (POST /messages)
+      // Receives JSON-RPC messages from ChatGPT and forwards to the SSE transport
+      if (req.method === 'POST' && url.pathname === '/messages') {
+        console.log('[SSE] Received POST /messages');
+        
+        try {
+          // Read request body
+          let body = '';
+          for await (const chunk of req) {
+            body += chunk;
+          }
+          
+          console.log('[SSE] Message body:', body.substring(0, 200));
+          
+          // Get session ID from query parameter (set by SSEServerTransport)
+          const sessionId = url.searchParams.get('sessionId');
+          
+          if (!sessionId) {
+            console.error('[SSE] No sessionId in /messages request');
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Missing sessionId query parameter' }));
+            return;
+          }
+          
+          const transport = this.sseTransports.get(sessionId);
+          
+          if (!transport) {
+            console.error(`[SSE] No transport found for session: ${sessionId}`);
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Session not found. Please reconnect to /sse' }));
+            return;
+          }
+          
+          // Forward the message to the SSE transport
+          await transport.handlePostMessage(req, res, body);
+          console.log(`[SSE] Message handled for session: ${sessionId}`);
+          
+        } catch (error: any) {
+          console.error('[SSE] Error handling message:', error);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Failed to process message', details: error?.message }));
+        }
+        return;
+      }
+      
+      // ==================== END MCP SSE TRANSPORT ENDPOINTS ====================
 
       // --- Health check endpoint (includes version info for deploy verification)
       if (req.method === 'GET' && url.pathname === '/health') {
