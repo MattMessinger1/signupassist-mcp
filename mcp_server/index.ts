@@ -21,6 +21,51 @@ const CHATGPT_APPS_V1_META = {
   "openai/toolInvocation/invoked": "Done."
 };
 
+// V1 App Store posture: keep public surface small + mostly read-only.
+// Allow Stripe "setup" flow to remain public (hosted Stripe checkout link), but keep write/execute tools private.
+function v1VisibilityForTool(toolName: string, toolMeta: Record<string, any> = {}): "public" | "private" {
+  const safety = toolMeta?.["openai/safety"];
+
+  // Always public if explicitly read-only
+  if (safety === "read-only") return "public";
+
+  // Public: discovery + requirements + diagnostics
+  const publicAllowlist = new Set<string>([
+    "signupassist.start",
+    "program_feed.get",
+    "bookeo.find_programs",
+    "bookeo.discover_required_fields",
+    "bookeo.test_connection",
+    "scp.find_programs",
+    "scp.discover_required_fields",
+    "scp.program_field_probe",
+    "scp.check_account_status",
+    "scp.check_membership_status",
+    "scp:check_prerequisites",
+  ]);
+  if (publicAllowlist.has(toolName)) return "public";
+
+  // Public: Stripe setup + verification (no charging/refunds in V1 public surface)
+  const publicStripeAllowlist = new Set<string>([
+    "stripe.create_customer",
+    "stripe.create_checkout_session",
+    "stripe.save_payment_method",
+    "stripe.check_payment_status",
+    "user.check_payment_method",
+    "scp.check_payment_method",
+  ]);
+  if (publicStripeAllowlist.has(toolName)) return "public";
+
+  // Everything else is private in V1:
+  // - booking/holds/cancel/modify
+  // - mandates submit / execution
+  // - refunds/charges
+  // - user writes (create/update child/profile)
+  // - scheduler
+  // - provider login/register/pay
+  return "private";
+}
+
 // Wizard-style progress strings (no widget needed)
 // Keep these short, calm, and consistent to build trust + reduce overwhelm.
 function wizardInvocationForTool(toolName: string): { invoking: string; invoked: string } {
@@ -106,6 +151,12 @@ function applyWizardMeta(toolName: string) {
   return {
     "openai/toolInvocation/invoking": invoking,
     "openai/toolInvocation/invoked": invoked,
+  };
+}
+
+function applyV1Visibility(toolName: string, toolMeta: Record<string, any> = {}) {
+  return {
+    "openai/visibility": v1VisibilityForTool(toolName, toolMeta),
   };
 }
 
@@ -389,7 +440,7 @@ class SignupAssistMCPServer {
         _meta: {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),  // Preserve read-only safety metadata
-          "openai/visibility": "public",    // Ensure tools are visible/usable
+          ...applyV1Visibility(tool.name, ((tool as any)._meta || {})),
           ...applyWizardMeta(tool.name)
         }
       });
@@ -405,7 +456,7 @@ class SignupAssistMCPServer {
         _meta: {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
-          "openai/visibility": "public",
+          ...applyV1Visibility(tool.name, ((tool as any)._meta || {})),
           ...applyWizardMeta(tool.name)
         }
       });
@@ -421,7 +472,7 @@ class SignupAssistMCPServer {
         _meta: {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
-          "openai/visibility": "public",
+          ...applyV1Visibility(tool.name, ((tool as any)._meta || {})),
           ...applyWizardMeta(tool.name)
         }
       });
@@ -437,7 +488,7 @@ class SignupAssistMCPServer {
         _meta: {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
-          "openai/visibility": "public",
+          ...applyV1Visibility(tool.name, ((tool as any)._meta || {})),
           ...applyWizardMeta(tool.name)
         }
       });
@@ -453,7 +504,7 @@ class SignupAssistMCPServer {
         _meta: {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
-          "openai/visibility": "public",
+          ...applyV1Visibility(name, ((tool as any)._meta || {})),
           ...applyWizardMeta(name)
         }
       });
@@ -469,7 +520,7 @@ class SignupAssistMCPServer {
         _meta: {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
-          "openai/visibility": "public",
+          ...applyV1Visibility(tool.name, ((tool as any)._meta || {})),
           ...applyWizardMeta(tool.name)
         }
       });
@@ -485,7 +536,7 @@ class SignupAssistMCPServer {
         _meta: {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
-          "openai/visibility": "public",
+          ...applyV1Visibility(tool.name, ((tool as any)._meta || {})),
           ...applyWizardMeta(tool.name)
         }
       });
@@ -520,8 +571,8 @@ class SignupAssistMCPServer {
       },
       _meta: {
         ...CHATGPT_APPS_V1_META,
-        "openai/visibility": "public",
         "openai/safety": "read-only",
+        ...applyV1Visibility("signupassist.start", { "openai/safety": "read-only" }),
         ...applyWizardMeta("signupassist.start")
       },
     });
