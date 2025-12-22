@@ -12,8 +12,8 @@
     "redirect_urls": ["https://oauth.openai.com/v1/callback"]
   },
   "api": {
-    "type": "openapi",
-    "url": "https://signupassist-mcp-production.up.railway.app/mcp/openapi.json"
+    "type": "mcp",
+    "server_url": "https://signupassist-mcp-production.up.railway.app/sse"
   },
   "widget": {
     "url": "https://signupassist-mcp-production.up.railway.app/widget/app.html",
