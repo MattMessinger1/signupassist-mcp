@@ -308,6 +308,97 @@ async function submitRegistration(args: {
   };
 }
 
+/**
+ * Log an audit event for a specific action in the registration flow
+ * Called by widget at each step transition for responsible delegate audit trail
+ */
+async function logAuditEvent(args: {
+  user_id?: string;
+  mandate_id?: string;
+  event_type: 'form_started' | 'delegate_submitted' | 'participants_submitted' | 'consent_given' | 'payment_authorized' | 'registration_completed' | 'registration_cancelled';
+  metadata?: Record<string, any>;
+}) {
+  const { user_id, mandate_id, event_type, metadata = {} } = args;
+
+  console.log('[mandates.log_audit_event] Logging:', { event_type, mandate_id });
+
+  try {
+    await supabase.from('mandate_audit').insert({
+      user_id: user_id || 'anonymous',
+      action: event_type,
+      credential_id: mandate_id,
+      metadata: {
+        ...metadata,
+        logged_at: new Date().toISOString()
+      }
+    });
+
+    console.log('[mandates.log_audit_event] ✅ Event logged:', event_type);
+
+    return {
+      success: true,
+      data: { event_type, logged: true }
+    };
+  } catch (error: any) {
+    console.error('[mandates.log_audit_event] Error:', error);
+    return {
+      success: false,
+      error: { message: error.message }
+    };
+  }
+}
+
+/**
+ * Fetch audit events for a mandate to display in confirmation/receipts
+ */
+async function getAuditTrail(args: {
+  mandate_id?: string;
+  user_id?: string;
+  limit?: number;
+}) {
+  const { mandate_id, user_id, limit = 20 } = args;
+
+  console.log('[mandates.get_audit_trail] Fetching:', { mandate_id, user_id });
+
+  try {
+    let query = supabase
+      .from('mandate_audit')
+      .select('*')
+      .order('created_at', { ascending: true })
+      .limit(limit);
+
+    if (mandate_id) {
+      query = query.eq('credential_id', mandate_id);
+    } else if (user_id) {
+      query = query.eq('user_id', user_id);
+    } else {
+      return { success: false, error: { message: 'mandate_id or user_id required' } };
+    }
+
+    const { data: events, error } = await query;
+
+    if (error) {
+      throw error;
+    }
+
+    console.log('[mandates.get_audit_trail] ✅ Found', events?.length || 0, 'events');
+
+    return {
+      success: true,
+      data: {
+        events: events || [],
+        count: events?.length || 0
+      }
+    };
+  } catch (error: any) {
+    console.error('[mandates.get_audit_trail] Error:', error);
+    return {
+      success: false,
+      error: { message: error.message }
+    };
+  }
+}
+
 // Export tools with audit wrapper
 export const mandateTools = [
   {
@@ -465,6 +556,78 @@ export const mandateTools = [
         },
         args,
         () => submitRegistration(args)
+      );
+    }
+  },
+  {
+    name: 'mandates.log_audit_event',
+    description: 'Log an audit event for the responsible delegate trail. Call at each registration step.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user_id: {
+          type: 'string',
+          description: 'User ID (optional for anonymous widget users)'
+        },
+        mandate_id: {
+          type: 'string',
+          description: 'Mandate ID to associate event with'
+        },
+        event_type: {
+          type: 'string',
+          enum: ['form_started', 'delegate_submitted', 'participants_submitted', 'consent_given', 'payment_authorized', 'registration_completed', 'registration_cancelled'],
+          description: 'Type of audit event'
+        },
+        metadata: {
+          type: 'object',
+          description: 'Additional event metadata'
+        }
+      },
+      required: ['event_type']
+    },
+    handler: async (args: any) => {
+      return auditToolCall(
+        {
+          plan_execution_id: args.plan_execution_id || null,
+          mandate_id: args.mandate_id,
+          user_id: args.user_id,
+          tool: 'mandates.log_audit_event'
+        },
+        args,
+        () => logAuditEvent(args)
+      );
+    }
+  },
+  {
+    name: 'mandates.get_audit_trail',
+    description: 'Fetch audit trail events for a mandate or user. Used to display in confirmation/receipts.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        mandate_id: {
+          type: 'string',
+          description: 'Mandate ID to get events for'
+        },
+        user_id: {
+          type: 'string',
+          description: 'User ID to get events for (if no mandate_id)'
+        },
+        limit: {
+          type: 'number',
+          description: 'Max events to return (default: 20)'
+        }
+      },
+      required: []
+    },
+    handler: async (args: any) => {
+      return auditToolCall(
+        {
+          plan_execution_id: args.plan_execution_id || null,
+          mandate_id: args.mandate_id,
+          tool: 'mandates.get_audit_trail'
+        },
+        args,
+        () => getAuditTrail(args)
       );
     }
   }

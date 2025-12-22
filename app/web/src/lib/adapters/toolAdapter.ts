@@ -34,6 +34,7 @@ export async function callMCPTool<T = any>(
 export interface StripeCheckoutResult {
   url: string;
   session_id: string;
+  customer_id?: string;
 }
 
 export interface StripePaymentStatus {
@@ -67,6 +68,27 @@ export interface RegistrationResult {
   error?: string;
 }
 
+export interface AuditEvent {
+  id: string;
+  action: string;
+  created_at: string;
+  metadata?: Record<string, any>;
+}
+
+export interface AuditTrailResult {
+  events: AuditEvent[];
+  count: number;
+}
+
+export type AuditEventType = 
+  | 'form_started' 
+  | 'delegate_submitted' 
+  | 'participants_submitted' 
+  | 'consent_given' 
+  | 'payment_authorized' 
+  | 'registration_completed'
+  | 'registration_cancelled';
+
 // ============ Typed Tool Calls ============
 
 export const tools = {
@@ -74,20 +96,26 @@ export const tools = {
     /**
      * Create a Stripe checkout session for payment setup
      */
-    createCheckoutSession: (args: { program_ref?: string; return_url?: string }) =>
+    createCheckoutSession: (args: { user_id: string; program_ref?: string; return_url?: string }) =>
       callMCPTool<StripeCheckoutResult>('stripe.create_checkout_session', args),
     
     /**
      * Check if user has a payment method on file
      */
-    checkPaymentStatus: () =>
-      callMCPTool<StripePaymentStatus>('stripe.check_payment_status', {}),
+    checkPaymentStatus: (args: { user_id: string }) =>
+      callMCPTool<StripePaymentStatus>('stripe.check_payment_status', args),
     
     /**
      * Charge the success fee after successful registration
      */
-    chargeSuccessFee: (args: { mandate_id: string; amount_cents: number }) =>
-      callMCPTool<{ charged: boolean; payment_intent?: string }>('stripe.charge_success_fee', args),
+    chargeSuccessFee: (args: { booking_number: string; mandate_id: string; amount_cents: number; user_id: string }) =>
+      callMCPTool<{ charge_id: string; amount_cents: number }>('stripe.charge_success_fee', args),
+    
+    /**
+     * Refund the success fee when registration is cancelled
+     */
+    refundSuccessFee: (args: { charge_id: string; reason?: string }) =>
+      callMCPTool<{ refund_id: string; amount_refunded_cents: number }>('stripe.refund_success_fee', args),
   },
   
   auth: {
@@ -128,6 +156,51 @@ export const tools = {
      */
     revoke: (mandateId: string) =>
       callMCPTool<{ revoked: boolean }>('mandate.revoke', { mandate_id: mandateId }),
+    
+    /**
+     * Log an audit event at a form step
+     */
+    logAuditEvent: (args: {
+      event_type: AuditEventType;
+      mandate_id?: string;
+      user_id?: string;
+      metadata?: Record<string, any>;
+    }) =>
+      callMCPTool<{ event_type: string; logged: boolean }>('mandates.log_audit_event', args),
+    
+    /**
+     * Get audit trail for a mandate or user
+     */
+    getAuditTrail: (args: { mandate_id?: string; user_id?: string; limit?: number }) =>
+      callMCPTool<AuditTrailResult>('mandates.get_audit_trail', args),
+    
+    /**
+     * Prepare registration (creates mandate, validates data)
+     */
+    prepareRegistration: (args: {
+      user_id: string;
+      delegate: Record<string, any>;
+      participants: any[];
+      program_ref: string;
+      org_ref: string;
+      provider?: string;
+      total_amount_cents: number;
+    }) =>
+      callMCPTool<{ mandate_id: string; mandate_jws: string; ready_for_payment: boolean }>('mandates.prepare_registration', args),
+    
+    /**
+     * Submit final registration after payment
+     */
+    submitRegistration: (args: {
+      user_id: string;
+      mandate_id: string;
+      delegate: Record<string, any>;
+      participants: any[];
+      program_ref: string;
+      org_ref: string;
+      provider?: string;
+    }) =>
+      callMCPTool<{ confirmation_number: string; registration_id: string }>('mandates.submit_registration', args),
   },
   
   registration: {
@@ -144,25 +217,28 @@ export const tools = {
       callMCPTool<{ fields: any[]; schema: any }>('discover_required_fields', { program_ref: programRef }),
     
     /**
-     * Prepare registration (validate data, check prerequisites)
+     * List user's registrations
      */
-    prepare: (args: {
-      program_ref: string;
-      delegate_data: Record<string, any>;
-      participant_data: Record<string, any>[];
-    }) =>
-      callMCPTool<{ ready: boolean; issues?: string[] }>('prepare_registration', args),
+    list: (args: { user_id: string; category?: 'upcoming' | 'scheduled' | 'past' | 'all' }) =>
+      callMCPTool<{ upcoming: any[]; scheduled: any[]; past: any[]; payment_method?: any }>('registrations.list', args),
     
     /**
-     * Submit the registration
+     * Cancel a scheduled registration
      */
-    submit: (args: {
-      program_ref: string;
-      delegate_data: Record<string, any>;
-      participant_data: Record<string, any>[];
-      mandate_id?: string;
-    }) =>
-      callMCPTool<RegistrationResult>('submit_registration', args),
+    cancel: (args: { registration_id: string; user_id: string }) =>
+      callMCPTool<{ cancelled: boolean; registration_id: string }>('registrations.cancel', args),
+    
+    /**
+     * Cancel confirmed registration with refund
+     */
+    cancelWithRefund: (args: { registration_id: string; user_id: string; reason?: string }) =>
+      callMCPTool<{ cancelled: boolean; refunded: boolean; refund_id?: string }>('registrations.cancel_with_refund', args),
+    
+    /**
+     * Modify a registration
+     */
+    modify: (args: { registration_id: string; user_id: string; new_program_ref: string; new_start_date?: string; new_participants?: string[] }) =>
+      callMCPTool<{ modified: boolean; new_registration_id?: string; old_registration_id: string }>('registrations.modify', args),
   },
   
   provider: {
@@ -192,11 +268,12 @@ export const tools = {
  * Wait for payment method to be set up (with polling)
  */
 export async function waitForPaymentMethod(
+  userId: string,
   maxAttempts = 60,
   intervalMs = 3000
 ): Promise<ToolResult<StripePaymentStatus>> {
   for (let i = 0; i < maxAttempts; i++) {
-    const result = await tools.stripe.checkPaymentStatus();
+    const result = await tools.stripe.checkPaymentStatus({ user_id: userId });
     
     if (result.success && result.data?.hasPaymentMethod) {
       return result;

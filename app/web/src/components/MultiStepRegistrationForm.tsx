@@ -2,9 +2,11 @@
  * MultiStepRegistrationForm - Main form orchestrator
  * Manages the 4-step registration flow using window.openai state
  * Steps: Guardian Info → Participants → Review & Consent → Payment → Confirmation
+ * 
+ * Includes audit event logging at each step for responsible delegate trail
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StepIndicator } from './ui/StepIndicator';
 import { 
   GuardianInfoStep, 
@@ -33,8 +35,35 @@ export function MultiStepRegistrationForm() {
   };
   const currentStep = stepMap[widgetState.step] || 1;
 
+  // Log form_started event on mount
+  useEffect(() => {
+    if (widgetState.step === 'form_guardian') {
+      callTool('mandates.log_audit_event', {
+        event_type: 'form_started',
+        metadata: {
+          program_ref: widgetState.selectedProgram?.program_ref,
+          num_participants: widgetState.numParticipants
+        }
+      }).catch(err => console.warn('Audit log failed:', err));
+    }
+  }, []); // Only on mount
+
   // Step 1: Guardian info submitted
-  const handleGuardianSubmit = (data: DelegateProfile) => {
+  const handleGuardianSubmit = async (data: DelegateProfile) => {
+    // Log delegate_submitted audit event
+    try {
+      await callTool('mandates.log_audit_event', {
+        event_type: 'delegate_submitted',
+        mandate_id: (widgetState as any).mandateId,
+        metadata: {
+          delegate_email: data.delegate_email,
+          has_phone: !!data.delegate_phone
+        }
+      });
+    } catch (err) {
+      console.warn('Audit log failed:', err);
+    }
+    
     setWidgetState({ 
       guardianData: data, 
       step: 'form_participant' 
@@ -42,7 +71,21 @@ export function MultiStepRegistrationForm() {
   };
 
   // Step 2: Participants submitted
-  const handleParticipantSubmit = (participants: any[], saveNew: boolean[]) => {
+  const handleParticipantSubmit = async (participants: any[], saveNew: boolean[]) => {
+    // Log participants_submitted audit event
+    try {
+      await callTool('mandates.log_audit_event', {
+        event_type: 'participants_submitted',
+        mandate_id: (widgetState as any).mandateId,
+        metadata: {
+          num_participants: participants.length,
+          saved_new_count: saveNew.filter(Boolean).length
+        }
+      });
+    } catch (err) {
+      console.warn('Audit log failed:', err);
+    }
+    
     setWidgetState({ 
       participantData: participants,
       step: 'review' 
@@ -59,6 +102,7 @@ export function MultiStepRegistrationForm() {
       const totalAmountCents = programFeeCents + serviceFeeCents;
       
       // Prepare registration (creates mandate, validates data)
+      // This internally logs consent_given
       const result = await callTool('mandates.prepare_registration', {
         user_id: 'widget-user', // Widget doesn't have full auth, backend will resolve
         delegate: widgetState.guardianData,
@@ -67,6 +111,16 @@ export function MultiStepRegistrationForm() {
         org_ref: widgetState.selectedProgram?.org_ref || 'aim-design',
         provider: 'bookeo',
         total_amount_cents: totalAmountCents
+      });
+      
+      // Log consent_given audit event
+      await callTool('mandates.log_audit_event', {
+        event_type: 'consent_given',
+        mandate_id: result?.data?.mandate_id,
+        metadata: {
+          total_amount_cents: totalAmountCents,
+          program_ref: widgetState.selectedProgram?.program_ref
+        }
       });
       
       setWidgetState({ 
@@ -85,6 +139,15 @@ export function MultiStepRegistrationForm() {
   const handlePaymentComplete = async () => {
     setIsSubmitting(true);
     try {
+      // Log payment_authorized audit event before submit
+      await callTool('mandates.log_audit_event', {
+        event_type: 'payment_authorized',
+        mandate_id: (widgetState as any).mandateId,
+        metadata: {
+          program_ref: widgetState.selectedProgram?.program_ref
+        }
+      });
+      
       // Submit the final registration using mandate
       const result = await callTool('mandates.submit_registration', {
         user_id: 'widget-user',
@@ -126,6 +189,7 @@ export function MultiStepRegistrationForm() {
           participantData={widgetState.participantData}
           program={widgetState.selectedProgram}
           confirmationNumber={widgetState.confirmationNumber}
+          mandateId={(widgetState as any).mandateId}
           onDone={handleComplete}
         />
       </div>
