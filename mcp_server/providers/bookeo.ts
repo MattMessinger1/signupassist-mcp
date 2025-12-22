@@ -895,7 +895,6 @@ Safe to call for browsing and exploration.`,
     _meta: {
       'openai/visibility': 'public',
       'openai/safety': 'read-only',
-      'openai/toolInvocation/outputTemplate': 'ui://widget/app.html'
     },
     inputSchema: {
       type: 'object',
