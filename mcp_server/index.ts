@@ -291,7 +291,7 @@ class SignupAssistMCPServer {
       }
     });
 
-    // ✅ ChatGPT requires resources/list handler (even if empty)
+    // ✅ ChatGPT requires resources/list handler with widget CSP metadata
     this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
       console.log('[MCP] ListResources called');
       return {
@@ -300,6 +300,30 @@ class SignupAssistMCPServer {
             uri: "ui://widget/app.html",
             name: "Signup Assist Widget",
             mimeType: "text/html",
+            _meta: {
+              // OpenAI Widget Content Security Policy
+              "openai/widgetCSP": {
+                // Where the widget makes fetch/XHR calls
+                connect_domains: [
+                  "https://signupassist-mcp-production.up.railway.app",
+                  "https://api.bookeo.com",
+                  "https://dev-xha4aa58ytpvlqyl.us.auth0.com"
+                ],
+                // Where images/fonts/scripts are loaded from
+                resource_domains: [
+                  "https://signupassist-mcp-production.up.railway.app",
+                  "https://shipworx.ai"
+                ],
+                // External redirects allowed without extra warnings
+                redirect_domains: [
+                  "https://signupassist-mcp-production.up.railway.app"
+                ],
+                // No iframes currently used
+                frame_domains: []
+              },
+              // Unique widget domain (must point to Railway app via CNAME)
+              "openai/widgetDomain": "signupassist.shipworx.ai"
+            }
           },
         ],
       };

@@ -18,7 +18,7 @@
   "widget": {
     "url": "https://signupassist-mcp-production.up.railway.app/widget/app.html",
     "prefersBorder": true,
-    "domain": "https://chatgpt.com"
+    "domain": "signupassist.shipworx.ai"
   },
   "logo_url": "https://signupassist-mcp-production.up.railway.app/logo-512.svg",
   "contact_email": "support@shipworx.ai",
