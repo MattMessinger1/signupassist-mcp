@@ -49,10 +49,22 @@ import {
   CallToolRequestSchema,
   ErrorCode,
   ListToolsRequestSchema,
-  ListResourcesRequestSchema,
-  ReadResourceRequestSchema,
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
+import { z } from 'zod';
+
+// Define resource schemas manually (not exported by SDK v1.18.2)
+const ListResourcesRequestSchema = z.object({
+  method: z.literal('resources/list'),
+  params: z.object({}).optional(),
+});
+
+const ReadResourceRequestSchema = z.object({
+  method: z.literal('resources/read'),
+  params: z.object({
+    uri: z.string(),
+  }),
+});
 import { createServer } from 'http';
 import { URL, fileURLToPath } from 'url';
 import { readFileSync, existsSync } from 'fs';
