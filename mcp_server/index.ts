@@ -143,7 +143,7 @@ import { preloadProviderCache } from './startup/preloadProviders.js';
 
 // Type-only imports for orchestrators (safe - doesn't execute module code)
 import type { IOrchestrator } from './ai/types.js';
-import type AIOrchestrator from './ai/AIOrchestrator.js';
+// Note: AIOrchestrator is DEPRECATED - APIOrchestrator is the only runtime path
 
 // Register error handlers FIRST to catch any import failures
 process.on('uncaughtException', (error) => {
@@ -213,48 +213,33 @@ class SignupAssistMCPServer {
   }
 
   async initializeOrchestrator() {
+    // =========================================================================
+    // API-FIRST MODE IS NOW THE ONLY RUNTIME PATH
+    // AIOrchestrator (legacy/scraping mode) is deprecated and removed.
+    // All flows go through APIOrchestrator for consistency and audit compliance.
+    // =========================================================================
     try {
-      const useAPIMode = process.env.USE_API_ORCHESTRATOR === 'true';
+      console.log('[STARTUP] 🔵 API-FIRST MODE (ONLY PATH) - Loading APIOrchestrator...');
+      const { default: APIOrchestrator } = await import('./ai/APIOrchestrator.js');
+      console.log('[STARTUP] APIOrchestrator module loaded successfully');
       
-      if (useAPIMode) {
-        console.log('[STARTUP] 🔵 API-FIRST MODE ENABLED - Loading APIOrchestrator...');
-        const { default: APIOrchestrator } = await import('./ai/APIOrchestrator.js');
-        console.log('[STARTUP] APIOrchestrator module loaded successfully');
-        
-        this.orchestrator = new APIOrchestrator(this); // Pass server instance for MCP tool access
-        console.log('✅ [API-FIRST MODE] APIOrchestrator initialized with MCP tool access');
-        console.log('✅ API-first providers: Bookeo (aim-design)');
-        console.log('✅ No scraping, no prerequisites, no login required');
-        console.log('✅ All API calls go through MCP layer for audit compliance');
-        
-      } else {
-        console.log('[STARTUP] 🟡 LEGACY MODE - Loading AIOrchestrator...');
-        const { default: AIOrchestrator } = await import('./ai/AIOrchestrator.js');
-        console.log('[STARTUP] AIOrchestrator module loaded successfully');
-        
-        // Pass MCP tool caller to orchestrator (legacy mode only)
-        const mcpToolCaller = async (toolName: string, args: any) => {
-          if (!this.tools.has(toolName)) {
-            const availableTools = Array.from(this.tools.keys()).join(', ');
-            throw new Error(`Unknown MCP tool: ${toolName}. Available: ${availableTools}`);
-          }
-          const tool = this.tools.get(toolName);
-          return await tool.handler(args);
-        };
-        
-        this.orchestrator = new AIOrchestrator(mcpToolCaller);
-        console.log('✅ [LEGACY MODE] AIOrchestrator initialized with MCP tool access');
-        console.log(`✅ Available MCP tools: ${Array.from(this.tools.keys()).join(', ')}`);
+      this.orchestrator = new APIOrchestrator(this); // Pass server instance for MCP tool access
+      console.log('✅ [API-FIRST MODE] APIOrchestrator initialized with MCP tool access');
+      console.log('✅ API-first providers: Bookeo (aim-design)');
+      console.log('✅ No scraping, no prerequisites, no login required');
+      console.log('✅ All API calls go through MCP layer for audit compliance');
+      console.log('✅ Unified activation policy: triad + program match required');
+      
+      // Log that legacy mode is disabled
+      if (process.env.USE_API_ORCHESTRATOR === 'false') {
+        console.warn('⚠️  USE_API_ORCHESTRATOR=false is ignored. APIOrchestrator is now the only path.');
       }
       
-      console.log(`✅ Orchestrator mode: ${useAPIMode ? 'API-FIRST' : 'LEGACY (scraping)'}`);
-      
     } catch (error) {
-      console.error('❌ WARNING: Orchestrator failed to load - server will start without it');
+      console.error('❌ CRITICAL: APIOrchestrator failed to load - server cannot process chat');
       console.error('Error:', error);
       console.error('Stack:', error instanceof Error ? error.stack : 'No stack trace');
-      console.error('Tip: Set OPENAI_API_KEY environment variable if using OpenAI');
-      console.error('Tip: Set USE_API_ORCHESTRATOR=true for API-first mode (Bookeo)');
+      console.error('Tip: Set OPENAI_API_KEY environment variable');
       this.orchestrator = null;
     }
   }
