@@ -144,7 +144,16 @@ async function findPrograms(args: {
             title: 'No Programs Available',
             description: 'There are no upcoming programs available at this time.'
           }]
-        }
+        },
+        // MCP CallToolResult fields
+        structuredContent: {
+          type: 'program_list',
+          programs_by_theme: {},
+          total_programs: 0,
+          org_ref,
+          provider: 'bookeo'
+        },
+        content: [{ type: 'text', text: 'No programs currently available.' }]
       };
     }
     
@@ -191,19 +200,29 @@ async function findPrograms(args: {
       }))
     }));
     
+    // Build MCP CallToolResult with structuredContent for widget rendering
+    const responseData = {
+      programs_by_theme: programsByTheme,
+      total_programs: programs.length,
+      org_ref,
+      provider: 'bookeo'
+    };
+    
     return {
       success: true,
-      data: {
-        programs_by_theme: programsByTheme,
-        total_programs: programs.length,
-        org_ref,
-        provider: 'bookeo'
-      },
+      data: responseData,
       session_token: undefined,
       ui: {
         message: `Found ${programs.length} programs available at ${org_ref}`,
         cards: groups
-      }
+      },
+      // MCP CallToolResult fields for ChatGPT Apps SDK
+      structuredContent: {
+        type: 'program_list',
+        ...responseData,
+        groups
+      },
+      content: [{ type: 'text', text: `Found ${programs.length} programs at ${org_ref}` }]
     };
     
   } catch (error: any) {
@@ -874,7 +893,9 @@ Does NOT charge payments.
 Does NOT modify user data.
 Safe to call for browsing and exploration.`,
     _meta: {
-      'openai/safety': 'read-only'
+      'openai/visibility': 'public',
+      'openai/safety': 'read-only',
+      'openai/toolInvocation/outputTemplate': 'ui://widget/app.html'
     },
     inputSchema: {
       type: 'object',

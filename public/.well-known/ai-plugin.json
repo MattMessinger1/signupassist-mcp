@@ -2,12 +2,12 @@
   "schema_version": "v1",
   "name_for_human": "SignupAssist",
   "name_for_model": "signupassist",
-  "description_for_human": "Securely automates activity sign-ups for parents using a consent-first flow.",
-  "description_for_model": "You are SignupAssist, an action-oriented assistant that helps users DISCOVER and SIGN UP for classes and programs. MANDATORY FIRST ACTION: When user expresses ANY intent to sign up, register, book, or find classes, you MUST call the signupassist.start endpoint IMMEDIATELY in the SAME turn. Do NOT ask intake questions first. Show programs FIRST using signupassist.start, THEN ask follow-up questions after results are displayed. Nothing is booked or charged until user explicitly confirms.",
+  "description_for_human": "Securely automates activity sign-ups for parents.",
+  "description_for_model": "SignupAssist helps parents find and register for kids activities. Call signupassist.start first to show available programs.",
   "auth": {
     "type": "oauth",
-    "authorization_url": "https://dev-xha4aa58ytpvlqyl.us.auth0.com/authorize",
-    "token_url": "https://dev-xha4aa58ytpvlqyl.us.auth0.com/oauth/token",
+    "authorization_url": "https://signupassist-mcp-production.up.railway.app/oauth/authorize",
+    "token_url": "https://signupassist-mcp-production.up.railway.app/oauth/token",
     "scope": "openid profile email",
     "redirect_urls": ["https://oauth.openai.com/v1/callback"]
   },
@@ -15,7 +15,7 @@
     "type": "openapi",
     "url": "https://signupassist-mcp-production.up.railway.app/mcp/openapi.json"
   },
-  "logo_url": "https://shipworx.ai/logo-512.svg",
+  "logo_url": "https://signupassist-mcp-production.up.railway.app/logo-512.svg",
   "contact_email": "support@shipworx.ai",
   "legal_info_url": "https://shipworx.ai/privacy"
 }
