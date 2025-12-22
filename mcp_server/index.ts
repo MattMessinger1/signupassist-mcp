@@ -2353,18 +2353,6 @@ console.info(
 console.log('[STARTUP] Creating SignupAssistMCPServer instance...');
 const server = new SignupAssistMCPServer();
 
-console.log('[STARTUP] Initializing AIOrchestrator asynchronously...');
-await server.initializeOrchestrator();
-console.log('[STARTUP] AIOrchestrator initialization complete');
-
-// Run OpenAI smoke tests to verify API configuration
-console.log('[STARTUP] Running OpenAI smoke tests...');
-try {
-  await runOpenAISmokeTests({ failFast: false });
-} catch (error) {
-  console.warn('[STARTUP] OpenAI smoke tests failed (non-fatal):', error);
-}
-
 console.log('[STARTUP] NODE_ENV:', process.env.NODE_ENV);
 console.log('[STARTUP] PORT:', process.env.PORT);
 
@@ -2376,36 +2364,55 @@ if (token) {
   console.warn('[AUTH] Warning: No MCP_ACCESS_TOKEN detected in environment');
 }
 
-if (process.env.NODE_ENV === 'production' || process.env.PORT) {
+const shouldStartHttp = process.env.NODE_ENV === 'production' || !!process.env.PORT;
+
+if (shouldStartHttp) {
+  // IMPORTANT: Start HTTP server ASAP so Railway healthcheck can pass.
+  // Any slower startup work (AI orchestrator init, smoke tests) must not block the listener.
   console.log('[STARTUP] Starting HTTP server...');
   const startTime = Date.now();
-  
-  server.startHTTP()
-    .then(async (httpServer) => {
+
+  server
+    .startHTTP()
+    .then(() => {
       const bootTime = Date.now() - startTime;
       console.log('[STARTUP] ✅ HTTP server fully operational');
       console.log('[STARTUP] Boot time:', bootTime, 'ms');
       console.log('[STARTUP] Process uptime:', process.uptime().toFixed(2), 'seconds');
       console.log('[STARTUP] Memory usage:', Math.round(process.memoryUsage().heapUsed / 1024 / 1024), 'MB');
-      
-      // DISABLED: Provider cache preloading was creating unnecessary Browserbase sessions
-      // try {
-      //   await preloadProviderCache();
-      // } catch (error) {
-      //   console.warn('[STARTUP] Provider cache preload failed (non-fatal):', error);
-      // }
-      
+
       // Health monitoring heartbeat - logs every 30 seconds
       setInterval(() => {
-        console.log('[HEARTBEAT] Server healthy | Uptime:', process.uptime().toFixed(0), 's | Memory:', 
-          Math.round(process.memoryUsage().heapUsed / 1024 / 1024), 'MB');
+        console.log(
+          '[HEARTBEAT] Server healthy | Uptime:',
+          process.uptime().toFixed(0),
+          's | Memory:',
+          Math.round(process.memoryUsage().heapUsed / 1024 / 1024),
+          'MB'
+        );
       }, 30000);
-      
-      // Keep reference to prevent garbage collection and ensure process stays alive
+
+      // Background init (non-blocking)
+      void (async () => {
+        console.log('[STARTUP] Initializing AIOrchestrator (background)...');
+        try {
+          await server.initializeOrchestrator();
+          console.log('[STARTUP] AIOrchestrator initialization complete');
+        } catch (error) {
+          console.warn('[STARTUP] AIOrchestrator init failed (non-fatal):', error);
+        }
+
+        console.log('[STARTUP] Running OpenAI smoke tests (background)...');
+        try {
+          await runOpenAISmokeTests({ failFast: false });
+        } catch (error) {
+          console.warn('[STARTUP] OpenAI smoke tests failed (non-fatal):', error);
+        }
+      })();
     })
     .catch((err) => {
       console.error('[STARTUP ERROR] Failed to start HTTP server:', err);
-      console.error('[STARTUP ERROR] Stack:', err.stack);
+      console.error('[STARTUP ERROR] Stack:', err?.stack);
       process.exit(1);
     });
 } else {
