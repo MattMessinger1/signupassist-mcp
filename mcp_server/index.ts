@@ -560,23 +560,21 @@ class SignupAssistMCPServer {
           // Create SSE transport - it will set its own headers
           const transport = new SSEServerTransport('/messages', res);
           
-          // Generate session ID and store the transport
-          const sessionId = crypto.randomUUID();
+          // ✅ connect() calls start() internally - do NOT call start() manually!
+          await this.server.connect(transport);
+          
+          // ✅ Use the transport's built-in sessionId (not our own UUID)
+          const sessionId = transport.sessionId;
           this.sseTransports.set(sessionId, transport);
           
-          console.log(`[SSE] Created SSE session: ${sessionId}`);
-          
-          // Start the transport (this sends the initial endpoint message)
-          await transport.start();
-          
-          // Connect the transport to our MCP server
-          await this.server.connect(transport);
-          console.log(`[SSE] MCP server connected to SSE transport: ${sessionId}`);
+          console.log(`[SSE] MCP server connected, session: ${sessionId}`);
+          console.log(`[SSE] Active sessions: ${this.sseTransports.size}`);
           
           // Handle connection close
           req.on('close', () => {
             console.log(`[SSE] Connection closed: ${sessionId}`);
             this.sseTransports.delete(sessionId);
+            console.log(`[SSE] Remaining sessions: ${this.sseTransports.size}`);
           });
           
         } catch (error) {
