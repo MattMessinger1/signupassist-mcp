@@ -87,6 +87,7 @@ export interface ProgramCard {
   subtitle: string;
   caption: string;
   body: string;
+  image_url?: string;
   actions: CardAction[];
   program_ref?: string;
   org_ref?: string;
