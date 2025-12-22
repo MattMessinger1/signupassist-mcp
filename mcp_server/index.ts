@@ -1,7 +1,7 @@
 /**
  * SignupAssist MCP Server
  * Production-ready with OAuth manifest served at /mcp for ChatGPT discovery
- * Last deployment: 2025-10-20
+ * Last deployment: 2025-12-22 - Added resources/list and resources/read handlers
  * Railway rebuild trigger: 2025-10-28 - Added scp.create_mandate tool
  */
 
