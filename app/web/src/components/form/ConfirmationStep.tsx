@@ -1,6 +1,6 @@
 /**
  * ConfirmationStep - Final step showing registration success
- * Displays confirmation number, summary, and completion actions
+ * Displays confirmation number, summary, audit trail, and completion actions
  */
 
 import React, { useEffect, useState } from 'react';
@@ -15,7 +15,14 @@ import {
   Badge,
   Separator
 } from '../ui';
-import { useSendMessage, useToolOutput } from '../../hooks/useOpenAiGlobal';
+import { useSendMessage, useToolOutput, useCallTool } from '../../hooks/useOpenAiGlobal';
+
+interface AuditEvent {
+  id: string;
+  action: string;
+  created_at: string;
+  metadata?: Record<string, any>;
+}
 
 interface ConfirmationStepProps {
   /** Optional guardian/delegate data */
@@ -30,20 +37,37 @@ interface ConfirmationStepProps {
   };
   /** Booking confirmation number */
   confirmationNumber?: string;
+  /** Mandate ID for fetching audit trail */
+  mandateId?: string;
   /** Callback when user clicks Done */
   onDone?: () => void;
 }
+
+// Map event types to display labels
+const EVENT_LABELS: Record<string, { label: string; icon: string }> = {
+  'form_started': { label: 'Form Started', icon: '📝' },
+  'delegate_submitted': { label: 'Guardian Info Submitted', icon: '👤' },
+  'participants_submitted': { label: 'Participants Added', icon: '👥' },
+  'consent_given': { label: 'Consent Given', icon: '✅' },
+  'payment_authorized': { label: 'Payment Authorized', icon: '💳' },
+  'registration_prepared': { label: 'Registration Prepared', icon: '📋' },
+  'registration_completed': { label: 'Registration Complete', icon: '🎉' },
+};
 
 export function ConfirmationStep({ 
   guardianData = {}, 
   participantData = [],
   program,
   confirmationNumber,
+  mandateId,
   onDone
 }: ConfirmationStepProps) {
   const sendMessage = useSendMessage();
   const toolOutput = useToolOutput();
+  const callTool = useCallTool();
   const [showConfetti, setShowConfetti] = useState(false);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [loadingAudit, setLoadingAudit] = useState(false);
 
   // Get confirmation number from props or toolOutput
   const bookingNumber = confirmationNumber || 
@@ -56,6 +80,21 @@ export function ConfirmationStep({
     return () => clearTimeout(timer);
   }, []);
 
+  // Fetch audit trail on mount
+  useEffect(() => {
+    if (mandateId && callTool) {
+      setLoadingAudit(true);
+      callTool('mandates.get_audit_trail', { mandate_id: mandateId })
+        .then((result: any) => {
+          if (result?.success && result?.data?.events) {
+            setAuditEvents(result.data.events);
+          }
+        })
+        .catch(err => console.warn('Failed to fetch audit trail:', err))
+        .finally(() => setLoadingAudit(false));
+    }
+  }, [mandateId, callTool]);
+
   const handleDone = () => {
     if (onDone) {
       onDone();
@@ -66,6 +105,11 @@ export function ConfirmationStep({
 
   const handleViewDetails = () => {
     sendMessage(`Show me details for registration ${bookingNumber}`);
+  };
+
+  const formatTime = (isoString: string) => {
+    const date = new Date(isoString);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   return (
@@ -171,18 +215,51 @@ export function ConfirmationStep({
           </div>
         </div>
 
-        {/* Audit Trail Note */}
-        <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-          <div className="flex items-start gap-3">
-            <span className="text-lg">📋</span>
-            <div>
-              <p className="text-sm font-medium text-purple-900">Audit Trail Available</p>
-              <p className="text-xs text-purple-700 mt-1">
-                A complete record of this registration has been cryptographically signed 
-                and stored for your records.
-              </p>
+        <Separator />
+
+        {/* Audit Trail */}
+        <div className="space-y-3">
+          <h3 className="font-semibold text-gray-900 flex items-center gap-2">
+            📋 Audit Trail
+            <Badge variant="outline" className="text-xs">Cryptographically Signed</Badge>
+          </h3>
+          
+          {loadingAudit ? (
+            <div className="text-sm text-gray-500 text-center py-4">
+              Loading audit trail...
             </div>
-          </div>
+          ) : auditEvents.length > 0 ? (
+            <div className="space-y-2">
+              {auditEvents.map((event, index) => {
+                const eventInfo = EVENT_LABELS[event.action] || { label: event.action, icon: '•' };
+                return (
+                  <div 
+                    key={event.id || index}
+                    className="flex items-center gap-3 p-2 bg-purple-50 rounded-lg text-sm"
+                  >
+                    <span>{eventInfo.icon}</span>
+                    <span className="font-medium text-purple-900">{eventInfo.label}</span>
+                    <span className="ml-auto text-purple-600 text-xs">
+                      {formatTime(event.created_at)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+              <div className="flex items-start gap-3">
+                <span className="text-lg">📋</span>
+                <div>
+                  <p className="text-sm font-medium text-purple-900">Audit Trail Available</p>
+                  <p className="text-xs text-purple-700 mt-1">
+                    A complete record of this registration has been cryptographically signed 
+                    and stored for your records.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
 
