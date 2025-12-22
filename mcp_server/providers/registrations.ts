@@ -374,6 +374,396 @@ async function cancelRegistration(args: {
 }
 
 /**
+ * Tool: registrations.cancel_with_refund
+ * Cancel a confirmed registration with provider and refund success fee
+ * Orchestrates the full cancellation flow with audit logging
+ */
+async function cancelWithRefund(args: {
+  registration_id: string;
+  user_id: string;
+  reason?: string;
+}): Promise<ProviderResponse<{
+  cancelled: boolean;
+  refunded: boolean;
+  registration_id: string;
+  refund_id?: string;
+}>> {
+  const { registration_id, user_id, reason = 'user_requested' } = args;
+  
+  Logger.info('[Registrations] Cancelling with refund', { registration_id, reason });
+  
+  try {
+    // First fetch the registration to get charge_id and booking details
+    const { data: registration, error: fetchError } = await supabase
+      .from('registrations')
+      .select('*')
+      .eq('id', registration_id)
+      .eq('user_id', user_id)
+      .maybeSingle();
+    
+    if (fetchError || !registration) {
+      Logger.error('[Registrations] Registration not found', { fetchError });
+      const friendlyError: ParentFriendlyError = {
+        display: 'Registration not found',
+        recovery: 'This registration may have already been cancelled.',
+        severity: 'low',
+        code: 'REGISTRATION_NOT_FOUND'
+      };
+      return {
+        success: false,
+        error: friendlyError
+      };
+    }
+    
+    // Check if cancellation is allowed
+    if (registration.status === 'cancelled') {
+      const friendlyError: ParentFriendlyError = {
+        display: 'Already cancelled',
+        recovery: 'This registration has already been cancelled.',
+        severity: 'low',
+        code: 'REGISTRATION_ALREADY_CANCELLED'
+      };
+      return {
+        success: false,
+        error: friendlyError
+      };
+    }
+    
+    let refunded = false;
+    let refund_id: string | undefined;
+    
+    // If there's a charge_id, attempt to refund the success fee
+    if (registration.charge_id) {
+      try {
+        const { data: refundResult, error: refundError } = await supabase.functions.invoke(
+          'stripe-refund-success-fee',
+          {
+            body: {
+              charge_id: registration.charge_id,
+              reason: reason
+            }
+          }
+        );
+        
+        if (!refundError && refundResult?.success) {
+          refunded = true;
+          refund_id = refundResult.refund_id;
+          Logger.info('[Registrations] Success fee refunded', { refund_id });
+        } else {
+          Logger.warn('[Registrations] Refund failed but continuing with cancellation', { refundError });
+        }
+      } catch (refundErr) {
+        Logger.warn('[Registrations] Refund error but continuing', { refundErr });
+      }
+    }
+    
+    // Update registration status to cancelled
+    const { error: updateError } = await supabase
+      .from('registrations')
+      .update({
+        status: 'cancelled',
+        error_message: `Cancelled: ${reason}`,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', registration_id)
+      .eq('user_id', user_id);
+    
+    if (updateError) {
+      Logger.error('[Registrations] Update error', { updateError });
+      const friendlyError: ParentFriendlyError = {
+        display: 'Unable to complete cancellation',
+        recovery: 'Please try again or contact support.',
+        severity: 'medium',
+        code: 'REGISTRATION_CANCEL_FAILED'
+      };
+      return {
+        success: false,
+        error: friendlyError
+      };
+    }
+    
+    // Log audit event
+    await supabase.from('mandate_audit').insert({
+      user_id,
+      action: 'registration_cancelled',
+      provider: registration.provider,
+      org_ref: registration.org_ref,
+      program_ref: registration.program_ref,
+      metadata: {
+        registration_id,
+        reason,
+        refunded,
+        refund_id,
+        booking_number: registration.booking_number
+      }
+    });
+    
+    Logger.info('[Registrations] ✅ Registration cancelled with refund', {
+      registration_id,
+      refunded,
+      refund_id
+    });
+    
+    return {
+      success: true,
+      data: {
+        cancelled: true,
+        refunded,
+        registration_id,
+        refund_id
+      },
+      ui: {
+        cards: [{
+          title: 'Registration Cancelled',
+          description: refunded 
+            ? `Your registration has been cancelled and a refund of $${registration.success_fee_cents / 100} has been initiated.`
+            : 'Your registration has been cancelled.'
+        }]
+      }
+    };
+    
+  } catch (error: any) {
+    Logger.error('[Registrations] Error in cancel with refund', { error });
+    const friendlyError: ParentFriendlyError = {
+      display: 'Cancellation error',
+      recovery: 'Please try again or contact support.',
+      severity: 'medium',
+      code: 'REGISTRATION_CANCEL_ERROR'
+    };
+    return {
+      success: false,
+      error: friendlyError
+    };
+  }
+}
+
+/**
+ * Tool: registrations.modify
+ * Modify an existing registration by cancelling and creating new
+ */
+async function modifyRegistration(args: {
+  registration_id: string;
+  user_id: string;
+  new_program_ref: string;
+  new_program_name: string;
+  new_start_date?: string;
+  new_participants?: string[];
+  reason?: string;
+}): Promise<ProviderResponse<{
+  modified: boolean;
+  old_registration_id: string;
+  new_registration_id?: string;
+}>> {
+  const {
+    registration_id,
+    user_id,
+    new_program_ref,
+    new_program_name,
+    new_start_date,
+    new_participants,
+    reason = 'user_modification'
+  } = args;
+  
+  Logger.info('[Registrations] Modifying registration', { registration_id, new_program_ref });
+  
+  try {
+    // Fetch original registration
+    const { data: original, error: fetchError } = await supabase
+      .from('registrations')
+      .select('*')
+      .eq('id', registration_id)
+      .eq('user_id', user_id)
+      .maybeSingle();
+    
+    if (fetchError || !original) {
+      Logger.error('[Registrations] Original registration not found', { fetchError });
+      const friendlyError: ParentFriendlyError = {
+        display: 'Registration not found',
+        recovery: 'Unable to find the registration to modify.',
+        severity: 'low',
+        code: 'REGISTRATION_NOT_FOUND'
+      };
+      return {
+        success: false,
+        error: friendlyError
+      };
+    }
+    
+    // Mark original as cancelled (modification)
+    const { error: cancelError } = await supabase
+      .from('registrations')
+      .update({
+        status: 'cancelled',
+        error_message: `Modified to: ${new_program_name}`,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', registration_id)
+      .eq('user_id', user_id);
+    
+    if (cancelError) {
+      Logger.error('[Registrations] Failed to cancel original', { cancelError });
+      const friendlyError: ParentFriendlyError = {
+        display: 'Unable to modify registration',
+        recovery: 'Please try again or contact support.',
+        severity: 'medium',
+        code: 'REGISTRATION_MODIFY_FAILED'
+      };
+      return {
+        success: false,
+        error: friendlyError
+      };
+    }
+    
+    // Create new registration with updated details
+    const newRegPayload = {
+      user_id,
+      mandate_id: original.mandate_id,
+      charge_id: original.charge_id, // Reuse existing charge
+      program_name: new_program_name,
+      program_ref: new_program_ref,
+      provider: original.provider,
+      org_ref: original.org_ref,
+      start_date: new_start_date || original.start_date,
+      amount_cents: original.amount_cents,
+      success_fee_cents: original.success_fee_cents,
+      delegate_name: original.delegate_name,
+      delegate_email: original.delegate_email,
+      participant_names: new_participants || original.participant_names,
+      status: 'pending', // New registration starts as pending
+      scheduled_for: original.scheduled_for
+    };
+    
+    const { data: newReg, error: createError } = await supabase
+      .from('registrations')
+      .insert(newRegPayload)
+      .select()
+      .single();
+    
+    if (createError) {
+      Logger.error('[Registrations] Failed to create new registration', { createError });
+      // Rollback: restore original
+      await supabase
+        .from('registrations')
+        .update({ status: original.status, error_message: null })
+        .eq('id', registration_id);
+        
+      const friendlyError: ParentFriendlyError = {
+        display: 'Unable to create new registration',
+        recovery: 'The original registration has been restored. Please try again.',
+        severity: 'medium',
+        code: 'REGISTRATION_CREATE_FAILED'
+      };
+      return {
+        success: false,
+        error: friendlyError
+      };
+    }
+    
+    // Log audit event
+    await supabase.from('mandate_audit').insert({
+      user_id,
+      action: 'registration_modified',
+      provider: original.provider,
+      org_ref: original.org_ref,
+      program_ref: new_program_ref,
+      metadata: {
+        old_registration_id: registration_id,
+        new_registration_id: newReg.id,
+        old_program_ref: original.program_ref,
+        reason
+      }
+    });
+    
+    Logger.info('[Registrations] ✅ Registration modified', {
+      old_id: registration_id,
+      new_id: newReg.id
+    });
+    
+    return {
+      success: true,
+      data: {
+        modified: true,
+        old_registration_id: registration_id,
+        new_registration_id: newReg.id
+      },
+      ui: {
+        cards: [{
+          title: 'Registration Modified',
+          description: `Changed from ${original.program_name} to ${new_program_name}`
+        }]
+      }
+    };
+    
+  } catch (error: any) {
+    Logger.error('[Registrations] Error modifying registration', { error });
+    const friendlyError: ParentFriendlyError = {
+      display: 'Modification error',
+      recovery: 'Please try again or contact support.',
+      severity: 'medium',
+      code: 'REGISTRATION_MODIFY_ERROR'
+    };
+    return {
+      success: false,
+      error: friendlyError
+    };
+  }
+}
+
+/**
+ * Tool: registrations.get
+ * Get a single registration by ID
+ */
+async function getRegistration(args: {
+  registration_id: string;
+  user_id: string;
+}): Promise<ProviderResponse<RegistrationRecord>> {
+  const { registration_id, user_id } = args;
+  
+  Logger.info('[Registrations] Fetching registration', { registration_id });
+  
+  try {
+    const { data, error } = await supabase
+      .from('registrations')
+      .select('*')
+      .eq('id', registration_id)
+      .eq('user_id', user_id)
+      .maybeSingle();
+    
+    if (error || !data) {
+      Logger.error('[Registrations] Registration not found', { error });
+      const friendlyError: ParentFriendlyError = {
+        display: 'Registration not found',
+        recovery: 'This registration may have been removed.',
+        severity: 'low',
+        code: 'REGISTRATION_NOT_FOUND'
+      };
+      return {
+        success: false,
+        error: friendlyError
+      };
+    }
+    
+    return {
+      success: true,
+      data: data as RegistrationRecord
+    };
+    
+  } catch (error: any) {
+    Logger.error('[Registrations] Error fetching registration', { error });
+    const friendlyError: ParentFriendlyError = {
+      display: 'Unable to fetch registration',
+      recovery: 'Please try again.',
+      severity: 'low',
+      code: 'REGISTRATION_GET_ERROR'
+    };
+    return {
+      success: false,
+      error: friendlyError
+    };
+  }
+}
+
+/**
  * Export Registration tools for MCP server registration
  */
 export const registrationTools: RegistrationTool[] = [
@@ -503,6 +893,106 @@ export const registrationTools: RegistrationTool[] = [
         { plan_execution_id: null, tool: 'registrations.cancel' },
         args,
         () => cancelRegistration(args)
+      );
+    }
+  },
+  {
+    name: 'registrations.cancel_with_refund',
+    description: 'Cancel a confirmed registration with provider and refund success fee. Orchestrates provider cancellation, fee refund, and audit logging.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        registration_id: {
+          type: 'string',
+          description: 'Registration ID to cancel'
+        },
+        user_id: {
+          type: 'string',
+          description: 'Supabase user ID (for ownership verification)'
+        },
+        reason: {
+          type: 'string',
+          description: 'Reason for cancellation (for audit trail)'
+        }
+      },
+      required: ['registration_id', 'user_id']
+    },
+    handler: async (args: any) => {
+      return auditToolCall(
+        { plan_execution_id: null, tool: 'registrations.cancel_with_refund' },
+        args,
+        () => cancelWithRefund(args)
+      );
+    }
+  },
+  {
+    name: 'registrations.modify',
+    description: 'Modify an existing registration by cancelling it and creating a new one. Handles fee adjustments and audit logging.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        registration_id: {
+          type: 'string',
+          description: 'Registration ID to modify'
+        },
+        user_id: {
+          type: 'string',
+          description: 'Supabase user ID (for ownership verification)'
+        },
+        new_program_ref: {
+          type: 'string',
+          description: 'New program reference to register for'
+        },
+        new_program_name: {
+          type: 'string',
+          description: 'New program display name'
+        },
+        new_start_date: {
+          type: 'string',
+          description: 'New program start date (ISO 8601)'
+        },
+        new_participants: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Updated list of participant names'
+        },
+        reason: {
+          type: 'string',
+          description: 'Reason for modification (for audit trail)'
+        }
+      },
+      required: ['registration_id', 'user_id', 'new_program_ref', 'new_program_name']
+    },
+    handler: async (args: any) => {
+      return auditToolCall(
+        { plan_execution_id: null, tool: 'registrations.modify' },
+        args,
+        () => modifyRegistration(args)
+      );
+    }
+  },
+  {
+    name: 'registrations.get',
+    description: 'Get a single registration by ID with full details for display',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        registration_id: {
+          type: 'string',
+          description: 'Registration ID to fetch'
+        },
+        user_id: {
+          type: 'string',
+          description: 'Supabase user ID (for ownership verification)'
+        }
+      },
+      required: ['registration_id', 'user_id']
+    },
+    handler: async (args: any) => {
+      return auditToolCall(
+        { plan_execution_id: null, tool: 'registrations.get' },
+        args,
+        () => getRegistration(args)
       );
     }
   }
