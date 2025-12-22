@@ -560,41 +560,36 @@ class SignupAssistMCPServer {
       if (req.method === 'GET' && url.pathname === '/sse') {
         console.log('[SSE] New SSE connection request');
         
-        // Set SSE headers
-        res.writeHead(200, {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache, no-transform',
-          'Connection': 'keep-alive',
-          'X-Accel-Buffering': 'no', // Disable NGINX buffering
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-        });
-        
-        // Create SSE transport with the messages endpoint path
-        const transport = new SSEServerTransport('/messages', res);
-        
-        // Store the transport for message handling
-        const sessionId = crypto.randomUUID();
-        this.sseTransports.set(sessionId, transport);
-        
-        console.log(`[SSE] Created SSE session: ${sessionId}`);
-        
-        // Connect the transport to our MCP server
         try {
+          // Create SSE transport - it will set its own headers
+          const transport = new SSEServerTransport('/messages', res);
+          
+          // Generate session ID and store the transport
+          const sessionId = crypto.randomUUID();
+          this.sseTransports.set(sessionId, transport);
+          
+          console.log(`[SSE] Created SSE session: ${sessionId}`);
+          
+          // Start the transport (this sends the initial endpoint message)
+          await transport.start();
+          
+          // Connect the transport to our MCP server
           await this.server.connect(transport);
           console.log(`[SSE] MCP server connected to SSE transport: ${sessionId}`);
+          
+          // Handle connection close
+          req.on('close', () => {
+            console.log(`[SSE] Connection closed: ${sessionId}`);
+            this.sseTransports.delete(sessionId);
+          });
+          
         } catch (error) {
-          console.error(`[SSE] Failed to connect MCP server:`, error);
-          this.sseTransports.delete(sessionId);
-          res.end();
-          return;
+          console.error(`[SSE] Failed to setup SSE transport:`, error);
+          if (!res.headersSent) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Failed to establish SSE connection' }));
+          }
         }
-        
-        // Handle connection close
-        req.on('close', () => {
-          console.log(`[SSE] Connection closed: ${sessionId}`);
-          this.sseTransports.delete(sessionId);
-        });
         
         // Keep the connection open (don't call res.end())
         return;
