@@ -348,6 +348,165 @@ async function refundSuccessFee(args: {
 }
 
 /**
+ * Tool: stripe.create_checkout_session
+ * Create a Stripe Checkout session in setup mode for collecting payment method
+ */
+async function createCheckoutSession(args: {
+  user_id: string;
+  user_email: string;
+  success_url?: string;
+  cancel_url?: string;
+}): Promise<ProviderResponse<{
+  url: string;
+  session_id: string;
+  customer_id?: string;
+}>> {
+  const { user_id, user_email, success_url, cancel_url } = args;
+  
+  console.log(`[Stripe] Creating checkout session for user: ${user_email}`);
+  
+  try {
+    // Call the stripe-checkout-setup edge function via Supabase
+    const { data, error } = await supabase.functions.invoke(
+      'stripe-checkout-setup',
+      {
+        body: {
+          user_id,
+          user_email,
+          success_url,
+          cancel_url
+        }
+      }
+    );
+    
+    if (error) {
+      console.error('[Stripe] Edge function error:', error);
+      const friendlyError: ParentFriendlyError = {
+        display: 'Unable to start payment setup',
+        recovery: 'Please try again or contact support.',
+        severity: 'medium',
+        code: 'STRIPE_CHECKOUT_FAILED'
+      };
+      return {
+        success: false,
+        error: friendlyError
+      };
+    }
+    
+    if (!data?.url) {
+      console.error('[Stripe] No checkout URL returned');
+      const friendlyError: ParentFriendlyError = {
+        display: 'Payment setup unavailable',
+        recovery: 'Please try again or contact support.',
+        severity: 'medium',
+        code: 'STRIPE_NO_CHECKOUT_URL'
+      };
+      return {
+        success: false,
+        error: friendlyError
+      };
+    }
+    
+    console.log(`[Stripe] ✅ Checkout session created: ${data.session_id}`);
+    
+    return {
+      success: true,
+      data: {
+        url: data.url,
+        session_id: data.session_id,
+        customer_id: data.customer_id
+      },
+      ui: {
+        cards: [{
+          title: 'Payment Setup',
+          description: 'Click the link to securely add your payment method via Stripe'
+        }]
+      }
+    };
+    
+  } catch (error: any) {
+    console.error('[Stripe] Error creating checkout session:', error);
+    const friendlyError: ParentFriendlyError = {
+      display: 'Payment setup error',
+      recovery: 'Please try again or contact support.',
+      severity: 'medium',
+      code: 'STRIPE_CHECKOUT_API_ERROR'
+    };
+    return {
+      success: false,
+      error: friendlyError
+    };
+  }
+}
+
+/**
+ * Tool: stripe.check_payment_status
+ * Check if user has a saved payment method
+ */
+async function checkPaymentStatus(args: {
+  user_id: string;
+}): Promise<ProviderResponse<{
+  hasPaymentMethod: boolean;
+  last4?: string;
+  brand?: string;
+  stripe_customer_id?: string;
+}>> {
+  const { user_id } = args;
+  
+  console.log(`[Stripe] Checking payment status for user: ${user_id}`);
+  
+  try {
+    // Query user_billing table for payment method info
+    const { data, error } = await supabase
+      .from('user_billing')
+      .select('stripe_customer_id, default_payment_method_id, payment_method_last4, payment_method_brand')
+      .eq('user_id', user_id)
+      .maybeSingle();
+    
+    if (error) {
+      console.error('[Stripe] Database error:', error);
+      const friendlyError: ParentFriendlyError = {
+        display: 'Unable to check payment status',
+        recovery: 'Please try again.',
+        severity: 'low',
+        code: 'STRIPE_STATUS_CHECK_FAILED'
+      };
+      return {
+        success: false,
+        error: friendlyError
+      };
+    }
+    
+    const hasPaymentMethod = !!(data?.default_payment_method_id);
+    
+    console.log(`[Stripe] Payment status: hasPaymentMethod=${hasPaymentMethod}`);
+    
+    return {
+      success: true,
+      data: {
+        hasPaymentMethod,
+        last4: data?.payment_method_last4 || undefined,
+        brand: data?.payment_method_brand || undefined,
+        stripe_customer_id: data?.stripe_customer_id || undefined
+      }
+    };
+    
+  } catch (error: any) {
+    console.error('[Stripe] Error checking payment status:', error);
+    const friendlyError: ParentFriendlyError = {
+      display: 'Payment status check error',
+      recovery: 'Please try again.',
+      severity: 'low',
+      code: 'STRIPE_STATUS_API_ERROR'
+    };
+    return {
+      success: false,
+      error: friendlyError
+    };
+  }
+}
+
+/**
  * Export Stripe tools for MCP server registration
  */
 export const stripeTools: StripeTool[] = [
@@ -504,6 +663,72 @@ export const stripeTools: StripeTool[] = [
         },
         toolArgs,
         () => savePaymentMethod(toolArgs)
+      );
+    }
+  },
+  {
+    name: 'stripe.create_checkout_session',
+    description: 'Create a Stripe Checkout session in setup mode for collecting payment method. Returns URL to redirect user to Stripe-hosted page.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user_id: {
+          type: 'string',
+          description: 'Supabase user ID'
+        },
+        user_email: {
+          type: 'string',
+          description: 'User email address'
+        },
+        success_url: {
+          type: 'string',
+          description: 'URL to redirect after successful setup (optional)'
+        },
+        cancel_url: {
+          type: 'string',
+          description: 'URL to redirect if user cancels (optional)'
+        }
+      },
+      required: ['user_id', 'user_email']
+    },
+    handler: async (args: any) => {
+      const { _audit, ...toolArgs } = args;
+      return auditToolCall(
+        { 
+          plan_execution_id: _audit?.plan_execution_id || null, 
+          mandate_id: _audit?.mandate_id,
+          user_id: _audit?.user_id || toolArgs.user_id,
+          tool: 'stripe.create_checkout_session' 
+        },
+        toolArgs,
+        () => createCheckoutSession(toolArgs)
+      );
+    }
+  },
+  {
+    name: 'stripe.check_payment_status',
+    description: 'Check if user has a saved payment method and return payment status details',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user_id: {
+          type: 'string',
+          description: 'Supabase user ID'
+        }
+      },
+      required: ['user_id']
+    },
+    handler: async (args: any) => {
+      const { _audit, ...toolArgs } = args;
+      return auditToolCall(
+        { 
+          plan_execution_id: _audit?.plan_execution_id || null, 
+          mandate_id: _audit?.mandate_id,
+          user_id: _audit?.user_id || toolArgs.user_id,
+          tool: 'stripe.check_payment_status' 
+        },
+        toolArgs,
+        () => checkPaymentStatus(toolArgs)
       );
     }
   }

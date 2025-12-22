@@ -96,7 +96,7 @@ export const tools = {
     /**
      * Create a Stripe checkout session for payment setup
      */
-    createCheckoutSession: (args: { user_id: string; program_ref?: string; return_url?: string }) =>
+    createCheckoutSession: (args: { user_id: string; user_email: string; success_url?: string; cancel_url?: string }) =>
       callMCPTool<StripeCheckoutResult>('stripe.create_checkout_session', args),
     
     /**
@@ -237,8 +237,22 @@ export const tools = {
     /**
      * Modify a registration
      */
-    modify: (args: { registration_id: string; user_id: string; new_program_ref: string; new_start_date?: string; new_participants?: string[] }) =>
+    modify: (args: { 
+      registration_id: string; 
+      user_id: string; 
+      new_program_ref: string; 
+      new_program_name: string;
+      new_start_date?: string; 
+      new_participants?: string[];
+      reason?: string;
+    }) =>
       callMCPTool<{ modified: boolean; new_registration_id?: string; old_registration_id: string }>('registrations.modify', args),
+    
+    /**
+     * Get a single registration by ID
+     */
+    get: (args: { registration_id: string; user_id: string }) =>
+      callMCPTool<{ id: string; program_name: string; status: string; delegate_name: string; participant_names: string[]; amount_cents: number; booking_number?: string }>('registrations.get', args),
   },
   
   provider: {
