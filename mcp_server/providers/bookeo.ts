@@ -893,7 +893,6 @@ Does NOT charge payments.
 Does NOT modify user data.
 Safe to call for browsing and exploration.`,
     _meta: {
-      'openai/visibility': 'public',
       'openai/safety': 'read-only',
     },
     inputSchema: {
