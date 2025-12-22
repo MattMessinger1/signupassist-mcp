@@ -155,20 +155,31 @@ class SignupAssistMCPServer {
 
   constructor() {
     console.log('[STARTUP] SignupAssistMCPServer constructor called');
+
+    const capabilities = {
+      tools: {},
+      resources: {},
+    };
+
     this.server = new Server(
       {
         name: 'signupassist-mcp',
         version: '1.0.0',
       },
       {
-        capabilities: {
-          tools: {},
-          resources: {},  // Required for resources/list and resources/read handlers
-        },
+        capabilities,
       }
     );
+
+    // Defensive: some deployments appear to run an older compiled artifact. This log makes it obvious.
+    console.log('[STARTUP] MCP capabilities configured:', Object.keys(capabilities));
+
+    // Defensive: ensure the SDK sees resources capability before registering resources handlers.
+    // (SDK throws if resources/list or resources/read handlers are registered without this.)
+    this.server.registerCapabilities({ resources: {} });
+
     console.log('[STARTUP] MCP Server instance created');
-    
+
     this.setupRequestHandlers();
     this.registerTools();
   }
