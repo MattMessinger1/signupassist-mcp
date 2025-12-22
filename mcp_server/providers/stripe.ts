@@ -409,6 +409,7 @@ async function createCheckoutSession(args: {
     
     console.log(`[Stripe] ✅ Checkout session created: ${data.session_id}`);
     
+    const secureLinkText = `Step 3/4 — Add a payment method securely via Stripe:\n${data.url}\n\nWe don't see or store your card details. Stripe hosts the form.`;
     return {
       success: true,
       data: {
@@ -416,6 +417,15 @@ async function createCheckoutSession(args: {
         session_id: data.session_id,
         customer_id: data.customer_id
       },
+      // MCP CallToolResult fields: no widget needed; chat can show link cleanly
+      structuredContent: {
+        type: 'stripe_checkout_setup',
+        step: { current: 3, total: 4, label: 'Payment setup (Stripe)' },
+        url: data.url,
+        session_id: data.session_id,
+        customer_id: data.customer_id
+      },
+      content: [{ type: 'text', text: secureLinkText }],
       ui: {
         cards: [{
           title: 'Payment Setup',

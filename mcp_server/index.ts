@@ -13,13 +13,12 @@ const VERSION_INFO = {
   useNewAAP: process.env.USE_NEW_AAP === 'true'
 };
 
-// ChatGPT Apps SDK Widget Metadata
-// This tells ChatGPT which UI template to render for tool outputs
-const CHATGPT_APPS_WIDGET_META = {
-  "openai/outputTemplate": "ui://widget/app.html",
-  "openai/widgetAccessible": true,
-  "openai/toolInvocation/invoking": "Loading...",
-  "openai/toolInvocation/invoked": "Ready!"
+// ChatGPT Apps SDK V1 Metadata (NO WIDGETS)
+// V1 App Store submission: avoid widget templates to eliminate CSP/domain requirements.
+// We still provide progress via toolInvocation messages.
+const CHATGPT_APPS_V1_META = {
+  "openai/toolInvocation/invoking": "Working…",
+  "openai/toolInvocation/invoked": "Done."
 };
 
 // Import Auth0 middleware and protected actions config
@@ -44,7 +43,7 @@ export * from './types.js';
 type MCPTextContent = { type: "text"; text: string };
 
 // Always return a valid MCP CallToolResult shape.
-// IMPORTANT: Prefer structuredContent so widgets can render via window.openai.toolOutput.
+// IMPORTANT: Prefer structuredContent so ChatGPT can render rich content natively.
 export function mcpOk(value: unknown) {
   // If the tool already returned an MCP-style result, pass through
   if (value && typeof value === "object") {
@@ -54,7 +53,7 @@ export function mcpOk(value: unknown) {
     if (looksLikeCallToolResult) return v;
   }
 
-  // Default: expose as structuredContent (for widget) + short text summary (for model)
+  // Default: expose as structuredContent + short text summary
   return {
     structuredContent: value,
     content: [{ type: "text", text: "✅ Done." } satisfies MCPTextContent],
@@ -89,18 +88,6 @@ import {
 import { z } from 'zod';
 import { getPlaceholderImage } from './lib/placeholderImages.js';
 
-// Define resource schemas manually (not exported by SDK v1.18.2)
-const ListResourcesRequestSchema = z.object({
-  method: z.literal('resources/list'),
-  params: z.object({}).optional(),
-});
-
-const ReadResourceRequestSchema = z.object({
-  method: z.literal('resources/read'),
-  params: z.object({
-    uri: z.string(),
-  }),
-});
 import { createServer } from 'http';
 import { URL, fileURLToPath } from 'url';
 import { readFileSync, existsSync } from 'fs';
@@ -194,7 +181,6 @@ class SignupAssistMCPServer {
 
     const capabilities = {
       tools: {},
-      resources: {},
     };
 
     this.server = new Server(
@@ -209,10 +195,6 @@ class SignupAssistMCPServer {
 
     // Defensive: some deployments appear to run an older compiled artifact. This log makes it obvious.
     console.log('[STARTUP] MCP capabilities configured:', Object.keys(capabilities));
-
-    // Defensive: ensure the SDK sees resources capability before registering resources handlers.
-    // (SDK throws if resources/list or resources/read handlers are registered without this.)
-    this.server.registerCapabilities({ resources: {} });
 
     console.log('[STARTUP] MCP Server instance created');
 
@@ -284,178 +266,6 @@ class SignupAssistMCPServer {
       }
     });
 
-    // ✅ ChatGPT requires resources/list handler with widget CSP metadata
-    this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
-      console.log('[MCP] ListResources called');
-      return {
-        resources: [
-          {
-            uri: "ui://widget/app.html",
-            name: "Signup Assist Widget",
-            // REQUIRED for ChatGPT to inject window.openai bridge:
-            mimeType: "text/html+skybridge",
-            _meta: {
-              "openai/widgetPrefersBorder": true,
-              "openai/widgetDescription": "Renders SignupAssist program cards and signup steps inside ChatGPT.",
-              // OpenAI Widget Content Security Policy
-              "openai/widgetCSP": {
-                // Where the widget makes fetch/XHR calls
-                connect_domains: [
-                  "https://signupassist-mcp-production.up.railway.app",
-                  "https://api.bookeo.com",
-                  "https://dev-xha4aa58ytpvlqyl.us.auth0.com"
-                ],
-                // Where images/fonts/scripts are loaded from
-                resource_domains: [
-                  "https://signupassist-mcp-production.up.railway.app",
-                  "https://shipworx.ai"
-                ],
-                // External redirects allowed without extra warnings
-                redirect_domains: [
-                  "https://signupassist-mcp-production.up.railway.app"
-                ],
-                // No iframes currently used
-                frame_domains: []
-              },
-              // Unique widget domain (must point to Railway app via CNAME) - MUST include protocol
-              "openai/widgetDomain": "https://signupassist.shipworx.ai"
-            }
-          },
-        ],
-      };
-    });
-
-    // ✅ ChatGPT requires resources/read handler for widget loading
-    this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-      const uri = request.params.uri;
-      console.log(`[MCP] ReadResource called for: ${uri}`);
-      
-      if (uri === "ui://widget/app.html") {
-        return {
-          contents: [
-            {
-              uri: uri,
-              mimeType: "text/html+skybridge",
-              text: `<!doctype html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <style>
-      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; padding: 12px; }
-      .muted { opacity: 0.7; font-size: 12px; }
-      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin-top: 12px; }
-      .card { border: 1px solid rgba(0,0,0,.12); border-radius: 14px; overflow: hidden; }
-      .img { width: 100%; height: 140px; object-fit: cover; background: #eee; display:block; }
-      .content { padding: 10px 12px; }
-      .title { font-weight: 650; margin: 0 0 6px 0; }
-      .sub { font-size: 13px; opacity: .75; margin: 0 0 8px 0; }
-      .body { font-size: 13px; line-height: 1.35; margin: 0; }
-      button { margin-top: 10px; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(0,0,0,.15); background: white; cursor:pointer; }
-      button:hover { background: rgba(0,0,0,.03); }
-      pre { white-space: pre-wrap; word-break: break-word; }
-    </style>
-  </head>
-  <body>
-    <div class="muted">SignupAssist Widget</div>
-    <div id="root"></div>
-    <script type="module">
-      const root = document.getElementById("root");
-      const out = window.openai?.toolOutput ?? null; // structuredContent
-
-      // Generic renderer that works with your ProviderResponse format:
-      // - bookeo.find_programs returns { ui: { cards: [...] } } inside structuredContent
-      function normalizeCards(output) {
-        const ui = output?.ui;
-        const cards = ui?.cards;
-        if (!cards) return [];
-
-        // cards can be groups: [{ title, cards: [...] }]
-        const flattened = [];
-        for (const group of cards) {
-          if (group?.cards && Array.isArray(group.cards)) {
-            for (const c of group.cards) flattened.push({ ...c, _groupTitle: group.title });
-          } else {
-            flattened.push(group);
-          }
-        }
-        return flattened;
-      }
-
-      const cards = normalizeCards(out);
-
-      if (!out) {
-        root.innerHTML = "<p>Waiting for tool output…</p>";
-      } else if (cards.length === 0) {
-        root.innerHTML = "<p>No cards to render.</p><pre>" + JSON.stringify(out, null, 2) + "</pre>";
-      } else {
-        const grid = document.createElement("div");
-        grid.className = "grid";
-
-        for (const c of cards) {
-          const card = document.createElement("div");
-          card.className = "card";
-
-          const img = document.createElement("img");
-          img.className = "img";
-          img.src = c.image_url || c.imageUrl || "";
-          img.onerror = () => { img.style.display = "none"; };
-
-          const content = document.createElement("div");
-          content.className = "content";
-
-          const title = document.createElement("p");
-          title.className = "title";
-          title.textContent = c.title || "Untitled";
-
-          const sub = document.createElement("p");
-          sub.className = "sub";
-          sub.textContent = c.caption || c.subtitle || c._groupTitle || "";
-
-          const body = document.createElement("p");
-          body.className = "body";
-          body.textContent = c.body || c.description || "";
-
-          content.appendChild(title);
-          if (sub.textContent) content.appendChild(sub);
-          content.appendChild(body);
-
-          // If actions exist, let the widget ask ChatGPT to follow up
-          if (Array.isArray(c.actions) && c.actions.length) {
-            const btn = document.createElement("button");
-            btn.textContent = c.actions[0].label || "Select";
-            btn.onclick = async () => {
-              try {
-                await window.openai.sendFollowUpMessage({
-                  prompt: "Select program_ref=" + c.program_ref + " org_ref=" + c.org_ref
-                });
-              } catch (e) {
-                console.error(e);
-              }
-            };
-            content.appendChild(btn);
-          }
-
-          if (img.src) card.appendChild(img);
-          card.appendChild(content);
-          grid.appendChild(card);
-        }
-
-        root.innerHTML = "";
-        root.appendChild(grid);
-      }
-    </script>
-  </body>
-</html>`,
-            },
-          ],
-        };
-      }
-
-      // Return empty for unknown resources
-      console.log(`[MCP] Unknown resource requested: ${uri}`);
-      return { contents: [] };
-    });
   }
 
   private registerTools() {
@@ -481,7 +291,7 @@ class SignupAssistMCPServer {
       });
     });
 
-    // Register Bookeo tools with ChatGPT Apps SDK widget metadata
+    // Register Bookeo tools with ChatGPT Apps SDK V1 metadata
     bookeoTools.forEach((tool) => {
       this.tools.set(tool.name, {
         name: tool.name,
@@ -489,7 +299,7 @@ class SignupAssistMCPServer {
         inputSchema: tool.inputSchema,
         handler: tool.handler,
         _meta: {
-          ...CHATGPT_APPS_WIDGET_META,
+          ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),  // Preserve read-only safety metadata
           "openai/visibility": "public",    // Ensure tools are visible/usable
           "openai/toolInvocation/invoking": "Searching programs...",
@@ -506,14 +316,14 @@ class SignupAssistMCPServer {
         inputSchema: tool.inputSchema,
         handler: tool.handler,
         _meta: {
-          ...CHATGPT_APPS_WIDGET_META,
+          ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
           "openai/visibility": "public"
         }
       });
     });
 
-    // Register Mandate tools with ChatGPT Apps SDK widget metadata
+    // Register Mandate tools with ChatGPT Apps SDK V1 metadata
     mandateTools.forEach((tool) => {
       this.tools.set(tool.name, {
         name: tool.name,
@@ -521,7 +331,7 @@ class SignupAssistMCPServer {
         inputSchema: tool.inputSchema,
         handler: tool.handler,
         _meta: {
-          ...CHATGPT_APPS_WIDGET_META,
+          ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
           "openai/visibility": "public",
           "openai/toolInvocation/invoking": "Processing mandate...",
@@ -538,7 +348,7 @@ class SignupAssistMCPServer {
         inputSchema: tool.inputSchema,
         handler: tool.handler,
         _meta: {
-          ...CHATGPT_APPS_WIDGET_META,
+          ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
           "openai/visibility": "public"
         }
@@ -553,7 +363,7 @@ class SignupAssistMCPServer {
         inputSchema: tool.inputSchema,
         handler: tool.handler,
         _meta: {
-          ...CHATGPT_APPS_WIDGET_META,
+          ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
           "openai/visibility": "public"
         }
@@ -568,7 +378,7 @@ class SignupAssistMCPServer {
         inputSchema: tool.inputSchema,
         handler: tool.handler,
         _meta: {
-          ...CHATGPT_APPS_WIDGET_META,
+          ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
           "openai/visibility": "public"
         }
@@ -583,7 +393,7 @@ class SignupAssistMCPServer {
         inputSchema: tool.inputSchema,
         handler: tool.handler,
         _meta: {
-          ...CHATGPT_APPS_WIDGET_META,
+          ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
           "openai/visibility": "public",
           "openai/toolInvocation/invoking": "Loading user data...",
@@ -628,7 +438,7 @@ class SignupAssistMCPServer {
         return await tool.handler({ org_ref, category });
       },
       _meta: {
-        ...CHATGPT_APPS_WIDGET_META,
+        ...CHATGPT_APPS_V1_META,
         "openai/visibility": "public",
         "openai/safety": "read-only",
         "openai/toolInvocation/invoking": "Pulling up available classes…",
