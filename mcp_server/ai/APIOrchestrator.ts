@@ -2443,8 +2443,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
     // ✅ COMPLIANCE FIX: Call MCP tool for form discovery (ensures audit logging)
     let signupForm;
-    // Get program data early so it's available for logging and status checks
-    const programData = context.selectedProgram || {};
     try {
       // Debug: Log what we're sending to form discovery
       Logger.info('[selectProgram] Form discovery request:', {
