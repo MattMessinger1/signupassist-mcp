@@ -21,6 +21,94 @@ const CHATGPT_APPS_V1_META = {
   "openai/toolInvocation/invoked": "Done."
 };
 
+// Wizard-style progress strings (no widget needed)
+// Keep these short, calm, and consistent to build trust + reduce overwhelm.
+function wizardInvocationForTool(toolName: string): { invoking: string; invoked: string } {
+  // Step 1/4 — Program discovery
+  const step1Invoking = "Step 1/4 — Finding classes…";
+  const step1Invoked  = "Step 1/4 — Classes ready.";
+
+  // Step 2/4 — Requirements / info needed
+  const step2Invoking = "Step 2/4 — Checking what info is required…";
+  const step2Invoked  = "Step 2/4 — Requirements ready.";
+
+  // Step 3/4 — Payment method / Stripe
+  const step3Invoking = "Step 3/4 — Payment setup (Stripe)…";
+  const step3Invoked  = "Step 3/4 — Payment step ready.";
+
+  // Step 4/4 — Registration execution
+  const step4Invoking = "Step 4/4 — Registering…";
+  const step4Invoked  = "Step 4/4 — Registration step complete.";
+
+  // Entry point / feed
+  if (toolName === "signupassist.start" || toolName === "program_feed.get") {
+    return { invoking: step1Invoking, invoked: step1Invoked };
+  }
+
+  // Program discovery tools
+  if (
+    toolName === "bookeo.find_programs" ||
+    toolName === "scp.find_programs"
+  ) {
+    return { invoking: step1Invoking, invoked: step1Invoked };
+  }
+
+  // Required fields / probes
+  if (
+    toolName === "bookeo.discover_required_fields" ||
+    toolName === "scp.discover_required_fields" ||
+    toolName === "scp.program_field_probe" ||
+    toolName === "scp:check_prerequisites"
+  ) {
+    return { invoking: step2Invoking, invoked: step2Invoked };
+  }
+
+  // Stripe / billing checks
+  if (
+    toolName.startsWith("stripe.") ||
+    toolName === "user.check_payment_method" ||
+    toolName === "scp.check_payment_method"
+  ) {
+    return { invoking: step3Invoking, invoked: step3Invoked };
+  }
+
+  // Mandates / consent + execution
+  if (
+    toolName === "mandates.create" ||
+    toolName === "mandates.prepare_registration" ||
+    toolName === "scp.create_mandate"
+  ) {
+    // Treat mandate creation/prep as Step 2/4: clarifying + confirming what's needed
+    return { invoking: step2Invoking, invoked: "Step 2/4 — Consent step ready." };
+  }
+  if (
+    toolName === "mandates.submit_registration"
+  ) {
+    return { invoking: step4Invoking, invoked: "Step 4/4 — Registered (or attempted). See details above." };
+  }
+
+  // Provider booking execution
+  if (
+    toolName === "bookeo.create_hold" ||
+    toolName === "bookeo.confirm_booking" ||
+    toolName === "scp.register" ||
+    toolName === "scp.pay"
+  ) {
+    return { invoking: step4Invoking, invoked: step4Invoked };
+  }
+
+  // Default: keep it neutral
+  return { invoking: "Working…", invoked: "Done." };
+}
+
+function applyWizardMeta(toolName: string) {
+  const { invoking, invoked } = wizardInvocationForTool(toolName);
+  return {
+    "openai/toolInvocation/invoking": invoking,
+    "openai/toolInvocation/invoked": invoked,
+  };
+}
+
 // Import Auth0 middleware and protected actions config
 import { verifyAuth0Token, extractBearerToken, getAuth0Config } from './middleware/auth0.js';
 import { isProtectedAction, PROTECTED_ACTIONS } from './config/protectedActions.js';
@@ -302,8 +390,7 @@ class SignupAssistMCPServer {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),  // Preserve read-only safety metadata
           "openai/visibility": "public",    // Ensure tools are visible/usable
-          "openai/toolInvocation/invoking": "Searching programs...",
-          "openai/toolInvocation/invoked": "Found programs!"
+          ...applyWizardMeta(tool.name)
         }
       });
     });
@@ -318,7 +405,8 @@ class SignupAssistMCPServer {
         _meta: {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
-          "openai/visibility": "public"
+          "openai/visibility": "public",
+          ...applyWizardMeta(tool.name)
         }
       });
     });
@@ -334,8 +422,7 @@ class SignupAssistMCPServer {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
           "openai/visibility": "public",
-          "openai/toolInvocation/invoking": "Processing mandate...",
-          "openai/toolInvocation/invoked": "Mandate ready!"
+          ...applyWizardMeta(tool.name)
         }
       });
     });
@@ -350,7 +437,8 @@ class SignupAssistMCPServer {
         _meta: {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
-          "openai/visibility": "public"
+          "openai/visibility": "public",
+          ...applyWizardMeta(tool.name)
         }
       });
     });
@@ -365,7 +453,8 @@ class SignupAssistMCPServer {
         _meta: {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
-          "openai/visibility": "public"
+          "openai/visibility": "public",
+          ...applyWizardMeta(name)
         }
       });
     });
@@ -380,7 +469,8 @@ class SignupAssistMCPServer {
         _meta: {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
-          "openai/visibility": "public"
+          "openai/visibility": "public",
+          ...applyWizardMeta(tool.name)
         }
       });
     });
@@ -396,8 +486,7 @@ class SignupAssistMCPServer {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
           "openai/visibility": "public",
-          "openai/toolInvocation/invoking": "Loading user data...",
-          "openai/toolInvocation/invoked": "User data ready!"
+          ...applyWizardMeta(tool.name)
         }
       });
     });
@@ -415,17 +504,9 @@ class SignupAssistMCPServer {
       inputSchema: {
         type: "object",
         properties: {
-          org_ref: {
-            type: "string",
-            description: "Organization reference (default: aim-design).",
-          },
-          category: {
-            type: "string",
-            description: "Optional category filter (default: all).",
-            enum: ["all", "lessons", "camps", "events", "tours"],
-          },
+          org_ref: { type: "string", description: "Organization reference slug (e.g. aim-design)" },
+          category: { type: "string", description: "Optional category filter (e.g. robotics, camps, etc.)" },
         },
-        required: [],
       },
       handler: async (args: any) => {
         const org_ref = args?.org_ref || "aim-design";
@@ -441,8 +522,7 @@ class SignupAssistMCPServer {
         ...CHATGPT_APPS_V1_META,
         "openai/visibility": "public",
         "openai/safety": "read-only",
-        "openai/toolInvocation/invoking": "Pulling up available classes…",
-        "openai/toolInvocation/invoked": "Here are the available classes.",
+        ...applyWizardMeta("signupassist.start")
       },
     });
 
