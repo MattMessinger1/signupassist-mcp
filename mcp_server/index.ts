@@ -49,6 +49,8 @@ import {
   CallToolRequestSchema,
   ErrorCode,
   ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import { createServer } from 'http';
@@ -226,6 +228,42 @@ class SignupAssistMCPServer {
       }
       const tool = this.tools.get(name);
       return await tool.handler(args);
+    });
+
+    // ✅ ChatGPT requires resources/list handler (even if empty)
+    this.server.setRequestHandler(ListResourcesRequestSchema, async () => {
+      console.log('[MCP] ListResources called');
+      return {
+        resources: [
+          {
+            uri: "ui://widget/app.html",
+            name: "Signup Assist Widget",
+            mimeType: "text/html",
+          },
+        ],
+      };
+    });
+
+    // ✅ ChatGPT requires resources/read handler for widget loading
+    this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+      const uri = request.params.uri;
+      console.log(`[MCP] ReadResource called for: ${uri}`);
+      
+      if (uri === "ui://widget/app.html") {
+        return {
+          contents: [
+            {
+              uri: uri,
+              mimeType: "text/html",
+              text: "<html><body><h1>Signup Assist</h1><p>Widget loaded.</p></body></html>",
+            },
+          ],
+        };
+      }
+
+      // Return empty for unknown resources
+      console.log(`[MCP] Unknown resource requested: ${uri}`);
+      return { contents: [] };
     });
   }
 
