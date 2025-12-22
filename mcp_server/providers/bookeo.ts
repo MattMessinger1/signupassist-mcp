@@ -6,6 +6,7 @@
 import { auditToolCall } from '../middleware/audit.js';
 import { createClient } from '@supabase/supabase-js';
 import type { ProviderResponse, ParentFriendlyError } from '../types.js';
+import { getPlaceholderImage } from '../lib/placeholderImages.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -164,6 +165,7 @@ async function findPrograms(args: {
       cards: progs.map(prog => ({
         title: prog.title || 'Untitled Program',
         subtitle: `Status: ${prog.status || 'TBD'}`,
+        image_url: prog.image_url || prog.imageUrl || prog.thumbnail || getPlaceholderImage(prog.title || '', prog.category),
         caption: [
           prog.price || 'Price varies',
           prog.signup_start_time ? new Date(prog.signup_start_time).toLocaleDateString() : 'Date TBD'

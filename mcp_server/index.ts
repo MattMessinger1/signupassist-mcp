@@ -79,6 +79,7 @@ import {
   McpError,
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
+import { getPlaceholderImage } from './lib/placeholderImages.js';
 
 // Define resource schemas manually (not exported by SDK v1.18.2)
 const ListResourcesRequestSchema = z.object({
@@ -886,7 +887,7 @@ class SignupAssistMCPServer {
               return {
                 title: `${emoji} ${prog.title || prog.name}`,
                 subtitle: `${new Date(startTime).toLocaleDateString()} @ ${new Date(startTime).toLocaleTimeString()} – ${seats} seats left`,
-                image_url: prog.image_url || prog.imageUrl || prog.thumbnail || null,
+                image_url: prog.image_url || prog.imageUrl || prog.thumbnail || getPlaceholderImage(prog.title || prog.name || '', prog.category),
                 action: {
                   label: "Reserve Spot",
                   tool: "create_hold",
