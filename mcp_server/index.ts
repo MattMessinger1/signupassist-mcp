@@ -39,6 +39,33 @@ console.info(
 export * from './types.js';
 
 // ============================================================================
+// MCP Tool Result Helpers
+// ============================================================================
+type MCPTextContent = { type: "text"; text: string };
+
+// Always return a valid MCP CallToolResult shape
+export function mcpOk(value: unknown) {
+  const text =
+    typeof value === "string" ? value : JSON.stringify(value, null, 2);
+
+  return {
+    content: [{ type: "text", text } satisfies MCPTextContent],
+  };
+}
+
+export function mcpError(message: string, details?: unknown) {
+  const text =
+    details === undefined
+      ? message
+      : `${message}\n\nDetails:\n${JSON.stringify(details, null, 2)}`;
+
+  return {
+    isError: true,
+    content: [{ type: "text", text } satisfies MCPTextContent],
+  };
+}
+
+// ============================================================================
 // Core Imports
 // ============================================================================
 
@@ -251,7 +278,16 @@ class SignupAssistMCPServer {
         throw new McpError(ErrorCode.MethodNotFound, `Tool ${name} not found`);
       }
       const tool = this.tools.get(name);
-      return await tool.handler(args);
+      try {
+        const result = await tool.handler(args);
+        return mcpOk(result);  // Wrap in MCP-compliant format
+      } catch (err: any) {
+        console.error(`[MCP] Tool ${name} failed:`, err);
+        return mcpError(`Tool ${name} failed`, {
+          message: err?.message,
+          stack: err?.stack
+        });
+      }
     });
 
     // ✅ ChatGPT requires resources/list handler (even if empty)
