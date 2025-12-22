@@ -56,6 +56,10 @@ export interface BookeoTool {
     required?: string[];
   };
   handler: (args: any) => Promise<any>;
+  /** Optional safety metadata for OpenAI safety gating */
+  _meta?: {
+    'openai/safety'?: 'read-only' | 'write' | 'sensitive';
+  };
 }
 
 /**
@@ -856,7 +860,15 @@ export const bookeoTools: BookeoTool[] = [
   },
   {
     name: 'bookeo.find_programs',
-    description: 'Find available programs/products from Bookeo with carousel UI',
+    description: `Read-only discovery tool.
+Returns a list of available AIM Design programs (classes, camps, events) and metadata.
+Does NOT create bookings.
+Does NOT charge payments.
+Does NOT modify user data.
+Safe to call for browsing and exploration.`,
+    _meta: {
+      'openai/safety': 'read-only'
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -894,7 +906,15 @@ export const bookeoTools: BookeoTool[] = [
   },
   {
     name: 'bookeo.discover_required_fields',
-    description: 'Discover required fields for booking a specific Bookeo product',
+    description: `Read-only discovery tool.
+Returns the required form fields for a specific program (delegate + participant fields).
+Does NOT create bookings.
+Does NOT charge payments.
+Does NOT modify user data.
+Safe to call for exploring registration requirements.`,
+    _meta: {
+      'openai/safety': 'read-only'
+    },
     inputSchema: {
       type: 'object',
       properties: {
