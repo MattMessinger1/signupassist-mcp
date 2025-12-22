@@ -178,7 +178,7 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 class SignupAssistMCPServer {
   private server: Server;
   private tools: Map<string, any> = new Map();
-  private orchestrator: IOrchestrator | AIOrchestrator | null = null;
+  private orchestrator: IOrchestrator | null = null;
   private sseTransports: Map<string, SSEServerTransport> = new Map(); // SSE session storage
 
   constructor() {
