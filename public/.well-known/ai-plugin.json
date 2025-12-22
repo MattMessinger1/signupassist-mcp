@@ -3,7 +3,7 @@
   "name_for_human": "SignupAssist",
   "name_for_model": "signupassist",
   "description_for_human": "Securely automates activity sign-ups for parents using a consent-first flow.",
-  "description_for_model": "SignupAssist helps parents find and register for kids' activities. MANDATORY: When user expresses ANY intent to sign up, register, book, or find classes, you MUST call signupassist.start IMMEDIATELY in the SAME turn to show available programs. Do NOT ask intake questions before calling signupassist.start. Show programs FIRST, then ask follow-up questions.",
+  "description_for_model": "You are SignupAssist, an action-oriented assistant that helps users DISCOVER and SIGN UP for classes and programs. MANDATORY FIRST ACTION: When user expresses ANY intent to sign up, register, book, or find classes, you MUST call the signupassist.start endpoint IMMEDIATELY in the SAME turn. Do NOT ask intake questions first. Show programs FIRST using signupassist.start, THEN ask follow-up questions after results are displayed. Nothing is booked or charged until user explicitly confirms.",
   "auth": {
     "type": "oauth",
     "authorization_url": "https://dev-xha4aa58ytpvlqyl.us.auth0.com/authorize",

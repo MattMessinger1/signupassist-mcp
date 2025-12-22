@@ -1942,6 +1942,38 @@ class SignupAssistMCPServer {
         return;
       }
 
+      // ============================================================
+      // ACTION-FIRST ENTRYPOINT - signupassist.start via HTTP
+      // ============================================================
+      // ChatGPT can call this immediately with zero user input
+      if (url.pathname === '/signupassist/start') {
+        console.log('[ROUTE] /signupassist/start hit - ACTION MODE');
+        
+        res.writeHead(200, { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        });
+        
+        try {
+          const org_ref = url.searchParams.get('org_ref') || 'aim-design';
+          const category = url.searchParams.get('category') || 'all';
+          
+          // Get the signupassist.start tool and call it
+          const tool = this.tools.get('signupassist.start');
+          if (!tool) {
+            res.end(JSON.stringify({ error: 'signupassist.start tool not registered' }));
+            return;
+          }
+          
+          const result = await tool.handler({ org_ref, category });
+          res.end(JSON.stringify(result));
+        } catch (err: any) {
+          console.error('[signupassist.start] Error:', err);
+          res.end(JSON.stringify({ error: err.message || 'Unknown error' }));
+        }
+        return;
+      }
+
       if (url.pathname === '/orchestrator/chat') {
         console.log('[ROUTE] /orchestrator/chat hit');
         if (req.method === 'OPTIONS') {
