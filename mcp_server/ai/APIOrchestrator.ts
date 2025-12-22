@@ -2443,6 +2443,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
     // ✅ COMPLIANCE FIX: Call MCP tool for form discovery (ensures audit logging)
     let signupForm;
+    // Get program data early so it's available for logging and status checks
+    const programData = context.selectedProgram || {};
     try {
       // Debug: Log what we're sending to form discovery
       Logger.info('[selectProgram] Form discovery request:', {
@@ -2450,7 +2452,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         programName,
         orgRef,
         has_programData: !!programData,
-        programData_keys: programData ? Object.keys(programData) : []
+        programData_keys: Object.keys(programData)
       });
 
       // Determine registration timing and add transparency message
@@ -2482,7 +2484,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       // Return form schema with fullscreen mode for ChatGPT compliance
       // Include all fields the widget needs to initialize form state
-      const programData = context.selectedProgram || {};
       const programFeeCents = programData.priceCents || 
                               (programData.price ? Math.round(parseFloat(String(programData.price).replace(/[^0-9.]/g, '')) * 100) : 0);
       
