@@ -300,6 +300,50 @@
         "security": []
       }
     },
+    "/signupassist/start": {
+      "get": {
+        "summary": "Show available programs immediately",
+        "description": "**CALL THIS FIRST.** Read-only action-first entrypoint. Immediately shows available programs without requiring any user input. Does NOT create bookings. Does NOT charge payments. Safe to call anytime. Use this as the FIRST action when user expresses any intent to find or sign up for classes.",
+        "operationId": "signupassist_start",
+        "x-openai-isConsequential": false,
+        "parameters": [
+          {
+            "name": "org_ref",
+            "in": "query",
+            "required": false,
+            "description": "Organization reference (default: aim-design)",
+            "schema": {
+              "type": "string",
+              "default": "aim-design"
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "description": "Optional category filter",
+            "schema": {
+              "type": "string",
+              "enum": ["all", "lessons", "camps", "events", "tours"],
+              "default": "all"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of available programs with cards for display",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
     "/tools/call": {
       "post": {
         "summary": "Direct tool access (internal use only)",
