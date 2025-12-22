@@ -592,6 +592,50 @@ class SignupAssistMCPServer {
       });
     });
 
+    // ============================================================
+    // ACTION MODE ENTRYPOINT (READ-ONLY)
+    // ============================================================
+    // This tool exists to prevent "intake-mode stalling".
+    // ChatGPT can call this immediately with ZERO info from the user.
+    // It shows available programs (no booking, no payment, no writes).
+    this.tools.set("signupassist.start", {
+      name: "signupassist.start",
+      description:
+        "Read-only action-first entrypoint. Immediately shows available programs (no booking, no payment, no writes). Call this FIRST to show users what's available.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          org_ref: {
+            type: "string",
+            description: "Organization reference (default: aim-design).",
+          },
+          category: {
+            type: "string",
+            description: "Optional category filter (default: all).",
+            enum: ["all", "lessons", "camps", "events", "tours"],
+          },
+        },
+        required: [],
+      },
+      handler: async (args: any) => {
+        const org_ref = args?.org_ref || "aim-design";
+        const category = args?.category || "all";
+
+        const tool = this.tools.get("bookeo.find_programs");
+        if (!tool) throw new Error("bookeo.find_programs is not registered");
+
+        // Delegate to existing discovery tool
+        return await tool.handler({ org_ref, category });
+      },
+      _meta: {
+        ...CHATGPT_APPS_WIDGET_META,
+        "openai/visibility": "public",
+        "openai/safety": "read-only",
+        "openai/toolInvocation/invoking": "Pulling up available classes…",
+        "openai/toolInvocation/invoked": "Here are the available classes.",
+      },
+    });
+
     // Future array tools (no-op for now)
     const arrayTools: any[] = [];
     arrayTools.forEach((tool) => this.tools.set(tool.name, tool));
