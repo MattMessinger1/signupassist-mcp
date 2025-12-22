@@ -207,19 +207,15 @@ class SignupAssistMCPServer {
 
   private setupRequestHandlers() {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      // Filter to only API-compatible tools (hide scraping/internal tools)
+      // Expose all registered tools to ChatGPT (no filtering)
       const apiTools = Array.from(this.tools.values())
-        .filter(tool => 
-          tool.name.startsWith('bookeo.') || 
-          tool.name.startsWith('user.') ||
-          tool.name.startsWith('mandate.')
-        )
         .map(tool => ({
           name: tool.name,
           description: tool.description,
           inputSchema: tool.inputSchema,
           _meta: tool._meta  // Include ChatGPT Apps SDK widget metadata
         }));
+      console.log(`[MCP] ListTools returning ${apiTools.length} tools:`, apiTools.map(t => t.name));
       return { tools: apiTools };
     });
 
