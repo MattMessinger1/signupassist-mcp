@@ -309,6 +309,79 @@ export function getGracefulDeclineMessage(): string {
   return `I can help with class signups and registrations. Tell me the organization name and I'll see what's available.`;
 }
 
+// ============================================
+// INTENT ASSERTION MESSAGES (ACT FIRST, ASK LATER)
+// ============================================
+
+/**
+ * INTENT_ASSERTION: Assertive first response - claims the domain immediately
+ * Use this instead of hedging/asking clarification questions
+ */
+export function getIntentAssertionMessage(vars: {
+  provider_name: string;
+  activity_type?: string;
+  location?: string;
+}): string {
+  const { provider_name, activity_type, location } = vars;
+  const activityText = activity_type ? `${activity_type} programs` : 'programs';
+  const locationText = location ? ` in ${location}` : '';
+  
+  return `I can help you sign up for **${provider_name}**'s ${activityText}${locationText}.
+Let me show you the available classes.`;
+}
+
+/**
+ * INTENT_ASSERTION_SIMPLE: Shorter version for known providers
+ */
+export function getIntentAssertionSimpleMessage(vars: {
+  provider_name: string;
+}): string {
+  const { provider_name } = vars;
+  
+  return `I can help with that. Here are the programs currently available at **${provider_name}**.`;
+}
+
+/**
+ * SOFT_DISAMBIGUATION: Polite fallback shown AFTER programs are displayed
+ * (Not before - we show programs first, disambiguate later)
+ */
+export function getSoftDisambiguationMessage(vars: {
+  provider_name: string;
+  location?: string;
+}): string {
+  const { provider_name, location } = vars;
+  const locationText = location ? ` in ${location}` : '';
+  
+  return `If you were looking for a different organization${locationText}, just let me know.`;
+}
+
+/**
+ * PROGRAMS_WITH_DISAMBIGUATION: Programs message with soft disambiguation footer
+ */
+export function getProgramsWithDisambiguationMessage(vars: {
+  provider_name: string;
+  program_count: number;
+  location?: string;
+}): string {
+  const { provider_name, program_count, location } = vars;
+  const locationText = location ? ` in ${location}` : '';
+  
+  return `Here are ${program_count} program${program_count !== 1 ? 's' : ''} at **${provider_name}**${locationText}.
+
+Which one would you like to sign up for?
+
+_(If you were looking for a different organization, let me know.)_`;
+}
+
+/**
+ * POST_DISCOVERY_CTA: Follow-up after showing programs
+ */
+export function getPostDiscoveryCTAMessage(vars: {
+  provider_name?: string;
+}): string {
+  return `Which one would you like to sign up for, and how old is your child?`;
+}
+
 /**
  * Location question for authenticated users without stored location
  */
