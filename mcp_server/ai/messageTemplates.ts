@@ -266,12 +266,61 @@ export function getNoProviderMatchMessage(vars: MessageVariables & { search_quer
   return `I couldn't find any providers matching "${query}".\n\nWe currently support organizations in **${coverageArea}**.\n\nTry searching by city (e.g., "swim lessons in Madison") or tell me what activity you're looking for and I can show you what's available!`;
 }
 
+// ============================================================================
+// INTENT ASSERTION MESSAGES (ACT FIRST, ASK LATER)
+// ============================================================================
+
+export interface IntentAssertionVars extends MessageVariables {
+  activity_type?: string;
+  location?: string;
+}
+
+/**
+ * ASSISTANT__INTENT_ASSERTION
+ * 
+ * Assertive first response that immediately claims the domain
+ * NO hedging, NO asking clarification questions first
+ */
+export function getIntentAssertionMessage(vars: IntentAssertionVars): string {
+  const providerName = vars.provider_name || "your provider";
+  const activityType = vars.activity_type || "programs";
+  const location = vars.location ? ` in ${vars.location}` : '';
+  
+  return `I can help you sign up for **${providerName}**'s ${activityType}${location}. Let me show you the available classes.`;
+}
+
+/**
+ * ASSISTANT__PROGRAMS_WITH_SOFT_DISAMBIGUATION
+ * 
+ * Programs message with soft disambiguation at the end (NOT before)
+ * Keeps SignupAssist in control while remaining polite
+ */
+export function getProgramsWithSoftDisambiguationMessage(vars: MessageVariables): string {
+  const providerName = vars.provider_name || "your provider";
+  const total = vars.counts?.total || 0;
+  
+  return `Here are ${total} program${total !== 1 ? 's' : ''} at **${providerName}**.
+
+Which one would you like to sign up for?
+
+_(If you were looking for a different organization, just let me know.)_`;
+}
+
+/**
+ * ASSISTANT__POST_PROGRAMS_CTA
+ * 
+ * Follow-up prompt after showing programs
+ */
+export function getPostProgramsCTAMessage(): string {
+  return `Which one would you like to sign up for, and how old is your child?`;
+}
+
 /**
  * Helper to select the appropriate message based on flow state
  */
 export function getMessageForState(
-  state: "post_login" | "post_login_v2" | "loading" | "programs_ready" | "programs_ready_v2" | "no_programs" | "age_mismatch" | "error" | "program_discovery_error" | "session_expired" | "confirmation" | "selection_ack" | "mandate_recovery" | "out_of_coverage" | "ambiguous_city" | "coming_soon" | "in_coverage" | "no_provider_match",
-  vars: MessageVariables | LocationMessageVars = {}
+  state: "post_login" | "post_login_v2" | "loading" | "programs_ready" | "programs_ready_v2" | "no_programs" | "age_mismatch" | "error" | "program_discovery_error" | "session_expired" | "confirmation" | "selection_ack" | "mandate_recovery" | "out_of_coverage" | "ambiguous_city" | "coming_soon" | "in_coverage" | "no_provider_match" | "intent_assertion" | "programs_soft_disambig" | "post_programs_cta",
+  vars: MessageVariables | LocationMessageVars | IntentAssertionVars = {}
 ): string {
   switch (state) {
     case "post_login":
@@ -310,6 +359,13 @@ export function getMessageForState(
       return getInCoverageMessage(vars as LocationMessageVars);
     case "no_provider_match":
       return getNoProviderMatchMessage(vars as MessageVariables & { search_query?: string; coverage_area?: string });
+    // NEW: Intent assertion states
+    case "intent_assertion":
+      return getIntentAssertionMessage(vars as IntentAssertionVars);
+    case "programs_soft_disambig":
+      return getProgramsWithSoftDisambiguationMessage(vars);
+    case "post_programs_cta":
+      return getPostProgramsCTAMessage();
     default:
       return "Let me know how I can help!";
   }
