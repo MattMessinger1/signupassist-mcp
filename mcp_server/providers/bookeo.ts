@@ -848,7 +848,14 @@ async function testConnection(): Promise<any> {
 export const bookeoTools: BookeoTool[] = [
   {
     name: 'bookeo.test_connection',
-    description: 'Diagnostic tool to test Bookeo API credentials with a READ operation',
+    description: `Read-only diagnostic tool.
+Verifies Bookeo API credentials using a GET request.
+Does NOT create bookings.
+Does NOT charge payments.
+Safe to call anytime.`,
+    _meta: {
+      'openai/safety': 'read-only'
+    },
     inputSchema: {
       type: 'object',
       properties: {},
