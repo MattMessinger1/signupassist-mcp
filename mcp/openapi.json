@@ -220,6 +220,86 @@
         ]
       }
     },
+    "/sse": {
+      "get": {
+        "summary": "SSE Connection Endpoint",
+        "description": "Establishes a Server-Sent Events (SSE) connection for MCP communication. ChatGPT Apps Connector uses this to receive streaming responses from the MCP server. The connection stays open and the server pushes events as they occur.",
+        "operationId": "sseConnect",
+        "responses": {
+          "200": {
+            "description": "SSE stream established",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string",
+                  "description": "Server-Sent Events stream with MCP JSON-RPC messages"
+                }
+              }
+            }
+          }
+        },
+        "security": []
+      }
+    },
+    "/messages": {
+      "post": {
+        "summary": "SSE Message Endpoint",
+        "description": "Receives JSON-RPC messages from the client and forwards them to the MCP server through the SSE transport. Requires an active SSE session established via /sse endpoint.",
+        "operationId": "sseMessage",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "in": "query",
+            "required": true,
+            "description": "Session ID from the SSE connection",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "JSON-RPC 2.0 message for MCP protocol",
+                "properties": {
+                  "jsonrpc": {
+                    "type": "string",
+                    "enum": ["2.0"]
+                  },
+                  "method": {
+                    "type": "string",
+                    "description": "MCP method name (e.g., 'tools/list', 'tools/call')"
+                  },
+                  "params": {
+                    "type": "object",
+                    "description": "Method parameters"
+                  },
+                  "id": {
+                    "type": ["string", "number"],
+                    "description": "Request ID for correlation"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Message processed successfully"
+          },
+          "400": {
+            "description": "Missing sessionId parameter"
+          },
+          "404": {
+            "description": "Session not found - reconnect to /sse"
+          }
+        },
+        "security": []
+      }
+    },
     "/tools/call": {
       "post": {
         "summary": "Direct tool access (internal use only)",
