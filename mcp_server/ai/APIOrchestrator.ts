@@ -2481,6 +2481,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const message = `Great choice! Let's get you signed up for **${programName}**.`;
 
       // Return form schema with fullscreen mode for ChatGPT compliance
+      // Include all fields the widget needs to initialize form state
+      const programData = context.selectedProgram || {};
+      const programFeeCents = programData.priceCents || 
+                              (programData.price ? Math.round(parseFloat(String(programData.price).replace(/[^0-9.]/g, '')) * 100) : 0);
+      
       const formResponse: OrchestratorResponse = {
         message,
         metadata: {
@@ -2488,8 +2493,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           displayMode: 'fullscreen',
           signupForm: formDiscoveryResult.data?.program_questions || {},
           program_ref: programRef,
+          programRef: programRef, // Alias for widget compatibility
           org_ref: orgRef,
-          program_name: programName
+          orgRef: orgRef, // Alias for widget compatibility
+          program_name: programName,
+          programName: programName, // Alias for widget compatibility
+          programFeeCents: programFeeCents,
+          numParticipants: context.numParticipants || 1,
+          provider: 'bookeo'
         }
       };
 
