@@ -163,6 +163,7 @@ class SignupAssistMCPServer {
       {
         capabilities: {
           tools: {},
+          resources: {},  // Required for resources/list and resources/read handlers
         },
       }
     );
