@@ -34,11 +34,14 @@ function v1VisibilityForTool(toolName: string, toolMeta: Record<string, any> = {
   // Always public if explicitly read-only
   if (safety === "read-only") return "public";
 
+  // V1: force ALL user-facing chat through the canonical chat tool
+  // signupassist.start is now private to prevent model bypass
+  if (toolName === "signupassist.start") return "private";
+
   // Public: discovery + requirements + diagnostics
   // NOTE: bookeo.find_programs and bookeo.discover_required_fields are PRIVATE
   // to force ChatGPT through signupassist.chat (which uses APIOrchestrator's Step headers + micro-questions)
   const publicAllowlist = new Set<string>([
-    "signupassist.start",
     "signupassist.chat",
     "program_feed.get",
     "bookeo.test_connection",
