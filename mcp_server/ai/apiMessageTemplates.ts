@@ -3,7 +3,15 @@
  * Concise, parent-friendly messages for Bookeo and other API providers
  */
 
-import { renderStepHeader, renderTrustLine } from "./wizardCopy.js";
+// V1 (no widget): we must render progress in plain text (not only tool metadata)
+function stepHeader(step: 1 | 2 | 3 | 4, title: string): string {
+  return `Step ${step}/4 — ${title}`;
+}
+
+function trustLine(kind: "privacy" | "stripe"): string {
+  if (kind === "privacy") return "🔐 I'll only ask for what the provider requires.";
+  return "🔒 Stripe hosts the card form — we never see card numbers.";
+}
 
 // Support email for refunds and issues
 export const SUPPORT_EMAIL = 'refunds@signupassist.ai';
@@ -57,10 +65,10 @@ export function getAPIProgramsReadyMessage(vars: APIMessageVariables & { program
   const providerName = vars.provider_name || "your provider";
   const count = vars.program_count || 0;
   const programs = vars.programs || [];
-  
+
   let message =
-    `${renderStepHeader({ step: 1, title: "Finding classes", subtitle: `At **${providerName}**`, total: 4 })}\n\n` +
-    `Found ${count} class${count !== 1 ? 'es' : ''}:\n\n`;
+    `${stepHeader(1, "Finding classes")}\n` +
+    `Here are the available classes at **${providerName}**:\n\n`;
   
   // Add program listings directly in the message for native ChatGPT
   if (programs.length > 0) {
@@ -88,21 +96,17 @@ export function getAPIProgramsReadyMessage(vars: APIMessageVariables & { program
 
 /**
  * FORM step: Signup form intro
+ * V1 (no widget): never dump the whole form. Ask 1 field at a time.
+ * APIOrchestrator already tracks pendingDelegateInfo/awaitingDelegateEmail in session context.
  */
 export function getAPIFormIntroMessage(vars: APIMessageVariables): string {
   const programName = vars.program_name || "this program";
-  
+
   return (
-    `${renderStepHeader({ step: 2, title: "Parent & Child information", subtitle: `For **${programName}**`, total: 4 })}\n\n` +
-    `I'll ask for a few details the provider requires. ${renderTrustLine("privacy")}\n\n` +
-    `👩‍💼 Parent / Guardian\n` +
-    `• First name\n` +
-    `• Last name\n` +
-    `• Email\n` +
-    `• Phone (optional)\n` +
-    `• Date of birth (18+ verification)\n` +
-    `• Relationship to participant (Parent/Guardian/Grandparent/Other)\n\n` +
-    `Next, I'll collect your child's info.`
+    `${stepHeader(2, "Parent & child info")}\n` +
+    `${trustLine("privacy")}\n\n` +
+    `To start **${programName}**, what's the parent/guardian **email**?\n` +
+    `Reply like: Email: name@example.com`
   );
 }
 
@@ -112,8 +116,8 @@ export function getAPIFormIntroMessage(vars: APIMessageVariables): string {
 export function getAPIPaymentSummaryMessage(vars: APIMessageVariables): string {
   const programName = vars.program_name || "this program";
   
-  return `${renderStepHeader({ step: 3, title: "Payment setup (Stripe)", subtitle: `For **${programName}**`, total: 4 })}\n\n` +
-  `${renderTrustLine("stripe")}\n\n` +
+  return `${stepHeader(3, "Payment setup (Stripe)")}\n` +
+  `${trustLine("stripe")}\n\n` +
   `Ready to complete registration for **${programName}**?
 
 Review the charges below. By confirming, you authorize SignupAssist to complete this registration on your behalf.`;
@@ -125,8 +129,8 @@ Review the charges below. By confirming, you authorize SignupAssist to complete 
 export function getPaymentAuthorizationMessage(vars: APIMessageVariables): string {
   const programName = vars.program_name || "this program";
   
-  return `${renderStepHeader({ step: 3, title: "Payment setup (Stripe)", subtitle: `For **${programName}**`, total: 4 })}\n\n` +
-  `${renderTrustLine("stripe")}\n\n` +
+  return `${stepHeader(3, "Payment setup (Stripe)")}\n` +
+  `${trustLine("stripe")}\n\n` +
   `Ready to complete registration for **${programName}**?
 
 Review the charges below. By confirming, you authorize SignupAssist to complete this registration on your behalf.
