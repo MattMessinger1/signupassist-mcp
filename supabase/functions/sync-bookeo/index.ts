@@ -131,6 +131,36 @@ function determineStatus(slots: BookeoSlot[]): string {
 }
 
 /**
+ * Best-effort description extraction.
+ * Bookeo data can vary by product type / API response shape.
+ * We try multiple fields and normalize to a plain string so the cache
+ * always has something useful when available.
+ */
+function extractDescription(product: any): string {
+  const raw =
+    product?.description ??
+    product?.longDescription ??
+    product?.shortDescription ??
+    product?.descriptionHtml ??
+    product?.longDescriptionHtml ??
+    product?.details?.description ??
+    product?.details?.descriptionHtml ??
+    '';
+
+  if (!raw) return '';
+
+  // If it's HTML-ish, strip tags quickly.
+  // (Keep this simple: the MCP server also strips HTML at render time,
+  // but caching clean text improves consistency across consumers.)
+  const text = String(raw)
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return text;
+}
+
+/**
  * Map product category to our theme
  */
 function mapCategory(product: BookeoProduct): string {
@@ -237,7 +267,8 @@ Deno.serve(async (req) => {
         const programData = {
           program_ref: product.productId,
           title: product.name,
-          description: product.description || '',
+          // Backfill description from multiple possible Bookeo fields
+          description: extractDescription(product),
           price: (() => {
             // Try defaultRates (People Categories pricing)
             if (product.defaultRates?.[0]?.price?.amount) {
