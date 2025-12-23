@@ -2101,8 +2101,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       }
 
       
+      // V1: persist the FULL displayed list so numeric selection works (1..N)
+      // Limit to 8 programs max to prevent UI overflow and context bloat
+      const programsToDisplay = filteredPrograms.slice(0, 8);
+      
       // Store programs in context (including displayedPrograms for ChatGPT NL selection)
-      const displayedPrograms = filteredPrograms.map((prog: any) => ({
+      const displayedPrograms = programsToDisplay.map((prog: any) => ({
         title: prog.title || "Untitled Program",
         program_ref: prog.program_ref,
         program_data: {
@@ -2120,7 +2124,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         }
       }));
       
-      this.updateContext(sessionId, {
+      // Use awaited persist to prevent race conditions (fixes displayedProgramsCount=1 bug)
+      await this.updateContextAndAwait(sessionId, {
         step: FlowStep.BROWSE,
         orgRef,
         displayedPrograms, // For ChatGPT NL program selection by title/ordinal
@@ -2128,7 +2133,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       });
 
       // Build program cards with timing badges and cleaned descriptions
-      const cards: CardSpec[] = filteredPrograms.map((prog: any, index: number) => {
+      // IMPORTANT: Use same programsToDisplay slice to ensure consistency with displayedPrograms
+      const cards: CardSpec[] = programsToDisplay.map((prog: any, index: number) => {
         // Determine booking status at runtime (don't trust stale cached data)
         const determineBookingStatus = (program: any): string => {
           const hasAvailableSlots = program.next_available_slot || (program.available_slots && program.available_slots > 0);
