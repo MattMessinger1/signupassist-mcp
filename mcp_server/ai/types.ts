@@ -48,12 +48,16 @@ export interface OrchestratorResponse {
 export interface IOrchestrator {
   /**
    * Main entry point: process user message or action
+   * @param userTimezone - User's IANA timezone (e.g., 'America/Chicago')
+   * @param userId - Optional authenticated user ID (from frontend or Auth0 JWT)
    */
   generateResponse(
     input: string,
     sessionId: string,
     action?: string,
-    payload?: any
+    payload?: any,
+    userTimezone?: string,
+    userId?: string
   ): Promise<OrchestratorResponse>;
   
   /**
