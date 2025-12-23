@@ -29,6 +29,51 @@ function squashFieldDump(text: string): string {
   return `Step 2/4 — Parent & child info\n🔐 I'll only ask for what the provider requires.\n\nWhat's the parent/guardian **email**?\nReply like: Email: name@example.com`;
 }
 
+// -------------------------
+// V1 UX Guardrails for /orchestrator/chat (NO WIDGETS)
+// Sanitize APIOrchestrator responses at the HTTP boundary.
+// -------------------------
+type WizardStep = "1" | "2" | "3" | "4";
+
+function stepTitle(step: WizardStep): string {
+  return step === "1" ? "Finding classes"
+    : step === "2" ? "Parent & child info"
+    : step === "3" ? "Payment setup (Stripe)"
+    : "Registering";
+}
+
+function looksLikeFieldDump(text: string): boolean {
+  const lines = (text || "").split("\n").map(l => l.trim()).filter(Boolean);
+  if (lines.length < 10) return false;
+  const markers = ["first name", "last name", "date of birth", "relationship", "participant", "guardian", "phone"];
+  const hitCount = markers.reduce((n, m) => n + (lines.some(l => l.toLowerCase().includes(m)) ? 1 : 0), 0);
+  return hitCount >= 3;
+}
+
+function microQuestionForStep2(programName?: string): string {
+  const p = programName ? ` for **${programName}**` : "";
+  return (
+    `Step 2/4 — Parent & child info\n` +
+    `🔐 I'll only ask for what the provider requires.\n\n` +
+    `To start${p}, what's the parent/guardian **email**?\n` +
+    `Reply like: Email: name@example.com`
+  );
+}
+
+function sanitizeOrchestratorResponse(resp: any): any {
+  // 1) Remove widget/form metadata that triggers ChatGPT to dump fields
+  if (resp?.metadata?.componentType === "fullscreen_form") {
+    delete resp.metadata.componentType;
+    delete resp.metadata.displayMode;
+    delete resp.metadata.signupFormSchema;
+    delete resp.metadata.formSchema;
+  }
+  if (resp?.signupFormSchema) {
+    delete resp.signupFormSchema;
+  }
+  return resp;
+}
+
 // Version info for runtime debugging
 const VERSION_INFO = {
   commit: process.env.RAILWAY_GIT_COMMIT_SHA || 'dev',
@@ -2346,13 +2391,35 @@ class SignupAssistMCPServer {
               return;
             }
 
-            console.log(`[Orchestrator] Sending response:`, JSON.stringify(result).substring(0, 200));
+            // -------------------------
+            // V1 UX Guardrails (NO WIDGETS)
+            // Sanitize response before sending to client
+            // -------------------------
+            const sanitized = sanitizeOrchestratorResponse(result);
+
+            // Infer wizard step from orchestrator step if present
+            // Defaults to Step 1/4 for browse-y messages
+            const rawStep = (sanitized?.context?.step || sanitized?.step || "").toString();
+            const step: WizardStep =
+              rawStep === "FORM_FILL" ? "2" :
+              rawStep === "PAYMENT" ? "3" :
+              rawStep === "SUBMIT" ? "4" :
+              "1";
+
+            let msg = (sanitized?.message || "").toString();
+            msg = ensureWizardHeader(msg || "OK", step);
+            if (step === "2" && looksLikeFieldDump(msg)) {
+              msg = microQuestionForStep2(sanitized?.context?.selectedProgramName || sanitized?.programName);
+            }
+            sanitized.message = msg;
+
+            console.log(`[Orchestrator] Sending sanitized response:`, JSON.stringify(sanitized).substring(0, 200));
 
             res.writeHead(200, { 
               'Content-Type': 'application/json',
               'Access-Control-Allow-Origin': '*'
             });
-            res.end(JSON.stringify(result));
+            res.end(JSON.stringify(sanitized));
           } catch (err: any) {
             console.error('[Orchestrator] Error:', err);
             res.writeHead(500, { 
