@@ -5018,9 +5018,24 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
   /**
    * Update session context (now also persists to Supabase)
    * ENHANCED: Added detailed tracing to debug session persistence issues
+   * 
+   * FIX 2: NEVER revert step after selectProgram
+   * Once step transitions to FORM_FILL, nothing is allowed to set it back to BROWSE.
    */
   private updateContext(sessionId: string, updates: Partial<APIContext>): void {
     const current = this.getContext(sessionId);
+    
+    // FIX 2: Guard against step reversion from FORM_FILL/PAYMENT back to BROWSE
+    // ONLY block if we have a valid selectedProgram (i.e., not corrupted state)
+    if (updates.step === FlowStep.BROWSE) {
+      const isAdvancedStep = current.step === FlowStep.FORM_FILL || current.step === FlowStep.PAYMENT;
+      const hasValidProgram = !!current.selectedProgram;
+      if (isAdvancedStep && hasValidProgram) {
+        console.log('[updateContext] ⛔ FIX 2: Blocked step reversion from', current.step, 'to BROWSE (valid program exists)');
+        delete updates.step; // Remove the step update, keep current step
+      }
+    }
+    
     const updated = { ...current, ...updates };
     this.sessions.set(sessionId, updated);
     
@@ -5051,9 +5066,24 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
    * Update session context with AWAITED DB persistence
    * Use this for critical state transitions (e.g., selectedProgram) to prevent race conditions
    * in multi-instance environments like Railway where fire-and-forget can cause data loss
+   * 
+   * FIX 2: NEVER revert step after selectProgram
+   * Once step transitions to FORM_FILL, nothing is allowed to set it back to BROWSE.
    */
   private async updateContextAndAwait(sessionId: string, updates: Partial<APIContext>): Promise<void> {
     const current = this.getContext(sessionId);
+    
+    // FIX 2: Guard against step reversion from FORM_FILL/PAYMENT back to BROWSE
+    // ONLY block if we have a valid selectedProgram (i.e., not corrupted state)
+    if (updates.step === FlowStep.BROWSE) {
+      const isAdvancedStep = current.step === FlowStep.FORM_FILL || current.step === FlowStep.PAYMENT;
+      const hasValidProgram = !!current.selectedProgram;
+      if (isAdvancedStep && hasValidProgram) {
+        console.log('[updateContextAndAwait] ⛔ FIX 2: Blocked step reversion from', current.step, 'to BROWSE (valid program exists)');
+        delete updates.step; // Remove the step update, keep current step
+      }
+    }
+    
     const updated = { ...current, ...updates };
     this.sessions.set(sessionId, updated);
     

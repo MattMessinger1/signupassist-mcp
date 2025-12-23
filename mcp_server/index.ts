@@ -77,11 +77,24 @@ function sanitizeOrchestratorResponse(resp: any): any {
 }
 
 function inferWizardStepFromContext(sanitized: any): WizardStep {
+  // FIX 1: Always infer step from context.step (the source of truth)
   const rawStep = (sanitized?.context?.step || sanitized?.step || "").toString();
   if (rawStep === "FORM_FILL") return "2";
   if (rawStep === "PAYMENT") return "3";
   if (rawStep === "SUBMIT") return "4";
   return "1";
+}
+
+/**
+ * FIX 1: EVERY response MUST have a Step header.
+ * No exceptions. No "friendly interstitial" messages.
+ * This is enforced at the HTTP boundary.
+ */
+function enforceStepHeader(msg: string, step: WizardStep): string {
+  // Strip any existing malformed headers first
+  const cleaned = msg.replace(/^Step\s+\d+\/\d+\s*[—\-:]\s*/gi, '').trim();
+  const title = stepTitle(step);
+  return `Step ${step}/4 — ${title}\n\n${cleaned}`;
 }
 
 // Version info for runtime debugging
@@ -2403,19 +2416,27 @@ class SignupAssistMCPServer {
 
             // -------------------------
             // V1 UX Guardrails (NO WIDGETS)
-            // Sanitize response before sending to client
+            // FIX 1: EVERY response MUST have a Step header.
+            // No exceptions. No "friendly interstitial" messages.
+            // This is enforced server-side at the HTTP boundary.
             // -------------------------
             const sanitized = sanitizeOrchestratorResponse(result);
             const step: WizardStep = inferWizardStepFromContext(sanitized);
 
             let msg = (sanitized?.message || "").toString();
+            
             // Hard rule: in FORM_FILL we do not send field lists—ever.
             if (step === "2") {
               msg = microQuestionForStep2(sanitized?.context?.selectedProgramName || sanitized?.programName);
             } else {
-              msg = ensureWizardHeader(msg || "OK", step);
+              // FIX 1: Enforce step header for ALL responses (not just sometimes)
+              msg = enforceStepHeader(msg || "OK", step);
             }
             sanitized.message = msg;
+            
+            // Also expose the step in the response for debugging
+            if (!sanitized.context) sanitized.context = {};
+            sanitized.context.wizardStep = step;
 
             console.log(`[Orchestrator] Sending sanitized response:`, JSON.stringify(sanitized).substring(0, 200));
 
