@@ -2216,6 +2216,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         return {
           index: idx + 1,
           title: prog.title || "Untitled",
+          description: stripHtml(prog.description || ""),
           price: prog.price,
           schedule: prog.schedule,
           status

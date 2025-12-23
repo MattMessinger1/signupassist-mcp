@@ -3,6 +3,8 @@
  * Concise, parent-friendly messages for Bookeo and other API providers
  */
 
+import { renderStepHeader, renderTrustLine } from "./wizardCopy.js";
+
 // Support email for refunds and issues
 export const SUPPORT_EMAIL = 'refunds@signupassist.ai';
 
@@ -42,6 +44,7 @@ export function formatDisplayTime(isoTime: string): string {
 export interface ProgramListItem {
   index: number;
   title: string;
+  description?: string;
   price?: string;
   schedule?: string;
   status?: string;
@@ -55,7 +58,9 @@ export function getAPIProgramsReadyMessage(vars: APIMessageVariables & { program
   const count = vars.program_count || 0;
   const programs = vars.programs || [];
   
-  let message = `Found ${count} class${count !== 1 ? 'es' : ''} at **${providerName}**:\n\n`;
+  let message =
+    `${renderStepHeader({ step: 1, title: "Finding classes", subtitle: `At **${providerName}**`, total: 4 })}\n\n` +
+    `Found ${count} class${count !== 1 ? 'es' : ''}:\n\n`;
   
   // Add program listings directly in the message for native ChatGPT
   if (programs.length > 0) {
@@ -65,7 +70,13 @@ export function getAPIProgramsReadyMessage(vars: APIMessageVariables & { program
       message += `**${num}. ${prog.title}**\n`;
       if (prog.price) message += `   💲 ${prog.price}`;
       if (prog.schedule) message += ` · 📅 ${prog.schedule}`;
-      message += ` · ${statusEmoji} ${prog.status === 'open' ? 'Open' : prog.status === 'waitlist' ? 'Waitlist' : 'Coming Soon'}\n\n`;
+      message += ` · ${statusEmoji} ${prog.status === 'open' ? 'Open' : prog.status === 'waitlist' ? 'Waitlist' : 'Coming Soon'}\n`;
+
+      // Description (if present) + fallback so it never feels "missing"
+      const desc = (prog.description || "").trim();
+      message += desc
+        ? `   🧠 ${desc}\n\n`
+        : `   ℹ️ Details coming soon — you can still register.\n\n`;
     });
     message += `Reply with a number (1-${programs.length}) or program name to sign up.`;
   } else {
@@ -81,7 +92,18 @@ export function getAPIProgramsReadyMessage(vars: APIMessageVariables & { program
 export function getAPIFormIntroMessage(vars: APIMessageVariables): string {
   const programName = vars.program_name || "this program";
   
-  return `Great choice! To sign up for **${programName}**, I'll need a few details.`;
+  return (
+    `${renderStepHeader({ step: 2, title: "Parent & Child information", subtitle: `For **${programName}**`, total: 4 })}\n\n` +
+    `I'll ask for a few details the provider requires. ${renderTrustLine("privacy")}\n\n` +
+    `👩‍💼 Parent / Guardian\n` +
+    `• First name\n` +
+    `• Last name\n` +
+    `• Email\n` +
+    `• Phone (optional)\n` +
+    `• Date of birth (18+ verification)\n` +
+    `• Relationship to participant (Parent/Guardian/Grandparent/Other)\n\n` +
+    `Next, I'll collect your child's info.`
+  );
 }
 
 /**
@@ -90,7 +112,9 @@ export function getAPIFormIntroMessage(vars: APIMessageVariables): string {
 export function getAPIPaymentSummaryMessage(vars: APIMessageVariables): string {
   const programName = vars.program_name || "this program";
   
-  return `Ready to complete registration for **${programName}**?
+  return `${renderStepHeader({ step: 3, title: "Payment setup (Stripe)", subtitle: `For **${programName}**`, total: 4 })}\n\n` +
+  `${renderTrustLine("stripe")}\n\n` +
+  `Ready to complete registration for **${programName}**?
 
 Review the charges below. By confirming, you authorize SignupAssist to complete this registration on your behalf.`;
 }
@@ -101,7 +125,9 @@ Review the charges below. By confirming, you authorize SignupAssist to complete 
 export function getPaymentAuthorizationMessage(vars: APIMessageVariables): string {
   const programName = vars.program_name || "this program";
   
-  return `Ready to complete registration for **${programName}**?
+  return `${renderStepHeader({ step: 3, title: "Payment setup (Stripe)", subtitle: `For **${programName}**`, total: 4 })}\n\n` +
+  `${renderTrustLine("stripe")}\n\n` +
+  `Ready to complete registration for **${programName}**?
 
 Review the charges below. By confirming, you authorize SignupAssist to complete this registration on your behalf.
 
