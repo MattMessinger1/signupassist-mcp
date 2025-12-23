@@ -24,6 +24,11 @@ const CHATGPT_APPS_V1_META = {
 // V1 App Store posture: keep public surface small + mostly read-only.
 // Allow Stripe "setup" flow to remain public (hosted Stripe checkout link), but keep write/execute tools private.
 function v1VisibilityForTool(toolName: string, toolMeta: Record<string, any> = {}): "public" | "private" {
+  // Deprecate SkiClubPro entirely (old scraping workflow)
+  if (toolName.startsWith("scp.") || toolName.startsWith("scp:") || toolName.includes("skiclubpro")) {
+    return "private";
+  }
+
   const safety = toolMeta?.["openai/safety"];
 
   // Always public if explicitly read-only
@@ -36,12 +41,6 @@ function v1VisibilityForTool(toolName: string, toolMeta: Record<string, any> = {
     "bookeo.find_programs",
     "bookeo.discover_required_fields",
     "bookeo.test_connection",
-    "scp.find_programs",
-    "scp.discover_required_fields",
-    "scp.program_field_probe",
-    "scp.check_account_status",
-    "scp.check_membership_status",
-    "scp:check_prerequisites",
   ]);
   if (publicAllowlist.has(toolName)) return "public";
 
@@ -52,7 +51,6 @@ function v1VisibilityForTool(toolName: string, toolMeta: Record<string, any> = {
     "stripe.save_payment_method",
     "stripe.check_payment_status",
     "user.check_payment_method",
-    "scp.check_payment_method",
   ]);
   if (publicStripeAllowlist.has(toolName)) return "public";
 
