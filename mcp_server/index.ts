@@ -61,17 +61,27 @@ function microQuestionForStep2(programName?: string): string {
 }
 
 function sanitizeOrchestratorResponse(resp: any): any {
-  // 1) Remove widget/form metadata that triggers ChatGPT to dump fields
-  if (resp?.metadata?.componentType === "fullscreen_form") {
+  // Remove ANY form/schema payloads that cause ChatGPT to dump fields.
+  if (resp?.metadata) {
     delete resp.metadata.componentType;
     delete resp.metadata.displayMode;
     delete resp.metadata.signupFormSchema;
     delete resp.metadata.formSchema;
+    delete resp.metadata.signupForm;       // <- THIS is the main culprit
+    delete resp.metadata.fullscreen_form;
   }
-  if (resp?.signupFormSchema) {
-    delete resp.signupFormSchema;
-  }
+  delete resp.signupFormSchema;
+  delete resp.formSchema;
+  delete resp.signupForm;
   return resp;
+}
+
+function inferWizardStepFromContext(sanitized: any): WizardStep {
+  const rawStep = (sanitized?.context?.step || sanitized?.step || "").toString();
+  if (rawStep === "FORM_FILL") return "2";
+  if (rawStep === "PAYMENT") return "3";
+  if (rawStep === "SUBMIT") return "4";
+  return "1";
 }
 
 // Version info for runtime debugging
@@ -2396,20 +2406,14 @@ class SignupAssistMCPServer {
             // Sanitize response before sending to client
             // -------------------------
             const sanitized = sanitizeOrchestratorResponse(result);
-
-            // Infer wizard step from orchestrator step if present
-            // Defaults to Step 1/4 for browse-y messages
-            const rawStep = (sanitized?.context?.step || sanitized?.step || "").toString();
-            const step: WizardStep =
-              rawStep === "FORM_FILL" ? "2" :
-              rawStep === "PAYMENT" ? "3" :
-              rawStep === "SUBMIT" ? "4" :
-              "1";
+            const step: WizardStep = inferWizardStepFromContext(sanitized);
 
             let msg = (sanitized?.message || "").toString();
-            msg = ensureWizardHeader(msg || "OK", step);
-            if (step === "2" && looksLikeFieldDump(msg)) {
+            // Hard rule: in FORM_FILL we do not send field lists—ever.
+            if (step === "2") {
               msg = microQuestionForStep2(sanitized?.context?.selectedProgramName || sanitized?.programName);
+            } else {
+              msg = ensureWizardHeader(msg || "OK", step);
             }
             sanitized.message = msg;
 
