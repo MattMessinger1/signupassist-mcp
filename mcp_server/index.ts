@@ -35,11 +35,12 @@ function v1VisibilityForTool(toolName: string, toolMeta: Record<string, any> = {
   if (safety === "read-only") return "public";
 
   // Public: discovery + requirements + diagnostics
+  // NOTE: bookeo.find_programs and bookeo.discover_required_fields are PRIVATE
+  // to force ChatGPT through signupassist.chat (which uses APIOrchestrator's Step headers + micro-questions)
   const publicAllowlist = new Set<string>([
     "signupassist.start",
+    "signupassist.chat",
     "program_feed.get",
-    "bookeo.find_programs",
-    "bookeo.discover_required_fields",
     "bookeo.test_connection",
   ]);
   if (publicAllowlist.has(toolName)) return "public";
@@ -83,8 +84,8 @@ function wizardInvocationForTool(toolName: string): { invoking: string; invoked:
   const step4Invoking = "Step 4/4 — Registering…";
   const step4Invoked  = "Step 4/4 — Registration step complete.";
 
-  // Entry point / feed
-  if (toolName === "signupassist.start" || toolName === "program_feed.get") {
+  // Entry point / feed / chat
+  if (toolName === "signupassist.start" || toolName === "signupassist.chat" || toolName === "program_feed.get") {
     return { invoking: step1Invoking, invoked: step1Invoked };
   }
 
@@ -573,6 +574,71 @@ class SignupAssistMCPServer {
         ...applyV1Visibility("signupassist.start", { "openai/safety": "read-only" }),
         ...applyWizardMeta("signupassist.start")
       },
+    });
+
+    // ============================================================
+    // CANONICAL CHAT ENTRYPOINT (READ-ONLY, NO DUMPS)
+    // ============================================================
+    // This is the *only* tool ChatGPT should use for the user-facing flow.
+    // It routes through APIOrchestrator, which enforces:
+    // - Step 1/4..4/4 headers in plain text
+    // - No overwhelming field dumps (micro-questions)
+    // - Consistent trust cues
+    this.tools.set("signupassist.chat", {
+      name: "signupassist.chat",
+      description:
+        "Canonical SignupAssist chat entrypoint (API-first). Use this for ALL user-facing signup conversation. Returns calm Step 1/4..4/4 wizard messages and asks for info one piece at a time (no field dumps). Read-only (does not submit registration).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          input: { type: "string", description: "User message text" },
+          sessionId: { type: "string", description: "Stable session identifier from client" },
+          userTimezone: { type: "string", description: "IANA timezone, e.g. America/Chicago" },
+          userId: { type: "string", description: "Authenticated user id (Auth0 sub), if available" }
+        },
+        required: ["input", "sessionId"]
+      },
+      handler: async (args: any) => {
+        const input = String(args?.input || "");
+        const sessionId = String(args?.sessionId || "chatgpt");
+        const userTimezone = args?.userTimezone ? String(args.userTimezone) : undefined;
+        const userId = args?.userId ? String(args.userId) : undefined;
+
+        // Ensure orchestrator is initialized
+        if (!this.orchestrator) {
+          await this.initializeOrchestrator();
+        }
+        if (!this.orchestrator) {
+          throw new Error("APIOrchestrator not available");
+        }
+
+        const resp: any = await this.orchestrator.generateResponse(
+          input,
+          sessionId,
+          undefined,   // action
+          undefined,   // payload
+          userTimezone,
+          userId
+        );
+
+        // Force ChatGPT to display *our* text (Step headers + micro-questions)
+        const text =
+          resp?.message ||
+          resp?.text ||
+          resp?.response ||
+          "Step 1/4 — Finding classes\nTell me what you're looking for.";
+
+        return {
+          structuredContent: resp,
+          content: [{ type: "text", text }]
+        };
+      },
+      _meta: {
+        ...CHATGPT_APPS_V1_META,
+        "openai/safety": "read-only",
+        ...applyV1Visibility("signupassist.chat", { "openai/safety": "read-only" }),
+        ...applyWizardMeta("signupassist.chat")
+      }
     });
 
     // Future array tools (no-op for now)
