@@ -5,6 +5,30 @@
  * Railway rebuild trigger: 2025-10-28 - Added scp.create_mandate tool
  */
 
+// ============================================================
+// V1 UX GUARDRAILS: Ensure Step headers + prevent field dumps
+// ============================================================
+function ensureWizardHeader(text: string, fallbackStep: "1" | "2" | "3" | "4" = "1"): string {
+  const t = (text || "").trim();
+  const hasHeader = /^Step\s+[1-4]\/4\s+—/i.test(t);
+  if (hasHeader) return t;
+  const title =
+    fallbackStep === "1" ? "Finding classes" :
+    fallbackStep === "2" ? "Parent & child info" :
+    fallbackStep === "3" ? "Payment setup (Stripe)" :
+    "Registering";
+  return `Step ${fallbackStep}/4 — ${title}\n\n${t}`;
+}
+
+function squashFieldDump(text: string): string {
+  // If the model tries to dump a long list, convert it to a single micro-question.
+  // This is a safety net — the orchestrator should already avoid dumps.
+  const lines = (text || "").split("\n").map(l => l.trim()).filter(Boolean);
+  const looksLikeDump = lines.length >= 10 && lines.some(l => /first name|last name|date of birth|relationship/i.test(l));
+  if (!looksLikeDump) return text;
+  return `Step 2/4 — Parent & child info\n🔐 I'll only ask for what the provider requires.\n\nWhat's the parent/guardian **email**?\nReply like: Email: name@example.com`;
+}
+
 // Version info for runtime debugging
 const VERSION_INFO = {
   commit: process.env.RAILWAY_GIT_COMMIT_SHA || 'dev',
@@ -625,11 +649,17 @@ class SignupAssistMCPServer {
         );
 
         // Force ChatGPT to display *our* text (Step headers + micro-questions)
-        const text =
+        let text =
           resp?.message ||
           resp?.text ||
           resp?.response ||
           "Step 1/4 — Finding classes\nTell me what you're looking for.";
+
+        // Hard guarantees for V1 UX:
+        // 1) Always show step header
+        // 2) Never overwhelm with a field dump
+        text = ensureWizardHeader(text, "1");
+        text = squashFieldDump(text);
 
         return {
           structuredContent: resp,
