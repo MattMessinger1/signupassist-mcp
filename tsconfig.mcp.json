@@ -15,5 +15,11 @@
     "outDir": "./dist"
   },
   "include": ["mcp_server", "providers", "mcp"],
-  "exclude": ["**/*.test.ts", "**/*.test.md", "mcp_server/tests/**"]
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.test.md",
+    "mcp_server/tests/**",
+    "mcp_server/ai/AIOrchestrator.ts",
+    "scripts/testAIOrchestrator.ts"
+  ]
 }
