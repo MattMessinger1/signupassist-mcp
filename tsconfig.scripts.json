@@ -16,6 +16,8 @@
   ],
   "exclude": [
     "node_modules",
-    "dist"
+    "dist",
+    "mcp_server/ai/AIOrchestrator.ts",
+    "scripts/testAIOrchestrator.ts"
   ]
 }
