@@ -60,9 +60,11 @@ export async function loadSessionFromDB(sessionId: string, userId?: string): Pro
  * V1 Guardrail: Never revert step after FORM_FILL (single source of truth)
  * FIX 2: Enforce invariant at persistence boundary
  */
-function guardStep(prevStep?: string, nextStep?: string): string | undefined {
-  if (prevStep === "FORM_FILL" && nextStep === "BROWSE") return "FORM_FILL";
-  if (prevStep === "PAYMENT" && nextStep === "BROWSE") return "PAYMENT";
+function guardStep(prevStep?: string | number, nextStep?: string | number): string | number | undefined {
+  const prev = String(prevStep);
+  const next = String(nextStep);
+  if (prev === "FORM_FILL" && next === "BROWSE") return "FORM_FILL";
+  if (prev === "PAYMENT" && next === "BROWSE") return "PAYMENT";
   return nextStep;
 }
 
@@ -84,7 +86,7 @@ export async function saveSessionToDB(
     // FIX 2: Enforce invariant at persistence boundary
     if (prevContext?.step && context?.step) {
       const guardedStep = guardStep(prevContext.step, context.step);
-      if (guardedStep !== context.step) {
+      if (String(guardedStep) !== String(context.step)) {
         console.log(`[sessionPersistence] ⛔ FIX 2: Blocked step reversion from ${prevContext.step} to ${context.step}`);
         (context as any).step = guardedStep;
       }
