@@ -511,10 +511,20 @@ class AIOrchestrator {
             buttons: [{
               label: 'Select this program',
               action: 'select_program',
-              payload: { 
+              // Align payload shape to OpenAPI / ChatGPT expectations
+              payload: {
+                org_ref: org.orgRef,
                 provider: orgConfig.provider,
-                orgRef: org.orgRef,
-                programRef: prog.ref 
+                program_ref: prog.ref,
+                // Include program_data so downstream selection never needs to re-fetch
+                program_data: {
+                  title: prog.title,
+                  program_ref: prog.ref,
+                  org_ref: org.orgRef,
+                  price: prog.price,
+                  status: prog.status,
+                  schedule: prog.schedule,
+                }
               }
             }]
           }));
