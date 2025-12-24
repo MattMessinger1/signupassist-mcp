@@ -944,8 +944,17 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     
     switch (resolvedAction) {
       case "search_programs": {
+        // =========================================================================
+        // BROWSE INTENT: Clear selection state before showing programs
+        // This ensures "yes" won't be misinterpreted as confirming stale selection
+        // =========================================================================
         const ignore = typeof payload?.ignoreAudienceMismatch === 'boolean' ? payload.ignoreAudienceMismatch : false;
-        this.updateContext(sessionId, { ignoreAudienceMismatch: ignore });
+        this.updateContext(sessionId, { 
+          ignoreAudienceMismatch: ignore,
+          selectedProgram: null,
+          step: FlowStep.BROWSE,
+        });
+        Logger.info('[search_programs] Cleared selection state for fresh browse');
         return await this.searchPrograms(payload.orgRef || "aim-design", sessionId);
       }
 
@@ -2224,6 +2233,22 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
   ): Promise<OrchestratorResponse> {
     try {
       Logger.info(`Searching programs for org: ${orgRef}`);
+
+      // =========================================================================
+      // BROWSE INTENT GUARD: Clear stale selection state before listing programs
+      // This prevents "yes" from being misinterpreted as confirming a previously
+      // selected program when the user actually wants to browse/show new programs.
+      // =========================================================================
+      this.updateContext(sessionId, {
+        selectedProgram: null,
+        step: FlowStep.BROWSE,
+        // Clear form/payment data from previous selections
+        formData: undefined,
+        schedulingData: undefined,
+        paymentAuthorized: false,
+        // Keep displayedPrograms - will be overwritten with fresh data below
+      });
+      Logger.info('[searchPrograms] Cleared stale selection state for fresh browse');
 
       // Get context for timezone formatting
       const context = this.getContext(sessionId);
