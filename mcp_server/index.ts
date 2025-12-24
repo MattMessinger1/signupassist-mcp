@@ -736,10 +736,8 @@ class SignupAssistMCPServer {
           "Step 1/4 — Finding classes\nTell me what you're looking for.";
 
         // Hard guarantees for V1 UX:
-        // 1) Always show step header
-        // 2) Never overwhelm with a field dump
-        text = ensureWizardHeader(text, "1");
-        text = squashFieldDump(text);
+        // 1) Always show step header (schema stripping handled by applyV1ChatGuardrails)
+        text = ensureWizardHeaderAlways(text, "1");
 
         return {
           structuredContent: resp,

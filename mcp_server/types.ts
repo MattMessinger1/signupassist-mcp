@@ -45,7 +45,7 @@ export interface SessionContext {
   credential_id?: string;
   provider_cookies?: any[];
   loginCompleted?: boolean;
-  step?: number;
+  step?: string | number;  // V1: supports both numeric and string-based FlowStep values
   session_token?: string;      // persisted session token for Browserbase
   discovery_retry_count?: number;
   mandate_jws?: string;
