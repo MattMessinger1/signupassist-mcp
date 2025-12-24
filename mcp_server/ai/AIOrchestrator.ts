@@ -1023,7 +1023,7 @@ class AIOrchestrator {
     const context = await this.getContext(sessionId);
     
     // Skip if we've already confirmed a provider or we're past initial discovery
-    if (context.provider?.orgRef || context.loginCompleted || context.step && context.step > FlowStep.PROVIDER_SEARCH) {
+    if (context.provider?.orgRef || context.loginCompleted || (context.step && Number(context.step) > FlowStep.PROVIDER_SEARCH)) {
       return null;
     }
     
