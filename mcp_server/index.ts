@@ -737,7 +737,12 @@ class SignupAssistMCPServer {
 
         // Hard guarantees for V1 UX:
         // 1) Always show step header (schema stripping handled by applyV1ChatGuardrails)
-        text = ensureWizardHeaderAlways(text, "1");
+        // IMPORTANT: Use the orchestrator's current step to compute the wizard header.
+        // Previously we hard-forced "1", which made the UX look like nothing was persisting/progressing.
+        const ctxStep: OrchestratorStep =
+          (resp?.context?.step || resp?.step || "BROWSE") as OrchestratorStep;
+        const wizardStep = inferWizardStep(ctxStep);
+        text = ensureWizardHeaderAlways(text, wizardStep);
 
         return {
           structuredContent: resp,
