@@ -804,7 +804,61 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       }
 
       case "select_program":
-        return await this.selectProgram(payload, sessionId, context, input);
+        {
+          // -------------------------------------------------------------------
+          // ChatGPT Compatibility Fix:
+          // Sometimes ChatGPT triggers select_program with an empty payload when
+          // the user types "yes" instead of clicking a card button.
+          // We recover using displayedPrograms + natural-language parsing.
+          // -------------------------------------------------------------------
+          const hasPayload =
+            payload &&
+            typeof payload === "object" &&
+            Object.keys(payload).length > 0;
+
+          if (!hasPayload && typeof input === "string") {
+            const displayed = context.displayedPrograms || [];
+            // Try to infer selection from user's text (yes/ordinal/title)
+            const inferred = this.parseProgramSelection(input, displayed);
+            if (inferred) {
+              const recoveredPayload = {
+                program_ref: inferred.program_ref,
+                program_data: inferred.program_data || {
+                  title: inferred.title,
+                  program_ref: inferred.program_ref,
+                },
+              };
+              Logger.info("[select_program] Recovered missing payload from NL input", {
+                input,
+                program_ref: recoveredPayload.program_ref,
+              });
+              return await this.selectProgram(recoveredPayload, sessionId, context, input);
+            }
+
+            // If we already have a selectedProgram in context, treat confirmation as proceed
+            if (this.isUserConfirmation(input) && context.selectedProgram) {
+              const ref =
+                (context.selectedProgram?.program_ref as string) ||
+                (context.selectedProgram?.ref as string) ||
+                undefined;
+              if (ref) {
+                const recoveredPayload = {
+                  program_ref: ref,
+                  program_data: context.selectedProgram,
+                };
+                Logger.info("[select_program] Using selectedProgram from context (confirmation)", {
+                  input,
+                  program_ref: recoveredPayload.program_ref,
+                });
+                return await this.selectProgram(recoveredPayload, sessionId, context, input);
+              }
+            }
+          }
+
+          // Default path: use whatever payload we were given (may still error if empty,
+          // but now we only hit this when we truly can't infer a selection)
+          return await this.selectProgram(payload, sessionId, context, input);
+        }
 
       case "submit_form":
         return await this.submitForm(payload, sessionId, context);
