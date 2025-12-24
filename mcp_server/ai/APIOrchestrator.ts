@@ -116,6 +116,12 @@ interface APIContext {
   // ChatGPT NL compatibility: delegate info collection
   pendingDelegateInfo?: { email?: string; firstName?: string; lastName?: string; phone?: string };
   awaitingDelegateEmail?: boolean;
+
+  // Form schema cache (from bookeo.discover_required_fields)
+  requiredFields?: {
+    delegate?: Array<{ key: string; label?: string; required?: boolean; type?: string }>;
+    participant?: Array<{ key: string; label?: string; required?: boolean; type?: string }>;
+  };
 }
 
 /**
@@ -221,6 +227,124 @@ export default class APIOrchestrator implements IOrchestrator {
   private isUserConfirmation(input: string): boolean {
     const confirmPatterns = /^(yes|yeah|yep|yup|sure|ok|okay|confirm|go ahead|please|do it|book it|let's do it|let's go|sounds good|authorize|proceed|continue|absolutely|definitely|i confirm|yes please|that's right|correct)\.?!?$/i;
     return confirmPatterns.test(input.trim());
+  }
+
+  // ============================================================================
+  // Option A: Free-text → Form hydration helpers
+  // ============================================================================
+
+  /**
+   * Best-effort parse for phone numbers from free text
+   */
+  private parsePhoneNumber(input: string): string | null {
+    const phone = input.match(/(\+?1[\s-]?)?(\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/);
+    return phone ? phone[0].trim() : null;
+  }
+
+  /**
+   * Extract likely "delegate name" from text ("Matt Messinger") if present.
+   * Very conservative: two capitalized words.
+   */
+  private parseAdultName(input: string): { firstName: string; lastName: string } | null {
+    const m = input.match(/\b([A-Z][a-z]+)\s+([A-Z][a-z]+)\b/);
+    if (!m) return null;
+    return { firstName: m[1], lastName: m[2] };
+  }
+
+  /**
+   * Hydrate context.formData from free-text user input using:
+   * - known helpers (child name/age, email)
+   * - requiredFields schema keys (delegate vs participant)
+   *
+   * Returns the updated formData (may be partial).
+   */
+  private hydrateFormDataFromText(input: string, context: APIContext): Record<string, any> {
+    const formData: Record<string, any> = { ...(context.formData || {}) };
+
+    // 1) Email
+    const email = this.parseDelegateEmail(input);
+    if (email) {
+      context.pendingDelegateInfo = { ...(context.pendingDelegateInfo || {}), email };
+    }
+
+    // 2) Phone
+    const phone = this.parsePhoneNumber(input);
+    if (phone) {
+      context.pendingDelegateInfo = { ...(context.pendingDelegateInfo || {}), phone };
+    }
+
+    // 3) Child info
+    const child = this.parseChildInfoFromMessage(input);
+    if (child) {
+      context.childInfo = {
+        name: child.name,
+        age: child.age,
+      };
+    }
+
+    // 4) Adult name (delegate)
+    const adult = this.parseAdultName(input);
+    if (adult) {
+      context.pendingDelegateInfo = {
+        ...(context.pendingDelegateInfo || {}),
+        firstName: context.pendingDelegateInfo?.firstName || adult.firstName,
+        lastName: context.pendingDelegateInfo?.lastName || adult.lastName,
+      };
+    }
+
+    // 5) Map into schema keys (best effort)
+    const delegateFields = context.requiredFields?.delegate || [];
+    const participantFields = context.requiredFields?.participant || [];
+
+    // Delegate mapping
+    const d = context.pendingDelegateInfo || {};
+    for (const f of delegateFields) {
+      const k = f.key;
+      const lk = k.toLowerCase();
+      if (formData[k] != null) continue;
+
+      if (d.email && (lk.includes('email'))) formData[k] = d.email;
+      else if (d.phone && (lk.includes('phone') || lk.includes('mobile') || lk.includes('cell'))) formData[k] = d.phone;
+      else if (d.firstName && (lk.includes('first') && lk.includes('name'))) formData[k] = d.firstName;
+      else if (d.lastName && (lk.includes('last') && lk.includes('name'))) formData[k] = d.lastName;
+      else if (!lk.includes('first') && !lk.includes('last') && lk.includes('name') && d.firstName && d.lastName) {
+        // fallback "name" field
+        formData[k] = `${d.firstName} ${d.lastName}`.trim();
+      }
+    }
+
+    // Participant mapping (single child for now)
+    const c = context.childInfo;
+    for (const f of participantFields) {
+      const k = f.key;
+      const lk = k.toLowerCase();
+      if (formData[k] != null) continue;
+
+      if (c?.name && lk.includes('name')) formData[k] = c.name;
+      else if (typeof c?.age === 'number' && (lk.includes('age') || lk.includes('years'))) formData[k] = c.age;
+      else if (c?.dob && (lk.includes('dob') || lk.includes('birth'))) formData[k] = c.dob;
+    }
+
+    return formData;
+  }
+
+  /**
+   * Determine if required fields are satisfied for submit_form.
+   * Conservative: all required=true fields must exist and be non-empty.
+   */
+  private hasAllRequiredFields(context: APIContext, formData: Record<string, any>): boolean {
+    const required = [
+      ...(context.requiredFields?.delegate || []).filter(f => f.required),
+      ...(context.requiredFields?.participant || []).filter(f => f.required),
+    ];
+    if (required.length === 0) return Object.keys(formData).length > 0;
+
+    for (const f of required) {
+      const v = formData[f.key];
+      if (v == null) return false;
+      if (typeof v === 'string' && v.trim().length === 0) return false;
+    }
+    return true;
   }
   
   /**
@@ -781,7 +905,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     context: APIContext,
     input?: string  // Optional: user's natural language message for fallback parsing
   ): Promise<OrchestratorResponse> {
-    // Backward-compatible action aliases for deprecated action names
+    // -------------------------------------------------------------------------
+    // Secondary Bug Fix: Resolve aliases FIRST (before any step gating).
+    // -------------------------------------------------------------------------
     const ACTION_ALIASES: Record<string, string> = {
       'confirm_booking': 'authorize_payment',    // Old ChatGPT action name
       'cancel_booking': 'cancel_registration',   // Old ChatGPT action name
@@ -794,6 +920,26 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     const resolvedAction = ACTION_ALIASES[action] || action;
     if (resolvedAction !== action) {
       Logger.info(`[handleAction] Aliased deprecated action: ${action} → ${resolvedAction}`);
+    }
+
+    // -------------------------------------------------------------------------
+    // Step gate based on RESOLVED action (not deprecated action).
+    // Prevents weird "gated before alias" behaviors.
+    // -------------------------------------------------------------------------
+    const STEP_REQUIREMENTS: Record<string, FlowStep> = {
+      // user must be filling a form to submit it
+      'submit_form': FlowStep.FORM_FILL,
+      // payment authorization should only happen in PAYMENT step
+      'authorize_payment': FlowStep.PAYMENT,
+    };
+    const requiredStep = STEP_REQUIREMENTS[resolvedAction];
+    if (requiredStep && context.step !== requiredStep) {
+      Logger.warn(`[${resolvedAction}] ⛔ STEP GATE: Not in ${requiredStep} step`, { currentStep: context.step });
+      return this.formatResponse(
+        `Step 1/4 — Finding classes\n\nWe need to collect some information first before I can continue.`,
+        undefined,
+        []
+      );
     }
     
     switch (resolvedAction) {
@@ -861,7 +1007,70 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         }
 
       case "submit_form":
-        return await this.submitForm(payload, sessionId, context);
+        {
+          // -------------------------------------------------------------------
+          // Option A: if payload is empty, hydrate from free-text.
+          // ChatGPT often sends submit_form with payload {} even after user typed answers.
+          // -------------------------------------------------------------------
+          const hasPayload =
+            payload &&
+            typeof payload === "object" &&
+            Object.keys(payload).length > 0;
+
+          // If schema isn't stored yet, still hydrate what we can into context.formData.
+          if (!hasPayload && typeof input === "string") {
+            const hydrated = this.hydrateFormDataFromText(input, context);
+            context.formData = hydrated;
+            this.updateContext(sessionId, { formData: hydrated, pendingDelegateInfo: context.pendingDelegateInfo, childInfo: context.childInfo });
+            payload = { formData: hydrated };
+            Logger.info("[submit_form] Hydrated formData from free-text", {
+              keys: Object.keys(hydrated),
+            });
+          }
+
+          // If payload has formData, merge into context
+          if (payload?.formData && typeof payload.formData === "object") {
+            const merged = { ...(context.formData || {}), ...payload.formData };
+            context.formData = merged;
+            this.updateContext(sessionId, { formData: merged });
+            payload = { ...payload, formData: merged };
+          }
+
+          // If after hydration we still don't have required fields, ask for what's missing.
+          const current = context.formData || {};
+          if (!this.hasAllRequiredFields(context, current)) {
+            const missing: string[] = [];
+            for (const f of (context.requiredFields?.delegate || []).filter(x => x.required)) {
+              if (current[f.key] == null || (typeof current[f.key] === "string" && current[f.key].trim() === "")) {
+                missing.push(f.label || f.key);
+              }
+            }
+            for (const f of (context.requiredFields?.participant || []).filter(x => x.required)) {
+              if (current[f.key] == null || (typeof current[f.key] === "string" && current[f.key].trim() === "")) {
+                missing.push(f.label || f.key);
+              }
+            }
+
+            if (missing.length > 0) {
+              return this.formatResponse(
+                `Step 2/4 — Registration details\n\nI still need a couple details:\n\n- ${missing.slice(0, 8).join("\n- ")}\n\nReply with them in one message (you can use commas), and I'll continue.`,
+                undefined,
+                []
+              );
+            }
+          }
+
+          // ✅ We have required fields -> advance flow to PAYMENT
+          context.step = FlowStep.PAYMENT;
+          this.updateContext(sessionId, { step: FlowStep.PAYMENT });
+          Logger.info("[submit_form] ✅ Required fields satisfied; advancing to PAYMENT", {
+            sessionId,
+            formKeys: Object.keys(context.formData || {}),
+          });
+
+          // Now call existing submitForm implementation.
+          return await this.submitForm(payload, sessionId, context);
+        }
 
       case "confirm_payment":
         return await this.confirmPayment(payload, sessionId, context);
