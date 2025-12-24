@@ -166,6 +166,17 @@ export default class APIOrchestrator implements IOrchestrator {
     const sid = String(originalSessionId || "chatgpt").trim();
     const uid = userId ? String(userId).trim() : "";
     if (!uid) return sid;
+
+    // If caller mistakenly passes the Auth0 userId as the sessionId,
+    // avoid creating a nonsense key like "auth0|...::auth0|...".
+    if (sid === uid) {
+      return `${uid}::default`;
+    }
+
+    // If already scoped, leave it alone (prevents double-scoping).
+    if (sid.includes("::")) {
+      return sid;
+    }
     return `${uid}::${sid}`;
   }
   

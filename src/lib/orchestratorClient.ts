@@ -117,7 +117,8 @@ export async function sendAction(
   payload: any,
   sessionId: string,
   userJwt?: string,
-  userTimezone?: string
+  userTimezone?: string,
+  userId?: string  // Always include authenticated user id
 ): Promise<OrchestratorResponse> {
   if (!ORCHESTRATOR_BASE) {
     throw new Error('MCP Server URL not configured. Please set VITE_MCP_BASE_URL in your .env file.');
@@ -143,7 +144,7 @@ export async function sendAction(
       sessionId, 
       userJwt, 
       userTimezone,
-      user_id: payload?.user_id  // Extract and send at top level for server
+      user_id: userId  // ✅ Always include authenticated user id at top-level
     }),
   });
 
