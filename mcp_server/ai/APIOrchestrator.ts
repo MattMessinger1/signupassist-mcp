@@ -2322,16 +2322,24 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     
     // ============================================================================
     // FIVE-LAYER PROGRAM DATA RECOVERY
-    // Layer -1: Auto-select single program when payload is empty
+    // Layer -1: Auto-select single program when payload is empty (BUT NOT if user typed a number)
     // Layer 0: Parse from NL input (e.g., "Class 3") when payload is empty
     // Fixes: ChatGPT sending empty payload when user types ordinal selection
+    // FIX 3: If user typed a number, NEVER auto-select - only match by ordinal/title
     // ============================================================================
     let programData = payload.program_data;
     let programRef = payload.program_ref || payload.program_data?.ref || payload.program_data?.program_ref;
     
+    // FIX 3: Detect if user typed a number (ordinal selection)
+    const isNumericSelection = (input?: string): boolean => {
+      if (!input) return false;
+      return /\b([1-9]|10)\b/.test(input.trim());
+    };
+    const userTypedNumber = isNumericSelection(input);
+    
     // LAYER -1: If only ONE program displayed and no payload, auto-select it
-    // This handles when ChatGPT sends empty payload after user confirms
-    if (!programData && !programRef && context.displayedPrograms?.length === 1) {
+    // FIX 3: But ONLY if user did NOT type a number (respect their ordinal choice)
+    if (!programData && !programRef && context.displayedPrograms?.length === 1 && !userTypedNumber) {
       const singleProgram = context.displayedPrograms[0];
       console.log('[selectProgram] ✅ RECOVERY L-1: Auto-selecting single displayed program', {
         program_ref: singleProgram.program_ref,
@@ -2346,6 +2354,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     }
     
     // LAYER 0: If payload is empty/missing, try parsing from user's NL input
+    // This handles both ordinal ("Class 3") and title ("The Coding Course") selection
     if (!programData && !programRef && input && context.displayedPrograms?.length) {
       console.log('[selectProgram] 🔄 RECOVERY L0: Attempting NL parse from input:', input);
       const nlMatch = this.parseProgramSelection(input, context.displayedPrograms);
