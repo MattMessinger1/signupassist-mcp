@@ -150,6 +150,24 @@ export default class APIOrchestrator implements IOrchestrator {
     Logger.info("APIOrchestrator initialized - API-first mode with MCP tool access");
     Logger.info(`[BUILD] ${JSON.stringify(APIOrchestrator.BUILD_STAMP)}`);
   }
+
+  /**
+   * SESSION KEYING (Auth0 + client sessionId)
+   *
+   * Problem: in production logs we were effectively keying sessions ONLY by Auth0 user id,
+   * which causes "new chat" or "refresh" to resurrect an older in-flight signup (stuck on a prior program).
+   *
+   * Fix: if userId is present, scope the durable session id to:
+   *   `${userId}::${originalSessionId}`
+   *
+   * This preserves "stable identity" (per user) while still allowing multiple independent chat sessions.
+   */
+  private resolveDurableSessionId(originalSessionId: string, userId?: string): string {
+    const sid = String(originalSessionId || "chatgpt").trim();
+    const uid = userId ? String(userId).trim() : "";
+    if (!uid) return sid;
+    return `${uid}::${sid}`;
+  }
   
   // ============================================================================
   // ChatGPT Natural Language Parsing Helpers
@@ -841,20 +859,25 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
   ): Promise<OrchestratorResponse> {
     try {
       // ================================================================
-      // AUTH0 SESSION FIX: Use userId as stable key for multi-turn flows
-      // ChatGPT sends different sessionIds each turn, but Auth0 userId is stable
-      // This ensures context persists correctly across conversation turns
+      // AUTH0 + CLIENT SESSION SCOPING
+      // Make sessions per (auth0 user) + (client sessionId), so new chat/refresh
+      // creates a new session instead of resurrecting an old in-flight signup.
       // ================================================================
-      const contextSessionId = userId || sessionId;
+      const originalSessionId = String(sessionId || "chatgpt");
+      const durableSessionId = this.resolveDurableSessionId(originalSessionId, userId);
       const isAuth0Session = !!userId;
       
-      console.log('[AUTH0-SESSION] 🔑 Session key resolution:', {
-        originalSessionId: sessionId,
-        auth0UserId: userId || 'NOT_AUTHENTICATED',
-        contextSessionId,
-        isAuth0Session,
-        timestamp: new Date().toISOString()
-      });
+      if (durableSessionId !== originalSessionId) {
+        Logger.info("[AUTH0-SESSION] 🔑 Session key resolution", {
+          originalSessionId,
+          auth0UserId: userId,
+          durableSessionId,
+          isAuth0Session
+        });
+      }
+
+      // IMPORTANT: from here on, use the durableSessionId for ALL context/persistence.
+      const contextSessionId = durableSessionId;
 
       // ✅ CRITICAL: Use async context loading to restore from Supabase if needed
       // This fixes ChatGPT multi-turn conversations losing context between API calls
