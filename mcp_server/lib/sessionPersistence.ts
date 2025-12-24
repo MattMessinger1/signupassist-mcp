@@ -57,17 +57,38 @@ export async function loadSessionFromDB(sessionId: string, userId?: string): Pro
 }
 
 /**
+ * V1 Guardrail: Never revert step after FORM_FILL (single source of truth)
+ * FIX 2: Enforce invariant at persistence boundary
+ */
+function guardStep(prevStep?: string, nextStep?: string): string | undefined {
+  if (prevStep === "FORM_FILL" && nextStep === "BROWSE") return "FORM_FILL";
+  if (prevStep === "PAYMENT" && nextStep === "BROWSE") return "PAYMENT";
+  return nextStep;
+}
+
+/**
  * Save session context to Supabase
+ * FIX 2: Enforces step invariant at persistence boundary
  */
 export async function saveSessionToDB(
   sessionId: string, 
   context: SessionContext, 
-  userId?: string
+  userId?: string,
+  prevContext?: SessionContext
 ): Promise<void> {
   if (!supabase) return;
 
   try {
     console.log(`[sessionPersistence] Saving session ${sessionId}`);
+    
+    // FIX 2: Enforce invariant at persistence boundary
+    if (prevContext?.step && context?.step) {
+      const guardedStep = guardStep(prevContext.step, context.step);
+      if (guardedStep !== context.step) {
+        console.log(`[sessionPersistence] ⛔ FIX 2: Blocked step reversion from ${prevContext.step} to ${context.step}`);
+        (context as any).step = guardedStep;
+      }
+    }
     
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[sessionPersistence] Context snapshot (non-prod only) ${sessionId}:`, JSON.stringify(context, null, 2));

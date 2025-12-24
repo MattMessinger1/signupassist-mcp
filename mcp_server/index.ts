@@ -6,68 +6,74 @@
  */
 
 // ============================================================
-// V1 UX GUARDRAILS: Ensure Step headers + prevent field dumps
+// V1 Chat UX Guardrails (NO WIDGETS)
+// These run at the HTTP boundary (/orchestrator/chat) so behavior is deterministic.
 // ============================================================
-function ensureWizardHeader(text: string, fallbackStep: "1" | "2" | "3" | "4" = "1"): string {
-  const t = (text || "").trim();
-  const hasHeader = /^Step\s+[1-4]\/4\s+—/i.test(t);
-  if (hasHeader) return t;
-  const title =
-    fallbackStep === "1" ? "Finding classes" :
-    fallbackStep === "2" ? "Parent & child info" :
-    fallbackStep === "3" ? "Payment setup (Stripe)" :
-    "Registering";
-  return `Step ${fallbackStep}/4 — ${title}\n\n${t}`;
-}
-
-function squashFieldDump(text: string): string {
-  // If the model tries to dump a long list, convert it to a single micro-question.
-  // This is a safety net — the orchestrator should already avoid dumps.
-  const lines = (text || "").split("\n").map(l => l.trim()).filter(Boolean);
-  const looksLikeDump = lines.length >= 10 && lines.some(l => /first name|last name|date of birth|relationship/i.test(l));
-  if (!looksLikeDump) return text;
-  return `Step 2/4 — Parent & child info\n🔐 I'll only ask for what the provider requires.\n\nWhat's the parent/guardian **email**?\nReply like: Email: name@example.com`;
-}
-
-// -------------------------
-// V1 UX Guardrails for /orchestrator/chat (NO WIDGETS)
-// Sanitize APIOrchestrator responses at the HTTP boundary.
-// -------------------------
 type WizardStep = "1" | "2" | "3" | "4";
+type OrchestratorStep = "BROWSE" | "FORM_FILL" | "PAYMENT" | "SUBMIT" | string;
 
-function stepTitle(step: WizardStep): string {
-  return step === "1" ? "Finding classes"
-    : step === "2" ? "Parent & child info"
-    : step === "3" ? "Payment setup (Stripe)"
-    : "Registering";
+function wizardTitle(step: WizardStep): string {
+  switch (step) {
+    case "1": return "Finding classes";
+    case "2": return "Parent & child info";
+    case "3": return "Payment setup (Stripe)";
+    case "4": return "Registering";
+  }
 }
 
-function looksLikeFieldDump(text: string): boolean {
-  const lines = (text || "").split("\n").map(l => l.trim()).filter(Boolean);
-  if (lines.length < 10) return false;
-  const markers = ["first name", "last name", "date of birth", "relationship", "participant", "guardian", "phone"];
-  const hitCount = markers.reduce((n, m) => n + (lines.some(l => l.toLowerCase().includes(m)) ? 1 : 0), 0);
-  return hitCount >= 3;
+function inferWizardStep(ctxStep: OrchestratorStep): WizardStep {
+  if (ctxStep === "FORM_FILL") return "2";
+  if (ctxStep === "PAYMENT") return "3";
+  if (ctxStep === "SUBMIT") return "4";
+  return "1";
 }
 
-function microQuestionForStep2(programName?: string): string {
+function ensureWizardHeaderAlways(message: string, wizardStep: WizardStep): string {
+  const msg = (message || "").trim();
+  const desiredHeader = `Step ${wizardStep}/4 — ${wizardTitle(wizardStep)}`;
+
+  // If already has any Step X/4 header, replace it with the correct one.
+  if (/^Step\s+[1-4]\/4\s+—/i.test(msg)) {
+    return msg.replace(/^Step\s+[1-4]\/4\s+—[^\n]*\n*/i, `${desiredHeader}\n\n`);
+  }
+
+  return `${desiredHeader}\n\n${msg}`;
+}
+
+function microQuestionEmail(programName?: string): string {
   const p = programName ? ` for **${programName}**` : "";
   return (
-    `Step 2/4 — Parent & child info\n` +
+    `Step 2/4 — Parent & child info\n\n` +
     `🔐 I'll only ask for what the provider requires.\n\n` +
-    `To start${p}, what's the parent/guardian **email**?\n` +
+    `To continue${p}, what's the parent/guardian **email**?\n` +
     `Reply like: Email: name@example.com`
   );
 }
 
-function sanitizeOrchestratorResponse(resp: any): any {
-  // Remove ANY form/schema payloads that cause ChatGPT to dump fields.
+/**
+ * FIX 4: Kill CTA buttons in chat mode (ChatGPT chat has nothing to click)
+ * FIX 5: Strip ALL schema-ish metadata so ChatGPT never "helpfully dumps fields"
+ */
+function stripChatCTAsAndSchemas(resp: any): any {
+  // Remove clickable CTAs (ChatGPT chat has nothing to click)
+  if (resp?.cta) delete resp.cta;
+  if (resp?.cards) {
+    // cards are OK, but if they embed action CTAs, remove them.
+    resp.cards = resp.cards.map((c: any) => {
+      const cc = { ...c };
+      if (cc?.action) delete cc.action;
+      if (cc?.buttons) delete cc.buttons;
+      return cc;
+    });
+  }
+
+  // Remove ALL schema-ish payloads that cause field dumps
   if (resp?.metadata) {
     delete resp.metadata.componentType;
     delete resp.metadata.displayMode;
     delete resp.metadata.signupFormSchema;
     delete resp.metadata.formSchema;
-    delete resp.metadata.signupForm;       // <- THIS is the main culprit
+    delete resp.metadata.signupForm;          // <-- the culprit in logs
     delete resp.metadata.fullscreen_form;
   }
   delete resp.signupFormSchema;
@@ -76,25 +82,31 @@ function sanitizeOrchestratorResponse(resp: any): any {
   return resp;
 }
 
-function inferWizardStepFromContext(sanitized: any): WizardStep {
-  // FIX 1: Always infer step from context.step (the source of truth)
-  const rawStep = (sanitized?.context?.step || sanitized?.step || "").toString();
-  if (rawStep === "FORM_FILL") return "2";
-  if (rawStep === "PAYMENT") return "3";
-  if (rawStep === "SUBMIT") return "4";
-  return "1";
-}
-
 /**
- * FIX 1: EVERY response MUST have a Step header.
- * No exceptions. No "friendly interstitial" messages.
- * This is enforced at the HTTP boundary.
+ * MASTER GUARDRAIL: Apply all V1 chat UX guardrails at HTTP boundary
+ * - FIX 1: Always Step headers based on context.step
+ * - FIX 4: No clickable CTAs
+ * - FIX 5: No schema payloads (prevents field dumps)
+ * - FORM_FILL becomes micro-question (email)
  */
-function enforceStepHeader(msg: string, step: WizardStep): string {
-  // Strip any existing malformed headers first
-  const cleaned = msg.replace(/^Step\s+\d+\/\d+\s*[—\-:]\s*/gi, '').trim();
-  const title = stepTitle(step);
-  return `Step ${step}/4 — ${title}\n\n${cleaned}`;
+function applyV1ChatGuardrails(resp: any): any {
+  const ctxStep: OrchestratorStep = (resp?.context?.step || resp?.step || "BROWSE") as OrchestratorStep;
+  const wizardStep = inferWizardStep(ctxStep);
+
+  // Always remove CTAs/schemas first
+  stripChatCTAsAndSchemas(resp);
+
+  // In FORM_FILL, we never send a list of fields. We always ask one micro-question.
+  if (ctxStep === "FORM_FILL") {
+    const programName = resp?.context?.selectedProgramName || resp?.context?.selectedProgram?.title || resp?.programName;
+    resp.message = microQuestionEmail(programName);
+    return resp;
+  }
+
+  // Always enforce correct header based on context.step
+  resp.message = ensureWizardHeaderAlways(resp?.message || "", wizardStep);
+
+  return resp;
 }
 
 // Version info for runtime debugging
@@ -2415,36 +2427,31 @@ class SignupAssistMCPServer {
             }
 
             // -------------------------
-            // V1 UX Guardrails (NO WIDGETS)
-            // FIX 1: EVERY response MUST have a Step header.
-            // No exceptions. No "friendly interstitial" messages.
+            // V1 UX Guardrails (NO WIDGETS) - ALL FIXES APPLIED
+            // FIX 1: EVERY response MUST have a Step header (based on context.step)
+            // FIX 4: No clickable CTAs in chat mode
+            // FIX 5: No schema payloads (prevents field dumps)
             // This is enforced server-side at the HTTP boundary.
             // -------------------------
-            const sanitized = sanitizeOrchestratorResponse(result);
-            const step: WizardStep = inferWizardStepFromContext(sanitized);
-
-            let msg = (sanitized?.message || "").toString();
-            
-            // Hard rule: in FORM_FILL we do not send field lists—ever.
-            if (step === "2") {
-              msg = microQuestionForStep2(sanitized?.context?.selectedProgramName || sanitized?.programName);
-            } else {
-              // FIX 1: Enforce step header for ALL responses (not just sometimes)
-              msg = enforceStepHeader(msg || "OK", step);
-            }
-            sanitized.message = msg;
+            const safe = applyV1ChatGuardrails(result);
             
             // Also expose the step in the response for debugging
-            if (!sanitized.context) sanitized.context = {};
-            sanitized.context.wizardStep = step;
+            const ctxStep: OrchestratorStep = (result?.context?.step || result?.step || "BROWSE") as OrchestratorStep;
+            const wizardStep = inferWizardStep(ctxStep);
+            if (!safe.context) safe.context = {};
+            safe.context.wizardStep = wizardStep;
 
-            console.log(`[Orchestrator] Sending sanitized response:`, JSON.stringify(sanitized).substring(0, 200));
+            console.log('[Orchestrator] Sending sanitized response:', JSON.stringify({ 
+              message: safe?.message?.substring(0, 100), 
+              step: safe?.context?.step || safe?.step,
+              wizardStep 
+            }, null, 2));
 
             res.writeHead(200, { 
               'Content-Type': 'application/json',
               'Access-Control-Allow-Origin': '*'
             });
-            res.end(JSON.stringify(sanitized));
+            res.end(JSON.stringify(safe));
           } catch (err: any) {
             console.error('[Orchestrator] Error:', err);
             res.writeHead(500, { 
