@@ -5248,8 +5248,7 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
     participants.push({
       firstName: childInfo.firstName,
       lastName: childInfo.lastName,
-      age: childInfo.age,
-      childId: (childInfo as any).childId
+      age: childInfo.age
     });
 
     this.updateContext(sessionId, { 
