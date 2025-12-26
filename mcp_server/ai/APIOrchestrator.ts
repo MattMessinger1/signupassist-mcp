@@ -5243,21 +5243,19 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
       );
     }
 
-    // Store child info in pendingParticipants
+    // Store child info in pendingParticipants (use camelCase to match type)
     const participants = context.pendingParticipants || [];
     participants.push({
-      first_name: childInfo.firstName,
-      last_name: childInfo.lastName,
+      firstName: childInfo.firstName,
+      lastName: childInfo.lastName,
       age: childInfo.age,
-      child_id: (childInfo as any).childId
+      childId: (childInfo as any).childId
     });
 
     this.updateContext(sessionId, { 
       pendingParticipants: participants,
       childInfo: {
         name: `${childInfo.firstName || ''} ${childInfo.lastName || ''}`.trim(),
-        firstName: childInfo.firstName,
-        lastName: childInfo.lastName,
         age: childInfo.age
       }
     });
