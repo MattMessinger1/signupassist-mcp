@@ -1,4 +1,4 @@
-SignupAssist MCP
+SignupAssist MCP - This is a test for deploy. 
 
 SignupAssist MCP (Model Context Protocol) is an AI-driven agent designed to help parents sign their kids up for extracurricular activities in a safe, conversational way. It automates tasks like logging into provider websites, discovering and filling out registration forms, and submitting enrollments on a parent’s behalf – all under explicit user mandates and strict oversight. Built to integrate with ChatGPT’s conversational interface, SignupAssist emphasizes a parent-friendly experience while ensuring that every action is transparent, authorized, and secure.
 
