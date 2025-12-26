@@ -39,7 +39,6 @@ COPY providers ./providers
 COPY mcp ./mcp
 COPY src ./src
 COPY public ./public
-COPY app ./app
 
 # Build backend (single tsc run, no duplicate)
 RUN mkdir -p dist
