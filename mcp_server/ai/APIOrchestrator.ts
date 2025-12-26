@@ -5,6 +5,9 @@
  * No scraping, no prerequisites, no session complexity
  */
 
+// V1 default: NO widgets. If we ever bring widgets back, flip env var to true.
+const WIDGET_ENABLED = process.env.WIDGET_ENABLED === 'true';
+
 import type { 
   OrchestratorResponse, 
   CardSpec, 
@@ -2560,14 +2563,15 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       const orchestratorResponse: OrchestratorResponse = {
         message,
-        cards,  // Keep cards for widget compatibility
+        // V1 chat-only: don't return cards unless widget mode is explicitly enabled
+        ...(WIDGET_ENABLED ? { cards } : {}),
         metadata: {
-          componentType: 'program_list',
+          // Keep metadata minimal; no widget component routing in v1
           orgRef,
           programCount: upcomingPrograms.length,
           _build: APIOrchestrator.BUILD_STAMP
         },
-        // ChatGPT Apps SDK: structured content for model reasoning
+        // Keep structuredContent for model reasoning (works great without widgets)
         structuredContent: {
           type: 'program_list',
           orgRef,
@@ -2578,14 +2582,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             price: p.price,
             status: p.status
           }))
-        },
-        // ChatGPT Apps SDK: widget-only metadata (not visible to model)
-        _meta: {
-          componentType: 'program_list',
-          cards,  // Full card data for widget rendering
-          orgRef,
-          programCount: upcomingPrograms.length
         }
+        // NOTE: no _meta in v1 (widget-only metadata removed)
       };
 
       // Validate Design DNA compliance
@@ -2826,15 +2824,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const formResponse: OrchestratorResponse = {
         message,
         metadata: {
-          componentType: 'fullscreen_form', // Triggers fullscreen mode in ChatGPT
-          displayMode: 'fullscreen',
+          // V1 chat-only: gate widget-specific fields behind WIDGET_ENABLED
+          ...(WIDGET_ENABLED ? { componentType: 'fullscreen_form', displayMode: 'fullscreen' } : {}),
           signupForm: formDiscoveryResult.data?.program_questions || {},
           program_ref: programRef,
-          programRef: programRef, // Alias for widget compatibility
           org_ref: orgRef,
-          orgRef: orgRef, // Alias for widget compatibility
           program_name: programName,
-          programName: programName, // Alias for widget compatibility
           programFeeCents: programFeeCents,
           numParticipants: context.numParticipants || 1,
           provider: 'bookeo'

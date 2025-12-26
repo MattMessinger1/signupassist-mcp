@@ -2471,135 +2471,9 @@ class SignupAssistMCPServer {
         return;
       }
 
-      // --- Serve ChatGPT Apps SDK Widget HTML (main entry point for widget)
-      if (req.method === 'GET' && url.pathname === '/widget/app.html') {
-        console.log('[WIDGET] Serving ChatGPT Apps SDK widget HTML');
-        
-        // Try to serve the pre-built HTML file
-        const htmlPaths = [
-          path.resolve(process.cwd(), 'app', 'web', 'dist', 'app.html'),
-          path.resolve(__dirname, '..', 'app', 'web', 'dist', 'app.html'),
-        ];
-        
-        let htmlPath: string | null = null;
-        for (const p of htmlPaths) {
-          if (existsSync(p)) {
-            htmlPath = p;
-            break;
-          }
-        }
-        
-        if (htmlPath) {
-          try {
-            const content = readFileSync(htmlPath, 'utf-8');
-            res.writeHead(200, { 
-              'Content-Type': 'text/html',
-              'Cache-Control': 'no-cache',
-              'Access-Control-Allow-Origin': '*'
-            });
-            res.end(content);
-            console.log('[WIDGET] Served widget HTML from:', htmlPath);
-            return;
-          } catch (err: any) {
-            console.error('[WIDGET ERROR] Failed to read widget HTML:', err);
-          }
-        }
-        
-        // Fallback: inline HTML with widget
-        const inlineHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>SignupAssist Widget</title>
-  <style>
-    body { font-family: system-ui, sans-serif; padding: 1rem; }
-    .loading { text-align: center; padding: 2rem; color: #666; }
-  </style>
-</head>
-<body>
-  <div id="root"><div class="loading">Loading SignupAssist...</div></div>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script type="module">
-    import WidgetRoot from './component.js';
-    const root = document.getElementById('root');
-    if (window.ReactDOM && window.React) {
-      window.ReactDOM.createRoot(root).render(window.React.createElement(WidgetRoot));
-    }
-  </script>
-</body>
-</html>`;
-        res.writeHead(200, { 
-          'Content-Type': 'text/html',
-          'Access-Control-Allow-Origin': '*'
-        });
-        res.end(inlineHtml);
-        return;
-      }
-
-      // --- Serve ChatGPT Apps SDK Widget Bundle
-      if (req.method === 'GET' && url.pathname === '/widget/component.js') {
-        console.log('[WIDGET] Serving ChatGPT Apps SDK widget bundle');
-        
-        // Try multiple possible locations for the widget bundle
-        const possiblePaths = [
-          path.resolve(process.cwd(), 'app', 'web', 'dist', 'component.js'),
-          path.resolve(__dirname, '..', 'app', 'web', 'dist', 'component.js'),
-          path.resolve(process.cwd(), 'dist', 'widget', 'component.js'),
-        ];
-        
-        let widgetPath: string | null = null;
-        for (const p of possiblePaths) {
-          if (existsSync(p)) {
-            widgetPath = p;
-            break;
-          }
-        }
-        
-        if (widgetPath) {
-          try {
-            const content = readFileSync(widgetPath, 'utf-8');
-            res.writeHead(200, { 
-              'Content-Type': 'application/javascript',
-              'Cache-Control': 'public, max-age=3600',
-              'Access-Control-Allow-Origin': '*'
-            });
-            res.end(content);
-            console.log('[WIDGET] Served widget bundle from:', widgetPath);
-            return;
-          } catch (err: any) {
-            console.error('[WIDGET ERROR] Failed to read widget bundle:', err);
-          }
-        } else {
-          console.warn('[WIDGET] Widget bundle not found at any expected location:', possiblePaths);
-        }
-        
-        // Fallback: return a minimal placeholder component
-        const placeholderWidget = `
-// ChatGPT Apps SDK Widget - Placeholder (bundle not built yet)
-// Run 'npm run build:widget' to build the widget bundle
-export default function SignupAssistWidget() {
-  return {
-    render: () => {
-      const div = document.createElement('div');
-      div.innerHTML = '<p style="padding: 20px; color: #666;">Widget loading... Run npm run build:widget to build.</p>';
-      return div;
-    }
-  };
-}
-`;
-        res.writeHead(200, { 
-          'Content-Type': 'application/javascript',
-          'Access-Control-Allow-Origin': '*'
-        });
-        res.end(placeholderWidget);
-        return;
-      }
-      
-      // --- ChatGPT Apps SDK Manifest (widget configuration)
+      // --- ChatGPT Apps SDK Manifest (chat-only V1 - no widget)
       if (req.method === 'GET' && url.pathname === '/.well-known/chatgpt-apps-manifest.json') {
-        console.log('[WIDGET] Serving ChatGPT Apps manifest');
+        console.log('[MANIFEST] Serving ChatGPT Apps manifest (V1 chat-only)');
         
         const manifestPath = path.resolve(process.cwd(), 'public', '.well-known', 'chatgpt-apps-manifest.json');
         if (existsSync(manifestPath)) {
@@ -2616,42 +2490,18 @@ export default function SignupAssistWidget() {
           }
         }
         
-        // Fallback inline manifest
+        // Fallback inline manifest (V1 chat-only - NO widget block)
         const manifest = {
           schema_version: "1.0.0",
           name_for_human: "SignupAssist",
-          widget: {
-            url: "https://signupassist-mcp-production.up.railway.app/widget/app.html",
-            prefersBorder: true
-          }
+          name_for_model: "signupassist",
+          description_for_human: "SignupAssist helps parents discover, schedule, and complete class signups for their children."
         };
         res.writeHead(200, { 
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*'
         });
         res.end(JSON.stringify(manifest, null, 2));
-        return;
-      }
-
-      // --- Widget metadata endpoint for ChatGPT Apps SDK
-      if (req.method === 'GET' && url.pathname === '/widget/manifest.json') {
-        const widgetManifest = {
-          name: 'SignupAssist Registration Widget',
-          version: '1.0.0',
-          description: 'Multi-step registration form for activity signups',
-          entry: '/widget/component.js',
-          capabilities: ['fullscreen', 'widget_state'],
-          csp: {
-            'script-src': "'self' 'unsafe-inline'",
-            'style-src': "'self' 'unsafe-inline'"
-          }
-        };
-        
-        res.writeHead(200, { 
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*'
-        });
-        res.end(JSON.stringify(widgetManifest, null, 2));
         return;
       }
 
