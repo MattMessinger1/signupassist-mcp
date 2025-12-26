@@ -160,6 +160,7 @@ async function findPrograms(args: {
     console.log(`[Bookeo] Found ${programs.length} programs`);
     
     // Group by theme (category) for UI display
+    // CRITICAL: Add source_provider to every program for pollution prevention
     const programsByTheme: Record<string, any[]> = {};
     for (const row of programs) {
       const prog = row.program as any;
@@ -168,7 +169,8 @@ async function findPrograms(args: {
       programsByTheme[theme].push({
         ...prog,
         program_ref: row.program_ref,
-        org_ref: row.org_ref
+        org_ref: row.org_ref,
+        source_provider: 'bookeo' as const  // Enforce Bookeo-only sourcing
       });
     }
     
