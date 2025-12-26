@@ -261,6 +261,37 @@ export default class APIOrchestrator implements IOrchestrator {
     return confirmPatterns.test(input.trim());
   }
 
+  // ---------------------------------------------------------------------------
+  // Chat-only intent helpers (eliminate "Madison?" + "which activity?" loops)
+  // ---------------------------------------------------------------------------
+  private isBrowseAllIntent(input: string): boolean {
+    const s = (input || "").trim().toLowerCase();
+    if (!s) return false;
+    return (
+      s === "browse" ||
+      s === "show" ||
+      s === "list" ||
+      s === "anything" ||
+      s === "whatever" ||
+      s.includes("browse") ||
+      s.includes("show programs") ||
+      s.includes("show classes") ||
+      s.includes("list programs") ||
+      s.includes("list classes") ||
+      s.includes("show all") ||
+      s.includes("all programs") ||
+      s.includes("all classes")
+    );
+  }
+
+  private hasSignupIntent(input: string): boolean {
+    return /\b(sign\s*up|signup|register|enroll|enrol|book|reserve|set\s*and\s*forget|auto[-\s]?register|schedule)\b/i.test(input || "");
+  }
+
+  private hasProgramWords(input: string): boolean {
+    return /\b(class|classes|course|courses|program|programs|camp|camps|lesson|lessons|workshop|workshops)\b/i.test(input || "");
+  }
+
   // ============================================================================
   // Option A: Free-text → Form hydration helpers
   // ============================================================================
@@ -1342,6 +1373,33 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       return await this.handleLocationResponse(normalizedForLocation, sessionId, context);
     }
 
+    // ------------------------------------------------------------------------
+    // V1 CHAT-ONLY FAST PATHS
+    // If user is clearly trying to sign up / browse programs at AIM Design,
+    // skip activation + clarifications and list programs immediately.
+    // ------------------------------------------------------------------------
+    const mentionsAimDesign = /\baim\s*design\b/i.test(input);
+    const wantsProgramsNow =
+      this.isBrowseAllIntent(input) || this.hasSignupIntent(input) || this.hasProgramWords(input);
+
+    if (mentionsAimDesign && wantsProgramsNow) {
+      this.updateContext(sessionId, {
+        orgRef: "aim-design",
+        requestedActivity: undefined,
+        pendingProviderConfirmation: undefined,
+        step: FlowStep.BROWSE
+      });
+      return await this.searchPrograms("aim-design", sessionId);
+    }
+
+    // If user says "browse/show/list/anything" and we already have a provider context,
+    // list programs now (don't ask follow-ups).
+    if (this.isBrowseAllIntent(input) && (context.orgRef || context.pendingProviderConfirmation)) {
+      const orgRef = context.orgRef || context.pendingProviderConfirmation?.toLowerCase().replace(/\s+/g, '-') || "aim-design";
+      this.updateContext(sessionId, { orgRef, requestedActivity: undefined, pendingProviderConfirmation: undefined });
+      return await this.searchPrograms(orgRef, sessionId);
+    }
+
     // Get user's stored location if authenticated
     let storedCity: string | undefined;
     let storedState: string | undefined;
@@ -1447,8 +1505,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
     // Route based on confidence level
     if (confidence.level === 'HIGH' && confidence.matchedProvider) {
-      // HIGH: Activate immediately with Set & Forget message
       const orgRef = confidence.matchedProvider.name.toLowerCase().replace(/\s+/g, '-');
+      // CHAT-ONLY: If user intent is signup/browse/programs, list programs immediately.
+      if (this.hasSignupIntent(input) || this.hasProgramWords(input) || this.isBrowseAllIntent(input)) {
+        this.updateContext(sessionId, { orgRef, pendingProviderConfirmation: undefined, step: FlowStep.BROWSE });
+        return await this.searchPrograms(orgRef, sessionId);
+      }
+      // Otherwise keep the activation message (still useful for generic/ambiguous opens)
       return await this.activateWithInitialMessage(confidence.matchedProvider, orgRef, sessionId);
     }
 
@@ -1469,12 +1532,18 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       
       // Case B: Provider name matched (existing logic)
       if (confidence.matchedProvider) {
+        const orgRef = confidence.matchedProvider.name.toLowerCase().replace(/\s+/g, '-');
+
+        // CHAT-ONLY: stop "Madison?" and "what activity?" if user intends browse/signup.
+        if (this.hasSignupIntent(input) || this.hasProgramWords(input) || this.isBrowseAllIntent(input)) {
+          this.updateContext(sessionId, { orgRef, pendingProviderConfirmation: undefined, step: FlowStep.BROWSE });
+          return await this.searchPrograms(orgRef, sessionId);
+        }
+
+        // Otherwise keep conservative behavior
         if (context.user_id && !storedCity) {
-          // Authenticated user without stored location - ask for city
           return this.askForLocation(confidence.matchedProvider, sessionId);
         }
-        
-        // Show fallback clarification
         return this.showFallbackClarification(confidence.matchedProvider, sessionId);
       }
     }
@@ -1515,6 +1584,28 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // Also handles ChatGPT NL parsing for form fill and payment steps
     switch (context.step) {
       case FlowStep.BROWSE: {
+        // If user says "browse/show/list/anything", list programs now.
+        if (this.isBrowseAllIntent(input)) {
+          const orgRef = context.orgRef || "aim-design";
+          this.updateContext(sessionId, { orgRef, requestedActivity: undefined, pendingProviderConfirmation: undefined });
+          return await this.searchPrograms(orgRef, sessionId);
+        }
+
+        // If user says "yes" while we have a provider context but no list displayed yet,
+        // treat that as "show programs".
+        if (
+          this.isUserConfirmation(input) &&
+          (context.orgRef || context.pendingProviderConfirmation) &&
+          (!context.displayedPrograms || context.displayedPrograms.length === 0)
+        ) {
+          const orgRef =
+            context.orgRef ||
+            context.pendingProviderConfirmation?.toLowerCase().replace(/\s+/g, '-') ||
+            "aim-design";
+          this.updateContext(sessionId, { orgRef, requestedActivity: undefined, pendingProviderConfirmation: undefined });
+          return await this.searchPrograms(orgRef, sessionId);
+        }
+
         // ChatGPT NL: Check for program selection by title or ordinal
         if (context.displayedPrograms?.length) {
           const selectedProgram = this.parseProgramSelection(input, context.displayedPrograms);
@@ -1994,7 +2085,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
     return {
       message,
-      cards
+      ...(WIDGET_ENABLED ? { cards } : {})
     };
   }
 
@@ -2007,27 +2098,29 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // Store that we're waiting for location
     this.updateContext(sessionId, { step: FlowStep.BROWSE });
     
+    const cards: CardSpec[] = [{
+      title: "Share Your Location",
+      subtitle: "Optional — helps with faster matching",
+      description: `This helps me confirm you're looking for ${provider.name} in ${provider.city || 'your area'}.`,
+      buttons: [
+        {
+          label: `Yes, I'm in ${provider.city || 'that area'}`,
+          action: "save_location",
+          payload: { city: provider.city, state: provider.state, provider_name: provider.name },
+          variant: "accent"
+        },
+        {
+          label: "Different City",
+          action: "confirm_provider",
+          payload: { provider_name: provider.name, ask_city: true },
+          variant: "outline"
+        }
+      ]
+    }];
+
     return {
       message,
-      cards: [{
-        title: "Share Your Location",
-        subtitle: "Optional — helps with faster matching",
-        description: `This helps me confirm you're looking for ${provider.name} in ${provider.city || 'your area'}.`,
-        buttons: [
-          {
-            label: `Yes, I'm in ${provider.city || 'that area'}`,
-            action: "save_location",
-            payload: { city: provider.city, state: provider.state, provider_name: provider.name },
-            variant: "accent"
-          },
-          {
-            label: "Different City",
-            action: "confirm_provider",
-            payload: { provider_name: provider.name, ask_city: true },
-            variant: "outline"
-          }
-        ]
-      }]
+      ...(WIDGET_ENABLED ? { cards } : {})
     };
   }
 
@@ -2046,27 +2139,29 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // Store pending provider for ChatGPT NL "Yes" detection
     this.updateContext(sessionId, { pendingProviderConfirmation: provider.name });
 
+    const cards: CardSpec[] = [{
+      title: `Sign up at ${provider.name}?`,
+      subtitle: provider.city ? `📍 ${provider.city}, ${provider.state || ''}` : undefined,
+      description: 'Confirm to browse available programs.',
+      buttons: [
+        {
+          label: "Yes, that's right",
+          action: "confirm_provider",
+          payload: { provider_name: provider.name, orgRef },
+          variant: "accent"
+        },
+        {
+          label: "No, not what I meant",
+          action: "deny_provider",
+          payload: {},
+          variant: "outline"
+        }
+      ]
+    }];
+
     return {
       message,
-      cards: [{
-        title: `Sign up at ${provider.name}?`,
-        subtitle: provider.city ? `📍 ${provider.city}, ${provider.state || ''}` : undefined,
-        description: 'Confirm to browse available programs.',
-        buttons: [
-          {
-            label: "Yes, that's right",
-            action: "confirm_provider",
-            payload: { provider_name: provider.name, orgRef },
-            variant: "accent"
-          },
-          {
-            label: "No, not what I meant",
-            action: "deny_provider",
-            payload: {},
-            variant: "outline"
-          }
-        ]
-      }]
+      ...(WIDGET_ENABLED ? { cards } : {})
     };
   }
 
