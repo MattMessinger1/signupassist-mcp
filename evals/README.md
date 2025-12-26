@@ -1,6 +1,6 @@
 # Evaluation Framework
 
-This directory contains comprehensive evaluation scripts for SignupAssist-MCP. Each script measures key metrics that directly map to our value propositions and revenue model.
+This directory contains comprehensive evaluation scripts for SignupAssist-MCP. Each script measures key metrics that directly map to our value propositions and revenue model. Test Deploy. 
 
 ## Evaluation Scripts
 
