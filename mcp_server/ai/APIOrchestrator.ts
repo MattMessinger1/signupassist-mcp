@@ -250,6 +250,20 @@ export default class APIOrchestrator implements IOrchestrator {
     
     return null;
   }
+
+  /**
+   * Parse child info in strict "FirstName LastName, Age" format
+   * For robust handling of inputs like "Percy Messinger, 11"
+   */
+  private parseChildLine(input: string): { firstName: string; lastName: string; age: number } | null {
+    const s = (input || "").trim();
+    // Match: "Percy Messinger, 11" / "Percy Messinger 11" / "Percy Messinger (11)"
+    const m = s.match(/^([A-Za-z'-]+)\s+([A-Za-z'-]+)[,\s()]*([0-9]{1,2})\s*$/);
+    if (!m) return null;
+    const age = Number(m[3]);
+    if (!Number.isFinite(age) || age < 0 || age > 120) return null;
+    return { firstName: m[1], lastName: m[2], age };
+  }
   
   /**
    * Detect if input is a user confirmation
@@ -1181,6 +1195,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       case "save_child":
         return await this.saveChild(payload, sessionId, context);
+
+      case "select_child":
+        // Handle child selection from UI action (ChatGPT card click or NL input)
+        return await this.handleSelectChild(payload, sessionId, context, input);
 
       case "load_delegate_profile":
         return await this.loadDelegateProfile(payload, sessionId, context);
@@ -2386,9 +2404,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const context = this.getContext(sessionId);
 
       // Call Bookeo MCP tool (ensures audit logging)
+      // Note: provider param removed - tool name already selects provider
       const programsResult = await this.invokeMCPTool('bookeo.find_programs', {
-        org_ref: orgRef,
-        provider: 'bookeo'
+        org_ref: orgRef
       });
       
       // Extract programs array - handle Bookeo's grouped structure
@@ -5165,8 +5183,111 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
   }
 
   /**
-   * Load delegate profile for user (ChatGPT App Store compliant - via MCP tool)
+   * Handle select_child action from UI cards or natural language
+   * Stores child info in context and proceeds to next field
    */
+  private async handleSelectChild(
+    payload: any,
+    sessionId: string,
+    context: APIContext,
+    input: string
+  ): Promise<OrchestratorResponse> {
+    Logger.info('[handleSelectChild] Processing child selection', { 
+      hasPayload: !!payload, 
+      payloadKeys: payload ? Object.keys(payload) : [],
+      input 
+    });
+
+    // Extract child info from payload first (UI action)
+    let childInfo = null;
+    
+    if (payload?.first_name && payload?.last_name) {
+      childInfo = {
+        firstName: payload.first_name,
+        lastName: payload.last_name,
+        age: payload.age ? Number(payload.age) : undefined
+      };
+    } else if (payload?.child_id) {
+      // Child selected from saved children - look it up
+      Logger.info('[handleSelectChild] Child selected by ID:', payload.child_id);
+      // For now, just use the child_id as-is if present
+      childInfo = { childId: payload.child_id };
+    }
+
+    // If no payload, try parsing from natural language input
+    if (!childInfo && input) {
+      const parsed = this.parseChildLine(input);
+      if (parsed) {
+        childInfo = parsed;
+        Logger.info('[handleSelectChild] Parsed child from NL:', parsed);
+      } else {
+        // Fallback to existing parser for more formats
+        const fallbackParsed = this.parseChildInfoFromMessage(input);
+        if (fallbackParsed) {
+          childInfo = {
+            firstName: fallbackParsed.firstName || fallbackParsed.name?.split(' ')[0],
+            lastName: fallbackParsed.lastName || fallbackParsed.name?.split(' ').slice(1).join(' '),
+            age: fallbackParsed.age
+          };
+          Logger.info('[handleSelectChild] Parsed child from fallback:', childInfo);
+        }
+      }
+    }
+
+    if (!childInfo) {
+      Logger.warn('[handleSelectChild] Could not parse child info from payload or input');
+      return this.formatResponse(
+        "I need the participant's information. Please provide their name and age (e.g., 'Percy Messinger, 11').",
+        undefined,
+        []
+      );
+    }
+
+    // Store child info in pendingParticipants
+    const participants = context.pendingParticipants || [];
+    participants.push({
+      first_name: childInfo.firstName,
+      last_name: childInfo.lastName,
+      age: childInfo.age,
+      child_id: (childInfo as any).childId
+    });
+
+    this.updateContext(sessionId, { 
+      pendingParticipants: participants,
+      childInfo: {
+        name: `${childInfo.firstName || ''} ${childInfo.lastName || ''}`.trim(),
+        firstName: childInfo.firstName,
+        lastName: childInfo.lastName,
+        age: childInfo.age
+      }
+    });
+
+    Logger.info('[handleSelectChild] ✅ Child info stored', { 
+      participantCount: participants.length,
+      childInfo 
+    });
+
+    // Ask for delegate email if we don't have it yet
+    if (!context.pendingDelegateInfo?.email) {
+      this.updateContext(sessionId, { awaitingDelegateEmail: true });
+      return this.formatResponse(
+        `Great! I have ${childInfo.firstName}'s information. What email should I use for the registration?`,
+        undefined,
+        []
+      );
+    }
+
+    // If we have delegate info, proceed to form submission
+    return await this.submitForm({
+      formData: {
+        participants,
+        delegate: context.pendingDelegateInfo
+      },
+      program_ref: context.selectedProgram?.program_ref,
+      org_ref: context.orgRef || context.selectedProgram?.org_ref
+    }, sessionId, this.getContext(sessionId));
+  }
+
   private async loadDelegateProfile(
     payload: any,
     sessionId: string,
