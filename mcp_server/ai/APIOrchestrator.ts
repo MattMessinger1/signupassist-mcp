@@ -1148,8 +1148,16 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             }
 
             if (missing.length > 0) {
+              // Ask for a small chunk to keep the flow progressive (no giant field dumps)
+              const nextChunk = missing.slice(0, 2);
+              const remainingCount = Math.max(missing.length - nextChunk.length, 0);
+              const footer =
+                remainingCount > 0
+                  ? `After these, I'll ask for the remaining ${remainingCount} item${remainingCount === 1 ? '' : 's'}.`
+                  : `That should be everything I need.`;
+
               return this.formatResponse(
-                `Step 2/5 — Registration details\n\nI still need a couple details:\n\n- ${missing.slice(0, 8).join("\n- ")}\n\nReply with them in one message (you can use commas), and I'll continue.`,
+                `Step 2/5 — Parent & child info\n\nPlease share:\n- ${nextChunk.join("\n- ")}\n\n${footer}\nReply in one message (commas are fine).`,
                 undefined,
                 []
               );
@@ -2560,47 +2568,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         return this.formatError("No upcoming programs available at this time. All sessions have already passed.");
       }
       
-      // Filter by requestedActivity if set (respects user's original intent)
-      let filteredPrograms = upcomingPrograms;
-      if (context.requestedActivity) {
-        const { getActivityKeywords, getActivityDisplayName } = await import('../utils/activityMatcher.js');
-        const activityKeywords = getActivityKeywords(context.requestedActivity);
-        const activityName = getActivityDisplayName(context.requestedActivity);
-
-        filteredPrograms = upcomingPrograms.filter((prog: any) => {
-          const searchText = [
-            prog.title || '',
-            prog.description || '',
-            prog.category || ''
-          ].join(' ').toLowerCase();
-
-          return activityKeywords.some((keyword: string) => searchText.includes(keyword));
-        });
-
-        Logger.info('[searchPrograms] Activity filter applied:', {
-          requestedActivity: context.requestedActivity,
-          activityKeywords,
-          originalCount: upcomingPrograms.length,
-          filteredCount: filteredPrograms.length
-        });
-
-        if (filteredPrograms.length === 0) {
-          // Provider doesn't have matching programs - be honest
-          return this.formatResponse(
-            `This provider doesn't have ${activityName} programs. Would you like to see all their programs instead, or search for a different provider?`,
-            undefined,
-            [
-              { label: "Show All Programs", action: "clear_activity_filter", payload: { orgRef }, variant: "accent" },
-              { label: "Start Over", action: "clear_context", payload: {}, variant: "outline" }
-            ]
-          );
-        }
-      }
+      // Activity filtering removed: always surface the full catalog for AIM Design/Bookeo.
+      // (requestedActivity is still tracked for analytics but no longer used to trim results)
 
       // Audience mismatch check using the shared audienceParser utility
       if (context.requestedAdults && !context.ignoreAudienceMismatch) {
         const mismatch = checkAudienceMismatch(
-          filteredPrograms.map((p: any) => ({
+          upcomingPrograms.map((p: any) => ({
             audience: p.audience,
             age_range: p.age_range,
             title: p.title,
@@ -2623,7 +2597,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       
       // V1: persist the FULL displayed list so numeric selection works (1..N)
       // Limit to 8 programs max to prevent UI overflow and context bloat
-      const programsToDisplay = filteredPrograms.slice(0, 8);
+      const programsToDisplay = upcomingPrograms.slice(0, 8);
       
       // Store programs in context (including displayedPrograms for ChatGPT NL selection)
       const displayedPrograms = programsToDisplay.map((prog: any) => ({
@@ -3008,8 +2982,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         has_program_questions: !!formDiscoveryResult?.data?.program_questions
       });
       
-      // Simplified message - timing context shown at payment step instead
-      const message = `Great choice! Let's get you signed up for **${programName}**.`;
+      // Start Step 2 with a short prompt (email first)
+      const message = getAPIFormIntroMessage({ program_name: programName });
 
       // Return form schema with fullscreen mode for ChatGPT compliance
       // Include all fields the widget needs to initialize form state
@@ -3052,6 +3026,15 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         };
         await this.updateContextAndAwait(sessionId, { requiredFields });
       }
+
+      // Prompt for delegate email first and clear any stale form fragments
+      this.updateContext(sessionId, { 
+        awaitingDelegateEmail: true,
+        pendingDelegateInfo: undefined,
+        childInfo: undefined,
+        formData: undefined,
+        paymentAuthorized: false
+      });
 
       // Validate Design DNA compliance
       const validation = validateDesignDNA(formResponse, {
