@@ -2488,6 +2488,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         return true;
       });
 
+      // Do NOT filter by requestedActivity; always show all programs for the org.
+      // We rely on the user selecting from the full list (AIM Design currently has 4).
       // If user asked for a specific activity, narrow to matching programs first.
       const requestedActivity = (context.requestedActivity || "").toLowerCase().trim();
       if (requestedActivity) {
