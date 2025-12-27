@@ -2447,6 +2447,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         formData: undefined,
         schedulingData: undefined,
         paymentAuthorized: false,
+        // Clear activity filters to show full catalog (AIM Design has 4 programs)
+        requestedActivity: undefined,
         // Keep displayedPrograms - will be overwritten with fresh data below
       });
       Logger.info('[searchPrograms] Cleared stale selection state for fresh browse');
