@@ -2489,15 +2489,34 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         programs = [];
       }
 
-      // Hard filter: remove deprecated SkiClubPro remnants (provider-level only)
+      // Hard filter: remove deprecated SkiClubPro remnants (e.g., ski jumping classes)
       programs = programs.filter((p: any) => {
         const providerRef = (p.provider_ref || p.org_ref || "").toLowerCase();
+        const title = (p.title || "").toLowerCase();
         if (providerRef.includes("skiclubpro")) return false;
+        if (/ski\s+jump/i.test(title) || /\bski\b/i.test(title)) return false;
         return true;
       });
 
       // Do NOT filter by requestedActivity; always show all programs for the org.
       // We rely on the user selecting from the full list (AIM Design currently has 4).
+      // If user asked for a specific activity, narrow to matching programs first.
+      const requestedActivity = (context.requestedActivity || "").toLowerCase().trim();
+      if (requestedActivity) {
+        const keywords = requestedActivity.split(/\s+/).filter(Boolean);
+        const matchesKeyword = (text: string) =>
+          keywords.every((kw) => text.toLowerCase().includes(kw));
+        const filtered = programs.filter((p: any) => {
+          const t = (p.title || "") + " " + (p.description || "");
+          return matchesKeyword(t);
+        });
+        if (filtered.length > 0) {
+          programs = filtered;
+          Logger.info(`[searchPrograms] Filtered programs by requestedActivity='${requestedActivity}' -> ${filtered.length} matches`);
+        } else {
+          Logger.info(`[searchPrograms] No direct matches for requestedActivity='${requestedActivity}', showing full list`);
+        }
+      }
 
       if (!programs || programs.length === 0) {
         return this.formatError("No programs found at this time.");
