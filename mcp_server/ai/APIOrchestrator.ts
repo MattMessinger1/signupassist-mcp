@@ -2488,24 +2488,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         return true;
       });
 
-      // If user asked for a specific activity, narrow to matching programs first.
-      const requestedActivity = (context.requestedActivity || "").toLowerCase().trim();
-      if (requestedActivity) {
-        const keywords = requestedActivity.split(/\s+/).filter(Boolean);
-        const matchesKeyword = (text: string) =>
-          keywords.every((kw) => text.toLowerCase().includes(kw));
-        const filtered = programs.filter((p: any) => {
-          const t = (p.title || "") + " " + (p.description || "");
-          return matchesKeyword(t);
-        });
-        // Only apply the filter if it leaves at least 2 programs; otherwise, keep full list.
-        if (filtered.length >= 2) {
-          programs = filtered;
-          Logger.info(`[searchPrograms] Filtered programs by requestedActivity='${requestedActivity}' -> ${filtered.length} matches`);
-        } else {
-          Logger.info(`[searchPrograms] Filter would yield ${filtered.length} programs; keeping full list to avoid hiding options.`);
-        }
-      }
+      // Do NOT filter by requestedActivity; always show all programs for the org.
+      // We rely on the user selecting from the full list (AIM Design currently has 4).
 
       if (!programs || programs.length === 0) {
         return this.formatError("No programs found at this time.");
