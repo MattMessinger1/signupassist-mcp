@@ -106,6 +106,8 @@ This is the authoritative checklist for v1. The goal is:
 - [ ] Hit `/.well-known/chatgpt-apps-manifest.json` in production (200 + valid JSON)
 - [ ] Hit `/.well-known/oauth-authorization-server` (200 + correct issuer/endpoints)
 - [ ] OAuth login completes in ChatGPT preview
+- [ ] Run `bash scripts/v1_endpoint_smoke.sh https://signupassist-mcp-production.up.railway.app` (expect 200s + 401 for protected)
+- [ ] Run `npm run v1:preflight` in a production-like env (Supabase tables + cached feed)
 - [ ] Search → select → schedule → see SCH receipt
 - [ ] Worker runs and executes due job; see REG receipt; see audit trail
 

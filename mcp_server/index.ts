@@ -2604,7 +2604,7 @@ class SignupAssistMCPServer {
       }
 
       // --- Legal: Privacy Policy (served from repo markdown for review accuracy)
-      if (req.method === 'GET' && (url.pathname === '/privacy' || url.pathname === '/privacy.html')) {
+      if ((req.method === 'GET' || req.method === 'HEAD') && (url.pathname === '/privacy' || url.pathname === '/privacy.html')) {
         try {
           const mdPath = path.resolve(process.cwd(), 'docs', 'PRIVACY_POLICY.md');
           const md = existsSync(mdPath)
@@ -2645,7 +2645,8 @@ class SignupAssistMCPServer {
             'Content-Type': 'text/html; charset=utf-8',
             'Access-Control-Allow-Origin': '*'
           });
-          res.end(html);
+          if (req.method === 'HEAD') res.end();
+          else res.end(html);
           return;
         } catch (err: any) {
           console.error('[PRIVACY] Error serving privacy policy:', err);
@@ -2659,7 +2660,7 @@ class SignupAssistMCPServer {
       }
 
       // --- Legal: Terms of Use (served from repo markdown for review accuracy)
-      if (req.method === 'GET' && (url.pathname === '/terms' || url.pathname === '/terms.html')) {
+      if ((req.method === 'GET' || req.method === 'HEAD') && (url.pathname === '/terms' || url.pathname === '/terms.html')) {
         try {
           const mdPath = path.resolve(process.cwd(), 'docs', 'TERMS_OF_USE.md');
           const md = existsSync(mdPath)
@@ -2700,7 +2701,8 @@ class SignupAssistMCPServer {
             'Content-Type': 'text/html; charset=utf-8',
             'Access-Control-Allow-Origin': '*'
           });
-          res.end(html);
+          if (req.method === 'HEAD') res.end();
+          else res.end(html);
           return;
         } catch (err: any) {
           console.error('[TERMS] Error serving terms of use:', err);
@@ -2709,6 +2711,37 @@ class SignupAssistMCPServer {
             'Access-Control-Allow-Origin': '*'
           });
           res.end('Failed to load terms of use.');
+          return;
+        }
+      }
+
+ 
+      if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/logo-512.svg') {
+        try {
+          const candidates = [
+            path.resolve(process.cwd(), 'dist', 'client', 'logo-512.svg'),
+            path.resolve(process.cwd(), 'public', 'logo-512.svg'),
+          ];
+          const logoPath = candidates.find((p) => existsSync(p));
+          if (!logoPath) {
+            res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify({ error: 'logo_not_found' }));
+            return;
+          }
+
+          const svg = readFileSync(logoPath);
+          res.writeHead(200, {
+            'Content-Type': 'image/svg+xml',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'public, max-age=86400'
+          });
+          if (req.method === 'HEAD') res.end();
+          else res.end(svg);
+          return;
+        } catch (err: any) {
+          console.error('[LOGO] Error serving logo:', err);
+          res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ error: 'logo_serve_failed' }));
           return;
         }
       }

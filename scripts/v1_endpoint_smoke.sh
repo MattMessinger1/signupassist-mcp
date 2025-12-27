@@ -18,6 +18,13 @@ check_get () {
   curl -sS -D - "${BASE_URL}${path}" | head -n 20
 }
 
+check_head () {
+  local path="$1"
+  echo ""
+  echo "=== HEAD ${path} ==="
+  curl -sS -I "${BASE_URL}${path}" | head -n 20
+}
+
 check_post_json () {
   local path="$1"
   local json="$2"
@@ -32,6 +39,8 @@ check_get "/.well-known/chatgpt-apps-manifest.json"
 check_get "/.well-known/oauth-authorization-server"
 check_get "/docs"
 check_get "/privacy"
+check_get "/terms"
+check_head "/logo-512.svg"
 check_get "/mcp/openapi.json"
 check_get "/.well-known/openapi.json"
 
