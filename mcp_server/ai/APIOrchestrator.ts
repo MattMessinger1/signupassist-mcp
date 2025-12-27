@@ -64,9 +64,12 @@ import { checkAudienceMismatch } from "../utils/audienceParser.js";
 
 // Simple flow steps for API-first providers
 enum FlowStep {
-  BROWSE = "BROWSE",           // User browses programs
-  FORM_FILL = "FORM_FILL",     // User fills signup form
-  PAYMENT = "PAYMENT"          // User confirms payment
+  BROWSE = "BROWSE",           // Browse programs → select program
+  FORM_FILL = "FORM_FILL",     // Collect child & delegate info
+  REVIEW = "REVIEW",           // Review details and consent
+  PAYMENT = "PAYMENT",         // Payment method setup (Stripe)
+  SUBMIT = "SUBMIT",           // Submit booking confirmation
+  COMPLETED = "COMPLETED"      // Booking completed (receipt shown)
 }
 
 // Minimal context for API-first flow
@@ -1018,7 +1021,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     if (requiredStep && context.step !== requiredStep) {
       Logger.warn(`[${resolvedAction}] ⛔ STEP GATE: Not in ${requiredStep} step`, { currentStep: context.step });
       return this.formatResponse(
-        `Step 1/4 — Finding classes\n\nWe need to collect some information first before I can continue.`,
+        `Step 1/5 — Finding classes\n\nWe need to collect some information first before I can continue.`,
         undefined,
         []
       );
@@ -1144,17 +1147,17 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
             if (missing.length > 0) {
               return this.formatResponse(
-                `Step 2/4 — Registration details\n\nI still need a couple details:\n\n- ${missing.slice(0, 8).join("\n- ")}\n\nReply with them in one message (you can use commas), and I'll continue.`,
+                `Step 2/5 — Registration details\n\nI still need a couple details:\n\n- ${missing.slice(0, 8).join("\n- ")}\n\nReply with them in one message (you can use commas), and I'll continue.`,
                 undefined,
                 []
               );
             }
           }
 
-          // ✅ We have required fields -> advance flow to PAYMENT
-          context.step = FlowStep.PAYMENT;
-          this.updateContext(sessionId, { step: FlowStep.PAYMENT });
-          Logger.info("[submit_form] ✅ Required fields satisfied; advancing to PAYMENT", {
+          // ✅ We have required fields -> advance flow to REVIEW
+          context.step = FlowStep.REVIEW;
+          this.updateContext(sessionId, { step: FlowStep.REVIEW });
+          Logger.info("[submit_form] ✅ Required fields satisfied; advancing to REVIEW", {
             sessionId,
             formKeys: Object.keys(context.formData || {}),
           });
@@ -1243,9 +1246,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           );
         }
         
-        // Gate 2: Must be in PAYMENT step
-        if (context.step !== FlowStep.PAYMENT) {
-          Logger.warn('[authorize_payment] ⛔ STEP GATE: Not in PAYMENT step', { currentStep: context.step });
+        // Gate 2: Must be in PAYMENT/SUBMIT step
+        if (context.step !== FlowStep.PAYMENT && context.step !== FlowStep.SUBMIT) {
+          Logger.warn('[authorize_payment] ⛔ STEP GATE: Not in PAYMENT/SUBMIT step', { currentStep: context.step });
           return this.formatResponse(
             "We need to collect some information first before I can process your authorization.",
             undefined,
@@ -1368,9 +1371,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // If we're in FORM_FILL or PAYMENT but missing critical context, reset to BROWSE
     // ============================================================================
     const isInvalidFormFillState = context.step === FlowStep.FORM_FILL && !context.selectedProgram;
-    const isInvalidPaymentState = context.step === FlowStep.PAYMENT && !context.selectedProgram;
+    const isInvalidReviewState = context.step === FlowStep.REVIEW && !context.selectedProgram;
+    const isInvalidPaymentState = (context.step === FlowStep.PAYMENT || context.step === FlowStep.SUBMIT || context.step === FlowStep.COMPLETED) && !context.selectedProgram;
     
-    if (isInvalidFormFillState || isInvalidPaymentState) {
+    if (isInvalidFormFillState || isInvalidReviewState || isInvalidPaymentState) {
       console.log('[handleMessage] ⚠️ RECOVERY: Detected invalid session state, resetting to BROWSE', {
         currentStep: context.step,
         hasSelectedProgram: !!context.selectedProgram,
@@ -1775,6 +1779,54 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         );
       }
 
+      case FlowStep.REVIEW: {
+        // Await user confirmation of details
+        if (this.isUserConfirmation(input)) {
+          Logger.info('[Review] User confirmed details', { hasCardOnFile: !!context.cardLast4, futureBooking: !!context.schedulingData });
+          if (!context.cardLast4) {
+            Logger.info('[Review] No saved card on file – initiating Stripe Checkout');
+            const userEmail = context.pendingDelegateInfo?.email || context.formData?.delegate_data?.email || context.formData?.delegate_data?.delegate_email;
+            const userId = context.user_id;
+            try {
+              const sessionRes = await this.invokeMCPTool('stripe.create_checkout_session', {
+                user_id: userId,
+                user_email: userEmail,
+                success_url: "https://signupassist.ai/stripe_return?payment_setup=success&session_id={CHECKOUT_SESSION_ID}",
+                cancel_url: "https://signupassist.ai/stripe_return?payment_setup=canceled"
+              });
+              if (!sessionRes.success || !sessionRes.data?.url) {
+                throw new Error(sessionRes.error?.message || "Unknown error");
+              }
+              // Advance to PAYMENT step awaiting verification
+              this.updateContext(sessionId, { step: FlowStep.PAYMENT });
+              const stripeUrl = sessionRes.data.url;
+              const linkMsg = `💳 **Secure Stripe Checkout**\nPlease add your payment method using the link below. We never see your card details.\n\n🔗 ${stripeUrl}\n\nWhen you've finished, type "done" here to continue.`;
+              return this.formatResponse(linkMsg);
+            } catch (error) {
+              Logger.error("[stripe] Checkout session creation failed:", error);
+              return this.formatError("Failed to start payment setup. Please try again.");
+            }
+          } else {
+            // Card already on file – proceed to final booking confirmation
+            Logger.info('[Review] Card on file, proceeding to booking');
+            this.updateContext(sessionId, { paymentAuthorized: true, step: FlowStep.SUBMIT });
+            if (context.schedulingData) {
+              return await this.confirmScheduledRegistration({}, sessionId, this.getContext(sessionId));
+            } else {
+              return await this.confirmPayment({}, sessionId, this.getContext(sessionId));
+            }
+          }
+        }
+        if (/cancel/i.test(input.trim())) {
+          Logger.info('[Review] User cancelled during review');
+          // Reset context for safety
+          this.updateContext(sessionId, { step: FlowStep.BROWSE, selectedProgram: undefined });
+          return this.formatResponse("Okay, I've canceled that signup. Let me know if you need help with anything else.");
+        }
+        // If user says something else (e.g. tries to change info), prompt for explicit confirmation
+        return this.formatResponse(`Please reply "yes" to confirm the above details or "cancel" to abort.`);
+      }
+
       case FlowStep.PAYMENT: {
         // ChatGPT NL: Detect confirmation from natural language
         if (this.isUserConfirmation(input)) {
@@ -1806,22 +1858,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           
           // ⚠️ GUARD 2: Require explicit authorization (not just "yes")
           if (!context.paymentAuthorized) {
-            Logger.info('[NL Parse] Payment method saved but explicit authorization not yet given');
-            const amount = context.schedulingData?.total_amount || context.selectedProgram?.price || 'the program fee';
-            const scheduledTime = context.schedulingData?.scheduled_time;
-            const scheduledDate = scheduledTime ? new Date(scheduledTime).toLocaleString() : null;
-            
-            return {
-              message: scheduledDate
-                ? `Great! I have your payment method on file (${context.cardBrand} •••${context.cardLast4}). Click "Authorize Payment" to confirm:\n\n💰 **Amount:** ${amount}\n📅 **Scheduled for:** ${scheduledDate}\n\nYou'll only be charged if registration succeeds.`
-                : `Great! I have your payment method on file (${context.cardBrand} •••${context.cardLast4}). Click "Authorize Payment" to complete your booking.\n\n💰 **Amount:** ${amount}`,
-              cta: {
-                buttons: [
-                  { label: "Authorize Payment", action: "authorize_payment", variant: "accent" },
-                  { label: "Cancel", action: "cancel_flow", variant: "ghost" }
-                ]
-              }
-            };
+            Logger.info('[NL Parse] Payment method saved; recording explicit authorization from user confirmation');
+            this.updateContext(sessionId, { paymentAuthorized: true, step: FlowStep.SUBMIT });
+            if (context.schedulingData) {
+              return await this.confirmScheduledRegistration({}, sessionId, this.getContext(sessionId));
+            }
+            return await this.confirmPayment({}, sessionId, this.getContext(sessionId));
           }
           
           // Route to appropriate confirmation handler
@@ -1831,15 +1873,22 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           return await this.confirmPayment({}, sessionId, context);
         }
         
-        // Fallback: prompt for confirmation
+        // Detect if user indicates they've added payment method (e.g., "done")
+        if (/done|card|added|finished/i.test(input.trim())) {
+          Logger.info('[Payment] User indicates payment method setup is done, checking status...');
+          if (context.user_id) {
+            const checkRes = await this.invokeMCPTool('stripe.check_payment_status', { user_id: context.user_id });
+            if (checkRes.success && checkRes.data?.hasPaymentMethod) {
+              const { last4, brand } = checkRes.data;
+              this.updateContext(sessionId, { cardLast4: last4, cardBrand: brand });
+              return this.formatResponse(`✅ Payment method saved (${brand} •••• ${last4}). Now say \"yes\" to confirm your booking.`);
+            }
+          }
+          return this.formatResponse("I haven't detected a new payment method yet. If you've completed the Stripe form, please wait a moment and type \"done\" again.");
+        }
+        // Fallback prompt: ask user to confirm booking
         return this.formatResponse(
-          "Ready to complete your booking? Say 'yes' to confirm.",
-          undefined,
-          [{ 
-            label: "Confirm", 
-            action: context.schedulingData ? "confirm_scheduled_registration" : "confirm_payment", 
-            variant: "accent" 
-          }]
+          "Ready to complete your booking? Say 'yes' to confirm."
         );
       }
 
@@ -2949,6 +2998,28 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         }
       };
 
+      // Cache required field metadata for guided prompts (Bookeo schema)
+      if (formDiscoveryResult.success && formDiscoveryResult.data?.program_questions) {
+        const questions = formDiscoveryResult.data.program_questions;
+        const delegateFields = questions.delegate_fields || [];
+        const participantFields = questions.participant_fields || [];
+        const requiredFields = {
+          delegate: delegateFields.map((f: any) => ({
+            key: f.fieldId || f.id,
+            label: f.label,
+            required: f.mandatory ?? f.required ?? false,
+            type: f.type
+          })),
+          participant: participantFields.map((f: any) => ({
+            key: f.fieldId || f.id,
+            label: f.label,
+            required: f.mandatory ?? f.required ?? false,
+            type: f.type
+          }))
+        };
+        await this.updateContextAndAwait(sessionId, { requiredFields });
+      }
+
       // Validate Design DNA compliance
       const validation = validateDesignDNA(formResponse, {
         step: 'form',
@@ -3129,7 +3200,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
     // Store form data, participant count, and user_id
     this.updateContext(sessionId, {
-      step: FlowStep.PAYMENT,
+      step: FlowStep.REVIEW,
       formData,
       numParticipants,
       user_id: userId
@@ -3185,48 +3256,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // For "opens_later" programs, treat as future booking even without a specific date
     const isFutureBooking = bookingStatus === 'opens_later';
 
-    // ✅ COMPLIANCE: Add explicit confirmation step with proper consent and security disclaimers
-    let message: string;
-    if (isFutureBooking) {
-      // Future booking (not open yet): use scheduled authorization template with consent language
-      const scheduledDate = earliestSlot || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-      const scheduledDateStr = this.formatTimeForUser(scheduledDate, context);
-      const providerName = context.selectedProgram?.org_ref === 'aim-design' ? 'AIM Design' : (context.selectedProgram?.org_ref || 'the provider');
-      message = getScheduledPaymentAuthorizationMessage({
-        program_name: programName,
-        scheduled_date: scheduledDateStr,
-        total_cost: formattedTotal,
-        provider_name: providerName
-      });
-      // Include security reassurance about payment handling
-      message = addAPISecurityContext(message, "Bookeo");
-      // Add Responsible Delegate footer
-      message = addResponsibleDelegateFooter(message);
-    } else {
-      // Immediate booking: use standard payment authorization template with timing context
-      message = `✅ Registration is open now!\n\n` + getPaymentAuthorizationMessage({
-        program_name: programName,
-        participant_name: participantList,
-        total_cost: formattedTotal, // This is the program fee only
-        num_participants: numParticipants
-      });
-      // Add delegate identity for transparency (who is authorizing the booking)
-      if (formData.delegate?.delegate_firstName && formData.delegate?.delegate_lastName) {
-        const delegateName = `${formData.delegate.delegate_firstName} ${formData.delegate.delegate_lastName}`;
-        const relationship = formData.delegate.delegate_relationship || 'Responsible Delegate';
-        message += `\n\n**Authorized by:** ${delegateName} (${relationship})`;
-      }
-      // Append required security note and Responsible Delegate footer
-      message = addAPISecurityContext(message, "Bookeo");
-      message = addResponsibleDelegateFooter(message);
-    }
-
-    // PART 1: Check if user has saved payment method for ALL flows (immediate and future)
-    let hasPaymentMethod = false;
+    // Build review summary and store state for payment/confirmation
     let cardLast4: string | null = null;
     let cardBrand: string | null = null;
-    
-    // Only check database if user is authenticated
     if (userId) {
       const supabase = this.getSupabaseClient();
       const { data: billingData } = await supabase
@@ -3234,23 +3266,17 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         .select('default_payment_method_id, payment_method_last4, payment_method_brand')
         .eq('user_id', userId)
         .maybeSingle();
-      
-      hasPaymentMethod = !!billingData?.default_payment_method_id;
       cardLast4 = billingData?.payment_method_last4 || null;
       cardBrand = billingData?.payment_method_brand || null;
-      
-      Logger.info('[submitForm] Payment method check result', { hasPaymentMethod, cardBrand, cardLast4 });
+      Logger.info('[submitForm] Payment method check result', { hasPaymentMethod: !!billingData?.default_payment_method_id, cardBrand, cardLast4 });
     }
-    // If userId is undefined, hasPaymentMethod stays false (unauthenticated users don't have saved cards)
-    
-    // Always store form data in context regardless of payment method status
-    // This ensures confirmPayment/confirmScheduledRegistration can access it from context
-    const scheduledTime = isFutureBooking 
+
+    const scheduledTime = isFutureBooking
       ? (earliestSlot?.toISOString() || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString())
       : undefined;
-    
+
     this.updateContext(sessionId, {
-      step: FlowStep.PAYMENT,
+      step: FlowStep.REVIEW,
       formData: {
         delegate_data: formData.delegate,
         participant_data: formData.participants,
@@ -3258,7 +3284,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         event_id: context.selectedProgram?.first_available_event_id,
         program_fee_cents: Math.round(totalPrice * 100)
       },
-      // Store scheduling data for future bookings (needed by confirmScheduledRegistration)
       schedulingData: isFutureBooking ? {
         scheduled_time: scheduledTime,
         event_id: context.selectedProgram?.first_available_event_id,
@@ -3274,167 +3299,26 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       cardLast4,
       cardBrand
     });
-    
-    // PART 2: Handle payment setup requirement for users WITHOUT saved payment method
-    if (!hasPaymentMethod) {
-      Logger.info('[submitForm] No payment method found - prompting user to add card');
-      
-      const nextAction = isFutureBooking ? "confirm_scheduled_registration" : "confirm_payment";
-      
-      return {
-        message: `${message}\n\n💳 First, let's save your payment method securely. You'll only be charged if registration succeeds!`,
-        metadata: {
-          componentType: "payment_setup",
-          next_action: nextAction,
-          programFeeCents: Math.round(totalPrice * 100),
-          serviceFeeCents: 2000,
-          isPaymentCard: true,
-          schedulingData: {
-            event_id: context.selectedProgram?.first_available_event_id,
-            total_amount: grandTotal,
-            program_fee: formattedTotal,
-            program_fee_cents: Math.round(totalPrice * 100),
-            scheduled_time: isFutureBooking ? (earliestSlot?.toISOString() || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()) : undefined,
-            formData: {
-              delegate_data: formData.delegate,
-              participant_data: formData.participants,
-              num_participants: numParticipants
-            }
-          }
-        }
-      };
-    }
-    
-    Logger.info('[submitForm] Payment method found - proceeding to payment authorization', { cardBrand, cardLast4, isFutureBooking });
 
-    // Build conditional payment button
-    let buttons: any[] = [];
-    let paymentMessage = message;
-
-    if (isFutureBooking) {
-      // Set & Forget flow: Show auto-register button
-      // Use placeholder date if no specific slot time is known
-      const scheduledDate = earliestSlot || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-      const dateDisplay = earliestSlot 
-        ? `on ${this.formatTimeForUser(earliestSlot, context)}`
-        : "when registration opens";
-      
-      // Different messaging based on whether card is saved
-      const cardDisplay = cardLast4 ? `${cardBrand || 'Card'} •••• ${cardLast4}` : null;
-      
-      if (cardDisplay) {
-        paymentMessage += `\n\n📅 This class isn't open for registration yet. We can automatically register you ${dateDisplay}!
-
-💳 **Using saved card:** ${cardDisplay}
-• **You won't be charged today**
-• **Only if registration succeeds:** Provider charges program fee + $20 SignupAssist fee`;
-      } else {
-        paymentMessage += `\n\n📅 This class isn't open for registration yet. We can automatically register you ${dateDisplay}!
-
-💳 **How charging works:**
-• **You won't be charged today** — we're just saving your payment method
-• **Only if registration succeeds:** Provider charges their program fee, and SignupAssist charges $20 success fee
-• **If registration fails:** No charges at all`;
-      }
-      
-      // If user has saved card, skip payment setup and go directly to confirm
-      const buttonLabel = cardDisplay
-        ? `📝 Confirm Auto-Registration with ${cardDisplay}`
-        : `📝 Set Up Auto-Registration for ${scheduledDate.toLocaleDateString()}`;
-      
-      const buttonAction = cardDisplay ? "confirm_scheduled_registration" : "schedule_auto_registration";
-      
-      buttons = [
-        { 
-          label: buttonLabel, 
-          action: buttonAction,
-          payload: {
-            scheduled_time: scheduledDate.toISOString(),
-            event_id: context.selectedProgram.event_id || context.selectedProgram.program_ref,
-            total_amount: grandTotal,
-            program_fee: formattedTotal,
-            formData
-          },
-          variant: "accent" 
-        },
-        { label: "Go Back", action: "search_programs", payload: { orgRef: context.orgRef }, variant: "outline" }
-      ];
-    } else {
-      // Immediate registration flow: Show confirm & pay button with card details
-      const cardLabel = cardLast4 
-        ? `Pay with ${cardBrand || 'Card'} •••• ${cardLast4}` 
-        : "Confirm & Pay";
-      buttons = [
-        { label: cardLabel, action: "confirm_payment", variant: "accent" },
-        { label: "Go Back", action: "search_programs", payload: { orgRef: context.orgRef }, variant: "outline" }
-      ];
-    }
-
-    // Build card description based on whether this is immediate or scheduled
-    const cardDisplay = cardLast4 ? `${cardBrand || 'Card'} •••• ${cardLast4}` : null;
-    
-    const cardDescription = isFutureBooking
-      ? `**Participants:**\n${participantList}
-
-⏰ **Scheduled for:** ${this.formatTimeForUser(earliestSlot || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), context)}
-
-${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
-
-💰 **Charges (only if registration succeeds):**
-• Program Fee: ${formattedTotal} → Paid to provider upon signup
-• SignupAssist Fee: $20.00 → Charged only if signup succeeds
-• **Total:** ${grandTotal}
-
-🔒 **Your card will NOT be charged today.** ${cardDisplay ? 'We\'ll use your saved card' : 'We\'re just saving your payment method'} to complete registration when the booking window opens.`
-      : `**Participants:**\n${participantList}
-
-💳 **Payment Method:** ${cardBrand || 'Card'} •••• ${cardLast4 || '****'}
-
-**Charges:**
-• Program Fee: ${formattedTotal} (to provider)
-• SignupAssist Success Fee: $20.00 (only if booking succeeds)
-• **Total:** ${grandTotal}`;
-
-    const paymentResponse: OrchestratorResponse = {
-      message: paymentMessage,
-      cards: [{
-        // ✅ COMPLIANCE: Use explicit confirmation phrasing for scheduled auto-registration
-        title: isFutureBooking ? "Confirm Auto-Registration" : "Confirm Booking & Payment",
-        subtitle: programName,
-        description: cardDescription,
-        metadata: {
-          programFeeCents: Math.round(totalPrice * 100),
-          serviceFeeCents: 2000,
-          isPaymentCard: true,
-          cardBrand,
-          cardLast4
-        },
-        buttons: []
-      }],
-      cta: {
-        buttons
-      }
-    };
-
-    // Form data already stored in context earlier (before payment method check)
-
-    // Validate Design DNA compliance
-    const validation = validateDesignDNA(paymentResponse, {
-      step: 'payment',
-      isWriteAction: true
-    });
-
-    if (!validation.passed) {
-      Logger.error('[DesignDNA] Validation failed:', validation.issues);
-    }
-    
-    if (validation.warnings.length > 0) {
-      Logger.warn('[DesignDNA] Warnings:', validation.warnings);
-    }
-
-    Logger.info('[DesignDNA] Validation passed ✅');
-
-    return paymentResponse;
+    Logger.info('[submitForm] All required fields collected; transitioning to REVIEW phase');
+    const delegate = formData.delegate || {};
+    const participant = (formData.participants || [])[0] || {};
+    const childName = participant.firstName
+      ? `${participant.firstName} ${participant.lastName || ""}`.trim()
+      : (context.childInfo?.name || "your child");
+    const childDetail = participant.dob ? ` (DOB: ${participant.dob})` : (participant.age ? ` (Age: ${participant.age})` : "");
+    const parentName = `${delegate.delegate_firstName || ""} ${delegate.delegate_lastName || ""}`.trim();
+    const sessionDate = context.selectedProgram?.earliest_slot_time ? this.formatTimeForUser(context.selectedProgram.earliest_slot_time, context) : null;
+    let reviewMessage = "Please review the details below:\\n\\n";
+    reviewMessage += `- **Program:** ${programName}\\n`;
+    reviewMessage += `- **Participant:** ${childName}${childDetail}\\n`;
+    reviewMessage += `- **Parent/Guardian:** ${parentName || delegate.email || "parent"}\\n`;
+    if (sessionDate) reviewMessage += `- **Date:** ${sessionDate}\\n`;
+    reviewMessage += `- **Program Fee:** ${formattedTotal} (paid to provider)\\n`;
+    reviewMessage += `- **SignupAssist Fee:** $20 (charged only upon successful registration)\\n`;
+    if (cardLast4) reviewMessage += `- **Payment method on file:** ${cardBrand || 'Card'} •••• ${cardLast4}\\n`;
+    reviewMessage += "\\nIf everything is correct, type \\\"yes\\\" to continue or \\\"cancel\\\" to abort.";
+    return this.formatResponse(reviewMessage);
   }
 
   /**
@@ -3459,9 +3343,9 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
         );
       }
 
-      // ⚠️ HARD STEP GATE: Must be in PAYMENT step
-      if (context.step !== FlowStep.PAYMENT) {
-        Logger.warn('[confirmPayment] ⛔ STEP GATE: Not in PAYMENT step', { currentStep: context.step });
+      // ⚠️ HARD STEP GATE: Must be in PAYMENT/SUBMIT step
+      if (context.step !== FlowStep.PAYMENT && context.step !== FlowStep.SUBMIT) {
+        Logger.warn('[confirmPayment] ⛔ STEP GATE: Not in PAYMENT/SUBMIT step', { currentStep: context.step });
         return this.formatResponse(
           "We need to collect some information first before completing payment.",
           undefined,
@@ -3957,9 +3841,9 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
         );
       }
       
-      // Gate 2: Must be in FORM_FILL or PAYMENT step
-      if (context.step !== FlowStep.FORM_FILL && context.step !== FlowStep.PAYMENT) {
-        Logger.warn('[setupPaymentMethod] ⛔ STEP GATE: Not in FORM_FILL or PAYMENT step', { currentStep: context.step });
+      // Gate 2: Must be in FORM_FILL, REVIEW, or PAYMENT step
+      if (context.step !== FlowStep.FORM_FILL && context.step !== FlowStep.REVIEW && context.step !== FlowStep.PAYMENT) {
+        Logger.warn('[setupPaymentMethod] ⛔ STEP GATE: Not in FORM_FILL/REVIEW/PAYMENT step', { currentStep: context.step });
         return this.formatResponse(
           "We need to collect your registration details first before setting up payment.",
           undefined,
@@ -4066,9 +3950,9 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
       );
     }
 
-    // ⚠️ HARD STEP GATE: Must be in PAYMENT step
-    if (context.step !== FlowStep.PAYMENT) {
-      Logger.warn('[scheduleAutoRegistration] ⛔ STEP GATE: Not in PAYMENT step', { currentStep: context.step });
+    // ⚠️ HARD STEP GATE: Must be in REVIEW or PAYMENT step
+    if (context.step !== FlowStep.PAYMENT && context.step !== FlowStep.REVIEW) {
+      Logger.warn('[scheduleAutoRegistration] ⛔ STEP GATE: Not in PAYMENT/REVIEW step', { currentStep: context.step });
       return this.formatResponse(
         "We need to collect participant information first.",
         undefined,
@@ -5567,7 +5451,7 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
     // FIX 2: Guard against step reversion from FORM_FILL/PAYMENT back to BROWSE
     // ONLY block if we have a valid selectedProgram (i.e., not corrupted state)
     if (updates.step === FlowStep.BROWSE) {
-      const isAdvancedStep = current.step === FlowStep.FORM_FILL || current.step === FlowStep.PAYMENT;
+      const isAdvancedStep = current.step === FlowStep.FORM_FILL || current.step === FlowStep.REVIEW || current.step === FlowStep.PAYMENT || current.step === FlowStep.SUBMIT;
       const hasValidProgram = !!current.selectedProgram;
       if (isAdvancedStep && hasValidProgram) {
         console.log('[updateContext] ⛔ FIX 2: Blocked step reversion from', current.step, 'to BROWSE (valid program exists)');
@@ -5615,7 +5499,7 @@ ${cardDisplay ? `💳 **Payment Method:** ${cardDisplay}` : ''}
     // FIX 2: Guard against step reversion from FORM_FILL/PAYMENT back to BROWSE
     // ONLY block if we have a valid selectedProgram (i.e., not corrupted state)
     if (updates.step === FlowStep.BROWSE) {
-      const isAdvancedStep = current.step === FlowStep.FORM_FILL || current.step === FlowStep.PAYMENT;
+      const isAdvancedStep = current.step === FlowStep.FORM_FILL || current.step === FlowStep.REVIEW || current.step === FlowStep.PAYMENT || current.step === FlowStep.SUBMIT;
       const hasValidProgram = !!current.selectedProgram;
       if (isAdvancedStep && hasValidProgram) {
         console.log('[updateContextAndAwait] ⛔ FIX 2: Blocked step reversion from', current.step, 'to BROWSE (valid program exists)');

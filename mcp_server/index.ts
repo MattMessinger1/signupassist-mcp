@@ -9,32 +9,34 @@
 // V1 Chat UX Guardrails (NO WIDGETS)
 // These run at the HTTP boundary (/orchestrator/chat) so behavior is deterministic.
 // ============================================================
-type WizardStep = "1" | "2" | "3" | "4";
-type OrchestratorStep = "BROWSE" | "FORM_FILL" | "PAYMENT" | "SUBMIT" | string;
+type WizardStep = "1" | "2" | "3" | "4" | "5";
+type OrchestratorStep = "BROWSE" | "FORM_FILL" | "REVIEW" | "PAYMENT" | "SUBMIT" | "COMPLETED" | string;
 
 function wizardTitle(step: WizardStep): string {
   switch (step) {
     case "1": return "Finding classes";
     case "2": return "Parent & child info";
-    case "3": return "Payment setup (Stripe)";
-    case "4": return "Registering";
+    case "3": return "Review & consent";
+    case "4": return "Payment (Stripe)";
+    case "5": return "Registering";
   }
 }
 
 function inferWizardStep(ctxStep: OrchestratorStep): WizardStep {
   if (ctxStep === "FORM_FILL") return "2";
-  if (ctxStep === "PAYMENT") return "3";
-  if (ctxStep === "SUBMIT") return "4";
+  if (ctxStep === "REVIEW") return "3";
+  if (ctxStep === "PAYMENT") return "4";
+  if (ctxStep === "SUBMIT" || ctxStep === "COMPLETED") return "5";
   return "1";
 }
 
 function ensureWizardHeaderAlways(message: string, wizardStep: WizardStep): string {
   const msg = (message || "").trim();
-  const desiredHeader = `Step ${wizardStep}/4 — ${wizardTitle(wizardStep)}`;
+  const desiredHeader = `Step ${wizardStep}/5 — ${wizardTitle(wizardStep)}`;
 
-  // If already has any Step X/4 header, replace it with the correct one.
-  if (/^Step\s+[1-4]\/4\s+—/i.test(msg)) {
-    return msg.replace(/^Step\s+[1-4]\/4\s+—[^\n]*\n*/i, `${desiredHeader}\n\n`);
+  // If already has any Step X/5 header, replace it with the correct one.
+  if (/^Step\s+[1-5]\/5\s+—/i.test(msg)) {
+    return msg.replace(/^Step\s+[1-5]\/5\s+—[^\n]*\n*/i, `${desiredHeader}\n\n`);
   }
 
   return `${desiredHeader}\n\n${msg}`;
@@ -43,7 +45,7 @@ function ensureWizardHeaderAlways(message: string, wizardStep: WizardStep): stri
 function microQuestionEmail(programName?: string): string {
   const p = programName ? ` for **${programName}**` : "";
   return (
-    `Step 2/4 — Parent & child info\n\n` +
+    `Step 2/5 — Parent & child info\n\n` +
     `🔐 I'll only ask for what the provider requires.\n\n` +
     `To continue${p}, what's the parent/guardian **email**?\n` +
     `Reply like: Email: name@example.com`
@@ -175,21 +177,25 @@ function v1VisibilityForTool(toolName: string, toolMeta: Record<string, any> = {
 // Wizard-style progress strings (no widget needed)
 // Keep these short, calm, and consistent to build trust + reduce overwhelm.
 function wizardInvocationForTool(toolName: string): { invoking: string; invoked: string } {
-  // Step 1/4 — Program discovery
-  const step1Invoking = "Step 1/4 — Finding classes…";
-  const step1Invoked  = "Step 1/4 — Classes ready.";
+  // Step 1/5 — Program discovery
+  const step1Invoking = "Step 1/5 — Finding classes…";
+  const step1Invoked  = "Step 1/5 — Classes ready.";
 
-  // Step 2/4 — Requirements / info needed
-  const step2Invoking = "Step 2/4 — Checking what info is required…";
-  const step2Invoked  = "Step 2/4 — Requirements ready.";
+  // Step 2/5 — Requirements / info needed
+  const step2Invoking = "Step 2/5 — Checking what info is required…";
+  const step2Invoked  = "Step 2/5 — Requirements ready.";
 
-  // Step 3/4 — Payment method / Stripe
-  const step3Invoking = "Step 3/4 — Payment setup (Stripe)…";
-  const step3Invoked  = "Step 3/4 — Payment step ready.";
+  // Step 3/5 — Review & consent
+  const step3Invoking = "Step 3/5 — Reviewing details…";
+  const step3Invoked  = "Step 3/5 — Review ready.";
 
-  // Step 4/4 — Registration execution
-  const step4Invoking = "Step 4/4 — Registering…";
-  const step4Invoked  = "Step 4/4 — Registration step complete.";
+  // Step 4/5 — Payment method / Stripe
+  const step4Invoking = "Step 4/5 — Payment setup (Stripe)…";
+  const step4Invoked  = "Step 4/5 — Payment step ready.";
+
+  // Step 5/5 — Registration execution
+  const step5Invoking = "Step 5/5 — Registering…";
+  const step5Invoked  = "Step 5/5 — Registration step complete.";
 
   // Entry point / feed / chat
   if (toolName === "signupassist.start" || toolName === "signupassist.chat" || toolName === "program_feed.get") {
@@ -220,7 +226,7 @@ function wizardInvocationForTool(toolName: string): { invoking: string; invoked:
     toolName === "user.check_payment_method" ||
     toolName === "scp.check_payment_method"
   ) {
-    return { invoking: step3Invoking, invoked: step3Invoked };
+    return { invoking: step4Invoking, invoked: step4Invoked };
   }
 
   // Mandates / consent + execution
@@ -229,13 +235,13 @@ function wizardInvocationForTool(toolName: string): { invoking: string; invoked:
     toolName === "mandates.prepare_registration" ||
     toolName === "scp.create_mandate"
   ) {
-    // Treat mandate creation/prep as Step 2/4: clarifying + confirming what's needed
-    return { invoking: step2Invoking, invoked: "Step 2/4 — Consent step ready." };
+    // Treat mandate creation/prep as Step 3/5: clarifying + confirming what's needed
+    return { invoking: step3Invoking, invoked: "Step 3/5 — Consent step ready." };
   }
   if (
     toolName === "mandates.submit_registration"
   ) {
-    return { invoking: step4Invoking, invoked: "Step 4/4 — Registered (or attempted). See details above." };
+    return { invoking: step5Invoking, invoked: "Step 5/5 — Registered (or attempted). See details above." };
   }
 
   // Provider booking execution
@@ -245,7 +251,7 @@ function wizardInvocationForTool(toolName: string): { invoking: string; invoked:
     toolName === "scp.register" ||
     toolName === "scp.pay"
   ) {
-    return { invoking: step4Invoking, invoked: step4Invoked };
+    return { invoking: step5Invoking, invoked: step5Invoked };
   }
 
   // Default: keep it neutral
@@ -688,13 +694,13 @@ class SignupAssistMCPServer {
     // ============================================================
     // This is the *only* tool ChatGPT should use for the user-facing flow.
     // It routes through APIOrchestrator, which enforces:
-    // - Step 1/4..4/4 headers in plain text
+    // - Step 1/5..5/5 headers in plain text
     // - No overwhelming field dumps (micro-questions)
     // - Consistent trust cues
     this.tools.set("signupassist.chat", {
       name: "signupassist.chat",
       description:
-        "Canonical SignupAssist chat entrypoint (API-first). Use this for ALL user-facing signup conversation. Returns calm Step 1/4..4/4 wizard messages and asks for info one piece at a time (no field dumps). Read-only (does not submit registration).",
+        "Canonical SignupAssist chat entrypoint (API-first). Use this for ALL user-facing signup conversation. Returns calm Step 1/5..5/5 wizard messages and asks for info one piece at a time (no field dumps). Read-only (does not submit registration).",
       inputSchema: {
         type: "object",
         properties: {
@@ -733,7 +739,7 @@ class SignupAssistMCPServer {
           resp?.message ||
           resp?.text ||
           resp?.response ||
-          "Step 1/4 — Finding classes\nTell me what you're looking for.";
+          "Step 1/5 — Finding classes\nTell me what you're looking for.";
 
         // Hard guarantees for V1 UX:
         // 1) Always show step header (schema stripping handled by applyV1ChatGuardrails)
