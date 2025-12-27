@@ -13,9 +13,18 @@ echo "BASE_URL=${BASE_URL}"
 
 check_get () {
   local path="$1"
+  local url="${BASE_URL}${path}"
+  local hdr
+  local body
+  hdr="$(mktemp)"
+  body="$(mktemp)"
   echo ""
   echo "=== GET ${path} ==="
-  curl -sS -D - "${BASE_URL}${path}" | head -n 20
+  curl -sS -D "${hdr}" -o "${body}" "${url}"
+  head -n 20 "${hdr}"
+  echo "(body head)"
+  head -n 12 "${body}"
+  rm -f "${hdr}" "${body}"
 }
 
 check_head () {
@@ -28,10 +37,19 @@ check_head () {
 check_post_json () {
   local path="$1"
   local json="$2"
+  local url="${BASE_URL}${path}"
+  local hdr
+  local body
+  hdr="$(mktemp)"
+  body="$(mktemp)"
   echo ""
   echo "=== POST ${path} ==="
   echo "payload: ${json}"
-  curl -sS -D - -H 'Content-Type: application/json' -X POST "${BASE_URL}${path}" --data "${json}" | head -n 40
+  curl -sS -D "${hdr}" -o "${body}" -H 'Content-Type: application/json' -X POST "${url}" --data "${json}"
+  head -n 25 "${hdr}"
+  echo "(body head)"
+  head -n 40 "${body}"
+  rm -f "${hdr}" "${body}"
 }
 
 check_get "/health"

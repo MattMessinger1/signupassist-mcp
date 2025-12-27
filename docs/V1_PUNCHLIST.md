@@ -26,14 +26,14 @@ This is the authoritative checklist for v1. The goal is:
   - Verified locally: `POST /orchestrator/chat` with `action=view_receipts` returns **401** and `WWW-Authenticate: ... authentication_required`
   - Response body includes `requiresAuth: true` and `authUrl: "<baseUrl>/oauth/authorize"` (helps ChatGPT trigger OAuth consistently)
 
-- [ ] **Legal info page reachable and complete**  
+- [x] **Legal info page reachable**  
   - Endpoint: `/privacy` serves `docs/PRIVACY_POLICY.md`
   - Verify: includes child data handling, payment model, retention, contact
 
-- [ ] **Terms of Use page reachable**  
+- [x] **Terms of Use page reachable**  
   - Endpoint: `/terms` serves `docs/TERMS_OF_USE.md`
 
-- [ ] **Logo URL reachable from manifest**  
+- [x] **Logo URL reachable from manifest**  
   - File: `public/logo-512.svg`
   - Endpoint: `/logo-512.svg`
   - NOTE: if store requires PNG, add a compliant asset/endpoint.

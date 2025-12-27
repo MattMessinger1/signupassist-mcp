@@ -990,10 +990,20 @@ class SignupAssistMCPServer {
       // ChatGPT requires this to discover OAuth endpoints
       if (req.method === 'GET' && url.pathname === '/.well-known/oauth-authorization-server') {
         console.log('[OAUTH] Authorization server metadata request');
-        
-        const baseUrl = process.env.RAILWAY_PUBLIC_DOMAIN 
-          ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
-          : `https://signupassist-mcp-production.up.railway.app`;
+
+        const host =
+          (req.headers['x-forwarded-host'] as string | undefined) ||
+          (req.headers['host'] as string | undefined);
+        const forwardedProto = (req.headers['x-forwarded-proto'] as string | undefined);
+        const proto =
+          forwardedProto ||
+          (host && (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http' : 'https');
+        const baseUrl =
+          host
+            ? `${proto}://${host}`
+            : (process.env.RAILWAY_PUBLIC_DOMAIN
+                ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+                : `https://signupassist-mcp-production.up.railway.app`);
         
         // RFC 8414 metadata - explicitly NOT including registration_endpoint
         // to indicate we don't support RFC 7591 Dynamic Client Registration
@@ -2577,11 +2587,40 @@ class SignupAssistMCPServer {
         if (existsSync(manifestPath)) {
           try {
             const content = readFileSync(manifestPath, 'utf-8');
+            // Rewrite URLs to match the current request host (avoids cross-domain OAuth issues).
+            const host =
+              (req.headers['x-forwarded-host'] as string | undefined) ||
+              (req.headers['host'] as string | undefined);
+            const forwardedProto = (req.headers['x-forwarded-proto'] as string | undefined);
+            const proto =
+              forwardedProto ||
+              (host && (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http' : 'https');
+            const baseUrl =
+              host
+                ? `${proto}://${host}`
+                : 'https://signupassist-mcp-production.up.railway.app';
+
+            let out = content;
+            try {
+              const json = JSON.parse(content);
+              if (json?.auth?.type === 'oauth') {
+                json.auth.authorization_url = `${baseUrl}/oauth/authorize`;
+                json.auth.token_url = `${baseUrl}/oauth/token`;
+              }
+              if (json?.api?.type === 'mcp') {
+                json.api.server_url = `${baseUrl}/sse`;
+              }
+              json.logo_url = `${baseUrl}/logo-512.svg`;
+              json.legal_info_url = `${baseUrl}/privacy`;
+              out = JSON.stringify(json, null, 2);
+            } catch (e: any) {
+              console.warn('[MANIFEST] Failed to rewrite chatgpt-apps-manifest.json URLs:', e?.message);
+            }
             res.writeHead(200, { 
               'Content-Type': 'application/json',
               'Access-Control-Allow-Origin': '*'
             });
-            res.end(content);
+            res.end(out);
             return;
           } catch (err: any) {
             console.error('[MANIFEST ERROR]', err);
