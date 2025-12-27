@@ -25,6 +25,10 @@ export interface OrchestratorResponse {
     buttons: ButtonSpec[];
   };
   metadata?: any;
+  // Optional context snapshot (used by HTTP guardrails to render progress headers)
+  context?: Record<string, any>;
+  // Optional step hint (mirrors context.step)
+  step?: string;
   
   // ChatGPT Apps SDK fields
   /** Structured content visible to the model for reasoning */
