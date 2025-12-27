@@ -7,6 +7,7 @@ import { auditToolCall } from '../middleware/audit.js';
 import { createClient } from '@supabase/supabase-js';
 import type { ProviderResponse, ParentFriendlyError } from '../types.js';
 import { getPlaceholderImage } from '../lib/placeholderImages.js';
+import { getProviderCheckoutUrl } from '../utils/providerCheckoutLinks.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -45,6 +46,97 @@ function bookeoHeadersMinimal() {
   return {
     'Content-Type': 'application/json'
   };
+}
+
+type NormalizedPaymentState = {
+  provider_payment_status: 'paid' | 'unpaid' | 'unknown';
+  provider_amount_due_cents: number | null;
+  provider_amount_paid_cents: number | null;
+  provider_currency: string | null;
+  provider_payment_last_checked_at: string;
+};
+
+function toCentsMaybe(val: any): number | null {
+  if (val === null || val === undefined) return null;
+  if (typeof val === 'number' && Number.isFinite(val)) return Math.round(val * 100);
+  if (typeof val === 'string') {
+    const n = parseFloat(val.replace(/[^0-9.]/g, ''));
+    return Number.isFinite(n) ? Math.round(n * 100) : null;
+  }
+  return null;
+}
+
+/**
+ * Best-effort: normalize provider program-fee payment state from a Bookeo booking object.
+ * We intentionally tolerate unknown shapes and fall back to 'unknown'.
+ */
+function normalizeBookeoPaymentState(booking: any): NormalizedPaymentState {
+  const nowIso = new Date().toISOString();
+
+  // Try common-ish field names
+  const currency =
+    booking?.currency ||
+    booking?.price?.currency ||
+    booking?.total?.currency ||
+    booking?.payment?.currency ||
+    null;
+
+  // Prefer explicit due/paid values when present
+  const dueCents =
+    toCentsMaybe(booking?.amountDue) ??
+    toCentsMaybe(booking?.balanceDue) ??
+    toCentsMaybe(booking?.payment?.amountDue) ??
+    toCentsMaybe(booking?.payment?.balanceDue) ??
+    null;
+
+  const paidCents =
+    toCentsMaybe(booking?.amountPaid) ??
+    toCentsMaybe(booking?.paidAmount) ??
+    toCentsMaybe(booking?.payment?.amountPaid) ??
+    toCentsMaybe(booking?.payment?.paidAmount) ??
+    null;
+
+  // Try explicit status string
+  const statusRaw =
+    (booking?.paymentStatus || booking?.payment?.status || booking?.status || '').toString().toLowerCase();
+
+  let provider_payment_status: 'paid' | 'unpaid' | 'unknown' = 'unknown';
+
+  if (typeof dueCents === 'number') {
+    provider_payment_status = dueCents <= 0 ? 'paid' : 'unpaid';
+  } else if (statusRaw) {
+    if (statusRaw.includes('paid') || statusRaw.includes('complete') || statusRaw.includes('settled')) {
+      provider_payment_status = 'paid';
+    } else if (statusRaw.includes('unpaid') || statusRaw.includes('due') || statusRaw.includes('pending')) {
+      provider_payment_status = 'unpaid';
+    }
+  }
+
+  return {
+    provider_payment_status,
+    provider_amount_due_cents: dueCents,
+    provider_amount_paid_cents: paidCents,
+    provider_currency: currency ? String(currency) : null,
+    provider_payment_last_checked_at: nowIso
+  };
+}
+
+async function fetchBookeoBookingDetails(bookingNumber: string): Promise<any | null> {
+  try {
+    // Bookeo v2: try GET /bookings/{bookingNumber}
+    const url = buildBookeoUrl(`/bookings/${bookingNumber}`);
+    const res = await fetch(url, { method: 'GET', headers: bookeoHeadersMinimal() });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      console.warn('[Bookeo] GET booking details failed:', res.status, text.slice(0, 200));
+      return null;
+    }
+    const json = await res.json().catch(() => null);
+    return json;
+  } catch (e) {
+    console.warn('[Bookeo] fetchBookeoBookingDetails exception:', e);
+    return null;
+  }
 }
 
 export interface BookeoTool {
@@ -614,8 +706,15 @@ async function confirmBooking(args: {
       };
     }
     
-    const peopleCategoryId = (programData.program as any)?.people_category_id || 'Cadults';
+    const programRecord = (programData.program as any) || {};
+    const peopleCategoryId = programRecord?.people_category_id || 'Cadults';
     console.log(`[Bookeo] Using people category: ${peopleCategoryId} for program ${program_ref}`);
+
+    // Best-effort: determine if provider payment is required based on cached program price.
+    // If price is missing or unparseable, assume payment may be required.
+    const priceStr = typeof programRecord?.price === 'string' ? programRecord.price : '';
+    const basePrice = priceStr ? parseFloat(priceStr.replace(/[^0-9.]/g, '')) : NaN;
+    const provider_payment_required = Number.isFinite(basePrice) ? basePrice > 0 : true;
     
     // Build Bookeo API payload
     const bookingPayload = {
@@ -677,6 +776,37 @@ async function confirmBooking(args: {
       .single();
     
     const programName = (programDetails?.program as any)?.title || 'Program';
+
+    // Provider is merchant-of-record. For Bookeo, we direct the user to the provider-hosted checkout/booking flow.
+    // Only surface when payment is actually required (best-effort).
+    const provider_checkout_url = provider_payment_required
+      ? getProviderCheckoutUrl({ provider: "bookeo", org_ref: org_ref, program_ref })
+      : null;
+
+    // Stronger signal: fetch booking details and normalize payment state (best-effort).
+    // If we can prove it's already paid, suppress the provider checkout link.
+    let paymentState: NormalizedPaymentState | null = null;
+    const details = await fetchBookeoBookingDetails(bookingNumber);
+    if (details) {
+      // Bookeo might return { data: {...} } or a raw object; tolerate both.
+      const bookingObj = (details as any).data || details;
+      paymentState = normalizeBookeoPaymentState(bookingObj);
+    }
+
+    const provider_payment_status = paymentState?.provider_payment_status || 'unknown';
+    const provider_amount_due_cents = paymentState?.provider_amount_due_cents ?? null;
+    const provider_amount_paid_cents = paymentState?.provider_amount_paid_cents ?? null;
+    const provider_currency = paymentState?.provider_currency ?? null;
+    const provider_payment_last_checked_at = paymentState?.provider_payment_last_checked_at ?? new Date().toISOString();
+
+    const paymentRequiredFinal =
+      provider_payment_status === 'paid' ? false :
+      provider_payment_status === 'unpaid' ? true :
+      provider_payment_required;
+
+    const provider_checkout_url_final = paymentRequiredFinal
+      ? provider_checkout_url
+      : null;
     
     return {
       success: true,
@@ -684,12 +814,24 @@ async function confirmBooking(args: {
         booking_number: bookingNumber,
         program_name: programName,
         start_time: startTime,
-        num_participants
+        num_participants,
+        provider_payment_required: paymentRequiredFinal,
+        provider_payment_status,
+        provider_amount_due_cents,
+        provider_amount_paid_cents,
+        provider_currency,
+        provider_payment_last_checked_at,
+        provider_checkout_url: provider_checkout_url_final
       },
       ui: {
         cards: [{
           title: '✅ Booking Confirmed!',
-          description: `**Booking #${bookingNumber}**\n\n${programName}\n${new Date(startTime).toLocaleString()}\n\nAIM Design will send confirmation to ${delegate_data.email}`
+          description:
+            `**Booking #${bookingNumber}**\n\n` +
+            `${programName}\n` +
+            `${new Date(startTime).toLocaleString()}\n\n` +
+            (provider_checkout_url_final ? `Next: complete provider payment: ${provider_checkout_url_final}\n\n` : '') +
+            `AIM Design will send confirmation to ${delegate_data.email}`
         }]
       }
     };

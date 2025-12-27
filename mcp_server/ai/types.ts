@@ -62,7 +62,7 @@ export interface IOrchestrator {
     payload?: any,
     userTimezone?: string,
     userId?: string
-  ): Promise<OrchestratorResponse>;
+  ): Promise<OrchestratorResponse | null>;
   
   /**
    * Reset session context

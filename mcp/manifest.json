@@ -3,7 +3,7 @@
   "name_for_human": "SignupAssist",
   "name_for_model": "signupassist",
   "description_for_human": "Securely automates activity sign-ups for parents using a consent-first flow.",
-  "description_for_model": "Automates signup forms securely using OAuth credentials.",
+  "description_for_model": "SignupAssist helps parents find and register children for activities. Always route the user-facing flow through signupassist.chat. Text-only v1: never book or charge until the user explicitly confirms.",
   "auth": {
     "type": "oauth",
     "authorization_url": "https://signupassist-mcp-production.up.railway.app/oauth/authorize",
@@ -15,8 +15,8 @@
     "type": "openapi",
     "url": "https://signupassist-mcp-production.up.railway.app/mcp/openapi.json"
   },
-  "logo_url": "https://shipworx.ai/logo-512.svg",
-  "contact_email": "matt@shipworx.ai",
-  "legal_info_url": "https://shipworx.ai/privacy"
+  "logo_url": "https://signupassist-mcp-production.up.railway.app/logo-512.svg",
+  "contact_email": "support@shipworx.ai",
+  "legal_info_url": "https://signupassist-mcp-production.up.railway.app/privacy"
 }
 

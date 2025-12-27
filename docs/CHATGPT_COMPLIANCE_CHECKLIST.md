@@ -9,10 +9,9 @@
   - Must detail Stripe payment processing and success fee
   - Must explain mandate/authorization system
    
-- [ ] **Logo Asset** at `https://signupassist.ai/logo.png`
-  - Must be 512x512 pixels
-  - Must be PNG format
-  - Currently specified in `mcp/manifest.json` line 18
+- [ ] **Logo Asset** at `https://signupassist-mcp-production.up.railway.app/logo-512.svg`
+  - Must be reachable from the hosted ChatGPT Apps manifest
+  - Currently specified in `public/.well-known/chatgpt-apps-manifest.json`
 
 ### 2. Auth0 Production Configuration (REQUIRED)
 - [ ] Add `AUTH0_CLIENT_ID` to Railway environment variables
@@ -26,6 +25,10 @@
 - ✅ OAuth token URL configured in manifest
 - ✅ Redirect URLs set for ChatGPT OAuth flow
 - ✅ Manifest available at `mcp/manifest.json`
+
+### 3b. ChatGPT Apps (MCP) Manifest Validity (REQUIRED)
+- [x] `/.well-known/chatgpt-apps-manifest.json` must be **valid JSON** (single object)
+- [x] `api.type` should be `mcp` with `api.server_url` pointing to `/sse` (apps via MCP)
 
 ### 4. Audit Trail Compliance (ALREADY DONE ✅)
 - ✅ All API calls route through MCP tools
@@ -126,6 +129,12 @@
 4. **Implement JWT middleware** (extract user_id from ChatGPT requests)
 5. **Test OAuth flow** with ChatGPT App Store preview
 6. **Submit for review**
+
+## Operational Requirement (V1)
+
+### Scheduled execution worker (REQUIRED for Set-and-Forget)
+- [ ] Deploy a separate always-on process that runs `npm run worker:scheduled`
+- [ ] See: `docs/SCHEDULED_REGISTRATION_WORKER_RUNBOOK.md`
 
 ## Reference Files
 - Manifest: `mcp/manifest.json`

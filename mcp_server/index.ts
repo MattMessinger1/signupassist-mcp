@@ -477,10 +477,10 @@ process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 class SignupAssistMCPServer {
-  private server: Server;
+  private server: any;
   private tools: Map<string, any> = new Map();
   private orchestrator: IOrchestrator | null = null;
-  private sseTransports: Map<string, SSEServerTransport> = new Map(); // SSE session storage
+  private sseTransports: Map<string, any> = new Map(); // SSE session storage
 
   constructor() {
     console.log('[STARTUP] SignupAssistMCPServer constructor called');
@@ -542,8 +542,10 @@ class SignupAssistMCPServer {
 
   private setupRequestHandlers() {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      // Expose all registered tools to ChatGPT (no filtering)
+      // ChatGPT App Store (text-only V1): keep public surface minimal.
+      // We still register private tools internally, but we do NOT list them to ChatGPT.
       const apiTools = Array.from(this.tools.values())
+        .filter((tool) => tool?._meta?.["openai/visibility"] !== "private")
         .map(tool => ({
           name: tool.name,
           description: tool.description,
@@ -581,21 +583,27 @@ class SignupAssistMCPServer {
     // 1. Create mcp_server/providers/utils/<providerId>Readiness.ts
     // 2. Implement waitFor<ProviderName>Ready(page: Page)
     // 3. Register it here using registerReadiness("<id>", fn)
-    registerReadiness("scp", waitForSkiClubProReady);
-    
-    // Register SkiClubPro tools
-    Object.entries(skiClubProTools).forEach(([name, handler]) => {
-      this.tools.set(name, {
-        name,
-        description: `SkiClubPro provider tool: ${name}`,
-        inputSchema: {
-          type: 'object',
-          properties: {},
-          additionalProperties: true,
-        },
-        handler,
+    // V1: API-only providers. Do not register SkiClubPro unless explicitly enabled.
+    const enableScp = process.env.ENABLE_SCP === 'true';
+    if (enableScp) {
+      registerReadiness("scp", waitForSkiClubProReady);
+      
+      // Register SkiClubPro tools (deprecated for v1)
+      Object.entries(skiClubProTools).forEach(([name, handler]) => {
+        this.tools.set(name, {
+          name,
+          description: `SkiClubPro provider tool: ${name}`,
+          inputSchema: {
+            type: 'object',
+            properties: {},
+            additionalProperties: true,
+          },
+          handler,
+        });
       });
-    });
+    } else {
+      console.log('[V1] ENABLE_SCP is false; SkiClubPro tools are not registered.');
+    }
 
     // Register Bookeo tools with ChatGPT Apps SDK V1 metadata
     bookeoTools.forEach((tool) => {
@@ -1025,6 +1033,63 @@ class SignupAssistMCPServer {
       }
       
       // ==================== END OAUTH PROXY ENDPOINTS ====================
+
+      // --- Service documentation (referenced by /.well-known/oauth-authorization-server)
+      if (req.method === 'GET' && url.pathname === '/docs') {
+        const proto = (req.headers['x-forwarded-proto'] as string | undefined) || 'https';
+        const host = (req.headers['x-forwarded-host'] as string | undefined) || (req.headers['host'] as string | undefined);
+        const baseUrl = host ? `${proto}://${host}` : `https://signupassist-mcp-production.up.railway.app`;
+
+        const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SignupAssist MCP — Docs</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; line-height: 1.5; margin: 40px auto; max-width: 980px; padding: 0 16px; }
+      code { background: #f4f4f5; padding: 2px 6px; border-radius: 6px; }
+      a { color: #0b5fff; text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .muted { color: #555; }
+      ul { padding-left: 18px; }
+    </style>
+  </head>
+  <body>
+    <h1>SignupAssist MCP — Service Docs</h1>
+    <p class="muted">This is a lightweight service-doc page referenced by OAuth discovery metadata.</p>
+
+    <h2>Key endpoints</h2>
+    <ul>
+      <li><code>/.well-known/chatgpt-apps-manifest.json</code> — ChatGPT Apps (MCP) manifest</li>
+      <li><code>/sse</code> — MCP SSE transport endpoint</li>
+      <li><code>/messages</code> — MCP SSE message endpoint</li>
+      <li><code>/.well-known/oauth-authorization-server</code> — OAuth discovery metadata</li>
+      <li><code>/oauth/authorize</code> — OAuth authorization proxy</li>
+      <li><code>/oauth/token</code> — OAuth token proxy</li>
+      <li><code>/privacy</code> — Privacy policy</li>
+      <li><code>/terms</code> — Terms of Use</li>
+    </ul>
+
+    <h2>Useful links</h2>
+    <ul>
+      <li><a href="${baseUrl}/.well-known/chatgpt-apps-manifest.json">ChatGPT Apps manifest</a></li>
+      <li><a href="${baseUrl}/.well-known/oauth-authorization-server">OAuth metadata</a></li>
+      <li><a href="${baseUrl}/privacy">Privacy policy</a></li>
+      <li><a href="${baseUrl}/terms">Terms of Use</a></li>
+      <li><a href="${baseUrl}/mcp/openapi.json">OpenAPI (legacy tooling)</a></li>
+    </ul>
+  </body>
+</html>`;
+
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'public, max-age=300'
+        });
+        res.end(html);
+        return;
+      }
 
       // ==================== MCP SSE TRANSPORT ENDPOINTS ====================
       // These endpoints allow ChatGPT Apps Connector to communicate via SSE
@@ -1542,48 +1607,9 @@ class SignupAssistMCPServer {
         return;
       }
 
-      // --- Serve manifest at .well-known path (legacy plugin compatibility)
-      if (req.method === 'GET' && url.pathname === '/.well-known/ai-plugin.json') {
-        try {
-          // Prefer source manifest to avoid stale dist artifacts (Railway cache)
-          let manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
-          if (!existsSync(manifestPath)) {
-            // Fallback: dist build output
-            manifestPath = path.resolve(process.cwd(), 'dist', 'mcp', 'manifest.json');
-          }
-          console.log('[DEBUG] Using manifest at:', manifestPath, 'exists:', existsSync(manifestPath));
-
-          const manifestText = readFileSync(manifestPath, 'utf8');
-          let out = manifestText;
-          try {
-            const manifestJson = JSON.parse(manifestText);
-            const proto = (req.headers['x-forwarded-proto'] as string | undefined) || 'https';
-            const host = (req.headers['x-forwarded-host'] as string | undefined) || (req.headers['host'] as string | undefined);
-            const baseUrl = host ? `${proto}://${host}` : 'https://signupassist-mcp-production.up.railway.app';
-
-            if (manifestJson?.auth?.type === 'oauth') {
-              manifestJson.auth.authorization_url = `${baseUrl}/oauth/authorize`;
-              manifestJson.auth.token_url = `${baseUrl}/oauth/token`;
-            }
-            if (manifestJson?.api?.type === 'openapi') {
-              manifestJson.api.url = `${baseUrl}/mcp/openapi.json`;
-            }
-
-            out = JSON.stringify(manifestJson, null, 2);
-          } catch (e: any) {
-            console.warn('[MANIFEST] Failed to rewrite OAuth URLs:', e?.message);
-          }
-
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(out);
-          console.log('[ROUTE] Served /.well-known/ai-plugin.json');
-        } catch (error: any) {
-          console.error('[WELL-KNOWN ERROR]', error);
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Failed to load manifest', details: error.message }));
-        }
-        return;
-      }
+      // NOTE: /.well-known/ai-plugin.json is served later from `public/.well-known/ai-plugin.json`
+      // (kept for legacy compatibility, but the authoritative submission surface is
+      // `/.well-known/chatgpt-apps-manifest.json` for "apps via MCP").
 
       // --- Tool invocation endpoint
       if (url.pathname === '/tools/call') {
@@ -2228,6 +2254,12 @@ class SignupAssistMCPServer {
             // ================================================================
             if (action && isProtectedAction(action) && !authenticatedUserId) {
               console.log('[AUTH] 🚫 Protected action without auth:', action);
+              const proto = (req.headers['x-forwarded-proto'] as string | undefined) || 'https';
+              const host =
+                (req.headers['x-forwarded-host'] as string | undefined) ||
+                (req.headers['host'] as string | undefined);
+              const baseUrl = host ? `${proto}://${host}` : 'https://signupassist-mcp-production.up.railway.app';
+              const authUrl = `${baseUrl}/oauth/authorize`;
               res.writeHead(401, {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*',
@@ -2235,6 +2267,8 @@ class SignupAssistMCPServer {
               });
               res.end(JSON.stringify({
                 error: 'authentication_required',
+                requiresAuth: true,
+                authUrl,
                 message: 'Sign in required to perform this action',
                 action_requiring_auth: action,
                 protected_actions: PROTECTED_ACTIONS as unknown as string[]
@@ -2491,11 +2525,14 @@ class SignupAssistMCPServer {
             }
 
             // -------------------------
-            // V1 UX Guardrails (NO WIDGETS) - ALL FIXES APPLIED
-            // FIX 1: EVERY response MUST have a Step header (based on context.step)
-            // FIX 4: No clickable CTAs in chat mode
-            // FIX 5: No schema payloads (prevents field dumps)
-            // This is enforced server-side at the HTTP boundary.
+            // V1 UX Guardrails (ChatGPT chat-only)
+            //
+            // These guardrails are critical for the ChatGPT App Store *chat* surface:
+            // - FIX 1: Always Step headers based on context.step
+            // - FIX 4: No clickable CTAs in ChatGPT chat mode
+            // - FIX 5: No schema payloads (prevents field dumps)
+            //
+            // V1 focus: ChatGPT only. Always enforce at the HTTP boundary.
             // -------------------------
             const safe = applyV1ChatGuardrails(result);
             
@@ -2564,6 +2601,116 @@ class SignupAssistMCPServer {
         });
         res.end(JSON.stringify(manifest, null, 2));
         return;
+      }
+
+      // --- Legal: Privacy Policy (served from repo markdown for review accuracy)
+      if (req.method === 'GET' && (url.pathname === '/privacy' || url.pathname === '/privacy.html')) {
+        try {
+          const mdPath = path.resolve(process.cwd(), 'docs', 'PRIVACY_POLICY.md');
+          const md = existsSync(mdPath)
+            ? readFileSync(mdPath, 'utf-8')
+            : 'Privacy policy not found. Please contact support@shipworx.ai.';
+
+          const escapeHtml = (s: string) =>
+            s
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;')
+              .replace(/'/g, '&#39;');
+
+          const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SignupAssist Privacy Policy</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; line-height: 1.5; margin: 40px auto; max-width: 980px; padding: 0 16px; }
+      pre { white-space: pre-wrap; word-wrap: break-word; }
+      .muted { color: #555; }
+      .topbar { display:flex; justify-content:space-between; gap:16px; align-items:flex-end; margin-bottom:16px; }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <h1>Privacy Policy</h1>
+      <div class="muted">Served by SignupAssist MCP</div>
+    </div>
+    <pre>${escapeHtml(md)}</pre>
+  </body>
+</html>`;
+
+          res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Access-Control-Allow-Origin': '*'
+          });
+          res.end(html);
+          return;
+        } catch (err: any) {
+          console.error('[PRIVACY] Error serving privacy policy:', err);
+          res.writeHead(500, {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Access-Control-Allow-Origin': '*'
+          });
+          res.end('Failed to load privacy policy.');
+          return;
+        }
+      }
+
+      // --- Legal: Terms of Use (served from repo markdown for review accuracy)
+      if (req.method === 'GET' && (url.pathname === '/terms' || url.pathname === '/terms.html')) {
+        try {
+          const mdPath = path.resolve(process.cwd(), 'docs', 'TERMS_OF_USE.md');
+          const md = existsSync(mdPath)
+            ? readFileSync(mdPath, 'utf-8')
+            : 'Terms of use not found. Please contact support@shipworx.ai.';
+
+          const escapeHtml = (s: string) =>
+            s
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;')
+              .replace(/'/g, '&#39;');
+
+          const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SignupAssist Terms of Use</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; line-height: 1.5; margin: 40px auto; max-width: 980px; padding: 0 16px; }
+      pre { white-space: pre-wrap; word-wrap: break-word; }
+      .muted { color: #555; }
+      .topbar { display:flex; justify-content:space-between; gap:16px; align-items:flex-end; margin-bottom:16px; }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <h1>Terms of Use</h1>
+      <div class="muted">Served by SignupAssist MCP</div>
+    </div>
+    <pre>${escapeHtml(md)}</pre>
+  </body>
+</html>`;
+
+          res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Access-Control-Allow-Origin': '*'
+          });
+          res.end(html);
+          return;
+        } catch (err: any) {
+          console.error('[TERMS] Error serving terms of use:', err);
+          res.writeHead(500, {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Access-Control-Allow-Origin': '*'
+          });
+          res.end('Failed to load terms of use.');
+          return;
+        }
       }
 
       // --- Serve static frontend files (React SPA)
@@ -2734,11 +2881,18 @@ if (shouldStartHttp) {
           console.warn('[STARTUP] AIOrchestrator init failed (non-fatal):', error);
         }
 
-        console.log('[STARTUP] Running OpenAI smoke tests (background)...');
-        try {
-          await runOpenAISmokeTests({ failFast: false });
-        } catch (error) {
-          console.warn('[STARTUP] OpenAI smoke tests failed (non-fatal):', error);
+        // Optional: OpenAI smoke tests (disabled by default)
+        // Enable explicitly via RUN_OPENAI_SMOKE_TESTS=true
+        const shouldRunSmokeTests = String(process.env.RUN_OPENAI_SMOKE_TESTS || '').toLowerCase() === 'true';
+        if (shouldRunSmokeTests) {
+          console.log('[STARTUP] Running OpenAI smoke tests (background)...');
+          try {
+            await runOpenAISmokeTests({ failFast: false });
+          } catch (error) {
+            console.warn('[STARTUP] OpenAI smoke tests failed (non-fatal):', error);
+          }
+        } else {
+          console.log('[STARTUP] Skipping OpenAI smoke tests (set RUN_OPENAI_SMOKE_TESTS=true to enable)');
         }
       })();
     })

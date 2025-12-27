@@ -3,7 +3,7 @@
   "name_for_human": "SignupAssist",
   "name_for_model": "signupassist",
   "description_for_human": "Securely automates activity sign-ups for parents.",
-  "description_for_model": "SignupAssist helps parents find and register for kids activities. Call signupassist.start first to show available programs.",
+  "description_for_model": "SignupAssist helps parents find and register for kids activities. Always route the user-facing flow through signupassist.chat; do not call provider tools directly unless explicitly instructed.",
   "auth": {
     "type": "oauth",
     "authorization_url": "https://signupassist-mcp-production.up.railway.app/oauth/authorize",
@@ -17,5 +17,5 @@
   },
   "logo_url": "https://signupassist-mcp-production.up.railway.app/logo-512.svg",
   "contact_email": "support@shipworx.ai",
-  "legal_info_url": "https://shipworx.ai/privacy"
+  "legal_info_url": "https://signupassist-mcp-production.up.railway.app/privacy"
 }

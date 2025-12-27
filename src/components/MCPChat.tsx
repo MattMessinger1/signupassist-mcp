@@ -679,6 +679,15 @@ export function MCPChat({
       stringified: JSON.stringify(payload, null, 2)
     });
     
+    // Local-only actions (do not call backend)
+    if (action === 'open_external_url') {
+      const url = payload?.url || payload?.href;
+      if (url && typeof url === 'string') {
+        window.open(url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+    }
+
     // Reset payment state when starting a new registration flow
     if (action === 'select_program') {
       setPaymentCompleted(false);
@@ -707,7 +716,36 @@ export function MCPChat({
       // NOTE: Frontend-side protected action check is now a fallback.
       // The server returns 401 for protected actions without auth (primary enforcement).
       // This client-side check prevents unnecessary network requests.
-      const protectedActions = ["confirm_registration", "confirm_payment", "create_booking", "register", "pay", "setup_payment_method", "save_payment_method", "cancel_registration", "view_receipts", "view_audit_trail", "confirm_auto_registration"];
+      // Keep this list aligned with backend `mcp_server/config/protectedActions.ts`.
+      // This is only a client-side optimization; the server is authoritative (returns 401).
+      const protectedActions = [
+        "setup_payment_method",
+        "setup_payment",
+        "show_payment_authorization",
+        "authorize_payment",
+        "confirm_payment",
+        "schedule_auto_registration",
+        "confirm_scheduled_registration",
+        "view_receipts",
+        "view_audit_trail",
+        "cancel_registration",
+        "confirm_cancel_registration",
+        "load_saved_children",
+        "save_child",
+        "load_delegate_profile",
+        "save_delegate_profile",
+        "check_payment_method",
+        "save_location",
+
+        // Back-compat aliases
+        "confirm_booking",
+        "cancel_booking",
+        "create_booking",
+        "register",
+        "pay",
+        "confirm_auto_registration",
+        "save_payment_method"
+      ];
       if (!userId && protectedActions.includes(action)) {
         console.warn(`[MCPChat] ${action} requires sign-in – showing inline auth prompt (client-side check)`);
         // Store pending action for retry after auth

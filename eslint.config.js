@@ -23,4 +23,12 @@ export default tseslint.config(
       "@typescript-eslint/no-unused-vars": "off",
     },
   },
+  // Node/server files (MCP server + scripts)
+  {
+    files: ["mcp_server/**/*.{ts,tsx}", "providers/**/*.{ts,tsx}", "scripts/**/*.{ts,tsx}"],
+    languageOptions: {
+      ecmaVersion: 2020,
+      globals: globals.node,
+    },
+  },
 );

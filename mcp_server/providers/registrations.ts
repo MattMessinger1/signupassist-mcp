@@ -40,8 +40,16 @@ export interface RegistrationRecord {
   amount_cents: number;
   success_fee_cents: number;
   delegate_name: string;
-  delegate_email: string;
+  delegate_email: string | null;
   participant_names: string[];
+  /** Provider-hosted checkout/payment URL (provider is merchant-of-record). */
+  provider_checkout_url?: string | null;
+  /** Provider program-fee payment state (provider is merchant-of-record). */
+  provider_payment_status?: 'paid' | 'unpaid' | 'unknown' | null;
+  provider_amount_due_cents?: number | null;
+  provider_amount_paid_cents?: number | null;
+  provider_currency?: string | null;
+  provider_payment_last_checked_at?: string | null;
   status: 'pending' | 'confirmed' | 'completed' | 'cancelled' | 'failed';
   scheduled_for?: string;
   executed_at?: string;
@@ -69,9 +77,15 @@ async function createRegistration(args: {
   amount_cents: number;
   success_fee_cents?: number;
   delegate_name: string;
-  delegate_email: string;
+  delegate_email: string | null;
   participant_names: string[];
   scheduled_for?: string; // null = immediate booking, set = scheduled
+  provider_checkout_url?: string | null;
+  provider_payment_status?: 'paid' | 'unpaid' | 'unknown' | null;
+  provider_amount_due_cents?: number | null;
+  provider_amount_paid_cents?: number | null;
+  provider_currency?: string | null;
+  provider_payment_last_checked_at?: string | null;
 }): Promise<ProviderResponse<RegistrationRecord>> {
   const {
     user_id,
@@ -88,7 +102,13 @@ async function createRegistration(args: {
     delegate_name,
     delegate_email,
     participant_names,
-    scheduled_for
+    scheduled_for,
+    provider_checkout_url,
+    provider_payment_status,
+    provider_amount_due_cents,
+    provider_amount_paid_cents,
+    provider_currency,
+    provider_payment_last_checked_at
   } = args;
   
   // Determine status: pending for scheduled, confirmed for immediate
@@ -118,6 +138,12 @@ async function createRegistration(args: {
       delegate_name,
       delegate_email,
       participant_names,
+      provider_checkout_url,
+      provider_payment_status,
+      provider_amount_due_cents,
+      provider_amount_paid_cents,
+      provider_currency,
+      provider_payment_last_checked_at,
       status,
       scheduled_for,
       executed_at: scheduled_for ? null : new Date().toISOString()
@@ -823,7 +849,7 @@ export const registrationTools: RegistrationTool[] = [
         },
         delegate_email: {
           type: 'string',
-          description: 'Email of responsible delegate'
+          description: 'Email of responsible delegate (nullable if tokenized)'
         },
         participant_names: {
           type: 'array',
@@ -833,9 +859,33 @@ export const registrationTools: RegistrationTool[] = [
         scheduled_for: {
           type: 'string',
           description: 'Scheduled execution time for Set-and-Forget (ISO 8601), null for immediate'
+        },
+        provider_checkout_url: {
+          type: 'string',
+          description: 'Provider-hosted checkout/payment URL (provider is merchant-of-record)'
+        },
+        provider_payment_status: {
+          type: 'string',
+          description: 'Provider program-fee payment status: paid|unpaid|unknown'
+        },
+        provider_amount_due_cents: {
+          type: 'number',
+          description: 'Best-effort cents amount due to provider (program fee)'
+        },
+        provider_amount_paid_cents: {
+          type: 'number',
+          description: 'Best-effort cents amount paid to provider (program fee)'
+        },
+        provider_currency: {
+          type: 'string',
+          description: 'Currency code for provider amounts (e.g., USD)'
+        },
+        provider_payment_last_checked_at: {
+          type: 'string',
+          description: 'ISO timestamp when provider payment status was last fetched'
         }
       },
-      required: ['user_id', 'program_name', 'program_ref', 'provider', 'org_ref', 'amount_cents', 'delegate_name', 'delegate_email', 'participant_names']
+      required: ['user_id', 'program_name', 'program_ref', 'provider', 'org_ref', 'amount_cents', 'delegate_name', 'participant_names']
     },
     handler: async (args: any) => {
       return auditToolCall(

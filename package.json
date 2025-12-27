@@ -18,6 +18,9 @@
     "mcp:dev": "node --loader ts-node/esm mcp_server/index.ts",
     "test:cred": "tsx scripts/testCredSealKey.ts",
     "mcp:build": "tsc -p tsconfig.mcp.json",
+    "worker:scheduled": "node dist/mcp_server/worker/scheduledRegistrationWorker.js",
+    "v1:preflight": "tsx scripts/v1_preflight.ts",
+    "v1:watch-scheduled": "tsx scripts/v1_watch_scheduled.ts",
     "prestart": "npm run mcp:build"
   },
   "dependencies": {

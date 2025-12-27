@@ -123,6 +123,14 @@ interface APIContext {
   pendingDelegateInfo?: { email?: string; firstName?: string; lastName?: string; phone?: string };
   awaitingDelegateEmail?: boolean;
 
+  // Text-only cancellation confirmation (ChatGPT has no buttons in v1)
+  pendingCancellation?: {
+    kind: 'registration' | 'scheduled';
+    registration_id?: string;
+    scheduled_registration_id?: string;
+    requested_at: string;
+  };
+
   // Form schema cache (from bookeo.discover_required_fields)
   requiredFields?: {
     delegate?: Array<{ key: string; label?: string; required?: boolean; type?: string }>;
@@ -276,6 +284,11 @@ export default class APIOrchestrator implements IOrchestrator {
   private isUserConfirmation(input: string): boolean {
     const confirmPatterns = /^(yes|yeah|yep|yup|sure|ok|okay|confirm|go ahead|please|do it|book it|let's do it|let's go|sounds good|authorize|proceed|continue|absolutely|definitely|i confirm|yes please|that's right|correct)\.?!?$/i;
     return confirmPatterns.test(input.trim());
+  }
+
+  private isUserDenial(input: string): boolean {
+    const denyPatterns = /^(no|nope|nah|don't|do not|dont|stop|never mind|nevermind|not now|cancel|abort)\.?!?$/i;
+    return denyPatterns.test((input || "").trim());
   }
 
   // ---------------------------------------------------------------------------
@@ -613,6 +626,26 @@ export default class APIOrchestrator implements IOrchestrator {
    */
   private parseSecondaryAction(input: string): { action: string; payload?: any } | null {
     const normalized = input.toLowerCase().trim();
+
+    // Extract an optional reference token for receipts/audit/cancel flows.
+    // Supports:
+    // - Full UUID
+    // - Short codes like REG-1a2b3c4d / SCH-1a2b3c4d (scheduled)
+    // - Bare short hex token (8+) as fallback
+    const extractRef = (): string | null => {
+      const uuidMatch = normalized.match(/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i);
+      if (uuidMatch) return uuidMatch[0];
+
+      const coded = normalized.match(/\b(reg|registration|sch|scheduled|schedule)[\s\-:#]*([0-9a-f]{6,12})\b/i);
+      if (coded) {
+        const prefix = coded[1].toLowerCase().startsWith('sch') || coded[1].toLowerCase().startsWith('schedule') ? 'SCH' : 'REG';
+        return `${prefix}-${coded[2].toLowerCase()}`;
+      }
+
+      const loose = normalized.match(/\b[0-9a-f]{8,12}\b/i);
+      return loose ? loose[0].toLowerCase() : null;
+    };
+    const ref = extractRef();
     
     // View registrations / receipts / bookings
     if (/\b(show|view|see|list|my)\b.*\b(registrations?|bookings?|receipts?|signups?|enrollments?)\b/i.test(normalized) ||
@@ -625,16 +658,74 @@ export default class APIOrchestrator implements IOrchestrator {
     if (/\b(cancel|remove|delete|undo)\b.*\b(registration|booking|signup|enrollment)\b/i.test(normalized) ||
         /\b(registration|booking)\b.*\b(cancel|remove)\b/i.test(normalized)) {
       Logger.info('[NL Parse] Secondary action detected: cancel_registration', { source: 'natural_language', input });
-      return { action: 'cancel_registration' };
+      return ref ? { action: 'cancel_registration', payload: { registration_ref: ref } } : { action: 'cancel_registration' };
     }
     
     // View audit trail / history
     if (/\b(audit|trail|history|log|activity)\b/i.test(normalized) && 
         /\b(show|view|see|my)\b/i.test(normalized)) {
       Logger.info('[NL Parse] Secondary action detected: view_audit_trail', { source: 'natural_language', input });
-      return { action: 'view_audit_trail' };
+      return ref ? { action: 'view_audit_trail', payload: { registration_ref: ref } } : { action: 'view_audit_trail' };
     }
     
+    return null;
+  }
+
+  private async resolveRegistrationRef(
+    registrationRef: string
+  ): Promise<{ registration_id?: string; scheduled_registration_id?: string } | null> {
+    if (!registrationRef) return null;
+    const ref = String(registrationRef).trim();
+
+    const uuidMatch = ref.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+    if (uuidMatch) {
+      // Could be either table; try registrations first in callers.
+      return { registration_id: ref, scheduled_registration_id: ref };
+    }
+
+    const coded = ref.match(/^(REG|SCH)-([0-9a-f]{6,12})$/i);
+    const token = coded ? coded[2].toLowerCase() : ref.toLowerCase();
+    const kind = coded ? coded[1].toUpperCase() : null;
+
+    const supabase = this.getSupabaseClient();
+
+    if (kind === 'SCH') {
+      const { data } = await supabase
+        .from('scheduled_registrations')
+        .select('id')
+        .ilike('id', `${token}%`)
+        .limit(1)
+        .maybeSingle();
+      return data?.id ? { scheduled_registration_id: data.id } : null;
+    }
+
+    if (kind === 'REG') {
+      const { data } = await supabase
+        .from('registrations')
+        .select('id')
+        .ilike('id', `${token}%`)
+        .limit(1)
+        .maybeSingle();
+      return data?.id ? { registration_id: data.id } : null;
+    }
+
+    // Unknown kind: try registrations first, then scheduled.
+    const { data: reg } = await supabase
+      .from('registrations')
+      .select('id')
+      .ilike('id', `${token}%`)
+      .limit(1)
+      .maybeSingle();
+    if (reg?.id) return { registration_id: reg.id };
+
+    const { data: sch } = await supabase
+      .from('scheduled_registrations')
+      .select('id')
+      .ilike('id', `${token}%`)
+      .limit(1)
+      .maybeSingle();
+    if (sch?.id) return { scheduled_registration_id: sch.id };
+
     return null;
   }
   
@@ -918,7 +1009,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     payload?: any,
     userTimezone?: string,
     userId?: string
-  ): Promise<OrchestratorResponse> {
+  ): Promise<OrchestratorResponse | null> {
     try {
       // ================================================================
       // AUTH0 + CLIENT SESSION SCOPING
@@ -975,6 +1066,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       // Handle natural language messages
       const response = await this.handleMessage(input, contextSessionId, context);
+      if (!response) return null;
       return this.attachContextSnapshot(response, contextSessionId);
     } catch (error) {
       Logger.error('APIOrchestrator error:', error);
@@ -1192,9 +1284,21 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         return await this.viewReceipts(payload, sessionId, context);
 
       case "view_audit_trail":
+        // Text-only UX: allow "audit REG-xxxx" / "audit SCH-xxxx"
+        if (payload?.registration_ref && !payload.registration_id && !payload.scheduled_registration_id) {
+          const resolved = await this.resolveRegistrationRef(payload.registration_ref);
+          if (resolved?.registration_id) payload.registration_id = resolved.registration_id;
+          if (resolved?.scheduled_registration_id) payload.scheduled_registration_id = resolved.scheduled_registration_id;
+        }
         return await this.viewAuditTrail(payload, sessionId, context);
 
       case "cancel_registration":
+        // Text-only UX: allow "cancel REG-xxxx" / "cancel SCH-xxxx"
+        if (payload?.registration_ref && !payload.registration_id && !payload.scheduled_registration_id) {
+          const resolved = await this.resolveRegistrationRef(payload.registration_ref);
+          if (resolved?.registration_id) payload.registration_id = resolved.registration_id;
+          if (resolved?.scheduled_registration_id) payload.scheduled_registration_id = resolved.scheduled_registration_id;
+        }
         return await this.cancelRegistrationStep1(payload, sessionId, context);
 
       case "confirm_cancel_registration":
@@ -1331,7 +1435,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     input: string,
     sessionId: string,
     context: APIContext
-  ): Promise<OrchestratorResponse> {
+  ): Promise<OrchestratorResponse | null> {
     // ChatGPT NL: Check for secondary actions FIRST (view receipts, cancel, audit trail)
     const secondaryAction = this.parseSecondaryAction(input);
     if (secondaryAction) {
@@ -1341,6 +1445,31 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         userInput: input
       });
       return await this.handleAction(secondaryAction.action, secondaryAction.payload || {}, sessionId, context);
+    }
+
+    // Text-only confirmation for cancellations (ChatGPT has no buttons in v1)
+    if (context.pendingCancellation) {
+      if (this.isUserConfirmation(input)) {
+        const pending = context.pendingCancellation;
+        this.updateContext(sessionId, { pendingCancellation: undefined });
+        return await this.handleAction(
+          'confirm_cancel_registration',
+          pending.kind === 'scheduled'
+            ? { scheduled_registration_id: pending.scheduled_registration_id }
+            : { registration_id: pending.registration_id, is_confirmed: true },
+          sessionId,
+          context
+        );
+      }
+      if (this.isUserDenial(input)) {
+        this.updateContext(sessionId, { pendingCancellation: undefined });
+        return this.formatResponse("Okay — I won’t cancel anything. If you want, say “view my registrations” to see options.");
+      }
+      return this.formatResponse(
+        `To confirm cancellation, reply **yes**. To keep it, reply **no**.`,
+        undefined,
+        []
+      );
     }
     
     // ChatGPT NL: Check if user is awaiting delegate email collection
@@ -1939,6 +2068,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         );
       }
     }
+
+    // Defensive fallback: if a code path falls through without returning.
+    return this.formatError("Sorry — I got stuck. Please try again.");
   }
 
   // NOTE: extractActivityFromMessage removed - using matcherExtractActivity from activityMatcher.ts
@@ -2630,20 +2762,27 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       // IMPORTANT: Use same programsToDisplay slice to ensure consistency with displayedPrograms
       const cards: CardSpec[] = programsToDisplay.map((prog: any, index: number) => {
         // Determine booking status at runtime (don't trust stale cached data)
-        const determineBookingStatus = (program: any): string => {
-          const hasAvailableSlots = program.next_available_slot || (program.available_slots && program.available_slots > 0);
+        // Bookeo nuance: booking can be closed even if slots exist (maxAdvanceTime window not open yet).
+        const now = new Date();
+        const hasAvailableSlots = prog.next_available_slot || (prog.available_slots && prog.available_slots > 0);
+        const isSoldOut = prog.booking_status === 'sold_out';
+
+        const slotStart = prog.earliest_slot_time ? new Date(prog.earliest_slot_time) : null;
+        const maxAdvance = prog.booking_limits?.maxAdvanceTime;
+        const computedOpensAt =
+          slotStart && maxAdvance
+            ? new Date(slotStart.getTime() - maxAdvance.amount * this.getMilliseconds(maxAdvance.unit))
+            : (prog.booking_opens_at ? new Date(prog.booking_opens_at) : null);
+
+        const bookingStatus: string = (() => {
+          if (isSoldOut) return 'sold_out';
           if (hasAvailableSlots) return 'open_now';
-          if (program.booking_status === 'sold_out') return 'sold_out';
-          return program.booking_status || 'open_now';
-        };
-        
-        const bookingStatus = determineBookingStatus(prog);
-        // Use earliest_slot_time OR booking_opens_at as fallback for date display
-        const earliestSlot = prog.earliest_slot_time 
-          ? new Date(prog.earliest_slot_time) 
-          : prog.booking_opens_at 
-            ? new Date(prog.booking_opens_at)
-            : null;
+          if (computedOpensAt && computedOpensAt > now) return 'opens_later';
+          return prog.booking_status || 'open_now';
+        })();
+
+        // Use slot start for "class date", and computedOpensAt for "registration opens"
+        const classDate = slotStart;
         
         // Generate timing badge
         let timingBadge = '';
@@ -2655,8 +2794,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           isDisabled = true;
           buttonLabel = "Waitlist (Coming Soon)";
         } else if (bookingStatus === 'opens_later') {
-          if (earliestSlot) {
-            timingBadge = `📅 Registration opens ${this.formatTimeForUser(earliestSlot, context)}`;
+          if (computedOpensAt) {
+            timingBadge = `📅 Registration opens ${this.formatTimeForUser(computedOpensAt, context)}`;
           } else {
             timingBadge = '📅 Opens Soon';
           }
@@ -2695,7 +2834,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
                   schedule: prog.schedule,
                   booking_status: bookingStatus,
                   earliest_slot_time: prog.earliest_slot_time,
-                  booking_opens_at: prog.booking_opens_at,
+                  booking_opens_at: computedOpensAt ? computedOpensAt.toISOString() : prog.booking_opens_at,
                   first_available_event_id: prog.first_available_event_id || null
                 }
               },
@@ -3252,24 +3391,30 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     const grandTotal = `$${(totalPrice + successFee).toFixed(2)}`;
 
     // ✅ COMPLIANCE: Determine booking status FIRST for proper confirmation messaging
-    // Runtime status check (don't trust stale cached data)
-    const determineBookingStatus = (program: any): string => {
-      const hasAvailableSlots = program?.next_available_slot || (program?.available_slots && program.available_slots > 0);
+    // Bookeo nuance: booking can be closed even if slots exist (maxAdvanceTime window not open yet).
+    const now = new Date();
+    const hasAvailableSlots =
+      context.selectedProgram?.next_available_slot ||
+      (context.selectedProgram?.available_slots && context.selectedProgram.available_slots > 0);
+    const isSoldOut = context.selectedProgram?.booking_status === 'sold_out';
+
+    const slotStart = context.selectedProgram?.earliest_slot_time
+      ? new Date(context.selectedProgram.earliest_slot_time)
+      : null;
+    const maxAdvance = context.selectedProgram?.booking_limits?.maxAdvanceTime;
+    const computedOpensAt =
+      slotStart && maxAdvance
+        ? new Date(slotStart.getTime() - maxAdvance.amount * this.getMilliseconds(maxAdvance.unit))
+        : (context.selectedProgram?.booking_opens_at ? new Date(context.selectedProgram.booking_opens_at) : null);
+
+    const bookingStatus: string = (() => {
+      if (isSoldOut) return 'sold_out';
       if (hasAvailableSlots) return 'open_now';
-      if (program?.booking_status === 'sold_out') return 'sold_out';
-      return program?.booking_status || 'open_now';
-    };
-    
-    const bookingStatus = determineBookingStatus(context.selectedProgram);
-    
-    // Get booking date from earliest_slot_time OR booking_opens_at, or use placeholder (1 week from now)
-    const earliestSlot = context.selectedProgram?.earliest_slot_time 
-      ? new Date(context.selectedProgram.earliest_slot_time) 
-      : context.selectedProgram?.booking_opens_at
-        ? new Date(context.selectedProgram.booking_opens_at)
-        : null;
-    
-    // For "opens_later" programs, treat as future booking even without a specific date
+      if (computedOpensAt && computedOpensAt > now) return 'opens_later';
+      return context.selectedProgram?.booking_status || 'open_now';
+    })();
+
+    // For "opens_later" programs, treat as future booking; schedule against opensAt (not class start time).
     const isFutureBooking = bookingStatus === 'opens_later';
 
     // Build review summary and store state for payment/confirmation
@@ -3287,9 +3432,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       Logger.info('[submitForm] Payment method check result', { hasPaymentMethod: !!billingData?.default_payment_method_id, cardBrand, cardLast4 });
     }
 
-    const scheduledTime = isFutureBooking
-      ? (earliestSlot?.toISOString() || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString())
-      : undefined;
+    const scheduledTimeStr = computedOpensAt?.toISOString() || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
     this.updateContext(sessionId, {
       step: FlowStep.REVIEW,
@@ -3301,7 +3444,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         program_fee_cents: Math.round(totalPrice * 100)
       },
       schedulingData: isFutureBooking ? {
-        scheduled_time: scheduledTime,
+        scheduled_time: scheduledTimeStr,
         event_id: context.selectedProgram?.first_available_event_id,
         total_amount: grandTotal,
         program_fee: formattedTotal,
@@ -3544,7 +3687,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             user_id: userId,
             provider: 'bookeo',
             org_ref: orgRef,
-            scopes: ['platform:success_fee', 'scp:register'],
+            scopes: ['bookeo:create_booking', 'platform:success_fee'],
             program_ref: programRef,
             valid_until: new Date(Date.now() + 5 * 60 * 1000).toISOString()  // 5 minutes from now
           });
@@ -3581,6 +3724,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       }
 
       const { booking_number, start_time } = bookingResponse.data;
+      const providerPaymentRequired: boolean | undefined = bookingResponse.data?.provider_payment_required;
+      const providerPaymentStatus: 'paid' | 'unpaid' | 'unknown' | undefined = bookingResponse.data?.provider_payment_status;
+      const providerAmountDueCents: number | null | undefined = bookingResponse.data?.provider_amount_due_cents;
+      const providerAmountPaidCents: number | null | undefined = bookingResponse.data?.provider_amount_paid_cents;
+      const providerCurrency: string | null | undefined = bookingResponse.data?.provider_currency;
+      const providerPaymentLastCheckedAt: string | undefined = bookingResponse.data?.provider_payment_last_checked_at;
+      const providerCheckoutUrl: string | undefined = bookingResponse.data?.provider_checkout_url;
       Logger.info("[confirmPayment] ✅ Booking confirmed:", { booking_number });
 
       // Step 3: Charge $20 success fee via MCP tool (audit-compliant)
@@ -3643,7 +3793,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             success_fee_cents: 2000,
             delegate_name: delegateName,
             delegate_email: delegateEmail,
-            participant_names: participantNames
+            participant_names: participantNames,
+            // Only store provider checkout URL if the program fee is non-zero.
+            provider_checkout_url: amountCents > 0 ? (providerCheckoutUrl || `https://bookeo.com/book/${programRef}?ref=signupassist`) : null,
+            provider_payment_status: providerPaymentStatus || 'unknown',
+            provider_amount_due_cents: providerAmountDueCents ?? null,
+            provider_amount_paid_cents: providerAmountPaidCents ?? null,
+            provider_currency: providerCurrency ?? null,
+            provider_payment_last_checked_at: providerPaymentLastCheckedAt || new Date().toISOString()
           });
 
           if (registrationResult.success) {
@@ -3670,11 +3827,20 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         booking_number,
         start_time: start_time || "TBD"
       });
+      const providerPaymentNote = providerCheckoutUrl
+        ? `\n\n💳 **Provider payment:** ${providerCheckoutUrl}\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the $20 success fee._`
+        : `\n\n💳 **Provider payment:** The provider will collect the program fee via their official checkout (often sent by email).\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the $20 success fee._`;
 
       const successResponse: OrchestratorResponse = {
-        message,
+        message: `${message}${providerPaymentNote}`,
         cta: {
           buttons: [
+            ...(providerCheckoutUrl ? [{
+              label: providerPaymentRequired === false ? "Provider payment not required" : "Pay Provider",
+              action: "open_external_url",
+              payload: { url: providerCheckoutUrl },
+              variant: "outline" as const
+            }] : []),
             { 
               label: "View My Registrations", 
               action: "view_receipts", 
@@ -3781,7 +3947,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const authCard: CardSpec = {
         title: "💳 Payment Authorization",
         description: `**Payment Method:** ${cardDisplay}\n\n` +
-          `**Program Fee:** $${programFee} (charged to provider)\n` +
+          `**Program Fee:** $${programFee} (charged by the provider via their official checkout)\n` +
           `**SignupAssist Fee:** $20.00 (charged only if registration succeeds)\n\n` +
           `**Total:** $${totalAmount}`,
         metadata: {
@@ -4126,53 +4292,39 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const mandateId = mandateResponse.data.mandate_id;
       Logger.info("[confirmScheduledRegistration] ✅ Mandate created:", mandateId);
 
-      // Step 2: Create registration via MCP tool (unified registrations table)
-      Logger.info("[confirmScheduledRegistration] Creating scheduled registration via MCP tool...");
-      
+      // Step 2: Create scheduled_registrations row via scheduler tool (full execution payload)
+      Logger.info("[confirmScheduledRegistration] Creating scheduled registration payload...");
+
       const delegate = formData.delegate || {};
       const participants = formData.participants || [];
-      const delegateName = `${delegate.delegate_firstName || ''} ${delegate.delegate_lastName || ''}`.trim();
-      const delegateEmail = delegate.delegate_email || '';
-      const participantNames = participants.map((p: any) => `${p.firstName || ''} ${p.lastName || ''}`.trim());
       const programFeeCents = Math.round(parseFloat(program_fee?.replace(/[^0-9.]/g, '') || '0') * 100);
-      
-      const registrationResponse = await this.invokeMCPTool('registrations.create', {
-        user_id: context.user_id,
-        mandate_id: mandateId,
-        program_name: programName,
-        program_ref: context.selectedProgram.program_ref,
-        provider: 'bookeo',
-        org_ref: context.selectedProgram.org_ref,
-        start_date: context.selectedProgram?.start_date,
-        amount_cents: programFeeCents,
-        success_fee_cents: 2000,
-        delegate_name: delegateName,
-        delegate_email: delegateEmail,
-        participant_names: participantNames,
-        scheduled_for: scheduled_time // This makes status='pending'
-      }, { mandate_id: mandateId });
 
-      if (!registrationResponse.success || !registrationResponse.data?.id) {
-        Logger.error("[confirmScheduledRegistration] Registration creation failed", registrationResponse);
-        return this.formatError("Failed to schedule registration. Please try again.");
-      }
+      Logger.info("[confirmScheduledRegistration] Scheduling job via scheduler.schedule_signup...");
+      const scheduleResponse = await this.invokeMCPTool(
+        'scheduler.schedule_signup',
+        {
+          user_id: context.user_id,
+          mandate_id: mandateId,
+          org_ref: context.selectedProgram.org_ref,
+          program_ref: context.selectedProgram.program_ref,
+          program_name: programName,
+          event_id,
+          scheduled_time,
+          delegate_data: delegate,
+          participant_data: participants,
+          program_fee_cents: programFeeCents,
+          success_fee_cents: 2000
+        },
+        { mandate_id: mandateId, user_id: context.user_id }
+      );
 
-      const registrationId = registrationResponse.data.id;
-      Logger.info("[confirmScheduledRegistration] ✅ Scheduled registration created:", registrationId);
-
-      // Step 3: Schedule the job via MCP tool (audit-compliant)
-      Logger.info("[confirmScheduledRegistration] Scheduling job...");
-      const scheduleResponse = await this.invokeMCPTool('scheduler.schedule_signup', {
-        registration_id: registrationId,
-        trigger_time: scheduled_time
-      }, { mandate_id: mandateId });
-
-      if (!scheduleResponse.success) {
+      if (!scheduleResponse.success || !scheduleResponse.data?.scheduled_registration_id) {
         Logger.error("[confirmScheduledRegistration] Job scheduling failed", scheduleResponse);
         return this.formatError("Failed to schedule auto-registration. Please try again.");
       }
 
-      Logger.info("[confirmScheduledRegistration] ✅ Job scheduled successfully");
+      const scheduledRegistrationId = scheduleResponse.data.scheduled_registration_id;
+      Logger.info("[confirmScheduledRegistration] ✅ Scheduled registration created:", scheduledRegistrationId);
       
       // Reset context
       this.updateContext(sessionId, {
@@ -4241,7 +4393,18 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         return this.formatError("Unable to load your registrations.");
       }
 
-      if (!registrations || registrations.length === 0) {
+      const { data: scheduledRegs, error: scheduledError } = await supabase
+        .from('scheduled_registrations')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (scheduledError) {
+        Logger.warn("[viewReceipts] Failed to fetch scheduled_registrations:", scheduledError);
+      }
+
+      const anyReceipts = (registrations && registrations.length > 0) || (scheduledRegs && scheduledRegs.length > 0);
+      if (!anyReceipts) {
         return this.formatResponse(
           "📋 **Your Registrations**\n\nYou don't have any registrations yet.",
           undefined,
@@ -4272,7 +4435,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const upcoming = registrations.filter(r => 
         r.status === 'confirmed' && r.start_date && new Date(r.start_date) > now
       );
-      const scheduled = registrations.filter(r => r.status === 'pending');
+      // Scheduled jobs now live in scheduled_registrations until they execute.
+      const scheduled = (scheduledRegs || []).filter((r: any) => r.status === 'pending' || r.status === 'executing');
       // Past includes: completed, cancelled, failed, and confirmed with past start_date
       const past = registrations.filter(r => 
         r.status === 'cancelled' || 
@@ -4289,13 +4453,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           case 'completed': return '✅ Completed';
           case 'confirmed': return '✅ Confirmed';
           case 'pending': return '⏳ Scheduled';
+          case 'executing': return '⚡ Executing';
           default: return status;
         }
       };
 
       // Build cards for each registration
       const buildRegCard = (reg: any, isUpcoming: boolean = false): CardSpec => {
-        const buttons = [];
+        const buttons: any[] = [];
         
         // Always show View Audit Trail for non-pending registrations (including cancelled)
         if (reg.status !== 'pending') {
@@ -4305,6 +4470,16 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         // Show Cancel button for pending OR upcoming (but not cancelled/failed/completed)
         if ((reg.status === 'pending' || isUpcoming) && reg.status !== 'cancelled' && reg.status !== 'failed' && reg.status !== 'completed') {
           buttons.push({ label: 'Cancel', action: 'cancel_registration', payload: { registration_id: reg.id }, variant: 'secondary' as const });
+        }
+
+        // Provider payment (provider is merchant-of-record)
+        if (reg.provider_checkout_url) {
+          buttons.push({
+            label: 'Pay Provider (if needed)',
+            action: 'open_external_url',
+            payload: { url: reg.provider_checkout_url },
+            variant: 'outline' as const
+          });
         }
         
         // Add status badge to title for cancelled/failed
@@ -4320,7 +4495,47 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             `**Participants:** ${(reg.participant_names || []).join(', ') || 'N/A'}`,
             `**Program Fee:** ${formatDollars(reg.amount_cents || 0)}`,
             `**SignupAssist Fee:** ${formatDollars(reg.success_fee_cents || 0)}`,
-            `**Total:** ${formatDollars((reg.amount_cents || 0) + (reg.success_fee_cents || 0))}`
+            `**Total:** ${formatDollars((reg.amount_cents || 0) + (reg.success_fee_cents || 0))}`,
+            ...(reg.provider_checkout_url ? [``, `**Provider checkout:** ${reg.provider_checkout_url}`] : [])
+          ].join('\n'),
+          buttons
+        };
+      };
+
+      const buildScheduledCard = (sr: any): CardSpec => {
+        const pricing = sr?.delegate_data?._pricing || {};
+        const programFeeCents = pricing.program_fee_cents || 0;
+        const successFeeCents = pricing.success_fee_cents || 2000;
+        const participantNames = Array.isArray(sr?.participant_data)
+          ? sr.participant_data.map((p: any) => `${p.firstName || ''} ${p.lastName || ''}`.trim()).filter(Boolean)
+          : [];
+
+        const buttons: any[] = [];
+        if (sr.status === 'pending') {
+          buttons.push({
+            label: 'Cancel',
+            action: 'cancel_registration',
+            payload: { scheduled_registration_id: sr.id },
+            variant: 'secondary' as const
+          });
+        }
+
+        const titleWithStatus =
+          sr.status === 'failed'
+            ? `${sr.program_name} ${getStatusBadge('failed')}`
+            : sr.status === 'executing'
+              ? `${sr.program_name} ${getStatusBadge('executing')}`
+              : sr.program_name;
+
+        return {
+          title: titleWithStatus,
+          subtitle: formatDateTime(sr.scheduled_time),
+          description: [
+            `**Auto-registration:** ${getStatusBadge(sr.status || 'pending')}`,
+            `**Participants:** ${participantNames.join(', ') || 'N/A'}`,
+            `**Program Fee:** ${formatDollars(programFeeCents)} (charged by provider)`,
+            `**SignupAssist Fee:** ${formatDollars(successFeeCents)} (charged only if registration succeeds)`,
+            `**Total:** ${formatDollars(programFeeCents + successFeeCents)}`
           ].join('\n'),
           buttons
         };
@@ -4328,16 +4543,58 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       const cards: CardSpec[] = [
         ...upcoming.map(r => buildRegCard(r, true)),  // isUpcoming = true, show Cancel button
-        ...scheduled.map(r => buildRegCard(r, false)), // pending status, Cancel already shown
+        ...scheduled.map((r: any) => buildScheduledCard(r)),
         ...past.map(r => buildRegCard(r, false))       // past (includes cancelled/failed), no cancel option
       ];
 
+      // TEXT-ONLY (ChatGPT): include a plain-text list with short codes the user can reference.
+      const shortCode = (prefix: 'REG' | 'SCH', id: string) => `${prefix}-${String(id).slice(0, 8)}`;
+      const fmtWhen = (iso: string | null) => (iso ? formatDateTime(iso) : 'TBD');
+      const lines: string[] = [];
+      const pushSection = (title: string, items: string[]) => {
+        if (items.length === 0) return;
+        lines.push(`\n**${title}**`);
+        lines.push(...items.map((x) => `- ${x}`));
+      };
+
+      const upcomingLines = upcoming.slice(0, 10).map((r: any) => {
+        const code = shortCode('REG', r.id);
+        return `${code}: ${r.program_name} — ${getStatusBadge(r.status)} — ${fmtWhen(r.start_date || null)}`;
+      });
+
+      const scheduledLines = scheduled.slice(0, 10).map((s: any) => {
+        const code = shortCode('SCH', s.id);
+        const when = s.scheduled_time ? fmtWhen(s.scheduled_time) : 'TBD';
+        return `${code}: ${s.program_name} — ${getStatusBadge(s.status || 'pending')} — executes ${when}`;
+      });
+
+      const pastLines = past.slice(0, 10).map((r: any) => {
+        const code = shortCode('REG', r.id);
+        return `${code}: ${r.program_name} — ${getStatusBadge(r.status)} — ${fmtWhen(r.start_date || null)}`;
+      });
+
+      const textMessage =
+        `📋 **Your Registrations**\n\n` +
+        `✅ **Upcoming:** ${upcoming.length}\n` +
+        `📅 **Scheduled:** ${scheduled.length}\n` +
+        `📦 **Past:** ${past.length}\n\n` +
+        `To manage items, reply with one of:\n` +
+        `- **cancel REG-xxxxxxxx** (cancel a confirmed booking request)\n` +
+        `- **cancel SCH-xxxxxxxx** (cancel a scheduled auto-registration)\n` +
+        `- **audit REG-xxxxxxxx** (view audit trail)\n\n` +
+        `Examples: "cancel SCH-1a2b3c4d", "audit REG-9f8e7d6c"\n` +
+        `_(Program-fee refunds are handled by the provider. SignupAssist can refund the $20 success fee when applicable.)_`;
+
+      // Add sections with actual items (kept short to avoid huge messages)
+      const listMessage = [
+        textMessage,
+        upcomingLines.length ? `\n**Upcoming (top ${upcomingLines.length}):**\n${upcomingLines.map(x => `- ${x}`).join('\n')}` : '',
+        scheduledLines.length ? `\n**Scheduled (top ${scheduledLines.length}):**\n${scheduledLines.map(x => `- ${x}`).join('\n')}` : '',
+        pastLines.length ? `\n**Past (top ${pastLines.length}):**\n${pastLines.map(x => `- ${x}`).join('\n')}` : ''
+      ].join('');
+
       return {
-        message: `📋 **Your Registrations**\n\n` +
-          `✅ **Upcoming:** ${upcoming.length}\n` +
-          `📅 **Scheduled:** ${scheduled.length}\n` +
-          `📦 **Past:** ${past.length}\n\n` +
-          getReceiptsFooterMessage(),
+        message: listMessage + `\n\n` + getReceiptsFooterMessage(),
         cards,
         cta: {
           buttons: [
@@ -4376,14 +4633,91 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     sessionId: string,
     context: APIContext
   ): Promise<OrchestratorResponse> {
-    const { registration_id } = payload;
+    let { registration_id, scheduled_registration_id, registration_ref } = payload;
     
-    if (!registration_id) {
-      return this.formatError("Registration ID required to view audit trail.");
+    // Allow text-only reference codes (REG-xxxx / SCH-xxxx / uuid)
+    if (!registration_id && !scheduled_registration_id && registration_ref) {
+      const resolved = await this.resolveRegistrationRef(registration_ref);
+      registration_id = resolved?.registration_id;
+      scheduled_registration_id = resolved?.scheduled_registration_id;
+    }
+
+    if (!registration_id && !scheduled_registration_id) {
+      return this.formatError("Registration reference required to view audit trail. Try: “audit REG-xxxxxxxx” or “audit SCH-xxxxxxxx”.");
     }
     
     try {
       const supabase = this.getSupabaseClient();
+
+      // Scheduled auto-registration audit trail (before execution)
+      if (scheduled_registration_id && !registration_id) {
+        const { data: scheduled, error: schError } = await supabase
+          .from('scheduled_registrations')
+          .select('id, mandate_id, program_name, program_ref, org_ref, scheduled_time, status, booking_number, executed_at, error_message, created_at')
+          .eq('id', scheduled_registration_id)
+          .maybeSingle();
+
+        if (schError || !scheduled) {
+          Logger.error("[viewAuditTrail] Scheduled registration not found:", schError);
+          return this.formatError("Scheduled registration not found.");
+        }
+
+        const mandateId = scheduled.mandate_id;
+        const when = scheduled.scheduled_time ? this.formatTimeForUser(new Date(scheduled.scheduled_time), context) : 'TBD';
+        const code = `SCH-${String(scheduled.id).slice(0, 8)}`;
+
+        const { data: mandate, error: mandateError } = await supabase
+          .from('mandates')
+          .select('id, scope, valid_from, valid_until, status, provider, jws_compact')
+          .eq('id', mandateId)
+          .maybeSingle();
+
+        if (mandateError) {
+          Logger.warn("[viewAuditTrail] Mandate lookup failed:", mandateError);
+        }
+
+        const { data: auditEvents, error: auditError } = await supabase
+          .from('audit_events')
+          .select('tool, decision, started_at, finished_at, event_type, args_json, result_json, args_hash, result_hash')
+          .eq('mandate_id', mandateId)
+          .order('started_at', { ascending: true });
+
+        if (auditError) {
+          Logger.warn("[viewAuditTrail] Audit events lookup failed:", auditError);
+        }
+
+        const header =
+          `📋 **Audit Trail (Scheduled Auto-Registration)**\n\n` +
+          `**Reference:** ${code}\n` +
+          `**Program:** ${scheduled.program_name}\n` +
+          `**Scheduled for:** ${when}\n` +
+          `**Status:** ${scheduled.status || 'pending'}\n` +
+          (scheduled.error_message ? `**Last error:** ${scheduled.error_message}\n` : '') +
+          `\nTo cancel this scheduled signup, say: **cancel ${code}**`;
+
+        const eventsList = (auditEvents || []).map((event, idx) => {
+          const time = this.formatTimeForUser(new Date(event.started_at), context);
+          const status = event.decision === 'allowed' ? '✅' : (event.decision === 'denied' ? '❌' : '⏳');
+          const toolName = event.tool || event.event_type || 'Unknown action';
+          return `${idx + 1}. ${status} ${toolName} — ${time}`;
+        });
+
+        const mandateLines = mandate
+          ? [
+              ``,
+              `**Mandate:** ${String(mandate.id).slice(0, 8)}…`,
+              `**Scopes:** ${(mandate.scope || []).map((s: string) => this.mapScopeToFriendly(s)).join(', ') || 'N/A'}`,
+              `**Valid until:** ${mandate.valid_until ? this.formatTimeForUser(new Date(mandate.valid_until), context) : 'N/A'}`,
+            ].join('\n')
+          : '';
+
+        const message =
+          header +
+          (eventsList.length ? `\n\n**Events (${eventsList.length}):**\n${eventsList.map(e => `- ${e}`).join('\n')}` : `\n\n_No events recorded yet._`) +
+          mandateLines;
+
+        return this.formatResponse(message);
+      }
       
       // 1. Get registration to find mandate_id
       const { data: registration, error: regError } = await supabase
@@ -4618,25 +4952,63 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     sessionId: string,
     context: APIContext
   ): Promise<OrchestratorResponse> {
-    const { registration_id } = payload;
+    const { registration_id, scheduled_registration_id } = payload;
     
-    if (!registration_id) {
+    if (!registration_id && !scheduled_registration_id) {
       return this.formatError("Registration ID required to cancel.");
     }
     
     try {
       const supabase = this.getSupabaseClient();
       
-      // Get registration details for confirmation
-      const { data: registration, error } = await supabase
-        .from('registrations')
-        .select('id, program_name, booking_number, status, start_date, delegate_name, amount_cents, success_fee_cents, org_ref, provider, charge_id')
-        .eq('id', registration_id)
-        .single();
-      
-      if (error || !registration) {
-        Logger.error("[cancelRegistration] Registration not found:", error);
-        return this.formatError("Registration not found.");
+      // First: try receipts table (confirmed bookings)
+      let registration: any = null;
+      if (registration_id) {
+        const { data, error } = await supabase
+          .from('registrations')
+          .select('id, program_name, booking_number, status, start_date, delegate_name, amount_cents, success_fee_cents, org_ref, provider, charge_id')
+          .eq('id', registration_id)
+          .maybeSingle();
+        if (error) Logger.warn("[cancelRegistration] registrations lookup error:", error);
+        registration = data || null;
+      }
+
+      // Second: try scheduled_registrations (auto-registration jobs not yet executed)
+      if (!registration) {
+        const id = scheduled_registration_id || registration_id;
+        const { data: scheduled, error: scheduledError } = await supabase
+          .from('scheduled_registrations')
+          .select('id, program_name, status, scheduled_time, delegate_data, participant_data')
+          .eq('id', id)
+          .maybeSingle();
+
+        if (scheduledError || !scheduled) {
+          Logger.error("[cancelRegistration] Registration not found:", scheduledError);
+          return this.formatError("Registration not found.");
+        }
+
+        // Scheduled job cancellation confirmation (text-only)
+        const when = scheduled.scheduled_time ? this.formatTimeForUser(new Date(scheduled.scheduled_time), context) : 'TBD';
+
+        let message = getPendingCancelConfirmMessage({
+          program_name: scheduled.program_name
+        });
+        message = addResponsibleDelegateFooter(message);
+
+        const code = `SCH-${String(scheduled.id).slice(0, 8)}`;
+        this.updateContext(sessionId, {
+          pendingCancellation: {
+            kind: 'scheduled',
+            scheduled_registration_id: scheduled.id,
+            requested_at: new Date().toISOString()
+          }
+        });
+
+        return this.formatResponse(
+          `${message}\n\n📌 Reference: **${code}**\n\nReply **yes** to confirm cancellation, or **no** to keep it.\n\nNo provider booking has been made yet, so no charges apply.`,
+          undefined,
+          []
+        );
       }
       
       // Check if cancellation is allowed
@@ -4664,41 +5036,24 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           provider_name: providerName,
           booking_number: registration.booking_number
         });
+          message += `\n\n💳 **Refunds:** SignupAssist can refund the $20 success fee if the provider accepts cancellation. Program-fee refunds (if any) are handled by ${providerName}.`;
         // ✅ COMPLIANCE: Include Responsible Delegate reminder for cancellation
         message = addResponsibleDelegateFooter(message);
-        
-        const confirmationCard: CardSpec = {
-          title: `⚠️ Cancel Confirmed Booking?`,
-          subtitle: registration.program_name,
-          description: [
-            `**Booking #:** ${registration.booking_number || 'N/A'}`,
-            `**Date:** ${startDateFormatted}`,
-            `**Delegate:** ${registration.delegate_name || 'N/A'}`,
-            `**Program Fee:** ${formatDollars(registration.amount_cents || 0)}`,
-            `**SignupAssist Fee:** ${formatDollars(registration.success_fee_cents || 0)}`,
-            ``,
-            `If ${providerName} accepts, your $20 fee will be refunded.`
-          ].join('\n'),
-          buttons: [
-            { 
-              label: "Yes, Request Cancellation", 
-              action: "confirm_cancel_registration", 
-              variant: "secondary",
-              payload: { registration_id, is_confirmed: true } 
-            },
-            { 
-              label: "Keep Booking", 
-              action: "view_receipts", 
-              variant: "outline" 
-            }
-          ]
-        };
-        
-        return {
-          message,
-          cards: [confirmationCard],
-          cta: { buttons: [] }
-        };
+
+        const code = `REG-${String(registration.id).slice(0, 8)}`;
+        this.updateContext(sessionId, {
+          pendingCancellation: {
+            kind: 'registration',
+            registration_id: registration.id,
+            requested_at: new Date().toISOString()
+          }
+        });
+
+        return this.formatResponse(
+          `${message}\n\n📌 Reference: **${code}**\n\nReply **yes** to confirm cancellation, or **no** to keep it.`,
+          undefined,
+          []
+        );
       }
       
       // Pending registration - simpler cancellation
@@ -4755,10 +5110,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     sessionId: string,
     context: APIContext
   ): Promise<OrchestratorResponse> {
-    const { registration_id, is_confirmed } = payload;
+    const { registration_id, is_confirmed, scheduled_registration_id } = payload;
     const userId = context.user_id;
     
-    if (!registration_id) {
+    if (!registration_id && !scheduled_registration_id) {
       return this.formatError("Registration ID required to cancel.");
     }
     
@@ -4768,6 +5123,52 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     
     try {
       const supabase = this.getSupabaseClient();
+
+      // Scheduled auto-registration cancellation (no provider booking exists yet)
+      if (scheduled_registration_id) {
+        const { data: scheduled, error: scheduledError } = await supabase
+          .from('scheduled_registrations')
+          .select('id, program_name, status')
+          .eq('id', scheduled_registration_id)
+          .maybeSingle();
+
+        if (scheduledError || !scheduled) {
+          return this.formatError("Scheduled registration not found.");
+        }
+
+        if (scheduled.status === 'completed') {
+          return this.formatError("This auto-registration already completed. If you need to cancel the booking, cancel the confirmed registration instead.");
+        }
+
+        if (scheduled.status === 'cancelled') {
+          return this.formatError("This auto-registration has already been cancelled.");
+        }
+
+        const { error: cancelError } = await supabase
+          .from('scheduled_registrations')
+          .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+          .eq('id', scheduled_registration_id);
+
+        if (cancelError) {
+          Logger.error("[cancelRegistration] Failed to cancel scheduled registration:", cancelError);
+          return this.formatError(`Failed to cancel auto-registration.\n\n_Questions? Email ${SUPPORT_EMAIL}_`);
+        }
+
+        const message = getPendingCancelSuccessMessage({
+          program_name: scheduled.program_name
+        });
+
+        return {
+          message,
+          cards: [],
+          cta: {
+            buttons: [
+              { label: "View Registrations", action: "view_receipts", variant: "outline" },
+              { label: "Browse Programs", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "accent" }
+            ]
+          }
+        };
+      }
       
       // Get full registration details
       const { data: registration, error: regError } = await supabase
@@ -5124,7 +5525,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     payload: any,
     sessionId: string,
     context: APIContext,
-    input: string
+    input?: string
   ): Promise<OrchestratorResponse> {
     Logger.info('[handleSelectChild] Processing child selection', { 
       hasPayload: !!payload, 
@@ -5133,7 +5534,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     });
 
     // Extract child info from payload first (UI action)
-    let childInfo = null;
+    let childInfo: { firstName: string; lastName: string; age?: number } | null = null;
     
     if (payload?.first_name && payload?.last_name) {
       childInfo = {
@@ -5144,8 +5545,23 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     } else if (payload?.child_id) {
       // Child selected from saved children - look it up
       Logger.info('[handleSelectChild] Child selected by ID:', payload.child_id);
-      // For now, just use the child_id as-is if present
-      childInfo = { childId: payload.child_id };
+      const userId = context.user_id || payload.user_id;
+      if (userId) {
+        try {
+          const listRes = await this.invokeMCPTool('user.list_children', { user_id: userId });
+          const children = listRes?.data?.children || [];
+          const match = children.find((c: any) => c.id === payload.child_id);
+          if (match) {
+            childInfo = {
+              firstName: match.first_name,
+              lastName: match.last_name,
+              age: undefined
+            };
+          }
+        } catch (e) {
+          Logger.warn('[handleSelectChild] Failed to load saved child record', e);
+        }
+      }
     }
 
     // If no payload, try parsing from natural language input
@@ -5159,8 +5575,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         const fallbackParsed = this.parseChildInfoFromMessage(input);
         if (fallbackParsed) {
           childInfo = {
-            firstName: fallbackParsed.firstName || fallbackParsed.name?.split(' ')[0],
-            lastName: fallbackParsed.lastName || fallbackParsed.name?.split(' ').slice(1).join(' '),
+            firstName: String(fallbackParsed.firstName || fallbackParsed.name?.split(' ')[0] || '').trim(),
+            lastName: String(fallbackParsed.lastName || fallbackParsed.name?.split(' ').slice(1).join(' ') || '').trim(),
             age: fallbackParsed.age
           };
           Logger.info('[handleSelectChild] Parsed child from fallback:', childInfo);

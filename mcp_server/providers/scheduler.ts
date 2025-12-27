@@ -13,69 +13,94 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 /**
  * Schedule a signup job to run at a specific time
- * Creates a scheduled_registrations entry that will be picked up by the scheduler
+ * Creates a scheduled_registrations entry that will be picked up by the always-on worker.
  */
 async function scheduleSignup(args: {
-  registration_id: string;
-  trigger_time: string;
+  user_id: string;
+  mandate_id: string;
+  org_ref: string;
+  program_ref: string;
+  program_name: string;
+  event_id: string;
+  scheduled_time: string;
+  delegate_data: Record<string, any>;
+  participant_data: Array<Record<string, any>>;
+  /** Optional: store pricing metadata inside delegate_data for receipt accuracy */
+  program_fee_cents?: number;
+  success_fee_cents?: number;
 }) {
-  const { registration_id, trigger_time } = args;
+  const {
+    user_id,
+    mandate_id,
+    org_ref,
+    program_ref,
+    program_name,
+    event_id,
+    scheduled_time,
+    delegate_data,
+    participant_data,
+    program_fee_cents,
+    success_fee_cents
+  } = args;
 
   console.log('[scheduler.schedule_signup] Scheduling registration:', {
-    registration_id,
-    trigger_time: new Date(trigger_time).toISOString()
+    user_id,
+    org_ref,
+    program_ref,
+    scheduled_time: new Date(scheduled_time).toISOString()
   });
 
-  const triggerDate = new Date(trigger_time);
+  if (!user_id || !mandate_id || !org_ref || !program_ref || !program_name || !event_id || !scheduled_time) {
+    throw new Error('Missing required scheduling fields');
+  }
+
+  const triggerDate = new Date(scheduled_time);
   const now = new Date();
 
   // Validate trigger time is in the future
   if (triggerDate <= now) {
-    throw new Error('trigger_time must be in the future');
+    throw new Error('scheduled_time must be in the future');
   }
 
-  // Validate registration exists in unified registrations table
-  const { data: registration, error: fetchError } = await supabase
-    .from('registrations')
-    .select('*')
-    .eq('id', registration_id)
+  // Persist the full execution payload so the worker can execute without a chat session.
+  const delegateWithMeta = {
+    ...delegate_data,
+    _pricing: {
+      program_fee_cents: program_fee_cents ?? delegate_data?._pricing?.program_fee_cents,
+      success_fee_cents: success_fee_cents ?? delegate_data?._pricing?.success_fee_cents ?? 2000
+    }
+  };
+
+  const { data: scheduled, error: insertError } = await supabase
+    .from('scheduled_registrations')
+    .insert({
+      user_id,
+      mandate_id,
+      org_ref,
+      program_ref,
+      program_name,
+      scheduled_time: triggerDate.toISOString(),
+      event_id,
+      delegate_data: delegateWithMeta,
+      participant_data
+    })
+    .select()
     .single();
 
-  if (fetchError || !registration) {
-    throw new Error(`Registration not found: ${registration_id}`);
+  if (insertError || !scheduled) {
+    console.error('[scheduler.schedule_signup] Insert error:', insertError);
+    throw new Error(`Failed to schedule registration: ${insertError?.message || 'unknown error'}`);
   }
 
-  // Only allow scheduling of pending registrations
-  if (registration.status !== 'pending') {
-    throw new Error(`Registration ${registration_id} is not in pending status: ${registration.status}`);
-  }
-
-  // Update scheduled_for if different
-  if (registration.scheduled_for !== triggerDate.toISOString()) {
-    const { error: updateError } = await supabase
-      .from('registrations')
-      .update({ scheduled_for: triggerDate.toISOString() })
-      .eq('id', registration_id);
-
-    if (updateError) {
-      console.error('[scheduler.schedule_signup] Update error:', updateError);
-      throw new Error(`Failed to update schedule: ${updateError.message}`);
-    }
-  }
-
-  console.log('[scheduler.schedule_signup] ✅ Registration scheduled:', registration_id);
-
-  // TODO: In production, integrate with cron job or worker queue
-  // For now, the scheduled_registrations table acts as the job queue
-  // A separate worker process will poll this table and execute registrations
+  console.log('[scheduler.schedule_signup] ✅ Scheduled registration created:', scheduled.id);
 
   return {
     success: true,
     data: {
-      registration_id,
-      scheduled_time: triggerDate.toISOString(),
+      scheduled_registration_id: scheduled.id,
+      scheduled_time: scheduled.scheduled_time,
       status: 'scheduled',
-      message: 'Registration will be executed at the scheduled time by the auto-registration worker'
+      message: 'Registration will be executed at the scheduled time by the always-on worker'
     }
   };
 }
@@ -84,20 +109,23 @@ async function scheduleSignup(args: {
 export const schedulerTools = [
   {
     name: 'scheduler.schedule_signup',
-    description: 'Schedule an auto-registration job to execute at a specific time. The registration must already exist in scheduled_registrations table.',
+    description: 'Schedule an auto-registration job to execute at a specific time. Persists full execution payload in scheduled_registrations for the always-on worker.',
     inputSchema: {
       type: 'object',
       properties: {
-        registration_id: {
-          type: 'string',
-          description: 'UUID of the scheduled_registrations record'
-        },
-        trigger_time: {
-          type: 'string',
-          description: 'ISO 8601 timestamp when registration should execute'
-        }
+        user_id: { type: 'string', description: 'Supabase user ID' },
+        mandate_id: { type: 'string', description: 'Mandate ID authorizing booking + success fee' },
+        org_ref: { type: 'string', description: 'Organization reference' },
+        program_ref: { type: 'string', description: 'Program reference' },
+        program_name: { type: 'string', description: 'Program display name' },
+        event_id: { type: 'string', description: 'Bookeo slot eventId to book at execution time' },
+        scheduled_time: { type: 'string', description: 'ISO 8601 timestamp when registration should execute' },
+        delegate_data: { type: 'object', description: 'Responsible delegate information' },
+        participant_data: { type: 'array', items: { type: 'object' }, description: 'Participant array' },
+        program_fee_cents: { type: 'number', description: 'Optional cached program fee in cents (for receipts)' },
+        success_fee_cents: { type: 'number', description: 'Optional success fee in cents (default 2000)' }
       },
-      required: ['registration_id', 'trigger_time']
+      required: ['user_id', 'mandate_id', 'org_ref', 'program_ref', 'program_name', 'event_id', 'scheduled_time', 'delegate_data', 'participant_data']
     },
     handler: async (args: any) => {
       return auditToolCall(
