@@ -1,34 +1,66 @@
 # Railway Deployment Guide
 
-## 🧪 Testing Mode: Disable Auto-Deploy
+## 🚀 Production Mode: Enable Auto-Deploy on Every Git Push
 
-**During live testing or AI Orchestrator tuning, prevent Railway from auto-deploying on every git push.**
+**Default production posture is ON: every push should auto-deploy. Keep this enabled unless you are intentionally pausing deploys.**
 
 ### Quick Toggle (Railway Dashboard)
 1. Go to Railway dashboard: https://railway.app
 2. Select your `signupassist-mcp-production` service
 3. Navigate to **Settings** → **Deployments** tab
-4. Toggle **OFF** the **"Auto Deploy on Git Push"** option
-5. ✅ Railway will now only deploy when you manually click "Deploy"
+4. Toggle **ON** the **"Auto Deploy on Git Push"** option
+5. ✅ Railway will deploy every new commit you push
 
-### When to Disable Auto-Deploy
-- During live testing sessions
-- When tuning AI Orchestrator prompts or flows
-- When making rapid iterative changes
-- When you need a stable environment for QA
+### Verify Auto-Deploy Is On (Checklist)
+- In the Deployments tab, confirm the **"Auto Deploy on Git Push"** switch shows **ON**.
+- Check the latest deployment log to ensure it corresponds to your most recent push.
+- If you temporarily turned it off for testing, switch it back to **ON** before resuming normal work.
 
-### When to Re-Enable Auto-Deploy
-- After testing is complete
-- For production deployments
-- When you want continuous deployment
+### When to Keep Auto-Deploy ON
+- For standard production operations
+- When you expect continuous delivery from the main branch
+- To confirm that every merged change ships automatically
 
-### Environment Variable Control (Optional)
-Add this to your Railway environment variables:
+### When to Temporarily Disable Auto-Deploy (Rare)
+- Only during controlled testing windows where you need a manual gate
+- When performing live debugging and want to freeze production version
+- Remember to turn it **back ON** immediately after the test
+
+### Environment Variable (Documentation Only)
+You may note the intended deploy mode in Railway vars:
 ```
-RAILWAY_AUTO_DEPLOY=false
+RAILWAY_AUTO_DEPLOY=true
 ```
 
-This serves as documentation for the current deployment mode.
+This documents that auto-deploy should remain active.
+
+---
+
+## 🚀 Trigger a Test Deployment with a Minor Change
+
+Want to confirm Railway will pick up a new deployment? Make a small, low-risk edit (like updating documentation), commit it, and push. For example:
+```bash
+echo "- Minor deploy trigger $(date +%Y-%m-%d)" >> docs/deploy-checklist.md
+git add docs/deploy-checklist.md
+git commit -m "chore: trigger Railway redeploy test"
+git push
+```
+
+Then open the Railway dashboard and verify a new deployment starts for `signupassist-mcp-production`. This flow is the fastest way to validate the deploy hook without altering runtime behavior.
+
+### How to Commit Your Change (Git refresher)
+1. Stage files you changed:
+   ```bash
+   git add <files you edited>
+   ```
+2. Create a commit with a short, imperative message:
+   ```bash
+   git commit -m "chore: describe your change"
+   ```
+3. Push to the branch that triggers Railway (typically `main` or your feature branch):
+   ```bash
+   git push origin <branch-name>
+   ```
 
 ---
 
