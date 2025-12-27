@@ -19,9 +19,9 @@ function reqEnv(name: string): string {
   return v;
 }
 
-async function main() {
-  const supabaseUrl = reqEnv("SUPABASE_URL");
-  const serviceKey = reqEnv("SUPABASE_SERVICE_ROLE_KEY");
+// A function is a reusable block of code that performs a specific task, accepts inputs (parameters), and can return an output.
+// In programming, functions help organize code by encapsulating procedures that can be executed multiple times.
+// In this code, the `main` function is an asynchronous function that retrieves critical environment variables needed for Supabase connectivity, preparing for further checks in a preflight routine.
 
   const supabase = createClient(supabaseUrl, serviceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
