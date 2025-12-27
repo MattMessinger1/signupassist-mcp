@@ -969,11 +969,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       // Handle explicit actions (button clicks)
       if (action) {
-        return await this.handleAction(action, payload, contextSessionId, context, input);
+        const response = await this.handleAction(action, payload, contextSessionId, context, input);
+        return this.attachContextSnapshot(response, contextSessionId);
       }
 
       // Handle natural language messages
-      return await this.handleMessage(input, contextSessionId, context);
+      const response = await this.handleMessage(input, contextSessionId, context);
+      return this.attachContextSnapshot(response, contextSessionId);
     } catch (error) {
       Logger.error('APIOrchestrator error:', error);
       return this.formatError('Sorry, something went wrong. Please try again.');
@@ -2475,6 +2477,33 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       } else {
         // No programs found
         programs = [];
+      }
+
+      // Hard filter: remove deprecated SkiClubPro remnants (e.g., ski jumping classes)
+      programs = programs.filter((p: any) => {
+        const providerRef = (p.provider_ref || p.org_ref || "").toLowerCase();
+        const title = (p.title || "").toLowerCase();
+        if (providerRef.includes("skiclubpro")) return false;
+        if (/ski\s+jump/i.test(title) || /\bski\b/i.test(title)) return false;
+        return true;
+      });
+
+      // If user asked for a specific activity, narrow to matching programs first.
+      const requestedActivity = (context.requestedActivity || "").toLowerCase().trim();
+      if (requestedActivity) {
+        const keywords = requestedActivity.split(/\s+/).filter(Boolean);
+        const matchesKeyword = (text: string) =>
+          keywords.every((kw) => text.toLowerCase().includes(kw));
+        const filtered = programs.filter((p: any) => {
+          const t = (p.title || "") + " " + (p.description || "");
+          return matchesKeyword(t);
+        });
+        if (filtered.length > 0) {
+          programs = filtered;
+          Logger.info(`[searchPrograms] Filtered programs by requestedActivity='${requestedActivity}' -> ${filtered.length} matches`);
+        } else {
+          Logger.info(`[searchPrograms] No direct matches for requestedActivity='${requestedActivity}', showing full list`);
+        }
       }
 
       if (!programs || programs.length === 0) {
@@ -4923,6 +4952,40 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       metadata: {
         _build: APIOrchestrator.BUILD_STAMP
       }
+    };
+  }
+
+  /**
+   * Attach the latest context snapshot to the response so downstream guardrails
+   * can compute the correct wizard step/progress in ChatGPT chat mode.
+   */
+  private attachContextSnapshot(
+    response: OrchestratorResponse,
+    sessionId: string
+  ): OrchestratorResponse {
+    const ctx = this.getContext(sessionId);
+    const selectedProgramName =
+      ctx.selectedProgram?.title || ctx.selectedProgram?.name || ctx.selectedProgram?.programName;
+
+    const contextSnapshot = {
+      step: ctx.step,
+      orgRef: ctx.orgRef,
+      userTimezone: ctx.userTimezone,
+      requestedActivity: ctx.requestedActivity,
+      selectedProgramName,
+      selectedProgram: ctx.selectedProgram,
+      formData: ctx.formData,
+      requiredFields: ctx.requiredFields,
+      pendingDelegateInfo: ctx.pendingDelegateInfo,
+      pendingParticipants: ctx.pendingParticipants,
+      schedulingData: ctx.schedulingData,
+      paymentAuthorized: ctx.paymentAuthorized
+    };
+
+    return {
+      ...response,
+      step: response.step || ctx.step,
+      context: { ...(response.context || {}), ...contextSnapshot }
     };
   }
 
