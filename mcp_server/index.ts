@@ -47,8 +47,15 @@ function microQuestionEmail(programName?: string): string {
   return (
     `Step 2/5 — Parent & child info\n\n` +
     `🔐 I'll only ask for what the provider requires.\n\n` +
-    `To continue${p}, what's the parent/guardian **email**?\n` +
-    `Reply like: Email: name@example.com`
+    `Please reply with everything in **one message** so we can move faster${p}:\n` +
+    `- Parent/guardian email\n` +
+    `- Parent/guardian first & last name\n` +
+    `- Parent/guardian date of birth (MM/DD/YYYY)\n` +
+    `- Relationship to the child (e.g., Parent)\n` +
+    `- Child first & last name\n` +
+    `- Child date of birth (MM/DD/YYYY)\n` +
+    `Optional: phone number or notes (allergies, accommodations)\n\n` +
+    `Example: Email: name@example.com; Name: Jane Doe; DOB: 05/13/1976; Relationship: Parent; Child: Alex Doe; Child DOB: 02/17/2014; Phone: 555-123-4567`
   );
 }
 
@@ -84,6 +91,45 @@ function stripChatCTAsAndSchemas(resp: any): any {
   return resp;
 }
 
+function ensureSuccessFeeDisclosure(message: string): string {
+  if (!message) return message;
+  const mentionsFee = /\bsuccess fee\b/i.test(message) || /\$20\b/i.test(message) || /\bsignupassist\b/i.test(message);
+  if (!mentionsFee) return message;
+
+  const disclosure = [
+    "✅ Pricing & payment",
+    "- SignupAssist charges a **$20 success fee only after we successfully secure your spot**.",
+    "- Provider program fee is billed separately via their official checkout (e.g., Bookeo/Stripe).",
+    "- All payments use Stripe; card numbers are tokenized and not stored by SignupAssist.",
+    "Would you like me to proceed to confirmation so you can receive the provider’s payment link and authorize the $20 success fee?"
+  ].join("\n");
+
+  // Avoid duplicating the header; caller already handled wizard header.
+  return `${message}\n\n${disclosure}`;
+}
+
+function collectMissingFields(context: any): string[] {
+  const formData = context?.formData || {};
+  const missing: string[] = [];
+  const requiredDelegate = context?.requiredFields?.delegate || [];
+  const requiredParticipant = context?.requiredFields?.participant || [];
+
+  const check = (fields: any[]) => {
+    for (const f of fields) {
+      if (!f?.required) continue;
+      const key = f.key;
+      const val = formData[key];
+      if (val == null || (typeof val === "string" && val.trim() === "")) {
+        missing.push(f.label || f.key);
+      }
+    }
+  };
+
+  check(requiredDelegate);
+  check(requiredParticipant);
+  return missing;
+}
+
 /**
  * MASTER GUARDRAIL: Apply all V1 chat UX guardrails at HTTP boundary
  * - FIX 1: Always Step headers based on context.step
@@ -101,12 +147,21 @@ function applyV1ChatGuardrails(resp: any): any {
   // In FORM_FILL, we never send a list of fields. We always ask one micro-question.
   if (ctxStep === "FORM_FILL") {
     const programName = resp?.context?.selectedProgramName || resp?.context?.selectedProgram?.title || resp?.programName;
-    resp.message = microQuestionEmail(programName);
+    const missing = collectMissingFields(resp?.context);
+    if (missing && missing.length > 0) {
+      const desiredHeader = ensureWizardHeaderAlways("", "2");
+      resp.message =
+        `${desiredHeader}Please reply with the following required items in **one message**:\n\n- ${missing.join("\n- ")}\n\nOptional: phone number or notes (allergies, accommodations).`;
+    } else {
+      resp.message = microQuestionEmail(programName);
+    }
+    resp.message = ensureSuccessFeeDisclosure(resp.message);
     return resp;
   }
 
   // Always enforce correct header based on context.step
   resp.message = ensureWizardHeaderAlways(resp?.message || "", wizardStep);
+  resp.message = ensureSuccessFeeDisclosure(resp.message);
 
   return resp;
 }
