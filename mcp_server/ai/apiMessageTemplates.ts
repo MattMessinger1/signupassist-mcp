@@ -4,8 +4,8 @@
  */
 
 // V1 (no widget): we must render progress in plain text (not only tool metadata)
-function stepHeader(step: 1 | 2 | 3 | 4, title: string): string {
-  return `Step ${step}/4 — ${title}`;
+function stepHeader(step: number, title: string): string {
+  return `Step ${step}/5 — ${title}`;
 }
 
 function trustLine(kind: "privacy" | "stripe"): string {
@@ -116,7 +116,7 @@ export function getAPIFormIntroMessage(vars: APIMessageVariables): string {
 export function getAPIPaymentSummaryMessage(vars: APIMessageVariables): string {
   const programName = vars.program_name || "this program";
   
-  return `${stepHeader(3, "Payment setup (Stripe)")}\n` +
+  return `${stepHeader(4, "Payment (Stripe)")}\n` +
   `${trustLine("stripe")}\n\n` +
   `Ready to complete registration for **${programName}**?
 
@@ -129,7 +129,7 @@ Review the charges below. By confirming, you authorize SignupAssist to complete 
 export function getPaymentAuthorizationMessage(vars: APIMessageVariables): string {
   const programName = vars.program_name || "this program";
   
-  return `${stepHeader(3, "Payment setup (Stripe)")}\n` +
+  return `${stepHeader(4, "Payment (Stripe)")}\n` +
   `${trustLine("stripe")}\n\n` +
   `Ready to complete registration for **${programName}**?
 
