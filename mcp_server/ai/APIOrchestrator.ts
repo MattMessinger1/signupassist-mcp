@@ -292,6 +292,41 @@ export default class APIOrchestrator implements IOrchestrator {
   }
 
   // ---------------------------------------------------------------------------
+  // PCI / App Store compliance: never accept card numbers in chat
+  // ---------------------------------------------------------------------------
+  private luhnCheck(digits: string): boolean {
+    let sum = 0;
+    let shouldDouble = false;
+    for (let i = digits.length - 1; i >= 0; i--) {
+      const c = digits.charCodeAt(i);
+      if (c < 48 || c > 57) return false;
+      let n = c - 48;
+      if (shouldDouble) {
+        n = n * 2;
+        if (n > 9) n -= 9;
+      }
+      sum += n;
+      shouldDouble = !shouldDouble;
+    }
+    return sum % 10 === 0;
+  }
+
+  private containsPaymentCardNumber(input: string): boolean {
+    const s = String(input || "");
+    if (!s) return false;
+
+    // Match digit runs possibly separated by spaces or hyphens (common PAN formatting).
+    // We then normalize to digits and Luhn-check.
+    const candidates = s.match(/[0-9][0-9 \-]{11,30}[0-9]/g) || [];
+    for (const cand of candidates) {
+      const digits = cand.replace(/\D/g, "");
+      if (digits.length < 13 || digits.length > 19) continue;
+      if (this.luhnCheck(digits)) return true;
+    }
+    return false;
+  }
+
+  // ---------------------------------------------------------------------------
   // Chat-only intent helpers (eliminate "Madison?" + "which activity?" loops)
   // ---------------------------------------------------------------------------
   private isBrowseAllIntent(input: string): boolean {
@@ -1436,6 +1471,16 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     sessionId: string,
     context: APIContext
   ): Promise<OrchestratorResponse | null> {
+    // PCI / compliance: do not allow card numbers in chat (even Stripe test cards).
+    // Always route users through Stripe Checkout (hosted) for payment method entry.
+    if (this.containsPaymentCardNumber(input)) {
+      const msg =
+        context.step === FlowStep.PAYMENT
+          ? `For security, please don’t share card numbers in chat.\n\nUse the **secure Stripe Checkout link** I sent above to enter your card details (we never see them). When you’re done, come back here and type **done**.`
+          : `For security, please don’t share card numbers in chat.\n\nWhen it’s time to add a payment method, I’ll provide a **secure Stripe Checkout link** (we never see your card details).`;
+      return this.formatResponse(msg);
+    }
+
     // ChatGPT NL: Check for secondary actions FIRST (view receipts, cancel, audit trail)
     const secondaryAction = this.parseSecondaryAction(input);
     if (secondaryAction) {
@@ -1526,8 +1571,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // Check if this might be a location response (simple city/state input)
     // Use normalizeLocationInput to handle fuzzy inputs like "near Chicago"
     // Handle location responses in BROWSE step OR when we're in an active session without a selected program
+    // This code attempts to determine whether the user's input is a location-related response.
+    // First, it normalizes the input for location extraction (handling fuzzy entries such as "near Chicago").
+    // Then, it checks if the normalized input looks like a location and that the current workflow step is BROWSE
+    // or there is no selected program, in which case it should be handled as a location.
     const normalizedForLocation = this.normalizeLocationInput(input);
-    const shouldHandleAsLocation = this.isLocationResponse(normalizedForLocation) && 
+    const shouldHandleAsLocation =
+      this.isLocationResponse(normalizedForLocation) &&
       (context.step === FlowStep.BROWSE || !context.selectedProgram);
     
     if (shouldHandleAsLocation) {
