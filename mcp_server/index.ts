@@ -54,7 +54,7 @@ function microQuestionEmail(programName?: string): string {
     `- Relationship to the child (e.g., Parent)\n` +
     `- Child first & last name\n` +
     `- Child date of birth (MM/DD/YYYY)\n` +
-    `Optional: phone number or notes (allergies, accommodations)\n\n` +
+    `Optional: phone number or logistical notes (e.g., pickup instructions)\n\n` +
     `Example: Email: name@example.com; Name: Jane Doe; DOB: 05/13/1976; Relationship: Parent; Child: Alex Doe; Child DOB: 02/17/2014; Phone: 555-123-4567`
   );
 }
@@ -88,6 +88,10 @@ function stripChatCTAsAndSchemas(resp: any): any {
   delete resp.signupFormSchema;
   delete resp.formSchema;
   delete resp.signupForm;
+  // Reduce model “helpfulness” in Actions mode: prefer the plain `message` string we return.
+  // (Otherwise the model may re-render from structured content and drop Step headers.)
+  if (resp?.structuredContent) delete resp.structuredContent;
+  if (resp?.content) delete resp.content;
   return resp;
 }
 
@@ -143,21 +147,6 @@ function applyV1ChatGuardrails(resp: any): any {
 
   // Always remove CTAs/schemas first
   stripChatCTAsAndSchemas(resp);
-
-  // In FORM_FILL, we never send a list of fields. We always ask one micro-question.
-  if (ctxStep === "FORM_FILL") {
-    const programName = resp?.context?.selectedProgramName || resp?.context?.selectedProgram?.title || resp?.programName;
-    const missing = collectMissingFields(resp?.context);
-    if (missing && missing.length > 0) {
-      const desiredHeader = ensureWizardHeaderAlways("", "2");
-      resp.message =
-        `${desiredHeader}Please reply with the following required items in **one message**:\n\n- ${missing.join("\n- ")}\n\nOptional: phone number or notes (allergies, accommodations).`;
-    } else {
-      resp.message = microQuestionEmail(programName);
-    }
-    resp.message = ensureSuccessFeeDisclosure(resp.message);
-    return resp;
-  }
 
   // Always enforce correct header based on context.step
   resp.message = ensureWizardHeaderAlways(resp?.message || "", wizardStep);
