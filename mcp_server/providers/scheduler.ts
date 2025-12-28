@@ -118,7 +118,7 @@ export const schedulerTools = [
         org_ref: { type: 'string', description: 'Organization reference' },
         program_ref: { type: 'string', description: 'Program reference' },
         program_name: { type: 'string', description: 'Program display name' },
-        event_id: { type: 'string', description: 'Bookeo slot eventId to book at execution time' },
+        event_id: { type: 'string', description: 'Bookeo slot eventId OR productId/program_ref (worker will resolve to the next available slot at execution time)' },
         scheduled_time: { type: 'string', description: 'ISO 8601 timestamp when registration should execute' },
         delegate_data: { type: 'object', description: 'Responsible delegate information' },
         participant_data: { type: 'array', items: { type: 'object' }, description: 'Participant array' },

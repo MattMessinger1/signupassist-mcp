@@ -3433,6 +3433,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     }
 
     const scheduledTimeStr = computedOpensAt?.toISOString() || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    // For Bookeo, the booking API needs a slot eventId. However, for "opens later" programs
+    // Bookeo may not return any slots yet (so cached feed has no first_available_event_id).
+    // In that case we fall back to the productId/program_ref and let bookeo.confirm_booking
+    // resolve the real slot eventId at execution time via /availability/slots.
+    const eventIdForBooking = context.selectedProgram?.first_available_event_id || context.selectedProgram?.program_ref;
 
     this.updateContext(sessionId, {
       step: FlowStep.REVIEW,
@@ -3440,12 +3445,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         delegate_data: formData.delegate,
         participant_data: formData.participants,
         num_participants: numParticipants,
-        event_id: context.selectedProgram?.first_available_event_id,
+        event_id: eventIdForBooking,
         program_fee_cents: Math.round(totalPrice * 100)
       },
       schedulingData: isFutureBooking ? {
         scheduled_time: scheduledTimeStr,
-        event_id: context.selectedProgram?.first_available_event_id,
+        event_id: eventIdForBooking,
         total_amount: grandTotal,
         program_fee: formattedTotal,
         program_fee_cents: Math.round(totalPrice * 100),
