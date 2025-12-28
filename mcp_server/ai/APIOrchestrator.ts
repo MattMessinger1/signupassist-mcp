@@ -511,10 +511,30 @@ export default class APIOrchestrator implements IOrchestrator {
     const cleanedInput = normalized
       .replace(/^(select|choose|pick|i want|i'd like|sign up for|register for|book)\s+/i, '')
       .trim();
+
+    // If the user typed a bare number (e.g., "1"), treat it as an ordinal choice.
+    // This must run BEFORE title matching, because program titles often contain digits (e.g., ages "7–11"),
+    // which can cause accidental matches when cleanedInput is "1".
+    if (/^\d+$/.test(cleanedInput)) {
+      const n = Number(cleanedInput);
+      const idx = Number.isFinite(n) ? n - 1 : -1;
+      if (idx >= 0 && idx < displayedPrograms.length) {
+        console.log('[parseProgramSelection] ✅ TRACE: Matched by bare numeric ordinal', {
+          input,
+          idx,
+          matchedTitle: displayedPrograms[idx].title,
+          program_ref: displayedPrograms[idx].program_ref
+        });
+        return displayedPrograms[idx];
+      }
+    }
     
     // Match by title (fuzzy contains match with improved keyword extraction)
     const titleMatch = displayedPrograms.find(p => {
       const progTitle = (p.title || '').toLowerCase();
+      // Never do "contains" title matching for very short inputs like "1" / "2".
+      // (Ordinal matching is handled separately above.)
+      if (cleanedInput.length < 3) return false;
       // Check if user's input contains the program title or vice versa
       if (cleanedInput.includes(progTitle) || progTitle.includes(cleanedInput)) {
         return true;
@@ -2713,37 +2733,20 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         return extractNumber(a.title || '') - extractNumber(b.title || '');
       });
       
-      // Filter programs based on Bookeo's booking window rules
+      // Show future programs (including "opens later" + "sold out"), hide only past programs.
+      // IMPORTANT: Booking limits (max/min advance time) should affect status messaging,
+      // not whether the program appears in the catalog.
       const now = new Date();
       
       const upcomingPrograms = sortedPrograms.filter((prog: any) => {
-        if (!prog.earliest_slot_time) return true; // Keep programs without slot time
+        if (!prog.earliest_slot_time) return true; // Keep programs without slot time (often "opens later" before slots exist)
         
         const slotTime = new Date(prog.earliest_slot_time);
-        
-        // Apply Bookeo booking limits if present
-        if (prog.booking_limits) {
-          const limits = prog.booking_limits;
-          
-          // Check maximum advance booking (e.g., "cannot book more than 6 months in advance")
-          if (limits.maxAdvanceTime) {
-            const maxDate = new Date(now.getTime() + limits.maxAdvanceTime.amount * this.getMilliseconds(limits.maxAdvanceTime.unit));
-            if (slotTime > maxDate) return false; // Too far in future
-          }
-          
-          // Check minimum advance booking (e.g., "must book at least 1 hour in advance")
-          if (limits.minAdvanceTime) {
-            const minDate = new Date(now.getTime() + limits.minAdvanceTime.amount * this.getMilliseconds(limits.minAdvanceTime.unit));
-            if (slotTime < minDate) return false; // Too soon to book
-          }
-        } else {
-          // Fallback: date-based filtering if no booking limits
-          const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-          const slotDay = new Date(slotTime.getFullYear(), slotTime.getMonth(), slotTime.getDate());
-          if (slotDay < today) return false;
-        }
-        
-        return true;
+        if (!Number.isFinite(slotTime.getTime())) return true;
+
+        // Hide past sessions only (with a small grace period).
+        const graceMs = 5 * 60 * 1000; // 5 min
+        return slotTime.getTime() >= (now.getTime() - graceMs);
       });
       
       if (upcomingPrograms.length === 0) {
@@ -2895,20 +2898,41 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         };
       });
 
-      // Build program list for inline text display in native ChatGPT
-      const programListForMessage = upcomingPrograms.map((prog, idx) => {
-        // Determine status inline (no separate method needed)
-        const hasAvailability = prog.availableSpots !== undefined ? prog.availableSpots > 0 : true;
-        const opensLater = prog.opensAt && new Date(prog.opensAt) > new Date();
-        const status = opensLater ? 'coming_soon' : (hasAvailability ? 'open' : 'waitlist');
-        
+      // Build program list for inline text display in native ChatGPT.
+      // IMPORTANT: use the SAME slice as displayedPrograms (programsToDisplay) so numeric selection (1..N) is consistent.
+      const programListForMessage = programsToDisplay.map((prog: any, idx: number) => {
+        const now = new Date();
+        const hasAvailableSlots = prog.next_available_slot || (prog.available_slots && prog.available_slots > 0);
+        const isSoldOut = prog.booking_status === 'sold_out';
+
+        const slotStart = prog.earliest_slot_time ? new Date(prog.earliest_slot_time) : null;
+        const maxAdvance = prog.booking_limits?.maxAdvanceTime;
+        const computedOpensAt =
+          slotStart && maxAdvance
+            ? new Date(slotStart.getTime() - maxAdvance.amount * this.getMilliseconds(maxAdvance.unit))
+            : (prog.booking_opens_at ? new Date(prog.booking_opens_at) : null);
+
+        const bookingStatus: 'open_now' | 'opens_later' | 'sold_out' | 'unknown' = (() => {
+          if (isSoldOut) return 'sold_out';
+          if (hasAvailableSlots) return 'open_now';
+          if (computedOpensAt && computedOpensAt > now) return 'opens_later';
+          return (prog.booking_status as any) || 'unknown';
+        })();
+
+        const schedule = slotStart ? this.formatTimeForUser(slotStart, context) : prog.schedule;
+        const opensAtDisplay =
+          bookingStatus === 'opens_later' && computedOpensAt
+            ? this.formatTimeForUser(computedOpensAt, context)
+            : undefined;
+
         return {
           index: idx + 1,
           title: prog.title || "Untitled",
           description: stripHtml(prog.description || ""),
           price: prog.price,
-          schedule: prog.schedule,
-          status
+          schedule,
+          status: bookingStatus,
+          opens_at: opensAtDisplay,
         };
       });
 

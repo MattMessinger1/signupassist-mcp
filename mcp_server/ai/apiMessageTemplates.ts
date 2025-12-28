@@ -55,7 +55,10 @@ export interface ProgramListItem {
   description?: string;
   price?: string;
   schedule?: string;
+  /** open_now | opens_later | sold_out | closed | unknown */
   status?: string;
+  /** Human-friendly "registration opens" display (when status=opens_later) */
+  opens_at?: string;
 }
 
 /**
@@ -74,11 +77,26 @@ export function getAPIProgramsReadyMessage(vars: APIMessageVariables & { program
   if (programs.length > 0) {
     programs.forEach((prog, idx) => {
       const num = idx + 1;
-      const statusEmoji = prog.status === 'open' ? '✅' : prog.status === 'waitlist' ? '⏳' : '📅';
+      const s = (prog.status || '').toLowerCase();
+      const statusEmoji =
+        s === 'open' || s === 'open_now' ? '✅'
+        : s === 'sold_out' ? '🚫'
+        : s === 'closed' ? '⛔'
+        : s === 'opens_later' || s === 'coming_soon' ? '📅'
+        : 'ℹ️';
+
+      const statusLabel =
+        s === 'open' || s === 'open_now' ? 'Open'
+        : s === 'sold_out' ? 'Sold Out'
+        : s === 'closed' ? 'Registration Closed'
+        : s === 'opens_later'
+          ? (prog.opens_at ? `Registration opens ${prog.opens_at}` : 'Registration opens soon')
+          : 'Status unknown';
+
       message += `**${num}. ${prog.title}**\n`;
       if (prog.price) message += `   💲 ${prog.price}`;
       if (prog.schedule) message += ` · 📅 ${prog.schedule}`;
-      message += ` · ${statusEmoji} ${prog.status === 'open' ? 'Open' : prog.status === 'waitlist' ? 'Waitlist' : 'Coming Soon'}\n`;
+      message += ` · ${statusEmoji} ${statusLabel}\n`;
 
       // Description (if present) + fallback so it never feels "missing"
       const desc = (prog.description || "").trim();
