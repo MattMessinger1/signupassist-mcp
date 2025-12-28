@@ -38,16 +38,24 @@ npm run worker:scheduled
 
 ## Required environment variables (worker + server)
 
-The worker uses the same provider + DB stack as the server.
+### Worker (required)
+
+The scheduled worker (`npm run worker:scheduled`) requires:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
-- `SUPABASE_ANON_KEY` (if referenced by shared libs)
-- `OPENAI_API_KEY` (if any shared initialization requires it; worker should not depend on it for v1)
-- `STRIPE_SECRET_KEY` (or the specific Stripe env vars expected by your edge functions)
-- `AUTH0_DOMAIN`
-- `AUTH0_AUDIENCE`
-- Provider credentials (v1: Bookeo API keys / org refs as used by `mcp_server/providers/bookeo.ts`)
+- `BOOKEO_API_KEY`
+- `BOOKEO_SECRET_KEY`
+
+Optional:
+
+- `SCHEDULED_WORKER_MAX_ATTEMPT_MS` (default `120000`) – how long to keep retrying at “open time”
+
+**Stripe note:** The worker triggers success-fee charging via the Supabase Edge Function `stripe-charge-success-fee`. The worker itself does **not** need Stripe secrets as long as the edge function is configured correctly in Supabase.
+
+### MCP server (web) (required)
+
+The MCP server (`npm start`) uses the same Supabase + provider credentials plus OAuth config. See `docs/V1_ENV_VARS.md` for the full list.
 
 **Important:** The worker must run with credentials that can:
 - read/update `scheduled_registrations`
@@ -77,6 +85,22 @@ Create **two services** from the same repo:
 - No public port required
 
 Both services must share the same env var set (or worker must have the subset listed above).
+
+### Railway step-by-step
+
+In your Railway project:
+
+1) Create a new service from the same GitHub repo (same branch as web).
+2) Name it `signupassist-mcp-worker`.
+3) Set **Start Command** to:
+
+```bash
+npm run worker:scheduled
+```
+
+4) Ensure the worker service has **no public domain** (it does not need inbound traffic).
+5) Disable HTTP health checks for the worker service (it does not serve `/health`).
+6) Copy env vars from the web service and keep at minimum the **Worker (required)** set above.
 
 ---
 

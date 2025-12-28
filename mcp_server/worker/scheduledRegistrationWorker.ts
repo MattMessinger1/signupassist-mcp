@@ -21,6 +21,7 @@ import { createClient } from "@supabase/supabase-js";
 import { bookeoTools } from "../providers/bookeo.js";
 import { stripeTools } from "../providers/stripe.js";
 import { registrationTools } from "../providers/registrations.js";
+import { createServer } from "node:http";
 
 type ScheduledRow = {
   id: string;
@@ -45,6 +46,46 @@ if (!supabaseUrl || !supabaseServiceKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+/**
+ * Railway (and other platforms) may apply an HTTP healthcheck by default.
+ * The scheduled worker is primarily background work, but we optionally expose
+ * a minimal `/health` endpoint on `PORT` when present so the process can be
+ * monitored without running the full MCP web server.
+ */
+function startOptionalHealthServer() {
+  const portStr = process.env.PORT;
+  if (!portStr) return;
+  const port = Number(portStr);
+  if (!Number.isFinite(port) || port <= 0) return;
+
+  const server = createServer((req, res) => {
+    const method = (req.method || "GET").toUpperCase();
+    const path = (req.url || "/").split("?")[0] || "/";
+
+    if ((method === "GET" || method === "HEAD") && path === "/health") {
+      const body = JSON.stringify({ ok: true, role: "worker", ts: Date.now() });
+      res.writeHead(200, {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store",
+      });
+      if (method === "HEAD") {
+        res.end();
+      } else {
+        res.end(body);
+      }
+      return;
+    }
+
+    res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("not_found");
+  });
+
+  server.listen(port, () => {
+    // eslint-disable-next-line no-console
+    console.log(`[worker] Health server listening on port ${port}`);
+  });
+}
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -361,6 +402,7 @@ async function tick() {
 }
 
 async function main() {
+  startOptionalHealthServer();
   console.log("[worker] ScheduledRegistrationWorker started");
   console.log("[worker] NODE_ENV:", process.env.NODE_ENV);
   console.log("[worker] Precision mode: always-on (poll + sleep to scheduled_time)");
