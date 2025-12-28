@@ -99,7 +99,10 @@ npm run worker:scheduled
 ```
 
 4) Ensure the worker service has **no public domain** (it does not need inbound traffic).
-5) Disable HTTP health checks for the worker service (it does not serve `/health`).
+5) Health checks:
+   - If you can disable HTTP health checks for the worker service, do that.
+   - If Railway insists on a healthcheck, the worker supports a minimal `GET /health` responder **as long as `PORT` is set**.
+   - If you see “service unavailable” healthcheck retries, add `PORT=8080` to the worker service env vars.
 6) Copy env vars from the web service and keep at minimum the **Worker (required)** set above.
 
 ---
