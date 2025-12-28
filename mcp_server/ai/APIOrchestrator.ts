@@ -2691,13 +2691,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         programs = [];
       }
 
-      // Hard filter: remove deprecated SkiClubPro remnants (e.g., ski jumping classes)
+      // Hard filter: remove deprecated SkiClubPro remnants.
+      // IMPORTANT: Do NOT filter by title keywords (e.g., "ski") because Bookeo may legitimately
+      // host classes with those words (and we still want to show them).
       programs = programs.filter((p: any) => {
         const providerRef = (p.provider_ref || p.org_ref || "").toLowerCase();
-        const title = (p.title || "").toLowerCase();
-        if (providerRef.includes("skiclubpro")) return false;
-        if (/ski\s+jump/i.test(title) || /\bski\b/i.test(title)) return false;
-        return true;
+        return !providerRef.includes("skiclubpro");
       });
 
       // Do NOT filter by requestedActivity; always show all programs for the org.
