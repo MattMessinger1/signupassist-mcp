@@ -665,22 +665,100 @@ async function confirmBooking(args: {
     };
   }
   
-  // Validate eventId format - Bookeo slot eventIds are typically "productId_something_YYYY-MM-DD"
-  // Plain productIds lack underscores and would cause INVALID_EVENT_ID error
+  // Bookeo slot eventIds are typically "productId_something_YYYY-MM-DD".
+  // For scheduled-at-open flows we may only have the productId at schedule time, so we resolve
+  // the next available slot eventId at execution time.
   const looksLikePlainProductId = !event_id || event_id === program_ref || !event_id.includes('_');
-  
+  let resolvedEventId = event_id;
+
   if (looksLikePlainProductId) {
-    console.error(`[Bookeo] ❌ Refusing to create booking: eventId "${event_id}" looks like a productId (should be full slot eventId with underscores)`);
-    const friendlyError: ParentFriendlyError = {
-      display: 'Invalid booking slot reference',
-      recovery: 'Please refresh the program list and try again',
-      severity: 'high',
-      code: 'INVALID_EVENT_ID'
-    };
-    return {
-      success: false,
-      error: friendlyError
-    };
+    try {
+      console.warn(
+        `[Bookeo] eventId "${event_id}" looks like a productId; resolving slot eventId via /availability/slots for product=${program_ref}`
+      );
+
+      // Bookeo API max range is 31 days; use 30 days and extend in chunks if needed.
+      const windowDays = 30;
+      const maxWindows = 12; // up to ~360 days
+
+      type Slot = { eventId?: string; startTime?: string; numSeatsAvailable?: number };
+
+      let slots: Slot[] = [];
+      for (let i = 0; i < maxWindows; i++) {
+        const start = new Date(Date.now() + i * windowDays * 24 * 60 * 60 * 1000);
+        const end = new Date(start.getTime() + windowDays * 24 * 60 * 60 * 1000);
+
+        const urlSlots = buildBookeoUrl('/availability/slots', {
+          productId: program_ref,
+          startTime: start.toISOString(),
+          endTime: end.toISOString(),
+        });
+
+        const resp = await fetch(urlSlots);
+        if (!resp.ok) {
+          const errorText = await resp.text().catch(() => '');
+          console.warn(
+            `[Bookeo] availability/slots lookup failed (window=${i + 1}/${maxWindows}): ${resp.status} ${resp.statusText} ${errorText}`
+          );
+          continue;
+        }
+
+        const json = await resp.json().catch(() => ({} as any));
+        slots = Array.isArray((json as any)?.data) ? ((json as any).data as Slot[]) : [];
+        if (slots.length > 0) break;
+      }
+
+      if (!slots || slots.length === 0) {
+        const friendlyError: ParentFriendlyError = {
+          display: 'No booking slots available yet',
+          recovery: 'This program may not be open for booking yet. Please try again later.',
+          severity: 'medium',
+          code: 'BOOKEO_NO_SLOTS',
+        };
+        return { success: false, error: friendlyError };
+      }
+
+      const available = slots.filter((s) => Number(s?.numSeatsAvailable ?? 0) > 0);
+      if (available.length === 0) {
+        const friendlyError: ParentFriendlyError = {
+          display: 'This class is currently sold out',
+          recovery: 'Try another date/time or pick a different program.',
+          severity: 'high',
+          code: 'BOOKEO_SOLD_OUT',
+        };
+        return { success: false, error: friendlyError };
+      }
+
+      // Prefer the earliest available slot (Bookeo usually returns chronological, but be safe).
+      available.sort((a, b) => {
+        const at = a?.startTime ? new Date(a.startTime).getTime() : 0;
+        const bt = b?.startTime ? new Date(b.startTime).getTime() : 0;
+        return at - bt;
+      });
+
+      const chosen = available[0];
+      if (!chosen?.eventId) {
+        const friendlyError: ParentFriendlyError = {
+          display: 'Unable to locate a valid booking slot',
+          recovery: 'Please try again or contact support.',
+          severity: 'high',
+          code: 'INVALID_EVENT_ID',
+        };
+        return { success: false, error: friendlyError };
+      }
+
+      resolvedEventId = chosen.eventId;
+      console.log(`[Bookeo] Resolved slot eventId="${resolvedEventId}" (startTime=${chosen.startTime || 'unknown'})`);
+    } catch (e: any) {
+      console.error('[Bookeo] Failed to resolve slot eventId:', e?.message || e);
+      const friendlyError: ParentFriendlyError = {
+        display: 'Unable to look up booking slots',
+        recovery: 'Please try again in a moment.',
+        severity: 'medium',
+        code: 'BOOKEO_API_ERROR',
+      };
+      return { success: false, error: friendlyError };
+    }
   }
   
   try {
@@ -718,7 +796,7 @@ async function confirmBooking(args: {
     
     // Build Bookeo API payload
     const bookingPayload = {
-      eventId: event_id,
+      eventId: resolvedEventId,
       productId: program_ref,
       customer: {
         firstName: delegate_data.firstName.trim(),

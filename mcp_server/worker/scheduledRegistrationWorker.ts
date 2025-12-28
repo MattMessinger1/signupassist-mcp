@@ -234,7 +234,14 @@ async function attemptBookingWithRetries(row: ScheduledRow) {
         return resp;
       }
 
-      lastErr = resp?.error || resp;
+      // Fail-fast for permanent errors (don't burn the whole retry window).
+      const errObj = (resp as any)?.error;
+      const code = errObj?.code as string | undefined;
+      if (code && ["INVALID_EVENT_ID", "VALIDATION_ERROR", "PROGRAM_NOT_FOUND", "BOOKEO_SOLD_OUT"].includes(code)) {
+        throw new Error(errObj?.display || errObj?.message || JSON.stringify(errObj));
+      }
+
+      lastErr = errObj || resp;
     } catch (e) {
       lastErr = e;
     }
