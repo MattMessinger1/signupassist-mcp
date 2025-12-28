@@ -179,42 +179,13 @@ function v1VisibilityForTool(toolName: string, toolMeta: Record<string, any> = {
     return "private";
   }
 
-  const safety = toolMeta?.["openai/safety"];
-
-  // Always public if explicitly read-only
-  if (safety === "read-only") return "public";
-
-  // V1: force ALL user-facing chat through the canonical chat tool
-  // signupassist.start is now private to prevent model bypass
-  if (toolName === "signupassist.start") return "private";
-
-  // Public: discovery + requirements + diagnostics
-  // NOTE: bookeo.find_programs and bookeo.discover_required_fields are PRIVATE
-  // to force ChatGPT through signupassist.chat (which uses APIOrchestrator's Step headers + micro-questions)
-  const publicAllowlist = new Set<string>([
-    "signupassist.chat",
-    "program_feed.get",
-    "bookeo.test_connection",
-  ]);
-  if (publicAllowlist.has(toolName)) return "public";
-
-  // Public: Stripe setup + verification (no charging/refunds in V1 public surface)
-  const publicStripeAllowlist = new Set<string>([
-    "stripe.create_customer",
-    "stripe.create_checkout_session",
-    "stripe.save_payment_method",
-    "stripe.check_payment_status",
-    "user.check_payment_method",
-  ]);
-  if (publicStripeAllowlist.has(toolName)) return "public";
-
-  // Everything else is private in V1:
-  // - booking/holds/cancel/modify
-  // - mandates submit / execution
-  // - refunds/charges
-  // - user writes (create/update child/profile)
-  // - scheduler
-  // - provider login/register/pay
+  // V1 posture: keep the model-facing tool surface extremely small to make
+  // ChatGPT's behavior deterministic and prevent it from "helpfully" reformatting
+  // or dumping raw fields from lower-level provider tools.
+  //
+  // We still REGISTER all tools (so the orchestrator can call them internally),
+  // but we only LIST the canonical chat tool for the model.
+  if (toolName === "signupassist.chat") return "public";
   return "private";
 }
 
@@ -803,8 +774,7 @@ class SignupAssistMCPServer {
         text = ensureWizardHeaderAlways(text, wizardStep);
 
         return {
-          structuredContent: resp,
-          content: [{ type: "text", text }]
+          content: [{ type: "text", text }],
         };
       },
       _meta: {
