@@ -36,8 +36,8 @@ This is the authoritative checklist for v1. The goal is:
 - [x] **Logo URL reachable from manifest**
   - `public/logo-512.svg` → `/logo-512.svg`
 
-- [ ] **Domain verification token (if required by submission UI)**
-  - Endpoint: `/.well-known/openai-verification.txt`
+- [x] **Domain verification token (if required by submission UI)**
+  - Endpoint(s): `/.well-known/openai-apps-challenge` (current UI) and `/.well-known/openai-verification.txt` (legacy)
   - Env: `OPENAI_VERIFICATION_TOKEN`
 
 ---
@@ -59,13 +59,13 @@ This is the authoritative checklist for v1. The goal is:
 ### B2. Schedule-at-open flow (signup window not open yet)
 - [ ] System computes/uses accurate “opens at” time from provider metadata
 - [ ] User confirms scheduled execution
-- [ ] Scheduled job created (SCH- code) and viewable via “view receipts”
+- [x] Scheduled job created (SCH- code) and viewable via “view receipts”
 - [ ] Worker executes at `scheduled_time` with rapid retries
 - [ ] On success: provider booking + $20 fee + receipt row created
 - [ ] Provider payment state stored from provider response (paid/unpaid/unknown + amounts)
 
 ### B3. Cancel & user control (text-only v1)
-- [ ] Cancel scheduled signup by reference: “cancel SCH-xxxx” + yes/no confirm
+- [x] Cancel scheduled signup by reference: “cancel SCH-xxxx” + yes/no confirm
 - [ ] Cancel completed booking by reference: “cancel REG-xxxx” + confirm (if supported)
 - [ ] Audit trail supports both scheduled and completed registrations
 
@@ -107,13 +107,13 @@ This is the authoritative checklist for v1. The goal is:
 
 ## E. Pre-submission “one hour” checklist
 
-- [ ] Hit `/.well-known/chatgpt-apps-manifest.json` in production (200 + valid JSON)
-- [ ] Hit `/.well-known/oauth-authorization-server` (200 + correct issuer/endpoints)
+- [x] Hit `/.well-known/chatgpt-apps-manifest.json` in production (200 + valid JSON)
+- [x] Hit `/.well-known/oauth-authorization-server` (200 + correct issuer/endpoints)
 - [ ] OAuth login completes in ChatGPT preview
-- [ ] Run `bash scripts/v1_endpoint_smoke.sh https://signupassist-mcp-production.up.railway.app` (expect 200s + 401 for protected)
-- [ ] Run `npm run test:sse` (MCP SSE: OAuth metadata + `/sse`/`/messages` + `signupassist.chat`)
-- [ ] Run `tsx scripts/smokeApiOnly.ts` (API-only smoke: manifest + Bookeo + signupassist.chat)
-- [ ] Run `npm run test:e2e` (safe scheduled smoke: creates SCH ~30 min out, cancels it, checks receipts/audit)
+- [x] Run `bash scripts/v1_endpoint_smoke.sh https://signupassist.shipworx.ai` (expect 200s + 401 for protected)
+- [x] Run `npm run test:sse` (MCP SSE: OAuth metadata + `/sse`/`/messages` + `signupassist.chat`)
+- [x] Run `tsx scripts/smokeApiOnly.ts` (API-only smoke: manifest + Bookeo + signupassist.chat)
+- [x] Run `npm run test:e2e` (safe scheduled smoke: creates SCH ~30 min out, cancels it, checks receipts/audit)
 - [ ] Run `tsx scripts/v1_preflight.ts` in a production-like env (Supabase tables + cached feed)
 - [ ] Search → select → schedule → see SCH receipt
 - [ ] Worker runs and executes due job; see REG receipt; see audit trail
