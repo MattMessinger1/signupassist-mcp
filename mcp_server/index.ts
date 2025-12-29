@@ -2231,8 +2231,14 @@ class SignupAssistMCPServer {
       // --- OpenAI Domain Verification (for ChatGPT app submission)
       if (
         req.method === "GET" &&
-        (url.pathname === "/.well-known/openai-verification.txt" ||
-         url.pathname === "/mcp/.well-known/openai-verification.txt")
+        (
+          // Legacy/alternate path used by some OpenAI UIs
+          url.pathname === "/.well-known/openai-verification.txt" ||
+          url.pathname === "/mcp/.well-known/openai-verification.txt" ||
+          // Current ChatGPT Apps UI path
+          url.pathname === "/.well-known/openai-apps-challenge" ||
+          url.pathname === "/mcp/.well-known/openai-apps-challenge"
+        )
       ) {
         let verificationToken = (process.env.OPENAI_VERIFICATION_TOKEN || '').trim();
 
@@ -2240,9 +2246,15 @@ class SignupAssistMCPServer {
         // Useful if you prefer not to manage a Railway env var for a non-secret verification token.
         if (!verificationToken) {
           try {
-            const p = path.resolve(process.cwd(), "public", ".well-known", "openai-verification.txt");
-            if (existsSync(p)) {
-              verificationToken = String(readFileSync(p, "utf8") || "").trim();
+            const candidates = [
+              path.resolve(process.cwd(), "public", ".well-known", "openai-apps-challenge"),
+              path.resolve(process.cwd(), "public", ".well-known", "openai-verification.txt"),
+            ];
+            for (const p of candidates) {
+              if (existsSync(p)) {
+                verificationToken = String(readFileSync(p, "utf8") || "").trim();
+                if (verificationToken) break;
+              }
             }
           } catch {
             // ignore
@@ -2250,7 +2262,7 @@ class SignupAssistMCPServer {
         }
 
         if (!verificationToken) {
-          console.warn("[ROUTE] openai-verification.txt requested but token not configured");
+          console.warn("[ROUTE] OpenAI domain verification requested but token not configured");
           res.writeHead(404, {
             "Content-Type": "text/plain; charset=utf-8",
             "Cache-Control": "no-store",
@@ -2266,7 +2278,7 @@ class SignupAssistMCPServer {
           "Access-Control-Allow-Origin": "*"
         });
         res.end(verificationToken);
-        console.log("[ROUTE] Served openai-verification.txt for", url.pathname);
+        console.log("[ROUTE] Served OpenAI domain verification token for", url.pathname);
         return;
       }
 
