@@ -21,11 +21,13 @@ This is the authoritative checklist for v1. The goal is:
 - [ ] **OAuth works end-to-end in ChatGPT preview**
   - Endpoints: `/oauth/authorize`, `/oauth/token`, `/.well-known/oauth-authorization-server`
   - Env: `AUTH0_DOMAIN`, `AUTH0_CLIENT_ID`, `AUTH0_CLIENT_SECRET`, `AUTH0_AUDIENCE`
+  - Evidence helper: `npm run test:sse` (validates OAuth metadata + MCP SSE connect with token)
 
 - [x] **Protected actions are OAuth-gated** (401 triggers OAuth)
-  - File: `mcp_server/config/protectedActions.ts`
-  - Entry point: `mcp_server/index.ts` (`/orchestrator/chat`)
-  - Expectation: protected actions return **401** with `WWW-Authenticate: ... authentication_required`
+  - In v1 **MCP-only** posture, OAuth gating happens at the MCP transport boundary:
+    - `GET /sse` and `POST /messages` return **401** without a valid OAuth token (Auth0 JWT) or `MCP_ACCESS_TOKEN`
+    - `POST /tools/call` returns **401** in production without a valid token
+  - Legacy OpenAPI endpoint `/orchestrator/chat` is **disabled in MCP-only mode** (returns 410) to prevent routing around MCP.
 
 - [x] **Legal pages reachable**
   - `/privacy` serves `docs/PRIVACY_POLICY.md`
@@ -43,7 +45,8 @@ This is the authoritative checklist for v1. The goal is:
 ## B. “Works for end user” acceptance matrix (v1)
 
 ### B1. Book-now flow (signup window open)
-- [ ] Browse/search programs returns real Bookeo programs (no scraping)
+- [x] Browse/search programs returns real Bookeo programs (no scraping)
+  - Evidence helper: `npm run test:smoke` (API-only smoke) and `npm run test:sse` (MCP SSE smoke)
 - [ ] User selects a program via NL (“the first one” / “3” / title match)
 - [ ] Collect required fields (delegate + participants) with micro-questions (no schema dumps)
 - [ ] Review step summarizes what will happen
@@ -108,7 +111,9 @@ This is the authoritative checklist for v1. The goal is:
 - [ ] Hit `/.well-known/oauth-authorization-server` (200 + correct issuer/endpoints)
 - [ ] OAuth login completes in ChatGPT preview
 - [ ] Run `bash scripts/v1_endpoint_smoke.sh https://signupassist-mcp-production.up.railway.app` (expect 200s + 401 for protected)
+- [ ] Run `npm run test:sse` (MCP SSE: OAuth metadata + `/sse`/`/messages` + `signupassist.chat`)
 - [ ] Run `tsx scripts/smokeApiOnly.ts` (API-only smoke: manifest + Bookeo + signupassist.chat)
+- [ ] Run `npm run test:e2e` (safe scheduled smoke: creates SCH ~30 min out, cancels it, checks receipts/audit)
 - [ ] Run `tsx scripts/v1_preflight.ts` in a production-like env (Supabase tables + cached feed)
 - [ ] Search → select → schedule → see SCH receipt
 - [ ] Worker runs and executes due job; see REG receipt; see audit trail
