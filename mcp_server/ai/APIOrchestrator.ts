@@ -877,6 +877,31 @@ export default class APIOrchestrator implements IOrchestrator {
       return loose ? loose[0].toLowerCase() : null;
     };
     const ref = extractRef();
+
+    // Only treat UUIDs or explicit REG-/SCH- codes as "safe" references.
+    // Avoid accidentally interpreting dates/years (e.g. "20251229") as an ID.
+    const safeRef = (() => {
+      if (!ref) return null;
+      const uuidMatch = ref.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+      if (uuidMatch) return ref;
+      const coded = ref.match(/^(REG|SCH)-[0-9a-f]{6,12}$/i);
+      if (coded) return ref;
+      return null;
+    })();
+
+    // Text-only v1 shortcuts:
+    // - "cancel SCH-xxxx" / "cancel REG-xxxx"
+    // - "audit SCH-xxxx" / "audit REG-xxxx"
+    if (safeRef) {
+      if (/\b(cancel|remove|delete|undo)\b/i.test(normalized)) {
+        Logger.info('[NL Parse] Secondary action detected: cancel_registration', { source: 'natural_language', input });
+        return { action: 'cancel_registration', payload: { registration_ref: safeRef } };
+      }
+      if (/\b(audit|trail|history|log|activity)\b/i.test(normalized)) {
+        Logger.info('[NL Parse] Secondary action detected: view_audit_trail', { source: 'natural_language', input });
+        return { action: 'view_audit_trail', payload: { registration_ref: safeRef } };
+      }
+    }
     
     // View registrations / receipts / bookings
     if (/\b(show|view|see|list|my)\b.*\b(registrations?|bookings?|receipts?|signups?|enrollments?)\b/i.test(normalized) ||
@@ -889,14 +914,14 @@ export default class APIOrchestrator implements IOrchestrator {
     if (/\b(cancel|remove|delete|undo)\b.*\b(registration|booking|signup|enrollment)\b/i.test(normalized) ||
         /\b(registration|booking)\b.*\b(cancel|remove)\b/i.test(normalized)) {
       Logger.info('[NL Parse] Secondary action detected: cancel_registration', { source: 'natural_language', input });
-      return ref ? { action: 'cancel_registration', payload: { registration_ref: ref } } : { action: 'cancel_registration' };
+      return safeRef ? { action: 'cancel_registration', payload: { registration_ref: safeRef } } : { action: 'cancel_registration' };
     }
     
     // View audit trail / history
     if (/\b(audit|trail|history|log|activity)\b/i.test(normalized) && 
         /\b(show|view|see|my)\b/i.test(normalized)) {
       Logger.info('[NL Parse] Secondary action detected: view_audit_trail', { source: 'natural_language', input });
-      return ref ? { action: 'view_audit_trail', payload: { registration_ref: ref } } : { action: 'view_audit_trail' };
+      return safeRef ? { action: 'view_audit_trail', payload: { registration_ref: safeRef } } : { action: 'view_audit_trail' };
     }
     
     return null;
