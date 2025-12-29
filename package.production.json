@@ -10,7 +10,6 @@
     "rebuild:clean": "rm -rf dist node_modules && npm ci && npx tsc -p tsconfig.mcp.json && echo '✅ Clean build complete — ready for Railway redeploy.'"
   },
   "dependencies": {
-    "@browserbasehq/sdk": "^2.6.0",
     "@hookform/resolvers": "^3.10.0",
     "@modelcontextprotocol/sdk": "^1.18.2",
     "@radix-ui/react-accordion": "^1.2.12",

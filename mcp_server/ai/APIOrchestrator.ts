@@ -155,6 +155,8 @@ interface APIContext {
 export default class APIOrchestrator implements IOrchestrator {
   private sessions: Map<string, APIContext> = new Map();
   private mcpServer: any;
+  // Ensure DB persists happen in-order per sessionId (prevents late writes overwriting newer state).
+  private persistQueue: Map<string, Promise<void>> = new Map();
   
   // Build stamp for debugging which version is running in production
   private static readonly BUILD_STAMP = {
@@ -2884,24 +2886,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     try {
       Logger.info(`Searching programs for org: ${orgRef}`);
 
-      // =========================================================================
-      // BROWSE INTENT GUARD: Clear stale selection state before listing programs
-      // This prevents "yes" from being misinterpreted as confirming a previously
-      // selected program when the user actually wants to browse/show new programs.
-      // =========================================================================
-      this.updateContext(sessionId, {
-        selectedProgram: null,
-        step: FlowStep.BROWSE,
-        // Clear form/payment data from previous selections
-        formData: undefined,
-        schedulingData: undefined,
-        paymentAuthorized: false,
-        // Clear activity filters to show full catalog (AIM Design has 4 programs)
-        requestedActivity: undefined,
-        // Keep displayedPrograms - will be overwritten with fresh data below
-      });
-      Logger.info('[searchPrograms] Cleared stale selection state for fresh browse');
-
       // Get context for timezone formatting
       const context = this.getContext(sessionId);
 
@@ -3045,6 +3029,17 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       await this.updateContextAndAwait(sessionId, {
         step: FlowStep.BROWSE,
         orgRef,
+        // Clear stale selection/form/payment state in the SAME persisted write as displayedPrograms.
+        // This prevents late background persists from overwriting newer state (multi-instance Railway).
+        selectedProgram: null,
+        formData: undefined,
+        schedulingData: undefined,
+        paymentAuthorized: false,
+        requiredFields: undefined,
+        pendingParticipants: undefined,
+        pendingDelegateInfo: undefined,
+        awaitingDelegateEmail: false,
+        childInfo: undefined,
         displayedPrograms, // For ChatGPT NL program selection by title/ordinal
         pendingProviderConfirmation: undefined, // Clear any pending confirmation
       });
@@ -3219,8 +3214,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       if (validation.warnings.length > 0) {
         Logger.warn('[DesignDNA] Warnings:', validation.warnings);
       }
-
-      Logger.info('[DesignDNA] Validation passed ✅');
+      if (validation.passed) {
+        Logger.info('[DesignDNA] Validation passed ✅');
+      }
 
       return orchestratorResponse;
     } catch (error) {
@@ -3500,8 +3496,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       if (validation.warnings.length > 0) {
         Logger.warn('[DesignDNA] Warnings:', validation.warnings);
       }
-
-      Logger.info('[DesignDNA] Validation passed ✅');
+      if (validation.passed) {
+        Logger.info('[DesignDNA] Validation passed ✅');
+      }
 
       return formResponse;
     } catch (error) {
@@ -4187,8 +4184,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       if (validation.warnings.length > 0) {
         Logger.warn('[DesignDNA] Warnings:', validation.warnings);
       }
-
-      Logger.info('[DesignDNA] Validation passed ✅');
+      if (validation.passed) {
+        Logger.info('[DesignDNA] Validation passed ✅');
+      }
       Logger.info("[confirmPayment] ✅ Immediate booking flow complete");
 
       return successResponse;
@@ -6175,6 +6173,31 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
   }
 
   /**
+   * Enqueue session persistence so writes for the same sessionId execute in-order.
+   * This prevents earlier "fire-and-forget" writes from racing and overwriting newer context.
+   */
+  private enqueuePersist(sessionId: string, context: APIContext): Promise<void> {
+    const prior = this.persistQueue.get(sessionId) || Promise.resolve();
+
+    const next = prior
+      .catch(() => {
+        // Keep the chain alive even if a prior persist threw unexpectedly.
+      })
+      .then(() => this.persistSessionToDB(sessionId, context));
+
+    this.persistQueue.set(sessionId, next);
+
+    // Cleanup once the latest queued write completes (avoid unbounded growth).
+    next.finally(() => {
+      if (this.persistQueue.get(sessionId) === next) {
+        this.persistQueue.delete(sessionId);
+      }
+    });
+
+    return next;
+  }
+
+  /**
    * Get session context (auto-initialize if needed)
    * Now checks Supabase if not in memory (for ChatGPT multi-turn support)
    */
@@ -6236,7 +6259,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     if (updates.step === FlowStep.BROWSE) {
       const isAdvancedStep = current.step === FlowStep.FORM_FILL || current.step === FlowStep.REVIEW || current.step === FlowStep.PAYMENT || current.step === FlowStep.SUBMIT;
       const hasValidProgram = !!current.selectedProgram;
-      if (isAdvancedStep && hasValidProgram) {
+      // Allow explicit resets that also clear selectedProgram (e.g., user asked to browse/start over).
+      // This prevents background/late writes from accidentally rewinding the flow, while still allowing
+      // intentional navigation back to BROWSE.
+      const isExplicitProgramClear =
+        ("selectedProgram" in updates) && (updates.selectedProgram == null);
+      if (isAdvancedStep && hasValidProgram && !isExplicitProgramClear) {
         console.log('[updateContext] ⛔ FIX 2: Blocked step reversion from', current.step, 'to BROWSE (valid program exists)');
         delete updates.step; // Remove the step update, keep current step
       }
@@ -6258,7 +6286,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     console.log('[updateContext] 📝 TRACE: Updating session:', JSON.stringify(tracePayload, null, 2));
     
     // Async persist to DB (fire-and-forget for performance)
-    this.persistSessionToDB(sessionId, updated)
+    this.enqueuePersist(sessionId, updated)
       .then(() => {
         console.log('[updateContext] ✅ TRACE: Persist completed for', sessionId);
       })
@@ -6284,7 +6312,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     if (updates.step === FlowStep.BROWSE) {
       const isAdvancedStep = current.step === FlowStep.FORM_FILL || current.step === FlowStep.REVIEW || current.step === FlowStep.PAYMENT || current.step === FlowStep.SUBMIT;
       const hasValidProgram = !!current.selectedProgram;
-      if (isAdvancedStep && hasValidProgram) {
+      // Allow explicit resets that also clear selectedProgram (e.g., user asked to browse/start over).
+      const isExplicitProgramClear =
+        ("selectedProgram" in updates) && (updates.selectedProgram == null);
+      if (isAdvancedStep && hasValidProgram && !isExplicitProgramClear) {
         console.log('[updateContextAndAwait] ⛔ FIX 2: Blocked step reversion from', current.step, 'to BROWSE (valid program exists)');
         delete updates.step; // Remove the step update, keep current step
       }
@@ -6306,7 +6337,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     console.log('[updateContextAndAwait] 📝 TRACE: Updating session (awaited):', JSON.stringify(tracePayload, null, 2));
     
     // AWAIT the persist to ensure data is saved before returning
-    await this.persistSessionToDB(sessionId, updated);
+    await this.enqueuePersist(sessionId, updated);
     console.log('[updateContextAndAwait] ✅ TRACE: Persist COMPLETED for', sessionId);
   }
 

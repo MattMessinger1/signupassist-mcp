@@ -17,6 +17,7 @@
     "preview": "vite preview",
     "mcp:dev": "node --loader ts-node/esm mcp_server/index.ts",
     "test:cred": "tsx scripts/testCredSealKey.ts",
+    "test:smoke": "tsx scripts/runSmokeTests.ts",
     "mcp:build": "tsc -p tsconfig.mcp.json",
     "worker:scheduled": "node dist/mcp_server/worker/scheduledRegistrationWorker.js",
     "v1:preflight": "tsx scripts/v1_preflight.ts",
@@ -24,7 +25,6 @@
     "prestart": "npm run mcp:build"
   },
   "dependencies": {
-    "@browserbasehq/sdk": "^2.6.0",
     "@hookform/resolvers": "^3.10.0",
     "@modelcontextprotocol/sdk": "^1.18.2",
     "@radix-ui/react-accordion": "^1.2.12",

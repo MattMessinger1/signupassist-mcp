@@ -1,33 +1,27 @@
 # Smoke Tests
 
-Quick validation tests for authentication and program discovery flow.
+Quick validation tests for the **API-first** ChatGPT app flow (no scraping).
 
 ## Overview
 
-Three critical smoke tests that verify the end-to-end flow:
+These smoke tests verify the end-to-end **API-only** flow:
 
-1. **Happy Path** - Full login → program discovery with session token
-2. **Session Reuse** - Verify session persistence and reuse works
-3. **Mandate Fallback** - Dev environment mandate bypass (PACK-07)
+1. **Manifest** - `/.well-known/chatgpt-apps-manifest.json` is reachable and valid
+2. **Program Discovery** - `bookeo.find_programs` returns programs for `aim-design`
+3. **Required Fields** - `bookeo.discover_required_fields` returns `program_questions`
+4. **Canonical Chat** - `signupassist.chat` returns `Step X/5 — …` headers
+5. **No Legacy Providers** - `scp.*` tools are not registered
 
 ## Prerequisites
 
 ### Environment Variables
 
-Create a `.env.test` file or set these in your environment:
+Set these in your environment:
 
 ```bash
 # MCP Server
 MCP_SERVER_URL=https://signupassist-mcp-production.up.railway.app
 MCP_ACCESS_TOKEN=your_mcp_access_token
-
-# Test Credentials (use test account)
-TEST_CREDENTIAL_ID=uuid-of-test-credential
-TEST_USER_JWT=jwt-token-for-test-user
-
-# Mandates
-TEST_MANDATE_JWS=test-mandate-jws-token
-DEV_MANDATE_JWS=dev-fallback-mandate-jws
 
 # Environment
 NODE_ENV=development
@@ -36,90 +30,36 @@ NODE_ENV=development
 ### Required Secrets
 
 Ensure these are configured in your environment:
-- `OPENAI_API_KEY` - For three-pass extractor
-- `BROWSERBASE_API_KEY` - For browser automation
-- `BROWSERBASE_PROJECT_ID` - Browserbase project
-- `MANDATE_SIGNING_KEY` - For mandate verification
+- `OPENAI_API_KEY` - Optional. Only needed for ambiguous input classification; API-first flow works without it.
 
 ## Running the Tests
 
 ### Run All Smoke Tests
 ```bash
-npm run test:smoke
-```
-
-### Run Individual Tests
-```bash
-# Happy path only
-npx playwright test smoke.test.ts -g "Happy Path"
-
-# Session reuse only
-npx playwright test smoke.test.ts -g "Session Reuse"
-
-# Mandate fallback only
-npx playwright test smoke.test.ts -g "Mandate Friction"
-```
-
-### Run with Verbose Logging
-```bash
-npx playwright test smoke.test.ts --reporter=list
+./node_modules/.bin/tsx scripts/smokeApiOnly.ts
 ```
 
 ## Expected Results
 
-### Test 1: Happy Path ✅
+### Expected output ✅
 ```
-Step 1: Calling scp.login...
-✅ Session token generated: [token-value]
-
-Step 2: Calling scp.find_programs with session_token...
-✅ Programs grouped into themes: Lessons & Classes, Camps & Clinics, ...
-
-✅ SMOKE TEST 1 PASSED
-```
-
-### Test 2: Session Reuse ✅
-```
-Step 1: Initial login to obtain session_token...
-✅ Session token obtained: [token-value]
-
-Step 2: Calling scp.find_programs (1st time)...
-✅ First call: 15 programs extracted
-
-Step 3: Calling scp.find_programs (2nd time - should reuse session)...
-✅ Second call: 15 programs extracted
-✅ Session reuse verified: Same results without re-login
-
-✅ SMOKE TEST 2 PASSED
-```
-
-### Test 3: Mandate Fallback ✅
-```
-Step 1: Attempting login WITHOUT mandate_jws...
-✅ Dev fallback worked: session_token = [token-value]
-
-Step 2: Calling scp.find_programs WITHOUT mandate_jws...
-✅ Programs discovered without explicit mandate: 15 programs
-
-✅ SMOKE TEST 3 PASSED
+[smoke] ✅ manifest ok
+[smoke] ✅ bookeo.find_programs ok
+[smoke] ✅ bookeo.discover_required_fields ok
+[smoke] ✅ signupassist.chat (step 1) ok
+[smoke] ✅ signupassist.chat (follow-up) ok
+[smoke] ✅ scp.* tools absent
+[smoke] ✅ ALL API-ONLY SMOKE TESTS PASSED
 ```
 
 ## Interpreting Failures
 
-### Test 1 Failure: "session_token is undefined"
-- **Root Cause**: Token not generated after login
-- **Fix**: Check `mcp_server/providers/skiclubpro.ts` login flow
-- **Reference**: See RUNBOOK_EXPECTED_LOGS.md - Login Phase Success Markers
-
-### Test 2 Failure: "Re-login occurred"
-- **Root Cause**: Session cache expired or not found
-- **Fix**: Check `SESSION_CACHE_TTL_MS` and session storage
-- **Reference**: PACK-01 session restoration logic
-
-### Test 3 Failure: "Mandate verification failed"
-- **Root Cause**: `DEV_MANDATE_JWS` not configured or invalid
-- **Fix**: Set `DEV_MANDATE_JWS` in environment
-- **Reference**: PACK-07 mandate fallback implementation
+### Tool call 401/403
+- **Root cause**: missing/invalid `MCP_ACCESS_TOKEN` for production `/tools/call`.
+### `bookeo.find_programs` returns 0 programs
+- **Root cause**: `cached_provider_feed` not populated for `aim-design` or Supabase creds missing on the server.
+### `signupassist.chat` fails
+- **Root cause**: `OPENAI_API_KEY` missing *and* the input falls into the orchestrator’s LLM fallback path. Try clearer input (“AIM Design classes”) or configure the key.
 
 ## Troubleshooting
 

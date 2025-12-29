@@ -235,12 +235,9 @@ npm run build:check
 ```
 
 ### External Library Type Errors
-**Symptom**: `Error in node_modules/@browserbasehq/sdk/...`
+**Symptom**: `Error in node_modules/...`
 
-**Fix**: Already handled by `skipLibCheck: true`. If still occurring, update the library:
-```bash
-npm update @browserbasehq/sdk
-```
+**Fix**: We run with `skipLibCheck: true` to avoid third‑party type noise. If this still occurs, pin/update the offending dependency and regenerate `package-lock.json`.
 
 ### Truncated Error Messages
 **Symptom**: `... and 50 more errors`

@@ -25,15 +25,14 @@ const colors = {
 
 console.log(`${colors.bright}${colors.cyan}`);
 console.log('═══════════════════════════════════════════════════════════════');
-console.log('  SMOKE TESTS - Authentication & Program Discovery Flow');
+console.log('  SMOKE TESTS - API-Only Program Discovery Flow (No SCP/Browserbase)');
 console.log('═══════════════════════════════════════════════════════════════');
 console.log(colors.reset);
 
 // Check for required environment variables
 const requiredEnvVars = [
   'MCP_SERVER_URL',
-  'MCP_ACCESS_TOKEN',
-  'DEV_MANDATE_JWS'
+  'MCP_ACCESS_TOKEN'
 ];
 
 const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
@@ -54,53 +53,36 @@ console.log(`${colors.green}✓ Environment variables configured${colors.reset}\
 console.log(`${colors.bright}Configuration:${colors.reset}`);
 console.log(`  MCP Server: ${process.env.MCP_SERVER_URL}`);
 console.log(`  Environment: ${process.env.NODE_ENV || 'development'}`);
-console.log(`  Dev Mandate: ${process.env.DEV_MANDATE_JWS ? 'Configured' : 'Not configured'}`);
+console.log(`  Auth: ${process.env.MCP_ACCESS_TOKEN ? 'MCP_ACCESS_TOKEN configured' : 'No token (dev only)'}`);
 console.log();
-
-// Parse command line arguments
-const args = process.argv.slice(2);
-const testFilter = args.find(arg => arg.startsWith('--grep='))?.split('=')[1];
-const verbose = args.includes('--verbose') || args.includes('-v');
-
-// Build playwright command
-const playwrightArgs = [
-  'test',
-  'mcp_server/tests/smoke.test.ts',
-  '--reporter=list'
-];
-
-if (testFilter) {
-  playwrightArgs.push('--grep', testFilter);
-  console.log(`${colors.cyan}Running filtered tests: ${testFilter}${colors.reset}\n`);
-}
-
-if (verbose) {
-  playwrightArgs.push('--headed');
-  console.log(`${colors.cyan}Verbose mode enabled${colors.reset}\n`);
-}
 
 console.log(`${colors.bright}Running tests...${colors.reset}\n`);
 
-// Run playwright tests
-const playwright = spawn('npx', ['playwright', ...playwrightArgs], {
+// Run API-only smoke test script using local tsx (avoids npx/global npm issues)
+const tsxBin = path.resolve(
+  process.cwd(),
+  'node_modules',
+  '.bin',
+  process.platform === 'win32' ? 'tsx.cmd' : 'tsx'
+);
+
+const runner = spawn(tsxBin, ['scripts/smokeApiOnly.ts'], {
   stdio: 'inherit',
   shell: true
 });
 
-playwright.on('close', (code) => {
+runner.on('close', (code) => {
   console.log();
   console.log('═══════════════════════════════════════════════════════════════');
   
   if (code === 0) {
     console.log(`${colors.green}${colors.bright}✓ ALL SMOKE TESTS PASSED${colors.reset}`);
     console.log();
-    console.log('Expected log milestones verified:');
-    console.log('  ✓ [antibot] antibot_key ready');
-    console.log('  ✓ [antibot] Drupal tokens stable');
-    console.log('  ✓ login_status: success + session_token: <value>');
-    console.log('  ✓ [orchestrator] Reusing existing session_token');
-    console.log('  ✓ scp.find_programs → ✅ Reused saved session');
-    console.log('  ✓ [audit] DEV: proceeding with DEV_MANDATE_JWS fallback');
+    console.log('Milestones verified:');
+    console.log('  ✓ bookeo.find_programs returns programs for aim-design');
+    console.log('  ✓ bookeo.discover_required_fields returns required fields');
+    console.log('  ✓ signupassist.chat returns Step headers');
+    console.log('  ✓ scp.* tools are not registered');
   } else {
     console.log(`${colors.red}${colors.bright}✗ SMOKE TESTS FAILED${colors.reset}`);
     console.log();
@@ -117,7 +99,7 @@ playwright.on('close', (code) => {
   process.exit(code || 0);
 });
 
-playwright.on('error', (error) => {
+runner.on('error', (error) => {
   console.error(`${colors.red}Failed to run smoke tests:${colors.reset}`, error);
   process.exit(1);
 });

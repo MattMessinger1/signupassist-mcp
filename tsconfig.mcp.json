@@ -15,13 +15,30 @@
 
     "outDir": "./dist"
   },
-  "include": ["mcp_server", "providers", "mcp"],
+  "include": ["mcp_server", "mcp"],
   "exclude": [
     "**/*.test.ts",
     "**/*.test.md",
     "mcp_server/tests/**",
     "mcp_server/types/**",
     "mcp_server/ai/AIOrchestrator.ts",
-    "scripts/testAIOrchestrator.ts"
+    "scripts/testAIOrchestrator.ts",
+
+    // Deprecated scraping providers / automation (API-first only)
+    "providers/**",
+    "mcp_server/providers/skiclubpro.ts",
+    "mcp_server/providers/blackhawk.ts",
+    "mcp_server/providers/blackhawk/**",
+    "mcp_server/providers/utils/skiclubproReadiness.ts",
+    "mcp_server/providers/utils/pageReadinessRegistry.ts",
+    "mcp_server/lib/browserbase-skiclubpro.ts",
+    "mcp_server/lib/sessionManager.ts",
+    "mcp_server/lib/antibot.ts",
+    "mcp_server/lib/login.ts",
+    "mcp_server/lib/session.ts",
+    "mcp_server/lib/serial_field_discovery.ts",
+    "mcp_server/lib/threePassExtractor.programs.ts",
+    "mcp_server/lib/unified_discovery.ts",
+    "mcp_server/agent/**"
   ]
 }

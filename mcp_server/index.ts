@@ -2,7 +2,8 @@
  * SignupAssist MCP Server
  * Production-ready with OAuth manifest served at /mcp for ChatGPT discovery
  * Last deployment: 2025-12-22 - Added resources/list and resources/read handlers
- * Railway rebuild trigger: 2025-10-28 - Added scp.create_mandate tool
+ *
+ * NOTE: API-first only (no scraping). SkiClubPro + Browserbase workflows are deprecated.
  */
 
 // ============================================================
@@ -149,6 +150,7 @@ function applyV1ChatGuardrails(resp: any): any {
   // Always remove CTAs/schemas first
   stripChatCTAsAndSchemas(resp);
 
+// (resolved) API-first: do not override orchestrator form flow here; just enforce Step headers + disclosures.
   // Always enforce correct header based on context.step
   resp.message = ensureWizardHeaderAlways(resp?.message || "", wizardStep);
   resp.message = ensureSuccessFeeDisclosure(resp.message);
@@ -271,28 +273,19 @@ function wizardInvocationForTool(toolName: string): { invoking: string; invoked:
   }
 
   // Program discovery tools
-  if (
-    toolName === "bookeo.find_programs" ||
-    toolName === "scp.find_programs"
-  ) {
+  if (toolName === "bookeo.find_programs") {
     return { invoking: step1Invoking, invoked: step1Invoked };
   }
 
   // Required fields / probes
-  if (
-    toolName === "bookeo.discover_required_fields" ||
-    toolName === "scp.discover_required_fields" ||
-    toolName === "scp.program_field_probe" ||
-    toolName === "scp:check_prerequisites"
-  ) {
+  if (toolName === "bookeo.discover_required_fields") {
     return { invoking: step2Invoking, invoked: step2Invoked };
   }
 
   // Stripe / billing checks
   if (
     toolName.startsWith("stripe.") ||
-    toolName === "user.check_payment_method" ||
-    toolName === "scp.check_payment_method"
+    toolName === "user.check_payment_method"
   ) {
     return { invoking: step4Invoking, invoked: step4Invoked };
   }
@@ -300,8 +293,7 @@ function wizardInvocationForTool(toolName: string): { invoking: string; invoked:
   // Mandates / consent + execution
   if (
     toolName === "mandates.create" ||
-    toolName === "mandates.prepare_registration" ||
-    toolName === "scp.create_mandate"
+    toolName === "mandates.prepare_registration"
   ) {
     // Treat mandate creation/prep as Step 3/5: clarifying + confirming what's needed
     return { invoking: step3Invoking, invoked: "Step 3/5 — Consent step ready." };
@@ -315,9 +307,7 @@ function wizardInvocationForTool(toolName: string): { invoking: string; invoked:
   // Provider booking execution
   if (
     toolName === "bookeo.create_hold" ||
-    toolName === "bookeo.confirm_booking" ||
-    toolName === "scp.register" ||
-    toolName === "scp.pay"
+    toolName === "bookeo.confirm_booking"
   ) {
     return { invoking: step5Invoking, invoked: step5Invoked };
   }
@@ -418,7 +408,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Import tool providers
-import { skiClubProTools } from './providers/skiclubpro.js';
 import { bookeoTools } from './providers/bookeo.js';
 import { stripeTools } from './providers/stripe.js';
 import { programFeedTools } from './providers/programFeed.js';
@@ -428,7 +417,6 @@ import { registrationTools } from './providers/registrations.js';
 import { userTools } from './providers/user.js';
 // import { daysmartTools } from '../providers/daysmart/index';
 // import { campminderTools } from '../providers/campminder/index';
-import { refreshBlackhawkPrograms, refreshBlackhawkProgramDetail } from './providers/blackhawk.js'; // Import Blackhawk refresh functions
 import { createClient } from '@supabase/supabase-js';
 
 // Initialize Supabase client for database operations (service role)
@@ -436,15 +424,10 @@ const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// Import page readiness registry and helpers
-import { registerReadiness } from './providers/utils/pageReadinessRegistry.js';
-import { waitForSkiClubProReady } from './providers/utils/skiclubproReadiness.js';
-
 // Import prereqs registry
 import { registerAllProviders } from './prereqs/providers.js';
 
 // Import provider and organization registries
-import './providers/skiclubpro/config.js'; // Auto-registers SkiClubPro
 import './providers/bookeo/config.js'; // Auto-registers Bookeo
 import './config/organizations.js'; // Auto-registers organizations
 // import './providers/campminder/config.js'; // Uncomment when ready
@@ -470,19 +453,9 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
-// Graceful shutdown handlers for Browserbase session cleanup
-async function gracefulShutdown(signal: string) {
-  console.log(`[SHUTDOWN] Received ${signal}, cleaning up...`);
-  
-  try {
-    // Import session manager dynamically to avoid circular dependencies
-    const { closeAllSessions } = await import('./lib/sessionManager.js');
-    await closeAllSessions();
-  } catch (error) {
-    console.error('[SHUTDOWN] Error closing sessions:', error);
-  }
-  
-  console.log('[SHUTDOWN] Cleanup complete, exiting');
+// Graceful shutdown handlers (API-first; no Browserbase session cleanup)
+function gracefulShutdown(signal: string) {
+  console.log(`[SHUTDOWN] Received ${signal}, exiting...`);
   process.exit(0);
 }
 
@@ -557,6 +530,8 @@ class SignupAssistMCPServer {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
       // ChatGPT App Store (text-only V1): keep public surface minimal.
       // We still register private tools internally, but we do NOT list them to ChatGPT.
+      const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
+
       const apiTools = Array.from(this.tools.values())
         .filter((tool) => tool?._meta?.["openai/visibility"] !== "private")
         .map(tool => ({
@@ -565,8 +540,17 @@ class SignupAssistMCPServer {
           inputSchema: tool.inputSchema,
           _meta: tool._meta  // Include ChatGPT Apps SDK widget metadata
         }));
-      console.log(`[MCP] ListTools returning ${apiTools.length} tools:`, apiTools.map(t => t.name));
-      return { tools: apiTools };
+
+      // Default: only return publicly-visible tools (reduces model confusion and enforces SSoT via signupassist.chat).
+      const visibleTools = includePrivate
+        ? apiTools
+        : apiTools.filter(t => t._meta?.["openai/visibility"] === "public");
+
+      console.log(
+        `[MCP] ListTools returning ${visibleTools.length} tools (${includePrivate ? "all" : "public-only"}):`,
+        visibleTools.map(t => t.name)
+      );
+      return { tools: visibleTools };
     });
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -590,34 +574,6 @@ class SignupAssistMCPServer {
   }
 
   private registerTools() {
-    // 🔔 Register page readiness helpers for each provider
-    // REMINDER FOR FUTURE PROVIDERS:
-    // Each time you add a new provider (e.g., campminder, leagueapps),
-    // 1. Create mcp_server/providers/utils/<providerId>Readiness.ts
-    // 2. Implement waitFor<ProviderName>Ready(page: Page)
-    // 3. Register it here using registerReadiness("<id>", fn)
-    // V1: API-only providers. Do not register SkiClubPro unless explicitly enabled.
-    const enableScp = process.env.ENABLE_SCP === 'true';
-    if (enableScp) {
-      registerReadiness("scp", waitForSkiClubProReady);
-      
-      // Register SkiClubPro tools (deprecated for v1)
-      Object.entries(skiClubProTools).forEach(([name, handler]) => {
-        this.tools.set(name, {
-          name,
-          description: `SkiClubPro provider tool: ${name}`,
-          inputSchema: {
-            type: 'object',
-            properties: {},
-            additionalProperties: true,
-          },
-          handler,
-        });
-      });
-    } else {
-      console.log('[V1] ENABLE_SCP is false; SkiClubPro tools are not registered.');
-    }
-
     // Register Bookeo tools with ChatGPT Apps SDK V1 metadata
     bookeoTools.forEach((tool) => {
       this.tools.set(tool.name, {
@@ -874,7 +830,61 @@ class SignupAssistMCPServer {
       }
 
       const url = new URL(req.url || '/', `http://localhost:${port}`);
-      console.log(`[REQUEST] ${req.method} ${url.pathname}`);
+
+      // Reduce scanner/probe noise and avoid accidentally serving SPA index.html for common secret-leak probes.
+      // This is especially important on public Railway deployments.
+      const pathname = url.pathname || '/';
+      const method = (req.method || 'GET').toUpperCase();
+      const probeDenylistEnabled = process.env.PROBE_DENYLIST_ENABLED !== 'false';
+
+      const isLikelyProbePath = (m: string, p: string): boolean => {
+        if (!probeDenylistEnabled) return false;
+        if (m !== 'GET') return false;
+        const lower = p.toLowerCase();
+
+        // Allow well-known + our known endpoints
+        if (lower.startsWith('/.well-known/')) return false;
+        if (lower === '/health') return false;
+        if (lower.startsWith('/mcp')) return false;
+        if (lower.startsWith('/oauth/')) return false;
+        if (lower.startsWith('/sse')) return false;
+        if (lower.startsWith('/messages')) return false;
+        if (lower.startsWith('/assets/')) return false;
+
+        // High-signal secret/config probes
+        if (lower.includes('.env')) return true;
+        if (lower.includes('phpinfo')) return true;
+        if (lower.endsWith('.php')) return true;
+
+        // Common framework/config files that should never exist in this app
+        const suspiciousSuffixes = [
+          '.sql', '.sqlite', '.sqlite3', '.db',
+          '.bak', '.backup', '.old', '.save',
+          '.ini', '.toml', '.yml', '.yaml',
+          '.pem', '.key', '.crt', '.p12', '.pfx'
+        ];
+        if (suspiciousSuffixes.some(s => lower.endsWith(s))) return true;
+
+        // Common exploit paths
+        const suspiciousPrefixes = [
+          '/.git', '/.svn', '/.hg',
+          '/_profiler',
+          '/wp-', '/wp/',
+          '/vendor', '/laravel', '/storage', '/bootstrap',
+          '/secrets', '/secret', '/keys', '/credentials'
+        ];
+        if (suspiciousPrefixes.some(prefix => lower.startsWith(prefix))) return true;
+
+        return false;
+      };
+
+      if (isLikelyProbePath(method, pathname)) {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not found');
+        return;
+      }
+
+      console.log(`[REQUEST] ${method} ${pathname}`);
 
       // --- Bookeo API Helper (for deprecated legacy endpoints)
       // Extract Bookeo credentials once for all handlers
@@ -2158,156 +2168,19 @@ class SignupAssistMCPServer {
         return;
       }
 
-      // --- Refresh programs feed (triggers Blackhawk scraping)
+      // --- Refresh programs feed (DEPRECATED)
+      // Scraping-based providers (SkiClubPro/Browserbase) are removed; this endpoint is intentionally disabled.
       if (req.method === 'POST' && url.pathname === '/refresh-feed') {
-        const timestamp = new Date().toISOString();
-        const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
-        const userAgent = req.headers['user-agent'] || 'unknown';
-        
-        console.log('[REFRESH-FEED] ⚠️ Feed refresh request received', {
-          timestamp,
-          clientIp,
-          userAgent,
-          headers: JSON.stringify(req.headers)
-        });
-        
-        // Only allow internal authorized calls using worker service token
-        const authHeader = req.headers['authorization'] as string | undefined;
-        const workerToken = process.env.WORKER_SERVICE_TOKEN;
-        
-        if (!workerToken || authHeader !== `Bearer ${workerToken}`) {
-          console.warn('❌ Unauthorized /refresh-feed call (bad token)');
-          res.writeHead(403, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Forbidden' }));
-          return;
-        }
-        
-        try {
-          const orgRef = 'blackhawk-ski-club'; // Could be extracted from query/body in future
-          console.log(`[RefreshFeed] 🔄 Initiating program feed refresh for "${orgRef}"`);
-          
-          // Import telemetry dynamically to avoid issues
-          const { telemetry } = await import('./lib/telemetry.js');
-          telemetry.record('feed_refresh', { provider: 'blackhawk', action: 'start' });
-          
-          const programsCount = await refreshBlackhawkPrograms();  // Run full refresh for Blackhawk Ski Club
-          
-          telemetry.record('feed_refresh', { provider: 'blackhawk', status: 'success', programs_count: programsCount });
-          console.log(`[RefreshFeed] ✅ Refresh complete: ${programsCount} programs cached for ${orgRef}`);
-          
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: true, message: `Refreshed ${programsCount} programs for ${orgRef}.`, refreshed: programsCount }));
-        } catch (err: any) {
-          console.error('[RefreshFeed] ❌ Feed refresh failed:', err.message);
-          const { telemetry } = await import('./lib/telemetry.js');
-          telemetry.record('feed_refresh', { provider: 'blackhawk', status: 'failed', error: err.message });
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: err.message || 'Unknown error' }));
-        }
+        res.writeHead(410, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Deprecated: scraping-based feed refresh removed (API-first only).' }));
         return;
       }
 
-      // --- Hydrate program details (triggers detail page scraping for specific programs)
+      // --- Hydrate program details (DEPRECATED)
+      // Scraping-based detail hydration is removed; this endpoint is intentionally disabled.
       if (req.method === 'POST' && url.pathname === '/hydrate-program-details') {
-        const timestamp = new Date().toISOString();
-        const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
-        
-        console.log('[HYDRATE-DETAILS] Detail hydration request received', {
-          timestamp,
-          clientIp
-        });
-        
-        // Require internal authorization token
-        const authHeader = req.headers['authorization'] as string | undefined;
-        const mcpToken = process.env.MCP_ACCESS_TOKEN;
-        
-        if (!mcpToken || authHeader !== `Bearer ${mcpToken}`) {
-          console.warn('❌ Unauthorized /hydrate-program-details call (bad token)');
-          res.writeHead(403, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Unauthorized' }));
-          return;
-        }
-        
-        let body = '';
-        req.on('data', (chunk) => (body += chunk));
-        req.on('end', async () => {
-          try {
-            const { provider = 'blackhawk', program_refs } = JSON.parse(body || '{}');
-            
-            if (provider !== 'blackhawk') {
-              res.writeHead(400, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: 'Unsupported provider' }));
-              return;
-            }
-            
-            // Import functions dynamically
-            const { refreshBlackhawkProgramDetail } = await import('./providers/blackhawk.js');
-            const { createClient } = await import('@supabase/supabase-js');
-            
-            const supabaseUrl = process.env.SUPABASE_URL!;
-            const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-            const supabase = createClient(supabaseUrl, supabaseServiceKey);
-            
-            // Determine target program refs (either provided or all not yet hydrated)
-            let targetRefs: string[];
-            if (program_refs) {
-              targetRefs = Array.isArray(program_refs) ? program_refs : [program_refs];
-            } else {
-              const { data: feedCache } = await supabase
-                .from('cached_programs')
-                .select('programs_by_theme')
-                .eq('org_ref', 'blackhawk-ski-club')
-                .eq('category', 'all')
-                .single();
-                
-              if (!feedCache) throw new Error('No feed cache found');
-              
-              const allPrograms: any[] = [];
-              for (const progs of Object.values(feedCache.programs_by_theme)) {
-                allPrograms.push(...(progs as any[]));
-              }
-              
-              const allRefs = allPrograms.map((p: any) => p.program_ref);
-              
-              const { data: detailCache } = await supabase
-                .from('cached_provider_feed')
-                .select('program_ref')
-                .eq('org_ref', 'blackhawk-ski-club');
-                
-              const cachedRefs = new Set((detailCache || []).map((item: any) => item.program_ref));
-              targetRefs = allRefs.filter(ref => !cachedRefs.has(ref));
-            }
-            
-            // Hydrate each uncached program detail
-            let count = 0;
-            const errors: Array<{ program_ref: string; error: string }> = [];
-            
-            for (const ref of targetRefs) {
-              try {
-                await refreshBlackhawkProgramDetail(ref);
-                count++;
-              } catch (err: any) {
-                console.error(`Error hydrating details for ${ref}:`, err);
-                errors.push({ program_ref: ref, error: err.message });
-              }
-            }
-            
-            console.log(`[HYDRATE-DETAILS] ✅ Hydrated ${count}/${targetRefs.length} programs`);
-            
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ 
-              success: true, 
-              provider: 'blackhawk', 
-              hydrated: count,
-              total: targetRefs.length,
-              errors: errors.length > 0 ? errors : undefined
-            }));
-          } catch (err: any) {
-            console.error('[HYDRATE-DETAILS] ❌ Hydration failed:', err.message);
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: false, error: err.message }));
-          }
-        });
+        res.writeHead(410, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Deprecated: scraping-based detail hydration removed (API-first only).' }));
         return;
       }
 
@@ -2476,56 +2349,14 @@ class SignupAssistMCPServer {
             
             // Check if orchestrator is available - if not, provide mock responses
             if (!this.orchestrator) {
-              console.warn('[Orchestrator] AI Orchestrator unavailable - using mock responses');
-              
-              // Simple mock responses for testing UI without OpenAI
-              let mockResult;
-              
-              if (action === 'provider_selected' || action === 'confirm_provider') {
-                mockResult = {
-                  message: "Great! I'll connect to your account to check available programs.",
-                  cards: [{
-                    title: "Connect Account",
-                    description: "To continue, please log in to your account.",
-                    buttons: [{
-                      label: "Connect Account",
-                      action: "show_login_dialog",
-                      variant: "accent"
-                    }]
-                  }],
-                  contextUpdates: { 
-                    step: 'login',
-                    provider: payload?.provider || 'skiclubpro',
-                    orgRef: payload?.orgRef 
-                  }
-                };
-              } else if (message && message.toLowerCase().includes('blackhawk')) {
-                mockResult = {
-                  message: "I found **Blackhawk Ski Club** in Middleton, WI. Is that the one you mean?",
-                  cards: [{
-                    title: "Blackhawk Ski Club",
-                    subtitle: "Middleton, WI",
-                    buttons: [{
-                      label: "Yes, that's it",
-                      action: "confirm_provider",
-                      variant: "accent"
-                    }, {
-                      label: "Show me others",
-                      action: "show_alternatives",
-                      variant: "outline"
-                    }]
-                  }]
-                };
-              } else {
-                mockResult = {
-                  message: "⚠️ Mock mode: OPENAI_API_KEY not configured.\n\nTo enable full AI orchestration, set OPENAI_API_KEY in your Railway environment variables.\n\nFor now, try typing 'blackhawk' to test the mock flow.",
-                  cta: [{
-                    label: "Documentation",
-                    action: "view_docs",
-                    variant: "outline"
-                  }]
-                };
-              }
+              console.warn('[Orchestrator] APIOrchestrator unavailable - returning limited response (OPENAI_API_KEY likely missing)');
+
+              const mockResult = {
+                message:
+                  "⚠️ SignupAssist is running in limited mode because OPENAI_API_KEY is not configured.\n\n" +
+                  "This deployment is **API-first only** (no SkiClubPro, no Browserbase, no login/scraping).\n\n" +
+                  "To enable the conversational signup flow, set **OPENAI_API_KEY** and retry."
+              };
               
               res.writeHead(200, { 
                 'Content-Type': 'application/json',
