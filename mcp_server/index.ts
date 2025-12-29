@@ -163,6 +163,52 @@ const VERSION_INFO = {
   useNewAAP: process.env.USE_NEW_AAP === 'true'
 };
 
+// ============================================================
+// V1 "MCP-only" hardening (optional)
+// If enabled, we disable legacy OpenAPI/Actions surfaces to prevent
+// ChatGPT from silently routing through the OpenAPI wrapper instead of MCP.
+// ============================================================
+function isMcpOnlyMode(): boolean {
+  const v = String(process.env.MCP_ONLY_MODE || process.env.DISABLE_OPENAPI_WRAPPER || "").toLowerCase();
+  return v === "true" || v === "1" || v === "yes";
+}
+
+function getRequestBaseUrl(req: any): string {
+  const host =
+    (req?.headers?.["x-forwarded-host"] as string | undefined) ||
+    (req?.headers?.["host"] as string | undefined);
+  const forwardedProto = req?.headers?.["x-forwarded-proto"] as string | undefined;
+  const proto =
+    forwardedProto ||
+    (host && (host.startsWith("localhost") || host.startsWith("127.0.0.1")) ? "http" : "https");
+  return host ? `${proto}://${host}` : "https://signupassist-mcp-production.up.railway.app";
+}
+
+function respondOpenApiDisabled(req: any, res: any, endpoint: string) {
+  const baseUrl = getRequestBaseUrl(req);
+  res.writeHead(410, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Access-Control-Allow-Origin": "*",
+    "Cache-Control": "no-store, no-cache, must-revalidate",
+  });
+  res.end(
+    JSON.stringify(
+      {
+        error: "openapi_disabled",
+        endpoint,
+        message:
+          "This legacy OpenAPI/Actions endpoint is disabled (MCP-only mode). Use the MCP app instead.",
+        mcp_sse_url: `${baseUrl}/sse`,
+        mcp_manifest_url: `${baseUrl}/.well-known/chatgpt-apps-manifest.json`,
+        hint:
+          "In ChatGPT, disable GPT Actions for this GPT and connect the MCP app under Settings → Apps.",
+      },
+      null,
+      2
+    )
+  );
+}
+
 // ChatGPT Apps SDK V1 Metadata (NO WIDGETS)
 // V1 App Store submission: avoid widget templates to eliminate CSP/domain requirements.
 // We still provide progress via toolInvocation messages.
@@ -1603,6 +1649,10 @@ class SignupAssistMCPServer {
           url.pathname === '/openapi.json' ||
           url.pathname === '/.well-known/openapi.json')
       ) {
+        if (isMcpOnlyMode()) {
+          respondOpenApiDisabled(req, res, url.pathname);
+          return;
+        }
         try {
           // Prefer source OpenAPI to avoid stale dist artifacts (Railway cache)
           let openapiPath = path.resolve(process.cwd(), 'mcp', 'openapi.json');
@@ -1916,6 +1966,10 @@ class SignupAssistMCPServer {
         (url.pathname === "/.well-known/ai-plugin.json" ||
          url.pathname === "/mcp/.well-known/ai-plugin.json")
       ) {
+        if (isMcpOnlyMode()) {
+          respondOpenApiDisabled(req, res, url.pathname);
+          return;
+        }
         try {
           const manifestPath = path.resolve(process.cwd(), "public", ".well-known", "ai-plugin.json");
           const manifestText = readFileSync(manifestPath, "utf8");
@@ -1964,6 +2018,10 @@ class SignupAssistMCPServer {
         (url.pathname === "/.well-known/openai-connector.json" ||
          url.pathname === "/mcp/.well-known/openai-connector.json")
       ) {
+        if (isMcpOnlyMode()) {
+          respondOpenApiDisabled(req, res, url.pathname);
+          return;
+        }
         try {
           const manifestPath = path.resolve(process.cwd(), "public", ".well-known", "openai-connector.json");
           const manifestText = readFileSync(manifestPath, "utf8");
@@ -2291,6 +2349,10 @@ class SignupAssistMCPServer {
 
       if (url.pathname === '/orchestrator/chat') {
         console.log('[ROUTE] /orchestrator/chat hit');
+        if (isMcpOnlyMode()) {
+          respondOpenApiDisabled(req, res, url.pathname);
+          return;
+        }
         if (req.method === 'OPTIONS') {
           res.writeHead(200, {
             'Access-Control-Allow-Origin': '*',
