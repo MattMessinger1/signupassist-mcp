@@ -172,8 +172,17 @@ const VERSION_INFO = {
 // ChatGPT from silently routing through the OpenAPI wrapper instead of MCP.
 // ============================================================
 function isMcpOnlyMode(): boolean {
-  const v = String(process.env.MCP_ONLY_MODE || process.env.DISABLE_OPENAPI_WRAPPER || "").toLowerCase();
-  return v === "true" || v === "1" || v === "yes";
+  const raw = process.env.MCP_ONLY_MODE ?? process.env.DISABLE_OPENAPI_WRAPPER;
+
+  // Default posture for App Store: in production, prefer MCP-only unless explicitly disabled.
+  // This prevents ChatGPT from silently routing through legacy OpenAPI/Actions endpoints.
+  if (raw === undefined || raw === null || String(raw).trim() === "") {
+    return String(process.env.NODE_ENV || "").toLowerCase() === "production";
+  }
+
+  const v = String(raw).toLowerCase().trim();
+  if (["false", "0", "no", "off"].includes(v)) return false;
+  return ["true", "1", "yes", "on"].includes(v);
 }
 
 function getRequestBaseUrl(req: any): string {

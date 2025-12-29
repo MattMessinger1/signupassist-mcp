@@ -11,6 +11,12 @@ fi
 echo "== SignupAssist v1 endpoint smoke =="
 echo "BASE_URL=${BASE_URL}"
 
+get_status () {
+  local path="$1"
+  local url="${BASE_URL}${path}"
+  curl -sS -o /dev/null -w "%{http_code}" "${url}" || echo "000"
+}
+
 check_get () {
   local path="$1"
   local url="${BASE_URL}${path}"
@@ -59,16 +65,32 @@ check_get "/docs"
 check_get "/privacy"
 check_get "/terms"
 check_head "/logo-512.svg"
+
+echo ""
+echo "== Legacy OpenAPI surfaces (200 in legacy mode, 410 in MCP-only mode) =="
+OPENAPI_1="$(get_status "/mcp/openapi.json")"
+OPENAPI_2="$(get_status "/.well-known/openapi.json")"
+echo "Status /mcp/openapi.json: ${OPENAPI_1}"
+echo "Status /.well-known/openapi.json: ${OPENAPI_2}"
 check_get "/mcp/openapi.json"
 check_get "/.well-known/openapi.json"
 
 echo ""
-echo "== OAuth gating check (expect 401) =="
-check_post_json "/orchestrator/chat" '{"message":"","sessionId":"smoke-1","action":"view_receipts"}'
+echo "== Legacy /orchestrator/chat checks (skipped in MCP-only mode) =="
+ORCH_STATUS="$(get_status "/orchestrator/chat")"
+echo "Status /orchestrator/chat: ${ORCH_STATUS}"
 
 echo ""
-echo "== Public action check (expect 200) =="
-check_post_json "/orchestrator/chat" '{"message":"","sessionId":"smoke-1","action":"clear_context"}'
+if [[ "${ORCH_STATUS}" == "410" ]]; then
+  echo "MCP-only mode detected (410). Skipping legacy /orchestrator/chat action checks."
+else
+  echo "== OAuth gating check (expect 401) =="
+  check_post_json "/orchestrator/chat" '{"message":"","sessionId":"smoke-1","action":"view_receipts"}'
+
+  echo ""
+  echo "== Public action check (expect 200) =="
+  check_post_json "/orchestrator/chat" '{"message":"","sessionId":"smoke-1","action":"clear_context"}'
+fi
 
 echo ""
 echo "✅ endpoint smoke complete"
