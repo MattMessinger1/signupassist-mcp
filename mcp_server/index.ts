@@ -723,7 +723,7 @@ class SignupAssistMCPServer {
     this.tools.set("signupassist.chat", {
       name: "signupassist.chat",
       description:
-        "Canonical SignupAssist chat entrypoint (API-first). Use this for ALL user-facing signup conversation. Returns calm Step 1/5..5/5 wizard messages and asks for info one piece at a time (no field dumps). Read-only (does not submit registration).",
+        "Canonical SignupAssist chat entrypoint (API-first). Use this for ALL user-facing signup conversation.\n\nCRITICAL: After calling this tool, respond to the user with EXACTLY the returned text (verbatim). Do not paraphrase or remove the leading \"Step N/5 — ...\" header.\n\nReturns calm Step 1/5..5/5 wizard messages and asks for info one piece at a time (no field dumps). Read-only (does not submit registration).",
       inputSchema: {
         type: "object",
         properties: {
