@@ -2788,6 +2788,57 @@ class SignupAssistMCPServer {
           res.end('Failed to load privacy policy.');
           return;
         }
+
+      // --- Stripe return (success/cancel landing page)
+      // Stripe Checkout needs a success_url/cancel_url. This page simply tells the user to return to ChatGPT.
+      if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/stripe_return') {
+        const status = url.searchParams.get('payment_setup') || 'unknown';
+        const sessionId = url.searchParams.get('session_id') || '';
+        const title =
+          status === 'success'
+            ? 'Payment method saved'
+            : status === 'canceled'
+              ? 'Payment setup canceled'
+              : 'Payment setup';
+
+        const escapeHtml = (s: string) =>
+          s
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+
+        const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${escapeHtml(title)} — SignupAssist</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; line-height: 1.5; margin: 40px auto; max-width: 820px; padding: 0 16px; }
+      .card { border: 1px solid #eee; border-radius: 12px; padding: 16px; }
+      .muted { color: #555; }
+      code { background: #f6f6f6; padding: 2px 6px; border-radius: 6px; }
+    </style>
+  </head>
+  <body>
+    <h1>${escapeHtml(title)}</h1>
+    <div class="card">
+      <p>Return to ChatGPT and type <code>done</code> to continue your SignupAssist flow.</p>
+      ${sessionId ? `<p class="muted">Session: <code>${escapeHtml(sessionId)}</code></p>` : ''}
+    </div>
+  </body>
+</html>`;
+
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-store'
+        });
+        res.end(html);
+        return;
+      }
       }
 
       // --- Legal: Terms of Use (served from repo markdown for review accuracy)

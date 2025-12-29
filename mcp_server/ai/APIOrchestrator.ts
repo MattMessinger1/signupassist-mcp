@@ -1337,14 +1337,21 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     const STEP_REQUIREMENTS: Record<string, FlowStep> = {
       // user must be filling a form to submit it
       'submit_form': FlowStep.FORM_FILL,
-      // payment authorization should only happen in PAYMENT step
-      'authorize_payment': FlowStep.PAYMENT,
+      // NOTE: authorize_payment is handled inside the authorize_payment case
+      // to support ChatGPT legacy actions from REVIEW (confirm_booking → authorize_payment).
     };
     const requiredStep = STEP_REQUIREMENTS[resolvedAction];
     if (requiredStep && context.step !== requiredStep) {
       Logger.warn(`[${resolvedAction}] ⛔ STEP GATE: Not in ${requiredStep} step`, { currentStep: context.step });
+      // ChatGPT sometimes sends stale/incorrect actions (e.g., answer_questions → submit_form)
+      // even after the session has advanced (REVIEW/PAYMENT). Recover by treating it as NL input.
+      if (resolvedAction === 'submit_form' && typeof input === 'string' && input.trim().length > 0) {
+        const recovered = await this.handleMessage(input, sessionId, context);
+        if (recovered) return recovered;
+      }
+
       return this.formatResponse(
-        `Step 1/5 — Finding classes\n\nWe need to collect some information first before I can continue.`,
+        `We need to collect some information first before I can continue.`,
         undefined,
         []
       );
@@ -1607,6 +1614,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       case "authorize_payment":
         // ⚠️ HARD STEP GATES - prevent NL bypass of payment flow
+
+        // ChatGPT OpenAPI mode bug: it may call legacy `confirm_booking` / `authorize_payment`
+        // while we're still in REVIEW. In that case, we *want* the normal NL path to run
+        // (generate Stripe Checkout link, move to PAYMENT, etc.).
+        if (context.step === FlowStep.REVIEW && typeof input === 'string' && input.trim().length > 0) {
+          const recovered = await this.handleMessage(input, sessionId, context);
+          if (recovered) return recovered;
+        }
         
         // Gate 1: Must have selected a program
         if (!context.selectedProgram?.program_ref) {
@@ -2200,11 +2215,18 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             const userEmail = context.pendingDelegateInfo?.email || context.formData?.delegate_data?.email || context.formData?.delegate_data?.delegate_email;
             const userId = context.user_id;
             try {
+              const base =
+                (process.env.RAILWAY_PUBLIC_DOMAIN
+                  ? (process.env.RAILWAY_PUBLIC_DOMAIN.startsWith('http')
+                      ? process.env.RAILWAY_PUBLIC_DOMAIN
+                      : `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`)
+                  : 'https://signupassist.shipworx.ai');
+
               const sessionRes = await this.invokeMCPTool('stripe.create_checkout_session', {
                 user_id: userId,
                 user_email: userEmail,
-                success_url: "https://signupassist.ai/stripe_return?payment_setup=success&session_id={CHECKOUT_SESSION_ID}",
-                cancel_url: "https://signupassist.ai/stripe_return?payment_setup=canceled"
+                success_url: `${base}/stripe_return?payment_setup=success&session_id={CHECKOUT_SESSION_ID}`,
+                cancel_url: `${base}/stripe_return?payment_setup=canceled`
               });
               if (!sessionRes.success || !sessionRes.data?.url) {
                 throw new Error(sessionRes.error?.message || "Unknown error");
