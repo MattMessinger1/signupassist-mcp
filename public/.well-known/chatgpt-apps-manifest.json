@@ -6,16 +6,16 @@
   "description_for_model": "Text-only v1: guide the user through micro-questions; never book or charge until explicit confirmation. Always route user-facing flow through signupassist.chat; do not call provider tools directly unless explicitly instructed.",
   "auth": {
     "type": "oauth",
-    "authorization_url": "https://signupassist-mcp-production.up.railway.app/oauth/authorize",
-    "token_url": "https://signupassist-mcp-production.up.railway.app/oauth/token",
+    "authorization_url": "https://signupassist.shipworx.ai/oauth/authorize",
+    "token_url": "https://signupassist.shipworx.ai/oauth/token",
     "scope": "openid profile email",
     "redirect_urls": ["https://oauth.openai.com/v1/callback"]
   },
   "api": {
     "type": "mcp",
-    "server_url": "https://signupassist-mcp-production.up.railway.app/sse"
+    "server_url": "https://signupassist.shipworx.ai/sse"
   },
-  "logo_url": "https://signupassist-mcp-production.up.railway.app/logo-512.svg",
+  "logo_url": "https://signupassist.shipworx.ai/logo-512.svg",
   "contact_email": "support@shipworx.ai",
-  "legal_info_url": "https://signupassist-mcp-production.up.railway.app/privacy"
+  "legal_info_url": "https://signupassist.shipworx.ai/privacy"
 }

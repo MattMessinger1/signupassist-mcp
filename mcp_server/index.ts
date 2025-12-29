@@ -1466,17 +1466,61 @@ class SignupAssistMCPServer {
       // --- Serve manifest.json at /mcp/manifest.json
       if (req.method === 'GET' && url.pathname === '/mcp/manifest.json') {
         try {
-          // Load manifest.json with fallback for Railway builds
-          let manifestPath = path.resolve(process.cwd(), 'dist', 'mcp', 'manifest.json');
-          if (!existsSync(manifestPath)) {
-            // Fallback: use source copy
-            manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
+          // For "apps via MCP", the authoritative manifest is:
+          //   /.well-known/chatgpt-apps-manifest.json
+          // We serve the SAME content here to avoid confusion with legacy OpenAPI manifests.
+          const manifestPath = path.resolve(process.cwd(), 'public', '.well-known', 'chatgpt-apps-manifest.json');
+
+          const content = existsSync(manifestPath)
+            ? readFileSync(manifestPath, 'utf-8')
+            : JSON.stringify(
+                {
+                  schema_version: "1.0.0",
+                  name_for_human: "SignupAssist",
+                  name_for_model: "signupassist",
+                  description_for_human: "SignupAssist helps parents discover, schedule, and complete class signups for their children."
+                },
+                null,
+                2
+              );
+
+          // Rewrite URLs to match the current request host (avoids cross-domain OAuth issues).
+          const host =
+            (req.headers['x-forwarded-host'] as string | undefined) ||
+            (req.headers['host'] as string | undefined);
+          const forwardedProto = (req.headers['x-forwarded-proto'] as string | undefined);
+          const proto =
+            forwardedProto ||
+            (host && (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http' : 'https');
+          const baseUrl =
+            host
+              ? `${proto}://${host}`
+              : 'https://signupassist-mcp-production.up.railway.app';
+
+          let out = content;
+          try {
+            const json = JSON.parse(content);
+            if (json?.auth?.type === 'oauth') {
+              json.auth.authorization_url = `${baseUrl}/oauth/authorize`;
+              json.auth.token_url = `${baseUrl}/oauth/token`;
+            }
+            if (json?.api?.type === 'mcp') {
+              json.api.server_url = `${baseUrl}/sse`;
+            }
+            json.logo_url = `${baseUrl}/logo-512.svg`;
+            json.legal_info_url = `${baseUrl}/privacy`;
+            out = JSON.stringify(json, null, 2);
+          } catch (e: any) {
+            console.warn('[MANIFEST] Failed to rewrite /mcp/manifest.json URLs:', e?.message);
           }
-          console.log('[DEBUG] Using manifest at:', manifestPath);
-          const manifest = readFileSync(manifestPath, 'utf8');
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(manifest);
-          console.log('[ROUTE] Served /mcp/manifest.json');
+
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-store, no-cache, must-revalidate'
+          });
+          res.end(out);
+          console.log('[ROUTE] Served MCP manifest at /mcp/manifest.json');
         } catch (error: any) {
           console.error('[MANIFEST ERROR]', error);
           res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -1488,16 +1532,57 @@ class SignupAssistMCPServer {
       // --- Serve manifest JSON directly at /mcp (ChatGPT OAuth discovery)
       if (req.method === 'GET' && (url.pathname === '/mcp' || url.pathname === '/mcp/')) {
         try {
-          // Prefer source manifest to avoid stale dist artifacts (Railway cache)
-          let manifestPath = path.resolve(process.cwd(), 'mcp', 'manifest.json');
-          if (!existsSync(manifestPath)) {
-            // Fallback: dist build output
-            manifestPath = path.resolve(process.cwd(), 'dist', 'mcp', 'manifest.json');
+          // Keep /mcp aligned with the MCP app manifest to avoid multiple sources of truth.
+          const manifestPath = path.resolve(process.cwd(), 'public', '.well-known', 'chatgpt-apps-manifest.json');
+
+          const content = existsSync(manifestPath)
+            ? readFileSync(manifestPath, 'utf-8')
+            : JSON.stringify(
+                {
+                  schema_version: "1.0.0",
+                  name_for_human: "SignupAssist",
+                  name_for_model: "signupassist",
+                  description_for_human: "SignupAssist helps parents discover, schedule, and complete class signups for their children."
+                },
+                null,
+                2
+              );
+
+          const host =
+            (req.headers['x-forwarded-host'] as string | undefined) ||
+            (req.headers['host'] as string | undefined);
+          const forwardedProto = (req.headers['x-forwarded-proto'] as string | undefined);
+          const proto =
+            forwardedProto ||
+            (host && (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http' : 'https');
+          const baseUrl =
+            host
+              ? `${proto}://${host}`
+              : 'https://signupassist-mcp-production.up.railway.app';
+
+          let out = content;
+          try {
+            const json = JSON.parse(content);
+            if (json?.auth?.type === 'oauth') {
+              json.auth.authorization_url = `${baseUrl}/oauth/authorize`;
+              json.auth.token_url = `${baseUrl}/oauth/token`;
+            }
+            if (json?.api?.type === 'mcp') {
+              json.api.server_url = `${baseUrl}/sse`;
+            }
+            json.logo_url = `${baseUrl}/logo-512.svg`;
+            json.legal_info_url = `${baseUrl}/privacy`;
+            out = JSON.stringify(json, null, 2);
+          } catch (e: any) {
+            console.warn('[MANIFEST] Failed to rewrite /mcp URLs:', e?.message);
           }
-          console.log('[DEBUG] Using manifest at:', manifestPath, 'exists:', existsSync(manifestPath));
-          const manifest = readFileSync(manifestPath, 'utf8');
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(manifest);
+
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-store, no-cache, must-revalidate'
+          });
+          res.end(out);
         } catch (error: any) {
           console.error('[MCP ROOT ERROR]', error);
           res.writeHead(500, { 'Content-Type': 'application/json' });
@@ -1828,13 +1913,37 @@ class SignupAssistMCPServer {
       ) {
         try {
           const manifestPath = path.resolve(process.cwd(), "public", ".well-known", "ai-plugin.json");
-          const manifest = readFileSync(manifestPath, "utf8");
+          const manifestText = readFileSync(manifestPath, "utf8");
+
+          // Rewrite URLs to match request host to satisfy "same root domain" requirements.
+          const proto = (req.headers['x-forwarded-proto'] as string | undefined) || 'https';
+          const host =
+            (req.headers['x-forwarded-host'] as string | undefined) ||
+            (req.headers['host'] as string | undefined);
+          const baseUrl = host ? `${proto}://${host}` : 'https://signupassist-mcp-production.up.railway.app';
+
+          let out = manifestText;
+          try {
+            const json = JSON.parse(manifestText);
+            if (json?.auth?.type === 'oauth') {
+              json.auth.authorization_url = `${baseUrl}/oauth/authorize`;
+              json.auth.token_url = `${baseUrl}/oauth/token`;
+            }
+            if (json?.api?.type === 'openapi') {
+              json.api.url = `${baseUrl}/mcp/openapi.json`;
+            }
+            if (json?.logo_url) json.logo_url = `${baseUrl}/logo-512.svg`;
+            if (json?.legal_info_url) json.legal_info_url = `${baseUrl}/privacy`;
+            out = JSON.stringify(json, null, 2);
+          } catch (e: any) {
+            console.warn('[AI-PLUGIN] Failed to rewrite URLs:', e?.message);
+          }
           res.writeHead(200, { 
             "Content-Type": "application/json",
             "Cache-Control": "no-store, no-cache, must-revalidate",
             "Pragma": "no-cache"
           });
-          res.end(manifest);
+          res.end(out);
           console.log("[ROUTE] Served ai-plugin.json for", url.pathname);
         } catch (error: any) {
           console.error("[AI-PLUGIN SERVE ERROR]", error);
@@ -1852,13 +1961,37 @@ class SignupAssistMCPServer {
       ) {
         try {
           const manifestPath = path.resolve(process.cwd(), "public", ".well-known", "openai-connector.json");
-          const manifest = readFileSync(manifestPath, "utf8");
+          const manifestText = readFileSync(manifestPath, "utf8");
+
+          // Rewrite URLs to match request host for consistency / cross-domain safety.
+          const proto = (req.headers['x-forwarded-proto'] as string | undefined) || 'https';
+          const host =
+            (req.headers['x-forwarded-host'] as string | undefined) ||
+            (req.headers['host'] as string | undefined);
+          const baseUrl = host ? `${proto}://${host}` : 'https://signupassist-mcp-production.up.railway.app';
+
+          let out = manifestText;
+          try {
+            const json = JSON.parse(manifestText);
+            if (json?.auth?.type === 'oauth') {
+              json.auth.authorization_url = `${baseUrl}/oauth/authorize`;
+              json.auth.token_url = `${baseUrl}/oauth/token`;
+            }
+            if (json?.api?.type === 'openapi') {
+              json.api.url = `${baseUrl}/mcp/openapi.json`;
+            }
+            if (json?.logo_url) json.logo_url = `${baseUrl}/logo-512.svg`;
+            if (json?.legal_info_url) json.legal_info_url = `${baseUrl}/privacy`;
+            out = JSON.stringify(json, null, 2);
+          } catch (e: any) {
+            console.warn('[CONNECTOR] Failed to rewrite URLs:', e?.message);
+          }
           res.writeHead(200, { 
             "Content-Type": "application/json",
             "Cache-Control": "no-store, no-cache, must-revalidate",
             "Pragma": "no-cache"
           });
-          res.end(manifest);
+          res.end(out);
           console.log("[ROUTE] Served openai-connector.json for", url.pathname);
         } catch (error: any) {
           console.error("[CONNECTOR JSON ERROR]", error);

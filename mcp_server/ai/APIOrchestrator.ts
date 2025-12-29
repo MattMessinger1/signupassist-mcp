@@ -97,6 +97,8 @@ interface APIContext {
     name: string;
     age?: number;
     dob?: string;
+    firstName?: string;
+    lastName?: string;
   };
   schedulingData?: {
     scheduled_time: string;
@@ -120,7 +122,14 @@ interface APIContext {
   pendingParticipants?: Array<{ firstName: string; lastName: string; age?: number }>;
   
   // ChatGPT NL compatibility: delegate info collection
-  pendingDelegateInfo?: { email?: string; firstName?: string; lastName?: string; phone?: string };
+  pendingDelegateInfo?: {
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+    dob?: string;
+    relationship?: string;
+  };
   awaitingDelegateEmail?: boolean;
 
   // Text-only cancellation confirmation (ChatGPT has no buttons in v1)
@@ -379,6 +388,102 @@ export default class APIOrchestrator implements IOrchestrator {
     return { firstName: m[1], lastName: m[2] };
   }
 
+  private toISODate(year: number, month: number, day: number): string | null {
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+    const y = Math.trunc(year);
+    const m = Math.trunc(month);
+    const d = Math.trunc(day);
+    if (y < 1900 || y > 2100) return null;
+    if (m < 1 || m > 12) return null;
+    if (d < 1 || d > 31) return null;
+
+    // Validate real date (e.g. reject 02/31)
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) return null;
+
+    const mm = String(m).padStart(2, "0");
+    const dd = String(d).padStart(2, "0");
+    return `${y}-${mm}-${dd}`;
+  }
+
+  private parseDateFromText(input: string): string | null {
+    const s = String(input || "").trim();
+    if (!s) return null;
+
+    // YYYY-MM-DD (or YYYY/M/D)
+    {
+      const m = s.match(/\b(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})\b/);
+      if (m) {
+        const iso = this.toISODate(Number(m[1]), Number(m[2]), Number(m[3]));
+        if (iso) return iso;
+      }
+    }
+
+    // M/D/YYYY or M-D-YYYY (accept 2-digit years with century heuristic)
+    {
+      const m = s.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})\b/);
+      if (m) {
+        const month = Number(m[1]);
+        const day = Number(m[2]);
+        let year = Number(m[3]);
+        if (m[3].length === 2) {
+          const now = new Date();
+          const two = now.getUTCFullYear() % 100;
+          year = year <= two ? 2000 + year : 1900 + year;
+        }
+        const iso = this.toISODate(year, month, day);
+        if (iso) return iso;
+      }
+    }
+
+    // Month name formats: "June 15, 1984"
+    {
+      const m = s.match(
+        /\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+)(\d{4})\b/i
+      );
+      if (m) {
+        const monthName = m[1].toLowerCase();
+        const monthMap: Record<string, number> = {
+          jan: 1, january: 1,
+          feb: 2, february: 2,
+          mar: 3, march: 3,
+          apr: 4, april: 4,
+          may: 5,
+          jun: 6, june: 6,
+          jul: 7, july: 7,
+          aug: 8, august: 8,
+          sep: 9, sept: 9, september: 9,
+          oct: 10, october: 10,
+          nov: 11, november: 11,
+          dec: 12, december: 12,
+        };
+        const month = monthMap[monthName];
+        const day = Number(m[2]);
+        const year = Number(m[3]);
+        const iso = month ? this.toISODate(year, month, day) : null;
+        if (iso) return iso;
+      }
+    }
+
+    return null;
+  }
+
+  private parseRelationshipFromText(input: string): string | null {
+    const s = String(input || "").toLowerCase();
+    if (!s) return null;
+
+    // Prefer explicit labels if present
+    const labeled = s.match(/\brelationship\s*[:=]\s*([a-z\s]+)\b/i)?.[1]?.trim();
+    const hay = labeled || s;
+
+    if (/\b(parent|mother|mom|father|dad)\b/.test(hay)) return "parent";
+    if (/\b(legal\s+guardian|guardian)\b/.test(hay)) return "guardian";
+    if (/\b(grandparent|grandmother|grandma|grandfather|grandpa)\b/.test(hay)) return "grandparent";
+    if (/\b(other|aunt|uncle|relative|caregiver)\b/.test(hay)) return "other";
+
+    return null;
+  }
+
   /**
    * Hydrate context.formData from free-text user input using:
    * - known helpers (child name/age, email)
@@ -388,6 +493,43 @@ export default class APIOrchestrator implements IOrchestrator {
    */
   private hydrateFormDataFromText(input: string, context: APIContext): Record<string, any> {
     const formData: Record<string, any> = { ...(context.formData || {}) };
+
+    const delegateFields = context.requiredFields?.delegate || [];
+    const participantFields = context.requiredFields?.participant || [];
+
+    const isEmpty = (v: any) => v == null || (typeof v === "string" && v.trim() === "");
+
+    const needsDelegateFirstName = delegateFields.some((f) => {
+      const lk = String(f.key || "").toLowerCase();
+      return lk.includes("first") && lk.includes("name") && isEmpty(formData[f.key]);
+    });
+    const needsDelegateLastName = delegateFields.some((f) => {
+      const lk = String(f.key || "").toLowerCase();
+      return lk.includes("last") && lk.includes("name") && isEmpty(formData[f.key]);
+    });
+    const needsDelegateName = needsDelegateFirstName || needsDelegateLastName;
+    const needsDelegateDob = delegateFields.some((f) => {
+      const lk = String(f.key || "").toLowerCase();
+      return (lk.includes("dob") || lk.includes("birth")) && isEmpty(formData[f.key]);
+    });
+    const needsDelegateRelationship = delegateFields.some((f) => {
+      const lk = String(f.key || "").toLowerCase();
+      return lk.includes("relationship") && isEmpty(formData[f.key]);
+    });
+
+    const needsParticipantFirstName = participantFields.some((f) => {
+      const lk = String(f.key || "").toLowerCase();
+      return lk.includes("first") && lk.includes("name") && isEmpty(formData[f.key]);
+    });
+    const needsParticipantLastName = participantFields.some((f) => {
+      const lk = String(f.key || "").toLowerCase();
+      return lk.includes("last") && lk.includes("name") && isEmpty(formData[f.key]);
+    });
+    const needsParticipantName = needsParticipantFirstName || needsParticipantLastName;
+    const needsParticipantDob = participantFields.some((f) => {
+      const lk = String(f.key || "").toLowerCase();
+      return (lk.includes("dob") || lk.includes("birth")) && isEmpty(formData[f.key]);
+    });
 
     // 1) Email
     const email = this.parseDelegateEmail(input);
@@ -401,28 +543,56 @@ export default class APIOrchestrator implements IOrchestrator {
       context.pendingDelegateInfo = { ...(context.pendingDelegateInfo || {}), phone };
     }
 
-    // 3) Child info
-    const child = this.parseChildInfoFromMessage(input);
-    if (child) {
-      context.childInfo = {
-        name: child.name,
-        age: child.age,
-      };
+    // 3) DOB / relationship (schema-aware)
+    const parsedDate = this.parseDateFromText(input);
+    const parsedRelationship = this.parseRelationshipFromText(input);
+    if (parsedDate) {
+      if (needsDelegateDob) {
+        context.pendingDelegateInfo = {
+          ...(context.pendingDelegateInfo || {}),
+          dob: context.pendingDelegateInfo?.dob || parsedDate,
+        };
+      } else if (needsParticipantDob) {
+        context.childInfo = {
+          ...(context.childInfo || { name: "" }),
+          dob: context.childInfo?.dob || parsedDate,
+        };
+      }
     }
-
-    // 4) Adult name (delegate)
-    const adult = this.parseAdultName(input);
-    if (adult) {
+    if (parsedRelationship && needsDelegateRelationship) {
       context.pendingDelegateInfo = {
         ...(context.pendingDelegateInfo || {}),
-        firstName: context.pendingDelegateInfo?.firstName || adult.firstName,
-        lastName: context.pendingDelegateInfo?.lastName || adult.lastName,
+        relationship: context.pendingDelegateInfo?.relationship || parsedRelationship,
       };
     }
 
-    // 5) Map into schema keys (best effort)
-    const delegateFields = context.requiredFields?.delegate || [];
-    const participantFields = context.requiredFields?.participant || [];
+    // 4) Adult name (delegate) — only when we still need it
+    if (needsDelegateName) {
+      const adult = this.parseAdultName(input);
+      if (adult) {
+        context.pendingDelegateInfo = {
+          ...(context.pendingDelegateInfo || {}),
+          firstName: context.pendingDelegateInfo?.firstName || adult.firstName,
+          lastName: context.pendingDelegateInfo?.lastName || adult.lastName,
+        };
+      }
+    }
+
+    // 5) Child info — only when we’re collecting participant fields (and delegate name is already done)
+    if (needsParticipantName && !needsDelegateName) {
+      const child = this.parseChildInfoFromMessage(input);
+      if (child) {
+        const firstName = String(child.firstName || child.name?.split(/\s+/)[0] || "").trim();
+        const lastName = String(child.lastName || child.name?.split(/\s+/).slice(1).join(" ") || "").trim();
+        context.childInfo = {
+          ...(context.childInfo || { name: "" }),
+          name: child.name,
+          age: child.age,
+          firstName: context.childInfo?.firstName || firstName,
+          lastName: context.childInfo?.lastName || lastName,
+        };
+      }
+    }
 
     // Delegate mapping
     const d = context.pendingDelegateInfo || {};
@@ -435,6 +605,8 @@ export default class APIOrchestrator implements IOrchestrator {
       else if (d.phone && (lk.includes('phone') || lk.includes('mobile') || lk.includes('cell'))) formData[k] = d.phone;
       else if (d.firstName && (lk.includes('first') && lk.includes('name'))) formData[k] = d.firstName;
       else if (d.lastName && (lk.includes('last') && lk.includes('name'))) formData[k] = d.lastName;
+      else if (d.dob && (lk.includes('dob') || lk.includes('birth'))) formData[k] = d.dob;
+      else if (d.relationship && lk.includes('relationship')) formData[k] = d.relationship;
       else if (!lk.includes('first') && !lk.includes('last') && lk.includes('name') && d.firstName && d.lastName) {
         // fallback "name" field
         formData[k] = `${d.firstName} ${d.lastName}`.trim();
@@ -448,9 +620,11 @@ export default class APIOrchestrator implements IOrchestrator {
       const lk = k.toLowerCase();
       if (formData[k] != null) continue;
 
-      if (c?.name && lk.includes('name')) formData[k] = c.name;
-      else if (typeof c?.age === 'number' && (lk.includes('age') || lk.includes('years'))) formData[k] = c.age;
+      if (c?.firstName && (lk.includes('first') && lk.includes('name'))) formData[k] = c.firstName;
+      else if (c?.lastName && (lk.includes('last') && lk.includes('name'))) formData[k] = c.lastName;
+      else if (c?.name && !lk.includes('first') && !lk.includes('last') && lk.includes('name')) formData[k] = c.name;
       else if (c?.dob && (lk.includes('dob') || lk.includes('birth'))) formData[k] = c.dob;
+      else if (typeof c?.age === 'number' && (lk.includes('age') || lk.includes('years'))) formData[k] = c.age;
     }
 
     return formData;
@@ -1318,6 +1492,35 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             sessionId,
             formKeys: Object.keys(context.formData || {}),
           });
+
+          // Normalize flat schema-key formData into the two-tier structure expected by submitForm:
+          // { delegate: {...}, participants: [{...}], numParticipants }
+          if (payload?.formData && typeof payload.formData === "object") {
+            const fd: any = payload.formData;
+            const alreadyTwoTier =
+              (fd && typeof fd === "object" && typeof fd.delegate === "object") ||
+              Array.isArray(fd.participants);
+
+            if (!alreadyTwoTier) {
+              const delegate: Record<string, any> = {};
+              const participant: Record<string, any> = {};
+              for (const f of context.requiredFields?.delegate || []) {
+                if (fd[f.key] != null) delegate[f.key] = fd[f.key];
+              }
+              for (const f of context.requiredFields?.participant || []) {
+                if (fd[f.key] != null) participant[f.key] = fd[f.key];
+              }
+
+              payload = {
+                ...payload,
+                formData: {
+                  delegate,
+                  participants: [participant],
+                  numParticipants: 1,
+                },
+              };
+            }
+          }
 
           // Now call existing submitForm implementation.
           return await this.submitForm(payload, sessionId, context);
@@ -3374,8 +3577,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       ? participantNames[0]
       : participantNames.map((name: string, idx: number) => `${idx + 1}. ${name}`).join('\n');
 
-    // Get user_id from payload (frontend provides this for authenticated users)
-    const userId = payload.user_id;
+    // Get user_id from payload (frontend) or context (Auth0/JWT session)
+    const userId = payload.user_id || context.user_id;
     
     if (!userId) {
       Logger.warn('[submitForm] No user_id in payload - success fee charge may fail');
