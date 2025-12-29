@@ -467,6 +467,9 @@ class SignupAssistMCPServer {
   private tools: Map<string, any> = new Map();
   private orchestrator: IOrchestrator | null = null;
   private sseTransports: Map<string, any> = new Map(); // SSE session storage
+  // Auth binding for MCP SSE transport: sessionId (SSEServerTransport.sessionId) → Auth0 user id (sub)
+  // Used to inject `userId` into `signupassist.chat` tool calls so sessions persist per-user.
+  private sseSessionUserIds: Map<string, string> = new Map();
 
   constructor() {
     console.log('[STARTUP] SignupAssistMCPServer constructor called');
@@ -1140,6 +1143,55 @@ class SignupAssistMCPServer {
         console.log('[SSE] New SSE connection request');
         
         try {
+          // ================================================================
+          // AUTH (PRODUCTION): Require OAuth (Auth0 JWT) or internal MCP_ACCESS_TOKEN
+          // ================================================================
+          const isProd = process.env.NODE_ENV === 'production';
+          const authHeader = req.headers['authorization'] as string | undefined;
+          const expectedToken = process.env.MCP_ACCESS_TOKEN;
+
+          let isAuthorized = false;
+          let authSource: 'mcp_access_token' | 'auth0' | 'dev' | 'none' = 'none';
+          let boundUserId: string | undefined;
+
+          if (!isProd) {
+            isAuthorized = true;
+            authSource = 'dev';
+          } else {
+            // Internal service token path (ops / scripts)
+            if (expectedToken && authHeader === `Bearer ${expectedToken}`) {
+              isAuthorized = true;
+              authSource = 'mcp_access_token';
+            } else {
+              // Auth0 JWT access token path (ChatGPT OAuth)
+              const bearerToken = extractBearerToken(authHeader);
+              if (bearerToken) {
+                try {
+                  const payload = await verifyAuth0Token(bearerToken);
+                  boundUserId = payload?.sub;
+                  isAuthorized = true;
+                  authSource = 'auth0';
+                } catch (e: any) {
+                  console.warn('[AUTH] Auth0 JWT rejected for /sse:', e?.message);
+                }
+              }
+            }
+          }
+
+          if (!isAuthorized) {
+            res.writeHead(401, {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+              "Cache-Control": "no-store",
+              "WWW-Authenticate": "Bearer realm=\"signupassist\", error=\"authentication_required\"",
+            });
+            res.end(JSON.stringify({ error: "authentication_required", message: "OAuth token required" }));
+            console.log('[AUTH] Unauthorized access attempt to /sse');
+            return;
+          }
+
+          console.log(`[AUTH] Authorized SSE connection via ${authSource}${boundUserId ? ` user=${boundUserId}` : ''}`);
+
           // Create SSE transport - it will set its own headers
           const transport = new SSEServerTransport('/messages', res);
           
@@ -1149,6 +1201,11 @@ class SignupAssistMCPServer {
           // ✅ Use the transport's built-in sessionId (not our own UUID)
           const sessionId = transport.sessionId;
           this.sseTransports.set(sessionId, transport);
+
+          // Bind sessionId → Auth0 sub for downstream /messages injection
+          if (boundUserId) {
+            this.sseSessionUserIds.set(sessionId, boundUserId);
+          }
           
           console.log(`[SSE] MCP server connected, session: ${sessionId}`);
           console.log(`[SSE] Active sessions: ${this.sseTransports.size}`);
@@ -1157,6 +1214,7 @@ class SignupAssistMCPServer {
           req.on('close', () => {
             console.log(`[SSE] Connection closed: ${sessionId}`);
             this.sseTransports.delete(sessionId);
+            this.sseSessionUserIds.delete(sessionId);
             console.log(`[SSE] Remaining sessions: ${this.sseTransports.size}`);
           });
           
@@ -1178,6 +1236,67 @@ class SignupAssistMCPServer {
         console.log('[SSE] Received POST /messages');
         
         try {
+          // Get session ID from query parameter (set by SSEServerTransport)
+          const sessionId = url.searchParams.get('sessionId');
+
+          if (!sessionId) {
+            console.error('[SSE] No sessionId in /messages request');
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Missing sessionId query parameter' }));
+            return;
+          }
+
+          // ================================================================
+          // AUTH (PRODUCTION): Require OAuth (Auth0 JWT) or internal MCP_ACCESS_TOKEN
+          // Also: bind / refresh sessionId → userId mapping so we can inject into tools.
+          // ================================================================
+          const isProd = process.env.NODE_ENV === 'production';
+          const authHeader = req.headers['authorization'] as string | undefined;
+          const expectedToken = process.env.MCP_ACCESS_TOKEN;
+
+          let isAuthorized = false;
+          let authSource: 'mcp_access_token' | 'auth0' | 'dev' | 'none' = 'none';
+          let verifiedUserId: string | undefined;
+
+          if (!isProd) {
+            isAuthorized = true;
+            authSource = 'dev';
+          } else {
+            if (expectedToken && authHeader === `Bearer ${expectedToken}`) {
+              isAuthorized = true;
+              authSource = 'mcp_access_token';
+            } else {
+              const bearerToken = extractBearerToken(authHeader);
+              if (bearerToken) {
+                try {
+                  const payload = await verifyAuth0Token(bearerToken);
+                  verifiedUserId = payload?.sub;
+                  isAuthorized = true;
+                  authSource = 'auth0';
+                } catch (e: any) {
+                  console.warn('[AUTH] Auth0 JWT rejected for /messages:', e?.message);
+                }
+              }
+            }
+          }
+
+          if (!isAuthorized) {
+            res.writeHead(401, {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*",
+              "Cache-Control": "no-store",
+              "WWW-Authenticate": "Bearer realm=\"signupassist\", error=\"authentication_required\"",
+            });
+            res.end(JSON.stringify({ error: "authentication_required", message: "OAuth token required" }));
+            console.log('[AUTH] Unauthorized access attempt to /messages');
+            return;
+          }
+
+          // Persist a user binding for this SSE session if we have it.
+          if (verifiedUserId) {
+            this.sseSessionUserIds.set(sessionId, verifiedUserId);
+          }
+
           // Read request body
           let body = '';
           for await (const chunk of req) {
@@ -1185,16 +1304,6 @@ class SignupAssistMCPServer {
           }
           
           console.log('[SSE] Message body:', body.substring(0, 200));
-          
-          // Get session ID from query parameter (set by SSEServerTransport)
-          const sessionId = url.searchParams.get('sessionId');
-          
-          if (!sessionId) {
-            console.error('[SSE] No sessionId in /messages request');
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Missing sessionId query parameter' }));
-            return;
-          }
           
           const transport = this.sseTransports.get(sessionId);
           
@@ -1204,9 +1313,38 @@ class SignupAssistMCPServer {
             res.end(JSON.stringify({ error: 'Session not found. Please reconnect to /sse' }));
             return;
           }
+
+          // Inject Auth0 userId into canonical chat tool calls so APIOrchestrator can persist per-user.
+          // (Do not trust client-supplied userId in production; overwrite with verified binding.)
+          const boundUserId = this.sseSessionUserIds.get(sessionId) || verifiedUserId;
+          let bodyToForward = body;
+          if (boundUserId) {
+            try {
+              const msg = JSON.parse(body);
+              if (
+                msg?.method === 'tools/call' &&
+                msg?.params?.name === 'signupassist.chat' &&
+                msg?.params
+              ) {
+                msg.params.arguments = msg.params.arguments || {};
+                if (isProd) {
+                  msg.params.arguments.userId = boundUserId;
+                } else if (!msg.params.arguments.userId) {
+                  msg.params.arguments.userId = boundUserId;
+                }
+                if (!msg.params.arguments.sessionId) {
+                  // Ensure required `sessionId` exists; fall back to SSE sessionId.
+                  msg.params.arguments.sessionId = sessionId;
+                }
+                bodyToForward = JSON.stringify(msg);
+              }
+            } catch {
+              // If parsing fails, forward original body unchanged.
+            }
+          }
           
           // Forward the message to the SSE transport
-          await transport.handlePostMessage(req, res, body);
+          await transport.handlePostMessage(req, res, bodyToForward);
           console.log(`[SSE] Message handled for session: ${sessionId}`);
           
         } catch (error: any) {
