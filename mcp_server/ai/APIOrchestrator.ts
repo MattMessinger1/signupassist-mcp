@@ -928,7 +928,8 @@ export default class APIOrchestrator implements IOrchestrator {
   }
 
   private async resolveRegistrationRef(
-    registrationRef: string
+    registrationRef: string,
+    userId?: string
   ): Promise<{ registration_id?: string; scheduled_registration_id?: string } | null> {
     if (!registrationRef) return null;
     const ref = String(registrationRef).trim();
@@ -945,42 +946,65 @@ export default class APIOrchestrator implements IOrchestrator {
 
     const supabase = this.getSupabaseClient();
 
+    // Helper: fetch a small recent set of IDs and match locally.
+    // This avoids server-side LIKE/ILIKE operators that may not work on UUID columns.
+    const fetchRecentIds = async (
+      table: 'registrations' | 'scheduled_registrations'
+    ): Promise<Array<{ id: string }>> => {
+      const run = async (withUser: boolean) => {
+        let q = supabase.from(table).select('id').order('created_at', { ascending: false }).limit(100);
+        if (withUser && userId) q = q.eq('user_id', userId);
+        return await q;
+      };
+
+      if (userId) {
+        const { data, error } = await run(true);
+        if (!error && Array.isArray(data)) return data as any;
+        if (error) {
+          Logger.warn(`[resolveRegistrationRef] user_id filtered lookup failed for ${table}; retrying without user filter`, {
+            table,
+            hasUserId: true,
+            error: error.message
+          });
+        }
+      }
+
+      const { data, error } = await run(false);
+      if (error) {
+        Logger.warn(`[resolveRegistrationRef] lookup failed for ${table}`, { table, error: error.message });
+        return [];
+      }
+      return Array.isArray(data) ? (data as any) : [];
+    };
+
+    const matchByPrefix = (rows: Array<{ id: string }>) => {
+      const t = token.toLowerCase();
+      return rows.find((r) => String(r.id).toLowerCase().startsWith(t))?.id || null;
+    };
+
     if (kind === 'SCH') {
-      const { data } = await supabase
-        .from('scheduled_registrations')
-        .select('id')
-        .ilike('id', `${token}%`)
-        .limit(1)
-        .maybeSingle();
-      return data?.id ? { scheduled_registration_id: data.id } : null;
+      const rows = await fetchRecentIds('scheduled_registrations');
+      const id = matchByPrefix(rows);
+      return id ? { scheduled_registration_id: id } : null;
     }
 
     if (kind === 'REG') {
-      const { data } = await supabase
-        .from('registrations')
-        .select('id')
-        .ilike('id', `${token}%`)
-        .limit(1)
-        .maybeSingle();
-      return data?.id ? { registration_id: data.id } : null;
+      const rows = await fetchRecentIds('registrations');
+      const id = matchByPrefix(rows);
+      return id ? { registration_id: id } : null;
     }
 
     // Unknown kind: try registrations first, then scheduled.
-    const { data: reg } = await supabase
-      .from('registrations')
-      .select('id')
-      .ilike('id', `${token}%`)
-      .limit(1)
-      .maybeSingle();
-    if (reg?.id) return { registration_id: reg.id };
-
-    const { data: sch } = await supabase
-      .from('scheduled_registrations')
-      .select('id')
-      .ilike('id', `${token}%`)
-      .limit(1)
-      .maybeSingle();
-    if (sch?.id) return { scheduled_registration_id: sch.id };
+    {
+      const regRows = await fetchRecentIds('registrations');
+      const regId = matchByPrefix(regRows);
+      if (regId) return { registration_id: regId };
+    }
+    {
+      const schRows = await fetchRecentIds('scheduled_registrations');
+      const schId = matchByPrefix(schRows);
+      if (schId) return { scheduled_registration_id: schId };
+    }
 
     return null;
   }
@@ -1578,7 +1602,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       case "view_audit_trail":
         // Text-only UX: allow "audit REG-xxxx" / "audit SCH-xxxx"
         if (payload?.registration_ref && !payload.registration_id && !payload.scheduled_registration_id) {
-          const resolved = await this.resolveRegistrationRef(payload.registration_ref);
+          const resolved = await this.resolveRegistrationRef(payload.registration_ref, context.user_id);
           if (resolved?.registration_id) payload.registration_id = resolved.registration_id;
           if (resolved?.scheduled_registration_id) payload.scheduled_registration_id = resolved.scheduled_registration_id;
         }
@@ -1587,7 +1611,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       case "cancel_registration":
         // Text-only UX: allow "cancel REG-xxxx" / "cancel SCH-xxxx"
         if (payload?.registration_ref && !payload.registration_id && !payload.scheduled_registration_id) {
-          const resolved = await this.resolveRegistrationRef(payload.registration_ref);
+          const resolved = await this.resolveRegistrationRef(payload.registration_ref, context.user_id);
           if (resolved?.registration_id) payload.registration_id = resolved.registration_id;
           if (resolved?.scheduled_registration_id) payload.scheduled_registration_id = resolved.scheduled_registration_id;
         }
@@ -4977,7 +5001,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     
     // Allow text-only reference codes (REG-xxxx / SCH-xxxx / uuid)
     if (!registration_id && !scheduled_registration_id && registration_ref) {
-      const resolved = await this.resolveRegistrationRef(registration_ref);
+      const resolved = await this.resolveRegistrationRef(registration_ref, context.user_id);
       registration_id = resolved?.registration_id;
       scheduled_registration_id = resolved?.scheduled_registration_id;
     }
