@@ -32,11 +32,12 @@ function inferWizardStep(ctxStep: OrchestratorStep): WizardStep {
 
 function ensureWizardHeaderAlways(message: string, wizardStep: WizardStep): string {
   const msg = (message || "").trim();
-  const desiredHeader = `Step ${wizardStep}/5 — ${wizardTitle(wizardStep)}`;
+  // Use bold header to reduce the chance ChatGPT strips the first line when rendering tool output.
+  const desiredHeader = `**Step ${wizardStep}/5 — ${wizardTitle(wizardStep)}**`;
 
   // If already has any Step X/5 header, replace it with the correct one.
-  if (/^Step\s+[1-5]\/5\s+—/i.test(msg)) {
-    return msg.replace(/^Step\s+[1-5]\/5\s+—[^\n]*\n*/i, `${desiredHeader}\n\n`);
+  if (/^\*{0,2}Step\s+[1-5]\/5\s+—/i.test(msg)) {
+    return msg.replace(/^\*{0,2}Step\s+[1-5]\/5\s+—[^\n]*\n*/i, `${desiredHeader}\n\n`);
   }
 
   return `${desiredHeader}\n\n${msg}`;
@@ -259,7 +260,13 @@ function wizardInvocationForTool(toolName: string): { invoking: string; invoked:
   const step5Invoked  = "Step 5/5 — Registration step complete.";
 
   // Entry point / feed / chat
-  if (toolName === "signupassist.start" || toolName === "signupassist.chat" || toolName === "program_feed.get") {
+  // IMPORTANT: For the single public tool (signupassist.chat), do NOT duplicate a Step header
+  // in the toolInvocation status text. Some ChatGPT surfaces appear to suppress the first line
+  // of tool output when they think "progress" is already shown.
+  if (toolName === "signupassist.chat") {
+    return { invoking: "Working…", invoked: "Reply ready." };
+  }
+  if (toolName === "signupassist.start" || toolName === "program_feed.get") {
     return { invoking: step1Invoking, invoked: step1Invoked };
   }
 
