@@ -1997,11 +1997,16 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       }
     }
 
-    // LOW confidence for ANONYMOUS users = DON'T ACTIVATE
-    // SignupAssist is a high-intent signup tool, not a discovery platform.
-    // However: if we're mid-flow (e.g., we already captured an activity and asked for city),
-    // do NOT "silent pass"—restate the pending question so the user isn't stuck.
+    // LOW confidence for ANONYMOUS users = usually DON'T ACTIVATE (so we don't annoy).
+    // BUT: if we're already in an in-flight flow (program list shown, program selected, etc),
+    // we MUST continue even for anonymous users — value-first, sign-in later.
     if (!context.user_id) {
+      const hasInFlightFlow =
+        context.step !== FlowStep.BROWSE ||
+        !!context.selectedProgram ||
+        (Array.isArray(context.displayedPrograms) && context.displayedPrograms.length > 0) ||
+        !!context.pendingProviderConfirmation;
+
       const shouldContinueBrowseFlow =
         context.step === FlowStep.BROWSE &&
         !!context.requestedActivity &&
@@ -2012,9 +2017,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         const displayName = getActivityDisplayName(context.requestedActivity!);
         const audienceAck =
           context.requestedAdults === true
-            ? "Got it — adults." 
+            ? "Got it — adults."
             : context.requestedAdults === false
-              ? "Got it — kids." 
+              ? "Got it — kids."
               : "Got it.";
 
         return this.formatResponse(
@@ -2024,9 +2029,18 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         );
       }
 
-      Logger.info('[handleMessage] LOW confidence + anonymous user = not activating');
-      // Return null to signal "pass" - let ChatGPT route elsewhere
-      return null;
+      if (!hasInFlightFlow) {
+        Logger.info('[handleMessage] LOW confidence + anonymous user = not activating');
+        // Return null to signal "pass" - let ChatGPT route elsewhere
+        return null;
+      }
+
+      Logger.info('[handleMessage] Anonymous user but in-flow context — continuing', {
+        step: context.step,
+        hasDisplayedPrograms: Array.isArray(context.displayedPrograms) && context.displayedPrograms.length > 0,
+        hasSelectedProgram: !!context.selectedProgram,
+        hasPendingProviderConfirmation: !!context.pendingProviderConfirmation,
+      });
     }
 
     // LOW confidence for AUTHENTICATED users: Context-aware responses based on flow step
