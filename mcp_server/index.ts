@@ -728,14 +728,19 @@ class SignupAssistMCPServer {
         type: "object",
         properties: {
           input: { type: "string", description: "User message text" },
+          message: { type: "string", description: "Alias of input (some clients send message instead of input)" },
           sessionId: { type: "string", description: "Stable session identifier from client" },
           userTimezone: { type: "string", description: "IANA timezone, e.g. America/Chicago" },
           userId: { type: "string", description: "Authenticated user id (Auth0 sub), if available" }
         },
-        required: ["input", "sessionId"]
+        required: ["sessionId"],
+        anyOf: [
+          { required: ["input", "sessionId"] },
+          { required: ["message", "sessionId"] }
+        ]
       },
       handler: async (args: any) => {
-        const input = String(args?.input || "");
+        const input = String(args?.input ?? args?.message ?? "");
         const sessionId = String(args?.sessionId || "chatgpt");
         const userTimezone = args?.userTimezone ? String(args.userTimezone) : undefined;
         const userId = args?.userId ? String(args.userId) : undefined;
