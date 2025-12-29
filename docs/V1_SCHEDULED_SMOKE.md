@@ -94,4 +94,10 @@ If you have Supabase env vars locally, you can monitor a job:
 npm run v1:watch-scheduled -- <scheduled_registration_id>
 ```
 
+You can also run the non-destructive E2E smoke (creates a scheduled job ~30 minutes out, then cancels it immediately):
+
+```bash
+MCP_SERVER_URL=<BASE_URL> MCP_ACCESS_TOKEN=... E2E_USER_ID=... npm run test:e2e
+```
+
 

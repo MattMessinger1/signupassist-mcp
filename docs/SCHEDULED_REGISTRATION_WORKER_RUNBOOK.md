@@ -34,6 +34,8 @@ npm start
 npm run worker:scheduled
 ```
 
+Note: `worker:scheduled` runs `mcp:build` automatically via `preworker:scheduled`, so the worker can start from a fresh deploy without a pre-built `dist/`.
+
 ---
 
 ## Required environment variables (worker + server)
