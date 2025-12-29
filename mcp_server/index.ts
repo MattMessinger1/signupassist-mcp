@@ -2234,11 +2234,37 @@ class SignupAssistMCPServer {
         (url.pathname === "/.well-known/openai-verification.txt" ||
          url.pathname === "/mcp/.well-known/openai-verification.txt")
       ) {
-        const verificationToken = process.env.OPENAI_VERIFICATION_TOKEN || '';
+        let verificationToken = (process.env.OPENAI_VERIFICATION_TOKEN || '').trim();
+
+        // Optional fallback: allow storing the token as a static file in the repo.
+        // Useful if you prefer not to manage a Railway env var for a non-secret verification token.
         if (!verificationToken) {
-          console.warn("[ROUTE] OPENAI_VERIFICATION_TOKEN not set");
+          try {
+            const p = path.resolve(process.cwd(), "public", ".well-known", "openai-verification.txt");
+            if (existsSync(p)) {
+              verificationToken = String(readFileSync(p, "utf8") || "").trim();
+            }
+          } catch {
+            // ignore
+          }
         }
-        res.writeHead(200, { "Content-Type": "text/plain" });
+
+        if (!verificationToken) {
+          console.warn("[ROUTE] openai-verification.txt requested but token not configured");
+          res.writeHead(404, {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Cache-Control": "no-store",
+            "Access-Control-Allow-Origin": "*"
+          });
+          res.end("OPENAI_VERIFICATION_TOKEN not set");
+          return;
+        }
+
+        res.writeHead(200, {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "no-store",
+          "Access-Control-Allow-Origin": "*"
+        });
         res.end(verificationToken);
         console.log("[ROUTE] Served openai-verification.txt for", url.pathname);
         return;
