@@ -27,10 +27,25 @@ This file exists because chat sessions can get cut off. It is the **repo source 
   - Removed server-local `toLocaleString()` formatting in the orchestrator.
   - Updated message templates to format times via user timezone instead of relying on server locale.
 
+- **V1 UX hardening (first-time + returning)**
+  - First-time users see a **one-time trust/safety intro** (responsible delegate, Stripe-hosted payment entry, audit trail).
+  - Step 2/5 is **schema-driven**: collect all required fields via micro-questions (no schema dumps), and only ask for what’s missing.
+  - Returning users are **prefilled** from Supabase (`delegate_profiles`, `children`, `user_billing`) to reduce friction.
+
+- **Receipts reliability (REG)**
+  - Fixed a production failure mode where `stripe.charge_success_fee` could return a non-UUID `charge_id` (e.g. `'unknown'`), which breaks FK inserts into `registrations`.
+  - Fixed a production migration mismatch where `registrations.create` could fail if `provider_*` columns weren’t present yet; tool now retries without those fields.
+
 ### Evidence / current behavior
 
 - Stripe test card flow works via hosted Checkout (no card input in chat), and `user_billing` can reflect `visa •••• 4242` after `/stripe_return` finalization.
 - Program browse messages already use `formatTimeForUser(...)` for schedule/open times, respecting `userTimezone`.
+- Book-now flow produces:
+  - a `REG-xxxxxxxx` receipt in “view receipts”
+  - an audit trail via `audit REG-xxxxxxxx` that includes `bookeo.confirm_booking` and `stripe.charge_success_fee`
+- App Store readiness checks (prod):
+  - `/.well-known/openai-apps-challenge` returns 200 when `OPENAI_VERIFICATION_TOKEN` is set
+  - `GET /sse` returns **401** with `WWW-Authenticate: Bearer ...` to trigger OAuth in ChatGPT preview
 
 ### Commits deployed today (for traceability)
 
@@ -38,6 +53,10 @@ This file exists because chat sessions can get cut off. It is the **repo source 
 - `fix(stripe): make /stripe_return reachable (routing brace fix)`
 - `fix(payment): gate on hasPaymentMethod (default_payment_method_id) not last4`
 - `chore(time): store/compute UTC, format dates via userTimezone`
+- `feat(ux): trust intro + returning prefill; fix FORM_FILL + booking status`
+- `fix(ux): keep submit_form payload in sync with delegate/child prefills`
+- `fix(stripe): don't return 'unknown' charge_id (breaks receipts FK)`
+- `fix(registrations): retry create without provider_* fields when schema lags`
 
 ### Known gaps / next steps (pull from punchlist)
 
@@ -45,10 +64,7 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 
 - **OAuth in ChatGPT preview** (manual): verify full sign-in flow completes.
 - **Scheduled worker**: deploy second Railway service running `npm run worker:scheduled`, then prove a due job executes → REG receipt appears → audit trail correct.
-- **Book-now end-to-end**: complete immediate booking path and verify receipts/audit + success fee on success only.
-- **UX**
-  - First-time: short trust/safety intro (responsible delegate, audit trail, Stripe-hosted payment).
-  - Returning: prefill delegate profile / saved child / saved payment method; ask only missing required fields.
+- **Scheduled receipts UX**: show scheduled history statuses (completed/failed/cancelled) so users can understand SCH outcomes.
 
 ### How to resume (operator quickstart)
 
