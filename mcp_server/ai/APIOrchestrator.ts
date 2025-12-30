@@ -1954,6 +1954,20 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       return this.formatResponse(msg);
     }
 
+    // ChatGPT Apps sometimes call tools with an empty message on connect / refresh.
+    // Never "get stuck" on empty input — treat it as "browse programs".
+    const trimmed = String(input || "").trim();
+    if (!trimmed) {
+      const orgRef = context.orgRef || "aim-design";
+      this.updateContext(sessionId, {
+        orgRef,
+        requestedActivity: undefined,
+        pendingProviderConfirmation: undefined,
+        step: FlowStep.BROWSE,
+      });
+      return await this.searchPrograms(orgRef, sessionId);
+    }
+
     // ChatGPT NL: Check for secondary actions FIRST (view receipts, cancel, audit trail)
     const secondaryAction = this.parseSecondaryAction(input);
     if (secondaryAction) {
@@ -2239,9 +2253,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       }
 
       if (!hasInFlightFlow) {
-        Logger.info('[handleMessage] LOW confidence + anonymous user = not activating');
-        // Return null to signal "pass" - let ChatGPT route elsewhere
-        return null;
+        // In the ChatGPT Apps surface, the user explicitly chose this app/tool.
+        // Returning null here makes the app feel broken ("got stuck"). Instead, provide a safe prompt.
+        Logger.info('[handleMessage] LOW confidence + anonymous user = returning safe prompt');
+        return this.formatResponse(
+          `Tell me what you're looking for (e.g., “robotics for a 10‑year‑old”), or say **browse classes** to see everything.`,
+          undefined,
+          [{ label: "Browse classes", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "accent" }]
+        );
       }
 
       Logger.info('[handleMessage] Anonymous user but in-flow context — continuing', {
@@ -2256,6 +2275,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // Also handles ChatGPT NL parsing for form fill and payment steps
     switch (context.step) {
       case FlowStep.BROWSE: {
+        // If user expresses signup/browse intent but we didn't match a specific provider,
+        // default to the current org (v1: AIM Design) rather than falling through.
+        if (this.hasSignupIntent(input) || this.hasProgramWords(input)) {
+          const orgRef = context.orgRef || "aim-design";
+          this.updateContext(sessionId, { orgRef, pendingProviderConfirmation: undefined });
+          return await this.searchPrograms(orgRef, sessionId);
+        }
+
         // If user says "browse/show/list/anything", list programs now.
         if (this.isBrowseAllIntent(input)) {
           const orgRef = context.orgRef || "aim-design";
@@ -2307,7 +2334,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             context
           );
         }
-        break; // Fall through to default behavior
+
+        // Safe fallback in browse step: ask for intent instead of "getting stuck".
+        return this.formatResponse(
+          `Tell me what you're looking for (e.g., “robotics for a 10‑year‑old”), or say **browse classes** to see everything.`,
+          undefined,
+          [{ label: "Browse classes", action: "search_programs", payload: { orgRef: context.orgRef || "aim-design" }, variant: "accent" }]
+        );
       }
       
       case FlowStep.FORM_FILL: {
@@ -2593,7 +2626,15 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     }
 
     // Defensive fallback: if a code path falls through without returning.
-    return this.formatError("Sorry — I got stuck. Please try again.");
+    // Never return a generic error for end users; provide a safe recovery prompt.
+    Logger.warn('[handleMessage] Fell through without response; returning safe recovery prompt', {
+      step: context.step,
+    });
+    return this.formatResponse(
+      `Tell me what you're trying to do, or say **browse classes** to start over.`,
+      undefined,
+      [{ label: "Browse classes", action: "search_programs", payload: { orgRef: context.orgRef || "aim-design" }, variant: "accent" }]
+    );
   }
 
   // NOTE: extractActivityFromMessage removed - using matcherExtractActivity from activityMatcher.ts
