@@ -476,9 +476,11 @@ class SignupAssistMCPServer {
   private tools: Map<string, any> = new Map();
   private orchestrator: IOrchestrator | null = null;
   private sseTransports: Map<string, any> = new Map(); // SSE session storage
-  // Auth binding for MCP SSE transport: sessionId (SSEServerTransport.sessionId) → Auth0 user id (sub)
-  // Used to inject `userId` into `signupassist.chat` tool calls so sessions persist per-user.
+  // Auth binding for MCP SSE transport: sessionId (SSEServerTransport.sessionId) → Supabase auth user id (UUID)
+  // Used to inject `userId` into `signupassist.chat` tool calls so sessions persist per-user AND DB writes use UUIDs.
   private sseSessionUserIds: Map<string, string> = new Map();
+  // Cache Auth0 sub → Supabase user id for the lifetime of this process (best-effort).
+  private auth0SubToSupabaseUserId: Map<string, string> = new Map();
 
   constructor() {
     console.log('[STARTUP] SignupAssistMCPServer constructor called');
@@ -752,7 +754,7 @@ class SignupAssistMCPServer {
           message: { type: "string", description: "Alias of input (some clients send message instead of input)" },
           sessionId: { type: "string", description: "Stable session identifier from client" },
           userTimezone: { type: "string", description: "IANA timezone, e.g. America/Chicago" },
-          userId: { type: "string", description: "Authenticated user id (Auth0 sub), if available" }
+          userId: { type: "string", description: "Authenticated user id (Supabase auth UUID), if available" }
         },
         required: ["sessionId"],
         anyOf: [
@@ -814,6 +816,113 @@ class SignupAssistMCPServer {
     // Future array tools (no-op for now)
     const arrayTools: any[] = [];
     arrayTools.forEach((tool) => this.tools.set(tool.name, tool));
+  }
+
+  private isUuid(value: string): boolean {
+    const v = String(value || "").trim();
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+  }
+
+  private shadowEmailForAuth0Sub(sub: string): string {
+    const s = String(sub || "").trim();
+    const hash = crypto.createHash("sha256").update(s).digest("hex").slice(0, 32);
+    return `auth0-${hash}@signupassist.internal`;
+  }
+
+  private async findSupabaseUserIdByEmail(email: string): Promise<string | null> {
+    const target = String(email || "").trim().toLowerCase();
+    if (!target) return null;
+
+    // Supabase Admin API does not support direct email lookup; paginate listUsers.
+    // This is acceptable for v1 and is cached per-process; for scale we can add a mapping table later.
+    const perPage = 1000;
+    for (let page = 1; page <= 50; page++) {
+      const { data, error } = await supabase.auth.admin.listUsers({ page, perPage } as any);
+      if (error) {
+        console.warn("[AUTH] Supabase listUsers error while resolving user:", error.message);
+        return null;
+      }
+      const users = (data as any)?.users || (data as any)?.users?.users || (data as any)?.users || [];
+      const list = Array.isArray(users) ? users : (Array.isArray((data as any)?.users) ? (data as any).users : []);
+      const match = list.find((u: any) => String(u?.email || "").toLowerCase() === target);
+      if (match?.id) return String(match.id);
+
+      // Stop if we've exhausted the list.
+      if (!list.length || list.length < perPage) break;
+    }
+    return null;
+  }
+
+  /**
+   * Resolve (or provision) a Supabase auth user id for an Auth0 subject.
+   *
+   * Why: Our DB schema uses UUID user_id columns (and mandates references auth.users),
+   * but Auth0 `sub` is typically a string like `auth0|...`.
+   *
+   * Approach:
+   * - If Auth0 token includes email, try to map by that email.
+   * - Else, derive a deterministic "shadow" email from sub (auth0-<sha>@signupassist.internal).
+   * - Create the Supabase user if missing (email_confirm=true, random password).
+   */
+  private async resolveSupabaseUserIdFromAuth0(payload: any): Promise<string | undefined> {
+    const sub = String(payload?.sub || "").trim();
+    if (!sub) return undefined;
+
+    const cached = this.auth0SubToSupabaseUserId.get(sub);
+    if (cached) return cached;
+
+    // If sub already looks like a UUID, it might already be a Supabase auth user id.
+    if (this.isUuid(sub)) {
+      try {
+        const { data, error } = await supabase.auth.admin.getUserById(sub);
+        if (!error && (data as any)?.user?.id) {
+          this.auth0SubToSupabaseUserId.set(sub, sub);
+          return sub;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    const email = String(payload?.email || "").trim() || this.shadowEmailForAuth0Sub(sub);
+    let userId = await this.findSupabaseUserIdByEmail(email);
+
+    if (!userId) {
+      try {
+        const password = `sa_${crypto.randomBytes(24).toString("base64url")}`;
+        const { data, error } = await supabase.auth.admin.createUser({
+          email,
+          password,
+          email_confirm: true,
+          user_metadata: {
+            auth0_sub: sub,
+            auth0_iss: payload?.iss,
+            provisioned_by: "mcp_auth0_bridge",
+          },
+        } as any);
+
+        if (error) {
+          console.warn("[AUTH] Supabase createUser failed:", error.message);
+        } else {
+          userId = (data as any)?.user?.id ? String((data as any).user.id) : undefined;
+        }
+      } catch (e: any) {
+        console.warn("[AUTH] Supabase createUser exception:", e?.message || e);
+      }
+
+      // If createUser raced with another instance, re-lookup.
+      if (!userId) {
+        userId = await this.findSupabaseUserIdByEmail(email);
+      }
+    }
+
+    if (userId) {
+      this.auth0SubToSupabaseUserId.set(sub, userId);
+      return userId;
+    }
+
+    console.warn("[AUTH] Unable to resolve Supabase user id for Auth0 sub");
+    return undefined;
   }
 
   getToolsList() {
@@ -1177,7 +1286,8 @@ class SignupAssistMCPServer {
               if (bearerToken) {
                 try {
                   const payload = await verifyAuth0Token(bearerToken);
-                  boundUserId = payload?.sub;
+                  // Map Auth0 subject → Supabase auth UUID for DB writes.
+                  boundUserId = await this.resolveSupabaseUserIdFromAuth0(payload);
                   isAuthorized = true;
                   authSource = 'auth0';
                 } catch (e: any) {
@@ -1279,7 +1389,8 @@ class SignupAssistMCPServer {
               if (bearerToken) {
                 try {
                   const payload = await verifyAuth0Token(bearerToken);
-                  verifiedUserId = payload?.sub;
+                  // Map Auth0 subject → Supabase auth UUID for DB writes.
+                  verifiedUserId = await this.resolveSupabaseUserIdFromAuth0(payload);
                   isAuthorized = true;
                   authSource = 'auth0';
                 } catch (e: any) {
