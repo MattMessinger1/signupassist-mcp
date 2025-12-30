@@ -1325,7 +1325,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       // ✅ CRITICAL: Use async context loading to restore from Supabase if needed
       // This fixes ChatGPT multi-turn conversations losing context between API calls
-      const context = await this.getContextAsync(contextSessionId);
+      let context = await this.getContextAsync(contextSessionId);
 
       Logger.info('[generateResponse] Context loaded', {
         sessionId,
@@ -1339,14 +1339,24 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       });
 
       // Store user ID and timezone in context
+      // NOTE: updateContext is immutable (it replaces the stored context object).
+      // If we don't refresh `context` here, downstream logic may incorrectly treat
+      // the user as anonymous or miss timezone/session updates within the same request.
+      let shouldRefreshContext = false;
       if (userId) {
         this.updateContext(contextSessionId, { user_id: userId });
+        shouldRefreshContext = true;
         Logger.info('[APIOrchestrator] User authenticated', { userId });
       }
 
       // Store user timezone in context
       if (userTimezone && userTimezone !== context.userTimezone) {
         this.updateContext(contextSessionId, { userTimezone });
+        shouldRefreshContext = true;
+      }
+
+      if (shouldRefreshContext) {
+        context = this.getContext(contextSessionId);
       }
 
       // Handle explicit actions (button clicks)
@@ -2320,6 +2330,32 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               program_data: selectedProgram.program_data
             }, sessionId, context);
           }
+        }
+
+        // If a program list is on screen, but the user replied with something that isn't a valid
+        // selection (common in ChatGPT preview when the model asks an extra question like “age”),
+        // don't fall back to a generic “what are you looking for?” prompt. Keep the user in-flow.
+        if (Array.isArray(context.displayedPrograms) && context.displayedPrograms.length > 0) {
+          const n = context.displayedPrograms.length;
+          const trimmed = String(input || "").trim();
+          const m = trimmed.match(/^(\d{1,2})$/);
+          if (m) {
+            const maybeAge = Number(m[1]);
+            // If it's not a valid ordinal selection (1..n), treat it as likely child age and
+            // ask the user to pick a class. This avoids the “Step 1 restart” feeling.
+            if (Number.isFinite(maybeAge) && (maybeAge < 1 || maybeAge > n)) {
+              this.updateContext(sessionId, {
+                childInfo: { ...(context.childInfo || { name: "" }), age: maybeAge }
+              });
+              return this.formatResponse(
+                `Got it — **age ${maybeAge}**.\n\nNow pick a class: reply with **1-${n}** (or type the program name).`
+              );
+            }
+          }
+
+          return this.formatResponse(
+            `Please reply with a class number **1-${n}** (or type the program name).`
+          );
         }
         
         // ChatGPT NL: Check for provider confirmation ("Yes" after clarification)
