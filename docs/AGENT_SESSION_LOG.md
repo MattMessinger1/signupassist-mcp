@@ -50,6 +50,7 @@ This file exists because chat sessions can get cut off. It is the **repo source 
 - App Store readiness checks (prod):
   - `/.well-known/openai-apps-challenge` returns 200 when `OPENAI_VERIFICATION_TOKEN` is set
   - `GET /sse` returns **401** with `WWW-Authenticate: Bearer ...` to trigger OAuth in ChatGPT preview
+  - **ChatGPT Preview UX hardening**: fixed a common “Step 1 restart” failure mode when the user answers an off-script question (e.g., “11”) while a program list is on screen. We now keep the user in-flow and prompt for a valid class selection instead of falling back to a generic “what are you looking for?” prompt.
 
 ### Commits deployed today (for traceability)
 
@@ -62,6 +63,7 @@ This file exists because chat sessions can get cut off. It is the **repo source 
 - `fix(stripe): don't return 'unknown' charge_id (breaks receipts FK)`
 - `fix(registrations): retry create without provider_* fields when schema lags`
 - `fix(bookeo): omit phoneNumbers from booking payloads (avoids “Invalid phone number type”)`
+- `fix(chat): prevent ChatGPT preview browse/session regressions (refresh immutable context + in-flow fallback)`
 
 ### Known gaps / next steps (pull from punchlist)
 
