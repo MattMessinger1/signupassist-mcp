@@ -77,6 +77,7 @@ interface APIContext {
   step: FlowStep;
   orgRef?: string;
   user_id?: string;
+  hasPaymentMethod?: boolean; // Source-of-truth: user_billing.default_payment_method_id exists
   userTimezone?: string;  // User's IANA timezone (e.g., 'America/Chicago')
   requestedActivity?: string;  // Track what activity user is looking for (e.g., 'swimming', 'coding')
 
@@ -2274,8 +2275,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       case FlowStep.REVIEW: {
         // Await user confirmation of details
         if (this.isUserConfirmation(input)) {
-          Logger.info('[Review] User confirmed details', { hasCardOnFile: !!context.cardLast4, futureBooking: !!context.schedulingData });
-          if (!context.cardLast4) {
+          Logger.info('[Review] User confirmed details', {
+            hasCardOnFile: !!(context.hasPaymentMethod || context.cardLast4),
+            futureBooking: !!context.schedulingData
+          });
+          if (!context.hasPaymentMethod && !context.cardLast4) {
             Logger.info('[Review] No saved card on file – initiating Stripe Checkout');
             const userEmail = context.pendingDelegateInfo?.email || context.formData?.delegate_data?.email || context.formData?.delegate_data?.delegate_email;
             const userId = context.user_id;
@@ -2297,7 +2301,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
                 throw new Error(sessionRes.error?.message || "Unknown error");
               }
               // Advance to PAYMENT step awaiting verification
-              this.updateContext(sessionId, { step: FlowStep.PAYMENT });
+              this.updateContext(sessionId, { step: FlowStep.PAYMENT, hasPaymentMethod: false });
               const stripeUrl = sessionRes.data.url;
               const linkMsg = `💳 **Secure Stripe Checkout**\nPlease add your payment method using the link below. We never see your card details.\n\n🔗 ${stripeUrl}\n\nWhen you've finished, type "done" here to continue.`;
               return this.formatResponse(linkMsg);
@@ -2338,7 +2342,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           });
           
           // ⚠️ GUARD 1: Check for saved payment method before allowing confirmation
-          if (!context.cardLast4 && context.user_id) {
+          if (!context.hasPaymentMethod && !context.cardLast4 && context.user_id) {
             Logger.warn('[NL Parse] Payment confirmation attempted without saved payment method');
             return {
               message: "Before I can schedule your registration, I need to save a payment method. You'll only be charged if registration succeeds!",
@@ -2379,8 +2383,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             const checkRes = await this.invokeMCPTool('stripe.check_payment_status', { user_id: context.user_id });
             if (checkRes.success && checkRes.data?.hasPaymentMethod) {
               const { last4, brand } = checkRes.data;
-              this.updateContext(sessionId, { cardLast4: last4, cardBrand: brand });
-              return this.formatResponse(`✅ Payment method saved (${brand} •••• ${last4}). Now say \"yes\" to confirm your booking.`);
+              this.updateContext(sessionId, { hasPaymentMethod: true, cardLast4: last4, cardBrand: brand });
+              const display =
+                brand && last4 ? `${brand} •••• ${last4}` : last4 ? `Card •••• ${last4}` : 'payment method on file';
+              return this.formatResponse(`✅ Payment method saved (${display}). Now say \"yes\" to confirm your booking.`);
             }
           }
           return this.formatResponse("I haven't detected a new payment method yet. If you've completed the Stripe form, please wait a moment and type \"done\" again.");
@@ -3776,6 +3782,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     const isFutureBooking = bookingStatus === 'opens_later';
 
     // Build review summary and store state for payment/confirmation
+    let hasPaymentMethod = false;
     let cardLast4: string | null = null;
     let cardBrand: string | null = null;
     if (userId) {
@@ -3787,7 +3794,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         .maybeSingle();
       cardLast4 = billingData?.payment_method_last4 || null;
       cardBrand = billingData?.payment_method_brand || null;
-      Logger.info('[submitForm] Payment method check result', { hasPaymentMethod: !!billingData?.default_payment_method_id, cardBrand, cardLast4 });
+      hasPaymentMethod = !!billingData?.default_payment_method_id;
+      Logger.info('[submitForm] Payment method check result', { hasPaymentMethod, cardBrand, cardLast4 });
     }
 
     const scheduledTimeStr = computedOpensAt?.toISOString() || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
@@ -3818,6 +3826,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           num_participants: numParticipants
         }
       } : undefined,
+      hasPaymentMethod,
       cardLast4,
       cardBrand
     });
@@ -3838,7 +3847,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     if (sessionDate) reviewMessage += `- **Date:** ${sessionDate}\\n`;
     reviewMessage += `- **Program Fee:** ${formattedTotal} (paid to provider)\\n`;
     reviewMessage += `- **SignupAssist Fee:** $20 (charged only upon successful registration)\\n`;
-    if (cardLast4) reviewMessage += `- **Payment method on file:** ${cardBrand || 'Card'} •••• ${cardLast4}\\n`;
+    if (hasPaymentMethod || cardLast4) {
+      const display = cardLast4 ? `${cardBrand || 'Card'} •••• ${cardLast4}` : 'Yes';
+      reviewMessage += `- **Payment method on file:** ${display}\\n`;
+    }
     reviewMessage += "\\nIf everything is correct, type \\\"yes\\\" to continue or \\\"cancel\\\" to abort.";
     return this.formatResponse(reviewMessage);
   }
@@ -3876,7 +3888,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       }
 
       // ⚠️ HARD STEP GATE: Must have payment method for immediate booking
-      if (!context.cardLast4 && !context.cardBrand) {
+      if (!context.hasPaymentMethod && !context.cardLast4 && !context.cardBrand) {
         Logger.warn('[confirmPayment] ⛔ STEP GATE: No payment method in context');
         return {
           message: "Before I can complete your booking, I need to save a payment method.",
