@@ -80,8 +80,8 @@ async function chargeSuccessFee(args: {
       };
     }
     
-    const charge_id = data?.charge_id || 'unknown';
-    console.log(`[Stripe] ✅ Success fee charged: ${charge_id}`);
+    const charge_id = (data?.charge_id ?? null) as string | null;
+    console.log(`[Stripe] ✅ Success fee charged: ${charge_id || '(no db charge_id returned)'}`);
     
     return {
       success: true,
