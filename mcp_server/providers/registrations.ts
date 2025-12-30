@@ -149,12 +149,42 @@ async function createRegistration(args: {
       executed_at: scheduled_for ? null : new Date().toISOString()
     };
     
-    const { data, error } = await supabase
-      .from('registrations')
-      .insert(insertPayload)
-      .select()
-      .single();
+    const insertOnce = async (payload: any) =>
+      await supabase.from('registrations').insert(payload).select().single();
+
+    let { data, error } = await insertOnce(insertPayload);
     
+    if (error) {
+      // Backward-compat: production DB migrations might lag behind the code.
+      // If the table doesn't have the newer provider_* columns yet, retry without them.
+      const msg = String((error as any)?.message || "");
+      const code = String((error as any)?.code || "");
+      const looksLikeMissingColumn =
+        code === "PGRST204" || // PostgREST "column not found"
+        /column .* does not exist/i.test(msg) ||
+        /could not find .* column/i.test(msg) ||
+        /unknown field/i.test(msg);
+
+      if (looksLikeMissingColumn) {
+        Logger.warn('[Registrations] Missing-column schema mismatch; retrying insert without provider_* fields', {
+          code,
+          message: msg,
+        });
+
+        const legacyPayload = { ...insertPayload };
+        delete legacyPayload.provider_checkout_url;
+        delete legacyPayload.provider_payment_status;
+        delete legacyPayload.provider_amount_due_cents;
+        delete legacyPayload.provider_amount_paid_cents;
+        delete legacyPayload.provider_currency;
+        delete legacyPayload.provider_payment_last_checked_at;
+
+        const retry = await insertOnce(legacyPayload);
+        data = retry.data as any;
+        error = retry.error as any;
+      }
+    }
+
     if (error) {
       Logger.error('[Registrations] Database error', { error });
       const friendlyError: ParentFriendlyError = {
