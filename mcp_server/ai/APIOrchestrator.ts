@@ -4981,8 +4981,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const upcoming = registrations.filter(r => 
         r.status === 'confirmed' && r.start_date && new Date(r.start_date) > now
       );
-      // Scheduled jobs now live in scheduled_registrations until they execute.
-      const scheduled = (scheduledRegs || []).filter((r: any) => r.status === 'pending' || r.status === 'executing');
+      // Scheduled jobs live in scheduled_registrations (both active + historical).
+      const scheduledActive = (scheduledRegs || []).filter(
+        (r: any) => r.status === 'pending' || r.status === 'executing'
+      );
+      const scheduledHistory = (scheduledRegs || []).filter(
+        (r: any) => r.status === 'completed' || r.status === 'failed' || r.status === 'cancelled'
+      );
       // Past includes: completed, cancelled, failed, and confirmed with past start_date
       const past = registrations.filter(r => 
         r.status === 'cancelled' || 
@@ -5057,6 +5062,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           : [];
 
         const buttons: any[] = [];
+        // Always allow audit trail for scheduled jobs (text-only users can also say "audit SCH-xxxx").
+        buttons.push({
+          label: 'View Audit Trail',
+          action: 'view_audit_trail',
+          payload: { scheduled_registration_id: sr.id },
+          variant: 'outline' as const
+        });
         if (sr.status === 'pending') {
           buttons.push({
             label: 'Cancel',
@@ -5066,12 +5078,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           });
         }
 
-        const titleWithStatus =
-          sr.status === 'failed'
-            ? `${sr.program_name} ${getStatusBadge('failed')}`
-            : sr.status === 'executing'
-              ? `${sr.program_name} ${getStatusBadge('executing')}`
-              : sr.program_name;
+        const badge = getStatusBadge(sr.status || 'pending');
+        const titleWithStatus = sr.status && sr.status !== 'pending'
+          ? `${sr.program_name} ${badge}`
+          : sr.program_name;
 
         return {
           title: titleWithStatus,
@@ -5088,9 +5098,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       };
 
       const cards: CardSpec[] = [
-        ...upcoming.map(r => buildRegCard(r, true)),  // isUpcoming = true, show Cancel button
-        ...scheduled.map((r: any) => buildScheduledCard(r)),
-        ...past.map(r => buildRegCard(r, false))       // past (includes cancelled/failed), no cancel option
+        ...upcoming.map(r => buildRegCard(r, true)),             // isUpcoming = true, show Cancel button
+        ...scheduledActive.map((r: any) => buildScheduledCard(r)),
+        ...scheduledHistory.map((r: any) => buildScheduledCard(r)),
+        ...past.map(r => buildRegCard(r, false))                 // past (includes cancelled/failed), no cancel option
       ];
 
       // TEXT-ONLY (ChatGPT): include a plain-text list with short codes the user can reference.
@@ -5108,10 +5119,43 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         return `${code}: ${r.program_name} — ${getStatusBadge(r.status)} — ${fmtWhen(r.start_date || null)}`;
       });
 
-      const scheduledLines = scheduled.slice(0, 10).map((s: any) => {
+      // Map booking_number -> REG receipt (if present) so SCH history can link to the resulting receipt.
+      const regByBooking = new Map<string, any>();
+      for (const r of (registrations || [])) {
+        if (r?.booking_number) regByBooking.set(String(r.booking_number), r);
+      }
+
+      const scheduledLines = scheduledActive.slice(0, 10).map((s: any) => {
         const code = shortCode('SCH', s.id);
         const when = s.scheduled_time ? fmtWhen(s.scheduled_time) : 'TBD';
         return `${code}: ${s.program_name} — ${getStatusBadge(s.status || 'pending')} — executes ${when}`;
+      });
+
+      const scheduledHistoryLines = scheduledHistory.slice(0, 10).map((s: any) => {
+        const code = shortCode('SCH', s.id);
+        const scheduledWhen = s.scheduled_time ? fmtWhen(s.scheduled_time) : 'TBD';
+        const executedWhen = s.executed_at ? fmtWhen(s.executed_at) : null;
+        const badge = getStatusBadge(s.status || 'pending');
+
+        let receiptSuffix = '';
+        const booking = s.booking_number ? String(s.booking_number) : '';
+        if (booking && regByBooking.has(booking)) {
+          const reg = regByBooking.get(booking);
+          receiptSuffix = ` → receipt ${shortCode('REG', reg.id)}`;
+        }
+
+        if (String(s.status) === 'completed') {
+          return `${code}: ${s.program_name} — ${badge} — executed ${executedWhen || scheduledWhen}${receiptSuffix}`;
+        }
+        if (String(s.status) === 'failed') {
+          const em = String(s.error_message || '').trim();
+          const msg = em ? ` — ${em.slice(0, 60)}${em.length > 60 ? '…' : ''}` : '';
+          return `${code}: ${s.program_name} — ${badge} — scheduled ${scheduledWhen}${msg}`;
+        }
+        if (String(s.status) === 'cancelled') {
+          return `${code}: ${s.program_name} — ${badge} — was scheduled ${scheduledWhen}`;
+        }
+        return `${code}: ${s.program_name} — ${badge} — scheduled ${scheduledWhen}`;
       });
 
       const pastLines = past.slice(0, 10).map((r: any) => {
@@ -5122,12 +5166,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const textMessage =
         `📋 **Your Registrations**\n\n` +
         `✅ **Upcoming:** ${upcoming.length}\n` +
-        `📅 **Scheduled:** ${scheduled.length}\n` +
+        `📅 **Scheduled:** ${scheduledActive.length}\n` +
+        `🗂 **Scheduled history:** ${scheduledHistory.length}\n` +
         `📦 **Past:** ${past.length}\n\n` +
         `To manage items, reply with one of:\n` +
         `- **cancel REG-xxxxxxxx** (cancel a confirmed booking request)\n` +
         `- **cancel SCH-xxxxxxxx** (cancel a scheduled auto-registration)\n` +
-        `- **audit REG-xxxxxxxx** (view audit trail)\n\n` +
+        `- **audit REG-xxxxxxxx** (view audit trail)\n` +
+        `- **audit SCH-xxxxxxxx** (view audit trail)\n\n` +
         `Examples: "cancel SCH-1a2b3c4d", "audit REG-9f8e7d6c"\n` +
         `_(Program-fee refunds are handled by the provider. SignupAssist can refund the $20 success fee when applicable.)_`;
 
@@ -5136,6 +5182,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         textMessage,
         upcomingLines.length ? `\n**Upcoming (top ${upcomingLines.length}):**\n${upcomingLines.map(x => `- ${x}`).join('\n')}` : '',
         scheduledLines.length ? `\n**Scheduled (top ${scheduledLines.length}):**\n${scheduledLines.map(x => `- ${x}`).join('\n')}` : '',
+        scheduledHistoryLines.length ? `\n**Scheduled history (top ${scheduledHistoryLines.length}):**\n${scheduledHistoryLines.map(x => `- ${x}`).join('\n')}` : '',
         pastLines.length ? `\n**Past (top ${pastLines.length}):**\n${pastLines.map(x => `- ${x}`).join('\n')}` : ''
       ].join('');
 
