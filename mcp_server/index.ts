@@ -2991,7 +2991,11 @@ class SignupAssistMCPServer {
         }
 
       // --- Stripe return (success/cancel landing page)
-      // Stripe Checkout needs a success_url/cancel_url. This page simply tells the user to return to ChatGPT.
+      // Stripe Checkout needs a success_url/cancel_url.
+      // IMPORTANT: In the ChatGPT Apps flow, users won't return through our web frontend,
+      // so we finalize the setup-mode checkout here by calling the `stripe-checkout-success`
+      // Supabase Edge Function. That updates `user_billing.default_payment_method_id` so
+      // the MCP orchestrator can detect a saved payment method when the user types "done".
       if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/stripe_return') {
         const status = url.searchParams.get('payment_setup') || 'unknown';
         const sessionId = url.searchParams.get('session_id') || '';
@@ -3001,6 +3005,33 @@ class SignupAssistMCPServer {
             : status === 'canceled'
               ? 'Payment setup canceled'
               : 'Payment setup';
+
+        let finalized: { ok: boolean; brand?: string; last4?: string; error?: string } | null = null;
+        if (req.method === 'GET' && status === 'success' && sessionId) {
+          try {
+            const { data, error } = await supabase.functions.invoke('stripe-checkout-success', {
+              body: { session_id: sessionId }
+            });
+            if (error) {
+              finalized = { ok: false, error: error.message || String(error) };
+              console.warn('[stripe_return] stripe-checkout-success error:', finalized.error);
+            } else {
+              finalized = {
+                ok: true,
+                brand: (data as any)?.brand,
+                last4: (data as any)?.last4
+              };
+              console.log('[stripe_return] ✅ stripe-checkout-success finalized', {
+                session_id: sessionId,
+                brand: finalized.brand,
+                last4: finalized.last4
+              });
+            }
+          } catch (e: any) {
+            finalized = { ok: false, error: e?.message || String(e) };
+            console.warn('[stripe_return] stripe-checkout-success exception:', finalized.error);
+          }
+        }
 
         const escapeHtml = (s: string) =>
           s
@@ -3026,6 +3057,13 @@ class SignupAssistMCPServer {
   <body>
     <h1>${escapeHtml(title)}</h1>
     <div class="card">
+      ${
+        finalized
+          ? finalized.ok
+            ? `<p>✅ Payment method saved${finalized.brand && finalized.last4 ? ` (${escapeHtml(finalized.brand)} •••• ${escapeHtml(finalized.last4)})` : ''}.</p>`
+            : `<p class="muted">⚠️ We couldn't confirm your payment method automatically. If you completed Stripe Checkout, wait a moment and type <code>done</code> in ChatGPT.</p>`
+          : ''
+      }
       <p>Return to ChatGPT and type <code>done</code> to continue your SignupAssist flow.</p>
       ${sessionId ? `<p class="muted">Session: <code>${escapeHtml(sessionId)}</code></p>` : ''}
     </div>
