@@ -2989,6 +2989,7 @@ class SignupAssistMCPServer {
           res.end('Failed to load privacy policy.');
           return;
         }
+      }
 
       // --- Stripe return (success/cancel landing page)
       // Stripe Checkout needs a success_url/cancel_url.
@@ -3077,7 +3078,6 @@ class SignupAssistMCPServer {
         });
         res.end(html);
         return;
-      }
       }
 
       // --- Legal: Terms of Use (served from repo markdown for review accuracy)
