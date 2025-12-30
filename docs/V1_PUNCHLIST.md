@@ -47,14 +47,21 @@ This is the authoritative checklist for v1. The goal is:
 ### B1. Book-now flow (signup window open)
 - [x] Browse/search programs returns real Bookeo programs (no scraping)
   - Evidence helper: `npm run test:smoke` (API-only smoke) and `npm run test:sse` (MCP SSE smoke)
-- [ ] User selects a program via NL (“the first one” / “3” / title match)
-- [ ] Collect required fields (delegate + participants) with micro-questions (no schema dumps)
-- [ ] Review step summarizes what will happen
-- [ ] User explicitly authorizes
-- [ ] Booking executes (provider confirm)
-- [ ] Success fee charges only on success ($20)
-- [ ] Receipt is created (REG- code) and viewable via “view receipts”
-- [ ] Audit trail shows consequential actions via “view audit trail”
+- [x] User selects a program via NL (“the first one” / “3” / title match)
+  - Evidence: prod chat selection works with numeric input (e.g. “2” selects the 2nd program)
+- [x] Collect required fields (delegate + participants) with micro-questions (no schema dumps)
+  - Evidence: Step 2/5 prompts only for missing required fields; returning users are prefilled from `delegate_profiles` + `children`
+- [x] Review step summarizes what will happen
+- [x] User explicitly authorizes
+  - Evidence: Step 3/5 requires a text “yes” to proceed
+- [x] Booking executes (provider confirm)
+  - Evidence: prod book-now returned Booking #... and completed Step 5/5
+- [x] Success fee charges only on success ($20)
+  - Evidence: audit shows `stripe.charge_success_fee` after `bookeo.confirm_booking` for a confirmed booking
+- [x] Receipt is created (REG- code) and viewable via “view receipts”
+  - Evidence: `view receipts` lists `REG-...` for a confirmed booking (e.g. `REG-89240246`)
+- [x] Audit trail shows consequential actions via “view audit trail”
+  - Evidence: `audit REG-...` shows `bookeo.confirm_booking` + `stripe.charge_success_fee`
 
 ### B2. Schedule-at-open flow (signup window not open yet)
 - [ ] System computes/uses accurate “opens at” time from provider metadata
@@ -67,7 +74,8 @@ This is the authoritative checklist for v1. The goal is:
 ### B3. Cancel & user control (text-only v1)
 - [x] Cancel scheduled signup by reference: “cancel SCH-xxxx” + yes/no confirm
 - [ ] Cancel completed booking by reference: “cancel REG-xxxx” + confirm (if supported)
-- [ ] Audit trail supports both scheduled and completed registrations
+- [x] Audit trail supports both scheduled and completed registrations
+  - Evidence: `audit REG-...` works for completed bookings; `audit SCH-...` works for scheduled jobs
 
 ---
 

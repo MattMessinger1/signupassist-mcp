@@ -1297,19 +1297,16 @@ class SignupAssistMCPServer {
             }
           }
 
+          // IMPORTANT (ChatGPT Apps OAuth):
+          // Some clients do not initiate OAuth correctly if the initial SSE connect is blocked.
+          // We therefore allow unauthenticated /sse connections, but enforce OAuth on /messages for tools/call.
+          // This still prevents any tool execution without auth, while allowing clients to reach the
+          // 401 at tool-call time and complete the OAuth flow.
           if (!isAuthorized) {
-            res.writeHead(401, {
-              "Content-Type": "application/json",
-              "Access-Control-Allow-Origin": "*",
-              "Cache-Control": "no-store",
-              "WWW-Authenticate": "Bearer realm=\"signupassist\", error=\"authentication_required\"",
-            });
-            res.end(JSON.stringify({ error: "authentication_required", message: "OAuth token required" }));
-            console.log('[AUTH] Unauthorized access attempt to /sse');
-            return;
+            console.log('[AUTH] Unauthenticated SSE connection allowed (OAuth enforced on /messages tools/call)');
+          } else {
+            console.log(`[AUTH] Authorized SSE connection via ${authSource}${boundUserId ? ` user=${boundUserId}` : ''}`);
           }
-
-          console.log(`[AUTH] Authorized SSE connection via ${authSource}${boundUserId ? ` user=${boundUserId}` : ''}`);
 
           // Create SSE transport - it will set its own headers
           const transport = new SSEServerTransport('/messages', res);
@@ -1373,6 +1370,23 @@ class SignupAssistMCPServer {
           const authHeader = req.headers['authorization'] as string | undefined;
           const expectedToken = process.env.MCP_ACCESS_TOKEN;
 
+          // Read request body (we need method name to decide whether auth is required)
+          let body = '';
+          for await (const chunk of req) {
+            body += chunk;
+          }
+          console.log('[SSE] Message body:', body.substring(0, 200));
+
+          let parsed: any = null;
+          try {
+            parsed = JSON.parse(body);
+          } catch {
+            // leave null; transport will handle parse errors when possible
+          }
+
+          const methodName = parsed?.method ? String(parsed.method) : '';
+          const isToolCall = methodName === 'tools/call';
+
           let isAuthorized = false;
           let authSource: 'mcp_access_token' | 'auth0' | 'dev' | 'none' = 'none';
           let verifiedUserId: string | undefined;
@@ -1400,15 +1414,32 @@ class SignupAssistMCPServer {
             }
           }
 
-          if (!isAuthorized) {
+          // Only require auth for consequential calls.
+          // Allow initialize/tools/list without auth so the client can connect and then OAuth at tool-call time.
+          if (isProd && isToolCall && !isAuthorized) {
+            const host =
+              (req.headers['x-forwarded-host'] as string | undefined) ||
+              (req.headers['host'] as string | undefined);
+            const forwardedProto = (req.headers['x-forwarded-proto'] as string | undefined);
+            const proto =
+              forwardedProto ||
+              (host && (host.startsWith('localhost') || host.startsWith('127.0.0.1')) ? 'http' : 'https');
+            const baseUrl =
+              host
+                ? `${proto}://${host}`
+                : (process.env.RAILWAY_PUBLIC_DOMAIN
+                    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+                    : `https://signupassist-mcp-production.up.railway.app`);
+
             res.writeHead(401, {
               "Content-Type": "application/json",
               "Access-Control-Allow-Origin": "*",
               "Cache-Control": "no-store",
-              "WWW-Authenticate": "Bearer realm=\"signupassist\", error=\"authentication_required\"",
+              // Include endpoints to help clients locate OAuth flows.
+              "WWW-Authenticate": `Bearer realm="signupassist", error="authentication_required", authorization_uri="${baseUrl}/oauth/authorize", token_uri="${baseUrl}/oauth/token"`,
             });
             res.end(JSON.stringify({ error: "authentication_required", message: "OAuth token required" }));
-            console.log('[AUTH] Unauthorized access attempt to /messages');
+            console.log('[AUTH] Unauthorized tool call attempt via /messages (OAuth required)');
             return;
           }
 
@@ -1417,14 +1448,6 @@ class SignupAssistMCPServer {
             this.sseSessionUserIds.set(sessionId, verifiedUserId);
           }
 
-          // Read request body
-          let body = '';
-          for await (const chunk of req) {
-            body += chunk;
-          }
-          
-          console.log('[SSE] Message body:', body.substring(0, 200));
-          
           const transport = this.sseTransports.get(sessionId);
           
           if (!transport) {
@@ -1440,7 +1463,7 @@ class SignupAssistMCPServer {
           let bodyToForward = body;
           if (boundUserId) {
             try {
-              const msg = JSON.parse(body);
+              const msg = parsed || JSON.parse(body);
               if (
                 msg?.method === 'tools/call' &&
                 msg?.params?.name === 'signupassist.chat' &&
