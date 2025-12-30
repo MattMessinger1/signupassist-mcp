@@ -506,6 +506,11 @@ async function createHold(args: {
   
   try {
     // Call Bookeo API to create hold
+    //
+    // NOTE: Bookeo has strict validation for customer phone numbers. We've observed
+    // real-world failures like "Invalid phone number type" when sending phoneNumbers
+    // objects. Since phone is optional for v1 and not required for booking holds, we
+    // omit it from the payload to maximize reliability (and minimize PII sent).
     const holdPayload = {
       eventId,
       productId,
@@ -513,7 +518,6 @@ async function createHold(args: {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         emailAddress: email.trim(),
-        phoneNumbers: phone ? [{ number: phone.trim() }] : []
       },
       participants: {
         numbers: [
@@ -795,6 +799,11 @@ async function confirmBooking(args: {
     const provider_payment_required = Number.isFinite(basePrice) ? basePrice > 0 : true;
     
     // Build Bookeo API payload
+    //
+    // NOTE: Bookeo has strict validation for customer phone numbers. We've observed
+    // real-world failures like "Invalid phone number type" when sending phoneNumbers
+    // objects. Since phone is optional for v1 and not required for booking execution,
+    // we omit it from the payload to maximize reliability (and minimize PII sent).
     const bookingPayload = {
       eventId: resolvedEventId,
       productId: program_ref,
@@ -802,7 +811,6 @@ async function confirmBooking(args: {
         firstName: delegate_data.firstName.trim(),
         lastName: delegate_data.lastName.trim(),
         emailAddress: delegate_data.email.trim(),
-        phoneNumbers: delegate_data.phone ? [{ number: delegate_data.phone.trim() }] : []
       },
       participants: {
         numbers: [
