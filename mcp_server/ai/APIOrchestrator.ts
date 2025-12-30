@@ -1590,6 +1590,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
                   }
                   context.formData = updated;
                   this.updateContext(sessionId, { formData: updated });
+                  // Keep payload formData in sync so normalization -> submitForm includes prefills.
+                  payload = { ...(payload || {}), formData: updated };
                   current = updated;
                 }
               } catch {
@@ -1649,6 +1651,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
                 };
                 context.formData = updated;
                 this.updateContext(sessionId, { childInfo: context.childInfo, formData: updated });
+                // Keep payload formData in sync so normalization -> submitForm includes prefills.
+                payload = { ...(payload || {}), formData: updated };
                 current = updated;
               }
 
