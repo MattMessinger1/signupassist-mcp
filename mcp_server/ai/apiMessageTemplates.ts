@@ -3,6 +3,8 @@
  * Concise, parent-friendly messages for Bookeo and other API providers
  */
 
+import { formatInTimeZone } from "date-fns-tz";
+
 // V1 (no widget): we must render progress in plain text (not only tool metadata)
 function stepHeader(step: number, title: string): string {
   return `Step ${step}/5 — ${title}`;
@@ -11,6 +13,13 @@ function stepHeader(step: number, title: string): string {
 function trustLine(kind: "privacy" | "stripe"): string {
   if (kind === "privacy") return "🔐 I'll only ask for what the provider requires.";
   return "🔒 Stripe hosts the card form — we never see card numbers.";
+}
+
+function normalizeTimeZone(tz?: string): string {
+  const raw = String(tz || "").trim();
+  if (!raw) return "UTC";
+  if (/^(utc|etc\/utc|gmt)$/i.test(raw)) return "UTC";
+  return raw;
 }
 
 // Support email for refunds and issues
@@ -29,18 +38,24 @@ export interface APIMessageVariables {
   mandate_id?: string;
   valid_until?: string;
   scopes?: string[];
+  user_timezone?: string;
 }
 
 /**
  * Format ISO timestamp to user-friendly display
  * "2025-12-19T13:00:00-06:00" → "Dec 19 at 1:00 PM"
  */
-export function formatDisplayTime(isoTime: string): string {
+export function formatDisplayTime(isoTime: string, userTimezone?: string): string {
   try {
     const date = new Date(isoTime);
     if (isNaN(date.getTime())) return isoTime;
-    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) 
-      + ' at ' + date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    // Important: never rely on server-local timezone. Use user timezone when provided; fall back to UTC.
+    const tz = normalizeTimeZone(userTimezone);
+    try {
+      return formatInTimeZone(date, tz, "MMM d, yyyy 'at' h:mm a zzz");
+    } catch {
+      return formatInTimeZone(date, "UTC", "MMM d, yyyy 'at' h:mm a zzz");
+    }
   } catch {
     return isoTime;
   }
@@ -162,7 +177,7 @@ Questions? Email ${SUPPORT_EMAIL}`;
 export function getAPISuccessMessage(vars: APIMessageVariables): string {
   const programName = vars.program_name || "this program";
   const bookingNumber = vars.booking_number || "N/A";
-  const startTime = vars.start_time ? formatDisplayTime(vars.start_time) : "TBD";
+  const startTime = vars.start_time ? formatDisplayTime(vars.start_time, vars.user_timezone) : "TBD";
   const rawProviderName = vars.provider_name || "the provider";
   // Capitalize first letter since it starts a sentence
   const providerName = rawProviderName.charAt(0).toUpperCase() + rawProviderName.slice(1);
@@ -280,10 +295,10 @@ export function getReceiptsFooterMessage(): string {
  */
 export function getScheduledRegistrationSuccessMessage(vars: APIMessageVariables): string {
   const programName = vars.program_name || "this program";
-  const scheduledDate = vars.scheduled_date ? formatDisplayTime(vars.scheduled_date) : "the scheduled time";
+  const scheduledDate = vars.scheduled_date ? formatDisplayTime(vars.scheduled_date, vars.user_timezone) : "the scheduled time";
   const totalCost = vars.total_cost || "$0.00";
   const mandateId = vars.mandate_id ? vars.mandate_id.substring(0, 8) + '...' : 'N/A';
-  const validUntil = vars.valid_until ? formatDisplayTime(vars.valid_until) : "until booking opens";
+  const validUntil = vars.valid_until ? formatDisplayTime(vars.valid_until, vars.user_timezone) : "until booking opens";
   
   return `**Auto-Registration Scheduled**
 
@@ -304,7 +319,7 @@ You can cancel before execution at no charge. Questions? Email ${SUPPORT_EMAIL}`
  */
 export function getScheduledPaymentAuthorizationMessage(vars: APIMessageVariables): string {
   const programName = vars.program_name || "this program";
-  const scheduledDate = vars.scheduled_date ? formatDisplayTime(vars.scheduled_date) : "the scheduled time";
+  const scheduledDate = vars.scheduled_date ? formatDisplayTime(vars.scheduled_date, vars.user_timezone) : "the scheduled time";
   
   return `**Schedule Auto-Registration**
 

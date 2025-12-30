@@ -4200,7 +4200,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const message = getAPISuccessMessage({
         program_name: programName,
         booking_number,
-        start_time: start_time || "TBD"
+        start_time: start_time || "TBD",
+        user_timezone: context.userTimezone
       });
       const providerPaymentNote = providerCheckoutUrl
         ? `\n\n💳 **Provider payment:** ${providerCheckoutUrl}\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the $20 success fee._`
@@ -4554,8 +4555,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     });
     
     // Trigger payment method setup
+    const scheduledDisplay = this.formatTimeForUser(scheduledDate, context);
     return {
-      message: `We'll automatically register you on ${scheduledDate.toLocaleString()}.\n\n` +
+      message: `We'll automatically register you on ${scheduledDisplay}.\n\n` +
                `First, let's save your payment method securely. You'll only be charged if registration succeeds!`,
       metadata: {
         componentType: "payment_setup",
@@ -4591,7 +4593,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     }
 
     // ⚠️ SAFETY NET: Payment method guard
-    if (!context.cardLast4 && !context.cardBrand) {
+    if (!context.hasPaymentMethod && !context.cardLast4 && !context.cardBrand) {
       Logger.warn('[confirmScheduledRegistration] ⚠️ No payment method in context - prompting for setup');
       return {
         message: "Before I can schedule your registration, I need to save a payment method. You'll only be charged if registration succeeds!",
@@ -4614,7 +4616,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       Logger.warn('[confirmScheduledRegistration] ⚠️ Payment not explicitly authorized - prompting for authorization');
       const amount = context.schedulingData?.total_amount || context.selectedProgram?.price || 'the program fee';
       const scheduledTime = context.schedulingData?.scheduled_time;
-      const scheduledDate = scheduledTime ? new Date(scheduledTime).toLocaleString() : null;
+      const scheduledDate = scheduledTime ? this.formatTimeForUser(new Date(scheduledTime), context) : null;
       
       return {
         message: scheduledDate
@@ -4707,27 +4709,27 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         step: FlowStep.BROWSE
       });
       
-      // Format valid_until date (mandate expiry)
-      const validUntilDate = mandateResponse.data?.valid_until 
-        ? new Date(mandateResponse.data.valid_until).toLocaleString()
-        : scheduledDate.toLocaleString();
+      // Mandate expiry is already an ISO string (UTC). Keep ISO for storage and format for display in templates.
+      const validUntilIso = mandateResponse.data?.valid_until || scheduled_time;
       
       // Use the Responsible Delegate disclosure template
       const successMessage = getScheduledRegistrationSuccessMessage({
         program_name: programName,
-        scheduled_date: scheduledDate.toLocaleString(),
+        scheduled_date: scheduled_time,
         total_cost: total_amount,
         provider_name: 'AIM Design', // TODO: get from context
         mandate_id: mandateId,
-        valid_until: validUntilDate
+        valid_until: validUntilIso,
+        user_timezone: context.userTimezone
       });
       
+      const scheduledDisplay = this.formatTimeForUser(scheduledDate, context);
       return {
         message: successMessage,
         cards: [{
           title: '🎉 You\'re All Set!',
           subtitle: programName,
-          description: `📅 **Auto-Registration Scheduled**\nWe'll register you on: ${scheduledDate.toLocaleString()}\n\n💰 **Total (if successful):** ${total_amount}\n\n🔐 **Mandate ID:** ${mandateId.substring(0, 8)}...`
+          description: `📅 **Auto-Registration Scheduled**\nWe'll register you on: ${scheduledDisplay}\n\n💰 **Total (if successful):** ${total_amount}\n\n🔐 **Mandate ID:** ${mandateId.substring(0, 8)}...`
         }],
         cta: {
           buttons: [
@@ -4794,16 +4796,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       // Format date/time for display
       const formatDateTime = (dateStr: string | null) => {
         if (!dateStr) return 'Date TBD';
-        const date = new Date(dateStr);
-        return date.toLocaleString('en-US', {
-          weekday: 'long',
-          month: 'long',
-          day: 'numeric',
-          year: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-          timeZoneName: 'short'
-        });
+        // IMPORTANT: never rely on server-local timezone.
+        // Use user timezone when available; fall back to UTC.
+        return this.formatTimeForUser(dateStr, context);
       };
 
       // Categorize registrations
