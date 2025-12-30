@@ -67,8 +67,10 @@ This is the authoritative checklist for v1. The goal is:
 - [ ] System computes/uses accurate “opens at” time from provider metadata
 - [ ] User confirms scheduled execution
 - [x] Scheduled job created (SCH- code) and viewable via “view receipts”
-- [ ] Worker executes at `scheduled_time` with rapid retries
-- [ ] On success: provider booking + $20 fee + receipt row created
+- [x] Worker executes at `scheduled_time` with rapid retries
+  - Evidence: `SCH-6f18f5ab` transitioned `pending → executing → completed` and executed at ~scheduled time (Dec 30, 2025 11:20 PM UTC)
+- [x] On success: provider booking + $20 fee + receipt row created
+  - Evidence: `SCH-6f18f5ab` → receipt `REG-a1cae43f`; `audit REG-a1cae43f` shows `bookeo.confirm_booking` + `stripe.charge_success_fee`
 - [ ] Provider payment state stored from provider response (paid/unpaid/unknown + amounts)
 
 ### B3. Cancel & user control (text-only v1)
@@ -81,8 +83,9 @@ This is the authoritative checklist for v1. The goal is:
 
 ## C. Operational reliability (production)
 
-- [ ] **Deploy scheduled worker as a second always-on service**
+- [x] **Deploy scheduled worker as a second always-on service**
   - Command: `npm run worker:scheduled`
+  - Evidence: real due job executed in prod (`SCH-6f18f5ab` completed → `REG-a1cae43f`)
 
 - [ ] **No double-execution / idempotency**
   - Worker claims jobs with `status=pending` → `executing` atomic update
@@ -124,4 +127,5 @@ This is the authoritative checklist for v1. The goal is:
 - [x] Run `npm run test:e2e` (safe scheduled smoke: creates SCH ~30 min out, cancels it, checks receipts/audit)
 - [ ] Run `tsx scripts/v1_preflight.ts` in a production-like env (Supabase tables + cached feed)
 - [ ] Search → select → schedule → see SCH receipt
-- [ ] Worker runs and executes due job; see REG receipt; see audit trail
+- [x] Worker runs and executes due job; see REG receipt; see audit trail
+  - Evidence: `SCH-6f18f5ab` completed → `REG-a1cae43f`; audit includes `bookeo.confirm_booking` + `stripe.charge_success_fee`

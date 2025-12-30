@@ -43,6 +43,10 @@ This file exists because chat sessions can get cut off. It is the **repo source 
 - Book-now flow produces:
   - a `REG-xxxxxxxx` receipt in “view receipts”
   - an audit trail via `audit REG-xxxxxxxx` that includes `bookeo.confirm_booking` and `stripe.charge_success_fee`
+- **Scheduled worker real execution verified (prod)**
+  - Before fix: `SCH-a8b5f41c` failed with `Invalid phone number type` (Bookeo rejected our `phoneNumbers` payload).
+  - Fix deployed: omit `customer.phoneNumbers` in Bookeo booking payloads (phone is optional in v1).
+  - After fix: `SCH-6f18f5ab` completed and linked to receipt `REG-a1cae43f` (`view receipts` shows `SCH-6f18f5ab … → receipt REG-a1cae43f`; `audit REG-a1cae43f` shows `scheduler.schedule_signup`, `bookeo.confirm_booking`, `stripe.charge_success_fee`).
 - App Store readiness checks (prod):
   - `/.well-known/openai-apps-challenge` returns 200 when `OPENAI_VERIFICATION_TOKEN` is set
   - `GET /sse` returns **401** with `WWW-Authenticate: Bearer ...` to trigger OAuth in ChatGPT preview
@@ -57,14 +61,14 @@ This file exists because chat sessions can get cut off. It is the **repo source 
 - `fix(ux): keep submit_form payload in sync with delegate/child prefills`
 - `fix(stripe): don't return 'unknown' charge_id (breaks receipts FK)`
 - `fix(registrations): retry create without provider_* fields when schema lags`
+- `fix(bookeo): omit phoneNumbers from booking payloads (avoids “Invalid phone number type”)`
 
 ### Known gaps / next steps (pull from punchlist)
 
 See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remaining items:
 
 - **OAuth in ChatGPT preview** (manual): verify full sign-in flow completes.
-- **Scheduled worker**: deploy second Railway service running `npm run worker:scheduled`, then prove a due job executes → REG receipt appears → audit trail correct.
-- **Scheduled receipts UX**: show scheduled history statuses (completed/failed/cancelled) so users can understand SCH outcomes.
+- **Pre-submission runbook**: finish any remaining “one hour” checks and capture evidence/screenshots for review packet.
 
 ### How to resume (operator quickstart)
 
