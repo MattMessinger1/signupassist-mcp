@@ -81,6 +81,9 @@ interface APIContext {
   userTimezone?: string;  // User's IANA timezone (e.g., 'America/Chicago')
   requestedActivity?: string;  // Track what activity user is looking for (e.g., 'swimming', 'coding')
 
+  // UX: show the trust/safety intro once per durable session
+  trustIntroShown?: boolean;
+
   // Audience preference (e.g., user asked for "adults")
   requestedAdults?: boolean;
   ignoreAudienceMismatch?: boolean;
@@ -132,6 +135,13 @@ interface APIContext {
     relationship?: string;
   };
   awaitingDelegateEmail?: boolean;
+
+  // Returning-user UX: store saved children for quick selection in chat
+  savedChildren?: Array<{ id: string; first_name: string; last_name: string; dob?: string | null }>;
+  awaitingChildSelection?: boolean;
+
+  // Avoid repeated DB lookups for returning-user prefill within a session
+  delegatePrefillAttempted?: boolean;
 
   // Text-only cancellation confirmation (ChatGPT has no buttons in v1)
   pendingCancellation?: {
@@ -1484,6 +1494,51 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       case "submit_form":
         {
+          const inputText = typeof input === "string" ? input : "";
+
+          // -------------------------------------------------------------------
+          // Returning-user UX: if we asked the user to pick from saved children,
+          // accept a simple numeric selection and hydrate participant fields.
+          // -------------------------------------------------------------------
+          if (
+            context.awaitingChildSelection &&
+            inputText.trim().length > 0 &&
+            Array.isArray(context.savedChildren) &&
+            context.savedChildren.length > 0
+          ) {
+            const m = inputText.trim().match(/\b(\d{1,2})\b/);
+            const n = m ? Number(m[1]) : NaN;
+            const idx = Number.isFinite(n) ? n - 1 : -1;
+            const chosen = idx >= 0 && idx < context.savedChildren.length ? context.savedChildren[idx] : null;
+
+            if (chosen) {
+              const updated: Record<string, any> = { ...(context.formData || {}) };
+              const participantFields = (context.requiredFields?.participant || []).filter((f: any) => f?.required);
+              for (const f of participantFields) {
+                const k = String(f.key || "");
+                const lk = k.toLowerCase();
+                if (updated[k] != null && String(updated[k]).trim() !== "") continue;
+                if (chosen.first_name && lk.includes("first") && lk.includes("name")) updated[k] = chosen.first_name;
+                else if (chosen.last_name && lk.includes("last") && lk.includes("name")) updated[k] = chosen.last_name;
+                else if (chosen.dob && (lk.includes("dob") || lk.includes("birth"))) updated[k] = chosen.dob;
+              }
+
+              context.childInfo = {
+                name: `${chosen.first_name} ${chosen.last_name}`.trim(),
+                firstName: chosen.first_name,
+                lastName: chosen.last_name,
+                dob: chosen.dob || undefined,
+              };
+              context.formData = updated;
+
+              this.updateContext(sessionId, {
+                awaitingChildSelection: false,
+                childInfo: context.childInfo,
+                formData: updated,
+              });
+            }
+          }
+
           // -------------------------------------------------------------------
           // Option A: if payload is empty, hydrate from free-text.
           // ChatGPT often sends submit_form with payload {} even after user typed answers.
@@ -1513,8 +1568,105 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           }
 
           // If after hydration we still don't have required fields, ask for what's missing.
-          const current = context.formData || {};
+          let current = context.formData || {};
           if (!this.hasAllRequiredFields(context, current)) {
+            // Returning-user UX: prefill delegate fields from saved profile once per session.
+            if (context.user_id && !context.delegatePrefillAttempted) {
+              try {
+                const profileRes = await this.invokeMCPTool("user.get_delegate_profile", { user_id: context.user_id });
+                const p = profileRes?.data?.profile;
+                if (p) {
+                  const updated: Record<string, any> = { ...(context.formData || {}) };
+                  const delegateFields = (context.requiredFields?.delegate || []).filter((f: any) => f?.required);
+                  for (const f of delegateFields) {
+                    const k = String(f.key || "");
+                    const lk = k.toLowerCase();
+                    if (updated[k] != null && String(updated[k]).trim() !== "") continue;
+                    if (p.first_name && lk.includes("first") && lk.includes("name")) updated[k] = p.first_name;
+                    else if (p.last_name && lk.includes("last") && lk.includes("name")) updated[k] = p.last_name;
+                    else if (p.date_of_birth && (lk.includes("dob") || lk.includes("birth"))) updated[k] = String(p.date_of_birth);
+                    else if (p.default_relationship && lk.includes("relationship")) updated[k] = String(p.default_relationship);
+                    else if (p.phone && (lk.includes("phone") || lk.includes("mobile") || lk.includes("cell"))) updated[k] = String(p.phone);
+                  }
+                  context.formData = updated;
+                  this.updateContext(sessionId, { formData: updated });
+                  current = updated;
+                }
+              } catch {
+                // ignore
+              } finally {
+                context.delegatePrefillAttempted = true;
+                this.updateContext(sessionId, { delegatePrefillAttempted: true });
+              }
+            }
+
+            // Returning-user UX: if participant fields are missing and we have saved children,
+            // offer a quick selection instead of asking for first/last/DOB one-by-one.
+            const missingParticipantKeys = (context.requiredFields?.participant || [])
+              .filter((f: any) => f?.required)
+              .map((f: any) => String(f.key))
+              .filter((k: string) => current[k] == null || (typeof current[k] === "string" && current[k].trim() === ""));
+
+            if (missingParticipantKeys.length > 0 && context.user_id) {
+              // Lazy-load children once per session if not already present
+              if (!Array.isArray(context.savedChildren)) {
+                try {
+                  const listRes = await this.invokeMCPTool("user.list_children", { user_id: context.user_id });
+                  const children = Array.isArray(listRes?.data?.children) ? listRes.data.children : [];
+                  context.savedChildren = children.map((c: any) => ({
+                    id: String(c.id),
+                    first_name: String(c.first_name || ""),
+                    last_name: String(c.last_name || ""),
+                    dob: c.dob || null,
+                  }));
+                  this.updateContext(sessionId, { savedChildren: context.savedChildren });
+                } catch (e) {
+                  // Ignore — we can still ask manually.
+                }
+              }
+
+              const saved = Array.isArray(context.savedChildren) ? context.savedChildren : [];
+              const hasPickedChild = !!(context.childInfo?.firstName || context.childInfo?.name);
+
+              // If exactly one saved child and none selected yet, auto-prefill.
+              if (saved.length === 1 && !hasPickedChild) {
+                const only = saved[0];
+                const updated: Record<string, any> = { ...(context.formData || {}) };
+                const participantFields = (context.requiredFields?.participant || []).filter((f: any) => f?.required);
+                for (const f of participantFields) {
+                  const k = String(f.key || "");
+                  const lk = k.toLowerCase();
+                  if (updated[k] != null && String(updated[k]).trim() !== "") continue;
+                  if (only.first_name && lk.includes("first") && lk.includes("name")) updated[k] = only.first_name;
+                  else if (only.last_name && lk.includes("last") && lk.includes("name")) updated[k] = only.last_name;
+                  else if (only.dob && (lk.includes("dob") || lk.includes("birth"))) updated[k] = only.dob;
+                }
+                context.childInfo = {
+                  name: `${only.first_name} ${only.last_name}`.trim(),
+                  firstName: only.first_name,
+                  lastName: only.last_name,
+                  dob: only.dob || undefined,
+                };
+                context.formData = updated;
+                this.updateContext(sessionId, { childInfo: context.childInfo, formData: updated });
+                current = updated;
+              }
+
+              // If multiple saved children and none selected yet, prompt for selection.
+              if (saved.length > 1 && !hasPickedChild) {
+                this.updateContext(sessionId, { awaitingChildSelection: true });
+                const lines = saved.slice(0, 6).map((c, i) => {
+                  const name = `${c.first_name} ${c.last_name}`.trim() || "Saved child";
+                  return `${i + 1}. ${name}`;
+                });
+                return this.formatResponse(
+                  `Step 2/5 — Parent & child info\n\nI found ${saved.length} saved participant${saved.length === 1 ? "" : "s"}.\n\n${lines.join("\n")}\n\nReply with a number (e.g., "1"), or type a new child name + DOB.`,
+                  undefined,
+                  []
+                );
+              }
+            }
+
             const missing: string[] = [];
             for (const f of (context.requiredFields?.delegate || []).filter(x => x.required)) {
               if (current[f.key] == null || (typeof current[f.key] === "string" && current[f.key].trim() === "")) {
@@ -1578,6 +1730,33 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
                   numParticipants: 1,
                 },
               };
+            }
+          }
+
+          // Returning-user UX: persist profile + any new children for future runs (auth only).
+          if (context.user_id && payload?.formData && typeof payload.formData === "object") {
+            const fd: any = payload.formData;
+            payload = { ...payload, saveDelegateProfile: true };
+
+            const existing = Array.isArray(context.savedChildren) ? context.savedChildren : [];
+            const participants = Array.isArray(fd.participants) ? fd.participants : [];
+            const toSave: Array<{ first_name: string; last_name: string; dob?: string }> = [];
+            for (const p of participants) {
+              const first = String(p?.firstName || p?.first_name || "").trim();
+              const last = String(p?.lastName || p?.last_name || "").trim();
+              const dob = String(p?.dob || p?.dateOfBirth || p?.date_of_birth || "").trim();
+              if (!first || !last) continue;
+              const exists = existing.some((c) => {
+                const sameName =
+                  String(c.first_name || "").toLowerCase() === first.toLowerCase() &&
+                  String(c.last_name || "").toLowerCase() === last.toLowerCase();
+                const sameDob = dob ? String(c.dob || "").slice(0, 10) === dob.slice(0, 10) : true;
+                return sameName && sameDob;
+              });
+              if (!exists) toSave.push({ first_name: first, last_name: last, ...(dob ? { dob } : {}) });
+            }
+            if (toSave.length > 0) {
+              payload = { ...payload, saveNewChildren: toSave };
             }
           }
 
@@ -1807,37 +1986,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       );
     }
     
-    // ChatGPT NL: Check if user is awaiting delegate email collection
-    if (context.awaitingDelegateEmail) {
-      const email = this.parseDelegateEmail(input);
-      if (email) {
-        Logger.info('[NL Parse] Delegate email extracted', { source: 'natural_language', email });
-        // Store email and proceed with form submission
-        const pendingParticipants = context.pendingParticipants || [];
-        this.updateContext(sessionId, { 
-          awaitingDelegateEmail: false,
-          pendingDelegateInfo: { ...context.pendingDelegateInfo, email }
-        });
-        
-        // Now submit with collected data
-        const formData = {
-          participants: pendingParticipants,
-          delegate: { delegate_email: email }
-        };
-        
-        return await this.submitForm({
-          formData,
-          program_ref: context.selectedProgram?.program_ref,
-          org_ref: context.orgRef || context.selectedProgram?.org_ref
-        }, sessionId, context);
-      }
-      
-      // Email not detected - ask again
-      return this.formatResponse(
-        "I didn't catch that email. Please share your email address (e.g., 'john@example.com').",
-        undefined,
-        []
-      );
+    // Step 2/5: schema-driven form fill (Bookeo required fields).
+    // First principles: we must collect ALL required fields before REVIEW.
+    // Treat any free-text message in FORM_FILL as "submit_form" so we can hydrate + ask only what's missing.
+    if (context.step === FlowStep.FORM_FILL && context.requiredFields) {
+      return await this.handleAction("submit_form", {}, sessionId, context, input);
     }
     
     // ============================================================================
@@ -3073,6 +3226,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           status: prog.status,
           price: prog.price,
           schedule: prog.schedule,
+          available_slots: prog.available_slots,
+          next_available_slot: prog.next_available_slot,
+          booking_limits: prog.booking_limits,
           booking_status: prog.booking_status || 'open_now',
           earliest_slot_time: prog.earliest_slot_time,
           booking_opens_at: prog.booking_opens_at,
@@ -3116,10 +3272,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             : (prog.booking_opens_at ? new Date(prog.booking_opens_at) : null);
 
         const bookingStatus: string = (() => {
-          if (isSoldOut) return 'sold_out';
+          const raw = String(prog.booking_status || "").toLowerCase().trim();
+          if (isSoldOut || raw === 'sold_out') return 'sold_out';
+          // First principles: trust explicit provider classification when present.
+          if (raw === 'open_now' || raw === 'open') return 'open_now';
           if (hasAvailableSlots) return 'open_now';
+          if (raw === 'opens_later' || raw === 'coming_soon') return 'opens_later';
           if (computedOpensAt && computedOpensAt > now) return 'opens_later';
-          return prog.booking_status || 'open_now';
+          return raw || 'open_now';
         })();
 
         // Use slot start for "class date", and computedOpensAt for "registration opens"
@@ -3173,6 +3333,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
                   status: prog.status,
                   price: prog.price,
                   schedule: prog.schedule,
+                  available_slots: prog.available_slots,
+                  next_available_slot: prog.next_available_slot,
+                  booking_limits: prog.booking_limits,
                   booking_status: bookingStatus,
                   earliest_slot_time: prog.earliest_slot_time,
                   booking_opens_at: computedOpensAt ? computedOpensAt.toISOString() : prog.booking_opens_at,
@@ -3531,10 +3694,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       // Prompt for delegate email first and clear any stale form fragments
       this.updateContext(sessionId, { 
-        awaitingDelegateEmail: true,
+        // v1 chat-only: we route FORM_FILL messages through submit_form hydration,
+        // so we don't need a separate awaitingDelegateEmail fast-path.
+        awaitingDelegateEmail: false,
         pendingDelegateInfo: undefined,
         childInfo: undefined,
         formData: undefined,
+        savedChildren: undefined,
+        awaitingChildSelection: false,
         paymentAuthorized: false
       });
 
@@ -3771,12 +3938,16 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         ? new Date(slotStart.getTime() - maxAdvance.amount * this.getMilliseconds(maxAdvance.unit))
         : (context.selectedProgram?.booking_opens_at ? new Date(context.selectedProgram.booking_opens_at) : null);
 
-    const bookingStatus: string = (() => {
-      if (isSoldOut) return 'sold_out';
-      if (hasAvailableSlots) return 'open_now';
-      if (computedOpensAt && computedOpensAt > now) return 'opens_later';
-      return context.selectedProgram?.booking_status || 'open_now';
-    })();
+      const bookingStatus: string = (() => {
+        const raw = String(context.selectedProgram?.booking_status || "").toLowerCase().trim();
+        if (isSoldOut || raw === 'sold_out') return 'sold_out';
+        // First principles: if provider says it's open now, trust it (even if slots metadata is missing).
+        if (raw === 'open_now' || raw === 'open') return 'open_now';
+        if (hasAvailableSlots) return 'open_now';
+        if (raw === 'opens_later' || raw === 'coming_soon') return 'opens_later';
+        if (computedOpensAt && computedOpensAt > now) return 'opens_later';
+        return raw || 'open_now';
+      })();
 
     // For "opens_later" programs, treat as future booking; schedule against opensAt (not class start time).
     const isFutureBooking = bookingStatus === 'opens_later';
@@ -5740,6 +5911,29 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       schedulingData: ctx.schedulingData,
       paymentAuthorized: ctx.paymentAuthorized
     };
+
+    // One-time trust intro (first principles): establish who we are + safety posture.
+    // We keep this short and only show it once per durable session, only while browsing.
+    if (ctx.user_id && !ctx.trustIntroShown && ctx.step === FlowStep.BROWSE && response?.message) {
+      const trust = [
+        "✅ You're working with **SignupAssist** — your responsible delegate.",
+        "- You stay in control: I ask before booking or charging.",
+        "- Card entry happens on **Stripe-hosted checkout** (we never see card numbers).",
+        "- Every consequential action is logged — say **“view receipts”** anytime.",
+      ].join("\n");
+
+      // Insert after the first line if it's a Step header, otherwise just append.
+      const msg = String(response.message || "");
+      const parts = msg.split("\n");
+      if (parts.length > 0 && /^\s*\*{0,2}step\s+1\/5\s+—/i.test(parts[0])) {
+        response = { ...response, message: [parts[0], "", trust, "", ...parts.slice(1)].join("\n") };
+      } else {
+        response = { ...response, message: `${msg}\n\n${trust}` };
+      }
+
+      // Persist the "shown" flag so we don't repeat in later turns.
+      this.updateContext(sessionId, { trustIntroShown: true });
+    }
 
     return {
       ...response,
