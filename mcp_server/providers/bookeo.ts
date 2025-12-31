@@ -395,7 +395,7 @@ async function discoverRequiredFields(args: {
           product_name: programData.title,
           duration: programData.duration,
           max_participants: signupForm.max_participants || 10,
-          requires_age_verification: signupForm.requires_age_verification || true,
+          requires_age_verification: signupForm.requires_age_verification ?? true,
           minimum_delegate_age: signupForm.minimum_delegate_age || 18,
           discovered_at: new Date().toISOString(),
           source: 'database_cache'
