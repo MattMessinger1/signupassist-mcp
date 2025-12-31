@@ -129,4 +129,11 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 - Fix shipped: `/health` now supports **GET or HEAD**, and startup now forces **HTTP mode on Railway** (even if `NODE_ENV` isn’t `production` / `PORT` isn’t injected), to avoid accidentally starting in stdio-only mode.
 - Additional fix: Railway build logs showed `dist/mcp_server/ai/` missing after `tsc`. Root cause was TypeScript sometimes inferring `rootDir` as `mcp_server` (since `mcp/` has no TS), which changes output paths to `dist/index.js` + `dist/ai/*` and breaks Docker `CMD ["node","dist/mcp_server/index.js"]`. Set `compilerOptions.rootDir = "."` in `tsconfig.mcp.json` to make dist paths stable.
 
+### Signup #2 (returning user) reliability + privacy hardening
+
+- **Signup #2 explicit + fast**: returning users with 1 saved child now get a Step 2/5 prompt that shows what we’ll reuse (**child name + DOB**, **parent name + relationship + DOB**) and asks only what’s missing (often email), with a clear **“different child”** escape hatch.
+- **No skipped Step 3/5**: REVIEW now always shows a full “Please review the details below…” summary at least once before accepting “yes/cancel”. If the user types more info in REVIEW, we treat it as edits, rehydrate, and re-render the summary.
+- **App Store posture**: removed raw MCP message body logging; added **scoped debug logging** via `DEBUG_LOGGING=true` + (`DEBUG_USER_ID` or `DEBUG_SESSION_ID`) and redacted audit args storage (`audit_events.args_json`) while preserving hashes.
+- Code: commit `c0b6eef` (pushed to `origin/main`).
+
 
