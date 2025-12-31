@@ -16,11 +16,10 @@ import type {
 } from "./types.js";
 import type { InputClassification } from "../types.js";
 import Logger from "../utils/logger.js";
-import { 
-  validateDesignDNA, 
+import {
   addResponsibleDelegateFooter,
-  addAPISecurityContext 
-} from "./designDNA.js";
+  addAPISecurityContext,
+} from "./complianceHelpers.js";
 import {
   getAPIProgramsReadyMessage,
   getAPIFormIntroMessage,
@@ -80,6 +79,12 @@ interface APIContext {
   hasPaymentMethod?: boolean; // Source-of-truth: user_billing.default_payment_method_id exists
   userTimezone?: string;  // User's IANA timezone (e.g., 'America/Chicago')
   requestedActivity?: string;  // Track what activity user is looking for (e.g., 'swimming', 'coding')
+
+  // Stripe Checkout (payment method setup)
+  // Stored so we can re-send the same link if chat gets choppy or the user asks again.
+  stripeCheckoutUrl?: string;
+  stripeCheckoutSessionId?: string;
+  stripeCheckoutCreatedAt?: string; // ISO timestamp
 
   // UX: show the trust/safety intro once per durable session
   trustIntroShown?: boolean;
@@ -401,6 +406,65 @@ export default class APIOrchestrator implements IOrchestrator {
     return { firstName: m[1], lastName: m[2] };
   }
 
+  private computeAgeYearsFromISODate(isoDate: string): number | null {
+    const m = String(isoDate || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return null;
+    const year = Number(m[1]);
+    const month = Number(m[2]);
+    const day = Number(m[3]);
+    if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
+
+    const now = new Date();
+    const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const birthdayThisYear = new Date(Date.UTC(todayUtc.getUTCFullYear(), month - 1, day));
+    let age = todayUtc.getUTCFullYear() - year;
+    if (todayUtc < birthdayThisYear) age -= 1;
+    if (age < 0 || age > 130) return null;
+    return age;
+  }
+
+  private normalizeDelegateRelationship(rel: string): "parent" | "guardian" | "grandparent" | "other" | null {
+    const parsed = this.parseRelationshipFromText(rel);
+    return parsed as any;
+  }
+
+  private formatStripeCheckoutLinkMessage(url: string): string {
+    return (
+      `💳 **Secure Stripe Checkout**\n` +
+      `Please add your payment method using the link below. We never see your card details.\n\n` +
+      `🔗 ${url}\n\n` +
+      `When you've finished, come back here and type **done**.`
+    );
+  }
+
+  private resolveDelegateEmailFromContext(context: APIContext): string | undefined {
+    const fromPending = context.pendingDelegateInfo?.email;
+    const fromForm =
+      (context.formData as any)?.delegate_data?.email ||
+      (context.formData as any)?.delegate_data?.delegate_email ||
+      (context.formData as any)?.delegate?.delegate_email;
+    const email = String(fromPending || fromForm || "").trim();
+    return email || undefined;
+  }
+
+  private fieldLabelForPrompt(group: "delegate" | "participant", rawLabel: string): string {
+    const s = String(rawLabel || "").trim() || (group === "delegate" ? "Parent/guardian info" : "Child info");
+    const lower = s.toLowerCase();
+
+    // Normalize common phrasing from provider schemas
+    let core = s.replace(/^(your|participant|child)\s+/i, "").trim();
+    if (lower.includes("email")) core = "email";
+    else if (lower.includes("first") && lower.includes("name")) core = "first name";
+    else if (lower.includes("last") && lower.includes("name")) core = "last name";
+    else if (lower.includes("date of birth") || lower.includes("dob") || lower.includes("birth")) core = "date of birth (MM/DD/YYYY)";
+    else if (lower.includes("relationship")) core = "relationship to the child (Parent/Guardian)";
+
+    const prefix = group === "delegate" ? "Parent/guardian" : "Child";
+    // Title-case the first letter of the core label for readability.
+    const niceCore = core.length ? core[0].toUpperCase() + core.slice(1) : core;
+    return `${prefix} ${niceCore}`;
+  }
+
   private toISODate(year: number, month: number, day: number): string | null {
     if (!Number.isFinite(year) || !Number.isFinite(month) || !Number.isFinite(day)) return null;
     const y = Math.trunc(year);
@@ -597,13 +661,26 @@ export default class APIOrchestrator implements IOrchestrator {
       if (child) {
         const firstName = String(child.firstName || child.name?.split(/\s+/)[0] || "").trim();
         const lastName = String(child.lastName || child.name?.split(/\s+/).slice(1).join(" ") || "").trim();
-        context.childInfo = {
-          ...(context.childInfo || { name: "" }),
-          name: child.name,
-          age: child.age,
-          firstName: context.childInfo?.firstName || firstName,
-          lastName: context.childInfo?.lastName || lastName,
-        };
+        // Guardrail: if user accidentally repeats their own (delegate) name while we’re asking for child info,
+        // don’t auto-accept it as the child unless they included an age (or a DOB elsewhere).
+        const dFirst = String(context.pendingDelegateInfo?.firstName || "").trim();
+        const dLast = String(context.pendingDelegateInfo?.lastName || "").trim();
+        const looksLikeDelegate =
+          !child.age &&
+          dFirst &&
+          dLast &&
+          firstName.toLowerCase() === dFirst.toLowerCase() &&
+          lastName.toLowerCase() === dLast.toLowerCase();
+
+        if (!looksLikeDelegate) {
+          context.childInfo = {
+            ...(context.childInfo || { name: "" }),
+            name: child.name,
+            age: child.age,
+            firstName: context.childInfo?.firstName || firstName,
+            lastName: context.childInfo?.lastName || lastName,
+          };
+        }
       }
     }
 
@@ -1681,29 +1758,33 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               }
             }
 
-            const missing: string[] = [];
-            for (const f of (context.requiredFields?.delegate || []).filter(x => x.required)) {
-              if (current[f.key] == null || (typeof current[f.key] === "string" && current[f.key].trim() === "")) {
-                missing.push(f.label || f.key);
-              }
-            }
-            for (const f of (context.requiredFields?.participant || []).filter(x => x.required)) {
-              if (current[f.key] == null || (typeof current[f.key] === "string" && current[f.key].trim() === "")) {
-                missing.push(f.label || f.key);
-              }
-            }
+            const delegateMissing = (context.requiredFields?.delegate || [])
+              .filter((x: any) => x?.required)
+              .filter((f: any) => current[f.key] == null || (typeof current[f.key] === "string" && current[f.key].trim() === ""))
+              .map((f: any) => ({ group: "delegate" as const, key: f.key, label: this.fieldLabelForPrompt("delegate", f.label || f.key) }));
 
-            if (missing.length > 0) {
-              // Ask for a small chunk to keep the flow progressive (no giant field dumps)
-              const nextChunk = missing.slice(0, 2);
-              const remainingCount = Math.max(missing.length - nextChunk.length, 0);
+            const participantMissing = (context.requiredFields?.participant || [])
+              .filter((x: any) => x?.required)
+              .filter((f: any) => current[f.key] == null || (typeof current[f.key] === "string" && current[f.key].trim() === ""))
+              .map((f: any) => ({ group: "participant" as const, key: f.key, label: this.fieldLabelForPrompt("participant", f.label || f.key) }));
+
+            const missingAll = [...delegateMissing, ...participantMissing];
+
+            if (missingAll.length > 0) {
+              // Ask parent/guardian fields first, then child fields (less confusing).
+              const source = delegateMissing.length > 0 ? delegateMissing : participantMissing;
+              const nextChunk = source.slice(0, 2);
+              const remainingCount = Math.max(missingAll.length - nextChunk.length, 0);
               const footer =
                 remainingCount > 0
-                  ? `After these, I'll ask for the remaining ${remainingCount} item${remainingCount === 1 ? '' : 's'}.`
+                  ? `After these, I'll ask for the remaining ${remainingCount} item${remainingCount === 1 ? "" : "s"}.`
                   : `That should be everything I need.`;
 
+              // COPPA / eligibility nudge (short, non-repetitive)
+              const eligibilityLine = `Eligibility: only a **parent/legal guardian age 18+** can use SignupAssist.`;
+
               return this.formatResponse(
-                `Step 2/5 — Parent & child info\n\nPlease share:\n- ${nextChunk.join("\n- ")}\n\n${footer}\nReply in one message (commas are fine).`,
+                `Step 2/5 — Parent & child info\n\n${eligibilityLine}\n\nPlease share:\n- ${nextChunk.map((x) => x.label).join("\n- ")}\n\n${footer}\nReply in one message (commas are fine).`,
                 undefined,
                 []
               );
@@ -1747,6 +1828,62 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             }
           }
 
+          // COPPA / eligibility enforcement (hard gate):
+          // Only a parent/legal guardian age 18+ can proceed.
+          const twoTier: any = payload?.formData;
+          const delegate = twoTier?.delegate || {};
+          const relRaw = String(
+            delegate?.delegate_relationship ||
+              delegate?.relationship ||
+              delegate?.default_relationship ||
+              ""
+          ).trim();
+          const rel = relRaw ? this.normalizeDelegateRelationship(relRaw) : null;
+
+          const dobRaw = String(
+            delegate?.delegate_dob ||
+              delegate?.dob ||
+              delegate?.date_of_birth ||
+              ""
+          ).trim();
+          const dobIso = dobRaw ? this.parseDateFromText(dobRaw) : null;
+          const ageYears = dobIso ? this.computeAgeYearsFromISODate(dobIso) : null;
+
+          if (!rel || (rel !== "parent" && rel !== "guardian")) {
+            return this.formatResponse(
+              `To keep this COPPA-compliant, I can only proceed if you're the **parent** or **legal guardian (18+)**.\n\nPlease reply with:\n- Relationship (Parent or Guardian)`,
+              undefined,
+              []
+            );
+          }
+
+          if (!dobIso || ageYears == null) {
+            return this.formatResponse(
+              `To keep this COPPA-compliant, I need to confirm the responsible adult is **18+**.\n\nPlease reply with your date of birth as **MM/DD/YYYY**.`,
+              undefined,
+              []
+            );
+          }
+
+          if (ageYears < 18) {
+            // Do not proceed; do not persist children/profile.
+            this.updateContext(sessionId, { step: FlowStep.BROWSE, selectedProgram: undefined, formData: undefined });
+            return this.formatResponse(
+              `Sorry — SignupAssist can only be used by a **parent/legal guardian age 18+**.\n\nPlease have a parent/guardian sign in to continue.`,
+              undefined,
+              []
+            );
+          }
+
+          // Normalize delegate dob back into payload so downstream storage is consistent.
+          if (twoTier?.delegate && typeof twoTier.delegate === "object") {
+            twoTier.delegate.delegate_dob = dobIso;
+            if (rel) {
+              twoTier.delegate.delegate_relationship = rel;
+            }
+            payload = { ...payload, formData: twoTier };
+          }
+
           // Returning-user UX: persist profile + any new children for future runs (auth only).
           if (context.user_id && payload?.formData && typeof payload.formData === "object") {
             const fd: any = payload.formData;
@@ -1754,12 +1891,27 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
             const existing = Array.isArray(context.savedChildren) ? context.savedChildren : [];
             const participants = Array.isArray(fd.participants) ? fd.participants : [];
+
+            const dFirst = String(fd?.delegate?.delegate_firstName || "").trim();
+            const dLast = String(fd?.delegate?.delegate_lastName || "").trim();
+            const dDob = String(fd?.delegate?.delegate_dob || "").trim();
+
             const toSave: Array<{ first_name: string; last_name: string; dob?: string }> = [];
             for (const p of participants) {
               const first = String(p?.firstName || p?.first_name || "").trim();
               const last = String(p?.lastName || p?.last_name || "").trim();
               const dob = String(p?.dob || p?.dateOfBirth || p?.date_of_birth || "").trim();
               if (!first || !last) continue;
+
+              // Guardrail: don’t save a “child” that matches the delegate (common UX mistake).
+              const looksLikeDelegate =
+                dFirst &&
+                dLast &&
+                first.toLowerCase() === dFirst.toLowerCase() &&
+                last.toLowerCase() === dLast.toLowerCase() &&
+                (!dob || !dDob || dob.slice(0, 10) === dDob.slice(0, 10));
+              if (looksLikeDelegate) continue;
+
               const exists = existing.some((c) => {
                 const sameName =
                   String(c.first_name || "").toLowerCase() === first.toLowerCase() &&
@@ -2507,9 +2659,19 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           });
           if (!context.hasPaymentMethod && !context.cardLast4) {
             Logger.info('[Review] No saved card on file – initiating Stripe Checkout');
-            const userEmail = context.pendingDelegateInfo?.email || context.formData?.delegate_data?.email || context.formData?.delegate_data?.delegate_email;
+            const userEmail = this.resolveDelegateEmailFromContext(context);
             const userId = context.user_id;
             try {
+              if (!userId) {
+                return this.formatError("Missing user identity for payment setup. Please sign in again.");
+              }
+              if (!userEmail) {
+                return this.formatResponse(
+                  `To set up payment, please share the parent/guardian email address.`,
+                  undefined,
+                  []
+                );
+              }
               const base =
                 (process.env.RAILWAY_PUBLIC_DOMAIN
                   ? (process.env.RAILWAY_PUBLIC_DOMAIN.startsWith('http')
@@ -2527,10 +2689,15 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
                 throw new Error(sessionRes.error?.message || "Unknown error");
               }
               // Advance to PAYMENT step awaiting verification
-              this.updateContext(sessionId, { step: FlowStep.PAYMENT, hasPaymentMethod: false });
+              this.updateContext(sessionId, {
+                step: FlowStep.PAYMENT,
+                hasPaymentMethod: false,
+                stripeCheckoutUrl: sessionRes.data.url,
+                stripeCheckoutSessionId: sessionRes.data.session_id,
+                stripeCheckoutCreatedAt: new Date().toISOString(),
+              });
               const stripeUrl = sessionRes.data.url;
-              const linkMsg = `💳 **Secure Stripe Checkout**\nPlease add your payment method using the link below. We never see your card details.\n\n🔗 ${stripeUrl}\n\nWhen you've finished, type "done" here to continue.`;
-              return this.formatResponse(linkMsg);
+              return this.formatResponse(this.formatStripeCheckoutLinkMessage(stripeUrl));
             } catch (error) {
               Logger.error("[stripe] Checkout session creation failed:", error);
               return this.formatError("Failed to start payment setup. Please try again.");
@@ -2557,51 +2724,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       }
 
       case FlowStep.PAYMENT: {
-        // ChatGPT NL: Detect confirmation from natural language
-        if (this.isUserConfirmation(input)) {
-          Logger.info('[NL Parse] Payment confirmation detected from NL input', {
-            source: 'natural_language',
-            hasSchedulingData: !!context.schedulingData,
-            userInput: input,
-            hasPaymentMethod: !!context.cardLast4,
-            paymentAuthorized: !!context.paymentAuthorized
-          });
-          
-          // ⚠️ GUARD 1: Check for saved payment method before allowing confirmation
-          if (!context.hasPaymentMethod && !context.cardLast4 && context.user_id) {
-            Logger.warn('[NL Parse] Payment confirmation attempted without saved payment method');
-            return {
-              message: "Before I can schedule your registration, I need to save a payment method. You'll only be charged if registration succeeds!",
-              metadata: {
-                componentType: "payment_setup",
-                next_action: context.schedulingData ? "confirm_scheduled_registration" : "confirm_payment",
-                schedulingData: context.schedulingData
-              },
-              cta: {
-                buttons: [
-                  { label: "Add Payment Method", action: "setup_payment", variant: "accent" }
-                ]
-              }
-            };
-          }
-          
-          // ⚠️ GUARD 2: Require explicit authorization (not just "yes")
-          if (!context.paymentAuthorized) {
-            Logger.info('[NL Parse] Payment method saved; recording explicit authorization from user confirmation');
-            this.updateContext(sessionId, { paymentAuthorized: true, step: FlowStep.SUBMIT });
-            if (context.schedulingData) {
-              return await this.confirmScheduledRegistration({}, sessionId, this.getContext(sessionId));
-            }
-            return await this.confirmPayment({}, sessionId, this.getContext(sessionId));
-          }
-          
-          // Route to appropriate confirmation handler
-          if (context.schedulingData) {
-            return await this.confirmScheduledRegistration({}, sessionId, context);
-          }
-          return await this.confirmPayment({}, sessionId, context);
-        }
-        
+        const hasCardOnFile = !!(context.hasPaymentMethod || context.cardLast4);
+
         // Detect if user indicates they've added payment method (e.g., "done")
         if (/done|card|added|finished/i.test(input.trim())) {
           Logger.info('[Payment] User indicates payment method setup is done, checking status...');
@@ -2617,10 +2741,79 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           }
           return this.formatResponse("I haven't detected a new payment method yet. If you've completed the Stripe form, please wait a moment and type \"done\" again.");
         }
-        // Fallback prompt: ask user to confirm booking
-        return this.formatResponse(
-          "Ready to complete your booking? Say 'yes' to confirm."
-        );
+
+        // If there is NO card on file, we should keep re-sending the Stripe link (not asking for “yes”).
+        if (!hasCardOnFile) {
+          // If we already generated a link, re-send it.
+          if (context.stripeCheckoutUrl) {
+            return this.formatResponse(this.formatStripeCheckoutLinkMessage(context.stripeCheckoutUrl));
+          }
+
+          // Otherwise, generate a new Stripe Checkout session and store it for re-send.
+          const userId = context.user_id;
+          const userEmail = this.resolveDelegateEmailFromContext(context);
+          if (!userId) return this.formatError("Missing user identity for payment setup. Please sign in again.");
+          if (!userEmail) {
+            return this.formatResponse(`To set up payment, please share the parent/guardian email address.`);
+          }
+
+          try {
+            const base =
+              (process.env.RAILWAY_PUBLIC_DOMAIN
+                ? (process.env.RAILWAY_PUBLIC_DOMAIN.startsWith('http')
+                    ? process.env.RAILWAY_PUBLIC_DOMAIN
+                    : `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`)
+                : 'https://signupassist.shipworx.ai');
+
+            const sessionRes = await this.invokeMCPTool('stripe.create_checkout_session', {
+              user_id: userId,
+              user_email: userEmail,
+              success_url: `${base}/stripe_return?payment_setup=success&session_id={CHECKOUT_SESSION_ID}`,
+              cancel_url: `${base}/stripe_return?payment_setup=canceled`
+            });
+            if (!sessionRes.success || !sessionRes.data?.url) {
+              throw new Error(sessionRes.error?.message || "Unknown error");
+            }
+
+            this.updateContext(sessionId, {
+              stripeCheckoutUrl: sessionRes.data.url,
+              stripeCheckoutSessionId: sessionRes.data.session_id,
+              stripeCheckoutCreatedAt: new Date().toISOString(),
+            });
+
+            return this.formatResponse(this.formatStripeCheckoutLinkMessage(sessionRes.data.url));
+          } catch (e) {
+            Logger.error("[stripe] Checkout session creation failed (payment step):", e);
+            return this.formatError("Failed to start payment setup. Please try again.");
+          }
+        }
+
+        // Card IS on file — now confirmations should proceed to booking.
+        if (this.isUserConfirmation(input)) {
+          Logger.info('[NL Parse] Payment confirmation detected from NL input', {
+            source: 'natural_language',
+            hasSchedulingData: !!context.schedulingData,
+            userInput: input,
+            hasPaymentMethod: !!context.hasPaymentMethod,
+            paymentAuthorized: !!context.paymentAuthorized
+          });
+
+          if (!context.paymentAuthorized) {
+            Logger.info('[NL Parse] Recording explicit authorization from user confirmation');
+            this.updateContext(sessionId, { paymentAuthorized: true, step: FlowStep.SUBMIT });
+            if (context.schedulingData) {
+              return await this.confirmScheduledRegistration({}, sessionId, this.getContext(sessionId));
+            }
+            return await this.confirmPayment({}, sessionId, this.getContext(sessionId));
+          }
+
+          if (context.schedulingData) {
+            return await this.confirmScheduledRegistration({}, sessionId, context);
+          }
+          return await this.confirmPayment({}, sessionId, context);
+        }
+
+        return this.formatResponse(`When you're ready, reply **yes** to confirm your booking.`);
       }
 
       default: {
@@ -3500,23 +3693,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         // NOTE: no _meta in v1 (widget-only metadata removed)
       };
 
-      // Validate Design DNA compliance
-      const validation = validateDesignDNA(orchestratorResponse, {
-        step: 'browse',
-        isWriteAction: false
-      });
-
-      if (!validation.passed) {
-        Logger.error('[DesignDNA] Validation failed:', validation.issues);
-      }
-      
-      if (validation.warnings.length > 0) {
-        Logger.warn('[DesignDNA] Warnings:', validation.warnings);
-      }
-      if (validation.passed) {
-        Logger.info('[DesignDNA] Validation passed ✅');
-      }
-
       return orchestratorResponse;
     } catch (error) {
       Logger.error("Error searching programs:", error);
@@ -3785,23 +3961,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         awaitingChildSelection: false,
         paymentAuthorized: false
       });
-
-      // Validate Design DNA compliance
-      const validation = validateDesignDNA(formResponse, {
-        step: 'form',
-        isWriteAction: false
-      });
-
-      if (!validation.passed) {
-        Logger.error('[DesignDNA] Validation failed:', validation.issues);
-      }
-
-      if (validation.warnings.length > 0) {
-        Logger.warn('[DesignDNA] Warnings:', validation.warnings);
-      }
-      if (validation.passed) {
-        Logger.info('[DesignDNA] Validation passed ✅');
-      }
 
       return formResponse;
     } catch (error) {
@@ -4484,23 +4643,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           ]
         }
       };
-
-      // Validate Design DNA compliance
-      const validation = validateDesignDNA(successResponse, {
-        step: 'browse',
-        isWriteAction: false
-      });
-
-      if (!validation.passed) {
-        Logger.error('[DesignDNA] Validation failed:', validation.issues);
-      }
-      
-      if (validation.warnings.length > 0) {
-        Logger.warn('[DesignDNA] Warnings:', validation.warnings);
-      }
-      if (validation.passed) {
-        Logger.info('[DesignDNA] Validation passed ✅');
-      }
       Logger.info("[confirmPayment] ✅ Immediate booking flow complete");
 
       return successResponse;
@@ -4608,16 +4750,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         message: addAPISecurityContext(addResponsibleDelegateFooter(message), "AIM Design"),
         cards: [authCard]
       };
-      
-      // Validate Design DNA compliance
-      const validation = validateDesignDNA(response, {
-        step: 'payment',
-        isWriteAction: true
-      });
-      
-      if (!validation.passed) {
-        Logger.error('[DesignDNA] Validation failed:', validation.issues);
-      }
       
       Logger.info("[showPaymentAuthorization] ✅ Authorization card ready");
       return response;

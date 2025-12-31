@@ -81,4 +81,34 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 - **API-only smoke**: `tsx scripts/smokeApiOnly.ts`
 - **E2E scheduled smoke (safe)**: `npm run test:e2e` (requires `E2E_USER_ID`)
 
+---
+
+## 2025-12-31 — Canonical checklist + remove DesignDNA runtime gating
+
+### What changed
+
+- **Docs**: removed stale `docs/CHATGPT_COMPLIANCE_CHECKLIST.md` so `docs/V1_PUNCHLIST.md` remains the single canonical v1 checklist.
+- **Runtime**: removed the `DesignDNA` runtime validator/logging from `mcp_server/ai/APIOrchestrator.ts` to avoid non-canonical “Design DNA” gating/noise in production.
+- **Kept (compliance-critical)**: Responsible Delegate + security-note helpers moved to `mcp_server/ai/complianceHelpers.ts`.
+
+### Follow-up (same day): COPPA guardrails + Stripe link reliability + less choppy Step 2/5
+
+- **COPPA / eligibility enforcement (runtime)**:
+  - Hard-gated the flow so only a **parent/legal guardian age 18+** can proceed past Step 2/5.
+  - Uses the parent/guardian DOB to validate 18+ (no new DB columns needed; aligns with `docs/TERMS_OF_USE.md` and `docs/PRIVACY_POLICY.md`).
+  - Prevents persisting profile/children if the user fails the 18+ gate.
+- **Stripe “loop” fix**:
+  - Persisted `stripeCheckoutUrl` (+ session id + timestamp) in session context so we can **re-send** the same Stripe Checkout link if ChatGPT gets choppy.
+  - In PAYMENT step, if no card is on file, we now always show the Stripe link (instead of repeatedly asking to “save a payment method” without providing the link).
+- **Step 2/5 clarity**:
+  - Prompts now label fields as **Parent/guardian** vs **Child** and finish parent fields before child fields.
+  - Added a guard to avoid accidentally treating the delegate’s name as the child when only a name (no age) is provided.
+  - Added a guard to avoid saving a “child” record identical to the delegate (common UX slip).
+
+### How to test quickly (ChatGPT preview)
+
+- Run a book-now flow to Step 4/5 and type “proceed” multiple times: you should see the **same Stripe Checkout link** re-sent.
+- Complete Stripe Checkout and return, then type **done**: the system should detect `user_billing.default_payment_method_id` and proceed to confirmation.
+- During Step 2/5: provide relationship + DOB and ensure the flow blocks if DOB implies <18.
+
 
