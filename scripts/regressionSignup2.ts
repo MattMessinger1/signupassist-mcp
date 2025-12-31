@@ -65,6 +65,40 @@ function extractText(toolRes: any): string {
   return String(toolRes?.json?.content?.[0]?.text || '');
 }
 
+function isStep(text: string, n: number): boolean {
+  return new RegExp(`^(\\*\\*)?Step\\s+${n}\\/5\\s+—`, 'i').test(text.trim());
+}
+
+function buildReplyForMissing(text: string, email: string): string | null {
+  const t = text.toLowerCase();
+  const wantsParent = /parent\/guardian/i.test(text);
+  const wantsChild = /\bchild\b/i.test(text);
+
+  const lines: string[] = [];
+
+  // Parent/guardian
+  if (wantsParent && /\bemail\b/i.test(text)) lines.push(`Parent email: ${email}`);
+  if (wantsParent && /first name/i.test(text)) lines.push(`Parent first name: Jane`);
+  if (wantsParent && /last name/i.test(text)) lines.push(`Parent last name: Doe`);
+  if (wantsParent && /(date of birth|dob|birth)/i.test(text)) lines.push(`Parent DOB: 05/13/1976`);
+  if (wantsParent && /relationship/i.test(text)) lines.push(`Relationship: Parent`);
+
+  // Child
+  if (wantsChild && /first name/i.test(text)) lines.push(`Child first name: Alex`);
+  if (wantsChild && /last name/i.test(text)) lines.push(`Child last name: Doe`);
+  if (wantsChild && /(date of birth|dob|birth)/i.test(text)) lines.push(`Child DOB: 02/17/2014`);
+
+  // If the prompt is a generic “reply with missing fields” but doesn't show labels, fallback to full payload.
+  if (lines.length === 0) {
+    if (t.includes('still needed') || t.includes('reply in one message') || t.includes('please reply')) {
+      return `Email: ${email}; Name: Jane Doe; DOB: 05/13/1976; Relationship: Parent; Child: Alex Doe; Child DOB: 02/17/2014`;
+    }
+    return null;
+  }
+
+  return lines.join('; ');
+}
+
 async function main() {
   const baseUrl = normalizeBaseUrl(requireEnv('MCP_SERVER_URL'));
   const token = requireEnv('MCP_ACCESS_TOKEN');
@@ -129,10 +163,27 @@ async function main() {
     ...(userId ? { userId } : {}),
   });
   assert(chat3.status === 200, `signupassist.chat step2 payload: expected 200, got ${chat3.status}`);
-  const text3 = extractText(chat3);
+  let text3 = extractText(chat3);
+
+  // Step 2 can take multiple turns (schema-driven micro-questions). Keep answering until Step 3/5.
+  if (isStep(text3, 2)) {
+    for (let i = 0; i < 4; i++) {
+      const reply = buildReplyForMissing(text3, returningEmail) || fullPayload;
+      const next = await callTool(baseUrl, token, 'signupassist.chat', {
+        input: reply,
+        sessionId,
+        userTimezone: tz,
+        ...(userId ? { userId } : {}),
+      });
+      assert(next.status === 200, `signupassist.chat step2 follow-up: expected 200, got ${next.status}`);
+      text3 = extractText(next);
+      if (isStep(text3, 3)) break;
+      if (!isStep(text3, 2)) break;
+    }
+  }
 
   // New flow: Step 3/5 is payment method confirmation (Stripe) BEFORE final review/consent.
-  assert(/^(\*\*)?Step\s+3\/5\s+—/i.test(text3), `expected Step 3/5 header, got: ${text3.slice(0, 160)}`);
+  assert(isStep(text3, 3), `expected Step 3/5 header, got: ${text3.slice(0, 160)}`);
   assert(
     /payment method/i.test(text3) || /Secure Stripe Checkout/i.test(text3),
     `expected payment method prompt or Stripe link, got: ${text3.slice(0, 240)}`
