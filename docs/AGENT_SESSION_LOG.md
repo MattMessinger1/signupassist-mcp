@@ -135,5 +135,6 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 - **No skipped Step 3/5**: REVIEW now always shows a full “Please review the details below…” summary at least once before accepting “yes/cancel”. If the user types more info in REVIEW, we treat it as edits, rehydrate, and re-render the summary.
 - **App Store posture**: removed raw MCP message body logging; added **scoped debug logging** via `DEBUG_LOGGING=true` + (`DEBUG_USER_ID` or `DEBUG_SESSION_ID`) and redacted audit args storage (`audit_events.args_json`) while preserving hashes.
 - Code: commit `c0b6eef` (pushed to `origin/main`).
+- Follow-up: commit `61d21ef` moves **payment method confirmation before final review/consent** (Step 3 = payment, Step 4 = review) and fixes “different child …” parsing so the directive doesn’t become part of the child’s name.
 
 
