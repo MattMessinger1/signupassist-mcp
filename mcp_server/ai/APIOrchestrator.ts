@@ -1773,15 +1773,21 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             if (missingAll.length > 0) {
               // Ask parent/guardian fields first, then child fields (less confusing).
               const source = delegateMissing.length > 0 ? delegateMissing : participantMissing;
-              const nextChunk = source.slice(0, 2);
+              // Streamline: ask a few items per turn to reduce back-and-forth, but keep it calm.
+              const chunkSize = 3;
+              const nextChunk = source.slice(0, chunkSize);
               const remainingCount = Math.max(missingAll.length - nextChunk.length, 0);
               const footer =
                 remainingCount > 0
                   ? `After these, I'll ask for the remaining ${remainingCount} item${remainingCount === 1 ? "" : "s"}.`
                   : `That should be everything I need.`;
+              const groupIntro =
+                delegateMissing.length > 0
+                  ? `First, for the **parent/guardian (you)**:`
+                  : `Now, for the **child**:`;
 
               return this.formatResponse(
-                `Step 2/5 — Parent & child info\n\nPlease share:\n- ${nextChunk.map((x) => x.label).join("\n- ")}\n\n${footer}\nReply in one message (commas are fine).`,
+                `Step 2/5 — Parent & child info\n\n${groupIntro}\n- ${nextChunk.map((x) => x.label).join("\n- ")}\n\n${footer}\nReply in one message (commas are fine).`,
                 undefined,
                 []
               );

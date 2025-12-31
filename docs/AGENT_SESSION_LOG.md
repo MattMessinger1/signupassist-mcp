@@ -117,5 +117,6 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 - **Step 3/5**: fixed review text to render with **real newlines** (no literal `\n` sequences shown to the user).
 - **COPPA messaging**: eligibility note (“parent/legal guardian age 18+”) is now included in the **one-time trust intro** instead of being repeated in every Step 2/5 prompt.
 - **Less choppy Steps 3–5**: activation/provider-matching (and `user.get_delegate_profile` lookup) now runs only in **Step 1/5 (BROWSE)**, so REVIEW/PAYMENT turns avoid extra tool calls and reduce repeated prompts/latency.
+- **Step 2/5 fewer turns**: form-fill now asks up to **3 missing items per prompt** (and clearly labels whether we’re collecting **parent/guardian** vs **child** info) to reduce back-and-forth without dumping schemas.
 
 
