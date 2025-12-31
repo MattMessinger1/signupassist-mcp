@@ -116,5 +116,6 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 - **Step 1/5**: when a program list exists but the user replies with something that isn’t a selection, we now re-print a compact numbered list of options so the user isn’t “stuck” guessing what 1–N refers to.
 - **Step 3/5**: fixed review text to render with **real newlines** (no literal `\n` sequences shown to the user).
 - **COPPA messaging**: eligibility note (“parent/legal guardian age 18+”) is now included in the **one-time trust intro** instead of being repeated in every Step 2/5 prompt.
+- **Less choppy Steps 3–5**: activation/provider-matching (and `user.get_delegate_profile` lookup) now runs only in **Step 1/5 (BROWSE)**, so REVIEW/PAYMENT turns avoid extra tool calls and reduce repeated prompts/latency.
 
 

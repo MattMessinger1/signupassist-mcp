@@ -2231,9 +2231,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       return await this.searchPrograms(orgRef, sessionId);
     }
 
-    // Get user's stored location if authenticated
+    // ------------------------------------------------------------------------
+    // STREAMLINING: activation/provider-matching is only relevant in Step 1/5 (BROWSE).
+    // Once the user is in REVIEW/PAYMENT/SUBMIT, extra matching + profile lookups
+    // add latency and can cause repetitive/choppy UX.
+    // ------------------------------------------------------------------------
     let storedCity: string | undefined;
     let storedState: string | undefined;
+    if (context.step === FlowStep.BROWSE) {
     
     if (context.user_id) {
       try {
@@ -2428,6 +2433,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         hasSelectedProgram: !!context.selectedProgram,
         hasPendingProviderConfirmation: !!context.pendingProviderConfirmation,
       });
+    }
     }
 
     // LOW confidence for AUTHENTICATED users: Context-aware responses based on flow step
