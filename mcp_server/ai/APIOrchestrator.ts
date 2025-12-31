@@ -3219,7 +3219,33 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           return this.formatResponse(this.buildReviewSummaryFromContext(refreshed));
         }
 
-        return this.formatResponse(`If your payment method looks correct, reply **yes** to continue to the final review. Or reply **change card**.`);
+        // Show which card is on file so the user can verify it (first-principles UX + consent clarity).
+        let display =
+          context.cardBrand && context.cardLast4
+            ? `${context.cardBrand} •••• ${context.cardLast4}`
+            : context.cardLast4
+              ? `Card •••• ${context.cardLast4}`
+              : "";
+
+        // If we know a card exists but don't have display details yet, fetch once from source-of-truth.
+        if (!display && context.user_id && context.hasPaymentMethod) {
+          const checkRes = await this.invokeMCPTool("stripe.check_payment_status", { user_id: context.user_id });
+          if (checkRes.success && checkRes.data?.hasPaymentMethod) {
+            const { last4, brand } = checkRes.data;
+            this.updateContext(sessionId, {
+              hasPaymentMethod: true,
+              cardLast4: last4,
+              cardBrand: brand,
+            });
+            display =
+              brand && last4 ? `${brand} •••• ${last4}` : last4 ? `Card •••• ${last4}` : "payment method on file";
+          }
+        }
+
+        const displayText = display || "payment method on file";
+        return this.formatResponse(
+          `I found a payment method on file: **${displayText}**.\n\nReply **yes** to use it, or reply **change card** to add a new one in Stripe.`
+        );
       }
 
       case FlowStep.SUBMIT: {
