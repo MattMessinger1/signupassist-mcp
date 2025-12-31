@@ -184,4 +184,16 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
     - Receipt: `REG-a4df8aba` (status `confirmed`)
     - `audit SCH-31388c61` responded successfully
 
+---
+
+## 2025-12-31 — ChatGPT preview fixes (account switching + flow correctness)
+
+- **Saved child name sanitization (no DB mutation)**: strip directives like “different child …” and embedded DOB fragments so they never appear in Step 2/5 “On file” or the review summary.
+- **SUBMIT step hardening**: added an explicit `FlowStep.SUBMIT` handler so ChatGPT retries/refreshes can’t fall into the generic “unsupported organization” messaging mid-booking.
+- **Step 5/5 header correctness**: after a successful booking, we persist `step=COMPLETED` for the response snapshot so ChatGPT consistently renders **Step 5/5 — Registering** on the success message.
+  - Added `FlowStep.COMPLETED` → same handling as `BROWSE` for subsequent user messages (so completion doesn’t trap the session).
+- **No double-consent**: fixed the “yes twice” issue by setting `reviewSummaryShown=true` when we already include the full summary in the response.
+- **OAuth switching**: `/oauth/authorize` now sets `prompt=login` by default (configurable via `AUTH0_OAUTH_PROMPT`) so it’s easy to sign in as a different user inside ChatGPT’s embedded browser.
+- **PII log reduction**: removed email logging from `stripe.create_checkout_session` and stopped logging raw `formData` in `confirmPayment`.
+
 
