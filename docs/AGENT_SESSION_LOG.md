@@ -175,8 +175,13 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 ### Current status
 
 - Code is **build-clean** (`npm run mcp:build`).
-- Remaining manual verification needed:
-  - Run **worker execute smoke** (`npm run test:worker`) against a deployed worker service.
-  - Update + run regression scripts, then capture evidence in this log.
+- ✅ Evidence captured (prod):
+  - Regression: `scripts/regressionSignup2.ts` passed against `https://signupassist.shipworx.ai` using Auth0 user `auth0|69547f…`.
+    - Note: payment method not on file for that user, so Step 4/5 review check was skipped (expected).
+  - Worker execute smoke: `npm run test:worker` succeeded.
+    - Scheduled: `SCH-31388c61` → `completed`
+    - Booking number: `1567512312459746`
+    - Receipt: `REG-a4df8aba` (status `confirmed`)
+    - `audit SCH-31388c61` responded successfully
 
 
