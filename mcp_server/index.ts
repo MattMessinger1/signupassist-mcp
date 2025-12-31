@@ -136,6 +136,45 @@ function collectMissingFields(context: any): string[] {
   return missing;
 }
 
+function isDebugLoggingEnabled(): boolean {
+  return String(process.env.DEBUG_LOGGING || "").toLowerCase() === "true";
+}
+
+function redactForLogs(input: string): string {
+  const s = String(input || "");
+  // Emails
+  let out = s.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[REDACTED_EMAIL]");
+  // ISO dates + common DOB formats
+  out = out.replace(/\b\d{4}-\d{2}-\d{2}\b/g, "[REDACTED_DATE]");
+  out = out.replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/g, "[REDACTED_DATE]");
+  // Bearer tokens
+  out = out.replace(/\bBearer\s+[A-Za-z0-9\-._~+/]+=*\b/g, "Bearer [REDACTED_TOKEN]");
+  return out;
+}
+
+function shouldDebugForMcpMessage(msg: any, verifiedUserId?: string): boolean {
+  if (!isDebugLoggingEnabled()) return false;
+  const debugUserId = String(process.env.DEBUG_USER_ID || "").trim();
+  const debugSessionId = String(process.env.DEBUG_SESSION_ID || "").trim();
+
+  // If DEBUG_USER_ID is set, require match.
+  if (debugUserId) {
+    return !!verifiedUserId && verifiedUserId === debugUserId;
+  }
+
+  // If DEBUG_SESSION_ID is set, attempt to match against tool args sessionId when present.
+  if (debugSessionId) {
+    const argSessionId =
+      msg?.params?.arguments?.sessionId ||
+      msg?.params?.arguments?.session_id ||
+      msg?.params?.sessionId;
+    return !!argSessionId && String(argSessionId) === debugSessionId;
+  }
+
+  // Targeted-only posture: if no target is specified, do not debug-log.
+  return false;
+}
+
 /**
  * MASTER GUARDRAIL: Apply all V1 chat UX guardrails at HTTP boundary
  * - FIX 1: Always Step headers based on context.step
@@ -1377,7 +1416,9 @@ class SignupAssistMCPServer {
           for await (const chunk of req) {
             body += chunk;
           }
-          console.log('[SSE] Message body:', body.substring(0, 200));
+          // PROD SAFETY: do not log raw message bodies (can contain PII like email/DOB).
+          // Enable extra debugging only via DEBUG_LOGGING + DEBUG_SESSION_ID/DEBUG_USER_ID,
+          // and even then only log redacted summaries (not raw bodies).
 
           let parsed: any = null;
           try {
@@ -1388,6 +1429,13 @@ class SignupAssistMCPServer {
 
           const methodName = parsed?.method ? String(parsed.method) : '';
           const isToolCall = methodName === 'tools/call';
+
+          // Targeted debug logging (always redacted). Never log raw message bodies in prod.
+          // NOTE: We may not have verifiedUserId until after auth; we re-check below after auth.
+          const maybeToolName = parsed?.params?.name ? String(parsed.params.name) : undefined;
+          if (isDebugLoggingEnabled() && !isProd) {
+            console.log('[DEBUG] /messages (dev) method:', methodName, 'tool:', maybeToolName);
+          }
 
           let isAuthorized = false;
           let authSource: 'mcp_access_token' | 'auth0' | 'dev' | 'none' = 'none';
@@ -1414,6 +1462,16 @@ class SignupAssistMCPServer {
                 }
               }
             }
+          }
+
+          if (shouldDebugForMcpMessage(parsed, verifiedUserId)) {
+            const summary = {
+              method: methodName,
+              tool: maybeToolName,
+              sessionId,
+              auth: authSource,
+            };
+            console.log('[DEBUG] /messages summary:', redactForLogs(JSON.stringify(summary)));
           }
 
           // Only require auth for consequential calls.

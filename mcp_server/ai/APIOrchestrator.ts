@@ -144,6 +144,12 @@ interface APIContext {
   // Returning-user UX: store saved children for quick selection in chat
   savedChildren?: Array<{ id: string; first_name: string; last_name: string; dob?: string | null }>;
   awaitingChildSelection?: boolean;
+  // Returning-user UX: for exactly 1 saved child, avoid silent auto-use.
+  awaitingSingleChildChoice?: boolean;
+  declinedSingleSavedChild?: boolean;
+
+  // REVIEW UX: ensure we always show the full review summary before asking yes/cancel.
+  reviewSummaryShown?: boolean;
 
   // Avoid repeated DB lookups for returning-user prefill within a session
   delegatePrefillAttempted?: boolean;
@@ -463,6 +469,73 @@ export default class APIOrchestrator implements IOrchestrator {
     // Title-case the first letter of the core label for readability.
     const niceCore = core.length ? core[0].toUpperCase() + core.slice(1) : core;
     return `${prefix} ${niceCore}`;
+  }
+
+  private formatISODateForPrompt(iso?: string | null): string | null {
+    const s = String(iso || "").trim();
+    if (!s) return null;
+    // Common stored format is YYYY-MM-DD
+    const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return `${m[2]}/${m[3]}/${m[1]}`;
+    return s;
+  }
+
+  private buildReviewSummaryFromContext(context: APIContext): string {
+    const programName =
+      context.selectedProgram?.title ||
+      context.selectedProgram?.program_name ||
+      context.selectedProgram?.name ||
+      "Selected program";
+
+    // Try to normalize whatever we have in context.formData into a two-tier structure.
+    const fd: any = context.formData || {};
+    const delegate =
+      (fd && typeof fd === "object" && (fd.delegate_data || fd.delegate)) ||
+      (fd?.formData && (fd.formData.delegate || fd.formData.delegate_data)) ||
+      {};
+    const participantsRaw =
+      (fd && typeof fd === "object" && (fd.participant_data || fd.participants)) ||
+      (fd?.formData && (fd.formData.participants || fd.formData.participant_data)) ||
+      [];
+    const participants = Array.isArray(participantsRaw) ? participantsRaw : [participantsRaw].filter(Boolean);
+    const participant = participants[0] || {};
+
+    const childName = participant.firstName
+      ? `${participant.firstName} ${participant.lastName || ""}`.trim()
+      : (context.childInfo?.name || "your child");
+    const childDob = this.formatISODateForPrompt(participant.dob || participant.date_of_birth || context.childInfo?.dob);
+    const childDetail = childDob ? ` (DOB: ${childDob})` : (participant.age ? ` (Age: ${participant.age})` : "");
+
+    const parentFirst = String(delegate.delegate_firstName || delegate.firstName || delegate.first_name || "").trim();
+    const parentLast = String(delegate.delegate_lastName || delegate.lastName || delegate.last_name || "").trim();
+    const parentName = `${parentFirst} ${parentLast}`.trim();
+    const parentDob = this.formatISODateForPrompt(delegate.delegate_dob || delegate.date_of_birth || delegate.dob);
+    const parentRel = String(delegate.delegate_relationship || delegate.relationship || "").trim();
+
+    const sessionDate = context.selectedProgram?.earliest_slot_time
+      ? this.formatTimeForUser(context.selectedProgram.earliest_slot_time, context)
+      : null;
+
+    const feeCents = Number(fd?.program_fee_cents ?? context.schedulingData?.program_fee_cents ?? 0);
+    const formattedTotal = Number.isFinite(feeCents) && feeCents > 0 ? `$${(feeCents / 100).toFixed(2)}` : (context.selectedProgram?.price || "TBD");
+
+    let msg = "Please review the details below:\n\n";
+    msg += `- **Program:** ${programName}\n`;
+    msg += `- **Participant:** ${childName}${childDetail}\n`;
+    if (parentName) msg += `- **Parent/Guardian:** ${parentName}\n`;
+    if (parentRel) msg += `- **Relationship:** ${parentRel}\n`;
+    if (parentDob) msg += `- **Parent DOB:** ${parentDob}\n`;
+    if (sessionDate) msg += `- **Date:** ${sessionDate}\n`;
+    msg += `- **Program Fee:** ${formattedTotal} (paid to provider)\n`;
+    msg += `- **SignupAssist Fee:** $20 (charged only upon successful registration)\n`;
+
+    if (context.hasPaymentMethod || context.cardLast4) {
+      const display = context.cardLast4 ? `${context.cardBrand || "Card"} •••• ${context.cardLast4}` : "Yes";
+      msg += `- **Payment method on file:** ${display}\n`;
+    }
+
+    msg += "\nIf everything is correct, type \"yes\" to continue or \"cancel\" to abort.";
+    return msg;
   }
 
   private toISODate(year: number, month: number, day: number): string | null {
@@ -1717,30 +1790,92 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               const saved = Array.isArray(context.savedChildren) ? context.savedChildren : [];
               const hasPickedChild = !!(context.childInfo?.firstName || context.childInfo?.name);
 
-              // If exactly one saved child and none selected yet, auto-prefill.
-              if (saved.length === 1 && !hasPickedChild) {
+              // If exactly one saved child and none selected yet, do NOT silently auto-use it.
+              // Show what we will reuse + ask only what's missing (often email), with an easy “different child” path.
+              if (saved.length === 1 && !hasPickedChild && !context.declinedSingleSavedChild) {
                 const only = saved[0];
-                const updated: Record<string, any> = { ...(context.formData || {}) };
-                const participantFields = (context.requiredFields?.participant || []).filter((f: any) => f?.required);
-                for (const f of participantFields) {
-                  const k = String(f.key || "");
-                  const lk = k.toLowerCase();
-                  if (updated[k] != null && String(updated[k]).trim() !== "") continue;
-                  if (only.first_name && lk.includes("first") && lk.includes("name")) updated[k] = only.first_name;
-                  else if (only.last_name && lk.includes("last") && lk.includes("name")) updated[k] = only.last_name;
-                  else if (only.dob && (lk.includes("dob") || lk.includes("birth"))) updated[k] = only.dob;
+                const childName = `${only.first_name} ${only.last_name}`.trim() || "Saved child";
+                const childDob = this.formatISODateForPrompt(only.dob || undefined);
+
+                // Derive parent/guardian info from current (prefilled) delegate fields if available.
+                const parentFirst = String((current as any).delegate_firstName || "").trim();
+                const parentLast = String((current as any).delegate_lastName || "").trim();
+                const parentName = `${parentFirst} ${parentLast}`.trim();
+                const parentDob = this.formatISODateForPrompt(String((current as any).delegate_dob || "").trim());
+                const parentRel = String((current as any).delegate_relationship || "").trim();
+
+                const wantsDifferentChild =
+                  /\b(different|another|new)\s+child\b/i.test(inputText) ||
+                  /\bnot\s+this\b/i.test(inputText) ||
+                  /\bchange\s+child\b/i.test(inputText) ||
+                  this.isUserDenial(inputText);
+
+                // If we already asked and the user did NOT request a different child, treat their message as confirmation
+                // and prefill participant fields from the saved child.
+                if (context.awaitingSingleChildChoice && !wantsDifferentChild) {
+                  const updated: Record<string, any> = { ...(context.formData || {}) };
+                  const participantFields = (context.requiredFields?.participant || []).filter((f: any) => f?.required);
+                  for (const f of participantFields) {
+                    const k = String(f.key || "");
+                    const lk = k.toLowerCase();
+                    if (updated[k] != null && String(updated[k]).trim() !== "") continue;
+                    if (only.first_name && lk.includes("first") && lk.includes("name")) updated[k] = only.first_name;
+                    else if (only.last_name && lk.includes("last") && lk.includes("name")) updated[k] = only.last_name;
+                    else if (only.dob && (lk.includes("dob") || lk.includes("birth"))) updated[k] = only.dob;
+                  }
+
+                  context.childInfo = {
+                    name: childName,
+                    firstName: only.first_name,
+                    lastName: only.last_name,
+                    dob: only.dob || undefined,
+                  };
+                  context.formData = updated;
+                  this.updateContext(sessionId, {
+                    awaitingSingleChildChoice: false,
+                    childInfo: context.childInfo,
+                    formData: updated,
+                  });
+                  // Keep payload formData in sync so normalization -> submitForm includes prefills.
+                  payload = { ...(payload || {}), formData: updated };
+                  current = updated;
                 }
-                context.childInfo = {
-                  name: `${only.first_name} ${only.last_name}`.trim(),
-                  firstName: only.first_name,
-                  lastName: only.last_name,
-                  dob: only.dob || undefined,
-                };
-                context.formData = updated;
-                this.updateContext(sessionId, { childInfo: context.childInfo, formData: updated });
-                // Keep payload formData in sync so normalization -> submitForm includes prefills.
-                payload = { ...(payload || {}), formData: updated };
-                current = updated;
+
+                // If the user explicitly wants a different child, stop prompting for the saved one.
+                if (wantsDifferentChild) {
+                  context.awaitingSingleChildChoice = false;
+                  context.declinedSingleSavedChild = true;
+                  this.updateContext(sessionId, {
+                    awaitingSingleChildChoice: false,
+                    declinedSingleSavedChild: true,
+                  });
+                } else if (!context.awaitingSingleChildChoice && !this.hasAllRequiredFields(context, current)) {
+                  // First time: show the explicit reuse prompt (fast + transparent).
+                  context.awaitingSingleChildChoice = true;
+                  this.updateContext(sessionId, { awaitingSingleChildChoice: true });
+
+                  const missingDelegateLabels = (context.requiredFields?.delegate || [])
+                    .filter((x: any) => x?.required)
+                    .filter((f: any) => current[f.key] == null || (typeof current[f.key] === "string" && current[f.key].trim() === ""))
+                    .map((f: any) => this.fieldLabelForPrompt("delegate", f.label || f.key));
+
+                  const stillNeeded = missingDelegateLabels.length
+                    ? `Still needed:\n- ${missingDelegateLabels.join("\n- ")}`
+                    : `Still needed: nothing else.`;
+
+                  const parentLines: string[] = [];
+                  if (parentName) parentLines.push(`- Parent/guardian: ${parentName}`);
+                  if (parentRel) parentLines.push(`- Relationship: ${parentRel}`);
+                  if (parentDob) parentLines.push(`- Parent DOB: ${parentDob}`);
+
+                  const childLine = childDob ? `- Child: ${childName} (DOB: ${childDob})` : `- Child: ${childName}`;
+
+                  return this.formatResponse(
+                    `Step 2/5 — Parent & child info\n\nOn file:\n${childLine}\n${parentLines.length ? parentLines.join("\n") : "- Parent/guardian: (not saved yet)"}\n\n${stillNeeded}\n\nReply with the missing field(s) to use this info. Or reply **different child** and provide the child’s name + DOB.`,
+                    undefined,
+                    []
+                  );
+                }
               }
 
               // If multiple saved children and none selected yet, prompt for selection.
@@ -2668,6 +2803,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       }
 
       case FlowStep.REVIEW: {
+        // Ensure the user always sees a full review summary before we accept consent.
+        if (!context.reviewSummaryShown) {
+          const summary = this.buildReviewSummaryFromContext(context);
+          this.updateContext(sessionId, { reviewSummaryShown: true });
+          return this.formatResponse(summary);
+        }
+
         // Await user confirmation of details
         if (this.isUserConfirmation(input)) {
           Logger.info('[Review] User confirmed details', {
@@ -2736,8 +2878,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           this.updateContext(sessionId, { step: FlowStep.BROWSE, selectedProgram: undefined });
           return this.formatResponse("Okay, I've canceled that signup. Let me know if you need help with anything else.");
         }
-        // If user says something else (e.g. tries to change info), prompt for explicit confirmation
-        return this.formatResponse(`Please reply "yes" to confirm the above details or "cancel" to abort.`);
+        // If user says something else, treat it as edits: rehydrate via submit_form and re-render summary.
+        this.updateContext(sessionId, { reviewSummaryShown: false });
+        return await this.handleAction("submit_form", {}, sessionId, context, input);
       }
 
       case FlowStep.PAYMENT: {
@@ -3976,6 +4119,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         formData: undefined,
         savedChildren: undefined,
         awaitingChildSelection: false,
+      awaitingSingleChildChoice: false,
+      declinedSingleSavedChild: false,
+      reviewSummaryShown: false,
         paymentAuthorized: false
       });
 
