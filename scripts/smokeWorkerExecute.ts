@@ -170,6 +170,55 @@ async function watchScheduled(supabaseUrl: string, serviceKey: string, scheduled
   throw new Error('Timed out waiting for SCH completion');
 }
 
+async function waitForCompletionViaReceipts(args: {
+  baseUrl: string;
+  token: string;
+  userId: string;
+  schCode: string;
+}): Promise<{ status: 'completed'; regCode?: string } | { status: 'failed' | 'cancelled' }> {
+  const pollMs = Number(process.env.WORKER_E2E_RECEIPTS_POLL_MS || 5000);
+  const timeoutMs = Number(process.env.WORKER_E2E_RECEIPTS_TIMEOUT_MS || 10 * 60 * 1000);
+  const start = Date.now();
+  const sessionId = `worker-e2e-receipts-${Date.now()}`;
+
+  console.log(`\n[worker-e2e] 🔎 Watching via receipts (no Supabase keys provided)`);
+  console.log(`[worker-e2e]    poll_ms=${pollMs} timeout_ms=${timeoutMs}`);
+
+  while (Date.now() - start <= timeoutMs) {
+    const receipts = await callTool(args.baseUrl, args.token, 'signupassist.chat', {
+      input: 'view my registrations',
+      sessionId,
+      userId: args.userId,
+      userTimezone: 'America/Chicago',
+    });
+    if (receipts.status !== 200) {
+      console.log(`[worker-e2e] ⚠️ view receipts non-200: ${receipts.status}`);
+      await sleep(pollMs);
+      continue;
+    }
+
+    const text = String(receipts.json?.content?.[0]?.text || '');
+    const lines = text.split('\n').map((l) => l.trim());
+    const line = lines.find((l) => l.includes(args.schCode));
+    if (line) {
+      if (/✅\s*completed/i.test(line)) {
+        const reg = line.match(/\bREG-[0-9a-f]{8}\b/i)?.[0];
+        return { status: 'completed', ...(reg ? { regCode: reg.toUpperCase() } : {}) };
+      }
+      if (/⚠️\s*failed/i.test(line)) return { status: 'failed' };
+      if (/❌\s*cancelled/i.test(line)) return { status: 'cancelled' };
+      // pending/executing: keep waiting
+      console.log(`[worker-e2e] ⏳ ${line}`);
+    } else {
+      console.log(`[worker-e2e] ⏳ waiting for ${args.schCode} to appear in receipts…`);
+    }
+
+    await sleep(pollMs);
+  }
+
+  throw new Error(`Timed out waiting for ${args.schCode} completion via receipts`);
+}
+
 async function main() {
   const execute = String(process.env.E2E_EXECUTE || '').trim();
   if (!execute || execute === '0' || execute.toLowerCase() === 'false') {
@@ -249,8 +298,18 @@ async function main() {
   if (supabaseUrl && supabaseKey) {
     await watchScheduled(supabaseUrl, supabaseKey, scheduledId);
   } else {
-    console.log('\n[worker-e2e] (skip) SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY not set; not watching DB.');
-    console.log(`[worker-e2e] You can watch with: SUPABASE_URL=... SUPABASE_SERVICE_ROLE_KEY=... npm run v1:watch-scheduled -- ${scheduledId}`);
+    const result = await waitForCompletionViaReceipts({
+      baseUrl,
+      token,
+      userId,
+      schCode,
+    });
+    if (result.status !== 'completed') {
+      throw new Error(`Scheduled job did not complete (status=${result.status})`);
+    }
+    if (result.regCode) {
+      console.log(`[worker-e2e] 🧾 linked receipt: ${result.regCode}`);
+    }
   }
 
   // 5) User-visible receipts/audit (text-only)
@@ -272,6 +331,12 @@ async function main() {
   });
   assert(audit.status === 200, `signupassist.chat(audit SCH): expected 200, got ${audit.status}`);
   console.log('[worker-e2e] ✅ audit SCH responded');
+
+  // If receipts linked a REG code, attempt audit REG as well (best-effort evidence).
+  if (supabaseUrl && supabaseKey) {
+    // DB watcher prints REG code when it appears, but we don't capture it here.
+    // Operator can run `audit REG-xxxxxxxx` manually from receipts output.
+  }
 
   console.log('\n[worker-e2e] ✅ Worker execute smoke complete\n');
 }
