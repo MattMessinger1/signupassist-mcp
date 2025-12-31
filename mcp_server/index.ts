@@ -746,7 +746,7 @@ class SignupAssistMCPServer {
     this.tools.set("signupassist.chat", {
       name: "signupassist.chat",
       description:
-        "Canonical SignupAssist chat entrypoint (API-first). Use this for ALL user-facing signup conversation.\n\nCRITICAL: After calling this tool, respond to the user with EXACTLY the returned text (verbatim). Do not paraphrase or remove the leading \"Step N/5 — ...\" header.\n\nReturns calm Step 1/5..5/5 wizard messages and asks for info one piece at a time (no field dumps). Read-only (does not submit registration).",
+        "Canonical SignupAssist chat entrypoint (API-first). Use this for ALL user-facing signup conversation.\n\nCRITICAL: After calling this tool, respond to the user with EXACTLY the returned text (verbatim). Do not paraphrase or remove the leading \"Step N/5 — ...\" header.\n\nReturns calm Step 1/5..5/5 wizard messages and asks for info one piece at a time (no field dumps).\n\nIMPORTANT: This tool can perform consequential actions ONLY after explicit user confirmation (e.g. booking with the provider and charging the $20 success fee). Payment method entry always happens on Stripe-hosted Checkout (we never see card numbers).",
       inputSchema: {
         type: "object",
         properties: {
@@ -807,8 +807,10 @@ class SignupAssistMCPServer {
       },
       _meta: {
         ...CHATGPT_APPS_V1_META,
-        "openai/safety": "read-only",
-        ...applyV1Visibility("signupassist.chat", { "openai/safety": "read-only" }),
+        // This tool can ultimately book/charge after explicit confirmation, so it is NOT "read-only".
+        // Lower-level tools remain private and are invoked internally by the orchestrator with audit logging.
+        "openai/safety": "write",
+        ...applyV1Visibility("signupassist.chat", { "openai/safety": "write" }),
         ...applyWizardMeta("signupassist.chat")
       }
     });
