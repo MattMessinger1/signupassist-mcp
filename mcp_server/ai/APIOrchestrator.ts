@@ -2780,6 +2780,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // LOW confidence for AUTHENTICATED users: Context-aware responses based on flow step
     // Also handles ChatGPT NL parsing for form fill and payment steps
     switch (context.step) {
+      case FlowStep.COMPLETED:
       case FlowStep.BROWSE: {
         // If user expresses signup/browse intent but we didn't match a specific provider,
         // default to the current org (v1: AIM Design) rather than falling through.
@@ -3149,7 +3150,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
                 cardLast4: last4,
                 cardBrand: brand,
                 step: FlowStep.REVIEW,
-                reviewSummaryShown: false,
+                // We're about to include the full review summary in this response.
+                reviewSummaryShown: true,
               });
               const display =
                 brand && last4 ? `${brand} •••• ${last4}` : last4 ? `Card •••• ${last4}` : 'payment method on file';
@@ -3211,7 +3213,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
         // Card IS on file — confirm we can proceed to the final review step (not booking yet).
         if (this.isUserConfirmation(input)) {
-          this.updateContext(sessionId, { step: FlowStep.REVIEW, reviewSummaryShown: false });
+          // We are about to show the full summary now, so mark it as shown to avoid requiring "yes" twice.
+          this.updateContext(sessionId, { step: FlowStep.REVIEW, reviewSummaryShown: true });
           const refreshed = this.getContext(sessionId);
           return this.formatResponse(this.buildReviewSummaryFromContext(refreshed));
         }
@@ -5062,7 +5065,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       // Step 5: Reset context (awaited so other Railway instances don't briefly see stale SUBMIT state)
       await this.updateContextAndAwait(sessionId, {
-        step: FlowStep.BROWSE,
+        step: FlowStep.COMPLETED,
         selectedProgram: undefined,
         requiredFields: undefined,
         formData: undefined,
@@ -5558,7 +5561,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       
       // Reset context (awaited so other Railway instances don't briefly see stale SUBMIT/REVIEW state)
       await this.updateContextAndAwait(sessionId, {
-        step: FlowStep.BROWSE,
+        step: FlowStep.COMPLETED,
         selectedProgram: undefined,
         requiredFields: undefined,
         formData: undefined,
