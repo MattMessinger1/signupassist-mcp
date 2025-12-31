@@ -111,4 +111,10 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 - Complete Stripe Checkout and return, then type **done**: the system should detect `user_billing.default_payment_method_id` and proceed to confirmation.
 - During Step 2/5: provide relationship + DOB and ensure the flow blocks if DOB implies <18.
 
+### Streamlining / UX polish (follow-up)
+
+- **Step 1/5**: when a program list exists but the user replies with something that isn’t a selection, we now re-print a compact numbered list of options so the user isn’t “stuck” guessing what 1–N refers to.
+- **Step 3/5**: fixed review text to render with **real newlines** (no literal `\n` sequences shown to the user).
+- **COPPA messaging**: eligibility note (“parent/legal guardian age 18+”) is now included in the **one-time trust intro** instead of being repeated in every Step 2/5 prompt.
+
 

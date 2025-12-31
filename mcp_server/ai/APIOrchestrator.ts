@@ -1780,11 +1780,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
                   ? `After these, I'll ask for the remaining ${remainingCount} item${remainingCount === 1 ? "" : "s"}.`
                   : `That should be everything I need.`;
 
-              // COPPA / eligibility nudge (short, non-repetitive)
-              const eligibilityLine = `Eligibility: only a **parent/legal guardian age 18+** can use SignupAssist.`;
-
               return this.formatResponse(
-                `Step 2/5 — Parent & child info\n\n${eligibilityLine}\n\nPlease share:\n- ${nextChunk.map((x) => x.label).join("\n- ")}\n\n${footer}\nReply in one message (commas are fine).`,
+                `Step 2/5 — Parent & child info\n\nPlease share:\n- ${nextChunk.map((x) => x.label).join("\n- ")}\n\n${footer}\nReply in one message (commas are fine).`,
                 undefined,
                 []
               );
@@ -2499,14 +2496,22 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               this.updateContext(sessionId, {
                 childInfo: { ...(context.childInfo || { name: "" }), age: maybeAge }
               });
+              const options = context.displayedPrograms
+                .slice(0, Math.min(n, 10))
+                .map((p, idx) => `${idx + 1}. ${p.title}`)
+                .join("\n");
               return this.formatResponse(
-                `Got it — **age ${maybeAge}**.\n\nNow pick a class: reply with **1-${n}** (or type the program name).`
+                `Got it — **age ${maybeAge}**.\n\nHere are the options again:\n${options}\n\nNow pick a class: reply with **1-${n}** (or type the program name).`
               );
             }
           }
 
+          const options = context.displayedPrograms
+            .slice(0, Math.min(n, 10))
+            .map((p, idx) => `${idx + 1}. ${p.title}`)
+            .join("\n");
           return this.formatResponse(
-            `Please reply with a class number **1-${n}** (or type the program name).`
+            `Here are the options again:\n${options}\n\nPlease reply with a class number **1-${n}** (or type the program name).`
           );
         }
         
@@ -4251,18 +4256,18 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     const childDetail = participant.dob ? ` (DOB: ${participant.dob})` : (participant.age ? ` (Age: ${participant.age})` : "");
     const parentName = `${delegate.delegate_firstName || ""} ${delegate.delegate_lastName || ""}`.trim();
     const sessionDate = context.selectedProgram?.earliest_slot_time ? this.formatTimeForUser(context.selectedProgram.earliest_slot_time, context) : null;
-    let reviewMessage = "Please review the details below:\\n\\n";
-    reviewMessage += `- **Program:** ${programName}\\n`;
-    reviewMessage += `- **Participant:** ${childName}${childDetail}\\n`;
-    reviewMessage += `- **Parent/Guardian:** ${parentName || delegate.email || "parent"}\\n`;
-    if (sessionDate) reviewMessage += `- **Date:** ${sessionDate}\\n`;
-    reviewMessage += `- **Program Fee:** ${formattedTotal} (paid to provider)\\n`;
-    reviewMessage += `- **SignupAssist Fee:** $20 (charged only upon successful registration)\\n`;
+    let reviewMessage = "Please review the details below:\n\n";
+    reviewMessage += `- **Program:** ${programName}\n`;
+    reviewMessage += `- **Participant:** ${childName}${childDetail}\n`;
+    reviewMessage += `- **Parent/Guardian:** ${parentName || delegate.email || "parent"}\n`;
+    if (sessionDate) reviewMessage += `- **Date:** ${sessionDate}\n`;
+    reviewMessage += `- **Program Fee:** ${formattedTotal} (paid to provider)\n`;
+    reviewMessage += `- **SignupAssist Fee:** $20 (charged only upon successful registration)\n`;
     if (hasPaymentMethod || cardLast4) {
       const display = cardLast4 ? `${cardBrand || 'Card'} •••• ${cardLast4}` : 'Yes';
-      reviewMessage += `- **Payment method on file:** ${display}\\n`;
+      reviewMessage += `- **Payment method on file:** ${display}\n`;
     }
-    reviewMessage += "\\nIf everything is correct, type \\\"yes\\\" to continue or \\\"cancel\\\" to abort.";
+    reviewMessage += "\nIf everything is correct, type \"yes\" to continue or \"cancel\" to abort.";
     return this.formatResponse(reviewMessage);
   }
 
@@ -6177,6 +6182,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     if (ctx.user_id && !ctx.trustIntroShown && ctx.step === FlowStep.BROWSE && response?.message) {
       const trust = [
         "✅ You're working with **SignupAssist** — your responsible delegate.",
+        "- Eligibility: only a **parent/legal guardian age 18+** can use SignupAssist (COPPA).",
         "- You stay in control: I ask before booking or charging.",
         "- Card entry happens on **Stripe-hosted checkout** (we never see card numbers).",
         "- Every consequential action is logged — say **“view receipts”** anytime.",
