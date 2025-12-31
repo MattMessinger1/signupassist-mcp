@@ -363,7 +363,8 @@ async function createCheckoutSession(args: {
 }>> {
   const { user_id, user_email, success_url, cancel_url } = args;
   
-  console.log(`[Stripe] Creating checkout session for user: ${user_email}`);
+  // Avoid logging emails (PII) in production logs.
+  console.log(`[Stripe] Creating checkout session (user_id=${user_id.slice(0, 8)}...)`);
   
   try {
     // Call the stripe-checkout-setup edge function via Supabase

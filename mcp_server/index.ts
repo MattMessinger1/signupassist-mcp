@@ -1121,6 +1121,12 @@ class SignupAssistMCPServer {
         if (!auth0Url.searchParams.has('audience')) {
           auth0Url.searchParams.set('audience', AUTH0_AUDIENCE);
         }
+
+        // Make it easy to switch accounts inside ChatGPT's embedded browser.
+        // Without this, Auth0 can silently reuse an existing SSO session.
+        if (!auth0Url.searchParams.has('prompt')) {
+          auth0Url.searchParams.set('prompt', process.env.AUTH0_OAUTH_PROMPT || 'login');
+        }
         
         console.log('[OAUTH] Redirecting to:', auth0Url.toString().replace(/client_secret=[^&]+/, 'client_secret=***'));
         

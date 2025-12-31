@@ -616,6 +616,39 @@ export default class APIOrchestrator implements IOrchestrator {
     );
   }
 
+  /**
+   * Historical data hygiene (no DB mutation):
+   * Some users ended up with saved child records whose name contains directives like
+   * "different child, Percy ..." or embedded DOB fragments. We never want to:
+   * - show "different child" in the UI
+   * - book using a polluted name
+   *
+   * This sanitizes the name we use in-session only.
+   */
+  private sanitizeSavedChildName(first: string, last: string): { first_name: string; last_name: string; display: string } {
+    const combined = `${String(first || "")} ${String(last || "")}`.trim();
+
+    let cleaned = combined
+      // Strip leading directives like "different child," / "new child:" etc.
+      .replace(/^\s*(different|another|new)\s+child\b[\s,:-]*/i, "")
+      // Remove embedded DOB fragments (MM/DD[/YYYY] or MM/DD/YY) that sometimes got appended to names.
+      .replace(/\b\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\b/g, "")
+      // Remove ISO-ish date fragments.
+      .replace(/\b\d{4}-\d{2}-\d{2}\b/g, "")
+      // Collapse punctuation/spaces.
+      .replace(/[,\s]+/g, " ")
+      .trim();
+
+    if (!cleaned) cleaned = combined; // fallback: never blank the name
+
+    const parts = cleaned.split(/\s+/).filter(Boolean);
+    const first_name = parts[0] || "";
+    const last_name = parts.slice(1).join(" ");
+    const display = `${first_name} ${last_name}`.trim();
+
+    return { first_name, last_name, display: display || "Saved child" };
+  }
+
   private buildReviewSummaryFromContext(context: APIContext): string {
     const programName =
       context.selectedProgram?.title ||
@@ -636,9 +669,12 @@ export default class APIOrchestrator implements IOrchestrator {
     const participants = Array.isArray(participantsRaw) ? participantsRaw : [participantsRaw].filter(Boolean);
     const participant = participants[0] || {};
 
-    const childName = participant.firstName
+    const rawChildName = participant.firstName
       ? `${participant.firstName} ${participant.lastName || ""}`.trim()
-      : (context.childInfo?.name || "your child");
+      : (context.childInfo?.name || "");
+    const childName = rawChildName
+      ? this.sanitizeSavedChildName(rawChildName, "").display
+      : "your child";
     const childDob = this.formatISODateForPrompt(participant.dob || participant.date_of_birth || context.childInfo?.dob);
     const childDetail = childDob ? ` (DOB: ${childDob})` : (participant.age ? ` (Age: ${participant.age})` : "");
 
@@ -1914,12 +1950,20 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
                 try {
                   const listRes = await this.invokeMCPTool("user.list_children", { user_id: context.user_id });
                   const children = Array.isArray(listRes?.data?.children) ? listRes.data.children : [];
-                  context.savedChildren = children.map((c: any) => ({
-                    id: String(c.id),
-                    first_name: String(c.first_name || ""),
-                    last_name: String(c.last_name || ""),
-                    dob: c.dob || null,
-                  }));
+                  context.savedChildren = children
+                    .map((c: any) => {
+                      const rawFirst = String(c.first_name || "");
+                      const rawLast = String(c.last_name || "");
+                      const sanitized = this.sanitizeSavedChildName(rawFirst, rawLast);
+                      return {
+                        id: String(c.id),
+                        first_name: sanitized.first_name,
+                        last_name: sanitized.last_name,
+                        dob: c.dob || null,
+                      };
+                    })
+                    // Defensive: don't keep totally-empty names.
+                    .filter((c: any) => Boolean(String(c.first_name || "").trim() || String(c.last_name || "").trim()));
                   this.updateContext(sessionId, { savedChildren: context.savedChildren });
                 } catch (e) {
                   // Ignore — we can still ask manually.
@@ -3173,6 +3217,19 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         }
 
         return this.formatResponse(`If your payment method looks correct, reply **yes** to continue to the final review. Or reply **change card**.`);
+      }
+
+      case FlowStep.SUBMIT: {
+        // ChatGPT (and/or Railway multi-instance) can retry calls while we're finalizing a booking.
+        // Never fall through to the low-confidence default "unsupported" messaging from this step.
+        const buttons = context.user_id
+          ? [{ label: "View My Registrations", action: "view_receipts", payload: { user_id: context.user_id }, variant: "accent" as const }]
+          : [];
+        return this.formatResponse(
+          `I'm finishing your registration now. If you just typed **yes**, it can take a moment.\n\nIf you don't see a confirmation, say **view my registrations**.`,
+          undefined,
+          buttons
+        );
       }
 
       default: {
@@ -4722,12 +4779,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       // Get booking data from payload (primary) or context (fallback)
       const formData = payload.formData || context.formData;
       
-      // DEBUG: Log the entire formData object to see what we're working with
+      // Avoid logging raw formData (can contain PII). Only log high-level shape.
       Logger.info("[confirmPayment] 🔍 FormData source:", {
         fromPayload: !!payload.formData,
         fromContext: !!context.formData,
         hasFormData: !!formData,
-        formData: JSON.stringify(formData, null, 2),
         keys: formData ? Object.keys(formData) : []
       });
       
@@ -4759,7 +4815,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         program_ref: programRef, 
         org_ref: orgRef,
         num_participants,
-        delegate_email: delegate_data.delegate_email || delegate_data.email,
         num_participants_in_array: participant_data.length
       });
 
@@ -5005,9 +5060,19 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         Logger.warn("[confirmPayment] No userId - skipping registration record creation");
       }
 
-      // Step 5: Reset context and return success
-      this.updateContext(sessionId, {
-        step: FlowStep.BROWSE
+      // Step 5: Reset context (awaited so other Railway instances don't briefly see stale SUBMIT state)
+      await this.updateContextAndAwait(sessionId, {
+        step: FlowStep.BROWSE,
+        selectedProgram: undefined,
+        requiredFields: undefined,
+        formData: undefined,
+        childInfo: undefined,
+        schedulingData: undefined,
+        reviewSummaryShown: false,
+        paymentAuthorized: false,
+        stripeCheckoutUrl: undefined,
+        stripeCheckoutSessionId: undefined,
+        stripeCheckoutCreatedAt: undefined,
       });
 
       // Use Design DNA-compliant success message
@@ -5491,9 +5556,19 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const scheduledRegistrationId = scheduleResponse.data.scheduled_registration_id;
       Logger.info("[confirmScheduledRegistration] ✅ Scheduled registration created:", scheduledRegistrationId);
       
-      // Reset context
-      this.updateContext(sessionId, {
-        step: FlowStep.BROWSE
+      // Reset context (awaited so other Railway instances don't briefly see stale SUBMIT/REVIEW state)
+      await this.updateContextAndAwait(sessionId, {
+        step: FlowStep.BROWSE,
+        selectedProgram: undefined,
+        requiredFields: undefined,
+        formData: undefined,
+        childInfo: undefined,
+        schedulingData: undefined,
+        reviewSummaryShown: false,
+        paymentAuthorized: false,
+        stripeCheckoutUrl: undefined,
+        stripeCheckoutSessionId: undefined,
+        stripeCheckoutCreatedAt: undefined,
       });
       
       // Mandate expiry is already an ISO string (UTC). Keep ISO for storage and format for display in templates.
