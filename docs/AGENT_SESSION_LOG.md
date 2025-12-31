@@ -64,6 +64,7 @@ This file exists because chat sessions can get cut off. It is the **repo source 
 - `fix(registrations): retry create without provider_* fields when schema lags`
 - `fix(bookeo): omit phoneNumbers from booking payloads (avoids “Invalid phone number type”)`
 - `fix(chat): prevent ChatGPT preview browse/session regressions (refresh immutable context + in-flow fallback)`
+- `fix(meta): mark signupassist.chat as consequential (Stripe + booking) to avoid “preview-only” fake completions`
 
 ### Known gaps / next steps (pull from punchlist)
 
