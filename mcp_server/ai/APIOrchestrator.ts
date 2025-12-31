@@ -1655,6 +1655,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       case "submit_form":
         {
           const inputText = typeof input === "string" ? input : "";
+          // Chat-native directive: allow users to say "different child, <name>, <dob>".
+          // Strip the directive before hydration so it doesn't become part of the child's name.
+          const normalizedInputText = inputText
+            .replace(/^\s*(?:different|another|new)\s+(?:child|kid)\b\s*[:,]?\s*/i, "")
+            .trim();
 
           // -------------------------------------------------------------------
           // Returning-user UX: if we asked the user to pick from saved children,
@@ -1710,7 +1715,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
           // If schema isn't stored yet, still hydrate what we can into context.formData.
           if (!hasPayload && typeof input === "string") {
-            const hydrated = this.hydrateFormDataFromText(input, context);
+            const hydrated = this.hydrateFormDataFromText(normalizedInputText || inputText, context);
             context.formData = hydrated;
             this.updateContext(sessionId, { formData: hydrated, pendingDelegateInfo: context.pendingDelegateInfo, childInfo: context.childInfo });
             payload = { formData: hydrated };
@@ -1843,11 +1848,20 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
                 // If the user explicitly wants a different child, stop prompting for the saved one.
                 if (wantsDifferentChild) {
+                  // Clear any previously hydrated child fields so we don't carry over mistakes.
+                  const cleared: Record<string, any> = { ...(context.formData || {}) };
+                  for (const f of context.requiredFields?.participant || []) {
+                    if (f?.key && cleared[f.key] != null) delete cleared[f.key];
+                  }
+                  context.childInfo = undefined;
+                  context.formData = cleared;
                   context.awaitingSingleChildChoice = false;
                   context.declinedSingleSavedChild = true;
                   this.updateContext(sessionId, {
                     awaitingSingleChildChoice: false,
                     declinedSingleSavedChild: true,
+                    childInfo: undefined,
+                    formData: cleared,
                   });
                 } else if (!context.awaitingSingleChildChoice && !this.hasAllRequiredFields(context, current)) {
                   // First time: show the explicit reuse prompt (fast + transparent).
@@ -2064,8 +2078,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             }
           }
 
-          // Now call existing submitForm implementation.
-          return await this.submitForm(payload, sessionId, context);
+          // After collecting registration details, confirm/set up payment BEFORE final review & consent.
+          return await this.submitForm(payload, sessionId, context, { nextStep: 'payment' });
         }
 
       case "confirm_payment":
@@ -2886,6 +2900,16 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       case FlowStep.PAYMENT: {
         const hasCardOnFile = !!(context.hasPaymentMethod || context.cardLast4);
 
+        // If user wants to change the payment method, always (re)send Stripe link.
+        if (/\b(change|update|different)\s+(card|payment)\b/i.test(input.trim())) {
+          this.updateContext(sessionId, { stripeCheckoutUrl: context.stripeCheckoutUrl }); // keep as-is
+          // If we already generated a link, re-send it.
+          if (context.stripeCheckoutUrl) {
+            return this.formatResponse(this.formatStripeCheckoutLinkMessage(context.stripeCheckoutUrl));
+          }
+          // Fall through to generate a new session below.
+        }
+
         // Detect if user indicates they've added payment method (e.g., "done")
         if (/done|card|added|finished/i.test(input.trim())) {
           Logger.info('[Payment] User indicates payment method setup is done, checking status...');
@@ -2893,10 +2917,21 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             const checkRes = await this.invokeMCPTool('stripe.check_payment_status', { user_id: context.user_id });
             if (checkRes.success && checkRes.data?.hasPaymentMethod) {
               const { last4, brand } = checkRes.data;
-              this.updateContext(sessionId, { hasPaymentMethod: true, cardLast4: last4, cardBrand: brand });
+              // After payment method is confirmed, proceed to REVIEW (final consent).
+              this.updateContext(sessionId, {
+                hasPaymentMethod: true,
+                cardLast4: last4,
+                cardBrand: brand,
+                step: FlowStep.REVIEW,
+                reviewSummaryShown: false,
+              });
               const display =
                 brand && last4 ? `${brand} •••• ${last4}` : last4 ? `Card •••• ${last4}` : 'payment method on file';
-              return this.formatResponse(`✅ Payment method saved (${display}). Now say \"yes\" to confirm your booking.`);
+              // Immediately show the final review summary (so the user sees exactly what they'll approve).
+              const refreshed = this.getContext(sessionId);
+              return this.formatResponse(
+                `✅ Payment method saved (${display}).\n\n${this.buildReviewSummaryFromContext(refreshed)}`
+              );
             }
           }
           return this.formatResponse("I haven't detected a new payment method yet. If you've completed the Stripe form, please wait a moment and type \"done\" again.");
@@ -2948,32 +2983,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           }
         }
 
-        // Card IS on file — now confirmations should proceed to booking.
+        // Card IS on file — confirm we can proceed to the final review step (not booking yet).
         if (this.isUserConfirmation(input)) {
-          Logger.info('[NL Parse] Payment confirmation detected from NL input', {
-            source: 'natural_language',
-            hasSchedulingData: !!context.schedulingData,
-            userInput: input,
-            hasPaymentMethod: !!context.hasPaymentMethod,
-            paymentAuthorized: !!context.paymentAuthorized
-          });
-
-          if (!context.paymentAuthorized) {
-            Logger.info('[NL Parse] Recording explicit authorization from user confirmation');
-            this.updateContext(sessionId, { paymentAuthorized: true, step: FlowStep.SUBMIT });
-            if (context.schedulingData) {
-              return await this.confirmScheduledRegistration({}, sessionId, this.getContext(sessionId));
-            }
-            return await this.confirmPayment({}, sessionId, this.getContext(sessionId));
-          }
-
-          if (context.schedulingData) {
-            return await this.confirmScheduledRegistration({}, sessionId, context);
-          }
-          return await this.confirmPayment({}, sessionId, context);
+          this.updateContext(sessionId, { step: FlowStep.REVIEW, reviewSummaryShown: false });
+          const refreshed = this.getContext(sessionId);
+          return this.formatResponse(this.buildReviewSummaryFromContext(refreshed));
         }
 
-        return this.formatResponse(`When you're ready, reply **yes** to confirm your booking.`);
+        return this.formatResponse(`If your payment method looks correct, reply **yes** to continue to the final review. Or reply **change card**.`);
       }
 
       default: {
@@ -4138,7 +4155,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
   private async submitForm(
     payload: any,
     sessionId: string,
-    context: APIContext
+    context: APIContext,
+    opts?: { nextStep?: 'payment' | 'review' }
   ): Promise<OrchestratorResponse> {
     console.log('[submitForm] 🔍 Starting with sessionId:', sessionId);
     console.log('[submitForm] 🔍 Payload keys:', Object.keys(payload));
@@ -4379,8 +4397,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // resolve the real slot eventId at execution time via /availability/slots.
     const eventIdForBooking = context.selectedProgram?.first_available_event_id || context.selectedProgram?.program_ref;
 
+    const nextStep: FlowStep =
+      (opts?.nextStep || 'review') === 'payment' ? FlowStep.PAYMENT : FlowStep.REVIEW;
+
     this.updateContext(sessionId, {
-      step: FlowStep.REVIEW,
+      step: nextStep,
       formData: {
         delegate_data: formData.delegate,
         participant_data: formData.participants,
@@ -4402,31 +4423,62 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       } : undefined,
       hasPaymentMethod,
       cardLast4,
-      cardBrand
+      cardBrand,
+      // Ensure review summary renders after payment setup/confirmation.
+      reviewSummaryShown: false,
     });
 
-    Logger.info('[submitForm] All required fields collected; transitioning to REVIEW phase');
-    const delegate = formData.delegate || {};
-    const participant = (formData.participants || [])[0] || {};
-    const childName = participant.firstName
-      ? `${participant.firstName} ${participant.lastName || ""}`.trim()
-      : (context.childInfo?.name || "your child");
-    const childDetail = participant.dob ? ` (DOB: ${participant.dob})` : (participant.age ? ` (Age: ${participant.age})` : "");
-    const parentName = `${delegate.delegate_firstName || ""} ${delegate.delegate_lastName || ""}`.trim();
-    const sessionDate = context.selectedProgram?.earliest_slot_time ? this.formatTimeForUser(context.selectedProgram.earliest_slot_time, context) : null;
-    let reviewMessage = "Please review the details below:\n\n";
-    reviewMessage += `- **Program:** ${programName}\n`;
-    reviewMessage += `- **Participant:** ${childName}${childDetail}\n`;
-    reviewMessage += `- **Parent/Guardian:** ${parentName || delegate.email || "parent"}\n`;
-    if (sessionDate) reviewMessage += `- **Date:** ${sessionDate}\n`;
-    reviewMessage += `- **Program Fee:** ${formattedTotal} (paid to provider)\n`;
-    reviewMessage += `- **SignupAssist Fee:** $20 (charged only upon successful registration)\n`;
-    if (hasPaymentMethod || cardLast4) {
-      const display = cardLast4 ? `${cardBrand || 'Card'} •••• ${cardLast4}` : 'Yes';
-      reviewMessage += `- **Payment method on file:** ${display}\n`;
+    if (nextStep === FlowStep.PAYMENT) {
+      Logger.info('[submitForm] All required fields collected; transitioning to PAYMENT confirmation step');
+
+      // If a payment method exists, explicitly confirm before REVIEW.
+      if (hasPaymentMethod || cardLast4) {
+        const display = cardLast4 ? `${cardBrand || 'Card'} •••• ${cardLast4}` : 'Yes';
+        return this.formatResponse(
+          `I found a payment method on file: **${display}**.\n\nReply **yes** to use it, or reply **change card** to add a new one in Stripe.`,
+          undefined,
+          []
+        );
+      }
+
+      // No payment method: start Stripe Checkout now (before review/consent).
+      const userEmail = this.resolveDelegateEmailFromContext(context) || (formData?.delegate?.delegate_email as string | undefined);
+      const userIdForStripe = userId;
+      if (!userIdForStripe) return this.formatError("Missing user identity for payment setup. Please sign in again.");
+      if (!userEmail) {
+        return this.formatResponse(`To set up payment, please share the parent/guardian email address.`, undefined, []);
+      }
+      try {
+        const base =
+          (process.env.RAILWAY_PUBLIC_DOMAIN
+            ? (process.env.RAILWAY_PUBLIC_DOMAIN.startsWith('http')
+                ? process.env.RAILWAY_PUBLIC_DOMAIN
+                : `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`)
+            : 'https://signupassist.shipworx.ai');
+
+        const sessionRes = await this.invokeMCPTool('stripe.create_checkout_session', {
+          user_id: userIdForStripe,
+          user_email: userEmail,
+          success_url: `${base}/stripe_return?payment_setup=success&session_id={CHECKOUT_SESSION_ID}`,
+          cancel_url: `${base}/stripe_return?payment_setup=canceled`
+        });
+        if (!sessionRes.success || !sessionRes.data?.url) {
+          throw new Error(sessionRes.error?.message || "Unknown error");
+        }
+        this.updateContext(sessionId, {
+          stripeCheckoutUrl: sessionRes.data.url,
+          stripeCheckoutSessionId: sessionRes.data.session_id,
+          stripeCheckoutCreatedAt: new Date().toISOString(),
+        });
+        return this.formatResponse(this.formatStripeCheckoutLinkMessage(sessionRes.data.url));
+      } catch (e) {
+        Logger.error("[stripe] Checkout session creation failed (pre-review):", e);
+        return this.formatError("Failed to start payment setup. Please try again.");
+      }
     }
-    reviewMessage += "\nIf everything is correct, type \"yes\" to continue or \"cancel\" to abort.";
-    return this.formatResponse(reviewMessage);
+
+    Logger.info('[submitForm] All required fields collected; transitioning to REVIEW phase');
+    return this.formatResponse(this.buildReviewSummaryFromContext(this.getContext(sessionId)));
   }
 
   /**

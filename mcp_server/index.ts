@@ -17,16 +17,16 @@ function wizardTitle(step: WizardStep): string {
   switch (step) {
     case "1": return "Finding classes";
     case "2": return "Parent & child info";
-    case "3": return "Review & consent";
-    case "4": return "Payment (Stripe)";
+    case "3": return "Payment method (Stripe)";
+    case "4": return "Review & consent";
     case "5": return "Registering";
   }
 }
 
 function inferWizardStep(ctxStep: OrchestratorStep): WizardStep {
   if (ctxStep === "FORM_FILL") return "2";
-  if (ctxStep === "REVIEW") return "3";
-  if (ctxStep === "PAYMENT") return "4";
+  if (ctxStep === "PAYMENT") return "3";
+  if (ctxStep === "REVIEW") return "4";
   if (ctxStep === "SUBMIT" || ctxStep === "COMPLETED") return "5";
   return "1";
 }

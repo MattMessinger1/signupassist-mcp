@@ -119,10 +119,12 @@ async function main() {
   assert(chat3.status === 200, `signupassist.chat step2 payload: expected 200, got ${chat3.status}`);
   const text3 = extractText(chat3);
 
-  // Core regression: Step 3 must include a real review summary, not just a generic yes/cancel prompt.
+  // New flow: Step 3/5 is payment method confirmation (Stripe) BEFORE final review/consent.
   assert(/^(\*\*)?Step\s+3\/5\s+—/i.test(text3), `expected Step 3/5 header, got: ${text3.slice(0, 160)}`);
-  assert(/Please review the details below:/i.test(text3), `expected full review summary, got: ${text3.slice(0, 220)}`);
-  assert(/SignupAssist Fee/i.test(text3), `expected fee line in review summary, got: ${text3.slice(0, 220)}`);
+  assert(
+    /payment method/i.test(text3) || /Secure Stripe Checkout/i.test(text3),
+    `expected payment method prompt or Stripe link, got: ${text3.slice(0, 240)}`
+  );
 
   console.log('\n[regression] ✅ Signup #2 regression checks passed\n');
 }
