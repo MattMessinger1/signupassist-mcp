@@ -20,6 +20,7 @@
     "test:smoke": "tsx scripts/runSmokeTests.ts",
     "test:sse": "tsx scripts/smokeMcpSse.ts",
     "test:e2e": "tsx scripts/smokeE2E.ts",
+    "test:worker": "tsx scripts/smokeWorkerExecute.ts",
     "mcp:build": "tsc -p tsconfig.mcp.json",
     "preworker:scheduled": "npm run mcp:build",
     "worker:scheduled": "node dist/mcp_server/worker/scheduledRegistrationWorker.js",

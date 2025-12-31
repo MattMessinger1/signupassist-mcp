@@ -179,6 +179,118 @@ export default class APIOrchestrator implements IOrchestrator {
   private mcpServer: any;
   // Ensure DB persists happen in-order per sessionId (prevents late writes overwriting newer state).
   private persistQueue: Map<string, Promise<void>> = new Map();
+
+  private isProductionRuntime(): boolean {
+    const nodeEnv = String(process.env.NODE_ENV || "").toLowerCase();
+    const railwayEnv = String(process.env.RAILWAY_ENVIRONMENT || "").toLowerCase();
+    if (nodeEnv === "production") return true;
+    if (railwayEnv === "production" || railwayEnv === "prod") return true;
+    return false;
+  }
+
+  private normalizeEnvFlag(name: string): boolean {
+    const raw = String(process.env[name] || "").trim().toLowerCase();
+    return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
+  }
+
+  private isDebugLoggingEnabled(): boolean {
+    if (!this.normalizeEnvFlag("DEBUG_LOGGING")) return false;
+    // In production, enforce scoping to reduce risk of capturing user data broadly.
+    if (this.isProductionRuntime()) {
+      const hasScope =
+        !!String(process.env.DEBUG_USER_ID || "").trim() ||
+        !!String(process.env.DEBUG_SESSION_ID || "").trim();
+      return hasScope;
+    }
+    return true;
+  }
+
+  private getDebugUserFilter(): string | null {
+    const v = String(process.env.DEBUG_USER_ID || "").trim();
+    return v || null;
+  }
+
+  private getDebugSessionFilter(): string | null {
+    const v = String(process.env.DEBUG_SESSION_ID || "").trim();
+    return v || null;
+  }
+
+  private shouldEmitDebug(meta?: Record<string, any>): boolean {
+    if (!this.isDebugLoggingEnabled()) return false;
+
+    const userFilter = this.getDebugUserFilter();
+    const sessionFilter = this.getDebugSessionFilter();
+    if (!userFilter && !sessionFilter) return true;
+
+    const m = meta || {};
+    if (userFilter) {
+      const candidate = String(m.userId || m.user_id || "").trim();
+      if (!candidate) return false;
+      if (candidate !== userFilter) return false;
+    }
+    if (sessionFilter) {
+      const candidate = String(m.sessionId || m.durableSessionId || m.session_key || "").trim();
+      if (!candidate) return false;
+      if (candidate !== sessionFilter && !candidate.includes(sessionFilter)) return false;
+    }
+    return true;
+  }
+
+  private sanitizeDebugMeta(meta: Record<string, any>): Record<string, any> {
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(meta || {})) {
+      const lk = k.toLowerCase();
+      if (v == null) {
+        out[k] = v;
+        continue;
+      }
+
+      // Always avoid logging raw free-text / PII-shaped fields.
+      if (
+        lk.includes("email") ||
+        lk.includes("dob") ||
+        lk.includes("birth") ||
+        lk.includes("phone") ||
+        lk.includes("card") ||
+        lk.includes("ssn") ||
+        lk === "input" ||
+        lk === "userinput" ||
+        lk.endsWith("_input") ||
+        lk === "message" ||
+        lk === "rawmessage" ||
+        lk === "body" ||
+        lk === "rawbody" ||
+        lk === "payload" ||
+        lk.endsWith("_payload")
+      ) {
+        out[k] = "[redacted]";
+        continue;
+      }
+
+      if (typeof v === "string") {
+        if (/[\w.+-]+@[\w.-]+\.\w{2,}/.test(v)) {
+          out[k] = "[redacted]";
+          continue;
+        }
+        if (this.containsPaymentCardNumber(v)) {
+          out[k] = "[redacted]";
+          continue;
+        }
+        out[k] = v.length > 200 ? `${v.slice(0, 200)}…` : v;
+        continue;
+      }
+
+      out[k] = v;
+    }
+    return out;
+  }
+
+  private debugLog(message: string, meta?: Record<string, any>): void {
+    if (!this.shouldEmitDebug(meta)) return;
+    const safeMeta = meta ? this.sanitizeDebugMeta(meta) : undefined;
+    if (safeMeta && Object.keys(safeMeta).length > 0) console.log(message, safeMeta);
+    else console.log(message);
+  }
   
   // Build stamp for debugging which version is running in production
   private static readonly BUILD_STAMP = {
@@ -478,6 +590,30 @@ export default class APIOrchestrator implements IOrchestrator {
     const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (m) return `${m[2]}/${m[3]}/${m[1]}`;
     return s;
+  }
+
+  private looksLikeDelegateChild(
+    child: { first_name?: string; last_name?: string; dob?: string | null },
+    currentFormData: Record<string, any>
+  ): boolean {
+    const dFirst = String(currentFormData?.delegate_firstName || "").trim();
+    const dLast = String(currentFormData?.delegate_lastName || "").trim();
+    const dDobRaw = String(currentFormData?.delegate_dob || "").trim();
+    const dDob = this.parseDateFromText(dDobRaw) || dDobRaw;
+
+    const cFirst = String(child?.first_name || "").trim();
+    const cLast = String(child?.last_name || "").trim();
+    const cDobRaw = String(child?.dob || "").trim();
+    const cDob = this.parseDateFromText(cDobRaw) || cDobRaw;
+
+    if (!dFirst || !dLast || !dDob) return false;
+    if (!cFirst || !cLast || !cDob) return false;
+
+    return (
+      cFirst.toLowerCase() === dFirst.toLowerCase() &&
+      cLast.toLowerCase() === dLast.toLowerCase() &&
+      cDob.slice(0, 10) === dDob.slice(0, 10)
+    );
   }
 
   private buildReviewSummaryFromContext(context: APIContext): string {
@@ -819,26 +955,25 @@ export default class APIOrchestrator implements IOrchestrator {
    * For ChatGPT compatibility where users type instead of clicking buttons
    */
   private parseProgramSelection(input: string, displayedPrograms: Array<{ title: string; program_ref: string; program_data?: any }>): { title: string; program_ref: string; program_data?: any } | null {
-    console.log('[parseProgramSelection] 🔍 TRACE: Starting parse', {
-      input,
-      displayedProgramsCount: displayedPrograms?.length || 0,
-      displayedTitles: displayedPrograms?.map(p => p.title).join(', ') || 'none'
-    });
-    
     if (!displayedPrograms || displayedPrograms.length === 0) {
-      console.log('[parseProgramSelection] ❌ TRACE: No displayed programs to match against');
+      this.debugLog('[parseProgramSelection] TRACE: No displayed programs to match against');
       return null;
     }
     
     const normalized = input.toLowerCase().trim();
+    this.debugLog('[parseProgramSelection] TRACE: Starting parse', {
+      inputLen: normalized.length,
+      displayedProgramsCount: displayedPrograms.length,
+      displayedTitles: displayedPrograms.map(p => p.title).join(', ')
+    });
     
     // CONFIRMATION PHRASE DETECTION: When user says "yes" and only 1 program is displayed
     const confirmationPatterns = /^(yes|yep|yeah|yup|sure|ok|okay|do it|go ahead|sign me up|let's do it|let's go|sounds good|book it|register|proceed|continue|absolutely|definitely|i confirm|yes please|that's right|correct|sign up|start signup|start registration)\.?!?$/i;
     if (confirmationPatterns.test(normalized) && displayedPrograms.length === 1) {
-      console.log('[parseProgramSelection] ✅ TRACE: Confirmation phrase with single program - auto-selecting');
+      this.debugLog('[parseProgramSelection] TRACE: Confirmation phrase with single program - auto-selecting');
       Logger.info('[NL Parse] Confirmation phrase matched with single program', { 
         source: 'natural_language', 
-        phrase: input,
+        input_len: normalized.length,
         matchedTitle: displayedPrograms[0].title 
       });
       return displayedPrograms[0];
@@ -856,8 +991,7 @@ export default class APIOrchestrator implements IOrchestrator {
       const n = Number(cleanedInput);
       const idx = Number.isFinite(n) ? n - 1 : -1;
       if (idx >= 0 && idx < displayedPrograms.length) {
-        console.log('[parseProgramSelection] ✅ TRACE: Matched by bare numeric ordinal', {
-          input,
+        this.debugLog('[parseProgramSelection] TRACE: Matched by bare numeric ordinal', {
           idx,
           matchedTitle: displayedPrograms[idx].title,
           program_ref: displayedPrograms[idx].program_ref
@@ -902,14 +1036,14 @@ export default class APIOrchestrator implements IOrchestrator {
       return false;
     });
     if (titleMatch) {
-      console.log('[parseProgramSelection] ✅ TRACE: Matched by title', { 
+      this.debugLog('[parseProgramSelection] TRACE: Matched by title', { 
         matchedTitle: titleMatch.title,
         program_ref: titleMatch.program_ref
       });
       Logger.info('[NL Parse] Program matched by title', { 
         source: 'natural_language', 
         matchedTitle: titleMatch.title,
-        userInput: input 
+        input_len: normalized.length
       });
       return titleMatch;
     }
@@ -936,14 +1070,14 @@ export default class APIOrchestrator implements IOrchestrator {
           'fifth': 4, '5th': 4, '5': 4, 'five': 4,
         };
         const idx = ordinalMap[matched] ?? -1;
-        console.log('[parseProgramSelection] 🔍 TRACE: Ordinal match attempt', {
+        this.debugLog('[parseProgramSelection] TRACE: Ordinal match attempt', {
           pattern: pattern.source,
           matched,
           idx,
           programsAvailable: displayedPrograms.length
         });
         if (idx >= 0 && idx < displayedPrograms.length) {
-          console.log('[parseProgramSelection] ✅ TRACE: Matched by ordinal', {
+          this.debugLog('[parseProgramSelection] TRACE: Matched by ordinal', {
             ordinal: matched,
             index: idx,
             matchedTitle: displayedPrograms[idx].title,
@@ -960,7 +1094,7 @@ export default class APIOrchestrator implements IOrchestrator {
       }
     }
     
-    console.log('[parseProgramSelection] ❌ TRACE: No match found');
+    this.debugLog('[parseProgramSelection] TRACE: No match found');
     return null;
   }
   
@@ -1055,11 +1189,11 @@ export default class APIOrchestrator implements IOrchestrator {
     // - "audit SCH-xxxx" / "audit REG-xxxx"
     if (safeRef) {
       if (/\b(cancel|remove|delete|undo)\b/i.test(normalized)) {
-        Logger.info('[NL Parse] Secondary action detected: cancel_registration', { source: 'natural_language', input });
+        Logger.info('[NL Parse] Secondary action detected: cancel_registration', { source: 'natural_language', input_len: normalized.length, hasRef: true });
         return { action: 'cancel_registration', payload: { registration_ref: safeRef } };
       }
       if (/\b(audit|trail|history|log|activity)\b/i.test(normalized)) {
-        Logger.info('[NL Parse] Secondary action detected: view_audit_trail', { source: 'natural_language', input });
+        Logger.info('[NL Parse] Secondary action detected: view_audit_trail', { source: 'natural_language', input_len: normalized.length, hasRef: true });
         return { action: 'view_audit_trail', payload: { registration_ref: safeRef } };
       }
     }
@@ -1067,21 +1201,21 @@ export default class APIOrchestrator implements IOrchestrator {
     // View registrations / receipts / bookings
     if (/\b(show|view|see|list|my)\b.*\b(registrations?|bookings?|receipts?|signups?|enrollments?)\b/i.test(normalized) ||
         /\b(registrations?|bookings?|receipts?)\b.*\b(please|show|view)?\b/i.test(normalized)) {
-      Logger.info('[NL Parse] Secondary action detected: view_receipts', { source: 'natural_language', input });
+      Logger.info('[NL Parse] Secondary action detected: view_receipts', { source: 'natural_language', input_len: normalized.length });
       return { action: 'view_receipts' };
     }
     
     // Cancel registration
     if (/\b(cancel|remove|delete|undo)\b.*\b(registration|booking|signup|enrollment)\b/i.test(normalized) ||
         /\b(registration|booking)\b.*\b(cancel|remove)\b/i.test(normalized)) {
-      Logger.info('[NL Parse] Secondary action detected: cancel_registration', { source: 'natural_language', input });
+      Logger.info('[NL Parse] Secondary action detected: cancel_registration', { source: 'natural_language', input_len: normalized.length, hasRef: !!safeRef });
       return safeRef ? { action: 'cancel_registration', payload: { registration_ref: safeRef } } : { action: 'cancel_registration' };
     }
     
     // View audit trail / history
     if (/\b(audit|trail|history|log|activity)\b/i.test(normalized) && 
         /\b(show|view|see|my)\b/i.test(normalized)) {
-      Logger.info('[NL Parse] Secondary action detected: view_audit_trail', { source: 'natural_language', input });
+      Logger.info('[NL Parse] Secondary action detected: view_audit_trail', { source: 'natural_language', input_len: normalized.length, hasRef: !!safeRef });
       return safeRef ? { action: 'view_audit_trail', payload: { registration_ref: safeRef } } : { action: 'view_audit_trail' };
     }
     
@@ -1345,7 +1479,7 @@ export default class APIOrchestrator implements IOrchestrator {
     
     // Tier 3: LLM fallback for truly ambiguous cases
     try {
-      Logger.info('[classifyInputType] Tier 3 LLM fallback for:', input);
+      Logger.info('[classifyInputType] Tier 3 LLM fallback', { input_len: String(input || '').length });
       
       const llmResult = await callOpenAI_JSON({
         model: 'gpt-4o-mini',
@@ -1793,12 +1927,20 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               }
 
               const saved = Array.isArray(context.savedChildren) ? context.savedChildren : [];
+              const filteredSaved = saved.filter((c: any) => !this.looksLikeDelegateChild(c, current));
+              if (filteredSaved.length !== saved.length) {
+                // Hide obviously-bad “saved child” records (historical bug: child == delegate).
+                // We persist the filtered list so the UX stays consistent across turns.
+                context.savedChildren = filteredSaved;
+                this.updateContext(sessionId, { savedChildren: filteredSaved });
+              }
+              const savedEffective = filteredSaved;
               const hasPickedChild = !!(context.childInfo?.firstName || context.childInfo?.name);
 
               // If exactly one saved child and none selected yet, do NOT silently auto-use it.
               // Show what we will reuse + ask only what's missing (often email), with an easy “different child” path.
-              if (saved.length === 1 && !hasPickedChild && !context.declinedSingleSavedChild) {
-                const only = saved[0];
+              if (savedEffective.length === 1 && !hasPickedChild && !context.declinedSingleSavedChild) {
+                const only = savedEffective[0];
                 const childName = `${only.first_name} ${only.last_name}`.trim() || "Saved child";
                 const childDob = this.formatISODateForPrompt(only.dob || undefined);
 
@@ -1875,7 +2017,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
                   const stillNeeded = missingDelegateLabels.length
                     ? `Still needed:\n- ${missingDelegateLabels.join("\n- ")}`
-                    : `Still needed: nothing else.`;
+                    : `Still needed: nothing else for parent/child info.`;
 
                   const parentLines: string[] = [];
                   if (parentName) parentLines.push(`- Parent/guardian: ${parentName}`);
@@ -1885,7 +2027,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
                   const childLine = childDob ? `- Child: ${childName} (DOB: ${childDob})` : `- Child: ${childName}`;
 
                   return this.formatResponse(
-                    `Step 2/5 — Parent & child info\n\nOn file:\n${childLine}\n${parentLines.length ? parentLines.join("\n") : "- Parent/guardian: (not saved yet)"}\n\n${stillNeeded}\n\nReply with the missing field(s) to use this info. Or reply **different child** and provide the child’s name + DOB.`,
+                    `Step 2/5 — Parent & child info\n\nOn file:\n${childLine}\n${parentLines.length ? parentLines.join("\n") : "- Parent/guardian: (not saved yet)"}\n\n${stillNeeded}\n\nReply with the missing field(s) to use this info. Or reply **different child** and provide the child’s name + DOB.\n\nNext: I’ll confirm your payment method (Stripe), then show a final review before booking.`,
                     undefined,
                     []
                   );
@@ -1893,14 +2035,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               }
 
               // If multiple saved children and none selected yet, prompt for selection.
-              if (saved.length > 1 && !hasPickedChild) {
+              if (savedEffective.length > 1 && !hasPickedChild) {
                 this.updateContext(sessionId, { awaitingChildSelection: true });
-                const lines = saved.slice(0, 6).map((c, i) => {
+                const lines = savedEffective.slice(0, 6).map((c, i) => {
                   const name = `${c.first_name} ${c.last_name}`.trim() || "Saved child";
                   return `${i + 1}. ${name}`;
                 });
                 return this.formatResponse(
-                  `Step 2/5 — Parent & child info\n\nI found ${saved.length} saved participant${saved.length === 1 ? "" : "s"}.\n\n${lines.join("\n")}\n\nReply with a number (e.g., "1"), or type a new child name + DOB.`,
+                  `Step 2/5 — Parent & child info\n\nI found ${savedEffective.length} saved participant${savedEffective.length === 1 ? "" : "s"}.\n\n${lines.join("\n")}\n\nReply with a number (e.g., "1"), or type a new child name + DOB.`,
                   undefined,
                   []
                 );
@@ -1929,7 +2071,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               const footer =
                 remainingCount > 0
                   ? `After these, I'll ask for the remaining ${remainingCount} item${remainingCount === 1 ? "" : "s"}.`
-                  : `That should be everything I need.`;
+                  : `That should be everything I need for parent/child info. Next: I’ll confirm your payment method (Stripe), then show a final review before booking.`;
               const groupIntro =
                 delegateMissing.length > 0
                   ? `First, for the **parent/guardian (you)**:`
@@ -1943,10 +2085,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             }
           }
 
-          // ✅ We have required fields -> advance flow to REVIEW
-          context.step = FlowStep.REVIEW;
-          this.updateContext(sessionId, { step: FlowStep.REVIEW });
-          Logger.info("[submit_form] ✅ Required fields satisfied; advancing to REVIEW", {
+          // ✅ We have required fields -> advance flow to PAYMENT (before final review/consent)
+          context.step = FlowStep.PAYMENT;
+          this.updateContext(sessionId, { step: FlowStep.PAYMENT });
+          Logger.info("[submit_form] ✅ Required fields satisfied; advancing to PAYMENT", {
             sessionId,
             formKeys: Object.keys(context.formData || {}),
           });
@@ -2193,7 +2335,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         }
         
         // Gate 3: Must have payment method
-        if (!context.cardLast4 && !context.cardBrand) {
+        if (!context.hasPaymentMethod && !context.cardLast4) {
           Logger.warn('[authorize_payment] ⛔ STEP GATE: No payment method in context');
           return {
             message: "Before I can complete your booking, I need to save a payment method.",
@@ -2288,7 +2430,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       Logger.info('[NL Parse] Secondary action detected at start of handleMessage', {
         source: 'natural_language',
         action: secondaryAction.action,
-        userInput: input
+        input_len: trimmed.length
       });
       return await this.handleAction(secondaryAction.action, secondaryAction.payload || {}, sessionId, context);
     }
@@ -2334,7 +2476,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     const isInvalidPaymentState = (context.step === FlowStep.PAYMENT || context.step === FlowStep.SUBMIT || context.step === FlowStep.COMPLETED) && !context.selectedProgram;
     
     if (isInvalidFormFillState || isInvalidReviewState || isInvalidPaymentState) {
-      console.log('[handleMessage] ⚠️ RECOVERY: Detected invalid session state, resetting to BROWSE', {
+      this.debugLog('[handleMessage] RECOVERY: Detected invalid session state, resetting to BROWSE', {
         currentStep: context.step,
         hasSelectedProgram: !!context.selectedProgram,
         sessionId
@@ -2632,7 +2774,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             Logger.info('[NL Parse] Auto-selecting program from NL input', {
               source: 'natural_language',
               program_ref: selectedProgram.program_ref,
-              userInput: input
+              input_len: String(input || '').trim().length
             });
             return await this.selectProgram({
               program_ref: selectedProgram.program_ref,
@@ -2703,7 +2845,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           Logger.info('[NL Parse] Done indicator detected - submitting with pending participants', {
             source: 'natural_language',
             participantCount: context.pendingParticipants.length,
-            userInput: input
+            input_len: String(input || '').trim().length
           });
           
           // Check if we need delegate email (for unauthenticated or new users)
@@ -2730,7 +2872,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             formData,
             program_ref: context.selectedProgram?.program_ref,
             org_ref: context.orgRef || context.selectedProgram?.org_ref
-          }, sessionId, context);
+          }, sessionId, context, { nextStep: 'payment' });
         }
         
         // ChatGPT NL: Try to parse multiple children from natural language
@@ -2739,8 +2881,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           Logger.info('[NL Parse] Child info extracted from NL input', {
             source: 'natural_language',
             parsedCount: parsedChildren.length,
-            parsed: parsedChildren,
-            userInput: input
+            input_len: String(input || '').trim().length
           });
           
           // Add to pending participants
@@ -2773,7 +2914,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           // Short input that's not a name might be trying to say "done" in different ways
           const mightBeDone = /^(ok|okay|proceed|continue|go|yes|yep|submit|register|book)\.?!?$/i.test(input.trim());
           if (mightBeDone) {
-            Logger.info('[NL Parse] Implicit done indicator detected', { source: 'natural_language', input });
+            Logger.info('[NL Parse] Implicit done indicator detected', { source: 'natural_language', input_len: String(input || '').trim().length });
             
             // Check if we need delegate email
             const needsDelegateEmail = !context.user_id && !context.pendingDelegateInfo?.email;
@@ -2797,7 +2938,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               formData,
               program_ref: context.selectedProgram?.program_ref,
               org_ref: context.orgRef || context.selectedProgram?.org_ref
-            }, sessionId, context);
+            }, sessionId, context, { nextStep: 'payment' });
           }
         }
         
@@ -2902,16 +3043,57 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
         // If user wants to change the payment method, always (re)send Stripe link.
         if (/\b(change|update|different)\s+(card|payment)\b/i.test(input.trim())) {
-          this.updateContext(sessionId, { stripeCheckoutUrl: context.stripeCheckoutUrl }); // keep as-is
           // If we already generated a link, re-send it.
           if (context.stripeCheckoutUrl) {
             return this.formatResponse(this.formatStripeCheckoutLinkMessage(context.stripeCheckoutUrl));
           }
-          // Fall through to generate a new session below.
+
+          // Otherwise, generate a new Stripe Checkout session (even if a card is already on file).
+          const userId = context.user_id;
+          const userEmail = this.resolveDelegateEmailFromContext(context);
+          if (!userId) return this.formatError("Missing user identity for payment setup. Please sign in again.");
+          if (!userEmail) {
+            return this.formatResponse(`To set up payment, please share the parent/guardian email address.`);
+          }
+
+          try {
+            const base =
+              (process.env.RAILWAY_PUBLIC_DOMAIN
+                ? (process.env.RAILWAY_PUBLIC_DOMAIN.startsWith('http')
+                    ? process.env.RAILWAY_PUBLIC_DOMAIN
+                    : `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`)
+                : 'https://signupassist.shipworx.ai');
+
+            const sessionRes = await this.invokeMCPTool('stripe.create_checkout_session', {
+              user_id: userId,
+              user_email: userEmail,
+              success_url: `${base}/stripe_return?payment_setup=success&session_id={CHECKOUT_SESSION_ID}`,
+              cancel_url: `${base}/stripe_return?payment_setup=canceled`
+            });
+            if (!sessionRes.success || !sessionRes.data?.url) {
+              throw new Error(sessionRes.error?.message || "Unknown error");
+            }
+
+            this.updateContext(sessionId, {
+              stripeCheckoutUrl: sessionRes.data.url,
+              stripeCheckoutSessionId: sessionRes.data.session_id,
+              stripeCheckoutCreatedAt: new Date().toISOString(),
+            });
+
+            return this.formatResponse(this.formatStripeCheckoutLinkMessage(sessionRes.data.url));
+          } catch (e) {
+            Logger.error("[stripe] Checkout session creation failed (change card):", e);
+            return this.formatError("Failed to start payment setup. Please try again.");
+          }
         }
 
-        // Detect if user indicates they've added payment method (e.g., "done")
-        if (/done|card|added|finished/i.test(input.trim())) {
+        // Detect if user indicates they've added/updated a payment method (e.g., "done", "finished", "added my card")
+        const trimmedPaymentInput = input.trim();
+        const indicatesPaymentDone =
+          this.isDoneIndicator(trimmedPaymentInput) ||
+          /\b(done|finished|complete|completed|all\s+set)\b/i.test(trimmedPaymentInput) ||
+          (/\b(added|updated|changed)\b/i.test(trimmedPaymentInput) && /\b(card|payment)\b/i.test(trimmedPaymentInput));
+        if (indicatesPaymentDone) {
           Logger.info('[Payment] User indicates payment method setup is done, checking status...');
           if (context.user_id) {
             const checkRes = await this.invokeMCPTool('stripe.check_payment_status', { user_id: context.user_id });
@@ -3897,15 +4079,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       );
     }
     
-    console.log('[selectProgram] 🔍 TRACE: Starting with sessionId:', sessionId);
-    console.log('[selectProgram] 🔍 TRACE: Input message:', input || '(none)');
-    console.log('[selectProgram] 🔍 TRACE: Payload keys:', Object.keys(payload));
-    console.log('[selectProgram] 🔍 TRACE: Full payload:', JSON.stringify(payload, null, 2));
-    console.log('[selectProgram] 🔍 TRACE: Current context BEFORE update:', {
+    this.debugLog('[selectProgram] TRACE: start', {
+      sessionId,
+      inputLen: String(input || '').trim().length,
+      payloadKeys: Object.keys(payload || {}),
       step: context.step,
       hasSelectedProgram: !!context.selectedProgram,
-      hasDisplayedPrograms: !!context.displayedPrograms,
-      displayedProgramsCount: context.displayedPrograms?.length || 0
+      displayedProgramsCount: context.displayedPrograms?.length || 0,
     });
     
     // ============================================================================
@@ -3929,7 +4109,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // FIX 3: But ONLY if user did NOT type a number (respect their ordinal choice)
     if (!programData && !programRef && context.displayedPrograms?.length === 1 && !userTypedNumber) {
       const singleProgram = context.displayedPrograms[0];
-      console.log('[selectProgram] ✅ RECOVERY L-1: Auto-selecting single displayed program', {
+      this.debugLog('[selectProgram] TRACE: RECOVERY L-1 auto-selecting single displayed program', {
+        sessionId,
         program_ref: singleProgram.program_ref,
         program_name: singleProgram.title
       });
@@ -3944,13 +4125,17 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // LAYER 0: If payload is empty/missing, try parsing from user's NL input
     // This handles both ordinal ("Class 3") and title ("The Coding Course") selection
     if (!programData && !programRef && input && context.displayedPrograms?.length) {
-      console.log('[selectProgram] 🔄 RECOVERY L0: Attempting NL parse from input:', input);
+      this.debugLog('[selectProgram] TRACE: RECOVERY L0 attempting NL parse', {
+        sessionId,
+        inputLen: String(input || '').trim().length,
+        displayedProgramsCount: context.displayedPrograms.length,
+      });
       const nlMatch = this.parseProgramSelection(input, context.displayedPrograms);
       if (nlMatch) {
         programData = nlMatch.program_data;
         programRef = nlMatch.program_ref;
-        console.log('[selectProgram] ✅ RECOVERY L0: Matched from NL input', {
-          input,
+        this.debugLog('[selectProgram] TRACE: RECOVERY L0 matched program from NL input', {
+          sessionId,
           program_ref: programRef,
           program_name: programData?.name || programData?.title
         });
@@ -3962,7 +4147,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const found = context.displayedPrograms.find(p => p.program_ref === programRef);
       if (found?.program_data) {
         programData = found.program_data;
-        console.log('[selectProgram] ✅ RECOVERY L1: Found programData from displayedPrograms', {
+        this.debugLog('[selectProgram] TRACE: RECOVERY L1 found programData from displayedPrograms', {
+          sessionId,
           program_ref: programRef,
           program_name: programData?.name || programData?.title
         });
@@ -3971,7 +4157,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     
     // LAYER 2: If still missing, query cached_provider_feed database
     if (!programData && programRef) {
-      console.log('[selectProgram] 🔄 RECOVERY L2: Querying cached_provider_feed for', programRef);
+      this.debugLog('[selectProgram] TRACE: RECOVERY L2 querying cached_provider_feed', { sessionId, program_ref: programRef });
       try {
         const supabase = this.getSupabaseClient();
         const { data: feedData, error } = await supabase
@@ -3986,22 +4172,22 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             program_ref: programRef,
             org_ref: feedData.org_ref
           };
-          console.log('[selectProgram] ✅ RECOVERY L2: Found programData from cached_provider_feed', {
+          this.debugLog('[selectProgram] TRACE: RECOVERY L2 found programData from cached_provider_feed', {
+            sessionId,
             program_ref: programRef,
             program_name: programData?.name || programData?.title,
             org_ref: feedData.org_ref
           });
         } else if (error) {
-          console.log('[selectProgram] ⚠️ RECOVERY L2 DB error:', error.message);
+          Logger.warn('[selectProgram] RECOVERY L2 DB error', { message: error.message });
         }
       } catch (dbError) {
-        console.log('[selectProgram] ⚠️ RECOVERY L2 exception:', dbError);
+        Logger.warn('[selectProgram] RECOVERY L2 exception', { message: (dbError as any)?.message || String(dbError) });
       }
     }
     
     // LAYER 3: If still missing, return error
     if (!programData) {
-      console.error('[selectProgram] ❌ RECOVERY FAILED: No programData found for', programRef);
       Logger.error('[selectProgram] RECOVERY FAILED', { program_ref: programRef });
       return this.formatResponse(
         "I couldn't find that program's details. Could you please select it again from the list?"
@@ -4022,7 +4208,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
     // Update context (clear displayedPrograms since we're moving to next step)
     // CRITICAL: Use awaited persist to prevent race conditions
-    console.log('[selectProgram] 🔍 TRACE: About to call updateContextAndAwait with selectedProgram:', {
+    this.debugLog('[selectProgram] TRACE: About to persist selectedProgram', {
+      sessionId,
       programData_exists: !!programData,
       programData_ref: programData?.ref || programData?.program_ref,
       programData_name: programData?.name || programData?.title
@@ -4036,7 +4223,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     
     // Verify update succeeded
     const verifyContext = this.sessions.get(sessionId);
-    console.log('[selectProgram] ✅ TRACE: Context AFTER update:', {
+    this.debugLog('[selectProgram] TRACE: Context after update', {
       sessionId,
       program_ref: programRef,
       program_name: programName,
@@ -4158,11 +4345,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     context: APIContext,
     opts?: { nextStep?: 'payment' | 'review' }
   ): Promise<OrchestratorResponse> {
-    console.log('[submitForm] 🔍 Starting with sessionId:', sessionId);
-    console.log('[submitForm] 🔍 Payload keys:', Object.keys(payload));
-    console.log('[submitForm] 🔍 Context keys:', Object.keys(context));
-    console.log('[submitForm] 🔍 Context step:', context.step);
-    console.log('[submitForm] 🔍 Has selectedProgram in context:', !!context.selectedProgram);
+    this.debugLog('[submitForm] TRACE: start', {
+      sessionId,
+      payloadKeys: Object.keys(payload || {}),
+      step: context.step,
+      hasSelectedProgram: !!context.selectedProgram,
+    });
     
     const { formData } = payload;
 
@@ -4258,7 +4446,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     
     if (!userId) {
       Logger.warn('[submitForm] No user_id in payload - success fee charge may fail');
-      Logger.warn('[submitForm] Delegate email:', formData.delegate?.delegate_email);
+      Logger.warn('[submitForm] Delegate email present (user_id missing)', { hasDelegateEmail: !!formData?.delegate?.delegate_email });
     } else {
       Logger.info('[submitForm] User authenticated with user_id:', userId);
     }
@@ -4305,9 +4493,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       }
     }
 
-    // Store form data, participant count, and user_id
+    // Persist user identity + raw form submission (no step change; final step decided below).
     this.updateContext(sessionId, {
-      step: FlowStep.REVIEW,
       formData,
       numParticipants,
       user_id: userId
@@ -4421,6 +4608,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           num_participants: numParticipants
         }
       } : undefined,
+      user_id: userId,
       hasPaymentMethod,
       cardLast4,
       cardBrand,
@@ -5666,12 +5854,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     try {
       const supabase = this.getSupabaseClient();
 
-      // Scheduled auto-registration audit trail (before execution)
-      if (scheduled_registration_id && !registration_id) {
+      const renderScheduledAudit = async (id: string): Promise<OrchestratorResponse> => {
         const { data: scheduled, error: schError } = await supabase
           .from('scheduled_registrations')
           .select('id, mandate_id, program_name, program_ref, org_ref, scheduled_time, status, booking_number, executed_at, error_message, created_at')
-          .eq('id', scheduled_registration_id)
+          .eq('id', id)
           .maybeSingle();
 
         if (schError || !scheduled) {
@@ -5734,6 +5921,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           mandateLines;
 
         return this.formatResponse(message);
+      };
+
+      // Scheduled auto-registration audit trail (before execution)
+      if (scheduled_registration_id && (!registration_id || /^sch-/i.test(String(registration_ref || '').trim()))) {
+        return await renderScheduledAudit(scheduled_registration_id);
       }
       
       // 1. Get registration to find mandate_id
@@ -5741,7 +5933,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         .from('registrations')
         .select('mandate_id, program_name, booking_number, delegate_name, amount_cents, success_fee_cents, created_at')
         .eq('id', registration_id)
-        .single();
+        .maybeSingle();
+      
+      // If the reference was ambiguous (UUID) and it wasn't in registrations, fall back to scheduled.
+      if ((regError || !registration) && scheduled_registration_id) {
+        return await renderScheduledAudit(scheduled_registration_id);
+      }
       
       if (regError || !registration) {
         Logger.error("[viewAuditTrail] Registration not found:", regError);
@@ -6673,7 +6870,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       },
       program_ref: context.selectedProgram?.program_ref,
       org_ref: context.orgRef || context.selectedProgram?.org_ref
-    }, sessionId, this.getContext(sessionId));
+    }, sessionId, this.getContext(sessionId), { nextStep: 'payment' });
   }
 
   private async loadDelegateProfile(
@@ -6799,7 +6996,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       // Check if this looks like an Auth0 userId vs a ChatGPT sessionId
       const isAuth0Key = sessionId.startsWith('auth0|') || sessionId.startsWith('google-oauth2|');
       
-      console.log('[loadSessionFromDB] 🔍 Looking up session:', {
+      this.debugLog('[loadSessionFromDB] TRACE: Looking up session', {
         sessionId,
         sessionKey,
         isAuth0Key,
@@ -6818,7 +7015,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       }
       
       if (!data) {
-        console.log('[loadSessionFromDB] ❌ No session found in DB:', {
+        this.debugLog('[loadSessionFromDB] TRACE: No session found in DB', {
           sessionId,
           sessionKey,
           isAuth0Key,
@@ -6835,7 +7032,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       }
       
       const sessionData = data.session_data as APIContext;
-      console.log('[loadSessionFromDB] ✅ Session RESTORED from DB:', {
+      this.debugLog('[loadSessionFromDB] TRACE: Session restored from DB', {
         sessionId,
         sessionKey,
         isAuth0Key,
@@ -6843,7 +7040,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         hasSelectedProgram: !!sessionData.selectedProgram,
         programName: sessionData.selectedProgram?.name || sessionData.selectedProgram?.title,
         hasFormData: !!sessionData.formData,
-        requestedActivity: sessionData.requestedActivity,
         timestamp: new Date().toISOString()
       });
       
@@ -6881,7 +7077,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       if (error) {
         Logger.warn('[persistSessionToDB] Error persisting session:', error.message);
       } else {
-        console.log('[persistSessionToDB] 💾 Session SAVED to DB:', {
+        this.debugLog('[persistSessionToDB] TRACE: Session saved to DB', {
           sessionId,
           sessionKey,
           isAuth0Key,
@@ -6929,7 +7125,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
    */
   private getContext(sessionId: string): APIContext {
     const exists = this.sessions.has(sessionId);
-    console.log('[getContext] 🔍', {
+    this.debugLog('[getContext] TRACE', {
       sessionId,
       exists,
       action: exists ? 'retrieving existing' : 'checking DB then creating new',
@@ -6991,7 +7187,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const isExplicitProgramClear =
         ("selectedProgram" in updates) && (updates.selectedProgram == null);
       if (isAdvancedStep && hasValidProgram && !isExplicitProgramClear) {
-        console.log('[updateContext] ⛔ FIX 2: Blocked step reversion from', current.step, 'to BROWSE (valid program exists)');
+        this.debugLog('[updateContext] TRACE: Blocked step reversion to BROWSE (valid program exists)', {
+          sessionId,
+          fromStep: current.step,
+        });
         delete updates.step; // Remove the step update, keep current step
       }
     }
@@ -7009,15 +7208,15 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       timestamp: new Date().toISOString()
     };
     
-    console.log('[updateContext] 📝 TRACE: Updating session:', JSON.stringify(tracePayload, null, 2));
+    this.debugLog('[updateContext] TRACE: Updating session', tracePayload);
     
     // Async persist to DB (fire-and-forget for performance)
     this.enqueuePersist(sessionId, updated)
       .then(() => {
-        console.log('[updateContext] ✅ TRACE: Persist completed for', sessionId);
+        this.debugLog('[updateContext] TRACE: Persist completed', { sessionId });
       })
       .catch(err => {
-        console.error('[updateContext] ❌ TRACE: Persist FAILED for', sessionId, err);
+        this.debugLog('[updateContext] TRACE: Persist failed', { sessionId, errName: err?.name, errMessage: err?.message });
         Logger.warn('[updateContext] Background persist failed:', err);
       });
   }
@@ -7042,7 +7241,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const isExplicitProgramClear =
         ("selectedProgram" in updates) && (updates.selectedProgram == null);
       if (isAdvancedStep && hasValidProgram && !isExplicitProgramClear) {
-        console.log('[updateContextAndAwait] ⛔ FIX 2: Blocked step reversion from', current.step, 'to BROWSE (valid program exists)');
+        this.debugLog('[updateContextAndAwait] TRACE: Blocked step reversion to BROWSE (valid program exists)', {
+          sessionId,
+          fromStep: current.step,
+        });
         delete updates.step; // Remove the step update, keep current step
       }
     }
@@ -7060,11 +7262,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       timestamp: new Date().toISOString()
     };
     
-    console.log('[updateContextAndAwait] 📝 TRACE: Updating session (awaited):', JSON.stringify(tracePayload, null, 2));
+    this.debugLog('[updateContextAndAwait] TRACE: Updating session (awaited)', tracePayload);
     
     // AWAIT the persist to ensure data is saved before returning
     await this.enqueuePersist(sessionId, updated);
-    console.log('[updateContextAndAwait] ✅ TRACE: Persist COMPLETED for', sessionId);
+    this.debugLog('[updateContextAndAwait] TRACE: Persist completed (awaited)', { sessionId });
   }
 
   /**

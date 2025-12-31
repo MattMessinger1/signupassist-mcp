@@ -137,4 +137,46 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 - Code: commit `c0b6eef` (pushed to `origin/main`).
 - Follow-up: commit `61d21ef` moves **payment method confirmation before final review/consent** (Step 3 = payment, Step 4 = review) and fixes “different child …” parsing so the directive doesn’t become part of the child’s name.
 
+---
+
+## 2025-12-31 — V1 E2E polish (flow correctness + logging posture)
+
+### What we changed (high signal)
+
+- **Signup #2: filter bad saved child**
+  - Added a guard to **hide saved child records that match the delegate** (same name + DOB), preventing the returning-user “On file” prompt from ever suggesting the bogus child record.
+
+- **Step 2/5 copy clarity**
+  - Step 2 prompts now explicitly state **payment method confirmation (Stripe) is next**, followed by final review/consent.
+
+- **Enforce payment-before-review everywhere**
+  - Fixed a step-order regression where `submit_form` could still advance to `REVIEW` even though v1 requires `PAYMENT` first.
+  - Ensured the various submit paths consistently call `submitForm(..., { nextStep: 'payment' })`.
+  - Hardened PAYMENT step:
+    - “change card” now **always generates (or re-sends) a Stripe Checkout link**
+    - “done” detection is less brittle (recognizes “done/all set/finished/added card” safely)
+  - Fixed legacy gate: `authorize_payment` now keys off `hasPaymentMethod` (or last4 fallback), not `cardBrand`.
+
+- **Receipts/audit/cancel reliability**
+  - `viewAuditTrail` now falls back to `scheduled_registrations` when a full UUID is ambiguous and the `registrations` lookup fails.
+
+- **Production logging posture (debuggable, but redacted+scoped)**
+  - `APIOrchestrator` no longer emits unconditional `console.log` traces.
+    - Added `DEBUG_LOGGING` (off by default; **requires `DEBUG_USER_ID` or `DEBUG_SESSION_ID` in prod**) and redacts common PII fields.
+  - Removed a major PII leak in `bookeo.confirm_booking`: **no longer logs full booking payloads**.
+  - Normalized Bookeo env keys (trim + drop trailing comma) to reduce “Invalid secretKey” footguns.
+  - Reduced server debug endpoints to avoid logging response bodies / PII-ish blobs.
+
+- **Worker smoke helper**
+  - Added `npm run test:worker` → `scripts/smokeWorkerExecute.ts`
+  - This schedules a job due soon and (optionally) watches DB status transitions.
+  - Requires explicit `E2E_EXECUTE=1` because it can create real bookings and charge the success fee.
+
+### Current status
+
+- Code is **build-clean** (`npm run mcp:build`).
+- Remaining manual verification needed:
+  - Run **worker execute smoke** (`npm run test:worker`) against a deployed worker service.
+  - Update + run regression scripts, then capture evidence in this log.
+
 

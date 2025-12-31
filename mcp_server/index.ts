@@ -894,6 +894,27 @@ class SignupAssistMCPServer {
     return null;
   }
 
+  private async findSupabaseUserIdByAuth0Sub(sub: string): Promise<string | null> {
+    const target = String(sub || "").trim();
+    if (!target) return null;
+
+    const perPage = 1000;
+    for (let page = 1; page <= 50; page++) {
+      const { data, error } = await supabase.auth.admin.listUsers({ page, perPage } as any);
+      if (error) {
+        console.warn("[AUTH] Supabase listUsers error while resolving auth0_sub:", error.message);
+        return null;
+      }
+      const users = (data as any)?.users || (data as any)?.users?.users || (data as any)?.users || [];
+      const list = Array.isArray(users) ? users : (Array.isArray((data as any)?.users) ? (data as any).users : []);
+      const match = list.find((u: any) => String(u?.user_metadata?.auth0_sub || "") === target);
+      if (match?.id) return String(match.id);
+
+      if (!list.length || list.length < perPage) break;
+    }
+    return null;
+  }
+
   /**
    * Resolve (or provision) a Supabase auth user id for an Auth0 subject.
    *
@@ -911,6 +932,14 @@ class SignupAssistMCPServer {
 
     const cached = this.auth0SubToSupabaseUserId.get(sub);
     if (cached) return cached;
+
+    // Prefer deterministic mapping by Auth0 subject (stored in user_metadata.auth0_sub).
+    // This avoids mismatches between email-based mapping and sub-based mapping.
+    const bySub = await this.findSupabaseUserIdByAuth0Sub(sub);
+    if (bySub) {
+      this.auth0SubToSupabaseUserId.set(sub, bySub);
+      return bySub;
+    }
 
     // If sub already looks like a UUID, it might already be a Supabase auth user id.
     if (this.isUuid(sub)) {
@@ -1646,18 +1675,21 @@ class SignupAssistMCPServer {
           debugUrl.searchParams.set('apiKey', apiKey);
           debugUrl.searchParams.set('secretKey', secretKey);
 
-          console.log('[DEBUG] Calling Bookeo:', debugUrl.toString().replace(secretKey, '***'));
+          if (isDebugLoggingEnabled()) {
+            console.log('[DEBUG] Calling Bookeo: /v2/settings/apikeyinfo (apiKey/secretKey redacted)');
+          }
 
           const r = await fetch(debugUrl, { method: 'GET' });
           const text = await r.text();
 
-          console.log('[DEBUG] Bookeo response status:', r.status);
-          console.log('[DEBUG] Bookeo response body:', text);
+          if (isDebugLoggingEnabled()) {
+            console.log('[DEBUG] Bookeo response status:', r.status, 'body_len:', text.length);
+          }
 
           res.writeHead(r.status, { 'Content-Type': 'application/json' });
           res.end(text);
         } catch (err: any) {
-          console.error('[DEBUG] Bookeo error:', err);
+          console.error('[DEBUG] Bookeo error:', err?.message || err);
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: err?.message || 'Unexpected failure' }));
         }
@@ -1816,7 +1848,9 @@ class SignupAssistMCPServer {
             return;
           }
 
-          console.log(`[LOCATION] Looking up IP: ${clientIp}`);
+          if (isDebugLoggingEnabled()) {
+            console.log(`[LOCATION] Looking up IP (redacted)`);
+          }
           const apiUrl = `https://ipapi.co/${clientIp}/json/?key=${apiKey}`;
           const response = await fetch(apiUrl);
 
@@ -1838,7 +1872,7 @@ class SignupAssistMCPServer {
           const data = await response.json();
 
           if (!data || data.error || data.latitude === undefined || data.longitude === undefined) {
-            console.error('[LOCATION] Invalid ipapi.co response:', data);
+            console.error('[LOCATION] Invalid ipapi.co response');
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({
               mock: true,
@@ -2085,6 +2119,10 @@ class SignupAssistMCPServer {
 
       // --- Tool invocation endpoint
       if (url.pathname === '/tools/call') {
+        // If request is authorized via Auth0, we bind Auth0 subject → Supabase auth UUID
+        // and overwrite any client-supplied user_id/userId.
+        let verifiedUserId: string | undefined;
+
         // Development mode bypass (non-production only)
         if (process.env.NODE_ENV !== 'production') {
           console.warn('[AUTH] Dev mode: bypassing auth for /tools/call');
@@ -2109,7 +2147,9 @@ class SignupAssistMCPServer {
             const bearerToken = extractBearerToken(authHeader);
             if (bearerToken) {
               try {
-                await verifyAuth0Token(bearerToken);
+                const payload = await verifyAuth0Token(bearerToken);
+                // Bind Auth0 identity to a Supabase auth UUID (DB uses uuid user_id columns).
+                verifiedUserId = await this.resolveSupabaseUserIdFromAuth0(payload);
                 isAuthorized = true;
                 authSource = 'auth0';
               } catch (e: any) {
@@ -2147,6 +2187,30 @@ class SignupAssistMCPServer {
               res.writeHead(400, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: 'Missing required field: tool' }));
               return;
+            }
+
+            // ================================================================
+            // AUTH0 USER BINDING / MAPPING (DEFENSE-IN-DEPTH)
+            //
+            // - If request is authorized via Auth0, do NOT trust client-supplied user_id/userId.
+            //   Overwrite with the verified Supabase UUID.
+            // - If request is authorized via internal token, allow convenience: if caller supplies
+            //   an Auth0 subject (auth0|... / google-oauth2|...), map it to a Supabase UUID.
+            // ================================================================
+            if (args && typeof args === 'object') {
+              if (verifiedUserId) {
+                if ('user_id' in args) (args as any).user_id = verifiedUserId;
+                if ('userId' in args) (args as any).userId = verifiedUserId;
+              } else {
+                const raw = (args as any).user_id ?? (args as any).userId;
+                if (typeof raw === 'string' && (raw.startsWith('auth0|') || raw.startsWith('google-oauth2|'))) {
+                  const mapped = await this.resolveSupabaseUserIdFromAuth0({ sub: raw });
+                  if (mapped) {
+                    if ('user_id' in args) (args as any).user_id = mapped;
+                    if ('userId' in args) (args as any).userId = mapped;
+                  }
+                }
+              }
             }
 
             // Tool aliases for ChatGPT compatibility (OpenAPI uses clearer names)

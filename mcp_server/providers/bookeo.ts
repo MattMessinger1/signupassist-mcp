@@ -14,9 +14,18 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Bookeo API credentials
-const BOOKEO_API_KEY = process.env.BOOKEO_API_KEY!;
-const BOOKEO_SECRET_KEY = process.env.BOOKEO_SECRET_KEY!;
+const BOOKEO_API_KEY = String(process.env.BOOKEO_API_KEY || "")
+  .trim()
+  .replace(/,$/, "");
+const BOOKEO_SECRET_KEY = String(process.env.BOOKEO_SECRET_KEY || "")
+  .trim()
+  .replace(/,$/, "");
 const BOOKEO_API_BASE = 'https://api.bookeo.com/v2';
+
+if (!BOOKEO_API_KEY || !BOOKEO_SECRET_KEY) {
+  console.error("[Bookeo] Missing BOOKEO_API_KEY or BOOKEO_SECRET_KEY");
+  throw new Error("Missing BOOKEO_API_KEY or BOOKEO_SECRET_KEY");
+}
 
 /**
  * Build Bookeo API URL with authentication in query params
@@ -819,7 +828,7 @@ async function confirmBooking(args: {
       }
     };
     
-    console.log(`[Bookeo] Booking payload:`, JSON.stringify(bookingPayload, null, 2));
+    // ⚠️ Privacy: never log booking payloads (they contain names/emails/DOB).
     
     const url = buildBookeoUrl('/bookings');
     console.log('[Bookeo] POST /bookings URL (redacted):', url
@@ -834,7 +843,11 @@ async function confirmBooking(args: {
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error(`[Bookeo] API error:`, errorData);
+      console.error(`[Bookeo] API error:`, {
+        status: response.status,
+        message: (errorData as any)?.message,
+        error: (errorData as any)?.error,
+      });
       const friendlyError: ParentFriendlyError = {
         display: errorData.message || 'Failed to create booking',
         recovery: 'Please verify all information and try again, or contact support',

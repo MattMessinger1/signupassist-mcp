@@ -3,7 +3,8 @@
  * Regression check: ChatGPT Signup #2 flow reliability (chat-native).
  *
  * Validates:
- * - Step 3/5 always shows a review summary (no “skipped step” generic yes/cancel)
+ * - Step 3/5 is payment (Stripe) BEFORE final review/consent
+ * - If a payment method is on file, Step 4/5 shows the full review summary before consent
  * - Optional: Returning user with exactly 1 saved child gets the explicit “On file / Still needed”
  *   Step 2/5 prompt (no silent auto-use).
  *
@@ -98,17 +99,28 @@ async function main() {
 
   // If returning user, expect explicit “On file / Still needed” prompt (fast + transparent).
   if (userId) {
-    assert(/On file:/i.test(text2), `returning-user: expected "On file" section, got: ${text2.slice(0, 220)}`);
-    assert(/Still needed:/i.test(text2), `returning-user: expected "Still needed" section, got: ${text2.slice(0, 220)}`);
-    assert(/Child:/i.test(text2), `returning-user: expected Child line, got: ${text2.slice(0, 220)}`);
-    assert(/Parent\/guardian:/i.test(text2), `returning-user: expected Parent/guardian line, got: ${text2.slice(0, 220)}`);
+    if (/On file:/i.test(text2)) {
+      assert(/Still needed:/i.test(text2), `returning-user: expected "Still needed" section, got: ${text2.slice(0, 220)}`);
+      assert(/Child:/i.test(text2), `returning-user: expected Child line, got: ${text2.slice(0, 220)}`);
+      assert(/Parent\/guardian:/i.test(text2), `returning-user: expected Parent/guardian line, got: ${text2.slice(0, 220)}`);
+    } else {
+      // If the only saved child was bogus (historical bug), the server filters it out and falls back to normal prompts.
+      console.log('[regression] (note) returning-user: no "On file" section (no valid saved child/profile found)');
+    }
   }
 
   // Step 2: provide required fields (new-user) OR just the missing field(s) (returning-user).
-  const payload =
-    userId
-      ? (process.env.REGRESSION_EMAIL || 'test@example.com')
-      : 'Email: test@example.com; Name: Jane Doe; DOB: 05/13/1976; Relationship: Parent; Child: Alex Doe; Child DOB: 02/17/2014';
+  const fullPayload =
+    process.env.REGRESSION_FULL_PAYLOAD ||
+    'Email: test@example.com; Name: Jane Doe; DOB: 05/13/1976; Relationship: Parent; Child: Alex Doe; Child DOB: 02/17/2014';
+
+  const returningEmail = (process.env.REGRESSION_EMAIL || 'test@example.com').trim();
+  const stillNeededLine = (text2.match(/Still needed:[\s\S]*$/i)?.[0] || '').toLowerCase();
+  const hasStillNeeded = /still needed:/i.test(text2);
+  const saysNothingElse = /still needed:\s*nothing/i.test(stillNeededLine);
+  const needsEmail = hasStillNeeded && /email/i.test(stillNeededLine);
+
+  const payload = userId ? (saysNothingElse ? 'ok' : needsEmail ? returningEmail : fullPayload) : fullPayload;
 
   const chat3 = await callTool(baseUrl, token, 'signupassist.chat', {
     input: payload,
@@ -125,6 +137,23 @@ async function main() {
     /payment method/i.test(text3) || /Secure Stripe Checkout/i.test(text3),
     `expected payment method prompt or Stripe link, got: ${text3.slice(0, 240)}`
   );
+
+  // If payment method exists, user can say "yes" to proceed to Step 4/5 Review & consent.
+  const hasStripeLink = /Secure Stripe Checkout/i.test(text3) || /\bhttps?:\/\/\S+/i.test(text3);
+  if (!hasStripeLink) {
+    const chat4 = await callTool(baseUrl, token, 'signupassist.chat', {
+      input: 'yes',
+      sessionId,
+      userTimezone: tz,
+      ...(userId ? { userId } : {}),
+    });
+    assert(chat4.status === 200, `signupassist.chat step3 confirm payment: expected 200, got ${chat4.status}`);
+    const text4 = extractText(chat4);
+    assert(/^(\*\*)?Step\s+4\/5\s+—/i.test(text4), `expected Step 4/5 header, got: ${text4.slice(0, 160)}`);
+    assert(/Please review the details below/i.test(text4), `expected full review summary, got: ${text4.slice(0, 240)}`);
+  } else {
+    console.log('[regression] (note) payment method not on file; Step 4/5 review check skipped (Stripe setup required)');
+  }
 
   console.log('\n[regression] ✅ Signup #2 regression checks passed\n');
 }
