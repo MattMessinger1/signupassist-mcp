@@ -9,6 +9,11 @@
     "skipLibCheck": true,
     "types": ["node"],
 
+    // Ensure stable dist output paths across environments (Docker/Railway vs local).
+    // Without this, TypeScript may infer rootDir as "mcp_server" (since mcp/ has no TS),
+    // producing dist/index.js instead of dist/mcp_server/index.js, which breaks Docker CMD.
+    "rootDir": ".",
+
     // 🚀 Major speedup with incremental compilation
     "incremental": true,
     "tsBuildInfoFile": "./dist/.tsbuildinfo",

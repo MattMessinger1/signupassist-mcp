@@ -127,5 +127,6 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 
 - Symptom: Railway build completes, then healthcheck retries `/health` with “service unavailable”.
 - Fix shipped: `/health` now supports **GET or HEAD**, and startup now forces **HTTP mode on Railway** (even if `NODE_ENV` isn’t `production` / `PORT` isn’t injected), to avoid accidentally starting in stdio-only mode.
+- Additional fix: Railway build logs showed `dist/mcp_server/ai/` missing after `tsc`. Root cause was TypeScript sometimes inferring `rootDir` as `mcp_server` (since `mcp/` has no TS), which changes output paths to `dist/index.js` + `dist/ai/*` and breaks Docker `CMD ["node","dist/mcp_server/index.js"]`. Set `compilerOptions.rootDir = "."` in `tsconfig.mcp.json` to make dist paths stable.
 
 
