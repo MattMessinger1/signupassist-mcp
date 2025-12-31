@@ -1503,9 +1503,14 @@ class SignupAssistMCPServer {
       // ==================== END MCP SSE TRANSPORT ENDPOINTS ====================
 
       // --- Health check endpoint (includes version info for deploy verification)
-      if (req.method === 'GET' && url.pathname === '/health') {
+      // Railway healthchecks may use GET or HEAD depending on platform/router behavior.
+      if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/health') {
         console.log('[HEALTH] check received');
         res.writeHead(200, { 'Content-Type': 'application/json' });
+        if (req.method === 'HEAD') {
+          res.end();
+          return;
+        }
         res.end(JSON.stringify({
           ok: true,
           version: process.env.APP_VERSION || '2.1.1-full-gating',
@@ -3322,7 +3327,24 @@ if (token) {
   console.warn('[AUTH] Warning: No MCP_ACCESS_TOKEN detected in environment');
 }
 
-const shouldStartHttp = process.env.NODE_ENV === 'production' || !!process.env.PORT;
+// Railway Docker deployments sometimes do not set NODE_ENV=production and can be inconsistent
+// about injecting PORT. Detect Railway explicitly so we always start HTTP mode there.
+const isRailway =
+  !!process.env.RAILWAY_PROJECT_ID ||
+  !!process.env.RAILWAY_ENVIRONMENT ||
+  !!process.env.RAILWAY_SERVICE_ID ||
+  !!process.env.RAILWAY_PUBLIC_DOMAIN ||
+  !!process.env.RAILWAY_GIT_COMMIT_SHA;
+
+const shouldStartHttp = isRailway || process.env.NODE_ENV === 'production' || !!process.env.PORT;
+
+console.log('[STARTUP] shouldStartHttp:', shouldStartHttp, {
+  isRailway,
+  NODE_ENV: process.env.NODE_ENV,
+  PORT: process.env.PORT,
+  RAILWAY_PUBLIC_DOMAIN: process.env.RAILWAY_PUBLIC_DOMAIN,
+  RAILWAY_GIT_COMMIT_SHA: process.env.RAILWAY_GIT_COMMIT_SHA,
+});
 
 if (shouldStartHttp) {
   // IMPORTANT: Start HTTP server ASAP so Railway healthcheck can pass.

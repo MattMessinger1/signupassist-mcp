@@ -123,4 +123,9 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 
 - Pushed to `origin/main`: `e0fc628..131fd45` (includes Step 2 batching, activation gating, and Bookeo metadata fix).
 
+### Railway deploy note (healthcheck stuck)
+
+- Symptom: Railway build completes, then healthcheck retries `/health` with “service unavailable”.
+- Fix shipped: `/health` now supports **GET or HEAD**, and startup now forces **HTTP mode on Railway** (even if `NODE_ENV` isn’t `production` / `PORT` isn’t injected), to avoid accidentally starting in stdio-only mode.
+
 
