@@ -119,4 +119,8 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 - **Less choppy Steps 3–5**: activation/provider-matching (and `user.get_delegate_profile` lookup) now runs only in **Step 1/5 (BROWSE)**, so REVIEW/PAYMENT turns avoid extra tool calls and reduce repeated prompts/latency.
 - **Step 2/5 fewer turns**: form-fill now asks up to **3 missing items per prompt** (and clearly labels whether we’re collecting **parent/guardian** vs **child** info) to reduce back-and-forth without dumping schemas.
 
+### GitHub sync
+
+- Pushed to `origin/main`: `e0fc628..131fd45` (includes Step 2 batching, activation gating, and Bookeo metadata fix).
+
 
