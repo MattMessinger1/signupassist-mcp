@@ -1173,6 +1173,40 @@ class SignupAssistMCPServer {
       const AUTH0_CLIENT_SECRET = process.env.AUTH0_CLIENT_SECRET;
       const AUTH0_AUDIENCE = process.env.AUTH0_AUDIENCE || 'https://shipworx.ai/api';
 
+      // --- OAuth Protected Resource Metadata (RFC 9728)
+      // ChatGPT probes this (and sometimes appends `/sse` or prefixes with `/sse/`) while validating MCP OAuth.
+      if (
+        (req.method === 'GET' || req.method === 'HEAD') &&
+        (url.pathname === '/.well-known/oauth-protected-resource' ||
+          url.pathname === '/.well-known/oauth-protected-resource/sse' ||
+          url.pathname === '/sse/.well-known/oauth-protected-resource')
+      ) {
+        console.log('[OAUTH] OAuth protected resource metadata request');
+        const baseUrl = getRequestBaseUrl(req);
+
+        const meta = {
+          resource: `${baseUrl}/sse`,
+          authorization_servers: [baseUrl],
+          scopes_supported: ["openid", "profile", "email", "offline_access"],
+          bearer_methods_supported: ["header"],
+          authorization_endpoint: `${baseUrl}/oauth/authorize`,
+          token_endpoint: `${baseUrl}/oauth/token`,
+          jwks_uri: `${baseUrl}/.well-known/jwks.json`,
+          service_documentation: `${baseUrl}/docs`,
+        };
+
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=3600',
+        });
+        if (req.method === 'HEAD') {
+          res.end();
+          return;
+        }
+        res.end(JSON.stringify(meta, null, 2));
+        return;
+      }
+
       // --- OpenID Connect Discovery (GET/HEAD /.well-known/openid-configuration)
       // Some clients fetch OIDC discovery even for OAuth-only use-cases.
       if (
@@ -3606,6 +3640,29 @@ class SignupAssistMCPServer {
       }
 
       // --- Serve static frontend files (React SPA)
+      // IMPORTANT: avoid SPA fallback for protocol endpoints (some clients probe with GET/HEAD).
+      // Returning index.html here can cause opaque failures/timeouts in validators.
+      if (url.pathname === '/messages' && req.method !== 'POST') {
+        res.writeHead(405, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-store',
+          'Allow': 'POST, OPTIONS',
+        });
+        res.end(JSON.stringify({ error: 'method_not_allowed', endpoint: '/messages', allowed: ['POST'] }));
+        return;
+      }
+      if (url.pathname === '/oauth/token' && req.method !== 'POST' && req.method !== 'HEAD') {
+        res.writeHead(405, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-store',
+          'Allow': 'POST, HEAD, OPTIONS',
+        });
+        res.end(JSON.stringify({ error: 'method_not_allowed', endpoint: '/oauth/token', allowed: ['POST', 'HEAD'] }));
+        return;
+      }
+
       if (req.method === 'GET') {
         const servePath = url.pathname === '/' ? '/index.html' : url.pathname;
         const filePath = path.resolve(process.cwd(), 'dist', 'client', `.${servePath}`);
