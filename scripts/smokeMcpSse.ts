@@ -175,6 +175,20 @@ async function main() {
     assert(toolNames.includes("signupassist.chat"), `listTools: expected signupassist.chat, got: ${toolNames.join(", ")}`);
     console.log("[smoke-sse] ✅ listTools ok");
 
+    // Source-of-truth: provider feed count (via internal tools/call endpoint).
+    const providerCountRes = await fetchJson(`${baseUrl}/tools/call`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ tool: "bookeo.find_programs", args: { org_ref: "aim-design", category: "all" } }),
+    });
+    assert(providerCountRes.status === 200, `provider feed: expected 200, got ${providerCountRes.status}`);
+    assert(providerCountRes.json?.success === true, `provider feed: expected success=true, got ${JSON.stringify(providerCountRes.json)}`);
+    const totalPrograms = Number(providerCountRes.json?.data?.total_programs || 0);
+    assert(totalPrograms > 0, `provider feed: expected total_programs > 0, got ${totalPrograms}`);
+
     const result = await client.callTool({
       name: "signupassist.chat",
       arguments: {
@@ -187,6 +201,16 @@ async function main() {
     const text = String((result as any)?.content?.[0]?.text || "");
     assert(text.length > 0, "signupassist.chat: expected non-empty text");
     assert(/^(\*\*)?Step\s+[1-5]\/5\s+—/i.test(text), `signupassist.chat: expected Step header, got: ${text.slice(0, 80)}`);
+
+    // Program list should not be unexpectedly truncated (e.g., 3 of 4).
+    // Count enumerated items like "1. ..." in the returned text.
+    const matches = text.match(/(^|\n)\d+\.\s+/g) || [];
+    const shown = matches.length;
+    const expectedMin = Math.min(totalPrograms, 8);
+    assert(
+      shown >= expectedMin,
+      `signupassist.chat: expected >=${expectedMin} programs listed (provider total=${totalPrograms}), got ${shown}`
+    );
     console.log("[smoke-sse] ✅ signupassist.chat ok");
 
     await client.close();

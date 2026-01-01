@@ -4178,24 +4178,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         return extractNumber(a.title || '') - extractNumber(b.title || '');
       });
       
-      // Show future programs (including "opens later" + "sold out"), hide only past programs.
-      // IMPORTANT: Booking limits (max/min advance time) should affect status messaging,
-      // not whether the program appears in the catalog.
-      const now = new Date();
-      
-      const upcomingPrograms = sortedPrograms.filter((prog: any) => {
-        if (!prog.earliest_slot_time) return true; // Keep programs without slot time (often "opens later" before slots exist)
-        
-        const slotTime = new Date(prog.earliest_slot_time);
-        if (!Number.isFinite(slotTime.getTime())) return true;
-
-        // Hide past sessions only (with a small grace period).
-        const graceMs = 5 * 60 * 1000; // 5 min
-        return slotTime.getTime() >= (now.getTime() - graceMs);
-      });
-      
-      if (upcomingPrograms.length === 0) {
-        return this.formatError("No upcoming programs available at this time. All sessions have already passed.");
+      // Catalog posture: show the full program list returned by Bookeo (do not drop items).
+      // We still label/disable items whose next session has already passed.
+      // This avoids “only 3 of 4 classes” when the cached feed is slightly stale around start times.
+      const programsToDisplay = sortedPrograms.slice(0, 8);
+      if (programsToDisplay.length === 0) {
+        return this.formatError("No programs found at this time.");
       }
       
       // Activity filtering removed: always surface the full catalog for AIM Design/Bookeo.
@@ -4204,7 +4192,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       // Audience mismatch check using the shared audienceParser utility
       if (context.requestedAdults && !context.ignoreAudienceMismatch) {
         const mismatch = checkAudienceMismatch(
-          upcomingPrograms.map((p: any) => ({
+          programsToDisplay.map((p: any) => ({
             audience: p.audience,
             age_range: p.age_range,
             title: p.title,
@@ -4227,8 +4215,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       
       // V1: persist the FULL displayed list so numeric selection works (1..N)
       // Limit to 8 programs max to prevent UI overflow and context bloat
-      const programsToDisplay = upcomingPrograms.slice(0, 8);
-      
       // Store programs in context (including displayedPrograms for ChatGPT NL selection)
       const displayedPrograms = programsToDisplay.map((prog: any) => ({
         title: prog.title || "Untitled Program",
@@ -4280,6 +4266,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         const isSoldOut = prog.booking_status === 'sold_out';
 
         const slotStart = prog.earliest_slot_time ? new Date(prog.earliest_slot_time) : null;
+        const isPast =
+          slotStart && Number.isFinite(slotStart.getTime()) && slotStart.getTime() < (now.getTime() - 5 * 60 * 1000);
         const maxAdvance = prog.booking_limits?.maxAdvanceTime;
         const computedOpensAt =
           slotStart && maxAdvance
@@ -4288,6 +4276,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
         const bookingStatus: string = (() => {
           const raw = String(prog.booking_status || "").toLowerCase().trim();
+          if (isPast) return 'closed';
           if (isSoldOut || raw === 'sold_out') return 'sold_out';
           // First principles: trust explicit provider classification when present.
           if (raw === 'open_now' || raw === 'open') return 'open_now';
@@ -4305,7 +4294,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         let isDisabled = false;
         let buttonLabel = "Select this program";
         
-        if (bookingStatus === 'sold_out') {
+        if (bookingStatus === 'closed') {
+          timingBadge = '⛔ Registration Closed';
+          isDisabled = true;
+          buttonLabel = "Not available";
+        } else if (bookingStatus === 'sold_out') {
           timingBadge = '🚫 Sold Out';
           isDisabled = true;
           buttonLabel = "Waitlist (Coming Soon)";
@@ -4372,6 +4365,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         const isSoldOut = prog.booking_status === 'sold_out';
 
         const slotStart = prog.earliest_slot_time ? new Date(prog.earliest_slot_time) : null;
+        const isPast =
+          slotStart && Number.isFinite(slotStart.getTime()) && slotStart.getTime() < (now.getTime() - 5 * 60 * 1000);
         const maxAdvance = prog.booking_limits?.maxAdvanceTime;
         const computedOpensAt =
           slotStart && maxAdvance
@@ -4379,6 +4374,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             : (prog.booking_opens_at ? new Date(prog.booking_opens_at) : null);
 
         const bookingStatus: 'open_now' | 'opens_later' | 'sold_out' | 'unknown' = (() => {
+          if (isPast) return 'closed' as any;
           if (isSoldOut) return 'sold_out';
           if (hasAvailableSlots) return 'open_now';
           if (computedOpensAt && computedOpensAt > now) return 'opens_later';
@@ -4405,7 +4401,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       // Use Design DNA-compliant message template with inline program list
       const message = getAPIProgramsReadyMessage({
         provider_name: orgRef === "aim-design" ? "AIM Design" : orgRef,
-        program_count: upcomingPrograms.length,
+        program_count: programsToDisplay.length,
         programs: programListForMessage
       });
 
@@ -4416,14 +4412,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         metadata: {
           // Keep metadata minimal; no widget component routing in v1
           orgRef,
-          programCount: upcomingPrograms.length,
+          programCount: programsToDisplay.length,
           _build: APIOrchestrator.BUILD_STAMP
         },
         // Keep structuredContent for model reasoning (works great without widgets)
         structuredContent: {
           type: 'program_list',
           orgRef,
-          programCount: upcomingPrograms.length,
+          programCount: programsToDisplay.length,
           programs: programListForMessage.map(p => ({
             index: p.index,
             title: p.title,
@@ -4629,6 +4625,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       // Determine registration timing and add transparency message
       // Runtime status check (don't trust stale cached data)
       const determineBookingStatus = (program: any): string => {
+        const slotStart = program?.earliest_slot_time ? new Date(program.earliest_slot_time) : null;
+        if (slotStart && Number.isFinite(slotStart.getTime())) {
+          const graceMs = 5 * 60 * 1000;
+          if (slotStart.getTime() < (Date.now() - graceMs)) return 'closed';
+        }
         const hasAvailableSlots = program?.next_available_slot || (program?.available_slots && program.available_slots > 0);
         if (hasAvailableSlots) return 'open_now';
         if (program?.booking_status === 'sold_out') return 'sold_out';
@@ -4637,6 +4638,27 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       
       const bookingStatus = determineBookingStatus(programData);
       const earliestSlot = programData?.earliest_slot_time ? new Date(programData.earliest_slot_time) : null;
+
+      if (bookingStatus === 'closed') {
+        // Keep the user in BROWSE; this program’s next session has already passed.
+        // Re-render the catalog so they can pick an available class.
+        const orgRefForBrowse = context.orgRef || programData?.org_ref || 'aim-design';
+        this.updateContext(sessionId, { step: FlowStep.BROWSE, selectedProgram: null });
+        const browse = await this.searchPrograms(orgRefForBrowse, sessionId);
+        const list = String(browse?.message || "");
+        const listWithoutHeader = list
+          .replace(/^\s*\*{0,2}step\s+1\/5(?:\s+continued)?\s+—[^\n]*\n*/i, "")
+          .trim();
+        return {
+          ...browse,
+          message:
+            `That class is no longer available (its session has already started/passed).\n\n` +
+            `Please choose another class from the list below:\n\n` +
+            `${listWithoutHeader}`,
+          // Don’t let this retry increment wizard progress.
+          metadata: { ...(browse.metadata || {}), skipWizardProgress: true }
+        };
+      }
 
       Logger.info('[selectProgram] Calling bookeo.discover_required_fields for audit compliance');
       const formDiscoveryResult = await this.invokeMCPTool('bookeo.discover_required_fields', {

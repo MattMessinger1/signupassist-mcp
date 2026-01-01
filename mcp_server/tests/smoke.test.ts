@@ -116,6 +116,33 @@ test('Smoke 3: Canonical chat tool responds with Step headers', async () => {
   expect(String(second.content?.[0]?.text || '')).toMatch(/^Step\\s+[1-5]\\/5\\s+—/);
 });
 
+test('Smoke 3b: Program list count should not unexpectedly drop vs provider feed', async () => {
+  const sessionId = `smoke-program-count-${Date.now()}`;
+
+  // Provider feed (source of truth for catalog size)
+  const programs = await callMCPTool('bookeo.find_programs', {
+    org_ref: 'aim-design',
+    category: 'all',
+  });
+  expect(programs.success).toBe(true);
+  const total = Number(programs.data?.total_programs || 0);
+  expect(total).toBeGreaterThan(0);
+
+  // Chat browse surface: should show up to 8 items from the provider feed (not silently truncated to 3)
+  const browse = await callMCPTool('signupassist.chat', {
+    input: 'browse classes',
+    sessionId,
+    userTimezone: 'America/Chicago',
+  });
+  const text = String(browse.content?.[0]?.text || '');
+
+  // Count enumerated list items (lines beginning with a number + dot).
+  const matches = text.match(/(^|\\n)\\d+\\.\\s+/g) || [];
+  const shown = matches.length;
+  const expectedMin = Math.min(total, 8);
+  expect(shown).toBeGreaterThanOrEqual(expectedMin);
+});
+
 test('Smoke 4: Legacy scp.* tools are not registered', async () => {
   const { status, json } = await callMCPToolRaw('scp.login', { org_ref: 'blackhawk-ski-club' });
   expect(status).toBe(404);
