@@ -2557,8 +2557,15 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         const ageMs = Number.isFinite(completedAtMs) ? Date.now() - completedAtMs : NaN;
         const isRecent = Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 2 * 60 * 1000; // 2 minutes
         if (isRecent) {
+          const isCancelCompletion =
+            context.lastCompletion.kind === "cancel_registration" ||
+            context.lastCompletion.kind === "cancel_scheduled";
           return this.formatResponse(
-            `${context.lastCompletion.message}\n\nIf you'd like to do something else, say **view my registrations** or **browse classes**.`
+            `${context.lastCompletion.message}\n\nIf you'd like to do something else, say **view my registrations** or **browse classes**.`,
+            undefined,
+            undefined,
+            // Receipts/audit/cancel are account-management views; suppress wizard headers on retries.
+            isCancelCompletion ? { suppressWizardHeader: true } : undefined
           );
         }
       }
@@ -2900,12 +2907,20 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           const ageMs = Number.isFinite(completedAtMs) ? Date.now() - completedAtMs : NaN;
           const isRecent = Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 2 * 60 * 1000; // 2 minutes
           if (isRecent) {
-            // Ensure the session still reflects completion so Step 5/5 header renders.
+            const isCancelCompletion =
+              context.lastCompletion.kind === "cancel_registration" ||
+              context.lastCompletion.kind === "cancel_scheduled";
+
+            // For booking completions, ensure the session still reflects completion so Step 5/5 header renders.
             if (context.step !== FlowStep.COMPLETED) {
               this.updateContext(sessionId, { step: FlowStep.COMPLETED });
             }
             return this.formatResponse(
-              `${context.lastCompletion.message}\n\nIf you'd like to sign up for another class, say **browse classes**.`
+              `${context.lastCompletion.message}\n\nIf you'd like to sign up for another class, say **browse classes**.`,
+              undefined,
+              undefined,
+              // Receipts/audit/cancel are account-management views; suppress wizard headers on retries.
+              isCancelCompletion ? { suppressWizardHeader: true } : undefined
             );
           }
         }
@@ -6079,7 +6094,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       };
     } catch (err) {
       Logger.error("[viewReceipts] Exception:", err);
-      return this.formatError("An error occurred while loading your registrations.");
+      const errResp = this.formatError("An error occurred while loading your registrations.");
+      return {
+        ...errResp,
+        metadata: { ...(errResp.metadata || {}), suppressWizardHeader: true }
+      };
     }
   }
 
@@ -6109,6 +6128,33 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     context: APIContext
   ): Promise<OrchestratorResponse> {
     let { registration_id, scheduled_registration_id, registration_ref } = payload;
+
+    // Receipts/audit/cancel are "account management" views; don't force wizard step headers.
+    const withSuppressWizardHeader = (r: OrchestratorResponse): OrchestratorResponse => ({
+      ...r,
+      metadata: {
+        ...(r.metadata || {}),
+        suppressWizardHeader: true,
+        _build: (r.metadata || {})._build || APIOrchestrator.BUILD_STAMP
+      }
+    });
+
+    const coerceScopeList = (scope: any): string[] => {
+      if (Array.isArray(scope)) return scope.filter((s) => typeof s === 'string');
+      if (typeof scope === 'string' && scope.trim()) return [scope];
+      return [];
+    };
+
+    const safeTime = (value: any): string => {
+      try {
+        if (!value) return 'N/A';
+        const d = value instanceof Date ? value : new Date(value);
+        if (!Number.isFinite(d.getTime())) return 'N/A';
+        return this.formatTimeForUser(d, context);
+      } catch {
+        return 'N/A';
+      }
+    };
     
     // Allow text-only reference codes (REG-xxxx / SCH-xxxx / uuid)
     if (!registration_id && !scheduled_registration_id && registration_ref) {
@@ -6118,7 +6164,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     }
 
     if (!registration_id && !scheduled_registration_id) {
-      return this.formatError("Registration reference required to view audit trail. Try: “audit REG-xxxxxxxx” or “audit SCH-xxxxxxxx”.");
+      return withSuppressWizardHeader(
+        this.formatError("Registration reference required to view audit trail. Try: “audit REG-xxxxxxxx” or “audit SCH-xxxxxxxx”.")
+      );
     }
     
     try {
@@ -6133,11 +6181,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
         if (schError || !scheduled) {
           Logger.error("[viewAuditTrail] Scheduled registration not found:", schError);
-          return this.formatError("Scheduled registration not found.");
+          return withSuppressWizardHeader(this.formatError("Scheduled registration not found."));
         }
 
         const mandateId = scheduled.mandate_id;
-        const when = scheduled.scheduled_time ? this.formatTimeForUser(new Date(scheduled.scheduled_time), context) : 'TBD';
+        const when = scheduled.scheduled_time ? safeTime(scheduled.scheduled_time) : 'TBD';
         const code = `SCH-${String(scheduled.id).slice(0, 8)}`;
 
         const { data: mandate, error: mandateError } = await supabase
@@ -6170,7 +6218,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           `\nTo cancel this scheduled signup, say: **cancel ${code}**`;
 
         const eventsList = (auditEvents || []).map((event, idx) => {
-          const time = this.formatTimeForUser(new Date(event.started_at), context);
+          const time = safeTime(event.started_at);
           const status = event.decision === 'allowed' ? '✅' : (event.decision === 'denied' ? '❌' : '⏳');
           const toolName = event.tool || event.event_type || 'Unknown action';
           return `${idx + 1}. ${status} ${toolName} — ${time}`;
@@ -6180,8 +6228,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           ? [
               ``,
               `**Mandate:** ${String(mandate.id).slice(0, 8)}…`,
-              `**Scopes:** ${(mandate.scope || []).map((s: string) => this.mapScopeToFriendly(s)).join(', ') || 'N/A'}`,
-              `**Valid until:** ${mandate.valid_until ? this.formatTimeForUser(new Date(mandate.valid_until), context) : 'N/A'}`,
+              `**Scopes:** ${coerceScopeList(mandate.scope).map((s: string) => this.mapScopeToFriendly(s)).join(', ') || 'N/A'}`,
+              `**Valid until:** ${mandate.valid_until ? safeTime(mandate.valid_until) : 'N/A'}`,
             ].join('\n')
           : '';
 
@@ -6190,7 +6238,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           (eventsList.length ? `\n\n**Events (${eventsList.length}):**\n${eventsList.map(e => `- ${e}`).join('\n')}` : `\n\n_No events recorded yet._`) +
           mandateLines;
 
-        return this.formatResponse(message);
+        return withSuppressWizardHeader(this.formatResponse(message));
       };
 
       // Scheduled auto-registration audit trail (before execution)
@@ -6212,7 +6260,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       
       if (regError || !registration) {
         Logger.error("[viewAuditTrail] Registration not found:", regError);
-        return this.formatError("Registration not found.");
+        return withSuppressWizardHeader(this.formatError("Registration not found."));
       }
       
       if (!registration.mandate_id) {
@@ -6228,6 +6276,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             buttons: [
               { label: "Back to Registrations", action: "view_receipts", variant: "outline" }
             ]
+          },
+          metadata: {
+            suppressWizardHeader: true,
+            _build: APIOrchestrator.BUILD_STAMP
           }
         };
       }
@@ -6303,7 +6355,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       
       // Build audit trail timeline with details
       const auditTrailItems = (auditEvents || []).map((event, index) => {
-        const time = this.formatTimeForUser(new Date(event.started_at), context);
+        const time = safeTime(event.started_at);
         const status = event.decision === 'allowed' ? '✅' : (event.decision === 'denied' ? '❌' : '⏳');
         const toolName = event.tool || event.event_type || 'Unknown action';
         return `${index + 1}. ${status} **${toolName}** - ${time}`;
@@ -6311,7 +6363,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       
       // Build detailed event cards with SHA256 hashes for integrity verification
       const eventCards: CardSpec[] = (auditEvents || []).map((event, index) => {
-        const time = this.formatTimeForUser(new Date(event.started_at), context);
+        const time = safeTime(event.started_at);
         const status = event.decision === 'allowed' ? '✅ Allowed' : (event.decision === 'denied' ? '❌ Denied' : '⏳ Pending');
         const toolName = event.tool || event.event_type || 'Unknown';
         const details = formatEventDetails(event);
@@ -6347,13 +6399,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       });
       
       // Build mandate summary card with friendly scopes and JWS token
-      const friendlyScopes = (mandate?.scope || []).map((s: string) => this.mapScopeToFriendly(s)).join(', ');
+      const friendlyScopes = coerceScopeList(mandate?.scope).map((s: string) => this.mapScopeToFriendly(s)).join(', ');
       
       const mandateDescriptionParts = [
         `**Provider:** ${mandate?.provider || 'N/A'}`,
         `**Scopes:** ${friendlyScopes || 'N/A'}`,
-        `**Valid From:** ${mandate ? this.formatTimeForUser(new Date(mandate.valid_from), context) : 'N/A'}`,
-        `**Valid Until:** ${mandate ? this.formatTimeForUser(new Date(mandate.valid_until), context) : 'N/A'}`,
+        `**Valid From:** ${mandate ? safeTime(mandate.valid_from) : 'N/A'}`,
+        `**Valid Until:** ${mandate ? safeTime(mandate.valid_until) : 'N/A'}`,
         `**Status:** ${mandate?.status || 'N/A'}`
       ];
       
@@ -6426,8 +6478,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         }
       };
     } catch (err) {
-      Logger.error("[viewAuditTrail] Exception:", err);
-      return this.formatError("An error occurred while loading the audit trail.");
+      Logger.error("[viewAuditTrail] Exception", {
+        errName: (err as any)?.name,
+        errMessage: (err as any)?.message,
+        registration_id,
+        scheduled_registration_id
+      });
+      return withSuppressWizardHeader(this.formatError("An error occurred while loading the audit trail."));
     }
   }
 
@@ -6477,7 +6534,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
         if (scheduledError || !scheduled) {
           Logger.error("[cancelRegistration] Registration not found:", scheduledError);
-        return this.formatError("Registration not found.");
+          const errResp = this.formatError("Registration not found.");
+          return {
+            ...errResp,
+            metadata: { ...(errResp.metadata || {}), suppressWizardHeader: true }
+          };
         }
 
         // Scheduled job cancellation confirmation (text-only)

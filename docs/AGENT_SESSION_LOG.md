@@ -223,6 +223,8 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
   - **Cancel flow UX**: cancellation confirmations now persist a `lastCompletion` snapshot too, and empty/duplicate follow-ups re-send the cancellation confirmation instead of jumping to Step 1 browse. Also switched cancellation confirmations to **accurately reflect refund status** (don’t claim refund succeeded when the refund call fails).
   - **Audit UX**: `audit <8-hex>` is now accepted (no need to prepend `REG-`), and saying “audit” without an ID now shows the registrations list and prompts the user to pick a REG-/SCH- code (instead of returning an error).
   - **Step header UX**: receipts/audit/cancel are treated as **account management** views and now set `metadata.suppressWizardHeader=true` so ChatGPT doesn’t prepend `Step 1/5 — …` on those screens.
+  - **Cancel retry UX**: when ChatGPT duplicates the user’s “yes” after a cancellation, the `lastCompletion` replay now also sets `metadata.suppressWizardHeader=true` (prevents `Step 5/5` from reappearing on the replayed confirmation).
+  - **Audit reliability**: hardened `viewAuditTrail` against malformed timestamps / non-array mandate scopes and ensured audit errors also set `metadata.suppressWizardHeader=true` (so errors don’t render as `Step 5/5`).
 - `mcp_server/index.ts`
   - `signupassist.chat` tool handler now **suppresses wizard step headers** when `metadata.suppressWizardHeader=true` (keeps Step headers for the actual signup wizard).
 - `mcp_server/ai/APIOrchestrator.ts`
