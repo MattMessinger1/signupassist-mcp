@@ -1365,6 +1365,21 @@ class SignupAssistMCPServer {
       
       // SSE session storage is now a class property (this.sseTransports)
       
+      // --- SSE Compatibility: Some clients probe POST /sse (should be GET)
+      // Return a small success payload instead of a 404 to avoid client-side hangs on refresh.
+      if (req.method === 'POST' && url.pathname === '/sse') {
+        res.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-store',
+        });
+        res.end(JSON.stringify({
+          ok: true,
+          message: 'Use GET /sse to establish the SSE stream, and POST /messages?sessionId=... for MCP messages.'
+        }));
+        return;
+      }
+
       // --- SSE Connection Endpoint (GET /sse)
       // Establishes a Server-Sent Events connection for ChatGPT
       if (req.method === 'GET' && url.pathname === '/sse') {
@@ -1448,13 +1463,30 @@ class SignupAssistMCPServer {
           console.log(`[SSE] MCP server connected, session: ${sessionId}`);
           console.log(`[SSE] Active sessions: ${this.sseTransports.size}`);
           
-          // Handle connection close
-          req.on('close', () => {
+          // Keep-alive: some proxies/clients are sensitive to "silent" SSE streams.
+          // Send a lightweight comment heartbeat so the connection stays warm.
+          const keepAlive = setInterval(() => {
+            try {
+              res.write(`:keep-alive\n\n`);
+            } catch {
+              // ignore
+            }
+          }, 15000);
+
+          // Handle connection close (prefer response close; req close can fire in odd edge cases).
+          let cleanedUp = false;
+          const cleanup = () => {
+            if (cleanedUp) return;
+            cleanedUp = true;
+            clearInterval(keepAlive);
             console.log(`[SSE] Connection closed: ${sessionId}`);
             this.sseTransports.delete(sessionId);
             this.sseSessionUserIds.delete(sessionId);
             console.log(`[SSE] Remaining sessions: ${this.sseTransports.size}`);
-          });
+          };
+
+          res.on('close', cleanup);
+          req.on('aborted', cleanup);
           
         } catch (error) {
           console.error(`[SSE] Failed to setup SSE transport:`, error);
