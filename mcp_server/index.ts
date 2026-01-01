@@ -197,6 +197,73 @@ function shouldDebugForMcpMessage(msg: any, verifiedUserId?: string): boolean {
   return false;
 }
 
+// ============================================================
+// Security quick wins: lightweight rate limiting (in-memory)
+// ============================================================
+type RateBucket = { resetAt: number; count: number };
+const rateBuckets: Map<string, RateBucket> = new Map();
+const activeSseByKey: Map<string, number> = new Map();
+
+function isRateLimitEnabled(): boolean {
+  const raw = String(process.env.RATE_LIMIT_ENABLED || "").trim().toLowerCase();
+  if (raw === "false" || raw === "0" || raw === "off" || raw === "no") return false;
+  // Default on in production, off elsewhere.
+  if (!raw) return String(process.env.NODE_ENV || "").toLowerCase() === "production";
+  return raw === "true" || raw === "1" || raw === "on" || raw === "yes";
+}
+
+function normalizeIp(raw: string): string {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  // Common Node format: ::ffff:1.2.3.4
+  if (s.startsWith("::ffff:")) return s.slice("::ffff:".length);
+  return s;
+}
+
+function getClientIp(req: any): string {
+  const xff = String(req?.headers?.["x-forwarded-for"] || "");
+  const first = xff.split(",")[0]?.trim();
+  const real = String(req?.headers?.["x-real-ip"] || "").trim();
+  const remote = req?.socket?.remoteAddress ? String(req.socket.remoteAddress) : "";
+  return normalizeIp(first || real || remote) || "unknown";
+}
+
+function getRateLimitKey(req: any): string {
+  const authHeader = String(req?.headers?.["authorization"] || "").trim();
+  const token = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7).trim() : "";
+  if (token) {
+    // Never store raw tokens; hash to reduce sensitivity and cardinality.
+    const h = crypto.createHash("sha256").update(token).digest("hex").slice(0, 16);
+    return `tok_${h}`;
+  }
+  return `ip_${getClientIp(req)}`;
+}
+
+function pruneRateBuckets(nowMs: number) {
+  // Opportunistic cleanup to avoid unbounded growth (Auth0 JWTs are high-cardinality).
+  if (rateBuckets.size < 5000) return;
+  for (const [k, v] of rateBuckets) {
+    if (nowMs >= v.resetAt) rateBuckets.delete(k);
+  }
+  if (rateBuckets.size > 20000) rateBuckets.clear();
+}
+
+function consumeRateLimit(key: string, max: number, windowMs: number): { allowed: boolean; retryAfterSec: number } {
+  const now = Date.now();
+  pruneRateBuckets(now);
+
+  const bucketKey = `${key}`;
+  let b = rateBuckets.get(bucketKey);
+  if (!b || now >= b.resetAt) {
+    b = { count: 0, resetAt: now + windowMs };
+    rateBuckets.set(bucketKey, b);
+  }
+  b.count += 1;
+  const allowed = b.count <= max;
+  const retryAfterSec = allowed ? 0 : Math.max(1, Math.ceil((b.resetAt - now) / 1000));
+  return { allowed, retryAfterSec };
+}
+
 /**
  * MASTER GUARDRAIL: Apply all V1 chat UX guardrails at HTTP boundary
  * - FIX 1: Always Step headers based on context.step
@@ -1174,6 +1241,46 @@ class SignupAssistMCPServer {
         return;
       }
 
+      // --- Rate limiting (quick win)
+      if (isRateLimitEnabled()) {
+        const key = getRateLimitKey(req);
+        const windowMs = Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000);
+        const window = Number.isFinite(windowMs) && windowMs > 0 ? windowMs : 60_000;
+
+        const respond429 = (retryAfterSec: number) => {
+          res.writeHead(429, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-store',
+            'Retry-After': String(retryAfterSec || 1),
+          });
+          res.end(JSON.stringify({ error: 'rate_limited', message: 'Too many requests. Please retry shortly.' }));
+        };
+
+        // Endpoint-specific limits (token-hash keyed when auth header is present; otherwise IP keyed).
+        if (pathname === '/tools/call' && method === 'POST') {
+          const max = Number(process.env.RATE_LIMIT_TOOLS_MAX || 240);
+          const { allowed, retryAfterSec } = consumeRateLimit(`${key}:tools_call`, Number.isFinite(max) ? max : 240, window);
+          if (!allowed) return respond429(retryAfterSec);
+        }
+        if ((pathname === '/messages' || pathname === '/sse/messages') && method === 'POST') {
+          const max = Number(process.env.RATE_LIMIT_MESSAGES_MAX || 600);
+          const { allowed, retryAfterSec } = consumeRateLimit(`${key}:messages`, Number.isFinite(max) ? max : 600, window);
+          if (!allowed) return respond429(retryAfterSec);
+        }
+        if (pathname === '/sse' && (method === 'GET' || method === 'POST' || method === 'HEAD')) {
+          const max = Number(process.env.RATE_LIMIT_SSE_MAX || 240);
+          const { allowed, retryAfterSec } = consumeRateLimit(`${key}:sse_connect`, Number.isFinite(max) ? max : 240, window);
+          if (!allowed) return respond429(retryAfterSec);
+        }
+        if (pathname === '/oauth/token' && method === 'POST') {
+          // OAuth token exchanges may be bursty; keep a high default to avoid false positives.
+          const max = Number(process.env.RATE_LIMIT_OAUTH_TOKEN_MAX || 2000);
+          const { allowed, retryAfterSec } = consumeRateLimit(`${key}:oauth_token`, Number.isFinite(max) ? max : 2000, window);
+          if (!allowed) return respond429(retryAfterSec);
+        }
+      }
+
       console.log(`[REQUEST] ${method} ${pathname}`);
 
       // --- Bookeo API Helper (for deprecated legacy endpoints)
@@ -1589,6 +1696,9 @@ class SignupAssistMCPServer {
           );
         }
         
+        // Track per-token/IP concurrent SSE streams; ensure we can always release on error.
+        let releaseSseSlot: (() => void) | null = null;
+
         try {
           // Lightweight probe support: respond OK without opening an SSE transport.
           if (req.method === 'HEAD') {
@@ -1946,6 +2056,32 @@ class SignupAssistMCPServer {
             console.log(`[AUTH] Authorized SSE connection via ${authSource}${boundUserId ? ` user=${boundUserId}` : ''}`);
           }
 
+          // Limit concurrent SSE streams per auth token (or per IP when unauthenticated).
+          // This protects the server from retry storms without penalizing other users (token-hash keyed).
+          const sseKey = getRateLimitKey(req);
+          const maxActiveRaw = Number(process.env.SSE_MAX_ACTIVE || 5);
+          const maxActive = Number.isFinite(maxActiveRaw) && maxActiveRaw > 0 ? Math.max(1, Math.min(maxActiveRaw, 50)) : 5;
+          const currentActive = activeSseByKey.get(sseKey) || 0;
+          if (isRateLimitEnabled() && currentActive >= maxActive) {
+            res.writeHead(429, {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'no-store',
+              'Retry-After': '5',
+            });
+            res.end(JSON.stringify({ error: 'rate_limited', message: 'Too many active connections. Please retry shortly.' }));
+            return;
+          }
+          activeSseByKey.set(sseKey, currentActive + 1);
+          let sseSlotReleased = false;
+          releaseSseSlot = () => {
+            if (sseSlotReleased) return;
+            sseSlotReleased = true;
+            const next = Math.max(0, (activeSseByKey.get(sseKey) || 1) - 1);
+            if (next === 0) activeSseByKey.delete(sseKey);
+            else activeSseByKey.set(sseKey, next);
+          };
+
           // Create SSE transport - it will set its own headers.
           // IMPORTANT: ChatGPT appears to treat `/sse` as a base path in some probes.
           // Advertise the message endpoint under `/sse/messages` for maximum compatibility.
@@ -2023,6 +2159,7 @@ class SignupAssistMCPServer {
           const cleanup = () => {
             if (cleanedUp) return;
             cleanedUp = true;
+            releaseSseSlot?.();
             clearInterval(keepAlive);
             console.log(`[SSE] Connection closed: ${sessionId}`);
             this.sseTransports.delete(sessionId);
@@ -2035,6 +2172,8 @@ class SignupAssistMCPServer {
           
         } catch (error) {
           console.error(`[SSE] Failed to setup SSE transport:`, error);
+          // If we reserved an active SSE slot but failed to establish the stream, release it.
+          releaseSseSlot?.();
           if (!res.headersSent) {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'Failed to establish SSE connection' }));
