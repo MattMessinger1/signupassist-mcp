@@ -1642,7 +1642,24 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
   private getSupabaseClient() {
     const supabaseUrl = process.env.SUPABASE_URL!;
     const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-    return createClient(supabaseUrl, supabaseServiceKey);
+    // Prevent "app hangs" if Supabase becomes slow/unreachable.
+    // Without a fetch timeout, awaited session persistence can block the entire tool response.
+    const timeoutMsRaw = Number(process.env.SUPABASE_FETCH_TIMEOUT_MS || 8000);
+    const timeoutMs = Number.isFinite(timeoutMsRaw) && timeoutMsRaw > 0 ? timeoutMsRaw : 8000;
+
+    const fetchWithTimeout: typeof fetch = async (input, init) => {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), timeoutMs);
+      try {
+        return await fetch(input, { ...(init || {}), signal: controller.signal });
+      } finally {
+        clearTimeout(id);
+      }
+    };
+
+    return createClient(supabaseUrl, supabaseServiceKey, {
+      global: { fetch: fetchWithTimeout }
+    });
   }
 
   /**

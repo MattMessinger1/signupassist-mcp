@@ -225,6 +225,8 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
   - **Step header UX**: receipts/audit/cancel are treated as **account management** views and now set `metadata.suppressWizardHeader=true` so ChatGPT doesn’t prepend `Step 1/5 — …` on those screens.
 - `mcp_server/index.ts`
   - `signupassist.chat` tool handler now **suppresses wizard step headers** when `metadata.suppressWizardHeader=true` (keeps Step headers for the actual signup wizard).
+- `mcp_server/ai/APIOrchestrator.ts`
+  - Added a **Supabase fetch timeout** (abort after `SUPABASE_FETCH_TIMEOUT_MS`, default 8000ms) to prevent “app hangs” when awaited session persistence to `browser_sessions` stalls.
 
 - `scripts/regressionSignup2.ts`
   - Added an assertion that **Step 4/5 includes “book now”** (explicit consent phrase).
