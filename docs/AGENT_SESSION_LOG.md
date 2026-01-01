@@ -227,6 +227,7 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 
 - `mcp_server/index.ts`
   - Updated `ensureSuccessFeeDisclosure(...)` to be **non-interactive** (no “would you like me to…” question) and to **skip Step 5** (post-success) and messages that already include a clear “SignupAssist Fee…” line. This reduces accidental follow-up tool calls that can make the UI look like it “loops” after success.
+  - **OAuth testing / fresh account**: restored strict Auth0 challenge on **`GET /sse`** (401 + `WWW-Authenticate` with `authorization_uri`/`token_uri`). This ensures ChatGPT reliably shows the Auth0 login page after disconnect/reconnect so we can test a fresh user.
 
 ### Local verification
 

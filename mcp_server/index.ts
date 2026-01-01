@@ -1221,7 +1221,7 @@ class SignupAssistMCPServer {
       // ChatGPT requires this to discover OAuth endpoints
       if (req.method === 'GET' && url.pathname === '/.well-known/oauth-authorization-server') {
         console.log('[OAUTH] Authorization server metadata request');
-
+        
         const host =
           (req.headers['x-forwarded-host'] as string | undefined) ||
           (req.headers['host'] as string | undefined);
@@ -1233,7 +1233,7 @@ class SignupAssistMCPServer {
           host
             ? `${proto}://${host}`
             : (process.env.RAILWAY_PUBLIC_DOMAIN
-                ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+          ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
                 : `https://signupassist-mcp-production.up.railway.app`);
         
         // RFC 8414 metadata - explicitly NOT including registration_endpoint
@@ -1386,7 +1386,19 @@ class SignupAssistMCPServer {
           // This still prevents any tool execution without auth, while allowing clients to reach the
           // 401 at tool-call time and complete the OAuth flow.
           if (!isAuthorized) {
-            console.log('[AUTH] Unauthenticated SSE connection allowed (OAuth enforced on /messages tools/call)');
+            // ChatGPT Apps OAuth expects the server to challenge on the initial SSE connect.
+            // If we allow unauthenticated SSE, ChatGPT may never present the Auth0 login page,
+            // making it impossible to test a "fresh" account or switch users.
+            const baseUrl = getRequestBaseUrl(req);
+            res.writeHead(401, {
+              "Content-Type": "application/json; charset=utf-8",
+              "Access-Control-Allow-Origin": "*",
+              "Cache-Control": "no-store",
+              "WWW-Authenticate": `Bearer realm="signupassist", error="authentication_required", authorization_uri="${baseUrl}/oauth/authorize", token_uri="${baseUrl}/oauth/token"`,
+            });
+            res.end(JSON.stringify({ error: "authentication_required", message: "OAuth token required" }));
+            console.log('[AUTH] Unauthorized SSE connect (OAuth required)');
+            return;
           } else {
             console.log(`[AUTH] Authorized SSE connection via ${authSource}${boundUserId ? ` user=${boundUserId}` : ''}`);
           }
@@ -1437,7 +1449,7 @@ class SignupAssistMCPServer {
         try {
           // Get session ID from query parameter (set by SSEServerTransport)
           const sessionId = url.searchParams.get('sessionId');
-
+          
           if (!sessionId) {
             console.error('[SSE] No sessionId in /messages request');
             res.writeHead(400, { 'Content-Type': 'application/json' });
@@ -1549,7 +1561,7 @@ class SignupAssistMCPServer {
           if (verifiedUserId) {
             this.sseSessionUserIds.set(sessionId, verifiedUserId);
           }
-
+          
           const transport = this.sseTransports.get(sessionId);
           
           if (!transport) {
@@ -2634,9 +2646,9 @@ class SignupAssistMCPServer {
       if (req.method === 'POST' && url.pathname === '/refresh-feed') {
         res.writeHead(410, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Deprecated: scraping-based feed refresh removed (API-first only).' }));
-        return;
-      }
-
+          return;
+        }
+        
       // --- Hydrate program details (DEPRECATED)
       // Scraping-based detail hydration is removed; this endpoint is intentionally disabled.
       if (req.method === 'POST' && url.pathname === '/hydrate-program-details') {
@@ -3521,11 +3533,11 @@ if (shouldStartHttp) {
         // Enable explicitly via RUN_OPENAI_SMOKE_TESTS=true
         const shouldRunSmokeTests = String(process.env.RUN_OPENAI_SMOKE_TESTS || '').toLowerCase() === 'true';
         if (shouldRunSmokeTests) {
-          console.log('[STARTUP] Running OpenAI smoke tests (background)...');
-          try {
-            await runOpenAISmokeTests({ failFast: false });
-          } catch (error) {
-            console.warn('[STARTUP] OpenAI smoke tests failed (non-fatal):', error);
+        console.log('[STARTUP] Running OpenAI smoke tests (background)...');
+        try {
+          await runOpenAISmokeTests({ failFast: false });
+        } catch (error) {
+          console.warn('[STARTUP] OpenAI smoke tests failed (non-fatal):', error);
           }
         } else {
           console.log('[STARTUP] Skipping OpenAI smoke tests (set RUN_OPENAI_SMOKE_TESTS=true to enable)');
