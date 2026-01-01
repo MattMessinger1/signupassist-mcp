@@ -159,7 +159,7 @@ interface APIContext {
    * IMPORTANT: Keep this minimal (avoid raw user input / PII); it is only used to re-print the user-facing confirmation.
    */
   lastCompletion?: {
-    kind: "immediate" | "scheduled";
+    kind: "immediate" | "scheduled" | "cancel_registration" | "cancel_scheduled";
     completed_at: string; // ISO timestamp
     message: string; // user-facing confirmation text
     booking_number?: string;
@@ -2501,6 +2501,18 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // Never "get stuck" on empty input — treat it as "browse programs".
     const trimmed = String(input || "").trim();
     if (!trimmed) {
+      // If a consequential flow just completed, ChatGPT may send an empty follow-up call
+      // (transport retry / reconnect). Re-send the last confirmation instead of restarting Step 1.
+      if (context.lastCompletion?.message) {
+        const completedAtMs = Date.parse(context.lastCompletion.completed_at);
+        const ageMs = Number.isFinite(completedAtMs) ? Date.now() - completedAtMs : NaN;
+        const isRecent = Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 2 * 60 * 1000; // 2 minutes
+        if (isRecent) {
+          return this.formatResponse(
+            `${context.lastCompletion.message}\n\nIf you'd like to do something else, say **view my registrations** or **browse classes**.`
+          );
+        }
+      }
       const orgRef = context.orgRef || "aim-design";
       this.updateContext(sessionId, {
         orgRef,
@@ -6406,7 +6418,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         message = addResponsibleDelegateFooter(message);
 
         const code = `SCH-${String(scheduled.id).slice(0, 8)}`;
-        this.updateContext(sessionId, {
+        await this.updateContextAndAwait(sessionId, {
           pendingCancellation: {
             kind: 'scheduled',
             scheduled_registration_id: scheduled.id,
@@ -6451,7 +6463,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         message = addResponsibleDelegateFooter(message);
         
         const code = `REG-${String(registration.id).slice(0, 8)}`;
-        this.updateContext(sessionId, {
+        await this.updateContextAndAwait(sessionId, {
           pendingCancellation: {
             kind: 'registration',
             registration_id: registration.id,
@@ -6564,12 +6576,28 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           return this.formatError(`Failed to cancel auto-registration.\n\n_Questions? Email ${SUPPORT_EMAIL}_`);
         }
 
-        const message = getPendingCancelSuccessMessage({
+        const baseMessage = getPendingCancelSuccessMessage({
           program_name: scheduled.program_name
+        });
+        const message = addResponsibleDelegateFooter(baseMessage);
+
+        const finalMessage =
+          `${message}\n\n✅ Auto-registration cancelled.\n\nIf you'd like, say **view my registrations** to confirm the updated status.`;
+
+        await this.updateContextAndAwait(sessionId, {
+          step: FlowStep.COMPLETED,
+          lastCompletion: {
+            kind: "cancel_scheduled",
+            completed_at: new Date().toISOString(),
+            message: finalMessage,
+            scheduled_registration_id,
+            org_ref: context.orgRef || "aim-design",
+          },
         });
 
         return {
-          message,
+          message: finalMessage,
+          step: FlowStep.COMPLETED,
           cards: [],
           cta: {
             buttons: [
@@ -6607,12 +6635,27 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           return this.formatError(`Failed to cancel registration.\n\n_Questions? Email ${SUPPORT_EMAIL}_`);
         }
         
-        const message = getPendingCancelSuccessMessage({
+        const baseMessage = getPendingCancelSuccessMessage({
           program_name: registration.program_name
+        });
+        const message = addResponsibleDelegateFooter(baseMessage);
+        const finalMessage =
+          `${message}\n\n✅ Cancellation confirmed.\n\nSay **view my registrations** to see the updated list.`;
+
+        await this.updateContextAndAwait(sessionId, {
+          step: FlowStep.COMPLETED,
+          lastCompletion: {
+            kind: "cancel_registration",
+            completed_at: new Date().toISOString(),
+            message: finalMessage,
+            org_ref: registration.org_ref,
+            program_ref: registration.program_ref,
+          },
         });
         
         return {
-          message,
+          message: finalMessage,
+          step: FlowStep.COMPLETED,
           cards: [],
           cta: {
             buttons: [
@@ -6640,14 +6683,28 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           // Provider blocked cancellation
           Logger.warn("[cancelRegistration] Bookeo cancellation blocked:", bookeoResult.error);
           
-          const message = getCancelFailedMessage({
+          const baseMessage = getCancelFailedMessage({
             program_name: registration.program_name,
             provider_name: providerName,
             booking_number: registration.booking_number
           });
+          const message = addResponsibleDelegateFooter(baseMessage);
+
+          await this.updateContextAndAwait(sessionId, {
+            step: FlowStep.COMPLETED,
+            lastCompletion: {
+              kind: "cancel_registration",
+              completed_at: new Date().toISOString(),
+              message,
+              booking_number: registration.booking_number,
+              org_ref: registration.org_ref,
+              program_ref: registration.program_ref,
+            },
+          });
           
           return {
             message,
+            step: FlowStep.COMPLETED,
             cards: [],
             cta: {
               buttons: [
@@ -6690,16 +6747,46 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         if (updateError) {
           Logger.error("[cancelRegistration] Failed to update status:", updateError);
         }
-        
-        const message = getCancelSuccessMessage({
-          program_name: registration.program_name,
-          provider_name: providerName
+
+        // Build an accurate cancellation confirmation (don’t claim refund succeeded if it didn’t).
+        const bookingNumber = String(registration.booking_number || "");
+        const code = `REG-${String(registration.id).slice(0, 8)}`;
+        const refundLine =
+          !registration.charge_id
+            ? `✅ **SignupAssist fee:** No $20 success fee charge was found for this registration, so no refund is needed.`
+            : refundSuccessful
+              ? `✅ **SignupAssist fee:** $20 refund initiated (most banks post within 2–5 business days).`
+              : `⚠️ **SignupAssist fee:** We cancelled the booking, but the $20 refund couldn’t be processed automatically right now. Please email ${SUPPORT_EMAIL} and we’ll take care of it.`;
+
+        const finalMessage = [
+          `✅ **Cancellation confirmed**`,
+          ``,
+          `**${registration.program_name}**`,
+          bookingNumber ? `Booking #${bookingNumber}` : ``,
+          ``,
+          `✅ **Provider:** ${providerName} cancellation requested/accepted.`,
+          refundLine,
+          ``,
+          `📌 Reference: **${code}**`,
+        ].filter(Boolean).join("\n");
+
+        const message = addResponsibleDelegateFooter(finalMessage);
+
+        await this.updateContextAndAwait(sessionId, {
+          step: FlowStep.COMPLETED,
+          lastCompletion: {
+            kind: "cancel_registration",
+            completed_at: new Date().toISOString(),
+            message,
+            booking_number: registration.booking_number,
+            org_ref: registration.org_ref,
+            program_ref: registration.program_ref,
+          },
         });
-        
+
         return {
-          message: refundSuccessful 
-            ? message 
-            : message + `\n\n⚠️ _Note: Refund processing may be delayed. Contact ${SUPPORT_EMAIL} if you don't see it within 5-10 business days._`,
+          message,
+          step: FlowStep.COMPLETED,
           cards: [],
           cta: {
             buttons: [
