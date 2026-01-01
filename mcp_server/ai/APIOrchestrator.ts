@@ -151,6 +151,23 @@ interface APIContext {
   // REVIEW UX: ensure we always show the full review summary before asking yes/cancel.
   reviewSummaryShown?: boolean;
 
+  /**
+   * Post-success replay (ChatGPT reliability):
+   * If a booking completes but the client retries the final “book now” message (or a model-generated “yes”),
+   * re-send the last confirmation instead of restarting Step 1 browse.
+   *
+   * IMPORTANT: Keep this minimal (avoid raw user input / PII); it is only used to re-print the user-facing confirmation.
+   */
+  lastCompletion?: {
+    kind: "immediate" | "scheduled";
+    completed_at: string; // ISO timestamp
+    message: string; // user-facing confirmation text
+    booking_number?: string;
+    scheduled_registration_id?: string;
+    org_ref?: string;
+    program_ref?: string;
+  };
+
   // Avoid repeated DB lookups for returning-user prefill within a session
   delegatePrefillAttempted?: boolean;
 
@@ -2808,6 +2825,30 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     switch (context.step) {
       case FlowStep.COMPLETED:
       case FlowStep.BROWSE: {
+        // -------------------------------------------------------------------
+        // Post-booking retry safety:
+        // ChatGPT can retry the same user message after a long-running booking call.
+        // If the user (or model) repeats "book now"/"yes" shortly after completion,
+        // re-send the confirmation instead of restarting discovery.
+        // -------------------------------------------------------------------
+        if (
+          context.lastCompletion?.message &&
+          (this.isBookingConfirmation(input) || this.isUserConfirmation(input))
+        ) {
+          const completedAtMs = Date.parse(context.lastCompletion.completed_at);
+          const ageMs = Number.isFinite(completedAtMs) ? Date.now() - completedAtMs : NaN;
+          const isRecent = Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 2 * 60 * 1000; // 2 minutes
+          if (isRecent) {
+            // Ensure the session still reflects completion so Step 5/5 header renders.
+            if (context.step !== FlowStep.COMPLETED) {
+              this.updateContext(sessionId, { step: FlowStep.COMPLETED });
+            }
+            return this.formatResponse(
+              `${context.lastCompletion.message}\n\nIf you'd like to sign up for another class, say **browse classes**.`
+            );
+          }
+        }
+
         // If user expresses signup/browse intent but we didn't match a specific provider,
         // default to the current org (v1: AIM Design) rather than falling through.
         if (this.hasSignupIntent(input) || this.hasProgramWords(input)) {
@@ -5125,6 +5166,21 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       }
 
       // Step 5: Reset context (awaited so other Railway instances don't briefly see stale SUBMIT state)
+      // Use Design DNA-compliant success message
+      const message = getAPISuccessMessage({
+        program_name: programName,
+        booking_number,
+        start_time: start_time || "TBD",
+        user_timezone: context.userTimezone
+      });
+      const providerPaymentNote = providerCheckoutUrl
+        ? `\n\n💳 **Provider payment:** ${providerCheckoutUrl}\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the $20 success fee._`
+        : `\n\n💳 **Provider payment:** The provider will collect the program fee via their official checkout (often sent by email).\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the $20 success fee._`;
+
+      const finalMessage = `${message}${providerPaymentNote}`;
+
+      // Step 5: Reset context (awaited so other Railway instances don't briefly see stale SUBMIT state)
+      // Also store a minimal lastCompletion record so ChatGPT retry/duplication can re-print the confirmation.
       await this.updateContextAndAwait(sessionId, {
         step: FlowStep.COMPLETED,
         selectedProgram: undefined,
@@ -5137,21 +5193,20 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         stripeCheckoutUrl: undefined,
         stripeCheckoutSessionId: undefined,
         stripeCheckoutCreatedAt: undefined,
+        lastCompletion: {
+          kind: "immediate",
+          completed_at: new Date().toISOString(),
+          message: finalMessage,
+          booking_number,
+          org_ref: orgRef,
+          program_ref: programRef,
+        },
       });
-
-      // Use Design DNA-compliant success message
-      const message = getAPISuccessMessage({
-        program_name: programName,
-        booking_number,
-        start_time: start_time || "TBD",
-        user_timezone: context.userTimezone
-      });
-      const providerPaymentNote = providerCheckoutUrl
-        ? `\n\n💳 **Provider payment:** ${providerCheckoutUrl}\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the $20 success fee._`
-        : `\n\n💳 **Provider payment:** The provider will collect the program fee via their official checkout (often sent by email).\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the $20 success fee._`;
 
       const successResponse: OrchestratorResponse = {
-        message: `${message}${providerPaymentNote}`,
+        message: finalMessage,
+        // Hint for HTTP guardrails: success should render as Step 5/5
+        step: FlowStep.COMPLETED,
         cta: {
           buttons: [
             ...(providerCheckoutUrl ? [{
@@ -5652,6 +5707,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const scheduledDisplay = this.formatTimeForUser(scheduledDate, context);
       return {
         message: successMessage,
+        // Hint for HTTP guardrails: completion should render as Step 5/5
+        step: FlowStep.COMPLETED,
         cards: [{
           title: '🎉 You\'re All Set!',
           subtitle: programName,

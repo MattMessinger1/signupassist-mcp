@@ -219,10 +219,14 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
   - Generic “yes” in REVIEW now **does not** book; it replies with a reminder to type **book now**.
   - Updated the review summary footer to say **book now** (not “yes”) so consent is unambiguous.
   - Follow-up: if the user types “yes” in Step 4, we now **re-print the full review summary** (program/date/fees/payment method) + the “book now” instruction. This prevents the “details missing” UX when ChatGPT retries/drops a previous summary message.
+  - Follow-up: if a booking completes but ChatGPT retries the final confirmation message, we **re-send the last confirmation** (instead of restarting Step 1 browse). Stores a minimal `lastCompletion` (confirmation text + timestamp) in session context for ~2 minutes.
 
 - `scripts/regressionSignup2.ts`
   - Added an assertion that **Step 4/5 includes “book now”** (explicit consent phrase).
   - Added an optional (opt-in) check `REGRESSION_ASSERT_YES_DOESNT_BOOK=1` to verify a generic “yes” in Step 4 does not book.
+
+- `mcp_server/index.ts`
+  - Updated `ensureSuccessFeeDisclosure(...)` to be **non-interactive** (no “would you like me to…” question) and to **skip Step 5** (post-success) and messages that already include a clear “SignupAssist Fee…” line. This reduces accidental follow-up tool calls that can make the UI look like it “loops” after success.
 
 ### Local verification
 

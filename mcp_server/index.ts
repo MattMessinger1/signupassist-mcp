@@ -97,8 +97,16 @@ function stripChatCTAsAndSchemas(resp: any): any {
   return resp;
 }
 
-function ensureSuccessFeeDisclosure(message: string): string {
+function ensureSuccessFeeDisclosure(message: string, wizardStep: WizardStep): string {
   if (!message) return message;
+  // Never append disclosures on the final "success/execution" step; it can confuse the model
+  // and trigger accidental follow-up tool calls (e.g., re-browsing after a booking succeeds).
+  if (wizardStep === "5") return message;
+
+  // If the message already includes an explicit SignupAssist fee line, don't duplicate.
+  if (/SignupAssist\s+Fee:/i.test(message) || /charged\s+only\s+upon\s+successful\s+registration/i.test(message)) {
+    return message;
+  }
   const mentionsFee = /\bsuccess fee\b/i.test(message) || /\$20\b/i.test(message) || /\bsignupassist\b/i.test(message);
   if (!mentionsFee) return message;
 
@@ -107,7 +115,6 @@ function ensureSuccessFeeDisclosure(message: string): string {
     "- SignupAssist charges a **$20 success fee only after we successfully secure your spot**.",
     "- Provider program fee is billed separately via their official checkout (e.g., Bookeo/Stripe).",
     "- All payments use Stripe; card numbers are tokenized and not stored by SignupAssist.",
-    "Would you like me to proceed to confirmation so you can receive the provider’s payment link and authorize the $20 success fee?"
   ].join("\n");
 
   // Avoid duplicating the header; caller already handled wizard header.
@@ -192,7 +199,7 @@ function applyV1ChatGuardrails(resp: any): any {
 // (resolved) API-first: do not override orchestrator form flow here; just enforce Step headers + disclosures.
   // Always enforce correct header based on context.step
   resp.message = ensureWizardHeaderAlways(resp?.message || "", wizardStep);
-  resp.message = ensureSuccessFeeDisclosure(resp.message);
+  resp.message = ensureSuccessFeeDisclosure(resp.message, wizardStep);
 
   return resp;
 }
