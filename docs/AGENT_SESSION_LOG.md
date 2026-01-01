@@ -316,4 +316,27 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 - ChatGPT’s connector creation/validation appears to probe OAuth/OIDC endpoints using **HEAD** (and may rely on OIDC discovery),
   so returning 404 can cause OAuth config validation to fail with a timeout.
 
+---
+
+## 2026-01-01 — Fix: Auth0 “Unknown client” during ChatGPT OAuth
+
+### Symptom
+
+- Auth0 tenant logs show:
+  - `invalid_request: Unknown client: 0pe6q?tHCEDas698UvrDLNC3xns5Iraq` (visually ambiguous `l` vs `1`)
+
+### Root cause
+
+- Production was redirecting `/oauth/authorize` to an **incorrect Auth0 `client_id`** due to a subtle **`1` vs `l`** mismatch.
+- Auth0 treats that as an unknown client and aborts the OAuth flow.
+
+### Evidence (local repro via curl)
+
+- `client_id=...q1t...` → Auth0 responds `invalid_request: Unknown client`.
+- `client_id=...qlt...` → Auth0 responds `302` to `/u/login` (valid client).
+
+### Fix
+
+- Update Railway env var `AUTH0_CLIENT_ID` to the exact value copied from Auth0 dashboard (use the copy button to avoid `l`/`1` confusion), then restart the service.
+
 
