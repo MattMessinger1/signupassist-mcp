@@ -226,5 +226,6 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 ### Local verification
 
 - `npm run mcp:build` ✅
+- Deployed: commit `426c47b` (pushed to `origin/main`)
 
 
