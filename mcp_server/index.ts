@@ -1209,10 +1209,15 @@ class SignupAssistMCPServer {
 
       // --- OpenID Connect Discovery (GET/HEAD /.well-known/openid-configuration)
       // Some clients fetch OIDC discovery even for OAuth-only use-cases.
+      // ChatGPT sometimes probes with odd `/sse` prefixes/suffixes.
       if (
         (req.method === 'GET' || req.method === 'HEAD') &&
         (url.pathname === '/.well-known/openid-configuration' ||
-          url.pathname === '/.well-known/openid_configuration')
+          url.pathname === '/.well-known/openid_configuration' ||
+          url.pathname === '/.well-known/openid-configuration/sse' ||
+          url.pathname === '/.well-known/openid_configuration/sse' ||
+          url.pathname === '/sse/.well-known/openid-configuration' ||
+          url.pathname === '/sse/.well-known/openid_configuration')
       ) {
         console.log('[OAUTH] OpenID configuration request');
         const baseUrl = getRequestBaseUrl(req);
@@ -1409,7 +1414,13 @@ class SignupAssistMCPServer {
       // --- OAuth Authorization Server Metadata (RFC 8414)
       // ChatGPT requires this to discover OAuth endpoints
       // NOTE: Some clients probe with HEAD during validation.
-      if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/.well-known/oauth-authorization-server') {
+      // ChatGPT sometimes probes with odd `/sse` prefixes/suffixes.
+      if (
+        (req.method === 'GET' || req.method === 'HEAD') &&
+        (url.pathname === '/.well-known/oauth-authorization-server' ||
+          url.pathname === '/.well-known/oauth-authorization-server/sse' ||
+          url.pathname === '/sse/.well-known/oauth-authorization-server')
+      ) {
         console.log('[OAUTH] Authorization server metadata request');
         
         const host =
@@ -1634,9 +1645,9 @@ class SignupAssistMCPServer {
           }
 
           // Create SSE transport - it will set its own headers.
-          // Use an absolute /messages URL to maximize compatibility with server-side clients (ChatGPT refresh_actions).
-          const baseUrl = getRequestBaseUrl(req);
-          const transport = new SSEServerTransport(`${baseUrl}/messages`, res);
+          // IMPORTANT: ChatGPT appears to treat `/sse` as a base path in some probes.
+          // Advertise the message endpoint under `/sse/messages` for maximum compatibility.
+          const transport = new SSEServerTransport('/sse/messages', res);
           
           // ✅ connect() calls start() internally - do NOT call start() manually!
           await this.server.connect(transport);
@@ -1653,8 +1664,9 @@ class SignupAssistMCPServer {
           // Compatibility: some server-side clients treat the "endpoint" event as a full URL, not a path.
           // SSEServerTransport emits a relative path; we additionally emit an absolute URL.
           try {
+            const baseUrl = getRequestBaseUrl(req);
             res.write(`event: endpoint\n`);
-            res.write(`data: ${baseUrl}/messages?sessionId=${sessionId}\n\n`);
+            res.write(`data: ${baseUrl}/sse/messages?sessionId=${sessionId}\n\n`);
           } catch {
             // ignore
           }
@@ -1701,7 +1713,7 @@ class SignupAssistMCPServer {
       
       // --- SSE Message Endpoint (POST /messages)
       // Receives JSON-RPC messages from ChatGPT and forwards to the SSE transport
-      if (req.method === 'POST' && url.pathname === '/messages') {
+      if (req.method === 'POST' && (url.pathname === '/messages' || url.pathname === '/sse/messages')) {
         console.log('[SSE] Received POST /messages');
         
         try {
@@ -3690,14 +3702,14 @@ class SignupAssistMCPServer {
       // --- Serve static frontend files (React SPA)
       // IMPORTANT: avoid SPA fallback for protocol endpoints (some clients probe with GET/HEAD).
       // Returning index.html here can cause opaque failures/timeouts in validators.
-      if (url.pathname === '/messages' && req.method !== 'POST') {
+      if ((url.pathname === '/messages' || url.pathname === '/sse/messages') && req.method !== 'POST') {
         res.writeHead(405, {
           'Content-Type': 'application/json; charset=utf-8',
           'Access-Control-Allow-Origin': '*',
           'Cache-Control': 'no-store',
           'Allow': 'POST, OPTIONS',
         });
-        res.end(JSON.stringify({ error: 'method_not_allowed', endpoint: '/messages', allowed: ['POST'] }));
+        res.end(JSON.stringify({ error: 'method_not_allowed', endpoint: url.pathname, allowed: ['POST'] }));
         return;
       }
       if (url.pathname === '/oauth/token' && req.method !== 'POST' && req.method !== 'HEAD') {
