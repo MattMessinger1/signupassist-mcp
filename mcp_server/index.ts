@@ -1633,8 +1633,10 @@ class SignupAssistMCPServer {
             console.log(`[AUTH] Authorized SSE connection via ${authSource}${boundUserId ? ` user=${boundUserId}` : ''}`);
           }
 
-          // Create SSE transport - it will set its own headers
-          const transport = new SSEServerTransport('/messages', res);
+          // Create SSE transport - it will set its own headers.
+          // Use an absolute /messages URL to maximize compatibility with server-side clients (ChatGPT refresh_actions).
+          const baseUrl = getRequestBaseUrl(req);
+          const transport = new SSEServerTransport(`${baseUrl}/messages`, res);
           
           // ✅ connect() calls start() internally - do NOT call start() manually!
           await this.server.connect(transport);
@@ -1646,6 +1648,15 @@ class SignupAssistMCPServer {
           // Bind sessionId → Auth0 sub for downstream /messages injection
           if (boundUserId) {
             this.sseSessionUserIds.set(sessionId, boundUserId);
+          }
+
+          // Compatibility: some server-side clients treat the "endpoint" event as a full URL, not a path.
+          // SSEServerTransport emits a relative path; we additionally emit an absolute URL.
+          try {
+            res.write(`event: endpoint\n`);
+            res.write(`data: ${baseUrl}/messages?sessionId=${sessionId}\n\n`);
+          } catch {
+            // ignore
           }
           
           console.log(`[SSE] MCP server connected, session: ${sessionId}`);
