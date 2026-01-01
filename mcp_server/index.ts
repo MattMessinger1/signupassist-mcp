@@ -1823,6 +1823,43 @@ class SignupAssistMCPServer {
           const transport = this.sseTransports.get(sessionId);
           
           if (!transport) {
+            // Compatibility: some clients open /sse briefly, then POST /messages after the SSE stream
+            // has already closed. For non-consequential calls (tools/list), return the result directly
+            // in the HTTP response so clients don't need a live SSE stream to refresh actions.
+            if (methodName === 'tools/list') {
+              const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
+              const apiTools = Array.from(this.tools.values())
+                .filter((tool) => tool?._meta?.["openai/visibility"] !== "private")
+                .map((tool) => ({
+                  name: tool.name,
+                  description: tool.description,
+                  inputSchema: tool.inputSchema,
+                  _meta: tool._meta,
+                }));
+              const visibleTools = includePrivate
+                ? apiTools
+                : apiTools.filter((t) => t._meta?.["openai/visibility"] === "public");
+
+              console.log(
+                `[MCP] /messages fallback tools/list (no transport) returning ${visibleTools.length} tools (${includePrivate ? "all" : "public-only"}):`,
+                visibleTools.map((t) => t.name)
+              );
+
+              res.writeHead(200, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Access-Control-Allow-Origin': '*',
+                'Cache-Control': 'no-store',
+              });
+              res.end(
+                JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: parsed?.id ?? 1,
+                  result: { tools: visibleTools },
+                })
+              );
+              return;
+            }
+
             console.error(`[SSE] No transport found for session: ${sessionId}`);
             res.writeHead(404, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'Session not found. Please reconnect to /sse' }));
