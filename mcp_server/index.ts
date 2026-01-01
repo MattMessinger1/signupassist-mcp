@@ -264,6 +264,31 @@ function consumeRateLimit(key: string, max: number, windowMs: number): { allowed
   return { allowed, retryAfterSec };
 }
 
+// Body size caps (quick win): avoid unbounded buffering on POST endpoints.
+function normalizeMaxBodyBytes(raw: any, fallback: number): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  // Clamp to sane bounds for an API server.
+  return Math.max(16 * 1024, Math.min(n, 2 * 1024 * 1024));
+}
+
+async function readBodyWithLimit(req: any, maxBytes: number): Promise<string> {
+  const max = normalizeMaxBodyBytes(maxBytes, 256 * 1024);
+  let bytes = 0;
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    bytes += buf.length;
+    if (bytes > max) {
+      const err: any = new Error('Request body too large');
+      err.code = 'BODY_TOO_LARGE';
+      throw err;
+    }
+    chunks.push(buf);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 /**
  * MASTER GUARDRAIL: Apply all V1 chat UX guardrails at HTTP boundary
  * - FIX 1: Always Step headers based on context.step
@@ -1457,10 +1482,8 @@ class SignupAssistMCPServer {
         
         try {
           // Read request body
-          let body = '';
-          for await (const chunk of req) {
-            body += chunk;
-          }
+          const maxBytes = normalizeMaxBodyBytes(process.env.MAX_OAUTH_TOKEN_BODY_BYTES, 64 * 1024);
+          const body = await readBodyWithLimit(req, maxBytes);
           
           // Parse the body (could be JSON or form-urlencoded)
           let tokenParams: Record<string, string> = {};
@@ -1531,6 +1554,11 @@ class SignupAssistMCPServer {
           });
           res.end(responseData);
         } catch (error: any) {
+          if (error?.code === 'BODY_TOO_LARGE') {
+            res.writeHead(413, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+            res.end(JSON.stringify({ error: 'payload_too_large', message: 'Request body too large' }));
+            return;
+          }
           console.error('[OAUTH] Token exchange error:', error);
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Token exchange failed', details: error?.message }));
@@ -2191,10 +2219,8 @@ class SignupAssistMCPServer {
         
         try {
           // Read request body (needed to decide whether auth / SSE is required)
-          let body = '';
-          for await (const chunk of req) {
-            body += chunk;
-          }
+          const maxBytes = normalizeMaxBodyBytes(process.env.MAX_MESSAGES_BODY_BYTES, 256 * 1024);
+          const body = await readBodyWithLimit(req, maxBytes);
           // PROD SAFETY: do not log raw message bodies (can contain PII like email/DOB).
           // Enable extra debugging only via DEBUG_LOGGING + DEBUG_SESSION_ID/DEBUG_USER_ID,
           // and even then only log redacted summaries (not raw bodies).
@@ -2485,6 +2511,15 @@ class SignupAssistMCPServer {
           }
           
         } catch (error: any) {
+          if (error?.code === 'BODY_TOO_LARGE') {
+            res.writeHead(413, {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'no-store',
+            });
+            res.end(JSON.stringify({ error: 'payload_too_large', message: 'Request body too large' }));
+            return;
+          }
           console.error('[SSE] Error handling message:', error);
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Failed to process message', details: error?.message }));
@@ -3110,16 +3145,36 @@ class SignupAssistMCPServer {
         }
 
         let body = '';
-        req.on('data', (chunk) => (body += chunk));
-        req.on('end', async () => {
-          try {
-            const parsed = JSON.parse(body);
-            let { tool, args } = parsed;
-            if (!tool) {
-              res.writeHead(400, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: 'Missing required field: tool' }));
-              return;
-            }
+        try {
+          const maxBytes = normalizeMaxBodyBytes(process.env.MAX_TOOLS_CALL_BODY_BYTES, 256 * 1024);
+          body = await readBodyWithLimit(req, maxBytes);
+        } catch (e: any) {
+          if (e?.code === 'BODY_TOO_LARGE') {
+            res.writeHead(413, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+            res.end(JSON.stringify({ error: 'payload_too_large', message: 'Request body too large' }));
+            return;
+          }
+          res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ error: 'invalid_request_body' }));
+          return;
+        }
+
+        let parsed: any;
+        try {
+          parsed = JSON.parse(body);
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid JSON' }));
+          return;
+        }
+
+        try {
+          let { tool, args } = parsed;
+          if (!tool) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Missing required field: tool' }));
+            return;
+          }
 
             // ================================================================
             // AUTH0 USER BINDING / MAPPING (DEFENSE-IN-DEPTH)
@@ -3189,7 +3244,6 @@ class SignupAssistMCPServer {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: err.message || 'Unknown error' }));
           }
-        });
         return;
       }
 
