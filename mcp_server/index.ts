@@ -483,6 +483,35 @@ import crypto from 'crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// ==================== OAuth/OIDC Discovery Helpers ====================
+// Some clients (including ChatGPT) may fetch OpenID Connect discovery endpoints even when using OAuth.
+// We expose OIDC discovery + JWKS under our own domain for maximum compatibility.
+const AUTH0_JWKS_JSON_TTL_MS = 5 * 60 * 1000;
+let cachedAuth0JwksJson:
+  | { domain: string; fetchedAt: number; jwks: any }
+  | null = null;
+
+async function getCachedAuth0JwksJson(domain: string): Promise<any> {
+  const now = Date.now();
+  if (
+    cachedAuth0JwksJson &&
+    cachedAuth0JwksJson.domain === domain &&
+    now - cachedAuth0JwksJson.fetchedAt < AUTH0_JWKS_JSON_TTL_MS
+  ) {
+    return cachedAuth0JwksJson.jwks;
+  }
+
+  const jwksUrl = `https://${domain}/.well-known/jwks.json`;
+  const res = await fetch(jwksUrl, { method: 'GET' });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Failed to fetch Auth0 JWKS (${res.status}): ${text.slice(0, 200)}`);
+  }
+  const jwks = await res.json();
+  cachedAuth0JwksJson = { domain, fetchedAt: now, jwks };
+  return jwks;
+}
+
 // Import tool providers
 import { bookeoTools } from './providers/bookeo.js';
 import { stripeTools } from './providers/stripe.js';
@@ -1138,6 +1167,69 @@ class SignupAssistMCPServer {
       const AUTH0_CLIENT_ID = process.env.AUTH0_CLIENT_ID;
       const AUTH0_CLIENT_SECRET = process.env.AUTH0_CLIENT_SECRET;
       const AUTH0_AUDIENCE = process.env.AUTH0_AUDIENCE || 'https://shipworx.ai/api';
+
+      // --- OpenID Connect Discovery (GET/HEAD /.well-known/openid-configuration)
+      // Some clients fetch OIDC discovery even for OAuth-only use-cases.
+      if (
+        (req.method === 'GET' || req.method === 'HEAD') &&
+        (url.pathname === '/.well-known/openid-configuration' ||
+          url.pathname === '/.well-known/openid_configuration')
+      ) {
+        console.log('[OAUTH] OpenID configuration request');
+        const baseUrl = getRequestBaseUrl(req);
+
+        // Provide a minimal, proxy-friendly OIDC discovery document.
+        const openid = {
+          issuer: baseUrl,
+          authorization_endpoint: `${baseUrl}/oauth/authorize`,
+          token_endpoint: `${baseUrl}/oauth/token`,
+          jwks_uri: `${baseUrl}/.well-known/jwks.json`,
+          response_types_supported: ['code'],
+          subject_types_supported: ['public'],
+          id_token_signing_alg_values_supported: ['RS256'],
+          scopes_supported: ['openid', 'profile', 'email', 'offline_access'],
+          token_endpoint_auth_methods_supported: ['client_secret_post', 'client_secret_basic'],
+          claims_supported: ['sub', 'iss', 'aud', 'exp', 'iat', 'email', 'name'],
+          code_challenge_methods_supported: ['S256', 'plain'],
+          service_documentation: `${baseUrl}/docs`,
+        };
+
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=3600',
+        });
+        if (req.method === 'HEAD') {
+          res.end();
+          return;
+        }
+        res.end(JSON.stringify(openid, null, 2));
+        return;
+      }
+
+      // --- JWKS Endpoint (GET/HEAD /.well-known/jwks.json)
+      // Serves Auth0 JWKS under our own domain (same-root-domain compatibility).
+      if (
+        (req.method === 'GET' || req.method === 'HEAD') &&
+        (url.pathname === '/.well-known/jwks.json' || url.pathname === '/oauth/jwks')
+      ) {
+        console.log('[OAUTH] JWKS request');
+        try {
+          const jwks = await getCachedAuth0JwksJson(AUTH0_DOMAIN);
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'public, max-age=3600',
+          });
+          if (req.method === 'HEAD') {
+            res.end();
+            return;
+          }
+          res.end(JSON.stringify(jwks));
+        } catch (e: any) {
+          res.writeHead(502, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify({ error: 'jwks_unavailable', message: e?.message || 'Failed to fetch JWKS' }));
+        }
+        return;
+      }
       
       // --- OAuth Authorization Proxy (GET/HEAD /oauth/authorize)
       // Redirects to Auth0 with all query params preserved.
