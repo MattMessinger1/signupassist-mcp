@@ -158,6 +158,10 @@ function isDebugLoggingEnabled(): boolean {
   return String(process.env.DEBUG_LOGGING || "").toLowerCase() === "true";
 }
 
+function isMcpRefreshDebugEnabled(): boolean {
+  return String(process.env.DEBUG_MCP_REFRESH || "").toLowerCase() === "true";
+}
+
 function redactForLogs(input: string): string {
   const s = String(input || "");
   // Emails
@@ -1549,6 +1553,14 @@ class SignupAssistMCPServer {
       // some validation flows may probe with HEAD /sse.
       if ((req.method === 'GET' || req.method === 'POST' || req.method === 'HEAD') && url.pathname === '/sse') {
         console.log('[SSE] New SSE connection request');
+
+        if (isMcpRefreshDebugEnabled()) {
+          const accept = String(req.headers['accept'] || '');
+          const hasAuth = !!req.headers['authorization'];
+          console.log(
+            `[DEBUG_MCP_REFRESH] /sse method=${req.method} accept=${JSON.stringify(accept)} hasAuth=${hasAuth}`
+          );
+        }
         
         try {
           // Lightweight probe support: respond OK without opening an SSE transport.
@@ -1717,25 +1729,7 @@ class SignupAssistMCPServer {
         console.log('[SSE] Received POST /messages');
         
         try {
-          // Get session ID from query parameter (set by SSEServerTransport)
-          const sessionId = url.searchParams.get('sessionId');
-          
-          if (!sessionId) {
-            console.error('[SSE] No sessionId in /messages request');
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Missing sessionId query parameter' }));
-            return;
-          }
-
-          // ================================================================
-          // AUTH (PRODUCTION): Require OAuth (Auth0 JWT) or internal MCP_ACCESS_TOKEN
-          // Also: bind / refresh sessionId → userId mapping so we can inject into tools.
-          // ================================================================
-          const isProd = process.env.NODE_ENV === 'production';
-          const authHeader = req.headers['authorization'] as string | undefined;
-          const expectedToken = process.env.MCP_ACCESS_TOKEN;
-
-          // Read request body (we need method name to decide whether auth is required)
+          // Read request body (needed to decide whether auth / SSE is required)
           let body = '';
           for await (const chunk of req) {
             body += chunk;
@@ -1753,13 +1747,122 @@ class SignupAssistMCPServer {
 
           const methodName = parsed?.method ? String(parsed.method) : '';
           const isToolCall = methodName === 'tools/call';
+          const isDiscoveryCall = methodName === 'tools/list' || methodName === 'initialize';
 
           // Targeted debug logging (always redacted). Never log raw message bodies in prod.
           // NOTE: We may not have verifiedUserId until after auth; we re-check below after auth.
           const maybeToolName = parsed?.params?.name ? String(parsed.params.name) : undefined;
-          if (isDebugLoggingEnabled() && !isProd) {
-            console.log('[DEBUG] /messages (dev) method:', methodName, 'tool:', maybeToolName);
+          const isProd = process.env.NODE_ENV === 'production';
+          if (isDebugLoggingEnabled() && !isProd) console.log('[DEBUG] /messages (dev) method:', methodName, 'tool:', maybeToolName);
+
+          // Get session ID from query parameter (set by SSEServerTransport).
+          // IMPORTANT: For discovery calls (initialize/tools/list), some clients omit sessionId.
+          // We intentionally allow discovery without a live SSE transport so refresh flows don't time out.
+          const sessionId = url.searchParams.get('sessionId');
+          if (isMcpRefreshDebugEnabled()) {
+            const sid = sessionId ? `${sessionId.slice(0, 8)}…` : 'none';
+            const hasAuth = !!req.headers['authorization'];
+            console.log(
+              `[DEBUG_MCP_REFRESH] /messages path=${url.pathname} methodName=${methodName || 'unknown'} tool=${maybeToolName || ''} sessionId=${sid} hasAuth=${hasAuth}`
+            );
           }
+
+          // MCP discovery compatibility: respond synchronously (HTTP 200 + JSON-RPC body).
+          // This avoids relying on a live SSE stream during ChatGPT refresh_actions.
+          if (isDiscoveryCall) {
+            if (methodName === 'tools/list') {
+              const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
+              const apiTools = Array.from(this.tools.values())
+                .filter((tool) => tool?._meta?.["openai/visibility"] !== "private")
+                .map((tool) => ({
+                  name: tool.name,
+                  description: tool.description,
+                  inputSchema: tool.inputSchema,
+                  _meta: tool._meta,
+                }));
+
+              const visibleTools = includePrivate
+                ? apiTools
+                : apiTools.filter((t) => t._meta?.["openai/visibility"] === "public");
+
+              console.log(
+                `[MCP] /messages discovery tools/list (HTTP 200) returning ${visibleTools.length} tools (${includePrivate ? "all" : "public-only"}):`,
+                visibleTools.map((t) => t.name)
+              );
+              if (isMcpRefreshDebugEnabled()) {
+                console.log(`[DEBUG_MCP_REFRESH] /messages tools/list -> 200 (sessionIdPresent=${!!sessionId})`);
+              }
+
+              res.writeHead(200, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Access-Control-Allow-Origin': '*',
+                'Cache-Control': 'no-store',
+              });
+              res.end(
+                JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: parsed?.id ?? 1,
+                  result: { tools: visibleTools },
+                })
+              );
+              return;
+            }
+
+            if (methodName === 'initialize') {
+              const requestedVersion =
+                (parsed?.params?.protocolVersion as string | undefined) ||
+                (parsed?.params?.protocol_version as string | undefined) ||
+                '2024-11-05';
+
+              const serverVersion =
+                process.env.APP_VERSION ||
+                process.env.RAILWAY_GIT_COMMIT_SHA ||
+                VERSION_INFO.commit ||
+                'dev';
+
+              const result = {
+                protocolVersion: requestedVersion,
+                capabilities: { tools: {} },
+                serverInfo: { name: 'SignupAssist MCP', version: serverVersion },
+              };
+
+              console.log(`[MCP] /messages discovery initialize (HTTP 200) protocolVersion=${requestedVersion}`);
+              if (isMcpRefreshDebugEnabled()) {
+                console.log(`[DEBUG_MCP_REFRESH] /messages initialize -> 200 (sessionIdPresent=${!!sessionId})`);
+              }
+
+              res.writeHead(200, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Access-Control-Allow-Origin': '*',
+                'Cache-Control': 'no-store',
+              });
+              res.end(
+                JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: parsed?.id ?? 0,
+                  result,
+                })
+              );
+              return;
+            }
+          }
+
+          if (!sessionId) {
+            console.error('[SSE] No sessionId in /messages request');
+            if (isMcpRefreshDebugEnabled()) {
+              console.log(`[DEBUG_MCP_REFRESH] /messages missing sessionId -> 400 methodName=${methodName || 'unknown'}`);
+            }
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Missing sessionId query parameter' }));
+            return;
+          }
+
+          // ================================================================
+          // AUTH (PRODUCTION): Require OAuth (Auth0 JWT) or internal MCP_ACCESS_TOKEN
+          // Also: bind / refresh sessionId → userId mapping so we can inject into tools.
+          // ================================================================
+          const authHeader = req.headers['authorization'] as string | undefined;
+          const expectedToken = process.env.MCP_ACCESS_TOKEN;
 
           let isAuthorized = false;
           let authSource: 'mcp_access_token' | 'auth0' | 'dev' | 'none' = 'none';
@@ -1824,6 +1927,9 @@ class SignupAssistMCPServer {
             });
             res.end(JSON.stringify({ error: "authentication_required", message: "OAuth token required" }));
             console.log('[AUTH] Unauthorized tool call attempt via /messages (OAuth required)');
+            if (isMcpRefreshDebugEnabled()) {
+              console.log(`[DEBUG_MCP_REFRESH] /messages tools/call unauthorized -> 401 sessionId=${sessionId.slice(0, 8)}…`);
+            }
             return;
           }
 
@@ -1873,6 +1979,9 @@ class SignupAssistMCPServer {
             }
 
             console.error(`[SSE] No transport found for session: ${sessionId}`);
+            if (isMcpRefreshDebugEnabled()) {
+              console.log(`[DEBUG_MCP_REFRESH] /messages no transport -> 404 methodName=${methodName || 'unknown'} sessionId=${sessionId.slice(0, 8)}…`);
+            }
             res.writeHead(404, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'Session not found. Please reconnect to /sse' }));
             return;
@@ -1910,6 +2019,9 @@ class SignupAssistMCPServer {
           // Forward the message to the SSE transport
           await transport.handlePostMessage(req, res, bodyToForward);
           console.log(`[SSE] Message handled for session: ${sessionId}`);
+          if (isMcpRefreshDebugEnabled()) {
+            console.log(`[DEBUG_MCP_REFRESH] /messages forwarded -> 202 methodName=${methodName || 'unknown'} sessionId=${sessionId.slice(0, 8)}…`);
+          }
           
         } catch (error: any) {
           console.error('[SSE] Error handling message:', error);
