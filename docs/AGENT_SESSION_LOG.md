@@ -247,6 +247,37 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 ### Local verification
 
 - `npm run mcp:build` ✅
+
+---
+
+## 2026-01-01 — Fix: `audit REG-...` crashes when audit args are redacted (`participants.map is not a function`)
+
+### Symptom (prod)
+
+- Chat: `audit REG-xxxxxxxx`
+- UI: **“An error occurred while loading the audit trail.”**
+- Logs: `[viewAuditTrail] Exception` (or specifically: `participants.map is not a function`)
+
+### Root cause
+
+- `mcp_server/middleware/audit.ts` redacts PII in `audit_events.args_json` by replacing keys like `delegate_*` / `participant_*` with the string `"[REDACTED]"`.
+- `mcp_server/ai/APIOrchestrator.ts` assumed `args_json.participant_data` was always an array and called `participants.map(...)`, which throws when `participant_data` is a redacted string (or otherwise non-array).
+
+### Fix (code)
+
+- `mcp_server/ai/APIOrchestrator.ts`
+  - Hardened `viewAuditTrail()` event rendering (`formatEventDetails`) to safely handle:
+    - redacted/non-array `participant_data`
+    - redacted/non-object `delegate_data`
+    - non-string IDs when truncating
+    - missing `result_json.success` (renders **Unknown** instead of defaulting to failed)
+  - Improved catch logging to include the thrown error message while still redacting PII.
+
+### How to verify
+
+- Deploy the commit containing the above `APIOrchestrator.ts` change.
+- In ChatGPT, run: `audit REG-xxxxxxxx` for a recent registration.
+- Expected: audit trail renders; “Participants” shows **[REDACTED]** (or `N/A`) and no exception is thrown.
 - Deployed: commit `426c47b` (pushed to `origin/main`)
 
 ---

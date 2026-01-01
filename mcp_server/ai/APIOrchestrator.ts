@@ -6569,25 +6569,61 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       
       // Helper to extract key details from args/results for display
       const formatEventDetails = (event: any): { input: string; output: string } => {
-        const args = event.args_json || {};
-        const resultSuccess = event.result_json?.success; // Check TOP level for success flag
-        const result = event.result_json?.data || event.result_json || {};
+        // IMPORTANT: audit middleware may redact PII fields (e.g., delegate_data / participant_data)
+        // by replacing values with the string "[REDACTED]".
+        const args = (event?.args_json && typeof event.args_json === 'object') ? event.args_json : {};
+        const resultJson = event?.result_json;
+        const resultSuccess =
+          typeof resultJson?.success === 'boolean'
+            ? resultJson.success
+            : undefined;
+        const result =
+          (resultJson && typeof resultJson === 'object' && 'data' in (resultJson as any))
+            ? (resultJson as any).data
+            : (resultJson || {});
+
+        const isRedacted = (value: any): boolean =>
+          typeof value === 'string' && value.trim() === '[REDACTED]';
+
+        const safePrefix = (value: any, chars: number): string => {
+          if (value == null) return 'N/A';
+          const s = typeof value === 'string' ? value : String(value);
+          if (!s.trim()) return 'N/A';
+          if (isRedacted(s)) return '[REDACTED]';
+          return s.length > chars ? `${s.slice(0, chars)}...` : s;
+        };
+
+        const statusLabel = (success: any, okLabel: string, failLabel: string): string =>
+          success === true ? okLabel : success === false ? failLabel : 'Unknown';
         
         if (event.tool === 'bookeo.confirm_booking') {
-          const delegate = args.delegate_data || {};
-          const participants = args.participant_data || [];
-          const participantNames = participants.map((p: any) => `${p.firstName} ${p.lastName}`).join(', ');
+          const delegateRaw = (args as any).delegate_data;
+          const participantRaw = (args as any).participant_data;
+
+          const delegate =
+            delegateRaw && typeof delegateRaw === 'object' && !Array.isArray(delegateRaw)
+              ? delegateRaw
+              : {};
+          const participants = Array.isArray(participantRaw) ? participantRaw : [];
+          const participantNames = participants
+            .map((p: any) => `${p?.firstName || ''} ${p?.lastName || ''}`.trim())
+            .filter(Boolean)
+            .join(', ');
           
           return {
             input: [
-              `• Delegate: ${delegate.firstName || ''} ${delegate.lastName || ''} (${delegate.email || 'N/A'})`,
-              `• Participants: ${participantNames || 'N/A'}`,
-              `• Event ID: ${args.event_id?.substring(0, 20) || 'N/A'}...`
+              isRedacted(delegateRaw)
+                ? `• Delegate: [REDACTED]`
+                : `• Delegate: ${(delegate.firstName || '')} ${(delegate.lastName || '')} (${delegate.email || 'N/A'})`,
+              isRedacted(participantRaw)
+                ? `• Participants: [REDACTED]`
+                : `• Participants: ${participantNames || 'N/A'}`,
+              `• Event ID: ${safePrefix((args as any).event_id, 20)}`
             ].join('\n'),
             output: [
-              `• Booking #: ${result.booking_number || 'N/A'}`,
-              `• Program: ${result.program_name || 'N/A'}`,
-              `• Status: ${resultSuccess ? 'Success' : 'Failed'}`
+              `• Booking #: ${(result as any)?.booking_number || 'N/A'}`,
+              `• Program: ${(result as any)?.program_name || 'N/A'}`,
+              `• Status: ${statusLabel(resultSuccess, 'Success', 'Failed')}`
             ].join('\n')
           };
         }
@@ -6595,12 +6631,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         if (event.tool === 'stripe.charge_success_fee') {
           return {
             input: [
-              `• Amount: ${formatDollars(args.amount_cents || 0)}`,
-              `• Booking #: ${args.booking_number || 'N/A'}`
+              `• Amount: ${formatDollars(Number((args as any).amount_cents) || 0)}`,
+              `• Booking #: ${(args as any).booking_number || 'N/A'}`
             ].join('\n'),
             output: [
-              `• Charge ID: ${result.charge_id?.substring(0, 12) || 'N/A'}...`,
-              `• Status: ${resultSuccess ? 'Charged' : 'Failed'}`
+              `• Charge ID: ${safePrefix((result as any)?.charge_id, 12)}`,
+              `• Status: ${statusLabel(resultSuccess, 'Charged', 'Failed')}`
             ].join('\n')
           };
         }
@@ -6639,13 +6675,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           details.input,
         ];
         
-        if (event.args_hash) {
+        if (typeof event.args_hash === 'string' && event.args_hash) {
           descriptionParts.push(`🔏 **Input Hash:** \`${event.args_hash.substring(0, 12)}...\``);
         }
         
         descriptionParts.push('', `**Result:**`, details.output);
         
-        if (event.result_hash) {
+        if (typeof event.result_hash === 'string' && event.result_hash) {
           descriptionParts.push(`🔏 **Output Hash:** \`${event.result_hash.substring(0, 12)}...\``);
         }
         
@@ -6669,7 +6705,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       ];
       
       // Include truncated JWS token for cryptographic verification
-      if (mandate?.jws_compact) {
+      if (typeof mandate?.jws_compact === 'string' && mandate.jws_compact) {
         mandateDescriptionParts.push('');
         mandateDescriptionParts.push(`📜 **Cryptographic Token:** \`${mandate.jws_compact.substring(0, 40)}...\``);
         mandateDescriptionParts.push(`_(Verifiable JWS signature - tamper-proof authorization record)_`);
@@ -6737,9 +6773,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         }
       };
     } catch (err) {
-      Logger.error("[viewAuditTrail] Exception", {
+      const errMsg = String((err as any)?.message || err || 'unknown');
+      Logger.error(`[viewAuditTrail] Exception: ${errMsg}`, {
         errName: (err as any)?.name,
-        errMessage: (err as any)?.message,
         registration_id,
         scheduled_registration_id
       });
