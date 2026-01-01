@@ -1156,6 +1156,12 @@ class SignupAssistMCPServer {
           auth0Url.searchParams.set('audience', AUTH0_AUDIENCE);
         }
 
+        // Force canonical Auth0 client id from server config (ignore any client-supplied override).
+        // This makes reconnect flows resilient if the ChatGPT UI stores/uses an outdated client id.
+        if (AUTH0_CLIENT_ID) {
+          auth0Url.searchParams.set('client_id', AUTH0_CLIENT_ID);
+        }
+
         // Make it easy to switch accounts inside ChatGPT's embedded browser.
         // Without this, Auth0 can silently reuse an existing SSO session.
         if (!auth0Url.searchParams.has('prompt')) {
@@ -1207,13 +1213,10 @@ class SignupAssistMCPServer {
             client_id: tokenParams.client_id ? '***' : undefined
           });
           
-          // Add client credentials if not provided (ChatGPT may not send them)
-          if (!tokenParams.client_id && AUTH0_CLIENT_ID) {
-            tokenParams.client_id = AUTH0_CLIENT_ID;
-          }
-          if (!tokenParams.client_secret && AUTH0_CLIENT_SECRET) {
-            tokenParams.client_secret = AUTH0_CLIENT_SECRET;
-          }
+          // Force canonical Auth0 client credentials from server config.
+          // This avoids "invalid_client" errors if the ChatGPT UI has stale/incorrect values.
+          if (AUTH0_CLIENT_ID) tokenParams.client_id = AUTH0_CLIENT_ID;
+          if (AUTH0_CLIENT_SECRET) tokenParams.client_secret = AUTH0_CLIENT_SECRET;
           
           // Forward to Auth0 token endpoint
           const auth0TokenUrl = `https://${AUTH0_DOMAIN}/oauth/token`;
@@ -1229,6 +1232,9 @@ class SignupAssistMCPServer {
           const responseData = await auth0Response.text();
           
           console.log('[OAUTH] Auth0 token response status:', auth0Response.status);
+          if (auth0Response.status >= 400) {
+            console.warn('[OAUTH] Auth0 token response error (truncated):', String(responseData || '').slice(0, 400));
+          }
           
           // Forward Auth0's response back to ChatGPT
           res.writeHead(auth0Response.status, {
