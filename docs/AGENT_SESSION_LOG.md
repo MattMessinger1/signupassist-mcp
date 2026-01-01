@@ -249,4 +249,37 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 - `npm run mcp:build` ✅
 - Deployed: commit `426c47b` (pushed to `origin/main`)
 
+---
+
+## 2026-01-01 — Fix: ChatGPT “Create App” broken by `GET /sse` OAuth challenge
+
+### Symptom (prod)
+
+- In ChatGPT Settings → Connectors → **New App**, clicking **Create** fails after providing the MCP Server URL (e.g. `/sse`) + OAuth credentials.
+
+### Evidence
+
+- Live server responded:
+  - `GET /mcp` → **200**
+  - `GET /.well-known/oauth-authorization-server` → **200**
+  - `HEAD /sse` → **404**
+  - `GET /sse` (no Authorization) → **401** (`WWW-Authenticate: ... authentication_required ...`)
+  - `POST /sse` (no Authorization) → **200** `text/event-stream`
+
+### Root cause
+
+- We were **requiring OAuth on `GET /sse`** (while allowing unauthenticated `POST /sse` for connector refresh).
+- It appears ChatGPT’s **Create App** flow may validate using **`GET /sse`**, and treats the 401 challenge as a hard failure instead of triggering OAuth.
+
+### Fix (code)
+
+- `mcp_server/index.ts`
+  - Allow **unauthenticated `GET /sse`** (same as `POST /sse`) to maximize compatibility with ChatGPT connector creation/validation.
+  - Support **`HEAD /sse`** as a lightweight validation probe (returns 200 without opening an SSE transport).
+  - OAuth is still enforced for **consequential calls** via `POST /messages` when `method === tools/call` (401 + `WWW-Authenticate` to trigger OAuth consent).
+
+### Notes / follow-up
+
+- If we still need a “force login on connect” mode for specific testing, add an explicit opt-in switch (e.g. query param or env flag) rather than defaulting to 401 on `GET /sse`.
+
 

@@ -1045,7 +1045,7 @@ class SignupAssistMCPServer {
     const httpServer = createServer(async (req, res) => {
       // --- CORS setup
       res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, HEAD, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-run-id, X-Mandate-JWS, X-Mandate-Id');
 
       if (req.method === 'OPTIONS') {
@@ -1373,12 +1373,23 @@ class SignupAssistMCPServer {
       
       // --- SSE Connection Endpoint (/sse)
       // Establishes a Server-Sent Events connection for ChatGPT.
-      // NOTE: Some clients (including ChatGPT connector "Refresh") use POST /sse.
-      // We accept both GET and POST and treat both as the SSE stream endpoint.
-      if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/sse') {
+      // NOTE: Some clients use POST /sse (connector refresh), others use GET /sse, and
+      // some validation flows may probe with HEAD /sse.
+      if ((req.method === 'GET' || req.method === 'POST' || req.method === 'HEAD') && url.pathname === '/sse') {
         console.log('[SSE] New SSE connection request');
         
         try {
+          // Lightweight probe support: respond OK without opening an SSE transport.
+          if (req.method === 'HEAD') {
+            res.writeHead(200, {
+              'Content-Type': 'text/event-stream',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'no-store',
+            });
+            res.end();
+            return;
+          }
+
           // ================================================================
           // AUTH (PRODUCTION): Require OAuth (Auth0 JWT) or internal MCP_ACCESS_TOKEN
           // ================================================================
@@ -1416,23 +1427,14 @@ class SignupAssistMCPServer {
           }
 
           // Auth posture:
-          // - GET /sse: require OAuth (so disconnected users trigger login reliably).
-          // - POST /sse (Connector Refresh): allow even if unauthenticated, but *still* enforce OAuth on /messages tools/call.
+          // - Allow unauthenticated SSE connects (GET/POST) so ChatGPT can validate/create
+          //   the connector even before OAuth is complete.
+          // - Still enforce OAuth on consequential calls (see POST /messages tools/call handling).
+          //
+          // NOTE: ChatGPT's connector behavior has varied over time (some flows use GET /sse,
+          // others use POST /sse), so we allow both here for maximum compatibility.
           if (!isAuthorized) {
-            if (req.method === 'POST') {
-              console.log('[AUTH] Allowing unauthenticated POST /sse (connector refresh); tools/call still requires OAuth');
-            } else {
-              const baseUrl = getRequestBaseUrl(req);
-              res.writeHead(401, {
-                "Content-Type": "application/json; charset=utf-8",
-                "Access-Control-Allow-Origin": "*",
-                "Cache-Control": "no-store",
-                "WWW-Authenticate": `Bearer realm="signupassist", error="authentication_required", authorization_uri="${baseUrl}/oauth/authorize", token_uri="${baseUrl}/oauth/token"`,
-              });
-              res.end(JSON.stringify({ error: "authentication_required", message: "OAuth token required" }));
-              console.log('[AUTH] Unauthorized SSE connect (OAuth required)');
-              return;
-            }
+            console.log(`[AUTH] Allowing unauthenticated ${req.method} /sse; tools/call still requires OAuth`);
           } else {
             console.log(`[AUTH] Authorized SSE connection via ${authSource}${boundUserId ? ` user=${boundUserId}` : ''}`);
           }
