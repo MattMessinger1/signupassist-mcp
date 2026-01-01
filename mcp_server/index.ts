@@ -1541,14 +1541,26 @@ class SignupAssistMCPServer {
           }
 
           // Auth posture:
-          // - Allow unauthenticated SSE connects (GET/POST) so ChatGPT can validate/create
-          //   the connector even before OAuth is complete.
-          // - Still enforce OAuth on consequential calls (see POST /messages tools/call handling).
-          //
-          // NOTE: ChatGPT's connector behavior has varied over time (some flows use GET /sse,
-          // others use POST /sse), so we allow both here for maximum compatibility.
+          // - GET /sse:
+          //   - If unauthenticated, return a fast 401 + WWW-Authenticate header (so ChatGPT can discover OAuth config)
+          //     and to avoid holding a never-ending SSE stream open during validation.
+          // - POST /sse:
+          //   - Allow unauthenticated connect for "refresh" flows, but still enforce OAuth for consequential calls
+          //     (see POST /messages tools/call handling).
           if (!isAuthorized) {
-            console.log(`[AUTH] Allowing unauthenticated ${req.method} /sse; tools/call still requires OAuth`);
+            if (req.method === 'GET') {
+              const baseUrl = getRequestBaseUrl(req);
+              res.writeHead(401, {
+                "Content-Type": "application/json; charset=utf-8",
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "no-store",
+                "WWW-Authenticate": `Bearer realm="signupassist", error="authentication_required", authorization_uri="${baseUrl}/oauth/authorize", token_uri="${baseUrl}/oauth/token"`,
+              });
+              res.end(JSON.stringify({ error: "authentication_required", message: "OAuth token required" }));
+              console.log('[AUTH] Unauthorized GET /sse (OAuth required; avoiding long-lived SSE during validation)');
+              return;
+            }
+            console.log('[AUTH] Allowing unauthenticated POST /sse (connector refresh); tools/call still requires OAuth');
           } else {
             console.log(`[AUTH] Authorized SSE connection via ${authSource}${boundUserId ? ` user=${boundUserId}` : ''}`);
           }
