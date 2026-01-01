@@ -339,4 +339,24 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 
 - Update Railway env var `AUTH0_CLIENT_ID` to the exact value copied from Auth0 dashboard (use the copy button to avoid `l`/`1` confusion), then restart the service.
 
+---
+
+## 2026-01-01 — Fix: ChatGPT OAuth redirect hang (token exchange + /sse probe timeouts)
+
+### Symptom
+
+- ChatGPT returns to `https://chatgpt.com/connector_platform_oauth_redirect?...` and appears to “hang”.
+- ChatGPT `oauth_config` and action refresh calls intermittently fail with “Request timeout”.
+
+### Evidence
+
+- Server logs showed `/oauth/token` sometimes returning `403 invalid_grant` (stale/invalid code), and later succeeding with `200`.
+- We reproduced that `GET/POST /sse` without acting as a real SSE client can hang until client timeout.
+
+### Fix (code)
+
+- `mcp_server/index.ts`
+  - `/oauth/token` now forwards to Auth0 as **`application/x-www-form-urlencoded`** (better PKCE compatibility) and logs presence of `code_verifier` safely.
+  - `/sse` now always requires OAuth for **both GET and POST** (returns fast `401 + WWW-Authenticate`), preventing ChatGPT’s probes from opening a long-lived SSE stream and timing out.
+
 
