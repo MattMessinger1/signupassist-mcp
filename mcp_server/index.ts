@@ -1561,19 +1561,40 @@ class SignupAssistMCPServer {
           //   - Allow unauthenticated connect for "refresh" flows, but still enforce OAuth for consequential calls
           //     (see POST /messages tools/call handling).
           if (!isAuthorized) {
-            // Always require OAuth to open an SSE stream (GET or POST).
-            // ChatGPT performs various validation probes against the MCP URL and may use GET/POST
-            // without acting as a true SSE client; opening a long-lived stream can trigger timeouts.
-            const baseUrl = getRequestBaseUrl(req);
-            res.writeHead(401, {
-              "Content-Type": "application/json; charset=utf-8",
-              "Access-Control-Allow-Origin": "*",
-              "Cache-Control": "no-store",
-              "WWW-Authenticate": `Bearer realm="signupassist", error="authentication_required", authorization_uri="${baseUrl}/oauth/authorize", token_uri="${baseUrl}/oauth/token"`,
-            });
-            res.end(JSON.stringify({ error: "authentication_required", message: "OAuth token required" }));
-            console.log(`[AUTH] Unauthorized ${req.method} /sse (OAuth required)`);
-            return;
+            // Auth posture (compat with ChatGPT connector):
+            // - GET /sse: return fast 401 + WWW-Authenticate (avoids hanging SSE during validation)
+            // - POST /sse:
+            //    - If it's a real SSE request (Accept: text/event-stream), allow unauthenticated connect
+            //      so ChatGPT can refresh/connect and then OAuth at tool-call time.
+            //    - Otherwise, return fast 401 to avoid probe timeouts.
+            if (req.method === 'GET') {
+              const baseUrl = getRequestBaseUrl(req);
+              res.writeHead(401, {
+                "Content-Type": "application/json; charset=utf-8",
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "no-store",
+                "WWW-Authenticate": `Bearer realm="signupassist", error="authentication_required", authorization_uri="${baseUrl}/oauth/authorize", token_uri="${baseUrl}/oauth/token"`,
+              });
+              res.end(JSON.stringify({ error: "authentication_required", message: "OAuth token required" }));
+              console.log('[AUTH] Unauthorized GET /sse (OAuth required; avoiding long-lived SSE during validation)');
+              return;
+            }
+
+            const accept = String(req.headers['accept'] || '');
+            if (!accept.toLowerCase().includes('text/event-stream')) {
+              const baseUrl = getRequestBaseUrl(req);
+              res.writeHead(401, {
+                "Content-Type": "application/json; charset=utf-8",
+                "Access-Control-Allow-Origin": "*",
+                "Cache-Control": "no-store",
+                "WWW-Authenticate": `Bearer realm="signupassist", error="authentication_required", authorization_uri="${baseUrl}/oauth/authorize", token_uri="${baseUrl}/oauth/token"`,
+              });
+              res.end(JSON.stringify({ error: "authentication_required", message: "OAuth token required" }));
+              console.log('[AUTH] Unauthorized POST /sse probe (non-SSE Accept; avoiding long-lived SSE during validation)');
+              return;
+            }
+
+            console.log('[AUTH] Allowing unauthenticated POST /sse (SSE Accept); tools/call still requires OAuth');
           } else {
             console.log(`[AUTH] Authorized SSE connection via ${authSource}${boundUserId ? ` user=${boundUserId}` : ''}`);
           }
