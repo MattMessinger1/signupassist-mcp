@@ -12,15 +12,17 @@ export function getProviderCheckoutUrl(args: {
 }): string | null {
   const { provider, org_ref, program_ref } = args;
 
-  // Bookeo: public booking/checkout entry point is by product/program_ref.
-  // We include lightweight attribution params and orgRef for debugging.
+  // Bookeo:
+  // We previously attempted to fabricate `https://bookeo.com/book/{program_ref}` links.
+  // That URL pattern 404s on bookeo.com/www.bookeo.com and is NOT a stable public checkout URL.
+  //
+  // Bookeo's API does not expose a canonical user-facing checkout link; providers typically embed
+  // Bookeo widgets on their own website. Prefer a provider-configured URL or business website URL
+  // fetched via `/settings/business`.
   if (provider === "bookeo") {
-    const url = new URL(`https://bookeo.com/book/${program_ref}`);
-    url.searchParams.set("ref", "signupassist");
-    url.searchParams.set("utm_source", "chatgpt_app");
-    url.searchParams.set("utm_medium", "mcp");
-    url.searchParams.set("org", org_ref);
-    return url.toString();
+    void org_ref;
+    void program_ref;
+    return null;
   }
 
   // Unknown provider: no known provider-hosted checkout URL.

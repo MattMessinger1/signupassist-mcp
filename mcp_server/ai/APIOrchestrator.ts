@@ -5334,6 +5334,24 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const providerCurrency: string | null | undefined = bookingResponse.data?.provider_currency;
       const providerPaymentLastCheckedAt: string | undefined = bookingResponse.data?.provider_payment_last_checked_at;
       const providerCheckoutUrl: string | undefined = bookingResponse.data?.provider_checkout_url;
+      const providerCheckoutUrlSafe: string | undefined = (() => {
+        const s = String(providerCheckoutUrl || "").trim();
+        if (!s) return undefined;
+        try {
+          const u = new URL(s);
+          const host = u.hostname.toLowerCase();
+          const path = u.pathname.toLowerCase();
+          if (
+            (host === "bookeo.com" || host === "www.bookeo.com") &&
+            (path.startsWith("/book/") || path.startsWith("/product/") || path.startsWith("/register"))
+          ) {
+            return undefined;
+          }
+          return u.toString();
+        } catch {
+          return undefined;
+        }
+      })();
       Logger.info("[confirmPayment] ✅ Booking confirmed:", { booking_number });
 
       // Step 3: Charge $20 success fee via MCP tool (audit-compliant)
@@ -5398,7 +5416,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             delegate_email: delegateEmail,
             participant_names: participantNames,
             // Only store provider checkout URL if the program fee is non-zero.
-            provider_checkout_url: amountCents > 0 ? (providerCheckoutUrl || `https://bookeo.com/book/${programRef}?ref=signupassist`) : null,
+            // IMPORTANT: Do not fabricate Bookeo deep links (bookeo.com/book/...) — they 404.
+            provider_checkout_url: amountCents > 0 ? (providerCheckoutUrlSafe || null) : null,
             provider_payment_status: providerPaymentStatus || 'unknown',
             provider_amount_due_cents: providerAmountDueCents ?? null,
             provider_amount_paid_cents: providerAmountPaidCents ?? null,
@@ -5427,8 +5446,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         start_time: start_time || "TBD",
         user_timezone: context.userTimezone
       });
-      const providerPaymentNote = providerCheckoutUrl
-        ? `\n\n💳 **Provider payment:** ${providerCheckoutUrl}\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the $20 success fee._`
+      const providerPaymentNote = providerCheckoutUrlSafe
+        ? `\n\n💳 **Provider payment:** ${providerCheckoutUrlSafe}\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the $20 success fee._`
         : `\n\n💳 **Provider payment:** The provider will collect the program fee via their official checkout (often sent by email).\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the $20 success fee._`;
 
       const finalMessage = `${message}${providerPaymentNote}`;
@@ -5463,10 +5482,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         step: FlowStep.COMPLETED,
         cta: {
           buttons: [
-            ...(providerCheckoutUrl ? [{
+            ...(providerCheckoutUrlSafe ? [{
               label: providerPaymentRequired === false ? "Provider payment not required" : "Pay Provider",
               action: "open_external_url",
-              payload: { url: providerCheckoutUrl },
+              payload: { url: providerCheckoutUrlSafe },
               variant: "outline" as const
             }] : []),
             { 
@@ -6100,6 +6119,26 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         }
       };
 
+      const sanitizeProviderCheckoutUrl = (url: any): string | null => {
+        const s = String(url || "").trim();
+        if (!s) return null;
+        try {
+          const u = new URL(s);
+          const host = u.hostname.toLowerCase();
+          const path = u.pathname.toLowerCase();
+          // Known-bad legacy placeholder patterns (Bookeo does not serve public checkout pages on these paths).
+          if (
+            (host === "bookeo.com" || host === "www.bookeo.com") &&
+            (path.startsWith("/book/") || path.startsWith("/product/") || path.startsWith("/register"))
+          ) {
+            return null;
+          }
+          return u.toString();
+        } catch {
+          return null;
+        }
+      };
+
       // Build cards for each registration
       const buildRegCard = (reg: any, isUpcoming: boolean = false): CardSpec => {
         const buttons: any[] = [];
@@ -6115,11 +6154,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         }
 
         // Provider payment (provider is merchant-of-record)
-        if (reg.provider_checkout_url) {
+        const providerUrl = sanitizeProviderCheckoutUrl(reg.provider_checkout_url);
+        if (providerUrl) {
           buttons.push({
             label: 'Pay Provider (if needed)',
             action: 'open_external_url',
-            payload: { url: reg.provider_checkout_url },
+            payload: { url: providerUrl },
             variant: 'outline' as const
           });
         }
@@ -6138,7 +6178,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             `**Program Fee:** ${formatDollars(reg.amount_cents || 0)}`,
             `**SignupAssist Fee:** ${formatDollars(reg.success_fee_cents || 0)}`,
             `**Total:** ${formatDollars((reg.amount_cents || 0) + (reg.success_fee_cents || 0))}`,
-            ...(reg.provider_checkout_url ? [``, `**Provider checkout:** ${reg.provider_checkout_url}`] : [])
+            ...(providerUrl ? [``, `**Provider checkout:** ${providerUrl}`] : [])
           ].join('\n'),
           buttons
         };

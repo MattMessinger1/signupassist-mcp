@@ -321,9 +321,9 @@ async function executeJob(row: ScheduledRow) {
     (await computeProgramFeeCentsFallback(row, Math.max(1, participants.length)));
 
   // Prefer provider checkout URL and payment state from Bookeo response when available.
+  // IMPORTANT: Do not fabricate Bookeo deep links (bookeo.com/book/...) — they 404.
   const providerCheckoutUrl =
-    (bookingResp?.data?.provider_checkout_url as string | undefined) ||
-    (programFeeCents > 0 ? `https://bookeo.com/book/${row.program_ref}?ref=signupassist` : null);
+    (bookingResp?.data?.provider_checkout_url as string | undefined) || null;
 
   const providerPaymentStatus =
     (bookingResp?.data?.provider_payment_status as string | undefined) ||

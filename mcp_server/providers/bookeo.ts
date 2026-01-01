@@ -7,7 +7,6 @@ import { auditToolCall } from '../middleware/audit.js';
 import { createClient } from '@supabase/supabase-js';
 import type { ProviderResponse, ParentFriendlyError } from '../types.js';
 import { getPlaceholderImage } from '../lib/placeholderImages.js';
-import { getProviderCheckoutUrl } from '../utils/providerCheckoutLinks.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -145,6 +144,64 @@ async function fetchBookeoBookingDetails(bookingNumber: string): Promise<any | n
   } catch (e) {
     console.warn('[Bookeo] fetchBookeoBookingDetails exception:', e);
     return null;
+  }
+}
+
+async function fetchBookeoBusinessSettings(): Promise<any | null> {
+  try {
+    const url = buildBookeoUrl('/settings/business');
+    const res = await fetch(url, { method: 'GET', headers: bookeoHeadersMinimal() });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      console.warn('[Bookeo] GET business settings failed:', res.status, text.slice(0, 200));
+      return null;
+    }
+    const json = await res.json().catch(() => null);
+    return json;
+  } catch (e) {
+    console.warn('[Bookeo] fetchBookeoBusinessSettings exception:', e);
+    return null;
+  }
+}
+
+function normalizeExternalUrl(raw: string | null | undefined): string | null {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  try {
+    // Accept bare domains, but prefer https.
+    const candidate = /^https?:\/\//i.test(s) ? s : `https://${s}`;
+    const u = new URL(candidate);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+async function getBookeoProviderExternalCheckoutUrl(args: {
+  org_ref: string;
+  program_ref: string;
+}): Promise<string | null> {
+  // IMPORTANT:
+  // Bookeo does NOT expose a stable public checkout URL by program_ref on bookeo.com.
+  // The previous placeholder `https://bookeo.com/book/{program_ref}` 404s.
+  //
+  // Best-effort: use the business website URL configured in Bookeo settings (merchant's site),
+  // which typically hosts the booking widget / payment flow.
+  const settings = await fetchBookeoBusinessSettings();
+  const biz = (settings as any)?.data || settings || null;
+  const website = normalizeExternalUrl((biz as any)?.websiteURL || (biz as any)?.websiteUrl || (biz as any)?.website);
+  if (!website) return null;
+  try {
+    const u = new URL(website);
+    u.searchParams.set('ref', 'signupassist');
+    u.searchParams.set('utm_source', 'chatgpt_app');
+    u.searchParams.set('utm_medium', 'mcp');
+    u.searchParams.set('org', args.org_ref);
+    u.searchParams.set('program', args.program_ref);
+    return u.toString();
+  } catch {
+    return website;
   }
 }
 
@@ -876,12 +933,6 @@ async function confirmBooking(args: {
     
     const programName = (programDetails?.program as any)?.title || 'Program';
 
-    // Provider is merchant-of-record. For Bookeo, we direct the user to the provider-hosted checkout/booking flow.
-    // Only surface when payment is actually required (best-effort).
-    const provider_checkout_url = provider_payment_required
-      ? getProviderCheckoutUrl({ provider: "bookeo", org_ref: org_ref, program_ref })
-      : null;
-
     // Stronger signal: fetch booking details and normalize payment state (best-effort).
     // If we can prove it's already paid, suppress the provider checkout link.
     let paymentState: NormalizedPaymentState | null = null;
@@ -904,7 +955,7 @@ async function confirmBooking(args: {
       provider_payment_required;
 
     const provider_checkout_url_final = paymentRequiredFinal
-      ? provider_checkout_url
+      ? await getBookeoProviderExternalCheckoutUrl({ org_ref, program_ref })
       : null;
     
     return {
