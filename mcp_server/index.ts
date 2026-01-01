@@ -1139,9 +1139,10 @@ class SignupAssistMCPServer {
       const AUTH0_CLIENT_SECRET = process.env.AUTH0_CLIENT_SECRET;
       const AUTH0_AUDIENCE = process.env.AUTH0_AUDIENCE || 'https://shipworx.ai/api';
       
-      // --- OAuth Authorization Proxy (GET /oauth/authorize)
-      // Redirects to Auth0 with all query params preserved
-      if (req.method === 'GET' && url.pathname === '/oauth/authorize') {
+      // --- OAuth Authorization Proxy (GET/HEAD /oauth/authorize)
+      // Redirects to Auth0 with all query params preserved.
+      // NOTE: Some clients probe with HEAD during validation.
+      if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/oauth/authorize') {
         console.log('[OAUTH] Authorization request received, proxying to Auth0');
         
         const auth0Url = new URL(`https://${AUTH0_DOMAIN}/authorize`);
@@ -1249,10 +1250,22 @@ class SignupAssistMCPServer {
         }
         return;
       }
+
+      // --- OAuth Token Probe (HEAD /oauth/token)
+      // Some clients probe token endpoint reachability with HEAD.
+      if (req.method === 'HEAD' && url.pathname === '/oauth/token') {
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store'
+        });
+        res.end();
+        return;
+      }
       
       // --- OAuth Authorization Server Metadata (RFC 8414)
       // ChatGPT requires this to discover OAuth endpoints
-      if (req.method === 'GET' && url.pathname === '/.well-known/oauth-authorization-server') {
+      // NOTE: Some clients probe with HEAD during validation.
+      if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/.well-known/oauth-authorization-server') {
         console.log('[OAUTH] Authorization server metadata request');
         
         const host =
@@ -1285,10 +1298,14 @@ class SignupAssistMCPServer {
           ui_locales_supported: ["en"]
         };
         
-        res.writeHead(200, { 
+        res.writeHead(200, {
           'Content-Type': 'application/json',
           'Cache-Control': 'public, max-age=3600'
         });
+        if (req.method === 'HEAD') {
+          res.end();
+          return;
+        }
         res.end(JSON.stringify(metadata, null, 2));
         return;
       }
