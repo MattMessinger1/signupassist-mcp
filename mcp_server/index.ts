@@ -270,6 +270,11 @@ function respondOpenApiDisabled(req: any, res: any, endpoint: string) {
     "Access-Control-Allow-Origin": "*",
     "Cache-Control": "no-store, no-cache, must-revalidate",
   });
+  // Some validators probe with HEAD. Return headers only (no body) for HEAD.
+  if (String(req?.method || "").toUpperCase() === "HEAD") {
+    res.end();
+    return;
+  }
   res.end(
     JSON.stringify(
       {
@@ -2099,8 +2104,19 @@ class SignupAssistMCPServer {
       }
 
       // --- Serve manifest.json at /mcp/manifest.json
-      if (req.method === 'GET' && url.pathname === '/mcp/manifest.json') {
+      // NOTE: Some clients probe with HEAD during validation.
+      if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/mcp/manifest.json') {
         try {
+          if (req.method === 'HEAD') {
+            res.writeHead(200, {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'no-store, no-cache, must-revalidate'
+            });
+            res.end();
+            return;
+          }
+
           // For "apps via MCP", the authoritative manifest is:
           //   /.well-known/chatgpt-apps-manifest.json
           // We serve the SAME content here to avoid confusion with legacy OpenAPI manifests.
@@ -2165,8 +2181,19 @@ class SignupAssistMCPServer {
       }
 
       // --- Serve manifest JSON directly at /mcp (ChatGPT OAuth discovery)
-      if (req.method === 'GET' && (url.pathname === '/mcp' || url.pathname === '/mcp/')) {
+      // NOTE: Some clients probe with HEAD during validation.
+      if ((req.method === 'GET' || req.method === 'HEAD') && (url.pathname === '/mcp' || url.pathname === '/mcp/')) {
         try {
+          if (req.method === 'HEAD') {
+            res.writeHead(200, {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'no-store, no-cache, must-revalidate'
+            });
+            res.end();
+            return;
+          }
+
           // Keep /mcp aligned with the MCP app manifest to avoid multiple sources of truth.
           const manifestPath = path.resolve(process.cwd(), 'public', '.well-known', 'chatgpt-apps-manifest.json');
 
@@ -2228,7 +2255,7 @@ class SignupAssistMCPServer {
 
       // --- Serve OpenAPI spec at /mcp/openapi.json AND /openapi.json AND /.well-known/openapi.json
       if (
-        req.method === 'GET' &&
+        (req.method === 'GET' || req.method === 'HEAD') &&
         (url.pathname === '/mcp/openapi.json' ||
           url.pathname === '/openapi.json' ||
           url.pathname === '/.well-known/openapi.json')
@@ -2286,6 +2313,11 @@ class SignupAssistMCPServer {
             'Access-Control-Allow-Origin': '*',
             'Cache-Control': 'no-store, no-cache, must-revalidate'
           });
+          if (req.method === 'HEAD') {
+            res.end();
+            console.log('[ROUTE] Served', url.pathname, '(HEAD)');
+            return;
+          }
           res.end(out);
           console.log('[ROUTE] Served', url.pathname);
         } catch (error: any) {
@@ -2576,7 +2608,7 @@ class SignupAssistMCPServer {
 
       // --- Serve ai-plugin.json from both /.well-known and /mcp/.well-known
       if (
-        req.method === "GET" &&
+        (req.method === "GET" || req.method === "HEAD") &&
         (url.pathname === "/.well-known/ai-plugin.json" ||
          url.pathname === "/mcp/.well-known/ai-plugin.json")
       ) {
@@ -2616,6 +2648,11 @@ class SignupAssistMCPServer {
             "Cache-Control": "no-store, no-cache, must-revalidate",
             "Pragma": "no-cache"
           });
+          if (req.method === "HEAD") {
+            res.end();
+            console.log("[ROUTE] Served ai-plugin.json for", url.pathname, "(HEAD)");
+            return;
+          }
           res.end(out);
           console.log("[ROUTE] Served ai-plugin.json for", url.pathname);
         } catch (error: any) {
@@ -2628,7 +2665,7 @@ class SignupAssistMCPServer {
 
       // --- Serve /.well-known/openai-connector.json (ChatGPT connector discovery)
       if (
-        req.method === "GET" &&
+        (req.method === "GET" || req.method === "HEAD") &&
         (url.pathname === "/.well-known/openai-connector.json" ||
          url.pathname === "/mcp/.well-known/openai-connector.json")
       ) {
@@ -2668,6 +2705,11 @@ class SignupAssistMCPServer {
             "Cache-Control": "no-store, no-cache, must-revalidate",
             "Pragma": "no-cache"
           });
+          if (req.method === "HEAD") {
+            res.end();
+            console.log("[ROUTE] Served openai-connector.json for", url.pathname, "(HEAD)");
+            return;
+          }
           res.end(out);
           console.log("[ROUTE] Served openai-connector.json for", url.pathname);
         } catch (error: any) {
@@ -3212,8 +3254,19 @@ class SignupAssistMCPServer {
       }
 
       // --- ChatGPT Apps SDK Manifest (chat-only V1 - no widget)
-      if (req.method === 'GET' && url.pathname === '/.well-known/chatgpt-apps-manifest.json') {
+      // NOTE: Some clients probe with HEAD during validation.
+      if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/.well-known/chatgpt-apps-manifest.json') {
         console.log('[MANIFEST] Serving ChatGPT Apps manifest (V1 chat-only)');
+
+        if (req.method === 'HEAD') {
+          res.writeHead(200, {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-store, no-cache, must-revalidate'
+          });
+          res.end();
+          return;
+        }
         
         const manifestPath = path.resolve(process.cwd(), 'public', '.well-known', 'chatgpt-apps-manifest.json');
         if (existsSync(manifestPath)) {
