@@ -196,4 +196,7 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 - **OAuth switching**: `/oauth/authorize` now sets `prompt=login` by default (configurable via `AUTH0_OAUTH_PROMPT`) so it’s easy to sign in as a different user inside ChatGPT’s embedded browser.
 - **PII log reduction**: removed email logging from `stripe.create_checkout_session` and stopped logging raw `formData` in `confirmPayment`.
 
+- **Step 3/5 card clarity** (prod): PAYMENT fallback now shows the saved card brand/last4 (and refreshes via `stripe.check_payment_status` if needed) so the user can verify they’re using the correct card before consenting.
+  - Deployed: commit `c0e05bd` (verify: Step 3/5 shows “visa •••• 4242” instead of a generic prompt).
+
 
