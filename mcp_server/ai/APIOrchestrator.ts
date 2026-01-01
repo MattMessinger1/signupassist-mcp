@@ -1410,15 +1410,17 @@ export default class APIOrchestrator implements IOrchestrator {
       };
 
       if (userId) {
+        // SECURITY: fail closed. If we have a user id, never fall back to a cross-user scan.
         const { data, error } = await run(true);
-        if (!error && Array.isArray(data)) return data as any;
         if (error) {
-          Logger.warn(`[resolveRegistrationRef] user_id filtered lookup failed for ${table}; retrying without user filter`, {
+          Logger.warn(`[resolveRegistrationRef] user_id filtered lookup failed for ${table} (fail-closed)`, {
             table,
             hasUserId: true,
             error: error.message
           });
+          return [];
         }
+        return Array.isArray(data) ? (data as any) : [];
       }
 
       const { data, error } = await run(false);
@@ -6387,6 +6389,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     context: APIContext
   ): Promise<OrchestratorResponse> {
     let { registration_id, scheduled_registration_id, registration_ref } = payload;
+    const userId = context.user_id;
 
     // Receipts/audit/cancel are "account management" views; don't force wizard step headers.
     const withSuppressWizardHeader = (r: OrchestratorResponse): OrchestratorResponse => ({
@@ -6397,6 +6400,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         _build: (r.metadata || {})._build || APIOrchestrator.BUILD_STAMP
       }
     });
+
+    if (!userId) {
+      return withSuppressWizardHeader(
+        this.formatError("Please sign in to view an audit trail.")
+      );
+    }
 
     const coerceScopeList = (scope: any): string[] => {
       if (Array.isArray(scope)) return scope.filter((s) => typeof s === 'string');
@@ -6417,7 +6426,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     
     // Allow text-only reference codes (REG-xxxx / SCH-xxxx / uuid)
     if (!registration_id && !scheduled_registration_id && registration_ref) {
-      const resolved = await this.resolveRegistrationRef(registration_ref, context.user_id);
+      const resolved = await this.resolveRegistrationRef(registration_ref, userId);
       registration_id = resolved?.registration_id;
       scheduled_registration_id = resolved?.scheduled_registration_id;
     }
@@ -6436,6 +6445,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           .from('scheduled_registrations')
           .select('id, mandate_id, program_name, program_ref, org_ref, scheduled_time, status, booking_number, executed_at, error_message, created_at')
           .eq('id', id)
+          .eq('user_id', userId)
           .maybeSingle();
 
         if (schError || !scheduled) {
@@ -6510,6 +6520,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         .from('registrations')
         .select('mandate_id, program_name, booking_number, delegate_name, amount_cents, success_fee_cents, created_at')
         .eq('id', registration_id)
+        .eq('user_id', userId)
         .maybeSingle();
       
       // If the reference was ambiguous (UUID) and it wasn't in registrations, fall back to scheduled.
@@ -7031,6 +7042,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           .from('scheduled_registrations')
           .select('id, program_name, status')
           .eq('id', scheduled_registration_id)
+          .eq('user_id', userId)
           .maybeSingle();
 
         if (scheduledError || !scheduled) {
@@ -7048,7 +7060,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         const { error: cancelError } = await supabase
           .from('scheduled_registrations')
           .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-          .eq('id', scheduled_registration_id);
+          .eq('id', scheduled_registration_id)
+          .eq('user_id', userId);
 
         if (cancelError) {
           Logger.error("[cancelRegistration] Failed to cancel scheduled registration:", cancelError);
@@ -7092,6 +7105,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         .from('registrations')
         .select('*')
         .eq('id', registration_id)
+        .eq('user_id', userId)
         .single();
       
       if (regError || !registration) {
@@ -7221,7 +7235,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         const { error: updateError } = await supabase
           .from('registrations')
           .update({ status: 'cancelled', updated_at: new Date().toISOString() })
-          .eq('id', registration_id);
+        .eq('id', registration_id)
+        .eq('user_id', userId);
         
         if (updateError) {
           Logger.error("[cancelRegistration] Failed to update status:", updateError);
