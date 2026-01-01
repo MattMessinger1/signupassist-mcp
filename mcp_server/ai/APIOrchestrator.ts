@@ -50,6 +50,7 @@ import {
 } from "../utils/activationConfidence.js";
 import { stripHtml } from "../lib/extractionUtils.js";
 import { formatInTimeZone } from "date-fns-tz";
+import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
 import { lookupCity } from "../utils/cityLookup.js";
 import { analyzeLocation } from "./orchestratorMultiBackend.js";
@@ -162,6 +163,30 @@ interface APIContext {
   };
 
   /**
+   * ChatGPT retry dedupe (prevents double-processing and prevents wizard headers rendering as
+   * “continued” on the first visible message when ChatGPT retries the same tool call).
+   *
+   * IMPORTANT: Store only a short hash key (no raw user input).
+   */
+  lastReplyCache?: {
+    key: string; // short hash
+    at: string;  // ISO timestamp
+    response: {
+      message: string;
+      step?: string;
+      metadata?: any;
+      cards?: CardSpec[];
+      cta?: { buttons: ButtonSpec[] };
+    };
+  };
+
+  /**
+   * Text-only receipts UX: map displayed short codes (REG-xxxxxxxx / SCH-xxxxxxxx) to full UUIDs.
+   * This avoids extra DB lookups (and avoids failures) when the user types e.g. "cancel REG-xxxx".
+   */
+  lastReceiptRefMap?: Record<string, string>;
+
+  /**
    * Post-success replay (ChatGPT reliability):
    * If a booking completes but the client retries the final “book now” message (or a model-generated “yes”),
    * re-send the last confirmation instead of restarting Step 1 browse.
@@ -230,6 +255,25 @@ export default class APIOrchestrator implements IOrchestrator {
       return hasScope;
     }
     return true;
+  }
+
+  private getRetryDedupeWindowMs(): number {
+    const raw = Number(process.env.MCP_RETRY_DEDUPE_WINDOW_MS || 5000);
+    if (!Number.isFinite(raw) || raw <= 0) return 5000;
+    // Clamp to sane bounds.
+    return Math.max(250, Math.min(raw, 30_000));
+  }
+
+  private buildRetryDedupeKey(action: string | undefined, payload: any, input: string): string {
+    const a = String(action || "").trim();
+    const msg = String(input || "").trim();
+    // Only include payload keys (not values) to reduce the chance of hashing PII.
+    const payloadKeys =
+      payload && typeof payload === "object" && !Array.isArray(payload)
+        ? Object.keys(payload).sort().join(",")
+        : "";
+    const raw = `${a}|${payloadKeys}|${msg}`;
+    return crypto.createHash("sha256").update(raw).digest("hex").slice(0, 16);
   }
 
   private getDebugUserFilter(): string | null {
@@ -1773,16 +1817,62 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         context = this.getContext(contextSessionId);
       }
 
-      // Handle explicit actions (button clicks)
-      if (action) {
-        const response = await this.handleAction(action, payload, contextSessionId, context, input);
-        return this.attachContextSnapshot(response, contextSessionId);
+      // ----------------------------------------------------------------
+      // ChatGPT reliability: short-window retry dedupe
+      // - prevents accidental double-processing (e.g., booking/cancel twice)
+      // - prevents wizardProgress from drifting (causing “continued” on first visible turn)
+      // ----------------------------------------------------------------
+      const dedupeKey = this.buildRetryDedupeKey(action, payload, input);
+      const cache = context.lastReplyCache;
+      if (cache?.key === dedupeKey && cache?.response?.message) {
+        const atMs = Date.parse(String(cache.at || ""));
+        const ageMs = Number.isFinite(atMs) ? Date.now() - atMs : NaN;
+        if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs < this.getRetryDedupeWindowMs()) {
+          const cached = cache.response;
+          const cachedResp: OrchestratorResponse = {
+            message: cached.message,
+            cards: cached.cards,
+            cta: cached.cta,
+            step: cached.step,
+            metadata: { ...(cached.metadata || {}), skipWizardProgress: true }
+          };
+          return this.attachContextSnapshot(cachedResp, contextSessionId);
+        }
       }
 
-      // Handle natural language messages
-      const response = await this.handleMessage(input, contextSessionId, context);
+      let response: OrchestratorResponse | null;
+
+      // Handle explicit actions (button clicks)
+      if (action) {
+        response = await this.handleAction(action, payload, contextSessionId, context, input);
+      } else {
+        // Handle natural language messages
+        response = await this.handleMessage(input, contextSessionId, context);
+      }
+
       if (!response) return null;
-      return this.attachContextSnapshot(response, contextSessionId);
+
+      const final = this.attachContextSnapshot(response, contextSessionId);
+      // Cache the final response for fast retry replay (store only the user-facing response, no context snapshot).
+      try {
+        this.updateContext(contextSessionId, {
+          lastReplyCache: {
+            key: dedupeKey,
+            at: new Date().toISOString(),
+            response: {
+              message: final.message,
+              step: final.step,
+              metadata: final.metadata,
+              cards: final.cards,
+              cta: final.cta
+            }
+          }
+        });
+      } catch {
+        // ignore
+      }
+
+      return final;
     } catch (error) {
       Logger.error('APIOrchestrator error:', error);
       return this.formatError('Sorry, something went wrong. Please try again.');
@@ -2403,9 +2493,18 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       case "cancel_registration":
         // Text-only UX: allow "cancel REG-xxxx" / "cancel SCH-xxxx"
         if (payload?.registration_ref && !payload.registration_id && !payload.scheduled_registration_id) {
-          const resolved = await this.resolveRegistrationRef(payload.registration_ref, context.user_id);
-          if (resolved?.registration_id) payload.registration_id = resolved.registration_id;
-          if (resolved?.scheduled_registration_id) payload.scheduled_registration_id = resolved.scheduled_registration_id;
+          const ref = String(payload.registration_ref || "").trim();
+          const key = ref.toLowerCase();
+          const mapped = context.lastReceiptRefMap?.[key];
+          if (mapped) {
+            // If the user used SCH- prefix, keep it typed as scheduled; otherwise treat as REG.
+            if (/^sch-/i.test(ref)) payload.scheduled_registration_id = mapped;
+            else payload.registration_id = mapped;
+          } else {
+            const resolved = await this.resolveRegistrationRef(payload.registration_ref, context.user_id);
+            if (resolved?.registration_id) payload.registration_id = resolved.registration_id;
+            if (resolved?.scheduled_registration_id) payload.scheduled_registration_id = resolved.scheduled_registration_id;
+          }
         }
         return await this.cancelRegistrationStep1(payload, sessionId, context);
 
@@ -2576,12 +2675,17 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           const isCancelCompletion =
             context.lastCompletion.kind === "cancel_registration" ||
             context.lastCompletion.kind === "cancel_scheduled";
+          const meta = {
+            // Receipts/audit/cancel are account-management views; suppress wizard headers on retries.
+            ...(isCancelCompletion ? { suppressWizardHeader: true } : {}),
+            // Wizard UX: empty-message "connect/refresh" should not count as a user-visible wizard turn.
+            skipWizardProgress: true
+          };
           return this.formatResponse(
             `${context.lastCompletion.message}\n\nIf you'd like to do something else, say **view my registrations** or **browse classes**.`,
             undefined,
             undefined,
-            // Receipts/audit/cancel are account-management views; suppress wizard headers on retries.
-            isCancelCompletion ? { suppressWizardHeader: true } : undefined
+            meta
           );
         }
       }
@@ -2594,7 +2698,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         // Wizard UX: empty-message "connect/refresh" should not render as "Step 1/5 continued".
         wizardProgress: undefined,
       });
-      return await this.searchPrograms(orgRef, sessionId);
+      const resp = await this.searchPrograms(orgRef, sessionId);
+      return {
+        ...resp,
+        metadata: { ...(resp.metadata || {}), skipWizardProgress: true }
+      };
     }
 
     // ChatGPT NL: Check for secondary actions FIRST (view receipts, cancel, audit trail)
@@ -6147,6 +6255,24 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         pastLines.length ? `\n**Past (top ${pastLines.length}):**\n${pastLines.map(x => `- ${x}`).join('\n')}` : ''
       ].join('');
 
+      // Cache displayed short codes → UUIDs so text commands like "cancel REG-xxxxxxxx" never depend on DB prefix lookups.
+      // Keep it scoped to the items we actually show to the user to avoid bloating session state.
+      const refMap: Record<string, string> = {};
+      const remember = (prefix: "REG" | "SCH", id: string) => {
+        const uuid = String(id || "").trim();
+        if (!uuid) return;
+        const token = uuid.slice(0, 8).toLowerCase();
+        const code = `${prefix}-${token}`.toLowerCase();
+        refMap[code] = uuid;
+        // Also allow bare tokens (only helpful for hex-containing tokens; safeRef already gates digits-only).
+        refMap[token] = uuid;
+      };
+      upcoming.slice(0, 10).forEach((r: any) => remember("REG", r.id));
+      scheduledActive.slice(0, 10).forEach((s: any) => remember("SCH", s.id));
+      scheduledHistory.slice(0, 10).forEach((s: any) => remember("SCH", s.id));
+      past.slice(0, 10).forEach((r: any) => remember("REG", r.id));
+      this.updateContext(sessionId, { lastReceiptRefMap: refMap });
+
       return {
         message: listMessage + `\n\n` + getReceiptsFooterMessage(),
         // Receipts/management is a post-signup view (render as Step 5/5).
@@ -6572,10 +6698,22 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     const { registration_id, scheduled_registration_id } = payload;
     
     if (!registration_id && !scheduled_registration_id) {
-      const errResp = this.formatError("Registration ID required to cancel.");
+      // Friendly recovery: show the registrations list so the user can pick a REG-/SCH- code.
+      if (!context.user_id) {
+        const errResp = this.formatError("Please sign in to cancel a registration.");
+        return {
+          ...errResp,
+          metadata: { ...(errResp.metadata || {}), suppressWizardHeader: true }
+        };
+      }
+      const receipts = await this.viewReceipts({ user_id: context.user_id }, sessionId, context);
+      const intro =
+        `To cancel a registration, reply with one of the codes below, e.g. **cancel REG-xxxxxxxx** (confirmed booking) or **cancel SCH-xxxxxxxx** (scheduled).\n\n`;
       return {
-        ...errResp,
-        metadata: { ...(errResp.metadata || {}), suppressWizardHeader: true }
+        ...receipts,
+        message: `${intro}${receipts.message}`,
+        // Hint for guardrails: this is a post-signup management view (Step 5/5).
+        step: FlowStep.COMPLETED,
       };
     }
     
@@ -6585,11 +6723,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       // First: try receipts table (confirmed bookings)
       let registration: any = null;
       if (registration_id) {
-        const { data, error } = await supabase
-        .from('registrations')
-        .select('id, program_name, booking_number, status, start_date, delegate_name, amount_cents, success_fee_cents, org_ref, provider, charge_id')
-        .eq('id', registration_id)
-          .maybeSingle();
+        let q = supabase
+          .from('registrations')
+          .select('id, program_name, booking_number, status, start_date, delegate_name, amount_cents, success_fee_cents, org_ref, provider, charge_id')
+          .eq('id', registration_id);
+        if (context.user_id) q = q.eq('user_id', context.user_id);
+        const { data, error } = await q.maybeSingle();
         if (error) Logger.warn("[cancelRegistration] registrations lookup error:", error);
         registration = data || null;
       }
@@ -6597,11 +6736,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       // Second: try scheduled_registrations (auto-registration jobs not yet executed)
       if (!registration) {
         const id = scheduled_registration_id || registration_id;
-        const { data: scheduled, error: scheduledError } = await supabase
+        let q = supabase
           .from('scheduled_registrations')
           .select('id, program_name, status, scheduled_time, delegate_data, participant_data')
-          .eq('id', id)
-          .maybeSingle();
+          .eq('id', id);
+        if (context.user_id) q = q.eq('user_id', context.user_id);
+        const { data: scheduled, error: scheduledError } = await q.maybeSingle();
 
         if (scheduledError || !scheduled) {
           Logger.error("[cancelRegistration] Registration not found:", scheduledError);
@@ -7127,11 +7267,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // tag follow-ups as "continued" so users understand they're still on the same step.
     // (Skip for account-management views like receipts/audit/cancel.)
     if (response?.message && !response?.metadata?.suppressWizardHeader) {
+      const skipWizardProgress = !!response?.metadata?.skipWizardProgress;
       const effectiveStep = (response.step || ctx.step) as FlowStep | string | undefined;
       const wizardStep = this.inferWizardStepNumber(effectiveStep);
       const prev = ctx.wizardProgress;
-      const nextTurnInStep =
-        prev && prev.wizardStep === wizardStep ? (Number(prev.turnInStep || 0) + 1) : 1;
+      const nextTurnInStep = skipWizardProgress
+        ? 1
+        : (prev && prev.wizardStep === wizardStep ? (Number(prev.turnInStep || 0) + 1) : 1);
 
       // Attach metadata for the HTTP boundary to render the correct header variant.
       response = {
@@ -7140,19 +7282,21 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           ...(response.metadata || {}),
           wizardStep,
           wizardTurnInStep: nextTurnInStep,
-          wizardContinued: nextTurnInStep > 1,
+          wizardContinued: !skipWizardProgress && nextTurnInStep > 1,
           _build: (response.metadata || {})._build || APIOrchestrator.BUILD_STAMP
         }
       };
 
-      // Persist for the next turn (fire-and-forget; do not block user-facing reply).
-      this.updateContext(sessionId, {
-        wizardProgress: {
-          wizardStep,
-          turnInStep: nextTurnInStep,
-          updatedAt: new Date().toISOString()
-        }
-      });
+      if (!skipWizardProgress) {
+        // Persist for the next turn (fire-and-forget; do not block user-facing reply).
+        this.updateContext(sessionId, {
+          wizardProgress: {
+            wizardStep,
+            turnInStep: nextTurnInStep,
+            updatedAt: new Date().toISOString()
+          }
+        });
+      }
     }
 
     // One-time trust intro (first principles): establish who we are + safety posture.

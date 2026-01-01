@@ -86,6 +86,7 @@ async function main() {
   // This is a critical ChatGPT edge case (prevents 424 "missing required content").
   if (token) {
     const rpcId = `smoke-sse-tools-call-${Date.now()}`;
+    const sessionId = `smoke-sse-dedupe-${Date.now()}`;
     const { status, json, text } = await fetchJson(`${baseUrl}/sse`, {
       method: "POST",
       headers: {
@@ -101,7 +102,7 @@ async function main() {
           name: "signupassist.chat",
           arguments: {
             input: "hello",
-            sessionId: `smoke-sse-${Date.now()}`,
+            sessionId,
             userTimezone: "America/Chicago",
           },
         },
@@ -114,7 +115,42 @@ async function main() {
     assert(Array.isArray(json?.result?.content), "POST /sse tools/call: result.content must be an array");
     assert((json?.result?.content || []).length > 0, "POST /sse tools/call: result.content must be non-empty");
     assert(typeof json?.result?.content?.[0]?.text === "string", "POST /sse tools/call: content[0].text must be a string");
+    const firstLine = String(json?.result?.content?.[0]?.text || "").split("\n")[0] || "";
+    assert(!/\bcontinued\b/i.test(firstLine), `POST /sse tools/call: first reply should not be 'continued' (got: ${firstLine})`);
     console.log("[smoke-sse] ✅ POST /sse tools/call returns result.content");
+
+    // Retry dedupe: repeating the exact same tool call should NOT advance wizardProgress to "continued".
+    const rpcId2 = `smoke-sse-tools-call-${Date.now()}-retry`;
+    const { status: status2, json: json2, text: text2 } = await fetchJson(`${baseUrl}/sse`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: rpcId2,
+        method: "tools/call",
+        params: {
+          name: "signupassist.chat",
+          arguments: {
+            input: "hello",
+            sessionId,
+            userTimezone: "America/Chicago",
+          },
+        },
+      }),
+    });
+
+    assert(status2 === 200, `POST /sse tools/call retry: expected 200, got ${status2} :: ${text2.slice(0, 200)}`);
+    assert(json2?.jsonrpc === "2.0", "POST /sse tools/call retry: missing jsonrpc=2.0");
+    assert(String(json2?.id) === rpcId2, `POST /sse tools/call retry: id mismatch (expected ${rpcId2}, got ${String(json2?.id)})`);
+    assert(Array.isArray(json2?.result?.content), "POST /sse tools/call retry: result.content must be an array");
+    assert((json2?.result?.content || []).length > 0, "POST /sse tools/call retry: result.content must be non-empty");
+    const retryFirstLine = String(json2?.result?.content?.[0]?.text || "").split("\n")[0] || "";
+    assert(!/\bcontinued\b/i.test(retryFirstLine), `POST /sse tools/call retry: should not be 'continued' (got: ${retryFirstLine})`);
+    console.log("[smoke-sse] ✅ retry dedupe prevents 'continued' drift");
   } else {
     console.log("[smoke-sse] Skipping POST /sse tools/call smoke (no MCP_ACCESS_TOKEN provided)");
   }
