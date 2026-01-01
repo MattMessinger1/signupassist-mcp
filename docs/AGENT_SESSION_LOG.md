@@ -282,4 +282,38 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 
 - If we still need a “force login on connect” mode for specific testing, add an explicit opt-in switch (e.g. query param or env flag) rather than defaulting to 401 on `GET /sse`.
 
+---
+
+## 2026-01-01 — Fix: ChatGPT OAuth config “Request timeout” (OIDC discovery + HEAD probes)
+
+### Symptom (ChatGPT UI)
+
+- ChatGPT Settings → Connectors → **New App** shows:
+  - **“Error fetching OAuth configuration — Request timeout”**
+
+### Evidence
+
+- Prod previously returned **404** to HEAD probes:
+  - `HEAD /.well-known/oauth-authorization-server` → 404
+  - `HEAD /oauth/authorize` → 404
+  - `HEAD /oauth/token` → 404
+- Prod also returned **404** for OIDC discovery:
+  - `GET /.well-known/openid-configuration` → 404
+
+### Fix (code)
+
+- `mcp_server/index.ts`
+  - Added **HEAD support** for OAuth endpoints:
+    - `/.well-known/oauth-authorization-server` (GET/HEAD → 200)
+    - `/oauth/authorize` (GET/HEAD → 302)
+    - `/oauth/token` (HEAD → 200; POST unchanged)
+  - Added **OIDC discovery + JWKS** under our domain:
+    - `/.well-known/openid-configuration` (GET/HEAD → 200)
+    - `/.well-known/jwks.json` (GET/HEAD → 200; proxies Auth0 JWKS with 5m in-process cache)
+
+### Rationale
+
+- ChatGPT’s connector creation/validation appears to probe OAuth/OIDC endpoints using **HEAD** (and may rely on OIDC discovery),
+  so returning 404 can cause OAuth config validation to fail with a timeout.
+
 
