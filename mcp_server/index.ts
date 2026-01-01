@@ -439,19 +439,27 @@ type MCPTextContent = { type: "text"; text: string };
 // Always return a valid MCP CallToolResult shape.
 // IMPORTANT: Prefer structuredContent so ChatGPT can render rich content natively.
 export function mcpOk(value: unknown) {
-  // If the tool already returned an MCP-style result, pass through
+  const defaultText: MCPTextContent = { type: "text", text: "✅ Done." };
+
+  // If the tool already returned an MCP-style result, ensure it STILL includes `content`.
+  // ChatGPT validates CallToolResult and will fail if `content` is missing.
   if (value && typeof value === "object") {
     const v = value as Record<string, unknown>;
+    const hasContentArray = Array.isArray((v as any).content);
     const looksLikeCallToolResult =
       "structuredContent" in v || "content" in v || "_meta" in v || "isError" in v;
-    if (looksLikeCallToolResult) return v;
+
+    if (looksLikeCallToolResult) {
+      if (hasContentArray && (v as any).content.length > 0) return v;
+      return {
+        ...v,
+        content: hasContentArray && (v as any).content.length === 0 ? [defaultText] : (hasContentArray ? (v as any).content : [defaultText]),
+      };
+    }
   }
 
   // Default: expose as structuredContent + short text summary
-  return {
-    structuredContent: value,
-    content: [{ type: "text", text: "✅ Done." } satisfies MCPTextContent],
-  };
+  return { structuredContent: value, content: [defaultText] };
 }
 
 export function mcpError(message: string, details?: unknown) {
@@ -1684,6 +1692,124 @@ class SignupAssistMCPServer {
                 );
                 return;
               }
+
+              // --------------------------------------------------------------
+              // tools/call compatibility: Some clients POST tools/call directly
+              // to /sse and expect a finite JSON-RPC response (not an SSE stream).
+              //
+              // If we open an SSE stream here, we may emit an eager tools/list
+              // message whose `id` can collide with the tools/call request id,
+              // causing ChatGPT validation errors like:
+              //   "missing required content field"
+              // --------------------------------------------------------------
+              if (methodName === 'tools/call') {
+                const toolName = parsed?.params?.name ? String(parsed.params.name) : '';
+
+                // Enforce OAuth for tool calls in production
+                const isProd = process.env.NODE_ENV === 'production';
+                const authHeader = req.headers['authorization'] as string | undefined;
+                const expectedToken = process.env.MCP_ACCESS_TOKEN;
+
+                let isAuthorized = false;
+                let authSource: 'mcp_access_token' | 'auth0' | 'dev' | 'none' = 'none';
+                let verifiedUserId: string | undefined;
+
+                if (!isProd) {
+                  isAuthorized = true;
+                  authSource = 'dev';
+                } else {
+                  if (expectedToken && authHeader === `Bearer ${expectedToken}`) {
+                    isAuthorized = true;
+                    authSource = 'mcp_access_token';
+                  } else {
+                    const bearerToken = extractBearerToken(authHeader);
+                    if (bearerToken) {
+                      try {
+                        const payload = await verifyAuth0Token(bearerToken);
+                        // Map Auth0 subject → Supabase auth UUID for DB writes.
+                        verifiedUserId = await this.resolveSupabaseUserIdFromAuth0(payload);
+                        isAuthorized = true;
+                        authSource = 'auth0';
+                      } catch (e: any) {
+                        console.warn('[AUTH] Auth0 JWT rejected for /sse tools/call:', e?.message);
+                      }
+                    }
+                  }
+                }
+
+                if (isProd && !isAuthorized) {
+                  const baseUrl = getRequestBaseUrl(req);
+                  res.writeHead(401, {
+                    "Content-Type": "application/json; charset=utf-8",
+                    "Access-Control-Allow-Origin": "*",
+                    "Cache-Control": "no-store",
+                    "WWW-Authenticate": `Bearer realm="signupassist", error="authentication_required", authorization_uri="${baseUrl}/oauth/authorize", token_uri="${baseUrl}/oauth/token"`,
+                  });
+                  res.end(JSON.stringify({ error: "authentication_required", message: "OAuth token required" }));
+                  console.log('[AUTH] Unauthorized tools/call via POST /sse (OAuth required)');
+                  return;
+                }
+
+                if (!toolName || !this.tools.has(toolName)) {
+                  res.writeHead(404, {
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'Access-Control-Allow-Origin': '*',
+                    'Cache-Control': 'no-store',
+                  });
+                  res.end(
+                    JSON.stringify({
+                      jsonrpc: '2.0',
+                      id: parsed?.id ?? 1,
+                      error: {
+                        code: -32601,
+                        message: `Tool ${toolName || '(missing)'} not found`,
+                      },
+                    })
+                  );
+                  return;
+                }
+
+                const rawArgs = (parsed?.params?.arguments ?? {}) as any;
+                const argsObj =
+                  rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs) ? { ...rawArgs } : {};
+
+                // Inject Auth0-derived userId for canonical chat tool so APIOrchestrator can persist per-user.
+                // Also ensure `sessionId` exists (ChatGPT occasionally omits it in some refresh/invoke flows).
+                if (toolName === 'signupassist.chat') {
+                  if (verifiedUserId) argsObj.userId = verifiedUserId;
+                  if (!argsObj.sessionId) argsObj.sessionId = verifiedUserId || 'chatgpt';
+                }
+
+                let toolResult: any;
+                try {
+                  if (isMcpRefreshDebugEnabled()) {
+                    console.log(`[DEBUG_MCP_REFRESH] /sse tools/call (sync) tool=${toolName} auth=${authSource}`);
+                  }
+                  const tool = this.tools.get(toolName)!;
+                  const raw = await tool.handler(argsObj);
+                  toolResult = mcpOk(raw);
+                } catch (err: any) {
+                  console.error(`[MCP] /sse tools/call failed (sync) tool=${toolName}:`, err);
+                  toolResult = mcpError(`Tool ${toolName} failed`, {
+                    message: err?.message,
+                    stack: err?.stack,
+                  });
+                }
+
+                res.writeHead(200, {
+                  'Content-Type': 'application/json; charset=utf-8',
+                  'Access-Control-Allow-Origin': '*',
+                  'Cache-Control': 'no-store',
+                });
+                res.end(
+                  JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: parsed?.id ?? 1,
+                    result: toolResult,
+                  })
+                );
+                return;
+              }
             }
           }
 
@@ -1814,7 +1940,8 @@ class SignupAssistMCPServer {
 
             const msg = {
               jsonrpc: '2.0',
-              id: 1,
+              // Use a non-numeric id to avoid colliding with client request ids (many clients start at 1).
+              id: 'eager-tools-list',
               result: { tools: visibleTools },
             };
             res.write(`event: message\n`);

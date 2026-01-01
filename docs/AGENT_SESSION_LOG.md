@@ -374,3 +374,40 @@ Fix:
   - Added explicit `405` JSON responses for wrong methods on `/messages` and `/oauth/token` (prevents SPA index.html fallback).
 
 
+---
+
+## 2026-01-01 — Fix: ChatGPT “invoke app” 424 (MCP tools/call missing `content`)
+
+### Symptom (ChatGPT)
+
+- User tries: “invoke the Signup Assist app now”
+- ChatGPT shows “You allowed this action” but then fails with:
+  - **424 validation error**: response missing required **`content`** field
+
+### Evidence (server logs)
+
+- ChatGPT posts MCP JSON-RPC directly to **`POST /sse`** with a JSON body:
+  - `methodName=tools/call`
+
+### Root cause
+
+- `POST /sse` had a “discovery compatibility” fast-path for `initialize` + `tools/list`, but **did not handle `tools/call`**.
+- When `tools/call` was POSTed to `/sse`, the server would:
+  - consume the JSON body (so the tool call message was effectively dropped)
+  - open an SSE stream and emit an **unsolicited eager `tools/list`** message (previously `id: 1`)
+  - in practice, this can collide with the client’s request id and/or be interpreted as the tool response, which then fails validation because the result has **no `content`** (it’s a tools list result)
+
+### Fix (code)
+
+- `mcp_server/index.ts`
+  - **Handle `tools/call` synchronously in the `POST /sse` JSON-body fast-path**:
+    - enforce OAuth in prod
+    - execute the tool handler directly
+    - return a finite JSON-RPC response with `result.content`
+  - **Harden `mcpOk(...)`** to guarantee every tool result includes a **non-empty `content`** array (even when a tool returns `structuredContent` only)
+  - **Avoid JSON-RPC id collisions on SSE connect**: changed eager `tools/list` message id from `1` → a non-numeric string id (`eager-tools-list`)
+
+### Local verification
+
+- `npm run mcp:build` ✅
+
