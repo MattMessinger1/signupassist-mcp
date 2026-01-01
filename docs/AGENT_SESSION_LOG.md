@@ -222,6 +222,9 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
   - Follow-up: if a booking completes but ChatGPT retries the final confirmation message, we **re-send the last confirmation** (instead of restarting Step 1 browse). Stores a minimal `lastCompletion` (confirmation text + timestamp) in session context for ~2 minutes.
   - **Cancel flow UX**: cancellation confirmations now persist a `lastCompletion` snapshot too, and empty/duplicate follow-ups re-send the cancellation confirmation instead of jumping to Step 1 browse. Also switched cancellation confirmations to **accurately reflect refund status** (don’t claim refund succeeded when the refund call fails).
   - **Audit UX**: `audit <8-hex>` is now accepted (no need to prepend `REG-`), and saying “audit” without an ID now shows the registrations list and prompts the user to pick a REG-/SCH- code (instead of returning an error).
+  - **Step header UX**: receipts/audit/cancel are treated as **account management** views and now set `metadata.suppressWizardHeader=true` so ChatGPT doesn’t prepend `Step 1/5 — …` on those screens.
+- `mcp_server/index.ts`
+  - `signupassist.chat` tool handler now **suppresses wizard step headers** when `metadata.suppressWizardHeader=true` (keeps Step headers for the actual signup wizard).
 
 - `scripts/regressionSignup2.ts`
   - Added an assertion that **Step 4/5 includes “book now”** (explicit consent phrase).

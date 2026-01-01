@@ -44,6 +44,13 @@ function ensureWizardHeaderAlways(message: string, wizardStep: WizardStep): stri
   return `${desiredHeader}\n\n${msg}`;
 }
 
+function stripWizardHeader(message: string): string {
+  const msg = (message || "").trim();
+  if (!msg) return msg;
+  if (!/^\*{0,2}Step\s+[1-5]\/5\s+—/i.test(msg)) return msg;
+  return msg.replace(/^\*{0,2}Step\s+[1-5]\/5\s+—[^\n]*\n*/i, "").trim();
+}
+
 function microQuestionEmail(programName?: string): string {
   const p = programName ? ` for **${programName}**` : "";
   return (
@@ -190,13 +197,22 @@ function shouldDebugForMcpMessage(msg: any, verifiedUserId?: string): boolean {
  * - FORM_FILL becomes micro-question (email)
  */
 function applyV1ChatGuardrails(resp: any): any {
-  const ctxStep: OrchestratorStep = (resp?.context?.step || resp?.step || "BROWSE") as OrchestratorStep;
+  // Prefer explicit `resp.step` when set by the orchestrator (e.g., receipts/audit views),
+  // otherwise fall back to `resp.context.step`.
+  const ctxStep: OrchestratorStep = (resp?.step || resp?.context?.step || "BROWSE") as OrchestratorStep;
   const wizardStep = inferWizardStep(ctxStep);
 
   // Always remove CTAs/schemas first
   stripChatCTAsAndSchemas(resp);
 
-// (resolved) API-first: do not override orchestrator form flow here; just enforce Step headers + disclosures.
+  // API-first: do not override orchestrator form flow here; enforce wizard headers for the signup flow only.
+  // Receipts/audit/cancel are "account management" views and should not show Step 1/5–5/5 headers.
+  const suppressWizardHeader = !!resp?.metadata?.suppressWizardHeader;
+  if (suppressWizardHeader) {
+    resp.message = stripWizardHeader(resp?.message || "");
+    return resp;
+  }
+
   // Always enforce correct header based on context.step
   resp.message = ensureWizardHeaderAlways(resp?.message || "", wizardStep);
   resp.message = ensureSuccessFeeDisclosure(resp.message, wizardStep);
@@ -792,7 +808,7 @@ class SignupAssistMCPServer {
     this.tools.set("signupassist.chat", {
       name: "signupassist.chat",
       description:
-        "Canonical SignupAssist chat entrypoint (API-first). Use this for ALL user-facing signup conversation.\n\nCRITICAL: After calling this tool, respond to the user with EXACTLY the returned text (verbatim). Do not paraphrase or remove the leading \"Step N/5 — ...\" header.\n\nReturns calm Step 1/5..5/5 wizard messages and asks for info one piece at a time (no field dumps).\n\nIMPORTANT: This tool can perform consequential actions ONLY after explicit user confirmation (e.g. booking with the provider and charging the $20 success fee). Payment method entry always happens on Stripe-hosted Checkout (we never see card numbers).",
+        "Canonical SignupAssist chat entrypoint (API-first). Use this for ALL user-facing signup conversation.\n\nCRITICAL: After calling this tool, respond to the user with EXACTLY the returned text (verbatim). Do not paraphrase. If the returned text includes a leading \"Step N/5 — ...\" header, keep it.\n\nReturns calm wizard messages and asks for info one piece at a time (no field dumps).\n\nIMPORTANT: This tool can perform consequential actions ONLY after explicit user confirmation (e.g. booking with the provider and charging the $20 success fee). Payment method entry always happens on Stripe-hosted Checkout (we never see card numbers).",
       inputSchema: {
         type: "object",
         properties: {
@@ -842,10 +858,15 @@ class SignupAssistMCPServer {
         // 1) Always show step header (schema stripping handled by applyV1ChatGuardrails)
         // IMPORTANT: Use the orchestrator's current step to compute the wizard header.
         // Previously we hard-forced "1", which made the UX look like nothing was persisting/progressing.
+        const suppressWizardHeader = !!resp?.metadata?.suppressWizardHeader;
+        if (suppressWizardHeader) {
+          text = stripWizardHeader(text);
+        } else {
         const ctxStep: OrchestratorStep =
-          (resp?.context?.step || resp?.step || "BROWSE") as OrchestratorStep;
+            (resp?.step || resp?.context?.step || "BROWSE") as OrchestratorStep;
         const wizardStep = inferWizardStep(ctxStep);
         text = ensureWizardHeaderAlways(text, wizardStep);
+        }
 
         return {
           content: [{ type: "text", text }],
@@ -3017,7 +3038,7 @@ class SignupAssistMCPServer {
             const safe = applyV1ChatGuardrails(result);
             
             // Also expose the step in the response for debugging
-            const ctxStep: OrchestratorStep = (result?.context?.step || result?.step || "BROWSE") as OrchestratorStep;
+            const ctxStep: OrchestratorStep = (result?.step || result?.context?.step || "BROWSE") as OrchestratorStep;
             const wizardStep = inferWizardStep(ctxStep);
             if (!safe.context) safe.context = {};
             safe.context.wizardStep = wizardStep;

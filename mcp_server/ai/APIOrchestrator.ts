@@ -5800,11 +5800,17 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       const anyReceipts = (registrations && registrations.length > 0) || (scheduledRegs && scheduledRegs.length > 0);
       if (!anyReceipts) {
-        return this.formatResponse(
+        return {
+          ...this.formatResponse(
           "📋 **Your Registrations**\n\nYou don't have any registrations yet.",
           undefined,
-          [{ label: "Browse Classes", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "accent" }]
-        );
+            [{ label: "Browse Classes", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "accent" }],
+            // Receipts/audit/cancel are "account management" views; don't force wizard step headers.
+            { suppressWizardHeader: true }
+          ),
+          // Receipts/management is a post-signup view (render as Step 5/5).
+          step: FlowStep.COMPLETED,
+        };
       }
 
       // Format currency helper (cents → dollars)
@@ -6030,11 +6036,18 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       return {
         message: listMessage + `\n\n` + getReceiptsFooterMessage(),
+        // Receipts/management is a post-signup view (render as Step 5/5).
+        step: FlowStep.COMPLETED,
         cards,
         cta: {
           buttons: [
             { label: "Browse Classes", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "accent" }
           ]
+        },
+        // Receipts/audit/cancel are "account management" views; don't force wizard step headers.
+        metadata: {
+          suppressWizardHeader: true,
+          _build: APIOrchestrator.BUILD_STAMP
         }
       };
     } catch (err) {
@@ -6378,6 +6391,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           buttons: [
             { label: "Back to Registrations", action: "view_receipts", variant: "outline" }
           ]
+        },
+        // Receipts/audit/cancel are "account management" views; don't force wizard step headers.
+        metadata: {
+          suppressWizardHeader: true,
+          _build: APIOrchestrator.BUILD_STAMP
         }
       };
     } catch (err) {
@@ -6399,7 +6417,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     const { registration_id, scheduled_registration_id } = payload;
     
     if (!registration_id && !scheduled_registration_id) {
-      return this.formatError("Registration ID required to cancel.");
+      const errResp = this.formatError("Registration ID required to cancel.");
+      return {
+        ...errResp,
+        metadata: { ...(errResp.metadata || {}), suppressWizardHeader: true }
+      };
     }
     
     try {
@@ -6451,17 +6473,27 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         return this.formatResponse(
           `${message}\n\n📌 Reference: **${code}**\n\nReply **yes** to confirm cancellation, or **no** to keep it.\n\nNo provider booking has been made yet, so no charges apply.`,
           undefined,
-          []
+          [],
+          // Receipts/audit/cancel are "account management" views; don't force wizard step headers.
+          { suppressWizardHeader: true }
         );
       }
       
       // Check if cancellation is allowed
       if (registration.status === 'cancelled') {
-        return this.formatError(`This registration has already been cancelled.\n\n_Questions? Email ${SUPPORT_EMAIL}_`);
+        const errResp = this.formatError(`This registration has already been cancelled.\n\n_Questions? Email ${SUPPORT_EMAIL}_`);
+        return {
+          ...errResp,
+          metadata: { ...(errResp.metadata || {}), suppressWizardHeader: true }
+        };
       }
       
       if (registration.status === 'completed') {
-        return this.formatError(`Completed registrations cannot be cancelled.\n\n_Questions? Email ${SUPPORT_EMAIL}_`);
+        const errResp = this.formatError(`Completed registrations cannot be cancelled.\n\n_Questions? Email ${SUPPORT_EMAIL}_`);
+        return {
+          ...errResp,
+          metadata: { ...(errResp.metadata || {}), suppressWizardHeader: true }
+        };
       }
       
       const isPending = registration.status === 'pending';
@@ -6496,7 +6528,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         return this.formatResponse(
           `${message}\n\n📌 Reference: **${code}**\n\nReply **yes** to confirm cancellation, or **no** to keep it.`,
           undefined,
-          []
+          [],
+          // Receipts/audit/cancel are "account management" views; don't force wizard step headers.
+          { suppressWizardHeader: true }
         );
       }
       
@@ -6535,12 +6569,21 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       return {
         message,
         cards: [confirmationCard],
-        cta: { buttons: [] }
+        cta: { buttons: [] },
+        // Receipts/audit/cancel are "account management" views; don't force wizard step headers.
+        metadata: {
+          suppressWizardHeader: true,
+          _build: APIOrchestrator.BUILD_STAMP
+        }
       };
       
     } catch (err) {
       Logger.error("[cancelRegistrationStep1] Exception:", err);
-      return this.formatError("An error occurred while preparing cancellation.");
+      const errResp = this.formatError("An error occurred while preparing cancellation.");
+      return {
+        ...errResp,
+        metadata: { ...(errResp.metadata || {}), suppressWizardHeader: true }
+      };
     }
   }
 
@@ -6558,12 +6601,29 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     const userId = context.user_id;
     
     if (!registration_id && !scheduled_registration_id) {
-      return this.formatError("Registration ID required to cancel.");
+      const errResp = this.formatError("Registration ID required to cancel.");
+      return {
+        ...errResp,
+        metadata: { ...(errResp.metadata || {}), suppressWizardHeader: true }
+      };
     }
     
     if (!userId) {
-      return this.formatError("You must be logged in to cancel a registration.");
+      const errResp = this.formatError("You must be logged in to cancel a registration.");
+      return {
+        ...errResp,
+        metadata: { ...(errResp.metadata || {}), suppressWizardHeader: true }
+      };
     }
+
+    const withSuppressWizardHeader = (r: OrchestratorResponse): OrchestratorResponse => ({
+      ...r,
+      metadata: {
+        ...(r.metadata || {}),
+        suppressWizardHeader: true,
+        _build: (r.metadata || {})._build || APIOrchestrator.BUILD_STAMP
+      }
+    });
     
     try {
       const supabase = this.getSupabaseClient();
@@ -6577,15 +6637,15 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           .maybeSingle();
 
         if (scheduledError || !scheduled) {
-          return this.formatError("Scheduled registration not found.");
+          return withSuppressWizardHeader(this.formatError("Scheduled registration not found."));
         }
 
         if (scheduled.status === 'completed') {
-          return this.formatError("This auto-registration already completed. If you need to cancel the booking, cancel the confirmed registration instead.");
+          return withSuppressWizardHeader(this.formatError("This auto-registration already completed. If you need to cancel the booking, cancel the confirmed registration instead."));
         }
 
         if (scheduled.status === 'cancelled') {
-          return this.formatError("This auto-registration has already been cancelled.");
+          return withSuppressWizardHeader(this.formatError("This auto-registration has already been cancelled."));
         }
 
         const { error: cancelError } = await supabase
@@ -6595,7 +6655,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
         if (cancelError) {
           Logger.error("[cancelRegistration] Failed to cancel scheduled registration:", cancelError);
-          return this.formatError(`Failed to cancel auto-registration.\n\n_Questions? Email ${SUPPORT_EMAIL}_`);
+          return withSuppressWizardHeader(this.formatError(`Failed to cancel auto-registration.\n\n_Questions? Email ${SUPPORT_EMAIL}_`));
         }
 
         const baseMessage = getPendingCancelSuccessMessage({
@@ -6617,7 +6677,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           },
         });
 
-        return {
+        return withSuppressWizardHeader({
           message: finalMessage,
           step: FlowStep.COMPLETED,
           cards: [],
@@ -6627,7 +6687,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               { label: "Browse Programs", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "accent" }
             ]
           }
-        };
+        });
       }
       
       // Get full registration details
@@ -6638,7 +6698,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         .single();
       
       if (regError || !registration) {
-        return this.formatError("Registration not found.");
+        return withSuppressWizardHeader(this.formatError("Registration not found."));
       }
       
       const providerName = registration.org_ref === 'aim-design' ? 'AIM Design' : registration.org_ref;
@@ -6654,7 +6714,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         
         if (!result.success) {
           Logger.error("[cancelRegistration] Cancel failed:", result.error);
-          return this.formatError(`Failed to cancel registration.\n\n_Questions? Email ${SUPPORT_EMAIL}_`);
+          return withSuppressWizardHeader(this.formatError(`Failed to cancel registration.\n\n_Questions? Email ${SUPPORT_EMAIL}_`));
         }
         
         const baseMessage = getPendingCancelSuccessMessage({
@@ -6675,7 +6735,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           },
         });
         
-        return {
+        return withSuppressWizardHeader({
           message: finalMessage,
           step: FlowStep.COMPLETED,
           cards: [],
@@ -6685,7 +6745,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               { label: "Browse Programs", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "accent" }
             ]
           }
-        };
+        });
       }
       
       // Handle CONFIRMED bookings (Bookeo cancel + Stripe refund)
@@ -6717,14 +6777,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             lastCompletion: {
               kind: "cancel_registration",
               completed_at: new Date().toISOString(),
-              message,
+            message,
               booking_number: registration.booking_number,
               org_ref: registration.org_ref,
               program_ref: registration.program_ref,
             },
           });
           
-          return {
+          return withSuppressWizardHeader({
             message,
             step: FlowStep.COMPLETED,
             cards: [],
@@ -6733,7 +6793,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
                 { label: "View Registrations", action: "view_receipts", variant: "outline" }
               ]
             }
-          };
+          });
         }
         
         Logger.info("[cancelRegistration] ✅ Bookeo cancellation successful");
@@ -6806,7 +6866,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           },
         });
         
-        return {
+        return withSuppressWizardHeader({
           message,
           step: FlowStep.COMPLETED,
           cards: [],
@@ -6816,15 +6876,15 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               { label: "Browse Programs", action: "search_programs", payload: { orgRef: "aim-design" }, variant: "accent" }
             ]
           }
-        };
+        });
       }
       
       // Fallback - shouldn't reach here
-      return this.formatError(`Unable to cancel this registration. Status: ${registration.status}\n\n_Questions? Email ${SUPPORT_EMAIL}_`);
+      return withSuppressWizardHeader(this.formatError(`Unable to cancel this registration. Status: ${registration.status}\n\n_Questions? Email ${SUPPORT_EMAIL}_`));
       
     } catch (err) {
       Logger.error("[cancelRegistrationStep2] Exception:", err);
-      return this.formatError(`An error occurred while cancelling.\n\n_Questions? Email ${SUPPORT_EMAIL}_`);
+      return withSuppressWizardHeader(this.formatError(`An error occurred while cancelling.\n\n_Questions? Email ${SUPPORT_EMAIL}_`));
     }
   }
 
