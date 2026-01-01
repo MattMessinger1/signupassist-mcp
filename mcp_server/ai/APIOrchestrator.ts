@@ -152,6 +152,16 @@ interface APIContext {
   reviewSummaryShown?: boolean;
 
   /**
+   * Wizard UX: track consecutive assistant turns within the same wizard step so we can render
+   * "Step N/5 continued — ..." on follow-up turns (e.g., Step 2 often takes multiple messages).
+   */
+  wizardProgress?: {
+    wizardStep: "1" | "2" | "3" | "4" | "5";
+    turnInStep: number;
+    updatedAt: string; // ISO timestamp
+  };
+
+  /**
    * Post-success replay (ChatGPT reliability):
    * If a booking completes but the client retries the final “book now” message (or a model-generated “yes”),
    * re-send the last confirmation instead of restarting Step 1 browse.
@@ -6943,6 +6953,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
    * Attach the latest context snapshot to the response so downstream guardrails
    * can compute the correct wizard step/progress in ChatGPT chat mode.
    */
+  private inferWizardStepNumber(ctxStep: FlowStep | string | undefined): "1" | "2" | "3" | "4" | "5" {
+    if (ctxStep === FlowStep.FORM_FILL) return "2";
+    if (ctxStep === FlowStep.PAYMENT) return "3";
+    if (ctxStep === FlowStep.REVIEW) return "4";
+    if (ctxStep === FlowStep.SUBMIT || ctxStep === FlowStep.COMPLETED) return "5";
+    return "1";
+  }
+
   private attachContextSnapshot(
     response: OrchestratorResponse,
     sessionId: string
@@ -6965,6 +6983,38 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       schedulingData: ctx.schedulingData,
       paymentAuthorized: ctx.paymentAuthorized
     };
+
+    // Wizard UX: if we're sending multiple assistant turns within the same wizard step,
+    // tag follow-ups as "continued" so users understand they're still on the same step.
+    // (Skip for account-management views like receipts/audit/cancel.)
+    if (response?.message && !response?.metadata?.suppressWizardHeader) {
+      const effectiveStep = (response.step || ctx.step) as FlowStep | string | undefined;
+      const wizardStep = this.inferWizardStepNumber(effectiveStep);
+      const prev = ctx.wizardProgress;
+      const nextTurnInStep =
+        prev && prev.wizardStep === wizardStep ? (Number(prev.turnInStep || 0) + 1) : 1;
+
+      // Attach metadata for the HTTP boundary to render the correct header variant.
+      response = {
+        ...response,
+        metadata: {
+          ...(response.metadata || {}),
+          wizardStep,
+          wizardTurnInStep: nextTurnInStep,
+          wizardContinued: nextTurnInStep > 1,
+          _build: (response.metadata || {})._build || APIOrchestrator.BUILD_STAMP
+        }
+      };
+
+      // Persist for the next turn (fire-and-forget; do not block user-facing reply).
+      this.updateContext(sessionId, {
+        wizardProgress: {
+          wizardStep,
+          turnInStep: nextTurnInStep,
+          updatedAt: new Date().toISOString()
+        }
+      });
+    }
 
     // One-time trust intro (first principles): establish who we are + safety posture.
     // We keep this short and only show it once per durable session, only while browsing.

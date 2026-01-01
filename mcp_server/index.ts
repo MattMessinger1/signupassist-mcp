@@ -31,14 +31,18 @@ function inferWizardStep(ctxStep: OrchestratorStep): WizardStep {
   return "1";
 }
 
-function ensureWizardHeaderAlways(message: string, wizardStep: WizardStep): string {
+function ensureWizardHeaderAlways(
+  message: string,
+  wizardStep: WizardStep,
+  opts?: { continued?: boolean }
+): string {
   const msg = (message || "").trim();
   // Use bold header to reduce the chance ChatGPT strips the first line when rendering tool output.
-  const desiredHeader = `**Step ${wizardStep}/5 — ${wizardTitle(wizardStep)}**`;
+  const desiredHeader = `**Step ${wizardStep}/5${opts?.continued ? " continued" : ""} — ${wizardTitle(wizardStep)}**`;
 
   // If already has any Step X/5 header, replace it with the correct one.
-  if (/^\*{0,2}Step\s+[1-5]\/5\s+—/i.test(msg)) {
-    return msg.replace(/^\*{0,2}Step\s+[1-5]\/5\s+—[^\n]*\n*/i, `${desiredHeader}\n\n`);
+  if (/^\*{0,2}Step\s+[1-5]\/5(?:\s+continued)?\s+—/i.test(msg)) {
+    return msg.replace(/^\*{0,2}Step\s+[1-5]\/5(?:\s+continued)?\s+—[^\n]*\n*/i, `${desiredHeader}\n\n`);
   }
 
   return `${desiredHeader}\n\n${msg}`;
@@ -47,8 +51,8 @@ function ensureWizardHeaderAlways(message: string, wizardStep: WizardStep): stri
 function stripWizardHeader(message: string): string {
   const msg = (message || "").trim();
   if (!msg) return msg;
-  if (!/^\*{0,2}Step\s+[1-5]\/5\s+—/i.test(msg)) return msg;
-  return msg.replace(/^\*{0,2}Step\s+[1-5]\/5\s+—[^\n]*\n*/i, "").trim();
+  if (!/^\*{0,2}Step\s+[1-5]\/5(?:\s+continued)?\s+—/i.test(msg)) return msg;
+  return msg.replace(/^\*{0,2}Step\s+[1-5]\/5(?:\s+continued)?\s+—[^\n]*\n*/i, "").trim();
 }
 
 function microQuestionEmail(programName?: string): string {
@@ -214,7 +218,8 @@ function applyV1ChatGuardrails(resp: any): any {
   }
 
   // Always enforce correct header based on context.step
-  resp.message = ensureWizardHeaderAlways(resp?.message || "", wizardStep);
+  const continued = !!resp?.metadata?.wizardContinued || Number(resp?.metadata?.wizardTurnInStep || 0) > 1;
+  resp.message = ensureWizardHeaderAlways(resp?.message || "", wizardStep, { continued });
   resp.message = ensureSuccessFeeDisclosure(resp.message, wizardStep);
 
   return resp;
@@ -865,7 +870,8 @@ class SignupAssistMCPServer {
         const ctxStep: OrchestratorStep =
             (resp?.step || resp?.context?.step || "BROWSE") as OrchestratorStep;
         const wizardStep = inferWizardStep(ctxStep);
-        text = ensureWizardHeaderAlways(text, wizardStep);
+          const continued = !!resp?.metadata?.wizardContinued || Number(resp?.metadata?.wizardTurnInStep || 0) > 1;
+          text = ensureWizardHeaderAlways(text, wizardStep, { continued });
         }
 
         return {

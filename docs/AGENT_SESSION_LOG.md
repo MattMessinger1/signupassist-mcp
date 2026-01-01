@@ -227,6 +227,7 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
   - `signupassist.chat` tool handler now **suppresses wizard step headers** when `metadata.suppressWizardHeader=true` (keeps Step headers for the actual signup wizard).
 - `mcp_server/ai/APIOrchestrator.ts`
   - Added a **Supabase fetch timeout** (abort after `SUPABASE_FETCH_TIMEOUT_MS`, default 8000ms) to prevent “app hangs” when awaited session persistence to `browser_sessions` stalls.
+  - **Wizard UX**: added `wizardProgress` tracking + `metadata.wizardContinued` so multi-turn steps display `Step N/5 continued — …` on follow-up turns (e.g., Step 2/5 often spans multiple messages).
 
 - `scripts/regressionSignup2.ts`
   - Added an assertion that **Step 4/5 includes “book now”** (explicit consent phrase).
