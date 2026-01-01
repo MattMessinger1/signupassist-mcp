@@ -1574,6 +1574,119 @@ class SignupAssistMCPServer {
             return;
           }
 
+          // ----------------------------------------------------------------
+          // Discovery compatibility: Some clients (including ChatGPT refresh flows)
+          // appear to POST JSON-RPC discovery calls directly to /sse and expect a
+          // finite JSON response (not a long-lived SSE stream).
+          //
+          // If we detect a small JSON-RPC body for initialize/tools/list, we return
+          // HTTP 200 JSON-RPC immediately and do NOT open an SSE transport.
+          // ----------------------------------------------------------------
+          if (req.method === 'POST') {
+            const contentType = String(req.headers['content-type'] || '');
+            const contentLength = Number(req.headers['content-length'] || 0);
+            const maxDiscoveryBodyBytes = 64 * 1024; // 64KB safety cap
+
+            if (
+              contentLength > 0 &&
+              contentLength <= maxDiscoveryBodyBytes &&
+              contentType.toLowerCase().includes('application/json')
+            ) {
+              if (isMcpRefreshDebugEnabled()) {
+                console.log(
+                  `[DEBUG_MCP_REFRESH] /sse has JSON body contentLength=${contentLength} contentType=${JSON.stringify(contentType)}`
+                );
+              }
+
+              let body = '';
+              for await (const chunk of req) {
+                body += chunk;
+                if (body.length > maxDiscoveryBodyBytes) break;
+              }
+
+              let parsed: any = null;
+              try {
+                parsed = JSON.parse(body);
+              } catch {
+                // ignore
+              }
+
+              const methodName = parsed?.method ? String(parsed.method) : '';
+              if (isMcpRefreshDebugEnabled()) {
+                console.log(`[DEBUG_MCP_REFRESH] /sse body methodName=${methodName || 'unknown'}`);
+              }
+
+              if (methodName === 'tools/list') {
+                const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
+                const apiTools = Array.from(this.tools.values())
+                  .filter((tool) => tool?._meta?.["openai/visibility"] !== "private")
+                  .map((tool) => ({
+                    name: tool.name,
+                    description: tool.description,
+                    inputSchema: tool.inputSchema,
+                    _meta: tool._meta,
+                  }));
+                const visibleTools = includePrivate
+                  ? apiTools
+                  : apiTools.filter((t) => t._meta?.["openai/visibility"] === "public");
+
+                console.log(
+                  `[MCP] /sse discovery tools/list (HTTP 200) returning ${visibleTools.length} tools (${includePrivate ? "all" : "public-only"}):`,
+                  visibleTools.map((t) => t.name)
+                );
+
+                res.writeHead(200, {
+                  'Content-Type': 'application/json; charset=utf-8',
+                  'Access-Control-Allow-Origin': '*',
+                  'Cache-Control': 'no-store',
+                });
+                res.end(
+                  JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: parsed?.id ?? 1,
+                    result: { tools: visibleTools },
+                  })
+                );
+                return;
+              }
+
+              if (methodName === 'initialize') {
+                const requestedVersion =
+                  (parsed?.params?.protocolVersion as string | undefined) ||
+                  (parsed?.params?.protocol_version as string | undefined) ||
+                  '2024-11-05';
+
+                const serverVersion =
+                  process.env.APP_VERSION ||
+                  process.env.RAILWAY_GIT_COMMIT_SHA ||
+                  VERSION_INFO.commit ||
+                  'dev';
+
+                const result = {
+                  protocolVersion: requestedVersion,
+                  capabilities: { tools: {} },
+                  serverInfo: { name: 'SignupAssist MCP', version: serverVersion },
+                };
+
+                console.log(`[MCP] /sse discovery initialize (HTTP 200) protocolVersion=${requestedVersion}`);
+
+                res.writeHead(200, {
+                  'Content-Type': 'application/json; charset=utf-8',
+                  'Access-Control-Allow-Origin': '*',
+                  'Cache-Control': 'no-store',
+                });
+                res.end(
+                  JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: parsed?.id ?? 0,
+                    result,
+                  })
+                );
+                return;
+              }
+            }
+          }
+
           // ================================================================
           // AUTH (PRODUCTION): Require OAuth (Auth0 JWT) or internal MCP_ACCESS_TOKEN
           // ================================================================
@@ -1679,6 +1792,37 @@ class SignupAssistMCPServer {
             const baseUrl = getRequestBaseUrl(req);
             res.write(`event: endpoint\n`);
             res.write(`data: ${baseUrl}/sse/messages?sessionId=${sessionId}\n\n`);
+          } catch {
+            // ignore
+          }
+
+          // Eager discovery: emit a tools/list result on connect so refresh flows can succeed
+          // even if the client never sends a follow-up POST /messages.
+          try {
+            const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
+            const apiTools = Array.from(this.tools.values())
+              .filter((tool) => tool?._meta?.["openai/visibility"] !== "private")
+              .map((tool) => ({
+                name: tool.name,
+                description: tool.description,
+                inputSchema: tool.inputSchema,
+                _meta: tool._meta,
+              }));
+            const visibleTools = includePrivate
+              ? apiTools
+              : apiTools.filter((t) => t._meta?.["openai/visibility"] === "public");
+
+            const msg = {
+              jsonrpc: '2.0',
+              id: 1,
+              result: { tools: visibleTools },
+            };
+            res.write(`event: message\n`);
+            res.write(`data: ${JSON.stringify(msg)}\n\n`);
+            console.log(`[MCP] /sse eager tools/list emitted (${visibleTools.length} tools)`);
+            if (isMcpRefreshDebugEnabled()) {
+              console.log(`[DEBUG_MCP_REFRESH] /sse eager tools/list emitted (tools=${visibleTools.length})`);
+            }
           } catch {
             // ignore
           }
