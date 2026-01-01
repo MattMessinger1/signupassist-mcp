@@ -1365,24 +1365,11 @@ class SignupAssistMCPServer {
       
       // SSE session storage is now a class property (this.sseTransports)
       
-      // --- SSE Compatibility: Some clients probe POST /sse (should be GET)
-      // Return a small success payload instead of a 404 to avoid client-side hangs on refresh.
-      if (req.method === 'POST' && url.pathname === '/sse') {
-        res.writeHead(200, {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'no-store',
-        });
-        res.end(JSON.stringify({
-          ok: true,
-          message: 'Use GET /sse to establish the SSE stream, and POST /messages?sessionId=... for MCP messages.'
-        }));
-        return;
-      }
-
       // --- SSE Connection Endpoint (GET /sse)
       // Establishes a Server-Sent Events connection for ChatGPT
-      if (req.method === 'GET' && url.pathname === '/sse') {
+      // NOTE: Some clients (including ChatGPT connector "Refresh") use POST /sse.
+      // We accept both GET and POST and treat both as the SSE stream endpoint.
+      if ((req.method === 'GET' || req.method === 'POST') && url.pathname === '/sse') {
         console.log('[SSE] New SSE connection request');
         
         try {
