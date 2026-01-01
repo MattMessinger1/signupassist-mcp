@@ -359,4 +359,18 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
   - `/oauth/token` now forwards to Auth0 as **`application/x-www-form-urlencoded`** (better PKCE compatibility) and logs presence of `code_verifier` safely.
   - `/sse` now always requires OAuth for **both GET and POST** (returns fast `401 + WWW-Authenticate`), preventing ChatGPT’s probes from opening a long-lived SSE stream and timing out.
 
+### Follow-up: stabilize ChatGPT probes + avoid SPA fallback on protocol endpoints
+
+- ChatGPT also probes:
+  - `/.well-known/oauth-protected-resource` (and `.../sse`)
+  - `GET /messages?sessionId=...` (probing / validation)
+- Previously, unknown methods/paths could fall through to the SPA fallback and return `index.html` (200 text/html),
+  which can create opaque “timeout / method not allowed” behavior in the ChatGPT UI.
+
+Fix:
+
+- `mcp_server/index.ts`
+  - Added `/.well-known/oauth-protected-resource` metadata (and a couple `/sse` variants) returning 200 JSON.
+  - Added explicit `405` JSON responses for wrong methods on `/messages` and `/oauth/token` (prevents SPA index.html fallback).
+
 
