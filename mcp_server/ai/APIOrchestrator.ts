@@ -1260,6 +1260,9 @@ export default class APIOrchestrator implements IOrchestrator {
       if (uuidMatch) return ref;
       const coded = ref.match(/^(REG|SCH)-[0-9a-f]{6,12}$/i);
       if (coded) return ref;
+      // Allow bare short hex refs ONLY if they include at least one hex letter (a-f).
+      // This avoids accidentally interpreting dates/years (all digits) as an ID.
+      if (/^[0-9a-f]{8,12}$/i.test(ref) && /[a-f]/i.test(ref)) return ref;
       return null;
     })();
 
@@ -1294,6 +1297,12 @@ export default class APIOrchestrator implements IOrchestrator {
     // View audit trail / history
     if (/\b(audit|trail|history|log|activity)\b/i.test(normalized) && 
         /\b(show|view|see|my)\b/i.test(normalized)) {
+      Logger.info('[NL Parse] Secondary action detected: view_audit_trail', { source: 'natural_language', input_len: normalized.length, hasRef: !!safeRef });
+      return safeRef ? { action: 'view_audit_trail', payload: { registration_ref: safeRef } } : { action: 'view_audit_trail' };
+    }
+
+    // Allow terse commands: "audit" / "audit <id>" / "trail <id>"
+    if (/^(audit|trail|history|log|activity)\b/i.test(normalized)) {
       Logger.info('[NL Parse] Secondary action detected: view_audit_trail', { source: 'natural_language', input_len: normalized.length, hasRef: !!safeRef });
       return safeRef ? { action: 'view_audit_trail', payload: { registration_ref: safeRef } } : { action: 'view_audit_trail' };
     }
@@ -2328,6 +2337,19 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       case "view_audit_trail":
         // Text-only UX: allow "audit REG-xxxx" / "audit SCH-xxxx"
+        if (!payload?.registration_ref && !payload?.registration_id && !payload?.scheduled_registration_id) {
+          // If the user asks for "audit trail" without specifying which one, show their registrations list
+          // so they can pick a REG-/SCH- code. This avoids a dead-end error message.
+          const receipts = await this.viewReceipts({ user_id: context.user_id }, sessionId, context);
+          const intro =
+            `To view an audit trail, reply with one of the codes below, e.g. **audit REG-xxxxxxxx** (or **audit SCH-xxxxxxxx**).\n\n`;
+          return {
+            ...receipts,
+            message: `${intro}${receipts.message}`,
+            // Hint for guardrails: this is a post-signup management view (Step 5/5).
+            step: FlowStep.COMPLETED,
+          };
+        }
         if (payload?.registration_ref && !payload.registration_id && !payload.scheduled_registration_id) {
           const resolved = await this.resolveRegistrationRef(payload.registration_ref, context.user_id);
           if (resolved?.registration_id) payload.registration_id = resolved.registration_id;
@@ -6747,7 +6769,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         if (updateError) {
           Logger.error("[cancelRegistration] Failed to update status:", updateError);
         }
-
+        
         // Build an accurate cancellation confirmation (don’t claim refund succeeded if it didn’t).
         const bookingNumber = String(registration.booking_number || "");
         const code = `REG-${String(registration.id).slice(0, 8)}`;
@@ -6783,7 +6805,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             program_ref: registration.program_ref,
           },
         });
-
+        
         return {
           message,
           step: FlowStep.COMPLETED,
