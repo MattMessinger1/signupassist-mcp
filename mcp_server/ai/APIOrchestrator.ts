@@ -3098,10 +3098,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             }
           }
         }
-        // If the user types a generic "yes" here, ask for the explicit booking phrase.
+        // If the user types a generic "yes" here, do NOT book — but ALWAYS re-show the full summary
+        // so the user can see the details (class/date/fees) even if a previous summary message was
+        // dropped/duplicated by ChatGPT transport retries.
         if (this.isUserConfirmation(input)) {
+          const summary = this.buildReviewSummaryFromContext(context);
           return this.formatResponse(
-            `To confirm the booking, please type **book now**.\n\n(We use **book now** so we don't accidentally book when you're just confirming a payment method.)`
+            `${summary}\n\n(For final consent, please type **book now** — we don’t accept a generic “yes” here.)`
           );
         }
         if (/cancel/i.test(input.trim())) {

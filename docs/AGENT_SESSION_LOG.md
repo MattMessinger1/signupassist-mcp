@@ -218,6 +218,7 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
   - Added `isBookingConfirmation(...)` and changed `FlowStep.REVIEW` to require an **explicit** booking phrase (e.g., **“book now”**) for final consent.
   - Generic “yes” in REVIEW now **does not** book; it replies with a reminder to type **book now**.
   - Updated the review summary footer to say **book now** (not “yes”) so consent is unambiguous.
+  - Follow-up: if the user types “yes” in Step 4, we now **re-print the full review summary** (program/date/fees/payment method) + the “book now” instruction. This prevents the “details missing” UX when ChatGPT retries/drops a previous summary message.
 
 - `scripts/regressionSignup2.ts`
   - Added an assertion that **Step 4/5 includes “book now”** (explicit consent phrase).
