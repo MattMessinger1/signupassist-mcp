@@ -1310,6 +1310,11 @@ class SignupAssistMCPServer {
             redirect_uri: tokenParams.redirect_uri,
             client_id: tokenParams.client_id ? '***' : undefined
           });
+
+          // Extra debug (safe): log which fields are present, without values.
+          const keys = Object.keys(tokenParams || {}).sort();
+          console.log('[OAUTH] Token request keys:', keys);
+          console.log('[OAUTH] Token request has_code_verifier:', !!tokenParams.code_verifier, 'len:', tokenParams.code_verifier ? String(tokenParams.code_verifier).length : 0);
           
           // Force canonical Auth0 client credentials from server config.
           // This avoids "invalid_client" errors if the ChatGPT UI has stale/incorrect values.
@@ -1319,12 +1324,20 @@ class SignupAssistMCPServer {
           // Forward to Auth0 token endpoint
           const auth0TokenUrl = `https://${AUTH0_DOMAIN}/oauth/token`;
           
+          // OAuth spec default is x-www-form-urlencoded. Use it for maximum compatibility,
+          // especially for PKCE code_verifier handling.
+          const form = new URLSearchParams();
+          for (const [k, v] of Object.entries(tokenParams || {})) {
+            if (v === undefined || v === null) continue;
+            form.set(k, String(v));
+          }
+
           const auth0Response = await fetch(auth0TokenUrl, {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json'
+              'Content-Type': 'application/x-www-form-urlencoded'
             },
-            body: JSON.stringify(tokenParams)
+            body: form.toString()
           });
           
           const responseData = await auth0Response.text();
