@@ -229,3 +229,4 @@ This document is the **single catalog of user-facing use cases** for SignupAssis
   - Never “guess” a booking succeeded; confirm via provider response/receipt
 
 
+
