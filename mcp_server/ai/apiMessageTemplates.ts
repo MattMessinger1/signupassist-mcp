@@ -303,13 +303,18 @@ export function getScheduledRegistrationSuccessMessage(vars: APIMessageVariables
   return `**Auto-Registration Scheduled**
 
 **${programName}**
-Opens: ${scheduledDate}
+Registration opens: ${scheduledDate}
+
+✅ We'll attempt to register you **the moment it opens**.
+💳 **No charge now** — the $20 SignupAssist fee is charged **only if registration succeeds**.
+🏫 Program fees (if any) are handled by the provider.
+
 Total (if successful): ${totalCost}
 
 Authorization ID: ${mandateId}
 Valid until: ${validUntil}
 
-All actions are logged. View your audit trail anytime via "View Receipts".
+All actions are logged. View your audit trail anytime via "view my registrations" (then "audit ...").
 
 You can cancel before execution at no charge. Questions? Email ${SUPPORT_EMAIL}`;
 }

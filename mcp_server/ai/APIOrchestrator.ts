@@ -741,6 +741,9 @@ export default class APIOrchestrator implements IOrchestrator {
       ? this.formatTimeForUser(context.selectedProgram.earliest_slot_time, context)
       : null;
 
+    const scheduledIso = context.schedulingData?.scheduled_time;
+    const opensAtDisplay = scheduledIso ? this.formatTimeForUser(scheduledIso, context) : null;
+
     const feeCents = Number(fd?.program_fee_cents ?? context.schedulingData?.program_fee_cents ?? 0);
     const formattedTotal = Number.isFinite(feeCents) && feeCents > 0 ? `$${(feeCents / 100).toFixed(2)}` : (context.selectedProgram?.price || "TBD");
 
@@ -751,15 +754,25 @@ export default class APIOrchestrator implements IOrchestrator {
     if (parentRel) msg += `- **Relationship:** ${parentRel}\n`;
     if (parentDob) msg += `- **Parent DOB:** ${parentDob}\n`;
     if (sessionDate) msg += `- **Date:** ${sessionDate}\n`;
+    if (opensAtDisplay) {
+      msg += `- **Registration opens:** ${opensAtDisplay}\n`;
+      msg += `- **Set & forget:** We’ll register you the moment it opens.\n`;
+      msg += `- **Charges now:** $0.00 (no charges unless registration succeeds)\n`;
+    }
     msg += `- **Program Fee:** ${formattedTotal} (paid to provider)\n`;
-    msg += `- **SignupAssist Fee:** $20 (charged only upon successful registration)\n`;
+    msg += opensAtDisplay
+      ? `- **SignupAssist Fee:** $20 (charged only if we successfully register you when it opens)\n`
+      : `- **SignupAssist Fee:** $20 (charged only upon successful registration)\n`;
 
     if (context.hasPaymentMethod || context.cardLast4) {
       const display = context.cardLast4 ? `${context.cardBrand || "Card"} •••• ${context.cardLast4}` : "Yes";
       msg += `- **Payment method on file:** ${display}\n`;
     }
 
-    msg += "\nIf everything is correct, type **book now** to continue or **cancel** to abort.";
+    msg +=
+      "\nIf everything is correct, type **book now** to continue" +
+      (opensAtDisplay ? " (I’ll schedule the auto‑registration)" : "") +
+      " or **cancel** to abort.";
     return msg;
   }
 
@@ -2575,6 +2588,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         requestedActivity: undefined,
         pendingProviderConfirmation: undefined,
         step: FlowStep.BROWSE,
+        // Wizard UX: empty-message "connect/refresh" should not render as "Step 1/5 continued".
+        wizardProgress: undefined,
       });
       return await this.searchPrograms(orgRef, sessionId);
     }
@@ -2929,14 +2944,16 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         // default to the current org (v1: AIM Design) rather than falling through.
         if (this.hasSignupIntent(input) || this.hasProgramWords(input)) {
           const orgRef = context.orgRef || "aim-design";
-          this.updateContext(sessionId, { orgRef, pendingProviderConfirmation: undefined });
+          // Wizard UX: treat explicit browse/signup intent as a fresh Step 1 turn (no "continued").
+          this.updateContext(sessionId, { orgRef, pendingProviderConfirmation: undefined, step: FlowStep.BROWSE, wizardProgress: undefined });
           return await this.searchPrograms(orgRef, sessionId);
         }
 
         // If user says "browse/show/list/anything", list programs now.
         if (this.isBrowseAllIntent(input)) {
           const orgRef = context.orgRef || "aim-design";
-          this.updateContext(sessionId, { orgRef, requestedActivity: undefined, pendingProviderConfirmation: undefined });
+          // Wizard UX: explicit "browse" is a fresh Step 1 turn (no "continued").
+          this.updateContext(sessionId, { orgRef, requestedActivity: undefined, pendingProviderConfirmation: undefined, step: FlowStep.BROWSE, wizardProgress: undefined });
           return await this.searchPrograms(orgRef, sessionId);
         }
 
@@ -2951,7 +2968,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             context.orgRef ||
             context.pendingProviderConfirmation?.toLowerCase().replace(/\s+/g, '-') ||
             "aim-design";
-          this.updateContext(sessionId, { orgRef, requestedActivity: undefined, pendingProviderConfirmation: undefined });
+          // Wizard UX: treat this as a fresh program list render (no "continued").
+          this.updateContext(sessionId, { orgRef, requestedActivity: undefined, pendingProviderConfirmation: undefined, step: FlowStep.BROWSE, wizardProgress: undefined });
           return await this.searchPrograms(orgRef, sessionId);
         }
 
@@ -4860,6 +4878,18 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       // If a payment method exists, explicitly confirm before REVIEW.
       if (hasPaymentMethod || cardLast4) {
         const display = cardLast4 ? `${cardBrand || 'Card'} •••• ${cardLast4}` : 'Yes';
+        if (isFutureBooking && computedOpensAt) {
+          const opensAtDisplay = this.formatTimeForUser(computedOpensAt, context);
+          return this.formatResponse(
+            `I found a payment method on file: **${display}**.\n\n` +
+              `⏰ **Registration opens:** ${opensAtDisplay}\n` +
+              `🕒 If you confirm this card, I’ll schedule an auto‑registration to run **the moment it opens**.\n` +
+              `💳 **No charge now** — the $20 SignupAssist fee is charged **only if registration succeeds**.\n\n` +
+              `Reply **yes** to use it, or reply **change card** to add a new one in Stripe.`,
+            undefined,
+            []
+          );
+        }
         return this.formatResponse(
           `I found a payment method on file: **${display}**.\n\nReply **yes** to use it, or reply **change card** to add a new one in Stripe.`,
           undefined,
@@ -5751,21 +5781,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const scheduledRegistrationId = scheduleResponse.data.scheduled_registration_id;
       Logger.info("[confirmScheduledRegistration] ✅ Scheduled registration created:", scheduledRegistrationId);
       
-      // Reset context (awaited so other Railway instances don't briefly see stale SUBMIT/REVIEW state)
-      await this.updateContextAndAwait(sessionId, {
-        step: FlowStep.COMPLETED,
-        selectedProgram: undefined,
-        requiredFields: undefined,
-        formData: undefined,
-        childInfo: undefined,
-        schedulingData: undefined,
-        reviewSummaryShown: false,
-        paymentAuthorized: false,
-        stripeCheckoutUrl: undefined,
-        stripeCheckoutSessionId: undefined,
-        stripeCheckoutCreatedAt: undefined,
-      });
-      
       // Mandate expiry is already an ISO string (UTC). Keep ISO for storage and format for display in templates.
       const validUntilIso = mandateResponse.data?.valid_until || scheduled_time;
       
@@ -5781,14 +5796,52 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       });
       
       const scheduledDisplay = this.formatTimeForUser(scheduledDate, context);
+      const code = `SCH-${String(scheduledRegistrationId).slice(0, 8)}`;
+
+      const finalMessage = addResponsibleDelegateFooter(
+        `${successMessage}\n\n` +
+          `📌 Reference: **${code}**\n\n` +
+          `To cancel before it runs: **cancel ${code}**\n` +
+          `To check status: **view my registrations**`
+      );
+
+      // Reset context (awaited so other Railway instances don't briefly see stale SUBMIT/REVIEW state),
+      // and store a replay-safe completion snapshot (ChatGPT can send an empty follow-up call on reconnect).
+      await this.updateContextAndAwait(sessionId, {
+        step: FlowStep.COMPLETED,
+        selectedProgram: undefined,
+        requiredFields: undefined,
+        formData: undefined,
+        childInfo: undefined,
+        schedulingData: undefined,
+        reviewSummaryShown: false,
+        paymentAuthorized: false,
+        stripeCheckoutUrl: undefined,
+        stripeCheckoutSessionId: undefined,
+        stripeCheckoutCreatedAt: undefined,
+        lastCompletion: {
+          kind: "scheduled",
+          completed_at: new Date().toISOString(),
+          message: finalMessage,
+          scheduled_registration_id: scheduledRegistrationId,
+          org_ref: context.selectedProgram.org_ref,
+          program_ref: context.selectedProgram.program_ref,
+        },
+      });
+      
       return {
-        message: successMessage,
+        message: finalMessage,
         // Hint for HTTP guardrails: completion should render as Step 5/5
         step: FlowStep.COMPLETED,
         cards: [{
           title: '🎉 You\'re All Set!',
           subtitle: programName,
-          description: `📅 **Auto-Registration Scheduled**\nWe'll register you on: ${scheduledDisplay}\n\n💰 **Total (if successful):** ${total_amount}\n\n🔐 **Mandate ID:** ${mandateId.substring(0, 8)}...`
+          description:
+            `📅 **Auto-Registration Scheduled**\n` +
+            `We'll register you at: ${scheduledDisplay}\n\n` +
+            `💰 **Total (if successful):** ${total_amount}\n` +
+            `📌 **Reference:** ${code}\n\n` +
+            `🔐 **Mandate ID:** ${mandateId.substring(0, 8)}...`
         }],
         cta: {
           buttons: [
@@ -7045,6 +7098,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       paymentAuthorized: ctx.paymentAuthorized
     };
 
+    // Wizard UX: account-management views (receipts/audit/cancel) should break the "continued" streak.
+    // Otherwise the next wizard header can incorrectly render as "continued" even if the user hasn't seen
+    // the wizard header for that step in the immediately prior turn.
+    if (response?.message && response?.metadata?.suppressWizardHeader) {
+      this.updateContext(sessionId, { wizardProgress: undefined });
+    }
+
     // Wizard UX: if we're sending multiple assistant turns within the same wizard step,
     // tag follow-ups as "continued" so users understand they're still on the same step.
     // (Skip for account-management views like receipts/audit/cancel.)
@@ -7687,6 +7747,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         delete updates.step; // Remove the step update, keep current step
       }
     }
+
+    // Wizard UX: reset the "continued" counter when we transition to a different orchestrator step.
+    // This prevents stale persisted wizardProgress from causing "continued" on the first turn of a step.
+    if (updates.step !== undefined && updates.step !== current.step) {
+      updates.wizardProgress = undefined;
+    }
     
     const updated = { ...current, ...updates };
     this.sessions.set(sessionId, updated);
@@ -7740,6 +7806,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         });
         delete updates.step; // Remove the step update, keep current step
       }
+    }
+
+    // Wizard UX: reset the "continued" counter when we transition to a different orchestrator step.
+    // This prevents stale persisted wizardProgress from causing "continued" on the first turn of a step.
+    if (updates.step !== undefined && updates.step !== current.step) {
+      updates.wizardProgress = undefined;
     }
     
     const updated = { ...current, ...updates };

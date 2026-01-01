@@ -225,6 +225,8 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
   - **Step header UX**: receipts/audit/cancel are treated as **account management** views and now set `metadata.suppressWizardHeader=true` so ChatGPT doesn’t prepend `Step 1/5 — …` on those screens.
   - **Cancel retry UX**: when ChatGPT duplicates the user’s “yes” after a cancellation, the `lastCompletion` replay now also sets `metadata.suppressWizardHeader=true` (prevents `Step 5/5` from reappearing on the replayed confirmation).
   - **Audit reliability**: hardened `viewAuditTrail` against malformed timestamps / non-array mandate scopes and ensured audit errors also set `metadata.suppressWizardHeader=true` (so errors don’t render as `Step 5/5`).
+  - **Wizard “continued” correctness**: fixed a bug where `Step N/5 continued` could appear on the *first* visible turn of a step (especially Step 1). We now reset/clear `wizardProgress` on step transitions, on explicit “browse” intents, and whenever we return an account-management view (`suppressWizardHeader=true`), so “continued” only appears on the 2nd consecutive turn of the same wizard step.
+  - **Set & forget scheduled signup UX**: for “opens later” programs, Step 3/5 and Step 4/5 now explicitly show the **registration open time** and clarify **no charge unless registration succeeds**. Scheduled signup confirmations now store a `lastCompletion.kind="scheduled"` snapshot so ChatGPT empty reconnect calls re-print the scheduling confirmation instead of jumping back to Step 1.
 - `mcp_server/index.ts`
   - `signupassist.chat` tool handler now **suppresses wizard step headers** when `metadata.suppressWizardHeader=true` (keeps Step headers for the actual signup wizard).
 - `mcp_server/ai/APIOrchestrator.ts`
