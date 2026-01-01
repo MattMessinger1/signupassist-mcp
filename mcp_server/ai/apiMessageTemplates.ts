@@ -307,7 +307,7 @@ Registration opens: ${scheduledDate}
 
 ✅ We'll attempt to register you **the moment it opens**.
 💳 **No charge now** — the $20 SignupAssist fee is charged **only if registration succeeds**.
-🏫 Program fees (if any) are handled by the provider.
+🏫 Program fees (if any) are handled by the provider — and only apply if registration succeeds.
 
 Total (if successful): ${totalCost}
 

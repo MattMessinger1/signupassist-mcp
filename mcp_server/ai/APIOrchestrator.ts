@@ -759,7 +759,9 @@ export default class APIOrchestrator implements IOrchestrator {
       msg += `- **Set & forget:** We’ll register you the moment it opens.\n`;
       msg += `- **Charges now:** $0.00 (no charges unless registration succeeds)\n`;
     }
-    msg += `- **Program Fee:** ${formattedTotal} (paid to provider)\n`;
+    msg += opensAtDisplay
+      ? `- **Program Fee:** ${formattedTotal} (paid to provider only if we successfully register you when it opens)\n`
+      : `- **Program Fee:** ${formattedTotal} (paid to provider only if booking succeeds)\n`;
     msg += opensAtDisplay
       ? `- **SignupAssist Fee:** $20 (charged only if we successfully register you when it opens)\n`
       : `- **SignupAssist Fee:** $20 (charged only upon successful registration)\n`;
@@ -1852,6 +1854,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           ignoreAudienceMismatch: ignore,
           selectedProgram: null,
           step: FlowStep.BROWSE,
+          wizardProgress: undefined,
         });
         Logger.info('[search_programs] Cleared selection state for fresh browse');
         return await this.searchPrograms(payload.orgRef || "aim-design", sessionId);
@@ -2685,7 +2688,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         orgRef: "aim-design",
         requestedActivity: undefined,
         pendingProviderConfirmation: undefined,
-        step: FlowStep.BROWSE
+        step: FlowStep.BROWSE,
+        wizardProgress: undefined
       });
       return await this.searchPrograms("aim-design", sessionId);
     }
@@ -2694,7 +2698,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // list programs now (don't ask follow-ups).
     if (this.isBrowseAllIntent(input) && (context.orgRef || context.pendingProviderConfirmation)) {
       const orgRef = context.orgRef || context.pendingProviderConfirmation?.toLowerCase().replace(/\s+/g, '-') || "aim-design";
-      this.updateContext(sessionId, { orgRef, requestedActivity: undefined, pendingProviderConfirmation: undefined });
+      this.updateContext(sessionId, {
+        orgRef,
+        requestedActivity: undefined,
+        pendingProviderConfirmation: undefined,
+        step: FlowStep.BROWSE,
+        wizardProgress: undefined
+      });
       return await this.searchPrograms(orgRef, sessionId);
     }
 
@@ -2772,7 +2782,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           this.updateContext(sessionId, { 
             requestedActivity: detectedActivity,
             requestedLocation: cityMatch,
-            step: FlowStep.BROWSE
+            step: FlowStep.BROWSE,
+            wizardProgress: undefined
           });
           
           // Save location if authenticated
@@ -2798,7 +2809,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           this.updateContext(sessionId, { 
             requestedActivity: detectedActivity,
             requestedLocation: cityMatch,
-            step: FlowStep.BROWSE
+            step: FlowStep.BROWSE,
+            wizardProgress: undefined
           });
           
           return await this.handleLocationResponse(cityMatch, sessionId, this.getContext(sessionId));
@@ -2811,7 +2823,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const orgRef = confidence.matchedProvider.name.toLowerCase().replace(/\s+/g, '-');
       // CHAT-ONLY: If user intent is signup/browse/programs, list programs immediately.
       if (this.hasSignupIntent(input) || this.hasProgramWords(input) || this.isBrowseAllIntent(input)) {
-        this.updateContext(sessionId, { orgRef, pendingProviderConfirmation: undefined, step: FlowStep.BROWSE });
+        this.updateContext(sessionId, { orgRef, pendingProviderConfirmation: undefined, step: FlowStep.BROWSE, wizardProgress: undefined });
         return await this.searchPrograms(orgRef, sessionId);
       }
       // Otherwise keep the activation message (still useful for generic/ambiguous opens)
@@ -2839,7 +2851,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
         // CHAT-ONLY: stop "Madison?" and "what activity?" if user intends browse/signup.
         if (this.hasSignupIntent(input) || this.hasProgramWords(input) || this.isBrowseAllIntent(input)) {
-          this.updateContext(sessionId, { orgRef, pendingProviderConfirmation: undefined, step: FlowStep.BROWSE });
+          this.updateContext(sessionId, { orgRef, pendingProviderConfirmation: undefined, step: FlowStep.BROWSE, wizardProgress: undefined });
           return await this.searchPrograms(orgRef, sessionId);
         }
 
@@ -3808,7 +3820,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     const orgRef = providerFromPayload?.toLowerCase().replace(/\s+/g, '-') || providerFromContext?.toLowerCase().replace(/\s+/g, '-') || 'aim-design';
     
     // Clear pending confirmation
-    this.updateContext(sessionId, { pendingProviderConfirmation: undefined });
+    this.updateContext(sessionId, { pendingProviderConfirmation: undefined, step: FlowStep.BROWSE, wizardProgress: undefined });
     
     if (payload.ask_city) {
       // User said they're in a different city - just proceed anyway
@@ -3900,6 +3912,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     context: APIContext
   ): Promise<OrchestratorResponse> {
     // Default to aim-design for now, could be expanded to multi-provider
+    this.updateContext(sessionId, { step: FlowStep.BROWSE, wizardProgress: undefined });
     return await this.searchPrograms('aim-design', sessionId);
   }
 
@@ -3929,6 +3942,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     
     // Proceed to search programs
     const orgRef = provider_name?.toLowerCase().replace(/\s+/g, '-') || 'aim-design';
+    this.updateContext(sessionId, { step: FlowStep.BROWSE, wizardProgress: undefined });
     return await this.searchPrograms(orgRef, sessionId);
   }
 
@@ -3941,7 +3955,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     context: APIContext
   ): Promise<OrchestratorResponse> {
     // Clear the activity filter from context
-    this.updateContext(sessionId, { requestedActivity: undefined });
+    this.updateContext(sessionId, { requestedActivity: undefined, step: FlowStep.BROWSE, wizardProgress: undefined });
     Logger.info('[handleClearActivityFilter] Cleared activity filter');
     
     // Re-search without activity filter
@@ -3960,7 +3974,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // Mark that user has accepted out-of-area programs
     this.updateContext(sessionId, { 
       ignoreLocationFilter: true,
-      orgRef: payload.orgRef 
+      orgRef: payload.orgRef,
+      step: FlowStep.BROWSE,
+      wizardProgress: undefined
     });
     
     Logger.info('[handleShowOutOfAreaPrograms] User accepted out-of-area programs', {
@@ -3981,6 +3997,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     sessionId: string
   ): Promise<OrchestratorResponse> {
     try {
+      // Wizard UX: program list renders should start fresh (avoid "Step 1/5 continued" due to stale counters).
+      this.updateContext(sessionId, { wizardProgress: undefined });
       Logger.info(`Searching programs for org: ${orgRef}`);
 
       // Get context for timezone formatting
