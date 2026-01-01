@@ -82,7 +82,44 @@ async function main() {
     }
   }
 
-  // 3) If we have a token, connect over SSE and call signupassist.chat
+  // 3) If we have a token, verify the "JSON tools/call over POST /sse" compatibility path
+  // This is a critical ChatGPT edge case (prevents 424 "missing required content").
+  if (token) {
+    const rpcId = `smoke-sse-tools-call-${Date.now()}`;
+    const { status, json, text } = await fetchJson(`${baseUrl}/sse`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json, text/event-stream",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: rpcId,
+        method: "tools/call",
+        params: {
+          name: "signupassist.chat",
+          arguments: {
+            input: "hello",
+            sessionId: `smoke-sse-${Date.now()}`,
+            userTimezone: "America/Chicago",
+          },
+        },
+      }),
+    });
+
+    assert(status === 200, `POST /sse tools/call: expected 200, got ${status} :: ${text.slice(0, 200)}`);
+    assert(json?.jsonrpc === "2.0", "POST /sse tools/call: missing jsonrpc=2.0");
+    assert(String(json?.id) === rpcId, `POST /sse tools/call: id mismatch (expected ${rpcId}, got ${String(json?.id)})`);
+    assert(Array.isArray(json?.result?.content), "POST /sse tools/call: result.content must be an array");
+    assert((json?.result?.content || []).length > 0, "POST /sse tools/call: result.content must be non-empty");
+    assert(typeof json?.result?.content?.[0]?.text === "string", "POST /sse tools/call: content[0].text must be a string");
+    console.log("[smoke-sse] ✅ POST /sse tools/call returns result.content");
+  } else {
+    console.log("[smoke-sse] Skipping POST /sse tools/call smoke (no MCP_ACCESS_TOKEN provided)");
+  }
+
+  // 4) If we have a token, connect over SSE and call signupassist.chat
   if (token) {
     const sseUrl = new URL(`${baseUrl}/sse`);
     const transport = new SSEClientTransport(sseUrl, {

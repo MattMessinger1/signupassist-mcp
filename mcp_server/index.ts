@@ -1693,6 +1693,17 @@ class SignupAssistMCPServer {
                 return;
               }
 
+              // JSON-RPC notifications are fire-and-forget; return quickly so we don't
+              // accidentally open a long-lived SSE stream after consuming a JSON body.
+              if (methodName.startsWith('notifications/')) {
+                res.writeHead(204, {
+                  'Access-Control-Allow-Origin': '*',
+                  'Cache-Control': 'no-store',
+                });
+                res.end();
+                return;
+              }
+
               // --------------------------------------------------------------
               // tools/call compatibility: Some clients POST tools/call directly
               // to /sse and expect a finite JSON-RPC response (not an SSE stream).
@@ -1806,6 +1817,27 @@ class SignupAssistMCPServer {
                     jsonrpc: '2.0',
                     id: parsed?.id ?? 1,
                     result: toolResult,
+                  })
+                );
+                return;
+              }
+
+              // Guardrail: if a client POSTs JSON-RPC to /sse with an unsupported method,
+              // respond with a finite JSON-RPC error instead of falling through into an SSE stream.
+              if (methodName) {
+                res.writeHead(400, {
+                  'Content-Type': 'application/json; charset=utf-8',
+                  'Access-Control-Allow-Origin': '*',
+                  'Cache-Control': 'no-store',
+                });
+                res.end(
+                  JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: parsed?.id ?? null,
+                    error: {
+                      code: -32601,
+                      message: `Method not found: ${methodName}`,
+                    },
                   })
                 );
                 return;
