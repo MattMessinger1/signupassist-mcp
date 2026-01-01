@@ -1093,6 +1093,13 @@ class SignupAssistMCPServer {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, POST, HEAD, OPTIONS');
       res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-run-id, X-Mandate-JWS, X-Mandate-Id');
+      // --- Baseline security headers (safe defaults for an API server)
+      // NOTE: We avoid aggressive CSP/HSTS changes here to prevent breaking existing static assets or proxy behavior.
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      res.setHeader('X-Frame-Options', 'DENY');
+      // Keep minimal; deny powerful features by default.
+      res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
 
       if (req.method === 'OPTIONS') {
         res.writeHead(200);
@@ -1101,6 +1108,18 @@ class SignupAssistMCPServer {
       }
 
       const url = new URL(req.url || '/', `http://localhost:${port}`);
+
+      // Avoid caching for sensitive endpoints (tokens, tool execution, long-lived SSE).
+      // Some endpoints (e.g., /.well-known/*) may override this with their own Cache-Control later.
+      const pathnameForCache = url.pathname || '/';
+      const noStore =
+        pathnameForCache.startsWith('/oauth/') ||
+        pathnameForCache === '/tools/call' ||
+        pathnameForCache === '/messages' ||
+        pathnameForCache.startsWith('/sse');
+      if (noStore) {
+        res.setHeader('Cache-Control', 'no-store');
+      }
 
       // Reduce scanner/probe noise and avoid accidentally serving SPA index.html for common secret-leak probes.
       // This is especially important on public Railway deployments.
