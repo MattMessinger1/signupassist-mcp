@@ -202,6 +202,23 @@ async function main() {
     const text4 = extractText(chat4);
     assert(/^(\*\*)?Step\s+4\/5\s+—/i.test(text4), `expected Step 4/5 header, got: ${text4.slice(0, 160)}`);
     assert(/Please review the details below/i.test(text4), `expected full review summary, got: ${text4.slice(0, 240)}`);
+    // IMPORTANT: Final booking consent must be explicit (prevents accidental booking if the model repeats a generic "yes").
+    assert(/\bbook now\b/i.test(text4), `expected explicit booking phrase "book now" in review step, got: ${text4.slice(0, 260)}`);
+
+    // Optional (dangerous if regressed): verify that a generic "yes" in Step 4 does NOT book.
+    // Enable only when running against a safe environment/user: REGRESSION_ASSERT_YES_DOESNT_BOOK=1
+    if ((process.env.REGRESSION_ASSERT_YES_DOESNT_BOOK || '').trim() === '1') {
+      const chat4b = await callTool(baseUrl, token, 'signupassist.chat', {
+        input: 'yes',
+        sessionId,
+        userTimezone: tz,
+        ...(userId ? { userId } : {}),
+      });
+      assert(chat4b.status === 200, `signupassist.chat step4 generic yes: expected 200, got ${chat4b.status}`);
+      const text4b = extractText(chat4b);
+      assert(!isStep(text4b, 5), `expected NOT to book on generic "yes" in review, got: ${text4b.slice(0, 200)}`);
+      assert(/\bbook now\b/i.test(text4b), `expected reminder to type "book now", got: ${text4b.slice(0, 240)}`);
+    }
   } else {
     console.log('[regression] (note) payment method not on file; Step 4/5 review check skipped (Stripe setup required)');
   }

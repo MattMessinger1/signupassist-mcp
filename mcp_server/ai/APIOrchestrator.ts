@@ -16,7 +16,7 @@ import type {
 } from "./types.js";
 import type { InputClassification } from "../types.js";
 import Logger from "../utils/logger.js";
-import {
+import { 
   addResponsibleDelegateFooter,
   addAPISecurityContext,
 } from "./complianceHelpers.js";
@@ -431,6 +431,32 @@ export default class APIOrchestrator implements IOrchestrator {
     return confirmPatterns.test(input.trim());
   }
 
+  /**
+   * Booking confirmation MUST be explicit.
+   *
+   * Why: In ChatGPT, the model may reuse a short "yes" across multiple tool calls
+   * (e.g., confirming a saved card in Step 3 and then immediately confirming booking in Step 4),
+   * which can cause the user to miss the final review/consent step.
+   *
+   * We therefore require an explicit verb like "book" or "register" for the final consent.
+   */
+  private isBookingConfirmation(input: string): boolean {
+    const raw = String(input || "").trim().toLowerCase();
+    if (!raw) return false;
+    const s = raw.replace(/[.!?]+$/g, "").trim();
+
+    return (
+      s === "book" ||
+      s === "book now" ||
+      s === "book it" ||
+      s === "register" ||
+      s === "register now" ||
+      s === "confirm booking" ||
+      /^yes[, ]+(book|book now|register|register now|confirm booking)$/.test(s) ||
+      s === "i confirm booking"
+    );
+  }
+
   private isUserDenial(input: string): boolean {
     const denyPatterns = /^(no|nope|nah|don't|do not|dont|stop|never mind|nevermind|not now|cancel|abort)\.?!?$/i;
     return denyPatterns.test((input || "").trim());
@@ -706,7 +732,7 @@ export default class APIOrchestrator implements IOrchestrator {
       msg += `- **Payment method on file:** ${display}\n`;
     }
 
-    msg += "\nIf everything is correct, type \"yes\" to continue or \"cancel\" to abort.";
+    msg += "\nIf everything is correct, type **book now** to continue or **cancel** to abort.";
     return msg;
   }
 
@@ -875,7 +901,7 @@ export default class APIOrchestrator implements IOrchestrator {
           dob: context.pendingDelegateInfo?.dob || parsedDate,
         };
       } else if (needsParticipantDob) {
-        context.childInfo = {
+      context.childInfo = {
           ...(context.childInfo || { name: "" }),
           dob: context.childInfo?.dob || parsedDate,
         };
@@ -890,13 +916,13 @@ export default class APIOrchestrator implements IOrchestrator {
 
     // 4) Adult name (delegate) — only when we still need it
     if (needsDelegateName) {
-      const adult = this.parseAdultName(input);
-      if (adult) {
-        context.pendingDelegateInfo = {
-          ...(context.pendingDelegateInfo || {}),
-          firstName: context.pendingDelegateInfo?.firstName || adult.firstName,
-          lastName: context.pendingDelegateInfo?.lastName || adult.lastName,
-        };
+    const adult = this.parseAdultName(input);
+    if (adult) {
+      context.pendingDelegateInfo = {
+        ...(context.pendingDelegateInfo || {}),
+        firstName: context.pendingDelegateInfo?.firstName || adult.firstName,
+        lastName: context.pendingDelegateInfo?.lastName || adult.lastName,
+      };
       }
     }
 
@@ -1336,7 +1362,7 @@ export default class APIOrchestrator implements IOrchestrator {
       const schId = matchByPrefix(schRows);
       if (schId) return { scheduled_registration_id: schId };
     }
-
+    
     return null;
   }
   
@@ -2478,7 +2504,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       });
       return await this.handleAction(secondaryAction.action, secondaryAction.payload || {}, sessionId, context);
     }
-
+    
     // Text-only confirmation for cancellations (ChatGPT has no buttons in v1)
     if (context.pendingCancellation) {
       if (this.isUserConfirmation(input)) {
@@ -2745,9 +2771,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         const displayName = getActivityDisplayName(context.requestedActivity!);
         const audienceAck =
           context.requestedAdults === true
-            ? "Got it — adults."
+            ? "Got it — adults." 
             : context.requestedAdults === false
-              ? "Got it — kids."
+              ? "Got it — kids." 
               : "Got it.";
 
         return this.formatResponse(
@@ -3011,7 +3037,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         }
 
         // Await user confirmation of details
-        if (this.isUserConfirmation(input)) {
+        if (this.isBookingConfirmation(input)) {
           Logger.info('[Review] User confirmed details', {
             hasCardOnFile: !!(context.hasPaymentMethod || context.cardLast4),
             futureBooking: !!context.schedulingData
@@ -3071,6 +3097,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               return await this.confirmPayment({}, sessionId, this.getContext(sessionId));
             }
           }
+        }
+        // If the user types a generic "yes" here, ask for the explicit booking phrase.
+        if (this.isUserConfirmation(input)) {
+          return this.formatResponse(
+            `To confirm the booking, please type **book now**.\n\n(We use **book now** so we don't accidentally book when you're just confirming a payment method.)`
+          );
         }
         if (/cancel/i.test(input.trim())) {
           Logger.info('[Review] User cancelled during review');
@@ -4094,7 +4126,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           bookingStatus === 'opens_later' && computedOpensAt
             ? this.formatTimeForUser(computedOpensAt, context)
             : undefined;
-
+        
         return {
           index: idx + 1,
           title: prog.title || "Untitled",
@@ -4624,8 +4656,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     const isSoldOut = context.selectedProgram?.booking_status === 'sold_out';
 
     const slotStart = context.selectedProgram?.earliest_slot_time
-      ? new Date(context.selectedProgram.earliest_slot_time)
-      : null;
+      ? new Date(context.selectedProgram.earliest_slot_time) 
+        : null;
     const maxAdvance = context.selectedProgram?.booking_limits?.maxAdvanceTime;
     const computedOpensAt =
       slotStart && maxAdvance
@@ -5553,18 +5585,18 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       // Step 2: Create scheduled_registrations row via scheduler tool (full execution payload)
       Logger.info("[confirmScheduledRegistration] Creating scheduled registration payload...");
-
+      
       const delegate = formData.delegate || {};
       const participants = formData.participants || [];
       const programFeeCents = Math.round(parseFloat(program_fee?.replace(/[^0-9.]/g, '') || '0') * 100);
-
+      
       Logger.info("[confirmScheduledRegistration] Scheduling job via scheduler.schedule_signup...");
       const scheduleResponse = await this.invokeMCPTool(
         'scheduler.schedule_signup',
         {
-          user_id: context.user_id,
-          mandate_id: mandateId,
-          org_ref: context.selectedProgram.org_ref,
+        user_id: context.user_id,
+        mandate_id: mandateId,
+        org_ref: context.selectedProgram.org_ref,
           program_ref: context.selectedProgram.program_ref,
           program_name: programName,
           event_id,
@@ -5881,10 +5913,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       const textMessage =
         `📋 **Your Registrations**\n\n` +
-        `✅ **Upcoming:** ${upcoming.length}\n` +
+          `✅ **Upcoming:** ${upcoming.length}\n` +
         `📅 **Scheduled:** ${scheduledActive.length}\n` +
         `🗂 **Scheduled history:** ${scheduledHistory.length}\n` +
-        `📦 **Past:** ${past.length}\n\n` +
+          `📦 **Past:** ${past.length}\n\n` +
         `To manage items, reply with one of:\n` +
         `- **cancel REG-xxxxxxxx** (cancel a confirmed booking request)\n` +
         `- **cancel SCH-xxxxxxxx** (cancel a scheduled auto-registration)\n` +
@@ -6283,9 +6315,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       let registration: any = null;
       if (registration_id) {
         const { data, error } = await supabase
-          .from('registrations')
-          .select('id, program_name, booking_number, status, start_date, delegate_name, amount_cents, success_fee_cents, org_ref, provider, charge_id')
-          .eq('id', registration_id)
+        .from('registrations')
+        .select('id, program_name, booking_number, status, start_date, delegate_name, amount_cents, success_fee_cents, org_ref, provider, charge_id')
+        .eq('id', registration_id)
           .maybeSingle();
         if (error) Logger.warn("[cancelRegistration] registrations lookup error:", error);
         registration = data || null;
@@ -6302,7 +6334,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
         if (scheduledError || !scheduled) {
           Logger.error("[cancelRegistration] Registration not found:", scheduledError);
-          return this.formatError("Registration not found.");
+        return this.formatError("Registration not found.");
         }
 
         // Scheduled job cancellation confirmation (text-only)
@@ -6357,7 +6389,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           message += `\n\n💳 **Refunds:** SignupAssist can refund the $20 success fee if the provider accepts cancellation. Program-fee refunds (if any) are handled by ${providerName}.`;
         // ✅ COMPLIANCE: Include Responsible Delegate reminder for cancellation
         message = addResponsibleDelegateFooter(message);
-
+        
         const code = `REG-${String(registration.id).slice(0, 8)}`;
         this.updateContext(sessionId, {
           pendingCancellation: {

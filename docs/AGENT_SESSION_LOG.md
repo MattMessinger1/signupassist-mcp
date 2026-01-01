@@ -199,4 +199,32 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 - **Step 3/5 card clarity** (prod): PAYMENT fallback now shows the saved card brand/last4 (and refreshes via `stripe.check_payment_status` if needed) so the user can verify they’re using the correct card before consenting.
   - Deployed: commit `c0e05bd` (verify: Step 3/5 shows “visa •••• 4242” instead of a generic prompt).
 
+---
+
+## 2026-01-01 — Fix: explicit Step 4/5 consent (prevents skipped review)
+
+### Symptom (prod)
+
+- User confirmed the saved card in **Step 3/5** with “yes”, but the flow proceeded straight to **Step 5/5 — Registering**, effectively skipping **Step 4/5 (Review & consent)**.
+
+### Root cause
+
+- The REVIEW step previously accepted a generic confirmation like **“yes”** as final consent.
+- In ChatGPT tool flows, a short “yes” can be repeated/duplicated across adjacent turns (payment confirmation + booking confirmation), creating accidental consent and making the review summary effectively invisible.
+
+### Fix shipped (code)
+
+- `mcp_server/ai/APIOrchestrator.ts`
+  - Added `isBookingConfirmation(...)` and changed `FlowStep.REVIEW` to require an **explicit** booking phrase (e.g., **“book now”**) for final consent.
+  - Generic “yes” in REVIEW now **does not** book; it replies with a reminder to type **book now**.
+  - Updated the review summary footer to say **book now** (not “yes”) so consent is unambiguous.
+
+- `scripts/regressionSignup2.ts`
+  - Added an assertion that **Step 4/5 includes “book now”** (explicit consent phrase).
+  - Added an optional (opt-in) check `REGRESSION_ASSERT_YES_DOESNT_BOOK=1` to verify a generic “yes” in Step 4 does not book.
+
+### Local verification
+
+- `npm run mcp:build` ✅
+
 
