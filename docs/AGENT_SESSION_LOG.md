@@ -250,6 +250,44 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 
 ---
 
+## 2026-01-02 — Activation gate: Activity + Age + Location + cached-program match (DB) before discovery
+
+### Goal
+
+- Ensure SignupAssist only proceeds to program discovery when:
+  - the user has provided **Activity + Child Age + Location (city/state)**, AND
+  - there is at least one **matching program in our Supabase cached program feed**.
+
+### What changed (code)
+
+- `mcp_server/ai/APIOrchestrator.ts`
+  - Added a strict **cached program match** check against Supabase:
+    - Primary: `cached_programs` (JSON `programs_by_theme`, non-expired)
+    - Fallback: `cached_provider_feed` (legacy)
+  - Updated **single-turn** “Activity + City” fast-path:
+    - Now requires **age** too (A-A-L triad).
+    - Verifies a cached program match exists before calling `bookeo.find_programs`.
+  - Updated **location response** handling:
+    - If activity or age is missing, ask for it instead of proceeding.
+    - If triad complete but cache match is 0, return a “no matching programs in listings” message (no live discovery).
+  - Added a **triad completion** path when a user replies with just an age (e.g., `"8"`) after prior turns captured activity + location.
+
+- `mcp/openapi.json`
+  - Marked `/orchestrator/chat` as `x-openai-isConsequential: false`.
+  - Added an explicit “Activation gate” note to the operation description.
+
+- `mcp/manifest.json`
+  - Added the “Activation gate” rule to `description_for_model`.
+
+### Evidence / sanity checks
+
+- `npm run mcp:build` ✅ (tsc compiled cleanly after changes)
+
+### Notes / follow-ups
+
+- If activity keywords are too strict (e.g., programs don’t include “robotics” in title/description/theme), consider broadening the matcher (e.g., allow STEM→robotics fallback) while still enforcing “exists in DB”.
+- Validate in ChatGPT that “Find robotics classes in Madison, WI for my 8-year-old” reliably triggers the tool call and returns AIM Design programs when the cache contains matches.
+
 ## 2026-01-01 — Fix: `audit REG-...` crashes when audit args are redacted (`participants.map is not a function`)
 
 ### Symptom (prod)

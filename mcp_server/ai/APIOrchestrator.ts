@@ -56,7 +56,8 @@ import { lookupCity } from "../utils/cityLookup.js";
 import { analyzeLocation } from "./orchestratorMultiBackend.js";
 import { 
   extractActivityFromMessage as matcherExtractActivity,
-  getActivityDisplayName
+  getActivityDisplayName,
+  getActivityKeywords
 } from "../utils/activityMatcher.js";
 import { getAllActiveOrganizations } from "../config/organizations.js";
 import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
@@ -2785,6 +2786,45 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     }
 
     // ------------------------------------------------------------------------
+    // TRIAD COMPLETION: User replies with just an age (e.g., "8") after we already
+    // captured activity + location in prior turns.
+    // ------------------------------------------------------------------------
+    const ageOnly = this.extractChildAgeFromSearchQuery(input);
+    const hasPendingTriad =
+      context.step === FlowStep.BROWSE &&
+      !context.selectedProgram &&
+      !!context.requestedActivity &&
+      !!context.requestedLocation;
+
+    if (ageOnly && hasPendingTriad) {
+      const orgRef = context.orgRef || "aim-design";
+
+      // Persist age so we don't re-ask
+      this.updateContext(sessionId, {
+        childInfo: { ...(context.childInfo || { name: "" }), age: ageOnly }
+      });
+
+      const matchCount = await this.countCachedProgramMatchesForOrg({
+        orgRef,
+        normalizedActivity: context.requestedActivity!,
+        ageYears: ageOnly
+      });
+
+      if (matchCount === 0) {
+        return this.formatResponse(
+          `I don’t have any **${getActivityDisplayName(context.requestedActivity!)}** programs for **age ${ageOnly}** in my listings right now.\n\nIf you want, tell me another activity (or a different city) and I’ll try again.`,
+          undefined,
+          [
+            { label: "Start over", action: "clear_context", payload: {}, variant: "outline" as const }
+          ]
+        );
+      }
+
+      // Proceed to show programs (we've verified the cache has a hit)
+      return await this.searchPrograms(orgRef, sessionId);
+    }
+
+    // ------------------------------------------------------------------------
     // V1 CHAT-ONLY FAST PATHS
     // If user is clearly trying to sign up / browse programs at AIM Design,
     // skip activation + clarifications and list programs immediately.
@@ -2877,6 +2917,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // This is the "Set & Forget" philosophy - less back and forth
     // ========================================================================
     if (detectedActivity) {
+      const detectedAge = this.extractChildAgeFromSearchQuery(input);
+
       // Try to extract city from the same message
       const cityMatch = this.extractCityFromMessage(input);
       if (cityMatch) {
@@ -2895,6 +2937,20 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             step: FlowStep.BROWSE,
             wizardProgress: undefined
           });
+
+          // If age is missing, ask for it (A-A-L triad requirement before discovery)
+          if (!detectedAge) {
+            return this.formatResponse(
+              `Got it — ${getActivityDisplayName(detectedActivity)} in ${locationCheck.city}${locationCheck.state ? `, ${locationCheck.state}` : ''}.\n\nHow old is your child?`,
+              undefined,
+              []
+            );
+          }
+
+          // Persist age so we don't re-ask
+          this.updateContext(sessionId, {
+            childInfo: { ...(context.childInfo || { name: "" }), age: detectedAge }
+          });
           
           // Save location if authenticated
           if (context.user_id && locationCheck.city) {
@@ -2911,6 +2967,24 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           
           // Get the default org for this coverage area (aim-design for now)
           const orgRef = "aim-design";
+
+          // Strict activation gate: verify cached program match before live discovery
+          const matchCount = await this.countCachedProgramMatchesForOrg({
+            orgRef,
+            normalizedActivity: detectedActivity,
+            ageYears: detectedAge
+          });
+
+          if (matchCount === 0) {
+            return this.formatResponse(
+              `I don’t have any **${getActivityDisplayName(detectedActivity)}** programs for **age ${detectedAge}** in my listings right now.\n\nIf you want, tell me another activity (or a different city) and I’ll try again.`,
+              undefined,
+              [
+                { label: "Start over", action: "clear_context", payload: {}, variant: "outline" as const }
+              ]
+            );
+          }
+
           return await this.searchPrograms(orgRef, sessionId);
         }
         
@@ -3668,6 +3742,199 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     };
   }
 
+  // ============================================================================
+  // ACTIVATION GATE: Require Activity + Age + Location AND a cached-program match
+  // ============================================================================
+
+  /**
+   * Extract child's age from a "find classes" style query.
+   * Examples:
+   * - "for my 8-year-old"
+   * - "my 8 year old"
+   * - "age 8"
+   * - "8yo"
+   * - "8"
+   */
+  private extractChildAgeFromSearchQuery(input: string): number | null {
+    const s = String(input || "").trim();
+    if (!s) return null;
+
+    // Standalone number
+    const standalone = s.match(/^(\d{1,2})$/);
+    if (standalone) {
+      const n = Number(standalone[1]);
+      if (Number.isFinite(n) && n >= 3 && n <= 18) return n;
+    }
+
+    const patterns: RegExp[] = [
+      /(\d{1,2})\s*[-\s]?\s*year\s*[-\s]?\s*old/i,    // 8-year-old / 8 year old
+      /(\d{1,2})\s*yo\b/i,                             // 8yo
+      /\bage\s*(\d{1,2})\b/i,                          // age 8
+      /\bmy\s+(\d{1,2})\b/i,                           // my 8 (heuristic)
+      /\bfor\s+my\s+(\d{1,2})\b/i,                     // for my 8
+    ];
+
+    for (const re of patterns) {
+      const m = s.match(re);
+      if (!m?.[1]) continue;
+      const n = Number(m[1]);
+      if (Number.isFinite(n) && n >= 3 && n <= 18) return n;
+    }
+
+    return null;
+  }
+
+  /**
+   * Best-effort age_range parser used for cached program matching.
+   * Returns null when we can't parse reliably (caller should treat as "unknown" and not exclude).
+   */
+  private parseAgeRangeText(ageRangeText: string): { min?: number; max?: number; plus?: number } | null {
+    const t = String(ageRangeText || "").trim();
+    if (!t) return null;
+
+    // Range: "Ages 7-10", "7–10", "7 - 10"
+    const range = t.match(/(\d{1,2})\s*[-–]\s*(\d{1,2})/);
+    if (range) {
+      const min = Number(range[1]);
+      const max = Number(range[2]);
+      if (Number.isFinite(min) && Number.isFinite(max)) return { min, max };
+    }
+
+    // Plus: "13+"
+    const plus = t.match(/(\d{1,2})\s*\+/);
+    if (plus) {
+      const n = Number(plus[1]);
+      if (Number.isFinite(n)) return { plus: n };
+    }
+
+    // Single age: "Age 8"
+    const single = t.match(/\b(\d{1,2})\b/);
+    if (single) {
+      const n = Number(single[1]);
+      if (Number.isFinite(n)) return { min: n, max: n };
+    }
+
+    return null;
+  }
+
+  private isAgeWithinRange(ageYears: number, ageRangeText?: string): boolean {
+    if (!Number.isFinite(ageYears)) return true;
+    const parsed = this.parseAgeRangeText(ageRangeText || "");
+    if (!parsed) return true; // Can't parse → don't exclude (avoid false negatives)
+    if (parsed.plus != null) return ageYears >= parsed.plus;
+    if (parsed.min != null && parsed.max != null) return ageYears >= parsed.min && ageYears <= parsed.max;
+    return true;
+  }
+
+  /**
+   * Count matching programs from Supabase cache for an org_ref.
+   * This enforces the "must exist in our DB" rule before we proceed to live discovery.
+   */
+  private async countCachedProgramMatchesForOrg(args: {
+    orgRef: string;
+    normalizedActivity: string;
+    ageYears: number;
+  }): Promise<number> {
+    const { orgRef, normalizedActivity, ageYears } = args;
+
+    // Guard: if Supabase isn't configured, treat as "no cached match" (strict).
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      Logger.warn('[ActivationGate] Supabase not configured - cannot verify cached program match', {
+        hasUrl: !!process.env.SUPABASE_URL,
+        hasKey: !!process.env.SUPABASE_SERVICE_ROLE_KEY,
+      });
+      return 0;
+    }
+
+    const supabase = this.getSupabaseClient();
+    const nowIso = new Date().toISOString();
+
+    // 1) Enhanced cache (cached_programs)
+    try {
+      const { data: enhanced, error: enhancedError } = await supabase
+        .from('cached_programs')
+        .select('programs_by_theme, cached_at, expires_at')
+        .eq('org_ref', orgRef)
+        .eq('category', 'all')
+        .gt('expires_at', nowIso)
+        .order('cached_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!enhancedError && enhanced?.programs_by_theme) {
+        const programsByTheme = enhanced.programs_by_theme as Record<string, any[]>;
+        const keywords = getActivityKeywords(normalizedActivity).map(k => k.toLowerCase());
+
+        let matches = 0;
+        for (const [theme, programs] of Object.entries(programsByTheme || {})) {
+          for (const p of (programs || [])) {
+            const ageOk = this.isAgeWithinRange(ageYears, p?.age_range);
+            if (!ageOk) continue;
+
+            const hay = `${theme} ${(p?.title || '')} ${(p?.description || '')}`.toLowerCase();
+            const activityOk = keywords.length === 0 ? true : keywords.some(kw => hay.includes(kw));
+            if (!activityOk) continue;
+
+            matches += 1;
+          }
+        }
+
+        Logger.info('[ActivationGate] cached_programs match check', {
+          orgRef,
+          normalizedActivity,
+          ageYears,
+          matches,
+        });
+
+        return matches;
+      }
+    } catch (e) {
+      Logger.warn('[ActivationGate] cached_programs check failed, falling back', { orgRef, error: (e as any)?.message });
+    }
+
+    // 2) Legacy cache (cached_provider_feed)
+    try {
+      const { data: rows, error } = await supabase
+        .from('cached_provider_feed')
+        .select('program, cached_at')
+        .eq('org_ref', orgRef)
+        .limit(200);
+
+      if (error || !rows || rows.length === 0) {
+        return 0;
+      }
+
+      const keywords = getActivityKeywords(normalizedActivity).map(k => k.toLowerCase());
+      let matches = 0;
+      for (const row of rows) {
+        const prog = typeof (row as any).program === 'string'
+          ? JSON.parse((row as any).program)
+          : (row as any).program;
+
+        const ageOk = this.isAgeWithinRange(ageYears, prog?.age_range);
+        if (!ageOk) continue;
+
+        const hay = `${prog?.title || ''} ${stripHtml(prog?.description || '')}`.toLowerCase();
+        const activityOk = keywords.length === 0 ? true : keywords.some(kw => hay.includes(kw));
+        if (!activityOk) continue;
+
+        matches += 1;
+      }
+
+      Logger.info('[ActivationGate] cached_provider_feed match check', {
+        orgRef,
+        normalizedActivity,
+        ageYears,
+        matches,
+      });
+
+      return matches;
+    } catch (e) {
+      Logger.warn('[ActivationGate] cached_provider_feed check failed', { orgRef, error: (e as any)?.message });
+      return 0;
+    }
+  }
+
   /**
    * Handle location response from user
    */
@@ -3795,6 +4062,52 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
     // Proceed to search programs (default provider if none selected)
     const providerName = context.orgRef || "aim-design";
+
+    // Enforce Activation Gate: only proceed when we have Activity + Age + Location AND DB match.
+    const normalizedActivity = context.requestedActivity || null;
+    const ageYears =
+      context.childInfo?.age ??
+      this.extractChildAgeFromSearchQuery(input) ??
+      null;
+
+    if (!normalizedActivity) {
+      return this.formatResponse(
+        `Great — ${city}${state ? `, ${state}` : ''}.\n\nWhat type of class are you looking for (e.g., robotics, coding, STEM)?`,
+        undefined,
+        []
+      );
+    }
+
+    if (!ageYears) {
+      return this.formatResponse(
+        `Got it — ${getActivityDisplayName(normalizedActivity)} in ${city}${state ? `, ${state}` : ''}.\n\nHow old is your child?`,
+        undefined,
+        []
+      );
+    }
+
+    // Persist age into context for subsequent turns (prevents loops if user types just a city/age)
+    this.updateContext(sessionId, {
+      childInfo: { ...(context.childInfo || { name: "" }), age: ageYears }
+    });
+
+    const matchCount = await this.countCachedProgramMatchesForOrg({
+      orgRef: providerName,
+      normalizedActivity,
+      ageYears
+    });
+
+    if (matchCount === 0) {
+      // Strict: no cached match → do not proceed to live discovery.
+      return this.formatResponse(
+        `I don’t have any **${getActivityDisplayName(normalizedActivity)}** programs for **age ${ageYears}** in my listings right now.\n\nIf you want, tell me another activity (or a different city) and I’ll try again.`,
+        undefined,
+        [
+          { label: "Start over", action: "clear_context", payload: {}, variant: "outline" as const }
+        ]
+      );
+    }
+
     return await this.searchPrograms(providerName, sessionId);
   }
 

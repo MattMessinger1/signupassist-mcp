@@ -3,7 +3,7 @@
   "name_for_human": "SignupAssist",
   "name_for_model": "signupassist",
   "description_for_human": "Securely automates activity sign-ups for parents using a consent-first flow.",
-  "description_for_model": "SignupAssist helps parents find and register children for activities. Always route the user-facing flow through signupassist.chat. Text-only v1: never book or charge until the user explicitly confirms.",
+  "description_for_model": "SignupAssist helps parents find and register children for activities. Activation gate: only proceed to program discovery when the user has provided Activity + Child Age + Location (city/state) AND there is at least one matching program in SignupAssist's cached program feed (database). Always route the user-facing flow through signupassist.chat. Text-only v1: never book or charge until the user explicitly confirms.",
   "auth": {
     "type": "oauth",
     "authorization_url": "https://signupassist-mcp-production.up.railway.app/oauth/authorize",

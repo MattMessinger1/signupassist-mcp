@@ -23,8 +23,9 @@
     "/orchestrator/chat": {
       "post": {
         "summary": "Talk to SignupAssist",
-        "description": "Send natural language messages to find and register for children's activities. Example: 'find robotics classes in Madison WI for my 8 year old'. I'll find matching programs, show you options, and help complete registration.\n\n**IMPORTANT:** Nothing is booked or charged until the user explicitly confirms. Always show the audit trail option after any action.",
+        "description": "Send natural language messages to find and register for children's activities. Example: 'find robotics classes in Madison WI for my 8 year old'. I'll find matching programs, show you options, and help complete registration.\n\n**Activation gate:** SignupAssist should only proceed to program discovery when the user has provided **Activity + Child Age + Location (city/state)** AND there is at least one matching program in SignupAssist's cached program feed (database).\n\n**IMPORTANT:** Nothing is booked or charged until the user explicitly confirms. Always show the audit trail option after any action.",
         "operationId": "chat",
+        "x-openai-isConsequential": false,
         "requestBody": {
           "required": true,
           "content": {

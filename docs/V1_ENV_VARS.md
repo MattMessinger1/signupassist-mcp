@@ -53,6 +53,30 @@ If you use per-function secrets in Supabase, ensure those are set in Supabase (n
 
 ---
 
+## Security hardening (recommended)
+
+### Rate limiting (web)
+
+Implemented in `mcp_server/index.ts` (in-memory; per token hash when available, else per IP).
+
+- `RATE_LIMIT_ENABLED` (default: enabled in `NODE_ENV=production`)
+- `RATE_LIMIT_WINDOW_MS` (default: `60000`)
+- `RATE_LIMIT_TOOLS_MAX` (default: `240`)
+- `RATE_LIMIT_MESSAGES_MAX` (default: `600`)
+- `RATE_LIMIT_SSE_MAX` (default: `240`)
+- `RATE_LIMIT_OAUTH_TOKEN_MAX` (default: `2000`)
+- `SSE_MAX_ACTIVE` (default: `5`) — concurrent SSE streams per token/IP
+
+### Request size caps (web)
+
+These return **413** when exceeded (prevents unbounded buffering).
+
+- `MAX_TOOLS_CALL_BODY_BYTES` (default: `262144`)
+- `MAX_MESSAGES_BODY_BYTES` (default: `262144`)
+- `MAX_OAUTH_TOKEN_BODY_BYTES` (default: `65536`)
+
+---
+
 ## Worker-specific tuning (optional)
 
 - `SCHEDULED_WORKER_MAX_ATTEMPT_MS` (default: 120000) — how long to rapid-retry “book at the second”
