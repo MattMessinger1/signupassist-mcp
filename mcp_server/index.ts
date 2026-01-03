@@ -511,6 +511,12 @@ function applyV1Visibility(toolName: string, toolMeta: Record<string, any> = {})
 
 function isAllowUnauthReadonlyToolsEnabled(): boolean {
   const raw = String(process.env.MCP_ALLOW_UNAUTH_READONLY_TOOLS || "").trim().toLowerCase();
+  // Default: enabled in production (still constrained by a strict allowlist), disabled elsewhere.
+  // Rationale: improves discovery/app-invocation reliability without changing OAuth posture for write tools.
+  if (!raw) {
+    return process.env.NODE_ENV === "production";
+  }
+  if (raw === "false" || raw === "0" || raw === "no" || raw === "off") return false;
   return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
 }
 
