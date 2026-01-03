@@ -301,6 +301,22 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 
 We are about to change MCP tool visibility + auth gating for a read-only discovery tool. If anything regresses with ChatGPT connector behavior (SSE/OAuth), revert to the baseline commit above.
 
+---
+
+## 2026-01-03 — Reduce Web Search fallback by enriching `signupassist.start` tool output
+
+### What changed
+
+- Updated `signupassist.start` to accept an optional `query` and return a **rich plain-text list** of relevant programs in `result.content[]` (so ChatGPT can answer without Web Search).
+- Strengthened `public/.well-known/chatgpt-apps-manifest.json` instructions to:
+  - call `signupassist.start` first for discovery + signup intents
+  - avoid Web Search if `signupassist.start` returns usable options
+
+### Evidence (prod)
+
+- Deployed commit: `df3f1bcdf8e15086fc57050c71ab392354630775`
+- Unauthed `tools/call signupassist.start` with query `"I'd like to sign up for robotics class for my 9 year old in Madison, WI"` returns content with the robotics program listed.
+
 ## 2026-01-01 — Fix: `audit REG-...` crashes when audit args are redacted (`participants.map is not a function`)
 
 ### Symptom (prod)
