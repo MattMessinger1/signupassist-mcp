@@ -412,6 +412,8 @@ function v1VisibilityForTool(toolName: string, toolMeta: Record<string, any> = {
   // We still REGISTER all tools (so the orchestrator can call them internally),
   // but we only LIST the canonical chat tool for the model.
   if (toolName === "signupassist.chat") return "public";
+  // Read-only discovery entrypoint. Kept public to encourage app invocation for browsing queries.
+  if (toolName === "signupassist.start") return "public";
   return "private";
 }
 
@@ -505,6 +507,17 @@ function applyV1Visibility(toolName: string, toolMeta: Record<string, any> = {})
   return {
     "openai/visibility": v1VisibilityForTool(toolName, toolMeta),
   };
+}
+
+function isAllowUnauthReadonlyToolsEnabled(): boolean {
+  const raw = String(process.env.MCP_ALLOW_UNAUTH_READONLY_TOOLS || "").trim().toLowerCase();
+  return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
+}
+
+function isUnauthReadonlyToolAllowed(toolName: string): boolean {
+  // Hard allowlist: only allow the read-only discovery entrypoint.
+  // Everything else remains OAuth-gated.
+  return toolName === "signupassist.start";
 }
 
 // Import Auth0 middleware and protected actions config
@@ -1905,7 +1918,11 @@ class SignupAssistMCPServer {
                   }
                 }
 
-                if (isProd && !isAuthorized) {
+                const allowUnauthReadonly =
+                  isAllowUnauthReadonlyToolsEnabled() &&
+                  isUnauthReadonlyToolAllowed(toolName);
+
+                if (isProd && !isAuthorized && !allowUnauthReadonly) {
                   const baseUrl = getRequestBaseUrl(req);
                   res.writeHead(401, {
                     "Content-Type": "application/json; charset=utf-8",
@@ -2390,7 +2407,15 @@ class SignupAssistMCPServer {
 
           // Only require auth for consequential calls.
           // Allow initialize/tools/list without auth so the client can connect and then OAuth at tool-call time.
-          if (isProd && isToolCall && !isAuthorized) {
+          //
+          // Additionally, allow a very small set of read-only tools to be called without OAuth
+          // (guarded by env flag + allowlist) to improve discovery UX.
+          const allowUnauthReadonly =
+            isAllowUnauthReadonlyToolsEnabled() &&
+            !!maybeToolName &&
+            isUnauthReadonlyToolAllowed(maybeToolName);
+
+          if (isProd && isToolCall && !isAuthorized && !allowUnauthReadonly) {
             const host =
               (req.headers['x-forwarded-host'] as string | undefined) ||
               (req.headers['host'] as string | undefined);

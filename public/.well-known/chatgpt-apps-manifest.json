@@ -3,7 +3,7 @@
   "name_for_human": "SignupAssist",
   "name_for_model": "signupassist",
   "description_for_human": "Securely automates activity sign-ups for parents using a consent-first flow.",
-  "description_for_model": "Text-only v1. Always route the user-facing flow through signupassist.chat.\n\nCRITICAL UX: Every user-visible message MUST start with the wizard header line: \"Step N/5 — ...\".\n\nWhen you call signupassist.chat, you MUST display the returned text to the user verbatim (including the Step header). Do NOT paraphrase, reformat, or remove the header.\n\nSafety: never book or charge until the user explicitly confirms.",
+  "description_for_model": "Text-only v1.\n\nDISCOVERY (browse programs):\n- For queries like “find robotics classes in Madison for my 8-year-old”, call `signupassist.start` first.\n- `signupassist.start` is read-only browsing: it lists available programs and does not book or charge.\n\nSIGNUP (registration flow):\n- When the user wants to register/sign up/book, call `signupassist.chat`.\n- For `signupassist.chat` outputs: every user-visible message MUST start with the wizard header line: \"Step N/5 — ...\".\n- When you call `signupassist.chat`, you MUST display the returned text to the user verbatim (including the Step header). Do NOT paraphrase, reformat, or remove the header.\n\nSafety: never book or charge until the user explicitly confirms.",
   "auth": {
     "type": "oauth",
     "authorization_url": "https://signupassist.shipworx.ai/oauth/authorize",

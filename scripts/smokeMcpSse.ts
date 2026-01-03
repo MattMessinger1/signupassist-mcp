@@ -53,6 +53,8 @@ async function fetchJson(url: string, init?: RequestInit): Promise<{ status: num
 async function main() {
   const baseUrl = normalizeBaseUrl(requireEnv("MCP_SERVER_URL"));
   const token = process.env.MCP_ACCESS_TOKEN;
+  const expectUnauthReadonly =
+    String(process.env.MCP_ALLOW_UNAUTH_READONLY_TOOLS || "").trim().toLowerCase() === "true";
 
   console.log(`\n[smoke-sse] Target: ${baseUrl}`);
   console.log(`[smoke-sse] Auth: ${token ? "MCP_ACCESS_TOKEN set" : "none"}\n`);
@@ -79,6 +81,72 @@ async function main() {
     } else {
       // In dev/local this may be 200 and keep open; accept as informational.
       console.log(`[smoke-sse] ℹ️ /sse returned ${status} without auth (likely non-prod)`);
+    }
+  }
+
+  // 2b) Unauthenticated read-only tool call (signupassist.start) when enabled.
+  // This should NOT require OAuth; it helps the ChatGPT router prefer the app over Web Search.
+  {
+    const rpcId = `smoke-unauth-start-${Date.now()}`;
+    const { status, json, text } = await fetchJson(`${baseUrl}/sse`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: rpcId,
+        method: "tools/call",
+        params: {
+          name: "signupassist.start",
+          arguments: { org_ref: "aim-design", category: "all" },
+        },
+      }),
+    });
+
+    if (expectUnauthReadonly) {
+      assert(status === 200, `unauth signupassist.start: expected 200, got ${status} :: ${text.slice(0, 200)}`);
+      assert(json?.jsonrpc === "2.0", "unauth signupassist.start: missing jsonrpc=2.0");
+      assert(String(json?.id) === rpcId, "unauth signupassist.start: id mismatch");
+      assert(Array.isArray(json?.result?.content), "unauth signupassist.start: result.content must be an array");
+      assert((json?.result?.content || []).length > 0, "unauth signupassist.start: result.content must be non-empty");
+      console.log("[smoke-sse] ✅ unauth signupassist.start ok");
+    } else {
+      // If not enabled, this may 401; treat as informational.
+      if (status === 401) {
+        console.log("[smoke-sse] ℹ️ unauth signupassist.start is not enabled (401)");
+      } else {
+        console.log(`[smoke-sse] ℹ️ unauth signupassist.start returned ${status} (flag not enabled?)`);
+      }
+    }
+  }
+
+  // 2c) Ensure unauthenticated signupassist.chat is still OAuth-gated (in prod).
+  {
+    const rpcId = `smoke-unauth-chat-${Date.now()}`;
+    const res = await fetch(`${baseUrl}/sse`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: rpcId,
+        method: "tools/call",
+        params: {
+          name: "signupassist.chat",
+          arguments: { input: "hello", sessionId: `smoke-unauth-${Date.now()}` },
+        },
+      }),
+    });
+    if (res.status === 401) {
+      const www = res.headers.get("www-authenticate");
+      assert(!!www, "unauth signupassist.chat: expected WWW-Authenticate header");
+      console.log("[smoke-sse] ✅ unauth signupassist.chat remains OAuth-gated (401)");
+    } else {
+      console.log(`[smoke-sse] ℹ️ unauth signupassist.chat returned ${res.status} (non-prod or auth posture changed)`);
     }
   }
 
@@ -173,6 +241,7 @@ async function main() {
     const tools = await client.listTools();
     const toolNames = (tools?.tools || []).map((t: any) => t.name);
     assert(toolNames.includes("signupassist.chat"), `listTools: expected signupassist.chat, got: ${toolNames.join(", ")}`);
+    assert(toolNames.includes("signupassist.start"), `listTools: expected signupassist.start, got: ${toolNames.join(", ")}`);
     console.log("[smoke-sse] ✅ listTools ok");
 
     // Source-of-truth: provider feed count (via internal tools/call endpoint).
