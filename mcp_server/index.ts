@@ -2238,16 +2238,22 @@ class SignupAssistMCPServer {
             //      so ChatGPT can refresh/connect and then OAuth at tool-call time.
             //    - Otherwise, return fast 401 to avoid probe timeouts.
             if (req.method === 'GET') {
-              const baseUrl = getRequestBaseUrl(req);
-              res.writeHead(401, {
-                "Content-Type": "application/json; charset=utf-8",
-                "Access-Control-Allow-Origin": "*",
-                "Cache-Control": "no-store",
-                "WWW-Authenticate": `Bearer realm="signupassist", error="authentication_required", authorization_uri="${baseUrl}/oauth/authorize", token_uri="${baseUrl}/oauth/token"`,
-              });
-              res.end(JSON.stringify({ error: "authentication_required", message: "OAuth token required" }));
-              console.log('[AUTH] Unauthorized GET /sse (OAuth required; avoiding long-lived SSE during validation)');
-              return;
+              const accept = String(req.headers['accept'] || '').toLowerCase();
+              const isSseAccept = accept.includes('text/event-stream');
+              if (isAllowUnauthReadonlyToolsEnabled() && isSseAccept) {
+                console.log('[AUTH] Allowing unauthenticated GET /sse (SSE Accept; read-only tools enabled)');
+              } else {
+                const baseUrl = getRequestBaseUrl(req);
+                res.writeHead(401, {
+                  "Content-Type": "application/json; charset=utf-8",
+                  "Access-Control-Allow-Origin": "*",
+                  "Cache-Control": "no-store",
+                  "WWW-Authenticate": `Bearer realm="signupassist", error="authentication_required", authorization_uri="${baseUrl}/oauth/authorize", token_uri="${baseUrl}/oauth/token"`,
+                });
+                res.end(JSON.stringify({ error: "authentication_required", message: "OAuth token required" }));
+                console.log('[AUTH] Unauthorized GET /sse (OAuth required; avoiding long-lived SSE during validation)');
+                return;
+              }
             }
 
             const accept = String(req.headers['accept'] || '');
