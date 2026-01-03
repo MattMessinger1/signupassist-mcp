@@ -2838,6 +2838,33 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         []
       );
     }
+
+    // ------------------------------------------------------------------------
+    // OUT-OF-SCOPE GUARD (V1)
+    // SignupAssist supports class/program registrations. It does NOT handle
+    // restaurant reservations, travel bookings, or other unrelated “booking” tasks.
+    // If the user explicitly requests an out-of-scope domain, decline and stop.
+    // ------------------------------------------------------------------------
+    const lower = String(input || "").toLowerCase();
+    const hasProgramWords = /\b(class|classes|camp|camps|program|programs|lesson|lessons|signup|sign\s*up|register|registration|enroll|enrollment)\b/i.test(input);
+    const isRestaurantReservation =
+      /\brestaurant\b/i.test(input) ||
+      /\b(opentable|resy)\b/i.test(input) ||
+      /\b(dinner|lunch|brunch)\b/i.test(input) ||
+      /\btable\s+for\s+\d+\b/i.test(input) ||
+      (/\breservation\b/i.test(input) && /\b(restaurant|dinner|lunch|brunch)\b/i.test(input));
+    const isTravelBooking =
+      /\b(flight|airfare|hotel|airbnb|rental\s+car|car\s+rental)\b/i.test(input);
+    const isAppointmentBooking =
+      /\b(doctor|dentist|appointment|clinic|therapy)\b/i.test(input);
+
+    if (!hasProgramWords && (isRestaurantReservation || isTravelBooking || isAppointmentBooking)) {
+      return this.formatResponse(
+        `Step 1/5 — SignupAssist scope\n\nI can’t help with that request right now.\n\nSignupAssist is for completing **class/program registrations** with supported partner providers in the United States.`,
+        undefined,
+        []
+      );
+    }
     
     // Step 2/5: schema-driven form fill (Bookeo required fields).
     // First principles: we must collect ALL required fields before REVIEW.
