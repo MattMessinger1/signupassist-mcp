@@ -288,6 +288,19 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 - If activity keywords are too strict (e.g., programs don’t include “robotics” in title/description/theme), consider broadening the matcher (e.g., allow STEM→robotics fallback) while still enforcing “exists in DB”.
 - Validate in ChatGPT that “Find robotics classes in Madison, WI for my 8-year-old” reliably triggers the tool call and returns AIM Design programs when the cache contains matches.
 
+---
+
+## 2026-01-03 — Rollback checkpoint before unauth discovery changes (SSE/OAuth safe baseline)
+
+### Baseline (prod)
+
+- **Prod commit**: `c3dee5f39fcc2af90c8c31c59ee8e1b9dc125a7f`
+- **Prod builtAt**: `2026-01-02T22:39:07.649Z`
+
+### Rationale
+
+We are about to change MCP tool visibility + auth gating for a read-only discovery tool. If anything regresses with ChatGPT connector behavior (SSE/OAuth), revert to the baseline commit above.
+
 ## 2026-01-01 — Fix: `audit REG-...` crashes when audit args are redacted (`participants.map is not a function`)
 
 ### Symptom (prod)
