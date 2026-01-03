@@ -52,7 +52,7 @@ import { stripHtml } from "../lib/extractionUtils.js";
 import { formatInTimeZone } from "date-fns-tz";
 import crypto from "crypto";
 import { createClient } from "@supabase/supabase-js";
-import { lookupCity } from "../utils/cityLookup.js";
+import { STATE_ABBR_TO_NAME, STATE_NAME_TO_ABBR, lookupCity } from "../utils/cityLookup.js";
 import { analyzeLocation } from "./orchestratorMultiBackend.js";
 import { 
   extractActivityFromMessage as matcherExtractActivity,
@@ -1475,6 +1475,68 @@ export default class APIOrchestrator implements IOrchestrator {
       .trim()
       .replace(/\s+/g, ' '); // Collapse multiple spaces
   }
+
+  /**
+   * Detect explicit non‑US location hints in the user's message.
+   *
+   * Used to gracefully explain US-only availability instead of asking for a city
+   * when the user is clearly outside the US (e.g., "Toronto, Canada" / "Toronto, ON").
+   *
+   * NOTE: We intentionally keep this conservative to avoid false positives.
+   */
+  private detectNonUSLocationHint(input: string): boolean {
+    const raw = String(input || "");
+    const lower = raw.toLowerCase();
+
+    // If the user also includes an explicit US state (abbr or full name), prefer that as the target location.
+    // Example: "I'm in Toronto but signing up in Seattle, WA".
+    for (const m of raw.matchAll(/\b([A-Za-z]{2})\b/g)) {
+      const abbr = String(m[1] || "").toUpperCase();
+      if (STATE_ABBR_TO_NAME[abbr]) return false;
+    }
+    for (const stateNameLower of Object.keys(STATE_NAME_TO_ABBR)) {
+      if (lower.includes(stateNameLower)) return false;
+    }
+
+    // Explicit country mentions (common cases; can expand later).
+    const countryRegexes: RegExp[] = [
+      /\bcanada\b/i,
+      /\bunited\s+kingdom\b/i,
+      /\buk\b/i,
+      /\baustralia\b/i,
+      /\bnew\s+zealand\b/i,
+      /\bmexico\b/i,
+    ];
+    if (countryRegexes.some((re) => re.test(raw))) return true;
+
+    // City, XX where XX is a 2-letter region code that is NOT a US state.
+    // Examples: "Toronto, ON", "Vancouver, BC"
+    for (const m of raw.matchAll(/,\s*([A-Za-z]{2})\b/g)) {
+      const code = String(m[1] || "").toUpperCase();
+      if (!code) continue;
+      if (STATE_ABBR_TO_NAME[code]) continue; // US state
+      if (code === "US") continue;
+      return true; // non-US region code
+    }
+
+    // Province names (Canada) without explicit country keyword.
+    const provinceRegexes: RegExp[] = [
+      /\bontario\b/i,
+      /\bquebec\b/i,
+      /\balberta\b/i,
+      /\bmanitoba\b/i,
+      /\bsaskatchewan\b/i,
+      /\bnova?\s+scotia\b/i,
+      /\bnew\s+brunswick\b/i,
+      /\bprince\s+edward\s+island\b/i,
+      /\bnewfoundland\b/i,
+      /\blabrador\b/i,
+      /\bbritish\s+columbia\b/i,
+    ];
+    if (provinceRegexes.some((re) => re.test(raw))) return true;
+
+    return false;
+  }
   
   /**
    * Extract a city name from a message that may contain other content
@@ -2782,6 +2844,21 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       (context.step === FlowStep.BROWSE || !context.selectedProgram);
     
     if (shouldHandleAsLocation) {
+      // If the user explicitly indicates a non‑US location, explain US-only support
+      // and ask for a US city/state to continue.
+      if (this.detectNonUSLocationHint(input)) {
+        const activity = context.requestedActivity || matcherExtractActivity(input);
+        this.updateContext(sessionId, {
+          step: FlowStep.BROWSE,
+          ...(activity ? { requestedActivity: activity } : {}),
+          wizardProgress: undefined
+        });
+        return this.formatResponse(
+          `Right now SignupAssist only supports signups in the United States.\n\nIf you have a US city and state, tell me that (e.g., “Seattle, WA”) and I’ll help you sign up.`,
+          undefined,
+          []
+        );
+      }
       return await this.handleLocationResponse(normalizedForLocation, sessionId, context);
     }
 
@@ -3022,6 +3099,15 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         this.updateContext(sessionId, { step: FlowStep.BROWSE });
 
         const displayName = getActivityDisplayName(activity);
+        if (this.detectNonUSLocationHint(input)) {
+          // Preserve the requested activity so the user can reply with a US city/state and continue.
+          this.updateContext(sessionId, { requestedActivity: activity, wizardProgress: undefined });
+          return this.formatResponse(
+            `Right now SignupAssist only supports signups in the United States.\n\nIf you have a US city and state, tell me that (e.g., “Seattle, WA”) and I’ll help you sign up.`,
+            undefined,
+            []
+          );
+        }
         return this.formatResponse(
           `I have ${displayName} programs! What city are you in?`,
           undefined,
