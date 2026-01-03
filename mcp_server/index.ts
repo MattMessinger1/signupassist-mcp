@@ -933,15 +933,17 @@ class SignupAssistMCPServer {
     this.tools.set("signupassist.start", {
       name: "signupassist.start",
       description:
-        "Read-only action-first entrypoint. Immediately shows available programs (no booking, no payment, no writes). Call this FIRST to show users what's available.",
+        "Read-only discovery entrypoint. Call this FIRST for class browsing and before any signup flow.\n\nOptionally pass `query` (the user's request) so results can be prioritized for activity/age/location.\n\nNo booking, no payment, no writes.",
       inputSchema: {
         type: "object",
         properties: {
+          query: { type: "string", description: "User request text (e.g. \"robotics classes in Madison for my 9-year-old\")" },
           org_ref: { type: "string", description: "Organization reference slug (e.g. aim-design)" },
           category: { type: "string", description: "Optional category filter (e.g. robotics, camps, etc.)" },
         },
       },
       handler: async (args: any) => {
+        const query = args?.query ? String(args.query) : "";
         const org_ref = args?.org_ref || "aim-design";
         const category = args?.category || "all";
 
@@ -949,7 +951,167 @@ class SignupAssistMCPServer {
         if (!tool) throw new Error("bookeo.find_programs is not registered");
 
         // Delegate to existing discovery tool
-        return await tool.handler({ org_ref, category });
+        const raw: any = await tool.handler({ org_ref, category });
+
+        // If the provider tool errored or returned no structure, pass through unchanged.
+        if (!raw || raw?.success === false) return raw;
+
+        // Build a concise plain-text summary so the model can answer without Web Search.
+        // (ChatGPT Apps may not render our structuredContent/cards; text is the safest path.)
+        try {
+          const orgName = org_ref === "aim-design" ? "AIM Design" : org_ref;
+          const q = query.toLowerCase();
+
+          const extractAgeYears = (text: string): number | null => {
+            const patterns = [
+              /(\d{1,2})\s*(?:years?\s*old|year\s*old|y\.?o\.?|yo)\b/i,
+              /\b(?:age|aged)\s*(\d{1,2})\b/i,
+              /\b(\d{1,2})\s*-\s*year\s*old\b/i,
+              /\b(\d{1,2})\s*yo\b/i,
+              /\b(\d{1,2})\b/,
+            ];
+            for (const re of patterns) {
+              const m = text.match(re);
+              if (!m) continue;
+              const n = parseInt(m[1], 10);
+              if (Number.isFinite(n) && n >= 3 && n <= 18) return n;
+            }
+            return null;
+          };
+
+          const extractActivity = (lower: string): string | null => {
+            const map: Array<[string, string[]]> = [
+              ["robotics", ["robotics", "robot", "robots"]],
+              ["coding", ["coding", "code", "programming"]],
+              ["stem", ["stem", "science", "engineering"]],
+              ["skiing", ["ski", "skiing", "ski jump", "ski jumping"]],
+              ["camp", ["camp", "camps"]],
+            ];
+            for (const [activity, kws] of map) {
+              if (kws.some((kw) => lower.includes(kw))) return activity;
+            }
+            return null;
+          };
+
+          const parseAgeRangeFromText = (text: string): { min?: number; max?: number; plus?: number } | null => {
+            const t = text;
+            let m = t.match(/\b(?:ages?|age)\s*(\d{1,2})\s*[-–]\s*(\d{1,2})\b/i);
+            if (m) return { min: parseInt(m[1], 10), max: parseInt(m[2], 10) };
+            m = t.match(/\b(\d{1,2})\s*[-–]\s*(\d{1,2})\s*(?:years?)?\b/i);
+            if (m) return { min: parseInt(m[1], 10), max: parseInt(m[2], 10) };
+            m = t.match(/\b(\d{1,2})\s*\+\b/);
+            if (m) return { plus: parseInt(m[1], 10) };
+            m = t.match(/\b(?:age)\s*(\d{1,2})\b/i);
+            if (m) {
+              const n = parseInt(m[1], 10);
+              return { min: n, max: n };
+            }
+            return null;
+          };
+
+          const isAgeWithin = (age: number, text: string): boolean => {
+            const parsed = parseAgeRangeFromText(text);
+            if (!parsed) return true; // unknown → don't exclude
+            if (typeof parsed.plus === "number") return age >= parsed.plus;
+            if (typeof parsed.min === "number" && typeof parsed.max === "number") return age >= parsed.min && age <= parsed.max;
+            if (typeof parsed.min === "number" && typeof parsed.max !== "number") return age >= parsed.min;
+            return true;
+          };
+
+          const requestedAge = query ? extractAgeYears(query) : null;
+          const requestedActivity = query ? extractActivity(q) : null;
+
+          // Flatten cards from the provider response (preferred, since it already has short fields).
+          const groups = (raw?.structuredContent?.groups || raw?.ui?.cards) as any[] | undefined;
+          const flattened: Array<{
+            groupTitle: string;
+            title: string;
+            subtitle?: string;
+            caption?: string;
+            body?: string;
+            program_ref?: string;
+          }> = [];
+
+          if (Array.isArray(groups)) {
+            for (const g of groups) {
+              const groupTitle = String(g?.title || "");
+              const cards = Array.isArray(g?.cards) ? g.cards : [];
+              for (const c of cards) {
+                flattened.push({
+                  groupTitle,
+                  title: String(c?.title || ""),
+                  subtitle: c?.subtitle ? String(c.subtitle) : undefined,
+                  caption: c?.caption ? String(c.caption) : undefined,
+                  body: c?.body ? String(c.body) : undefined,
+                  program_ref: c?.program_ref ? String(c.program_ref) : undefined,
+                });
+              }
+            }
+          }
+
+          // If we couldn't flatten cards, fall back to the raw summary line.
+          if (flattened.length === 0) {
+            return {
+              ...raw,
+              content: [{ type: "text", text: `Found programs at ${orgName}.` }],
+            };
+          }
+
+          const activityKeywords: Record<string, string[]> = {
+            robotics: ["robot", "robotics", "sensor", "sensors"],
+            coding: ["code", "coding", "programming"],
+            stem: ["stem", "science", "engineering"],
+            skiing: ["ski", "skiing", "jump"],
+            camp: ["camp"],
+          };
+
+          const scored = flattened
+            .map((p) => {
+              const hay = `${p.groupTitle} ${p.title} ${p.subtitle || ""} ${p.caption || ""} ${p.body || ""}`.toLowerCase();
+              const activityOk = requestedActivity
+                ? (activityKeywords[requestedActivity] || [requestedActivity]).some((kw) => hay.includes(kw))
+                : true;
+              const ageOk = requestedAge != null ? isAgeWithin(requestedAge, hay) : true;
+
+              let score = 0;
+              if (requestedActivity && activityOk) score += 10;
+              if (requestedAge != null && ageOk) score += 3;
+              if (requestedActivity && !activityOk) score -= 2;
+              if (requestedAge != null && !ageOk) score -= 5;
+
+              return { ...p, score, activityOk, ageOk, hay };
+            })
+            // If the user specified age/activity, exclude obvious mismatches.
+            .filter((p) => (requestedActivity ? p.activityOk : true))
+            .filter((p) => (requestedAge != null ? p.ageOk : true))
+            .sort((a, b) => b.score - a.score);
+
+          const top = scored.slice(0, 8);
+
+          const headerBits: string[] = [];
+          if (requestedActivity) headerBits.push(requestedActivity);
+          if (requestedAge != null) headerBits.push(`age ${requestedAge}`);
+          const header = headerBits.length
+            ? `Here are ${orgName} options matching ${headerBits.join(", ")}:`
+            : `Here’s what’s available at ${orgName}:`;
+
+          const lines: string[] = [header, ""];
+          for (const p of top) {
+            const bits: string[] = [];
+            if (p.caption) bits.push(p.caption);
+            const meta = bits.length ? ` — ${bits.join(" • ")}` : "";
+            lines.push(`- ${p.title}${meta}`);
+          }
+          lines.push("", `If you want to sign up, tell me which one you want and I’ll guide you through registration.`);
+
+          const text = lines.join("\n").trim();
+          return {
+            ...raw,
+            content: [{ type: "text", text }],
+          };
+        } catch {
+          return raw;
+        }
       },
       _meta: {
         ...CHATGPT_APPS_V1_META,
