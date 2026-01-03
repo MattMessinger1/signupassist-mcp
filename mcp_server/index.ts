@@ -412,10 +412,6 @@ function v1VisibilityForTool(toolName: string, toolMeta: Record<string, any> = {
   // We still REGISTER all tools (so the orchestrator can call them internally),
   // but we only LIST the canonical chat tool for the model.
   if (toolName === "signupassist.chat") return "public";
-  // Read-only discovery entrypoint. Kept public to encourage app invocation for browsing queries.
-  if (toolName === "signupassist.start") return "public";
-  // Router-friendly alias for discovery.
-  if (toolName === "signupassist.find") return "public";
   return "private";
 }
 
@@ -516,19 +512,12 @@ function applyV1Visibility(toolName: string, toolMeta: Record<string, any> = {})
 
 function isAllowUnauthReadonlyToolsEnabled(): boolean {
   const raw = String(process.env.MCP_ALLOW_UNAUTH_READONLY_TOOLS || "").trim().toLowerCase();
-  // Default: enabled in production (still constrained by a strict allowlist), disabled elsewhere.
-  // Rationale: improves discovery/app-invocation reliability without changing OAuth posture for write tools.
-  if (!raw) {
-    return process.env.NODE_ENV === "production";
-  }
-  if (raw === "false" || raw === "0" || raw === "no" || raw === "off") return false;
   return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
 }
 
 function isUnauthReadonlyToolAllowed(toolName: string): boolean {
-  // Hard allowlist: only allow the read-only discovery entrypoint.
-  // Everything else remains OAuth-gated.
-  return toolName === "signupassist.start" || toolName === "signupassist.find";
+  // V1 posture: OAuth required for all tools/call (no unauth allowlist).
+  return false;
 }
 
 // Import Auth0 middleware and protected actions config
@@ -1190,7 +1179,7 @@ class SignupAssistMCPServer {
     this.tools.set("signupassist.chat", {
       name: "signupassist.chat",
       description:
-        "Canonical SignupAssist chat entrypoint (API-first). Use this for ALL user-facing signup conversation.\n\nCRITICAL: After calling this tool, respond to the user with EXACTLY the returned text (verbatim). Do not paraphrase. If the returned text includes a leading \"Step N/5 — ...\" header, keep it.\n\nReturns calm wizard messages and asks for info one piece at a time (no field dumps).\n\nIMPORTANT: This tool can perform consequential actions ONLY after explicit user confirmation (e.g. booking with the provider and charging the $20 success fee). Payment method entry always happens on Stripe-hosted Checkout (we never see card numbers).",
+        "High-intent SignupAssist signup wizard (API-first). Use this when the user wants to sign up/register/book/complete a signup (NOT for general browsing or recommendations).\n\nThis tool confirms whether the requested provider/program/location is supported, shows matching options from our internal program database/cache, and guides the user step-by-step.\n\nCRITICAL: After calling this tool, respond to the user with EXACTLY the returned text (verbatim). Do not paraphrase. If the returned text includes a leading \"Step N/5 — ...\" header, keep it.\n\nReturns calm wizard messages and asks for info one piece at a time (no field dumps).\n\nIMPORTANT: This tool can perform consequential actions ONLY after explicit user confirmation (e.g. booking with the provider and charging the $20 success fee). Payment method entry always happens on Stripe-hosted Checkout (we never see card numbers).",
       inputSchema: {
         type: "object",
         properties: {
@@ -2144,11 +2133,7 @@ class SignupAssistMCPServer {
                   }
                 }
 
-                const allowUnauthReadonly =
-                  isAllowUnauthReadonlyToolsEnabled() &&
-                  isUnauthReadonlyToolAllowed(toolName);
-
-                if (isProd && !isAuthorized && !allowUnauthReadonly) {
+                if (isProd && !isAuthorized) {
                   const baseUrl = getRequestBaseUrl(req);
                   res.writeHead(401, {
                     "Content-Type": "application/json; charset=utf-8",
@@ -2281,54 +2266,21 @@ class SignupAssistMCPServer {
             }
           }
 
-          // Auth posture:
-          // - GET /sse:
-          //   - If unauthenticated, return a fast 401 + WWW-Authenticate header (so ChatGPT can discover OAuth config)
-          //     and to avoid holding a never-ending SSE stream open during validation.
-          // - POST /sse:
-          //   - Allow unauthenticated connect for "refresh" flows, but still enforce OAuth for consequential calls
-          //     (see POST /messages tools/call handling).
+          // Auth posture (V1 high-intent):
+          // - Require OAuth for opening long-lived SSE transports.
+          // - Still allow unauthenticated discovery via finite JSON-RPC POST /sse (initialize/tools/list),
+          //   which is handled above before we reach this block.
           if (!isAuthorized) {
-            // Auth posture (compat with ChatGPT connector):
-            // - GET /sse: return fast 401 + WWW-Authenticate (avoids hanging SSE during validation)
-            // - POST /sse:
-            //    - If it's a real SSE request (Accept: text/event-stream), allow unauthenticated connect
-            //      so ChatGPT can refresh/connect and then OAuth at tool-call time.
-            //    - Otherwise, return fast 401 to avoid probe timeouts.
-            if (req.method === 'GET') {
-              const accept = String(req.headers['accept'] || '').toLowerCase();
-              const isSseAccept = accept.includes('text/event-stream');
-              if (isAllowUnauthReadonlyToolsEnabled() && isSseAccept) {
-                console.log('[AUTH] Allowing unauthenticated GET /sse (SSE Accept; read-only tools enabled)');
-              } else {
-                const baseUrl = getRequestBaseUrl(req);
-                res.writeHead(401, {
-                  "Content-Type": "application/json; charset=utf-8",
-                  "Access-Control-Allow-Origin": "*",
-                  "Cache-Control": "no-store",
-                  "WWW-Authenticate": `Bearer realm="signupassist", error="authentication_required", authorization_uri="${baseUrl}/oauth/authorize", token_uri="${baseUrl}/oauth/token"`,
-                });
-                res.end(JSON.stringify({ error: "authentication_required", message: "OAuth token required" }));
-                console.log('[AUTH] Unauthorized GET /sse (OAuth required; avoiding long-lived SSE during validation)');
-                return;
-              }
-            }
-
-            const accept = String(req.headers['accept'] || '');
-            if (!accept.toLowerCase().includes('text/event-stream')) {
-              const baseUrl = getRequestBaseUrl(req);
-              res.writeHead(401, {
-                "Content-Type": "application/json; charset=utf-8",
-                "Access-Control-Allow-Origin": "*",
-                "Cache-Control": "no-store",
-                "WWW-Authenticate": `Bearer realm="signupassist", error="authentication_required", authorization_uri="${baseUrl}/oauth/authorize", token_uri="${baseUrl}/oauth/token"`,
-              });
-              res.end(JSON.stringify({ error: "authentication_required", message: "OAuth token required" }));
-              console.log('[AUTH] Unauthorized POST /sse probe (non-SSE Accept; avoiding long-lived SSE during validation)');
-              return;
-            }
-
-            console.log('[AUTH] Allowing unauthenticated POST /sse (SSE Accept); tools/call still requires OAuth');
+            const baseUrl = getRequestBaseUrl(req);
+            res.writeHead(401, {
+              "Content-Type": "application/json; charset=utf-8",
+              "Access-Control-Allow-Origin": "*",
+              "Cache-Control": "no-store",
+              "WWW-Authenticate": `Bearer realm="signupassist", error="authentication_required", authorization_uri="${baseUrl}/oauth/authorize", token_uri="${baseUrl}/oauth/token"`,
+            });
+            res.end(JSON.stringify({ error: "authentication_required", message: "OAuth token required" }));
+            console.log('[AUTH] Unauthorized /sse (OAuth required; avoiding long-lived SSE during validation)');
+            return;
           } else {
             console.log(`[AUTH] Authorized SSE connection via ${authSource}${boundUserId ? ` user=${boundUserId}` : ''}`);
           }
@@ -2640,14 +2592,8 @@ class SignupAssistMCPServer {
           // Only require auth for consequential calls.
           // Allow initialize/tools/list without auth so the client can connect and then OAuth at tool-call time.
           //
-          // Additionally, allow a very small set of read-only tools to be called without OAuth
-          // (guarded by env flag + allowlist) to improve discovery UX.
-          const allowUnauthReadonly =
-            isAllowUnauthReadonlyToolsEnabled() &&
-            !!maybeToolName &&
-            isUnauthReadonlyToolAllowed(maybeToolName);
-
-          if (isProd && isToolCall && !isAuthorized && !allowUnauthReadonly) {
+          // V1 posture: require OAuth for all tools/call (no unauth allowlist).
+          if (isProd && isToolCall && !isAuthorized) {
             const host =
               (req.headers['x-forwarded-host'] as string | undefined) ||
               (req.headers['host'] as string | undefined);

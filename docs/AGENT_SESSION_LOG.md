@@ -317,6 +317,19 @@ We are about to change MCP tool visibility + auth gating for a read-only discove
 - Deployed commit: `df3f1bcdf8e15086fc57050c71ab392354630775`
 - Unauthed `tools/call signupassist.start` with query `"I'd like to sign up for robotics class for my 9 year old in Madison, WI"` returns content with the robotics program listed.
 
+---
+
+## 2026-01-03 — Rollback tag before V1 “single public tool + OAuth-only” posture
+
+### Baseline (prod)
+
+- **Prod commit**: `f4c9e915a48c799e268bbd907d25221c408feb1a`
+- **Rollback tag**: `rollback/pre-v1-single-public-tool-20260103-0951`
+
+### Rationale
+
+We are about to simplify the public MCP surface to **one tool** (`signupassist.chat`) and restore **OAuth-required for all tool calls**. If anything regresses with SSE/Auth0/OpenAI connector behavior, redeploy the tag above.
+
 ## 2026-01-01 — Fix: `audit REG-...` crashes when audit args are redacted (`participants.map is not a function`)
 
 ### Symptom (prod)
