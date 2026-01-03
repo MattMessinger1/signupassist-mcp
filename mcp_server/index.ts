@@ -414,6 +414,8 @@ function v1VisibilityForTool(toolName: string, toolMeta: Record<string, any> = {
   if (toolName === "signupassist.chat") return "public";
   // Read-only discovery entrypoint. Kept public to encourage app invocation for browsing queries.
   if (toolName === "signupassist.start") return "public";
+  // Router-friendly alias for discovery.
+  if (toolName === "signupassist.find") return "public";
   return "private";
 }
 
@@ -448,6 +450,9 @@ function wizardInvocationForTool(toolName: string): { invoking: string; invoked:
     return { invoking: "Working…", invoked: "Reply ready." };
   }
   if (toolName === "signupassist.start" || toolName === "program_feed.get") {
+    return { invoking: step1Invoking, invoked: step1Invoked };
+  }
+  if (toolName === "signupassist.find") {
     return { invoking: step1Invoking, invoked: step1Invoked };
   }
 
@@ -523,7 +528,7 @@ function isAllowUnauthReadonlyToolsEnabled(): boolean {
 function isUnauthReadonlyToolAllowed(toolName: string): boolean {
   // Hard allowlist: only allow the read-only discovery entrypoint.
   // Everything else remains OAuth-gated.
-  return toolName === "signupassist.start";
+  return toolName === "signupassist.start" || toolName === "signupassist.find";
 }
 
 // Import Auth0 middleware and protected actions config
@@ -1118,6 +1123,59 @@ class SignupAssistMCPServer {
         "openai/safety": "read-only",
         ...applyV1Visibility("signupassist.start", { "openai/safety": "read-only" }),
         ...applyWizardMeta("signupassist.start")
+      },
+    });
+
+    // ============================================================
+    // ROUTER-FRIENDLY DISCOVERY ALIAS (READ-ONLY)
+    // ============================================================
+    // Some ChatGPT routing flows appear to prefer "search/find" semantics over "start".
+    // Keep this as a thin alias to `signupassist.start` so behavior stays consistent.
+    this.tools.set("signupassist.find", {
+      name: "signupassist.find",
+      description:
+        "Find classes and programs for kids in Madison, WI (AIM Design). Read-only.\n\nUse this for prompts like \"robotics classes in Madison for my 9-year-old\". Pass the full user request as `query` when possible.\n\nNo booking, no payment, no writes.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "User request text (recommended)" },
+          activity: { type: "string", description: "Optional activity keyword (e.g. robotics, coding, stem)" },
+          child_age: { type: "number", description: "Optional child's age (3-18)" },
+          location: { type: "string", description: "Optional location text (e.g. Madison, WI)" },
+          org_ref: { type: "string", description: "Organization reference slug (defaults to aim-design)" },
+          category: { type: "string", description: "Optional category filter (e.g. robotics, camps, etc.)" },
+        },
+      },
+      handler: async (args: any) => {
+        const q = args?.query ? String(args.query) : "";
+        const activity = args?.activity ? String(args.activity) : "";
+        const age = typeof args?.child_age === "number" ? args.child_age : null;
+        const location = args?.location ? String(args.location) : "";
+
+        // Synthesize a query if the caller provided structured fields but no query.
+        const synthesizedQuery =
+          q ||
+          [
+            activity ? `${activity} classes` : "",
+            age != null ? `for my ${age} year old` : "",
+            location ? `in ${location}` : "",
+          ]
+            .filter(Boolean)
+            .join(" ")
+            .trim();
+
+        const org_ref = args?.org_ref || "aim-design";
+        const category = args?.category || "all";
+
+        const startTool = this.tools.get("signupassist.start");
+        if (!startTool) throw new Error("signupassist.start is not registered");
+        return await startTool.handler({ query: synthesizedQuery, org_ref, category });
+      },
+      _meta: {
+        ...CHATGPT_APPS_V1_META,
+        "openai/safety": "read-only",
+        ...applyV1Visibility("signupassist.find", { "openai/safety": "read-only" }),
+        ...applyWizardMeta("signupassist.find"),
       },
     });
 
