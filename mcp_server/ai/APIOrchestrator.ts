@@ -7725,16 +7725,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       }
     }
 
-    // One-time trust intro (first principles): establish who we are + safety posture.
-    // We keep this short and only show it once per durable session, only while browsing.
-    if (ctx.user_id && !ctx.trustIntroShown && ctx.step === FlowStep.BROWSE && response?.message) {
-      const trust = [
-        "✅ You're working with **SignupAssist** — your responsible delegate.",
-        "- Eligibility: only a **parent/legal guardian age 18+** can use SignupAssist (COPPA).",
-        "- You stay in control: I ask before booking or charging.",
-        "- Card entry happens on **Stripe-hosted checkout** (we never see card numbers).",
-        "- Every consequential action is logged — say **“view receipts”** anytime.",
-      ].join("\n");
+    // One-time trust/consent intro: establish safety posture.
+    // Show it once per durable session, only while browsing (Step 1/5).
+    if (!ctx.trustIntroShown && ctx.step === FlowStep.BROWSE && response?.message) {
+      // Option A (chosen): concise Responsible Delegate note.
+      const trust =
+        "Quick note: I'm your Responsible Delegate — I'll never book or charge anything without your explicit confirmation. I can move fast, but I'll ask you to approve each key step.";
 
       // Insert after the first line if it's a Step header, otherwise just append.
       const msg = String(response.message || "");
