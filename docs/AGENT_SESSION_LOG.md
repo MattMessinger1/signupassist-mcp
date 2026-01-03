@@ -250,6 +250,42 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 
 ---
 
+## 2026-01-03 — Fix: graceful declines for unsupported providers + non‑US locations
+
+### Symptom
+
+- Prompts like **“Toronto, Ontario, Canada”** or **“8am yoga at Inner Fire Yoga studio”** were triggering `signupassist.chat` and returning a list of **AIM Design** programs.
+- Server logs showed `ActivationConfidence` LOW but still proceeded to:
+  - `Searching programs for org: aim-design`
+  - `bookeo.find_programs`
+
+### Fix (code)
+
+- `mcp_server/ai/APIOrchestrator.ts`
+  - Added early-return guards in low-confidence **BROWSE** step to:
+    - decline **non‑US** location requests (no AIM Design fallback)
+    - decline **unsupported provider** hints (e.g., “studio”, “academy”, “gym”, etc.)
+    - decline **unsupported activities** (no active org offers it) instead of listing unrelated programs
+  - Fixed `detectNonUSLocationHint()` false positives by only treating **ALL‑CAPS** 2‑letter tokens as US state abbreviations (avoids matching the word “in” as Indiana).
+
+- `mcp_server/ai/apiMessageTemplates.ts`
+  - Added `getUnsupportedRequestMessage(...)` helper for consistent decline copy.
+
+### Evidence
+
+- Local runtime sanity check (no-network stub) confirmed:
+  - Toronto prompt returns a **US-only** message and does **not** call `searchPrograms`/`bookeo.find_programs`
+  - Inner Fire Yoga prompt returns an **unsupported** message and does **not** call `searchPrograms`/`bookeo.find_programs`
+
+### How to verify in prod (fast)
+
+- Prompt: “Sign up my kids for a class in Toronto, Ontario Canada”
+  - Expect: **US-only** decline; no `bookeo.find_programs` in logs.
+- Prompt: “Sign me up for the 8am yoga class at Inner Fire Yoga studio”
+  - Expect: **unsupported provider** decline; no `bookeo.find_programs` in logs.
+
+---
+
 ## 2026-01-02 — Activation gate: Activity + Age + Location + cached-program match (DB) before discovery
 
 ### Goal

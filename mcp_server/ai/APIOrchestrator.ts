@@ -38,6 +38,7 @@ import {
   getInitialActivationMessage,
   getFallbackClarificationMessage,
   getGracefulDeclineMessage,
+  getUnsupportedRequestMessage,
   getLocationQuestionMessage,
   getOutOfAreaProgramsMessage,
   SUPPORT_EMAIL
@@ -57,7 +58,8 @@ import { analyzeLocation } from "./orchestratorMultiBackend.js";
 import { 
   extractActivityFromMessage as matcherExtractActivity,
   getActivityDisplayName,
-  getActivityKeywords
+  getActivityKeywords,
+  hasProviderForActivity
 } from "../utils/activityMatcher.js";
 import { getAllActiveOrganizations } from "../config/organizations.js";
 import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
@@ -1477,6 +1479,35 @@ export default class APIOrchestrator implements IOrchestrator {
   }
 
   /**
+   * Detect likely mentions of a specific organization/provider that we don't support yet.
+   * Conservative: triggered only by common org-indicator words (e.g., "studio", "academy").
+   *
+   * Goal: avoid misleadingly listing AIM Design programs when the user asked for a different org.
+   */
+  private detectUnsupportedProviderHint(input: string): boolean {
+    const raw = String(input || "");
+    const lower = raw.toLowerCase();
+
+    // If the user explicitly mentioned our supported provider, do not treat as unsupported.
+    if (/\baim\s*design\b/i.test(raw)) return false;
+
+    const indicators: string[] = [
+      " studio",
+      " academy",
+      " school",
+      " club",
+      " center",
+      " centre",
+      " gym",
+      " ymca",
+      " association",
+      " institute",
+    ];
+
+    return indicators.some((token) => lower.includes(token));
+  }
+
+  /**
    * Detect explicit non‑US location hints in the user's message.
    *
    * Used to gracefully explain US-only availability instead of asking for a city
@@ -1490,7 +1521,9 @@ export default class APIOrchestrator implements IOrchestrator {
 
     // If the user also includes an explicit US state (abbr or full name), prefer that as the target location.
     // Example: "I'm in Toronto but signing up in Seattle, WA".
-    for (const m of raw.matchAll(/\b([A-Za-z]{2})\b/g)) {
+    // IMPORTANT: only treat ALL-CAPS 2-letter tokens as possible state abbreviations.
+    // This avoids false positives on common words like "in"/"or"/"me".
+    for (const m of raw.matchAll(/\b([A-Z]{2})\b/g)) {
       const abbr = String(m[1] || "").toUpperCase();
       if (STATE_ABBR_TO_NAME[abbr]) return false;
     }
@@ -3220,6 +3253,58 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               isCancelCompletion ? { suppressWizardHeader: true } : undefined
             );
           }
+        }
+
+        // If the user explicitly indicates a non‑US location anywhere in their message,
+        // do NOT fall back to AIM Design. Return a clear US-only message.
+        if (this.detectNonUSLocationHint(input)) {
+          const activity = context.requestedActivity || matcherExtractActivity(input) || undefined;
+          this.updateContext(sessionId, {
+            step: FlowStep.BROWSE,
+            ...(activity ? { requestedActivity: activity } : {}),
+            wizardProgress: undefined,
+          });
+          return this.formatResponse(
+            getUnsupportedRequestMessage({ reason: "non_us" }),
+            undefined,
+            []
+          );
+        }
+
+        // If the user appears to name a specific organization we don't support,
+        // decline instead of listing AIM Design programs.
+        if (this.detectUnsupportedProviderHint(input) && (this.hasSignupIntent(input) || this.hasProgramWords(input))) {
+          this.updateContext(sessionId, { step: FlowStep.BROWSE, wizardProgress: undefined });
+          return this.formatResponse(
+            getUnsupportedRequestMessage({
+              reason: "unsupported_provider",
+              supported_provider_name: "AIM Design",
+              supported_provider_location: "Madison, WI",
+            }),
+            undefined,
+            []
+          );
+        }
+
+        // If the user asked for an activity we have no supported providers for (v1: AIM Design only),
+        // decline instead of listing unrelated programs.
+        const requestedActivity = matcherExtractActivity(input) || context.requestedActivity || null;
+        if (
+          requestedActivity &&
+          (this.hasSignupIntent(input) || this.hasProgramWords(input)) &&
+          !hasProviderForActivity(requestedActivity)
+        ) {
+          this.updateContext(sessionId, { step: FlowStep.BROWSE, wizardProgress: undefined });
+          return this.formatResponse(
+            getUnsupportedRequestMessage({
+              reason: "unsupported_activity",
+              activity_type: getActivityDisplayName(requestedActivity),
+              supported_provider_name: "AIM Design",
+              supported_provider_location: "Madison, WI",
+            }),
+            undefined,
+            []
+          );
         }
 
         // If user expresses signup/browse intent but we didn't match a specific provider,

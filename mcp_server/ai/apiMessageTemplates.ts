@@ -119,7 +119,11 @@ export function getAPIProgramsReadyMessage(vars: APIMessageVariables & { program
         ? `   🧠 ${desc}\n\n`
         : `   ℹ️ Details coming soon — you can still register.\n\n`;
     });
-    message += `Reply with a number (1-${programs.length}) or program name to sign up.`;
+    if (programs.length === 1) {
+      message += `Reply **yes** to sign up for this class (or type the program name).`;
+    } else {
+      message += `Reply with a number (1-${programs.length}) or program name to sign up.`;
+    }
   } else {
     message += `Reply with a program name or number to sign up.`;
   }
@@ -375,6 +379,33 @@ If not, let me know what you're searching for.`;
  */
 export function getGracefulDeclineMessage(): string {
   return `I can help with class signups and registrations. Tell me the organization name and I'll see what's available.`;
+}
+
+/**
+ * Unsupported request message (v1 single-provider posture)
+ * Used when user asks for a provider/location/activity we do not support yet.
+ */
+export function getUnsupportedRequestMessage(vars?: {
+  reason?: "non_us" | "unsupported_provider" | "unsupported_activity";
+  activity_type?: string;
+  supported_provider_name?: string;
+  supported_provider_location?: string;
+}): string {
+  const reason = vars?.reason;
+  const supportedProvider = vars?.supported_provider_name || "AIM Design";
+  const supportedLocation = vars?.supported_provider_location || "Madison, WI";
+  const activity = vars?.activity_type ? String(vars.activity_type) : null;
+
+  if (reason === "non_us") {
+    return `Right now SignupAssist only supports signups in the United States.\n\nIf you have a US city and state, tell me that (e.g., “Seattle, WA”) and I’ll help you sign up.`;
+  }
+
+  if (reason === "unsupported_activity" && activity) {
+    return `I can’t help with **${activity}** signups yet.\n\nRight now SignupAssist supports signups only for **${supportedProvider}** (${supportedLocation}).`;
+  }
+
+  // Default: unsupported provider or unknown
+  return `I can’t sign you up for that provider yet.\n\nRight now SignupAssist supports signups only for **${supportedProvider}** (${supportedLocation}).`;
 }
 
 // ============================================
