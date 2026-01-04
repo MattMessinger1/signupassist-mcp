@@ -2860,7 +2860,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
     if (!hasProgramWords && (isRestaurantReservation || isTravelBooking || isAppointmentBooking)) {
       return this.formatResponse(
-        `Step 1/5 — SignupAssist scope\n\nI can’t help with that request right now.\n\nSignupAssist is for completing **class/program registrations** with supported partner providers in the United States.`,
+        `I can’t help with that request right now.\n\nSignupAssist is for completing **class/program registrations** with supported partner providers in the United States.`,
         undefined,
         []
       );
