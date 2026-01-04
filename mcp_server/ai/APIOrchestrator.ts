@@ -7918,8 +7918,20 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const effectiveStep = (response.step || ctx.step) as FlowStep | string | undefined;
       const wizardStep = this.inferWizardStepNumber(effectiveStep);
       const prev = ctx.wizardProgress;
+      // If we're replaying a cached response (retry dedupe), do NOT increment turn counters,
+      // but also do NOT reset them to 1 — that causes "continued" to disappear mid-step.
+      // Prefer the cached response's prior counter, then fall back to the persisted context.
+      const replayTurnInStep = (() => {
+        const fromResp = Number(response?.metadata?.wizardTurnInStep || 0);
+        if (Number.isFinite(fromResp) && fromResp > 0) return fromResp;
+        const fromCtx =
+          prev && prev.wizardStep === wizardStep ? Number(prev.turnInStep || 0) : 0;
+        if (Number.isFinite(fromCtx) && fromCtx > 0) return fromCtx;
+        return 1;
+      })();
+
       const nextTurnInStep = skipWizardProgress
-        ? 1
+        ? replayTurnInStep
         : (prev && prev.wizardStep === wizardStep ? (Number(prev.turnInStep || 0) + 1) : 1);
 
       // Attach metadata for the HTTP boundary to render the correct header variant.
@@ -7929,7 +7941,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           ...(response.metadata || {}),
           wizardStep,
           wizardTurnInStep: nextTurnInStep,
-          wizardContinued: !skipWizardProgress && nextTurnInStep > 1,
+          wizardContinued: nextTurnInStep > 1,
           _build: (response.metadata || {})._build || APIOrchestrator.BUILD_STAMP
         }
       };
