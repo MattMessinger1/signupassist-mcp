@@ -1970,6 +1970,20 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         // ignore
       }
 
+      // ----------------------------------------------------------------
+      // Multi-instance durability: ensure queued DB persistence completes
+      // before returning so the next turn (possibly on another instance)
+      // can restore wizardProgress / requested triad fields reliably.
+      // ----------------------------------------------------------------
+      try {
+        const pending = this.persistQueue.get(contextSessionId);
+        if (pending) {
+          await pending;
+        }
+      } catch {
+        // ignore - persistence is best-effort
+      }
+
       return final;
     } catch (error) {
       Logger.error('APIOrchestrator error:', error);
@@ -3155,8 +3169,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       // Case A: Activity detected, providers exist, need location
       const activity = matcherExtractActivity(input);
       if (activity && !confidence.matchedProvider) {
-        // Store that we're waiting for a city so follow-ups like "for adults?" don't dead-end.
-        this.updateContext(sessionId, { step: FlowStep.BROWSE });
+        // Persist what we already know (activity + optional age) so we don't re-ask after the city comes in.
+        const detectedAge = this.extractChildAgeFromSearchQuery(input);
+        const updates: Partial<APIContext> = { step: FlowStep.BROWSE, requestedActivity: activity };
+        if (detectedAge) {
+          updates.childInfo = { ...(context.childInfo || { name: "" }), age: detectedAge };
+        }
+        this.updateContext(sessionId, updates);
 
         const displayName = getActivityDisplayName(activity);
         if (this.detectNonUSLocationHint(input)) {
@@ -4244,6 +4263,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     const city = analysis.city || trimmed;
     const state = analysis.state;
 
+    // Persist requested location so age-only follow-ups (e.g., "10") can complete the triad across turns.
+    // (We already do this for out-of-coverage above; this covers in-coverage locations.)
+    this.updateContext(sessionId, {
+      requestedLocation: state ? `${city}, ${state}` : city
+    });
+
     // Save location if authenticated
     if (context.user_id) {
       try {
@@ -4618,8 +4643,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     sessionId: string
   ): Promise<OrchestratorResponse> {
     try {
-      // Wizard UX: program list renders should start fresh (avoid "Step 1/5 continued" due to stale counters).
-      this.updateContext(sessionId, { wizardProgress: undefined });
       Logger.info(`Searching programs for org: ${orgRef}`);
 
       // Get context for timezone formatting
