@@ -8277,7 +8277,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     if (!context.pendingDelegateInfo?.email) {
       this.updateContext(sessionId, { awaitingDelegateEmail: true });
       return this.formatResponse(
-        `Great! I have ${childInfo.firstName}'s information. What email should I use for the registration?\n\nNote: Your saved kids/profile come from the SignupAssist account you connected in ChatGPT. Changing this email only changes the contact email for this signup. To use a different account, disconnect/reconnect SignupAssist and sign in as that user.`,
+        `Great! I have ${childInfo.firstName}'s information. What email should I use for the registration?\n\nNote: This is the email the provider will send the confirmation to.`,
         undefined,
         []
       );

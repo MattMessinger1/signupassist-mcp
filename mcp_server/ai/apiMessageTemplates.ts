@@ -149,7 +149,7 @@ export function getAPIFormIntroMessage(vars: APIMessageVariables): string {
     `${trustLine("privacy")}\n\n` +
     `To start signing up for **${programName}**, what's the parent/guardian **email**?\n` +
     `Reply like: Email: name@example.com\n\n` +
-    `Note: Your saved kids/profile come from the SignupAssist account you connected in ChatGPT. Changing this email only changes the contact email for this signup. To use a different account, disconnect/reconnect SignupAssist and sign in as that user.`
+    `Note: This is the email the provider will send the confirmation to.`
   );
 }
 
