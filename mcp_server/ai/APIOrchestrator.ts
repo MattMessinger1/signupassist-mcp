@@ -61,7 +61,7 @@ import {
   getActivityKeywords,
   hasProviderForActivity
 } from "../utils/activityMatcher.js";
-import { getAllActiveOrganizations } from "../config/organizations.js";
+import { getAllActiveOrganizations, getOrganization } from "../config/organizations.js";
 import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
 import { checkAudienceMismatch } from "../utils/audienceParser.js";
 import { formatCurrencyFromCents } from "../utils/money.js";
@@ -822,6 +822,9 @@ export default class APIOrchestrator implements IOrchestrator {
       const display = context.cardLast4 ? `${context.cardBrand || "Card"} •••• ${context.cardLast4}` : "Yes";
       msg += `- **Payment method on file:** ${display}\n`;
     }
+
+    const tzNote = this.resolveProviderTimeZoneNote(context);
+    if (tzNote) msg += `\n${tzNote}\n`;
 
     msg +=
       "\nIf everything is correct, type **book now** to continue" +
@@ -1835,11 +1838,38 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
   }
 
   /**
-   * Format time for user's timezone
-   * Uses user's IANA timezone from context, falls back to UTC
+   * Resolve the timezone we should DISPLAY to users.
+   * First principles: show provider-local time (people don't think in UTC, and users may sign up while traveling).
+   * Internal storage remains UTC; this affects display only.
+   */
+  private resolveDisplayTimeZone(context: APIContext): string {
+    const orgRef = String(context.selectedProgram?.org_ref || context.orgRef || "aim-design").trim();
+    const cfg = getOrganization(orgRef);
+    const providerTz = cfg?.timeZone ? String(cfg.timeZone).trim() : "";
+    if (providerTz) return providerTz;
+
+    const userTz = context.userTimezone ? String(context.userTimezone).trim() : "";
+    if (userTz) return userTz;
+
+    return "UTC";
+  }
+
+  private resolveProviderTimeZoneNote(context: APIContext): string | null {
+    const orgRef = String(context.selectedProgram?.org_ref || context.orgRef || "aim-design").trim();
+    const cfg = getOrganization(orgRef);
+    const tz = cfg?.timeZone ? String(cfg.timeZone).trim() : "";
+    if (!tz) return null;
+    const providerName = cfg?.displayName ? String(cfg.displayName).trim() : "the provider";
+    // Keep the note simple + scannable.
+    return `_(Times shown in ${providerName}'s local time — ${tz}.)_`;
+  }
+
+  /**
+   * Format time for display timezone.
+   * Prefers provider-local timezone; falls back to user's timezone; uses UTC as a last resort.
    */
   private formatTimeForUser(date: Date | string, context: APIContext): string {
-    const timezone = context.userTimezone || 'UTC';
+    const timezone = this.resolveDisplayTimeZone(context);
     const dateObj = typeof date === 'string' ? new Date(date) : date;
     
     return formatInTimeZone(
@@ -5995,7 +6025,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         program_name: programName,
         booking_number,
         start_time: start_time || "TBD",
-        user_timezone: context.userTimezone,
+        // Display times in provider-local timezone (not UTC).
+        user_timezone: this.resolveDisplayTimeZone(context),
         participant_names: participantNamesForReceipt,
         program_fee_cents: programFeeCentsForReceipt,
         program_fee: programFeeDisplayForReceipt,
@@ -6514,7 +6545,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         provider_name: 'AIM Design', // TODO: get from context
         mandate_id: mandateId,
         valid_until: validUntilIso,
-        user_timezone: context.userTimezone
+        // Display times in provider-local timezone (not UTC).
+        user_timezone: this.resolveDisplayTimeZone(context)
       });
       
       const scheduledDisplay = this.formatTimeForUser(scheduledDate, context);

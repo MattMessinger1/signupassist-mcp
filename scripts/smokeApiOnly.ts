@@ -15,6 +15,7 @@
  */
 import 'dotenv/config';
 import { getAPISuccessMessage } from "../mcp_server/ai/apiMessageTemplates.js";
+import APIOrchestrator from "../mcp_server/ai/APIOrchestrator.js";
 
 type Json = any;
 
@@ -142,6 +143,16 @@ async function main() {
     assert(/SignupAssist success fee/i.test(sample), 'receipt template: expected SignupAssist fee line');
     assert(!/SignupAssist will email/i.test(sample), 'receipt template: should not claim SignupAssist emails confirmation');
     console.log('[smoke] ✅ receipt template ok');
+  }
+
+  // 6) Timezone regression check (local, safe): avoid showing UTC when provider timezone is known
+  {
+    const orch: any = new APIOrchestrator({ tools: new Map() } as any);
+    const formatted = String(
+      orch.formatTimeForUser('2026-01-01T00:00:00Z', { step: 'BROWSE', orgRef: 'aim-design' } as any)
+    );
+    assert(!/\bUTC\b/i.test(formatted), `provider timezone: expected no UTC, got: ${formatted}`);
+    console.log('[smoke] ✅ provider timezone display ok');
   }
 
   console.log('\n[smoke] ✅ ALL API-ONLY SMOKE TESTS PASSED\n');

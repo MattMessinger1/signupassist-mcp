@@ -7,6 +7,8 @@ export interface OrgConfig {
   orgRef: string;
   provider: string; // 'skiclubpro', 'campminder', 'bookeo', etc.
   displayName: string;
+  /** IANA timezone for provider-local display (e.g., "America/Chicago"). Stored timestamps remain UTC. */
+  timeZone?: string;
   
   // Search & Discovery
   searchKeywords: string[];     // ["bookeo", "booking", "classes"]
@@ -156,6 +158,7 @@ registerOrganization({
   orgRef: 'aim-design',
   provider: 'bookeo',
   displayName: 'AIM Design',
+  timeZone: 'America/Chicago',
   searchKeywords: ['bookeo', 'booking', 'classes', 'aim', 'aim design', 'robotics', 'stem', 'science', 'sensors', 'ocean', 'marine', 'ski jumping'],
   activityTypes: ['coding', 'robotics', 'stem', 'skiing'],  // Activities AIM Design actually offers
   location: {
