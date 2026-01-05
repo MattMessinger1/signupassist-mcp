@@ -55,6 +55,89 @@ function stripWizardHeader(message: string): string {
   return msg.replace(/^\*{0,2}Step\s+[1-5]\/5(?:\s+continued)?\s+—[^\n]*\n*/i, "").trim();
 }
 
+// ============================================================
+// ChatGPT (Auth0) tool allowlist + aliasing
+// Goal: deterministic UX + prevent ChatGPT from calling any internal/private tools
+// (including cached tool names from previous versions).
+// ============================================================
+const CHATGPT_AUTH0_CANONICAL_TOOL = "signupassist.chat";
+const CHATGPT_AUTH0_ALLOWED_TOOLS = new Set<string>([CHATGPT_AUTH0_CANONICAL_TOOL]);
+const CHATGPT_AUTH0_TOOL_ALIASES: Record<string, string> = {
+  // Legacy/cached public tools from earlier iterations.
+  "signupassist.start": CHATGPT_AUTH0_CANONICAL_TOOL,
+  "signupassist.find": CHATGPT_AUTH0_CANONICAL_TOOL,
+};
+
+function synthesizeSignupAssistQueryFromArgs(args: any): string {
+  const a = args && typeof args === "object" ? args : {};
+  const direct = String(a.input ?? a.message ?? a.query ?? "").trim();
+  if (direct) return direct;
+
+  // Best-effort synthesis (mirrors old `signupassist.find` behavior).
+  const activity = a.activity ? String(a.activity) : "";
+  const age = typeof a.child_age === "number" ? a.child_age : null;
+  const location = a.location ? String(a.location) : "";
+
+  const synthesized = [
+    activity ? `${activity} classes` : "",
+    age != null ? `for my ${age} year old` : "",
+    location ? `in ${location}` : "",
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  return synthesized || "browse classes";
+}
+
+function coerceSignupAssistChatArgsFromLegacy(
+  legacyArgs: any,
+  fallbackSessionId: string
+): any {
+  const a = legacyArgs && typeof legacyArgs === "object" ? legacyArgs : {};
+  const sessionId = String(a.sessionId || fallbackSessionId || "chatgpt");
+  const userTimezone = a.userTimezone ? String(a.userTimezone) : undefined;
+  const input = synthesizeSignupAssistQueryFromArgs(a);
+
+  // Only pass what `signupassist.chat` expects.
+  return {
+    sessionId,
+    input,
+    ...(userTimezone ? { userTimezone } : {}),
+  };
+}
+
+function normalizeChatGPTAuth0ToolCall(params: {
+  isProd: boolean;
+  authSource: 'mcp_access_token' | 'auth0' | 'dev' | 'none' | string;
+  toolName: string;
+  args: any;
+  fallbackSessionId: string;
+  verifiedUserId?: string;
+}): { toolName: string; args: any; blockedReason?: string } {
+  const { isProd, authSource, toolName, args, fallbackSessionId, verifiedUserId } = params;
+  if (!isProd || authSource !== 'auth0') return { toolName, args };
+
+  // Allow canonical tool.
+  if (CHATGPT_AUTH0_ALLOWED_TOOLS.has(toolName)) {
+    const outArgs = args && typeof args === "object" ? { ...args } : {};
+    // Defense-in-depth: always ensure required sessionId exists for ChatGPT callers.
+    if (!outArgs.sessionId) outArgs.sessionId = verifiedUserId || fallbackSessionId || "chatgpt";
+    if (verifiedUserId) outArgs.userId = verifiedUserId;
+    return { toolName, args: outArgs };
+  }
+
+  // Alias known legacy tool names → canonical chat.
+  if (CHATGPT_AUTH0_TOOL_ALIASES[toolName]) {
+    const coerced = coerceSignupAssistChatArgsFromLegacy(args, verifiedUserId || fallbackSessionId || "chatgpt");
+    if (verifiedUserId) coerced.userId = verifiedUserId;
+    return { toolName: CHATGPT_AUTH0_CANONICAL_TOOL, args: coerced };
+  }
+
+  // Block everything else (private/internal tools).
+  return { toolName, args, blockedReason: `Tool ${toolName} not available` };
+}
+
 function microQuestionEmail(programName?: string): string {
   const p = programName ? ` for **${programName}**` : "";
   return (
@@ -2100,7 +2183,7 @@ class SignupAssistMCPServer {
               //   "missing required content field"
               // --------------------------------------------------------------
               if (methodName === 'tools/call') {
-                const toolName = parsed?.params?.name ? String(parsed.params.name) : '';
+                let toolName = parsed?.params?.name ? String(parsed.params.name) : '';
 
                 // Enforce OAuth for tool calls in production
                 const isProd = process.env.NODE_ENV === 'production';
@@ -2147,6 +2230,38 @@ class SignupAssistMCPServer {
                   return;
                 }
 
+                const rawArgs = (parsed?.params?.arguments ?? {}) as any;
+                let argsObj =
+                  rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs) ? { ...rawArgs } : {};
+
+                // ChatGPT safety: Auth0 callers may have cached old tool names.
+                // Normalize to the single canonical tool for deterministic UX.
+                const normalized = normalizeChatGPTAuth0ToolCall({
+                  isProd,
+                  authSource,
+                  toolName,
+                  args: argsObj,
+                  fallbackSessionId: verifiedUserId || 'chatgpt',
+                  verifiedUserId,
+                });
+                if (normalized.blockedReason) {
+                  res.writeHead(404, {
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'Access-Control-Allow-Origin': '*',
+                    'Cache-Control': 'no-store',
+                  });
+                  res.end(
+                    JSON.stringify({
+                      jsonrpc: '2.0',
+                      id: parsed?.id ?? 1,
+                      error: { code: -32601, message: normalized.blockedReason },
+                    })
+                  );
+                  return;
+                }
+                toolName = normalized.toolName;
+                argsObj = normalized.args;
+
                 if (!toolName || !this.tools.has(toolName)) {
                   res.writeHead(404, {
                     'Content-Type': 'application/json; charset=utf-8',
@@ -2165,10 +2280,6 @@ class SignupAssistMCPServer {
                   );
                   return;
                 }
-
-                const rawArgs = (parsed?.params?.arguments ?? {}) as any;
-                const argsObj =
-                  rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs) ? { ...rawArgs } : {};
 
                 // Inject Auth0-derived userId for canonical chat tool so APIOrchestrator can persist per-user.
                 // Also ensure `sessionId` exists (ChatGPT occasionally omits it in some refresh/invoke flows).
@@ -2678,33 +2789,55 @@ class SignupAssistMCPServer {
             return;
           }
 
-          // Inject Auth0 userId into canonical chat tool calls so APIOrchestrator can persist per-user.
+          // ChatGPT safety: enforce a single canonical tool for Auth0 callers.
+          // Also inject Auth0 userId into canonical chat tool calls so APIOrchestrator can persist per-user.
           // (Do not trust client-supplied userId in production; overwrite with verified binding.)
           const boundUserId = this.sseSessionUserIds.get(sessionId) || verifiedUserId;
           let bodyToForward = body;
-          if (boundUserId) {
-            try {
-              const msg = parsed || JSON.parse(body);
-              if (
-                msg?.method === 'tools/call' &&
-                msg?.params?.name === 'signupassist.chat' &&
-                msg?.params
-              ) {
-                msg.params.arguments = msg.params.arguments || {};
-                if (isProd) {
-                  msg.params.arguments.userId = boundUserId;
-                } else if (!msg.params.arguments.userId) {
-                  msg.params.arguments.userId = boundUserId;
-                }
-                if (!msg.params.arguments.sessionId) {
-                  // Ensure required `sessionId` exists; fall back to SSE sessionId.
-                  msg.params.arguments.sessionId = sessionId;
-                }
-                bodyToForward = JSON.stringify(msg);
+          try {
+            const msg = parsed || JSON.parse(body);
+            if (msg?.method === 'tools/call' && msg?.params) {
+              const requestedTool = msg?.params?.name ? String(msg.params.name) : '';
+              const normalized = normalizeChatGPTAuth0ToolCall({
+                isProd,
+                authSource,
+                toolName: requestedTool,
+                args: msg.params.arguments || {},
+                fallbackSessionId: sessionId,
+                verifiedUserId: boundUserId,
+              });
+
+              if (normalized.blockedReason) {
+                res.writeHead(404, {
+                  'Content-Type': 'application/json; charset=utf-8',
+                  'Access-Control-Allow-Origin': '*',
+                  'Cache-Control': 'no-store',
+                });
+                res.end(
+                  JSON.stringify({
+                    jsonrpc: '2.0',
+                    id: msg?.id ?? 1,
+                    error: { code: -32601, message: normalized.blockedReason },
+                  })
+                );
+                return;
               }
-            } catch {
-              // If parsing fails, forward original body unchanged.
+
+              // Apply normalization/aliasing when needed.
+              if (normalized.toolName !== requestedTool) msg.params.name = normalized.toolName;
+              msg.params.arguments = normalized.args || {};
+
+              // Ensure user/session binding for canonical chat tool.
+              if (msg.params.name === CHATGPT_AUTH0_CANONICAL_TOOL) {
+                msg.params.arguments = msg.params.arguments || {};
+                if (boundUserId) msg.params.arguments.userId = boundUserId;
+                if (!msg.params.arguments.sessionId) msg.params.arguments.sessionId = sessionId;
+              }
+
+              bodyToForward = JSON.stringify(msg);
             }
+          } catch {
+            // If parsing fails, forward original body unchanged.
           }
           
           // Forward the message to the SSE transport
@@ -3293,10 +3426,12 @@ class SignupAssistMCPServer {
         // If request is authorized via Auth0, we bind Auth0 subject → Supabase auth UUID
         // and overwrite any client-supplied user_id/userId.
         let verifiedUserId: string | undefined;
+        let authSource: 'mcp_access_token' | 'auth0' | 'dev' | 'none' = 'none';
 
         // Development mode bypass (non-production only)
         if (process.env.NODE_ENV !== 'production') {
           console.warn('[AUTH] Dev mode: bypassing auth for /tools/call');
+          authSource = 'dev';
           // Continue to tool execution below
         } else {
           // Production auth validation
@@ -3307,7 +3442,7 @@ class SignupAssistMCPServer {
           const expectedToken = process.env.MCP_ACCESS_TOKEN;
 
           let isAuthorized = false;
-          let authSource: 'mcp_access_token' | 'auth0' | 'none' = 'none';
+          authSource = 'none';
 
           // Internal token path (used by internal scripts/ops)
           if (expectedToken && authHeader === `Bearer ${expectedToken}`) {
@@ -3379,6 +3514,24 @@ class SignupAssistMCPServer {
             res.end(JSON.stringify({ error: 'Missing required field: tool' }));
             return;
           }
+
+            // ChatGPT safety: Auth0 callers may have cached old tool names.
+            // Normalize to the single canonical tool for deterministic UX.
+            const normalized = normalizeChatGPTAuth0ToolCall({
+              isProd: process.env.NODE_ENV === 'production',
+              authSource,
+              toolName: String(tool),
+              args,
+              fallbackSessionId: (args && typeof args === 'object' && (args as any).sessionId) ? String((args as any).sessionId) : (verifiedUserId || 'chatgpt'),
+              verifiedUserId,
+            });
+            if (normalized.blockedReason) {
+              res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+              res.end(JSON.stringify({ error: normalized.blockedReason }));
+              return;
+            }
+            tool = normalized.toolName;
+            args = normalized.args;
 
             // ================================================================
             // AUTH0 USER BINDING / MAPPING (DEFENSE-IN-DEPTH)

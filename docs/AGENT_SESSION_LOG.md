@@ -558,3 +558,32 @@ Fix:
 
 - `npm run mcp:build` ✅
 
+---
+
+## 2026-01-05 — Fix: “Book now” confirmation consistency (receipt + single-tool front door)
+
+### Symptom (ChatGPT)
+
+- After typing **book now**, some chats showed an inconsistent “booking in progress” style message or produced incorrect follow-up promises (e.g., implying SignupAssist emails confirmations).
+
+### Root cause (best-effort)
+
+- ChatGPT can sometimes call cached/legacy tool names or internal tool endpoints, producing non-deterministic post-booking output.
+
+### Fix (code)
+
+- `mcp_server/index.ts`
+  - Enforced an **Auth0 (ChatGPT) tool allowlist** across `/sse` JSON-RPC, `/messages`, and `/tools/call`:
+    - Allow only `signupassist.chat`
+    - Alias cached legacy `signupassist.start` / `signupassist.find` → `signupassist.chat`
+    - Block all other tools for Auth0 callers (prevents internal/private tool paths from being invoked by ChatGPT)
+- `mcp_server/ai/apiMessageTemplates.ts` + `mcp_server/ai/APIOrchestrator.ts`
+  - Upgraded the Step 5/5 booking success output to a receipt-style confirmation including:
+    - Participants
+    - Fees (program fee vs $20 success fee)
+    - Truthful copy: **provider emails confirmation** (SignupAssist does not claim to email in v1)
+
+### Regression guard
+
+- `scripts/smokeApiOnly.ts` now includes a small template assertion: success receipt contains `Booking #` + `Participants` and does not claim “SignupAssist will email”.
+

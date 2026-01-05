@@ -14,6 +14,7 @@
  *   ./node_modules/.bin/tsx scripts/smokeApiOnly.ts
  */
 import 'dotenv/config';
+import { getAPISuccessMessage } from "../mcp_server/ai/apiMessageTemplates.js";
 
 type Json = any;
 
@@ -123,6 +124,25 @@ async function main() {
   const scp = await callTool(baseUrl, token, 'scp.login', { org_ref: 'blackhawk-ski-club' });
   assert(scp.status === 404, `scp.login: expected 404 (tool removed), got ${scp.status}`);
   console.log('[smoke] ✅ scp.* tools absent');
+
+  // 5) Receipt template regression check (local, safe): Booking # + Participants + truthful email promise
+  {
+    const sample = getAPISuccessMessage({
+      program_name: 'Test Program',
+      booking_number: '12345',
+      start_time: '2026-01-01T00:00:00Z',
+      user_timezone: 'America/Chicago',
+      participant_names: ['Kid Test'],
+      program_fee_cents: 5000,
+      success_fee_cents: 2000,
+    });
+    assert(/Booking\s+#12345/i.test(sample), 'receipt template: expected Booking # line');
+    assert(/\*\*Participants:\*\*/i.test(sample), 'receipt template: expected Participants line');
+    assert(/\*\*Fees\*\*/i.test(sample), 'receipt template: expected Fees section');
+    assert(/SignupAssist success fee/i.test(sample), 'receipt template: expected SignupAssist fee line');
+    assert(!/SignupAssist will email/i.test(sample), 'receipt template: should not claim SignupAssist emails confirmation');
+    console.log('[smoke] ✅ receipt template ok');
+  }
 
   console.log('\n[smoke] ✅ ALL API-ONLY SMOKE TESTS PASSED\n');
 }

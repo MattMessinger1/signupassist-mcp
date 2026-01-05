@@ -31,7 +31,11 @@ export interface APIMessageVariables {
   program_count?: number;
   program_name?: string;
   participant_name?: string;
+  participant_names?: string[];
   total_cost?: string;
+  program_fee?: string;
+  program_fee_cents?: number;
+  success_fee_cents?: number;
   num_participants?: number;
   booking_number?: string;
   start_time?: string;
@@ -186,12 +190,38 @@ export function getAPISuccessMessage(vars: APIMessageVariables): string {
   const rawProviderName = vars.provider_name || "the provider";
   // Capitalize first letter since it starts a sentence
   const providerName = rawProviderName.charAt(0).toUpperCase() + rawProviderName.slice(1);
+
+  const participantNames =
+    Array.isArray(vars.participant_names)
+      ? vars.participant_names.map((x) => String(x || "").trim()).filter(Boolean)
+      : [];
+
+  const successFeeCents = Number.isFinite(Number(vars.success_fee_cents))
+    ? Number(vars.success_fee_cents)
+    : 2000;
+
+  const feeFromCents =
+    Number.isFinite(Number(vars.program_fee_cents)) && Number(vars.program_fee_cents) > 0
+      ? formatCurrencyFromCents(Number(vars.program_fee_cents))
+      : null;
+  const programFeeDisplay = String(vars.program_fee || "").trim() || feeFromCents || "TBD";
+  const successFeeDisplay = formatCurrencyFromCents(successFeeCents);
   
+  const participantsLine = participantNames.length
+    ? `\n\n**Participants:** ${participantNames.join(", ")}`
+    : "";
+
   return `You're registered for **${programName}**!
 
 Booking #${bookingNumber} · ${startTime}
 
-${providerName} will email your confirmation. Questions about the class? Contact them directly.`;
+${participantsLine}
+
+**Fees**
+- Program fee: ${programFeeDisplay} (handled by the provider)
+- SignupAssist success fee: ${successFeeDisplay} (charged only upon successful registration)
+
+${providerName} will email your confirmation to the parent/guardian email you provided. Questions about the class? Contact them directly.`;
 }
 
 /**

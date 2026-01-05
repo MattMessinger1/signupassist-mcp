@@ -5981,11 +5981,25 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       // Step 5: Reset context (awaited so other Railway instances don't briefly see stale SUBMIT state)
       // Use Design DNA-compliant success message
+      const participantNamesForReceipt = Array.isArray(participant_data)
+        ? participant_data
+            .map((p: any) => `${p?.firstName || ''} ${p?.lastName || ''}`.trim())
+            .filter((name: string) => name.length > 0)
+        : [];
+      const programFeeCentsForReceipt = Number(context.formData?.program_fee_cents ?? 0);
+      const programFeeDisplayForReceipt =
+        Number.isFinite(programFeeCentsForReceipt) && programFeeCentsForReceipt > 0
+          ? "" // use cents-based formatting in the template
+          : String(context.selectedProgram?.price || "TBD");
       const message = getAPISuccessMessage({
         program_name: programName,
         booking_number,
         start_time: start_time || "TBD",
-        user_timezone: context.userTimezone
+        user_timezone: context.userTimezone,
+        participant_names: participantNamesForReceipt,
+        program_fee_cents: programFeeCentsForReceipt,
+        program_fee: programFeeDisplayForReceipt,
+        success_fee_cents: 2000,
       });
       const providerPaymentNote = providerCheckoutUrlSafe
         ? `\n\n💳 **Provider payment:** ${providerCheckoutUrlSafe}\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the ${formatCurrencyFromCents(2000)} success fee._`

@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local npm cache (may be created by npm tooling in some environments)
+.npm-cache/
