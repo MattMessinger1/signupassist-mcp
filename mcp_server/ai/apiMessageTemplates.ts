@@ -143,7 +143,7 @@ export function getAPIFormIntroMessage(vars: APIMessageVariables): string {
   return (
     `${stepHeader(2, "Parent & child info")}\n` +
     `${trustLine("privacy")}\n\n` +
-    `To start **${programName}**, what's the parent/guardian **email**?\n` +
+    `To start signing up for **${programName}**, what's the parent/guardian **email**?\n` +
     `Reply like: Email: name@example.com`
   );
 }
