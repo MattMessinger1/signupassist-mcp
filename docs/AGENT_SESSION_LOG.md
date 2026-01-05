@@ -664,3 +664,50 @@ git push origin main
 - **Sold-out**: LOW - new condition after existing `closed` check
 - **Batch sibling**: MEDIUM - modifies child collection flow; existing single-child path still works
 
+---
+
+## 2026-01-05 — Fix: closed program re-listing + sibling registration + multi-child review
+
+### Symptom (prod)
+
+During a multi-child “book now” flow, the user observed:
+
+1) After detecting a class was closed/past, it still appeared again in later “Available classes” lists.
+2) After adding a second child, the assistant responded as if it still only “had Percy’s information”.
+3) The Review & Consent step showed only the first child (Percy), not both children (Percy + Mina).
+
+### Root causes
+
+- **Closed program re-listing**: the `selectProgram()` `bookingStatus === 'closed'` fallback re-called `searchPrograms()` without remembering that the selected `program_ref` is known-unavailable for the rest of the session.
+- **Sibling input routing**: after “Yes, add another child”, the next free-text message could be treated as generic `submit_form` hydration rather than “select next child”, leaving sibling state inconsistent.
+- **Review rendering**: review primarily normalized from `context.formData`. In sibling flows, the authoritative list may still live on `context.participants`, and `pendingParticipants` could become partial (dropping earlier siblings).
+
+### Fix shipped
+
+- **Session-local hidden program list**
+  - Added `hiddenProgramRefs` to the session context.
+  - When `selectProgram()` detects `bookingStatus === 'closed'`, it adds the `program_ref` to `hiddenProgramRefs` and re-renders browse.
+  - `searchPrograms()` filters out `hiddenProgramRefs`, so the known-closed program won’t appear again in this chat session.
+
+- **Sibling flow correctness**
+  - Added `awaitingAdditionalChildInfo` to explicitly represent “we are waiting for the next child’s name/age/DOB”.
+  - `handleAddAnotherChild()` now sets `awaitingAdditionalChildInfo: true` when prompting for the next child.
+  - `handleMessage()` routes the next message to `select_child` when `awaitingAdditionalChildInfo` is set, and also detects child lines while on the “add another child?” prompt.
+  - `handleSelectChild()` now keeps `pendingParticipants` synced to the full `participants` list (prevents dropping earlier siblings).
+
+- **Review includes all children**
+  - `buildReviewSummaryFromContext()` now falls back to `context.participants` (and only then `context.pendingParticipants`) when `formData` isn’t normalized yet.
+
+- **Reset hygiene**
+  - `handleClearContext()` and the “select program” stale-state reset now clear sibling fields (`participants`, `pendingParticipants`, awaiting flags) and `hiddenProgramRefs`.
+
+### Verification
+
+- Added regression: `scripts/regressionSiblingAndHiddenPrograms.js`
+  - Hidden closed program does not re-appear in browse message when `hiddenProgramRefs` contains its `program_ref`.
+  - Sibling add-child free-text updates `context.participants` and review summary includes both children.
+- Added npm script: `npm run test:sibling-flow`
+
+Notes:
+- The regression is network-free. It may log warnings about missing `SUPABASE_URL` (background session persistence), but functional assertions pass.
+

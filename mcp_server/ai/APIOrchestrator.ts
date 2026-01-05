@@ -123,6 +123,11 @@ interface APIContext {
     age?: number;
   }>;
   awaitingAdditionalChild?: boolean;  // Are we asking "add another child?"
+  awaitingAdditionalChildInfo?: boolean; // Are we asking for the next child's details (name/age/DOB)?
+
+  // Browse UX: hide specific programs for the remainder of this chat session (e.g., user selected a class
+  // and we determined it's already closed/past). Prevents re-showing known-unavailable options.
+  hiddenProgramRefs?: string[];
   schedulingData?: {
     scheduled_time: string;
     event_id: string;
@@ -142,7 +147,7 @@ interface APIContext {
   pendingProviderConfirmation?: string;
   
   // ChatGPT NL compatibility: multi-participant flow
-  pendingParticipants?: Array<{ firstName: string; lastName: string; age?: number }>;
+  pendingParticipants?: Array<{ firstName: string; lastName: string; dob?: string; age?: number }>;
   
   // ChatGPT NL compatibility: delegate info collection
   pendingDelegateInfo?: {
@@ -778,7 +783,15 @@ export default class APIOrchestrator implements IOrchestrator {
       (fd && typeof fd === "object" && (fd.participant_data || fd.participants)) ||
       (fd?.formData && (fd.formData.participants || fd.formData.participant_data)) ||
       [];
-    const participants = Array.isArray(participantsRaw) ? participantsRaw : [participantsRaw].filter(Boolean);
+    let participants = Array.isArray(participantsRaw) ? participantsRaw : [participantsRaw].filter(Boolean);
+    // Fallback: during multi-child selection, participants may live on context.* until submitForm normalizes them.
+    if (participants.length === 0) {
+      const fromContext =
+        (Array.isArray(context.participants) && context.participants.length > 0
+          ? context.participants
+          : (Array.isArray(context.pendingParticipants) ? context.pendingParticipants : [])) as any[];
+      participants = fromContext;
+    }
     // Build participant display for single or multiple children
     const participantDisplay: string[] = [];
     if (participants.length > 0) {
@@ -3026,8 +3039,24 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       if (isNo) {
         return await this.handleAction("finish_child_selection", {}, sessionId, context, input);
       }
-      // If neither yes nor no, treat as child info input (they might have just typed the next child's name)
-      // Fall through to normal FORM_FILL handling
+      // If neither yes nor no, they may have typed the next child's name directly.
+      // If it looks like a child line (e.g., "Mina Messinger, 7"), route to select_child.
+      const maybeChild = this.parseChildLine(input);
+      if (maybeChild) {
+        return await this.handleAction("select_child", {}, sessionId, context, input);
+      }
+    }
+
+    // Batch sibling registration: after the user chose "add another child",
+    // treat the next message as the next child's details (NOT as generic submit_form hydration).
+    if (context.step === FlowStep.FORM_FILL && context.awaitingAdditionalChildInfo) {
+      const lowerInput = trimmed.toLowerCase();
+      // If they changed their mind, interpret as "continue without adding another child".
+      if (this.isUserDenial(trimmed) || lowerInput === "cancel" || lowerInput === "back") {
+        this.updateContext(sessionId, { awaitingAdditionalChildInfo: false });
+        return await this.handleAction("finish_child_selection", {}, sessionId, context, input);
+      }
+      return await this.handleAction("select_child", {}, sessionId, context, input);
     }
 
     // Step 2/5: schema-driven form fill (Bookeo required fields).
@@ -4688,10 +4717,21 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       ignoreAudienceMismatch: undefined,
       displayedPrograms: undefined,
       pendingProviderConfirmation: undefined,
+      // Session-local browse state
+      hiddenProgramRefs: undefined,
       // Multi-participant and delegate flow state
+      childInfo: undefined,
+      participants: undefined,
+      awaitingAdditionalChild: false,
+      awaitingAdditionalChildInfo: false,
       pendingParticipants: undefined,
       pendingDelegateInfo: undefined,
       awaitingDelegateEmail: undefined,
+      awaitingChildSelection: false,
+      awaitingSingleChildChoice: false,
+      declinedSingleSavedChild: false,
+      savedChildren: undefined,
+      reviewSummaryShown: false,
     });
 
     return this.formatResponse(
@@ -4848,6 +4888,30 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           Logger.info(`[searchPrograms] Filtered programs by requestedActivity='${requestedActivity}' -> ${filtered.length} matches`);
         } else {
           Logger.info(`[searchPrograms] No direct matches for requestedActivity='${requestedActivity}', showing full list`);
+        }
+      }
+
+      // Session-local hide list: once we determine a program is closed/past in this chat,
+      // do not show it again unless the user restarts.
+      const hiddenProgramRefs = Array.isArray(context.hiddenProgramRefs)
+        ? context.hiddenProgramRefs
+            .filter((r) => typeof r === "string" && r.trim())
+            .map((r) => r.trim())
+        : [];
+      if (hiddenProgramRefs.length > 0) {
+        const hidden = new Set(hiddenProgramRefs);
+        const before = programs.length;
+        programs = programs.filter((p: any) => {
+          const ref = String(p?.program_ref || "").trim();
+          return !ref || !hidden.has(ref);
+        });
+        const removed = before - programs.length;
+        if (removed > 0) {
+          Logger.info("[searchPrograms] Hid programs from session-local hidden list", {
+            removed,
+            hiddenCount: hidden.size,
+            orgRef,
+          });
         }
       }
 
@@ -5329,7 +5393,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         // Keep the user in BROWSE; this program's next session has already passed.
         // Re-render the catalog so they can pick an available class.
         const orgRefForBrowse = context.orgRef || programData?.org_ref || 'aim-design';
-        this.updateContext(sessionId, { step: FlowStep.BROWSE, selectedProgram: null });
+        // Hide this program for the remainder of this chat session so it doesn't show up again.
+        const refToHide = String(programRef || programData?.program_ref || "").trim();
+        const existingHidden = Array.isArray(context.hiddenProgramRefs) ? context.hiddenProgramRefs : [];
+        const nextHidden = refToHide ? Array.from(new Set([...existingHidden, refToHide])) : existingHidden;
+        this.updateContext(sessionId, { step: FlowStep.BROWSE, selectedProgram: null, hiddenProgramRefs: nextHidden });
         const browse = await this.searchPrograms(orgRefForBrowse, sessionId);
         const list = String(browse?.message || "");
         const listWithoutHeader = list
@@ -5454,6 +5522,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         awaitingDelegateEmail: false,
         pendingDelegateInfo: undefined,
         childInfo: undefined,
+        participants: undefined,
+        pendingParticipants: undefined,
+        awaitingAdditionalChild: false,
+        awaitingAdditionalChildInfo: false,
         formData: undefined,
         savedChildren: undefined,
         awaitingChildSelection: false,
@@ -8428,13 +8500,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       age: childInfo.age
     });
 
-    // Also keep pendingParticipants for backward compatibility with submitForm
-    const pendingParticipants = context.pendingParticipants || [];
-    pendingParticipants.push({
-      firstName: childInfo.firstName,
-      lastName: childInfo.lastName,
-      age: childInfo.age
-    });
+    // Keep pendingParticipants in sync for backward compatibility with submitForm/older flows.
+    // IMPORTANT: do not allow pendingParticipants to become a partial list (it can drop earlier siblings).
+    const pendingParticipants = participants.map((p: any) => ({ ...p }));
 
     this.updateContext(sessionId, { 
       participants,
@@ -8443,7 +8511,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         name: `${childInfo.firstName || ''} ${childInfo.lastName || ''}`.trim(),
         age: childInfo.age
       },
-      awaitingAdditionalChild: false  // Reset for next iteration
+      awaitingAdditionalChild: false,  // Reset for next iteration
+      awaitingAdditionalChildInfo: false // We have captured the requested child details
     });
 
     Logger.info('[handleSelectChild] ✅ Child info stored', { 
@@ -8565,7 +8634,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     if (remainingSlots <= 0) {
       // No more slots available
       const childNames = (context.participants || []).map((p: any) => p.firstName).join(', ');
-      this.updateContext(sessionId, { awaitingAdditionalChild: false });
+      this.updateContext(sessionId, { awaitingAdditionalChild: false, awaitingAdditionalChildInfo: false });
       return this.formatResponse(
         `Sorry, this class is now full — no additional spots are available.\n\n` +
         `✅ ${participantCount} child${participantCount > 1 ? 'ren' : ''} added (${childNames}).\n\n` +
@@ -8576,7 +8645,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     }
 
     // Reset awaitingAdditionalChild and ask for next child's info
-    this.updateContext(sessionId, { awaitingAdditionalChild: false });
+    this.updateContext(sessionId, { awaitingAdditionalChild: false, awaitingAdditionalChildInfo: true });
     
     // Warn if slots are limited
     const slotsNote = hasLimitedSlots && remainingSlots <= 2
@@ -8599,7 +8668,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     sessionId: string,
     context: APIContext
   ): Promise<OrchestratorResponse> {
-    const participants = context.pendingParticipants || context.participants || [];
+    const participants = context.participants || context.pendingParticipants || [];
     const programName = context.selectedProgram?.title || context.selectedProgram?.name || 'this program';
     
     Logger.info('[handleFinishChildSelection] User done adding children', { 
@@ -8631,7 +8700,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       );
     }
 
-    this.updateContext(sessionId, { awaitingAdditionalChild: false });
+    this.updateContext(sessionId, { awaitingAdditionalChild: false, awaitingAdditionalChildInfo: false });
 
     const childNames = participants.map((p: any) => p.firstName).join(', ');
 
