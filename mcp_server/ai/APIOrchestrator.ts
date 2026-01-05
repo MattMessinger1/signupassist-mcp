@@ -2490,23 +2490,69 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               const footer =
                 remainingCount > 0
                   ? `After these, I'll ask for the remaining ${remainingCount} item${remainingCount === 1 ? "" : "s"}.`
-                  : `That should be everything I need for parent/child info. Next: I’ll confirm your payment method (Stripe), then show a final review before booking.`;
+                  : `That should be everything I need for parent/child info. Next: I'll confirm your payment method (Stripe), then show a final review before booking.`;
               const groupIntro =
                 delegateMissing.length > 0
                   ? `First, for the **parent/guardian (you)**:`
                   : `Now, for the **child**:`;
+              
+              // Add email clarification note when asking for email
+              const askingForEmail = nextChunk.some(f => f.key.toLowerCase().includes('email'));
+              const emailNote = askingForEmail 
+                ? `\n\nNote: This is the email the provider will send the confirmation to.`
+                : '';
 
               return this.formatResponse(
-                `Step 2/5 — Parent & child info\n\n${groupIntro}\n- ${nextChunk.map((x) => x.label).join("\n- ")}\n\n${footer}\nReply in one message (commas are fine).`,
+                `Step 2/5 — Parent & child info\n\n${groupIntro}\n- ${nextChunk.map((x) => x.label).join("\n- ")}\n\n${footer}${emailNote}\nReply in one message (commas are fine).`,
                 undefined,
                 []
               );
             }
           }
 
+          // ✅ Batch sibling registration: Before advancing to PAYMENT, offer to add another child
+          const hasChildInfo = !!(context.childInfo?.firstName || context.childInfo?.name);
+          const currentParticipants = context.participants?.length || (hasChildInfo ? 1 : 0);
+          const availableSlots = context.selectedProgram?.available_slots;
+          const hasLimitedSlots = typeof availableSlots === 'number' && availableSlots > 0;
+          const remainingSlots = hasLimitedSlots ? availableSlots - currentParticipants : Infinity;
+          
+          if (hasChildInfo && currentParticipants < 3 && remainingSlots > 0 && !context.awaitingAdditionalChild) {
+            // Store current child in participants array if not already there
+            if (!context.participants?.length && context.childInfo) {
+              const participants = [{
+                firstName: context.childInfo.firstName || context.childInfo.name?.split(' ')[0] || '',
+                lastName: context.childInfo.lastName || context.childInfo.name?.split(' ').slice(1).join(' ') || '',
+                dob: context.childInfo.dob,
+                age: context.childInfo.age
+              }];
+              this.updateContext(sessionId, { participants, awaitingAdditionalChild: true });
+              context.participants = participants;
+            } else {
+              this.updateContext(sessionId, { awaitingAdditionalChild: true });
+            }
+            
+            const childName = context.childInfo.firstName || context.childInfo.name?.split(' ')[0] || 'your child';
+            const programName = context.selectedProgram?.title || context.selectedProgram?.name || 'this program';
+            const slotsWarning = hasLimitedSlots && remainingSlots <= 2
+              ? `\n\n⚠️ Only ${remainingSlots} spot${remainingSlots === 1 ? '' : 's'} remaining in this class.`
+              : '';
+            
+            return this.formatResponse(
+              `I have ${childName}'s information.\n\n` +
+              `Would you like to register another child for **${programName}**?${slotsWarning}\n\n` +
+              `**Note:** The $20.00 SignupAssist fee is the same whether you register 1, 2, or 3 children.`,
+              undefined,
+              [
+                { label: "Yes, add another child", action: "add_another_child", variant: "accent" },
+                { label: "No, continue to payment", action: "finish_child_selection", variant: "outline" }
+              ]
+            );
+          }
+
           // ✅ We have required fields -> advance flow to PAYMENT (before final review/consent)
           context.step = FlowStep.PAYMENT;
-          this.updateContext(sessionId, { step: FlowStep.PAYMENT });
+          this.updateContext(sessionId, { step: FlowStep.PAYMENT, awaitingAdditionalChild: false });
           Logger.info("[submit_form] ✅ Required fields satisfied; advancing to PAYMENT", {
             sessionId,
             formKeys: Object.keys(context.formData || {}),
@@ -8558,8 +8604,22 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     
     Logger.info('[handleFinishChildSelection] User done adding children', { 
       participantCount: participants.length,
-      programName 
+      programName,
+      hasFormData: !!context.formData,
+      hasPendingDelegateInfo: !!context.pendingDelegateInfo
     });
+
+    // Handle case where child was selected from saved children (childInfo is set but participants array is empty)
+    if (participants.length === 0 && context.childInfo) {
+      const childParticipant = {
+        firstName: context.childInfo.firstName || context.childInfo.name?.split(' ')[0] || '',
+        lastName: context.childInfo.lastName || context.childInfo.name?.split(' ').slice(1).join(' ') || '',
+        dob: context.childInfo.dob,
+        age: context.childInfo.age
+      };
+      participants.push(childParticipant);
+      this.updateContext(sessionId, { participants, pendingParticipants: participants });
+    }
 
     if (participants.length === 0) {
       // No children added - ask for first child
@@ -8575,8 +8635,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
     const childNames = participants.map((p: any) => p.firstName).join(', ');
 
+    // Check for email in multiple places (pendingDelegateInfo, formData, etc.)
+    const delegateEmail = context.pendingDelegateInfo?.email ||
+      (context.formData as any)?.delegate?.delegate_email ||
+      (context.formData as any)?.delegate_email ||
+      this.resolveDelegateEmailFromContext(context);
+
     // Ask for delegate email if we don't have it yet
-    if (!context.pendingDelegateInfo?.email) {
+    if (!delegateEmail) {
       this.updateContext(sessionId, { awaitingDelegateEmail: true });
       const countText = participants.length === 1 
         ? `I have ${participants[0].firstName}'s information.`
@@ -8590,12 +8656,27 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       );
     }
 
-    // If we have delegate info, proceed to form submission
+    // We have email - proceed to PAYMENT step
+    // Build formData from existing context for saved child flow
+    const formData = context.formData || {};
+    const delegate = (formData as any).delegate || { delegate_email: delegateEmail };
+    if (!delegate.delegate_email) delegate.delegate_email = delegateEmail;
+
+    // Ensure participants are in the formData
+    const finalFormData = {
+      ...formData,
+      delegate,
+      participants,
+      numParticipants: participants.length
+    };
+
+    Logger.info('[handleFinishChildSelection] Proceeding to payment with form data', {
+      participantCount: participants.length,
+      hasEmail: !!delegateEmail
+    });
+
     return await this.submitForm({
-      formData: {
-        participants,
-        delegate: context.pendingDelegateInfo
-      },
+      formData: finalFormData,
       program_ref: context.selectedProgram?.program_ref,
       org_ref: context.orgRef || context.selectedProgram?.org_ref
     }, sessionId, this.getContext(sessionId), { nextStep: 'payment' });
