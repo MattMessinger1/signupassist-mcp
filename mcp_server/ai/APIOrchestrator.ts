@@ -114,6 +114,15 @@ interface APIContext {
     firstName?: string;
     lastName?: string;
   };
+  
+  // Batch sibling registration: store multiple children (up to 3)
+  participants?: Array<{
+    firstName: string;
+    lastName: string;
+    dob?: string;
+    age?: number;
+  }>;
+  awaitingAdditionalChild?: boolean;  // Are we asking "add another child?"
   schedulingData?: {
     scheduled_time: string;
     event_id: string;
@@ -205,6 +214,8 @@ interface APIContext {
     scheduled_registration_id?: string;
     org_ref?: string;
     program_ref?: string;
+    program_name?: string;    // For sibling registration
+    program_data?: any;       // Cached program data for sibling registration
   };
 
   // Avoid repeated DB lookups for returning-user prefill within a session
@@ -768,16 +779,29 @@ export default class APIOrchestrator implements IOrchestrator {
       (fd?.formData && (fd.formData.participants || fd.formData.participant_data)) ||
       [];
     const participants = Array.isArray(participantsRaw) ? participantsRaw : [participantsRaw].filter(Boolean);
-    const participant = participants[0] || {};
-
-    const rawChildName = participant.firstName
-      ? `${participant.firstName} ${participant.lastName || ""}`.trim()
-      : (context.childInfo?.name || "");
-    const childName = rawChildName
-      ? this.sanitizeSavedChildName(rawChildName, "").display
-      : "your child";
-    const childDob = this.formatISODateForPrompt(participant.dob || participant.date_of_birth || context.childInfo?.dob);
-    const childDetail = childDob ? ` (DOB: ${childDob})` : (participant.age ? ` (Age: ${participant.age})` : "");
+    // Build participant display for single or multiple children
+    const participantDisplay: string[] = [];
+    if (participants.length > 0) {
+      for (const p of participants) {
+        const rawName = p.firstName
+          ? `${p.firstName} ${p.lastName || ""}`.trim()
+          : "";
+        const name = rawName
+          ? this.sanitizeSavedChildName(rawName, "").display
+          : "participant";
+        const dob = this.formatISODateForPrompt(p.dob || p.date_of_birth);
+        const detail = dob ? ` (DOB: ${dob})` : (p.age ? ` (Age: ${p.age})` : "");
+        participantDisplay.push(`${name}${detail}`);
+      }
+    } else if (context.childInfo?.name) {
+      // Fallback to single childInfo if no participants array
+      const childName = this.sanitizeSavedChildName(context.childInfo.name, "").display || "your child";
+      const childDob = this.formatISODateForPrompt(context.childInfo.dob);
+      const childDetail = childDob ? ` (DOB: ${childDob})` : (context.childInfo.age ? ` (Age: ${context.childInfo.age})` : "");
+      participantDisplay.push(`${childName}${childDetail}`);
+    } else {
+      participantDisplay.push("your child");
+    }
 
     const parentFirst = String(delegate.delegate_firstName || delegate.firstName || delegate.first_name || "").trim();
     const parentLast = String(delegate.delegate_lastName || delegate.lastName || delegate.last_name || "").trim();
@@ -801,7 +825,16 @@ export default class APIOrchestrator implements IOrchestrator {
 
     let msg = "Please review the details below:\n\n";
     msg += `- **Program:** ${programName}\n`;
-    msg += `- **Participant:** ${childName}${childDetail}\n`;
+    
+    // Display participants (single or multiple children)
+    if (participantDisplay.length === 1) {
+      msg += `- **Participant:** ${participantDisplay[0]}\n`;
+    } else if (participantDisplay.length > 1) {
+      msg += `- **Participants (${participantDisplay.length} children):**\n`;
+      participantDisplay.forEach((p, i) => {
+        msg += `  ${i + 1}. ${p}\n`;
+      });
+    }
     if (parentName) msg += `- **Parent/Guardian:** ${parentName}\n`;
     if (parentRel) msg += `- **Relationship:** ${parentRel}\n`;
     if (parentDob) msg += `- **Parent DOB:** ${parentDob}\n`;
@@ -811,12 +844,22 @@ export default class APIOrchestrator implements IOrchestrator {
       msg += `- **Set & forget:** We’ll register you the moment it opens.\n`;
       msg += `- **Charges now:** $0.00 (no charges unless registration succeeds)\n`;
     }
+    // For multiple children, calculate total program fee (program fee × child count)
+    const numChildren = participantDisplay.length;
+    const programFeeNote = numChildren > 1 
+      ? ` × ${numChildren} children` 
+      : "";
     msg += opensAtDisplay
-      ? `- **Program Fee:** ${formattedTotal} (paid to provider only if we successfully register you when it opens)\n`
-      : `- **Program Fee:** ${formattedTotal} (paid to provider only if booking succeeds)\n`;
+      ? `- **Program Fee:** ${formattedTotal}${programFeeNote} (paid to provider only if we successfully register you when it opens)\n`
+      : `- **Program Fee:** ${formattedTotal}${programFeeNote} (paid to provider only if booking succeeds)\n`;
+    
+    // Flat success fee messaging for multiple children
+    const successFeeNote = numChildren > 1 
+      ? ` (flat fee for 1-3 children)` 
+      : "";
     msg += opensAtDisplay
-      ? `- **SignupAssist Fee:** ${successFee} (charged only if we successfully register you when it opens)\n`
-      : `- **SignupAssist Fee:** ${successFee} (charged only upon successful registration)\n`;
+      ? `- **SignupAssist Fee:** ${successFee}${successFeeNote} (charged only if we successfully register you when it opens)\n`
+      : `- **SignupAssist Fee:** ${successFee}${successFeeNote} (charged only upon successful registration)\n`;
 
     if (context.hasPaymentMethod || context.cardLast4) {
       const display = context.cardLast4 ? `${context.cardBrand || "Card"} •••• ${context.cardLast4}` : "Yes";
@@ -2671,6 +2714,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         // Handle child selection from UI action (ChatGPT card click or NL input)
         return await this.handleSelectChild(payload, sessionId, context, input);
 
+      case "add_another_child":
+        // User wants to add another sibling - ask for child info
+        return await this.handleAddAnotherChild(payload, sessionId, context);
+
+      case "finish_child_selection":
+        // User is done adding children - proceed to email/payment
+        return await this.handleFinishChildSelection(payload, sessionId, context);
+
       case "load_delegate_profile":
         return await this.loadDelegateProfile(payload, sessionId, context);
 
@@ -2915,6 +2966,24 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       );
     }
     
+    // Batch sibling registration: handle "add another child?" response
+    if (context.step === FlowStep.FORM_FILL && context.awaitingAdditionalChild) {
+      const lowerInput = input.toLowerCase().trim();
+      const isYes = /^(yes|y|yeah|yep|sure|ok|add|another|add another|yes please|yup)$/i.test(lowerInput) ||
+                    lowerInput.includes('add another') || lowerInput.includes('yes');
+      const isNo = /^(no|n|nope|done|continue|proceed|finish|that's it|that's all|no thanks|no more)$/i.test(lowerInput) ||
+                   lowerInput.includes('no more') || lowerInput.includes('continue to payment') || lowerInput.includes('done');
+      
+      if (isYes) {
+        return await this.handleAction("add_another_child", {}, sessionId, context, input);
+      }
+      if (isNo) {
+        return await this.handleAction("finish_child_selection", {}, sessionId, context, input);
+      }
+      // If neither yes nor no, treat as child info input (they might have just typed the next child's name)
+      // Fall through to normal FORM_FILL handling
+    }
+
     // Step 2/5: schema-driven form fill (Bookeo required fields).
     // First principles: we must collect ALL required fields before REVIEW.
     // Treat any free-text message in FORM_FILL as "submit_form" so we can hydrate + ask only what's missing.
@@ -5211,7 +5280,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const earliestSlot = programData?.earliest_slot_time ? new Date(programData.earliest_slot_time) : null;
 
       if (bookingStatus === 'closed') {
-        // Keep the user in BROWSE; this program’s next session has already passed.
+        // Keep the user in BROWSE; this program's next session has already passed.
         // Re-render the catalog so they can pick an available class.
         const orgRefForBrowse = context.orgRef || programData?.org_ref || 'aim-design';
         this.updateContext(sessionId, { step: FlowStep.BROWSE, selectedProgram: null });
@@ -5226,9 +5295,53 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             `That class is no longer available (its session has already started/passed).\n\n` +
             `Please choose another class from the list below:\n\n` +
             `${listWithoutHeader}`,
-          // Don’t let this retry increment wizard progress.
+          // Don't let this retry increment wizard progress.
           metadata: { ...(browse.metadata || {}), skipWizardProgress: true }
         };
+      }
+
+      // Handle sold-out programs gracefully - offer alternatives
+      if (bookingStatus === 'sold_out') {
+        Logger.info('[selectProgram] Program is sold out, suggesting alternatives', { program_ref: programRef, programName });
+        const orgRefForBrowse = context.orgRef || programData?.org_ref || 'aim-design';
+        this.updateContext(sessionId, { step: FlowStep.BROWSE, selectedProgram: null });
+        
+        // Find alternative programs (same org, similar activity, not sold out)
+        const alternatives = await this.suggestAlternatives(programData, orgRefForBrowse, sessionId);
+        
+        if (alternatives.length > 0) {
+          // Format alternatives as a numbered list
+          const altList = alternatives.map((alt, idx) => {
+            const price = alt.price || 'TBD';
+            const schedule = alt.schedule || '';
+            return `**${idx + 1}. ${alt.title}**\n   💲 ${price}${schedule ? ` · 📅 ${schedule}` : ''} · ✅ Available`;
+          }).join('\n\n');
+          
+          return this.formatResponse(
+            `**${programName}** is currently full.\n\n` +
+            `Here are some similar programs that have spots available:\n\n` +
+            `${altList}\n\n` +
+            `Reply with a number to sign up, or say "show all" to see all programs.`,
+            undefined,
+            [{ label: "Show all programs", action: "browse_all_programs", variant: "outline" }],
+            { skipWizardProgress: true }
+          );
+        } else {
+          // No alternatives found - show all programs
+          const browse = await this.searchPrograms(orgRefForBrowse, sessionId);
+          const list = String(browse?.message || "");
+          const listWithoutHeader = list
+            .replace(/^\s*\*{0,2}step\s+1\/5(?:\s+continued)?\s+—[^\n]*\n*/i, "")
+            .trim();
+          return {
+            ...browse,
+            message:
+              `**${programName}** is currently full.\n\n` +
+              `Here are other programs available:\n\n` +
+              `${listWithoutHeader}`,
+            metadata: { ...(browse.metadata || {}), skipWizardProgress: true }
+          };
+        }
       }
 
       Logger.info('[selectProgram] Calling bookeo.discover_required_fields for audit compliance');
@@ -6040,6 +6153,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       // Step 5: Reset context (awaited so other Railway instances don't briefly see stale SUBMIT state)
       // Also store a minimal lastCompletion record so ChatGPT retry/duplication can re-print the confirmation.
+      // Preserve program data for potential sibling registration
       await this.updateContextAndAwait(sessionId, {
         step: FlowStep.COMPLETED,
         selectedProgram: undefined,
@@ -6052,6 +6166,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         stripeCheckoutUrl: undefined,
         stripeCheckoutSessionId: undefined,
         stripeCheckoutCreatedAt: undefined,
+        // Keep delegate info for sibling registration (only email and name, not PII)
+        pendingDelegateInfo: context.pendingDelegateInfo ? {
+          email: context.pendingDelegateInfo.email,
+          firstName: context.pendingDelegateInfo.firstName,
+          lastName: context.pendingDelegateInfo.lastName,
+        } : undefined,
         lastCompletion: {
           kind: "immediate",
           completed_at: new Date().toISOString(),
@@ -6059,6 +6179,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           booking_number,
           org_ref: orgRef,
           program_ref: programRef,
+          program_name: programName,
+          program_data: context.selectedProgram, // For sibling registration
         },
       });
 
@@ -8252,20 +8374,30 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       );
     }
 
-    // Store child info in pendingParticipants (use camelCase to match type)
-    const participants = context.pendingParticipants || [];
+    // Store child info in participants array (batch sibling registration)
+    const participants = context.participants || [];
     participants.push({
       firstName: childInfo.firstName,
       lastName: childInfo.lastName,
       age: childInfo.age
     });
 
+    // Also keep pendingParticipants for backward compatibility with submitForm
+    const pendingParticipants = context.pendingParticipants || [];
+    pendingParticipants.push({
+      firstName: childInfo.firstName,
+      lastName: childInfo.lastName,
+      age: childInfo.age
+    });
+
     this.updateContext(sessionId, { 
-      pendingParticipants: participants,
+      participants,
+      pendingParticipants,
       childInfo: {
         name: `${childInfo.firstName || ''} ${childInfo.lastName || ''}`.trim(),
         age: childInfo.age
-      }
+      },
+      awaitingAdditionalChild: false  // Reset for next iteration
     });
 
     Logger.info('[handleSelectChild] ✅ Child info stored', { 
@@ -8273,11 +8405,186 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       childInfo 
     });
 
+    const programName = context.selectedProgram?.title || context.selectedProgram?.name || 'this program';
+
+    // Check available slots before offering to add more children
+    const availableSlots = context.selectedProgram?.available_slots;
+    const hasLimitedSlots = typeof availableSlots === 'number' && availableSlots > 0;
+    const remainingSlots = hasLimitedSlots ? availableSlots - participants.length : Infinity;
+    
+    Logger.info('[handleSelectChild] Availability check', {
+      availableSlots,
+      participantCount: participants.length,
+      remainingSlots,
+      hasLimitedSlots
+    });
+
+    // Batch sibling registration: offer to add another child (up to 3, but also respect available slots)
+    const canAddMore = participants.length < 3 && remainingSlots > 0;
+    
+    if (canAddMore) {
+      this.updateContext(sessionId, { awaitingAdditionalChild: true });
+      
+      const childNames = participants.map(p => p.firstName).join(', ');
+      const countText = participants.length === 1 
+        ? `I have ${childInfo.firstName}'s information.`
+        : `✅ ${participants.length} children added (${childNames}).`;
+      
+      // Warn if slots are limited
+      const slotsWarning = hasLimitedSlots && remainingSlots <= 2
+        ? `\n\n⚠️ Only ${remainingSlots} spot${remainingSlots === 1 ? '' : 's'} remaining in this class.`
+        : '';
+      
+      return this.formatResponse(
+        `${countText}\n\n` +
+        `Would you like to register another child for **${programName}**?${slotsWarning}\n\n` +
+        `**Note:** The $20.00 SignupAssist fee is the same whether you register 1, 2, or 3 children.`,
+        undefined,
+        [
+          { label: "Yes, add another child", action: "add_another_child", variant: "accent" },
+          { label: "No, continue to payment", action: "finish_child_selection", variant: "outline" }
+        ]
+      );
+    }
+    
+    // Can't add more - either hit 3 child limit or no more slots available
+    const childNames = participants.map(p => p.firstName).join(', ');
+    let limitMessage: string;
+    
+    if (participants.length >= 3) {
+      Logger.info('[handleSelectChild] Max 3 children reached, proceeding to next step');
+      limitMessage = `✅ ${participants.length} children added (${childNames}) — that's the maximum per registration.`;
+    } else if (remainingSlots <= 0) {
+      Logger.info('[handleSelectChild] No more slots available, proceeding to next step', { 
+        participantCount: participants.length, 
+        availableSlots 
+      });
+      limitMessage = `✅ ${participants.length} child${participants.length > 1 ? 'ren' : ''} added (${childNames}).\n\n` +
+        `⚠️ This class is now full — no additional spots available.`;
+    } else {
+      limitMessage = `✅ ${participants.length} child${participants.length > 1 ? 'ren' : ''} added (${childNames}).`;
+    }
+
     // Ask for delegate email if we don't have it yet
     if (!context.pendingDelegateInfo?.email) {
       this.updateContext(sessionId, { awaitingDelegateEmail: true });
       return this.formatResponse(
-        `Great! I have ${childInfo.firstName}'s information. What email should I use for the registration?\n\nNote: This is the email the provider will send the confirmation to.`,
+        `${limitMessage}\n\n` +
+        `What email should I use for the registration?\n\nNote: This is the email the provider will send the confirmation to.`,
+        undefined,
+        []
+      );
+    }
+
+    // If we have delegate info, proceed to form submission
+    return await this.submitForm({
+      formData: {
+        participants: pendingParticipants,
+        delegate: context.pendingDelegateInfo
+      },
+      program_ref: context.selectedProgram?.program_ref,
+      org_ref: context.orgRef || context.selectedProgram?.org_ref
+    }, sessionId, this.getContext(sessionId), { nextStep: 'payment' });
+  }
+
+  /**
+   * Handle "add another child" action - user wants to add a sibling
+   */
+  private async handleAddAnotherChild(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    const participantCount = context.participants?.length || 0;
+    const programName = context.selectedProgram?.title || context.selectedProgram?.name || 'this program';
+    
+    // Check available slots
+    const availableSlots = context.selectedProgram?.available_slots;
+    const hasLimitedSlots = typeof availableSlots === 'number' && availableSlots > 0;
+    const remainingSlots = hasLimitedSlots ? availableSlots - participantCount : Infinity;
+    
+    Logger.info('[handleAddAnotherChild] User adding another child', { 
+      currentCount: participantCount,
+      programName,
+      availableSlots,
+      remainingSlots
+    });
+
+    // Check if we can add more children
+    if (participantCount >= 3) {
+      // Already at max - shouldn't happen but handle gracefully
+      return this.handleFinishChildSelection(payload, sessionId, context);
+    }
+    
+    if (remainingSlots <= 0) {
+      // No more slots available
+      const childNames = (context.participants || []).map((p: any) => p.firstName).join(', ');
+      this.updateContext(sessionId, { awaitingAdditionalChild: false });
+      return this.formatResponse(
+        `Sorry, this class is now full — no additional spots are available.\n\n` +
+        `✅ ${participantCount} child${participantCount > 1 ? 'ren' : ''} added (${childNames}).\n\n` +
+        `Let's continue with the registration for ${participantCount > 1 ? 'these children' : 'this child'}.`,
+        undefined,
+        [{ label: "Continue to payment", action: "finish_child_selection", variant: "accent" }]
+      );
+    }
+
+    // Reset awaitingAdditionalChild and ask for next child's info
+    this.updateContext(sessionId, { awaitingAdditionalChild: false });
+    
+    // Warn if slots are limited
+    const slotsNote = hasLimitedSlots && remainingSlots <= 2
+      ? `\n\n⚠️ Only ${remainingSlots} spot${remainingSlots === 1 ? '' : 's'} remaining.`
+      : '';
+
+    return this.formatResponse(
+      `Great! Let's add child #${participantCount + 1}.${slotsNote}\n\n` +
+      `What's the child's **name and age**? (e.g., "Sarah Smith, 8")`,
+      undefined,
+      []
+    );
+  }
+
+  /**
+   * Handle "finish child selection" action - user is done adding children
+   */
+  private async handleFinishChildSelection(
+    payload: any,
+    sessionId: string,
+    context: APIContext
+  ): Promise<OrchestratorResponse> {
+    const participants = context.pendingParticipants || context.participants || [];
+    const programName = context.selectedProgram?.title || context.selectedProgram?.name || 'this program';
+    
+    Logger.info('[handleFinishChildSelection] User done adding children', { 
+      participantCount: participants.length,
+      programName 
+    });
+
+    if (participants.length === 0) {
+      // No children added - ask for first child
+      return this.formatResponse(
+        `I need at least one child to register for **${programName}**.\n\n` +
+        `What's the child's **name and age**? (e.g., "Tommy Smith, 10")`,
+        undefined,
+        []
+      );
+    }
+
+    this.updateContext(sessionId, { awaitingAdditionalChild: false });
+
+    const childNames = participants.map((p: any) => p.firstName).join(', ');
+
+    // Ask for delegate email if we don't have it yet
+    if (!context.pendingDelegateInfo?.email) {
+      this.updateContext(sessionId, { awaitingDelegateEmail: true });
+      const countText = participants.length === 1 
+        ? `I have ${participants[0].firstName}'s information.`
+        : `✅ ${participants.length} children added (${childNames}).`;
+      
+      return this.formatResponse(
+        `${countText}\n\n` +
+        `What email should I use for the registration?\n\nNote: This is the email the provider will send the confirmation to.`,
         undefined,
         []
       );
@@ -8700,6 +9007,70 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // AWAIT the persist to ensure data is saved before returning
     await this.enqueuePersist(sessionId, updated);
     this.debugLog('[updateContextAndAwait] TRACE: Persist completed (awaited)', { sessionId });
+  }
+
+  /**
+   * Suggest alternative programs when a selected program is sold out or unavailable.
+   * Finds similar programs (same org, similar activity/age range) that are open.
+   * Returns up to 3 alternatives sorted by soonest start date.
+   */
+  private async suggestAlternatives(
+    soldOutProgram: any,
+    orgRef: string,
+    sessionId: string
+  ): Promise<Array<{ title: string; program_ref: string; price?: string; schedule?: string; program_data: any }>> {
+    try {
+      const supabase = this.getSupabaseClient();
+      
+      // Query available programs from the same org
+      const { data: programs, error } = await supabase
+        .from('cached_provider_feed')
+        .select('program_ref, program, org_ref, category')
+        .eq('org_ref', orgRef)
+        .limit(20);
+      
+      if (error || !programs?.length) {
+        Logger.warn('[suggestAlternatives] No programs found', { error, orgRef });
+        return [];
+      }
+      
+      // Filter to open programs (not sold out, not closed)
+      const openPrograms = programs.filter((p: any) => {
+        const prog = p.program;
+        if (!prog) return false;
+        
+        const status = String(prog.booking_status || '').toLowerCase();
+        if (status === 'sold_out' || status === 'closed' || status === 'full') return false;
+        
+        // Skip the same program we're finding alternatives for
+        if (p.program_ref === soldOutProgram?.ref || p.program_ref === soldOutProgram?.program_ref) return false;
+        
+        // Check if registration is still possible (not past)
+        const slotStart = prog.earliest_slot_time ? new Date(prog.earliest_slot_time) : null;
+        if (slotStart && slotStart.getTime() < Date.now()) return false;
+        
+        return true;
+      });
+      
+      // Sort by soonest start date
+      openPrograms.sort((a: any, b: any) => {
+        const aStart = a.program?.earliest_slot_time ? new Date(a.program.earliest_slot_time).getTime() : Infinity;
+        const bStart = b.program?.earliest_slot_time ? new Date(b.program.earliest_slot_time).getTime() : Infinity;
+        return aStart - bStart;
+      });
+      
+      // Return top 3 alternatives
+      return openPrograms.slice(0, 3).map((p: any) => ({
+        title: p.program?.title || p.program?.name || 'Program',
+        program_ref: p.program_ref,
+        price: p.program?.price,
+        schedule: p.program?.schedule || p.program?.dates,
+        program_data: { ...p.program, program_ref: p.program_ref, org_ref: p.org_ref }
+      }));
+    } catch (err) {
+      Logger.error('[suggestAlternatives] Error finding alternatives', { error: err });
+      return [];
+    }
   }
 
   /**

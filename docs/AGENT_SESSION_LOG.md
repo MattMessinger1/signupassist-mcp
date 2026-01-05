@@ -585,5 +585,82 @@ Fix:
 
 ### Regression guard
 
-- `scripts/smokeApiOnly.ts` now includes a small template assertion: success receipt contains `Booking #` + `Participants` and does not claim “SignupAssist will email”.
+- `scripts/smokeApiOnly.ts` now includes a small template assertion: success receipt contains `Booking #` + `Participants` and does not claim "SignupAssist will email".
+
+---
+
+## 2026-01-05 — V1.1 Signup UX Improvements (Calendar + Sold-Out + Batch Sibling)
+
+### Baseline / Reversion Point
+
+- **Last known-good commit**: `2281499` (chore: shorten Step 2 email note)
+- **Reversion command**: `git revert HEAD` (if single commit) or `git reset --hard 2281499` + force push
+
+### What changed
+
+1. **Calendar Integration** (`mcp_server/utils/calendar.ts` - NEW)
+   - Added `.ics` file generation for Apple Calendar / Outlook
+   - Added Google Calendar URL generation
+   - Success message now includes "Add to calendar" links
+
+2. **Sold-Out Handling** (`mcp_server/ai/APIOrchestrator.ts`)
+   - Added sold-out detection in `selectProgram()`
+   - Added `suggestAlternatives()` helper to find open programs
+   - Shows up to 3 alternatives when selected program is full
+
+3. **Batch Sibling Registration** (`mcp_server/ai/APIOrchestrator.ts`)
+   - After first child info, asks "Would you like to register another child?"
+   - Supports up to 3 children per registration (or fewer if slots limited)
+   - Clear messaging: "$20.00 SignupAssist fee is the same whether you register 1, 2, or 3 children"
+   - Added `participants` array and `awaitingAdditionalChild` flag to APIContext
+   - Added `add_another_child` and `finish_child_selection` action handlers
+   - NL handling for "yes/no/add another/done" responses
+   - **Availability checking**: checks `available_slots` before offering to add more children
+   - **Slot warnings**: shows "⚠️ Only X spots remaining" when slots are limited
+   - **Graceful limit**: if class becomes full mid-batch, stops asking and proceeds to payment
+   - Extended `lastCompletion` type with `program_name` and `program_data`
+
+4. **Multi-child messaging updates** (`APIOrchestrator.ts` + `apiMessageTemplates.ts`)
+   - Review summary now lists all participants with count: "Participants (3 children):"
+   - Success fee line shows "(flat fee for 1-3 children)" when multiple children
+   - Success message shows "**Participants:** Tommy, Sarah, Jake"
+   - Receipts/audit trail already support multiple participant names (verified)
+
+### Files modified
+
+| File | Change Type |
+|------|-------------|
+| `mcp_server/utils/calendar.ts` | NEW |
+| `mcp_server/ai/apiMessageTemplates.ts` | Modified (import + success message) |
+| `mcp_server/ai/APIOrchestrator.ts` | Modified (sold-out, batch sibling, type extensions) |
+
+### Reversion Plan
+
+If issues arise after deployment:
+
+**Option A: Full revert (safest)**
+```bash
+git reset --hard 2281499
+git push --force origin main
+# Railway will auto-deploy the reverted commit
+```
+
+**Option B: Selective revert (if only one feature is broken)**
+```bash
+# Revert the single commit containing all features
+git revert <new-commit-hash>
+git push origin main
+```
+
+### How to verify in prod
+
+1. **Calendar links**: Complete a booking → success message should show "Add to calendar" links
+2. **Sold-out**: Select a sold-out program → should see alternatives message (not form entry)
+3. **Batch sibling**: After entering first child → should see "add another child?" prompt with flat fee messaging
+
+### Risk assessment
+
+- **Calendar**: LOW - additive, graceful fallback if no start_time
+- **Sold-out**: LOW - new condition after existing `closed` check
+- **Batch sibling**: MEDIUM - modifies child collection flow; existing single-child path still works
 

@@ -5,6 +5,7 @@
 
 import { formatInTimeZone } from "date-fns-tz";
 import { formatCurrencyFromCents } from "../utils/money.js";
+import { generateCalendarLinksSection } from "../utils/calendar.js";
 
 // V1 (no widget): we must render progress in plain text (not only tool metadata)
 function stepHeader(step: number, title: string): string {
@@ -39,6 +40,8 @@ export interface APIMessageVariables {
   num_participants?: number;
   booking_number?: string;
   start_time?: string;
+  end_time?: string;           // For calendar events
+  location?: string;           // For calendar events
   scheduled_date?: string;
   mandate_id?: string;
   valid_until?: string;
@@ -211,16 +214,34 @@ export function getAPISuccessMessage(vars: APIMessageVariables): string {
   const participantsLine = participantNames.length
     ? `\n\n**Participants:** ${participantNames.join(", ")}`
     : "";
+  
+  // Flat fee note for multiple children
+  const flatFeeNote = participantNames.length > 1 ? " (flat fee for 1-3 children)" : "";
+
+  // Generate calendar links if we have a valid start time
+  let calendarSection = "";
+  if (vars.start_time) {
+    const calendarLinks = generateCalendarLinksSection({
+      title: programName,
+      startTime: vars.start_time,
+      endTime: vars.end_time,
+      location: vars.location,
+      description: `Booking #${bookingNumber} via SignupAssist\nProvider: ${providerName}`,
+    });
+    if (calendarLinks) {
+      calendarSection = `\n\n${calendarLinks}`;
+    }
+  }
 
   return `You're registered for **${programName}**!
 
 Booking #${bookingNumber} · ${startTime}
-
 ${participantsLine}
 
 **Fees**
 - Program fee: ${programFeeDisplay} (handled by the provider)
-- SignupAssist success fee: ${successFeeDisplay} (charged only upon successful registration)
+- SignupAssist success fee: ${successFeeDisplay}${flatFeeNote} (charged only upon successful registration)
+${calendarSection}
 
 ${providerName} will email your confirmation to the parent/guardian email you provided. Questions about the class? Contact them directly.`;
 }
