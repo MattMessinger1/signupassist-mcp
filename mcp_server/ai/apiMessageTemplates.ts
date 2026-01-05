@@ -4,6 +4,7 @@
  */
 
 import { formatInTimeZone } from "date-fns-tz";
+import { formatCurrencyFromCents } from "../utils/money.js";
 
 // V1 (no widget): we must render progress in plain text (not only tool metadata)
 function stepHeader(step: number, title: string): string {
@@ -231,7 +232,7 @@ export function getConfirmedCancelConfirmMessage(vars: APIMessageVariables): str
 
 Cancellation is subject to ${providerName}'s policy.
 
-**If accepted:** Booking cancelled, $20 SignupAssist fee refunded.
+**If accepted:** Booking cancelled, ${formatCurrencyFromCents(2000)} SignupAssist fee refunded.
 **If blocked:** Booking remains active, no refund issued.
 
 Program fees are handled by ${providerName}. Questions? Email ${SUPPORT_EMAIL}`;
@@ -248,7 +249,7 @@ export function getCancelSuccessMessage(vars: APIMessageVariables): string {
 
 Your registration for **${programName}** has been cancelled.
 
-$20 SignupAssist fee refunded — most banks post refunds within 2-5 business days.
+${formatCurrencyFromCents(2000)} SignupAssist fee refunded — most banks post refunds within 2-5 business days.
 
 For program fee refunds, contact ${providerName}. Questions? Email ${SUPPORT_EMAIL}`;
 }
@@ -310,7 +311,7 @@ export function getScheduledRegistrationSuccessMessage(vars: APIMessageVariables
 Registration opens: ${scheduledDate}
 
 ✅ We'll attempt to register you **the moment it opens**.
-💳 **No charge now** — the $20 SignupAssist fee is charged **only if registration succeeds**.
+💳 **No charge now** — the ${formatCurrencyFromCents(2000)} SignupAssist fee is charged **only if registration succeeds**.
 🏫 Program fees (if any) are handled by the provider — and only apply if registration succeeds.
 
 Total (if successful): ${totalCost}

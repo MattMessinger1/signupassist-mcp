@@ -6,6 +6,7 @@
 import { auditToolCall } from '../middleware/audit.js';
 import { createClient } from '@supabase/supabase-js';
 import type { ProviderResponse, ParentFriendlyError } from '../types.js';
+import { formatCurrencyFromCents } from '../utils/money.js';
 
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -36,7 +37,7 @@ async function chargeSuccessFee(args: {
 }): Promise<ProviderResponse<any>> {
   const { booking_number, mandate_id, amount_cents, user_id } = args;
   
-  console.log(`[Stripe] Charging success fee: $${amount_cents / 100} for booking ${booking_number}`);
+  console.log(`[Stripe] Charging success fee: ${formatCurrencyFromCents(amount_cents)} for booking ${booking_number}`);
   
   if (!user_id) {
     console.error('[Stripe] Missing user_id - cannot charge success fee');
@@ -94,7 +95,7 @@ async function chargeSuccessFee(args: {
       ui: {
         cards: [{
           title: 'Success Fee Processed',
-          description: `$${amount_cents / 100} SignupAssist success fee charged successfully`
+          description: `${formatCurrencyFromCents(amount_cents)} SignupAssist success fee charged successfully`
         }]
       }
     };
@@ -327,7 +328,7 @@ async function refundSuccessFee(args: {
       ui: {
         cards: [{
           title: 'Refund Processed',
-          description: `$${(data?.amount_refunded_cents || 2000) / 100} SignupAssist fee refunded successfully`
+          description: `${formatCurrencyFromCents(data?.amount_refunded_cents || 2000)} SignupAssist fee refunded successfully`
         }]
       }
     };
@@ -523,7 +524,7 @@ async function checkPaymentStatus(args: {
 export const stripeTools: StripeTool[] = [
   {
     name: 'stripe.charge_success_fee',
-    description: 'Charge the $20 SignupAssist success fee to user\'s saved payment method (only charged after successful booking)',
+    description: 'Charge the $20.00 SignupAssist success fee to user\'s saved payment method (only charged after successful booking)',
     inputSchema: {
       type: 'object',
       properties: {
@@ -571,7 +572,7 @@ export const stripeTools: StripeTool[] = [
   },
   {
     name: 'stripe.refund_success_fee',
-    description: 'Refund the $20 SignupAssist success fee when provider accepts booking cancellation',
+    description: 'Refund the $20.00 SignupAssist success fee when provider accepts booking cancellation',
     inputSchema: {
       type: 'object',
       properties: {

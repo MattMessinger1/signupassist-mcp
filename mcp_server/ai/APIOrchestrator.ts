@@ -64,6 +64,7 @@ import {
 import { getAllActiveOrganizations } from "../config/organizations.js";
 import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
 import { checkAudienceMismatch } from "../utils/audienceParser.js";
+import { formatCurrencyFromCents } from "../utils/money.js";
 
 // Simple flow steps for API-first providers
 enum FlowStep {
@@ -792,7 +793,11 @@ export default class APIOrchestrator implements IOrchestrator {
     const opensAtDisplay = scheduledIso ? this.formatTimeForUser(scheduledIso, context) : null;
 
     const feeCents = Number(fd?.program_fee_cents ?? context.schedulingData?.program_fee_cents ?? 0);
-    const formattedTotal = Number.isFinite(feeCents) && feeCents > 0 ? `$${(feeCents / 100).toFixed(2)}` : (context.selectedProgram?.price || "TBD");
+    const formattedTotal =
+      Number.isFinite(feeCents) && feeCents > 0
+        ? formatCurrencyFromCents(feeCents)
+        : (context.selectedProgram?.price || "TBD");
+    const successFee = formatCurrencyFromCents(2000);
 
     let msg = "Please review the details below:\n\n";
     msg += `- **Program:** ${programName}\n`;
@@ -810,8 +815,8 @@ export default class APIOrchestrator implements IOrchestrator {
       ? `- **Program Fee:** ${formattedTotal} (paid to provider only if we successfully register you when it opens)\n`
       : `- **Program Fee:** ${formattedTotal} (paid to provider only if booking succeeds)\n`;
     msg += opensAtDisplay
-      ? `- **SignupAssist Fee:** $20 (charged only if we successfully register you when it opens)\n`
-      : `- **SignupAssist Fee:** $20 (charged only upon successful registration)\n`;
+      ? `- **SignupAssist Fee:** ${successFee} (charged only if we successfully register you when it opens)\n`
+      : `- **SignupAssist Fee:** ${successFee} (charged only upon successful registration)\n`;
 
     if (context.hasPaymentMethod || context.cardLast4) {
       const display = context.cardLast4 ? `${context.cardBrand || "Card"} •••• ${context.cardLast4}` : "Yes";
@@ -5568,7 +5573,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             `I found a payment method on file: **${display}**.\n\n` +
               `⏰ **Registration opens:** ${opensAtDisplay}\n` +
               `🕒 If you confirm this card, I’ll schedule an auto‑registration to run **the moment it opens**.\n` +
-              `💳 **No charge now** — the $20 SignupAssist fee is charged **only if registration succeeds**.\n\n` +
+              `💳 **No charge now** — the ${formatCurrencyFromCents(2000)} SignupAssist fee is charged **only if registration succeeds**.\n\n` +
               `Reply **yes** to use it, or reply **change card** to add a new one in Stripe.`,
             undefined,
             []
@@ -5983,8 +5988,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         user_timezone: context.userTimezone
       });
       const providerPaymentNote = providerCheckoutUrlSafe
-        ? `\n\n💳 **Provider payment:** ${providerCheckoutUrlSafe}\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the $20 success fee._`
-        : `\n\n💳 **Provider payment:** The provider will collect the program fee via their official checkout (often sent by email).\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the $20 success fee._`;
+        ? `\n\n💳 **Provider payment:** ${providerCheckoutUrlSafe}\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the ${formatCurrencyFromCents(2000)} success fee._`
+        : `\n\n💳 **Provider payment:** The provider will collect the program fee via their official checkout (often sent by email).\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the ${formatCurrencyFromCents(2000)} success fee._`;
 
       const finalMessage = `${message}${providerPaymentNote}`;
 
@@ -6842,7 +6847,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         `- **audit REG-xxxxxxxx** (view audit trail)\n` +
         `- **audit SCH-xxxxxxxx** (view audit trail)\n\n` +
         `Examples: "cancel SCH-1a2b3c4d", "audit REG-9f8e7d6c"\n` +
-        `_(Program-fee refunds are handled by the provider. SignupAssist can refund the $20 success fee when applicable.)_`;
+        `_(Program-fee refunds are handled by the provider. SignupAssist can refund the ${formatCurrencyFromCents(2000)} success fee when applicable.)_`;
 
       // Add sections with actual items (kept short to avoid huge messages)
       const listMessage = [
@@ -7454,7 +7459,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           provider_name: providerName,
           booking_number: registration.booking_number
         });
-          message += `\n\n💳 **Refunds:** SignupAssist can refund the $20 success fee if the provider accepts cancellation. Program-fee refunds (if any) are handled by ${providerName}.`;
+          message += `\n\n💳 **Refunds:** SignupAssist can refund the ${formatCurrencyFromCents(2000)} success fee if the provider accepts cancellation. Program-fee refunds (if any) are handled by ${providerName}.`;
         // ✅ COMPLIANCE: Include Responsible Delegate reminder for cancellation
         message = addResponsibleDelegateFooter(message);
         
@@ -7781,10 +7786,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         const code = `REG-${String(registration.id).slice(0, 8)}`;
         const refundLine =
           !registration.charge_id
-            ? `✅ **SignupAssist fee:** No $20 success fee charge was found for this registration, so no refund is needed.`
+            ? `✅ **SignupAssist fee:** No ${formatCurrencyFromCents(2000)} success fee charge was found for this registration, so no refund is needed.`
             : refundSuccessful
-              ? `✅ **SignupAssist fee:** $20 refund initiated (most banks post within 2–5 business days).`
-              : `⚠️ **SignupAssist fee:** We cancelled the booking, but the $20 refund couldn’t be processed automatically right now. Please email ${SUPPORT_EMAIL} and we’ll take care of it.`;
+              ? `✅ **SignupAssist fee:** ${formatCurrencyFromCents(2000)} refund initiated (most banks post within 2–5 business days).`
+              : `⚠️ **SignupAssist fee:** We cancelled the booking, but the ${formatCurrencyFromCents(2000)} refund couldn’t be processed automatically right now. Please email ${SUPPORT_EMAIL} and we’ll take care of it.`;
 
         const finalMessage = [
           `✅ **Cancellation confirmed**`,

@@ -123,7 +123,7 @@ function ensureSuccessFeeDisclosure(message: string, wizardStep: WizardStep): st
 
   const disclosure = [
     "✅ Pricing & payment",
-    "- SignupAssist charges a **$20 success fee only after we successfully secure your spot**.",
+    `- SignupAssist charges a **${formatCurrencyFromCents(2000)} success fee only after we successfully secure your spot**.`,
     "- Provider program fee is billed separately via their official checkout (e.g., Bookeo/Stripe).",
     "- All payments use Stripe; card numbers are tokenized and not stored by SignupAssist.",
   ].join("\n");
@@ -594,6 +594,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { getPlaceholderImage } from './lib/placeholderImages.js';
+import { formatCurrencyFromCents } from './utils/money.js';
 
 import { createServer } from 'http';
 import { URL, fileURLToPath } from 'url';
