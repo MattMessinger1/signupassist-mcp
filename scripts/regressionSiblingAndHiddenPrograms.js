@@ -98,10 +98,122 @@ async function testSiblingChildCaptureAndReviewFallback() {
   assert.ok(summary.includes("Mina"), "Review summary should include second child");
 }
 
+async function testSavedChildSelectionByNumber() {
+  const orch = new APIOrchestrator({ tools: new Map() });
+  const sessionId = "regression-saved-child-selection";
+
+  // Simulate saved children already loaded
+  const savedChildren = [
+    { id: "child-1", first_name: "Percy", last_name: "Messinger", dob: "2014-11-26", display: "Percy Messinger" },
+    { id: "child-2", first_name: "Mina", last_name: "Messinger", dob: "2018-03-15", display: "Mina Messinger" },
+  ];
+
+  orch.sessions.set(sessionId, {
+    step: "FORM_FILL",
+    selectedProgram: { title: "CLASS 3: Ocean Explorers", available_slots: 10 },
+    participants: [{ firstName: "Simon", lastName: "Messinger", dob: "2012-01-01" }], // First child already added
+    awaitingAdditionalChild: true,
+    remainingSavedChildrenForSelection: savedChildren,
+    user_id: "test-user-123",
+    savedChildren,
+  });
+
+  // User selects "2" to pick Mina from saved children list
+  const resp = await orch.handleMessage(
+    "2",
+    sessionId,
+    orch.getContext(sessionId)
+  );
+
+  const ctx = orch.getContext(sessionId);
+  assert.equal(ctx.participants.length, 2, "Second child should be added to context.participants");
+  assert.ok(
+    ctx.participants.some((p) => p.firstName === "Mina"),
+    "Mina should be added from saved children"
+  );
+  assert.ok(
+    /2 children|children added|Mina/i.test(String(resp?.message || "")),
+    "Response should reflect Mina was added"
+  );
+}
+
+async function testSavedChildSelectionByName() {
+  const orch = new APIOrchestrator({ tools: new Map() });
+  const sessionId = "regression-saved-child-by-name";
+
+  // Simulate saved children already loaded
+  const savedChildren = [
+    { id: "child-1", first_name: "Percy", last_name: "Messinger", dob: "2014-11-26", display: "Percy Messinger" },
+    { id: "child-2", first_name: "Mina", last_name: "Messinger", dob: "2018-03-15", display: "Mina Messinger" },
+  ];
+
+  orch.sessions.set(sessionId, {
+    step: "FORM_FILL",
+    selectedProgram: { title: "CLASS 3: Ocean Explorers", available_slots: 10 },
+    participants: [{ firstName: "Simon", lastName: "Messinger", dob: "2012-01-01" }],
+    awaitingAdditionalChild: true,
+    remainingSavedChildrenForSelection: savedChildren,
+    user_id: "test-user-123",
+    savedChildren,
+  });
+
+  // User types "Percy" to select by name
+  const resp = await orch.handleMessage(
+    "Percy",
+    sessionId,
+    orch.getContext(sessionId)
+  );
+
+  const ctx = orch.getContext(sessionId);
+  assert.equal(ctx.participants.length, 2, "Second child should be added");
+  assert.ok(
+    ctx.participants.some((p) => p.firstName === "Percy"),
+    "Percy should be added from saved children"
+  );
+}
+
+async function testDifferentChildOption() {
+  const orch = new APIOrchestrator({ tools: new Map() });
+  const sessionId = "regression-different-child";
+
+  const savedChildren = [
+    { id: "child-1", first_name: "Percy", last_name: "Messinger", dob: "2014-11-26", display: "Percy Messinger" },
+  ];
+
+  orch.sessions.set(sessionId, {
+    step: "FORM_FILL",
+    selectedProgram: { title: "CLASS 3: Ocean Explorers", available_slots: 10 },
+    participants: [{ firstName: "Simon", lastName: "Messinger", dob: "2012-01-01" }],
+    awaitingAdditionalChild: true,
+    remainingSavedChildrenForSelection: savedChildren,
+    user_id: "test-user-123",
+    savedChildren,
+  });
+
+  // User selects "2" which is "Different child" when there's 1 saved child
+  const resp = await orch.handleMessage(
+    "2",
+    sessionId,
+    orch.getContext(sessionId)
+  );
+
+  const ctx = orch.getContext(sessionId);
+  // Should NOT have added a child - should be asking for name+age
+  assert.equal(ctx.participants.length, 1, "No child should be added yet when selecting 'different child'");
+  assert.ok(ctx.awaitingAdditionalChildInfo === true, "Should now be awaiting child info input");
+  assert.ok(
+    /name.*age|what's the child/i.test(String(resp?.message || "")),
+    "Should ask for name and age of new child"
+  );
+}
+
 async function run() {
   await testHiddenProgramFiltering();
   await testSiblingChildCaptureAndReviewFallback();
-  console.log("✅ PASS: sibling add-child + hidden closed program regressions");
+  await testSavedChildSelectionByNumber();
+  await testSavedChildSelectionByName();
+  await testDifferentChildOption();
+  console.log("✅ PASS: sibling add-child + hidden closed program + saved child selection regressions");
 }
 
 run().catch((err) => {

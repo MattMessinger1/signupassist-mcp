@@ -711,3 +711,60 @@ During a multi-child “book now” flow, the user observed:
 Notes:
 - The regression is network-free. It may log warnings about missing `SUPABASE_URL` (background session persistence), but functional assertions pass.
 
+---
+
+## 2026-01-05 — Streamlined sibling selection from saved children
+
+### Problem
+
+When the user said "Yes, add another child", the system asked for name+age even if the user had saved children on file. This created unnecessary friction (e.g., user says "Yes, Percy" but we ask "What's the child's name and age?").
+
+### Solution
+
+Modified both the initial "Would you like to register another child?" prompt AND the sibling sub-state routing to:
+
+1. Load saved children if not already loaded
+2. Filter out children already in `context.participants`
+3. Show remaining saved children as numbered options
+4. Always include a "Different child" option for entering new info
+5. Match user input by number (e.g., "2") or by name (e.g., "Percy")
+
+### What changed (code)
+
+- `mcp_server/ai/APIOrchestrator.ts`
+  - `getRemainingSavedChildren()` helper already existed — loads+filters saved children
+  - `matchSavedChildFromInput()` helper already existed — matches by number or name
+  - `handleSelectChild()` now shows remaining saved children as numbered options after storing first child
+  - `handleAddAnotherChild()` now shows remaining saved children instead of asking for name+age
+  - **NEW**: Sibling sub-state routing (handleMessage) now:
+    - Checks if `remainingSavedChildrenForSelection` has entries
+    - Matches user input (number or name) against saved children using `matchSavedChildFromInput`
+    - If match found, adds saved child to participants and shows "add another?" prompt
+    - If user selects "different child" option, switches to manual name+age input
+  - `handleSelectChild()` now handles `_alreadyAdded` flag to skip re-parsing when child was already added via saved child selection
+
+### Example flow
+
+```
+I have Simon's information.
+
+Would you like to register another child for **Ocean Explorers**?
+
+**Your saved children:**
+1. Percy Messinger
+2. Mina Messinger
+3. Different child (enter new info)
+
+Reply with a number, name, or "no" to continue.
+```
+
+User types "2" → Mina is added → shows "add another?" prompt with remaining children.
+
+### Verification
+
+- Extended regression test `scripts/regressionSiblingAndHiddenPrograms.js`:
+  - `testSavedChildSelectionByNumber()` — user types "2" to select saved child
+  - `testSavedChildSelectionByName()` — user types "Percy" to select saved child
+  - `testDifferentChildOption()` — user types the "different child" number to enter new info
+- `npm run test:sibling-flow` ✅ (all 5 test cases pass)
+

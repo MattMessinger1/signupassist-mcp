@@ -124,6 +124,8 @@ interface APIContext {
   }>;
   awaitingAdditionalChild?: boolean;  // Are we asking "add another child?"
   awaitingAdditionalChildInfo?: boolean; // Are we asking for the next child's details (name/age/DOB)?
+  // Sibling flow: cached list of remaining saved children offered in the "add another?" prompt
+  remainingSavedChildrenForSelection?: Array<{ id: string; first_name: string; last_name: string; dob?: string | null; display: string }>;
 
   // Browse UX: hide specific programs for the remainder of this chat session (e.g., user selected a class
   // and we determined it's already closed/past). Prevents re-showing known-unavailable options.
@@ -764,6 +766,122 @@ export default class APIOrchestrator implements IOrchestrator {
     const display = `${first_name} ${last_name}`.trim();
 
     return { first_name, last_name, display: display || "Saved child" };
+  }
+
+  /**
+   * Get saved children that haven't been registered yet in this session.
+   * Loads from DB if not cached, filters out children already in context.participants.
+   */
+  private async getRemainingSavedChildren(
+    sessionId: string,
+    context: APIContext
+  ): Promise<Array<{ id: string; first_name: string; last_name: string; dob?: string | null; display: string }>> {
+    // Must be authenticated
+    if (!context.user_id) return [];
+
+    // Lazy-load saved children if not cached
+    if (!Array.isArray(context.savedChildren)) {
+      try {
+        const listRes = await this.invokeMCPTool("user.list_children", { user_id: context.user_id });
+        const children = Array.isArray(listRes?.data?.children) ? listRes.data.children : [];
+        context.savedChildren = children
+          .map((c: any) => {
+            const rawFirst = String(c.first_name || "");
+            const rawLast = String(c.last_name || "");
+            const sanitized = this.sanitizeSavedChildName(rawFirst, rawLast);
+            return {
+              id: String(c.id),
+              first_name: sanitized.first_name,
+              last_name: sanitized.last_name,
+              dob: c.dob || null,
+            };
+          })
+          .filter((c: any) => Boolean(String(c.first_name || "").trim() || String(c.last_name || "").trim()));
+        this.updateContext(sessionId, { savedChildren: context.savedChildren });
+      } catch (e) {
+        Logger.warn('[getRemainingSavedChildren] Failed to load saved children', e);
+        return [];
+      }
+    }
+
+    const saved = context.savedChildren || [];
+    const participants = context.participants || [];
+
+    // Filter out children already registered in this session (match by first+last name, case-insensitive)
+    const remaining = saved.filter((child) => {
+      const childFirst = String(child.first_name || "").toLowerCase().trim();
+      const childLast = String(child.last_name || "").toLowerCase().trim();
+      const alreadyRegistered = participants.some((p: any) => {
+        const pFirst = String(p.firstName || "").toLowerCase().trim();
+        const pLast = String(p.lastName || "").toLowerCase().trim();
+        return pFirst === childFirst && pLast === childLast;
+      });
+      return !alreadyRegistered;
+    });
+
+    // Add display name for each
+    return remaining.map((c) => ({
+      ...c,
+      display: `${c.first_name} ${c.last_name}`.trim() || "Saved child"
+    }));
+  }
+
+  /**
+   * Match user input against remaining saved children by number or name.
+   * Returns the matched child or null if no match.
+   */
+  private matchSavedChildFromInput(
+    input: string,
+    remainingChildren: Array<{ id: string; first_name: string; last_name: string; dob?: string | null; display: string }>
+  ): { id: string; first_name: string; last_name: string; dob?: string | null } | null {
+    const trimmed = (input || "").trim();
+    if (!trimmed || remainingChildren.length === 0) return null;
+
+    // Check for "different child" or similar - means no match
+    if (/\b(different|new|another)\s+(child|kid)\b/i.test(trimmed)) {
+      return null;
+    }
+
+    // Try numeric selection (1, 2, 3...)
+    const numMatch = trimmed.match(/^\s*(\d{1,2})\s*$/);
+    if (numMatch) {
+      const idx = Number(numMatch[1]) - 1;
+      if (idx >= 0 && idx < remainingChildren.length) {
+        return remainingChildren[idx];
+      }
+    }
+
+    // Try name match (first name or full name)
+    const lowerInput = trimmed.toLowerCase();
+    for (const child of remainingChildren) {
+      const firstName = (child.first_name || "").toLowerCase();
+      const fullName = `${child.first_name} ${child.last_name}`.toLowerCase().trim();
+      // Match if input contains the first name or matches full name
+      if (firstName && (lowerInput === firstName || lowerInput.includes(firstName))) {
+        return child;
+      }
+      if (fullName && lowerInput === fullName) {
+        return child;
+      }
+    }
+
+    // Also check for "yes, <name>" pattern (e.g., "yes, Percy")
+    const yesNameMatch = trimmed.match(/^(?:yes|yeah|yep|sure|ok)[,\s]+(.+)$/i);
+    if (yesNameMatch) {
+      const nameInput = yesNameMatch[1].toLowerCase().trim();
+      for (const child of remainingChildren) {
+        const firstName = (child.first_name || "").toLowerCase();
+        const fullName = `${child.first_name} ${child.last_name}`.toLowerCase().trim();
+        if (firstName && (nameInput === firstName || nameInput.includes(firstName))) {
+          return child;
+        }
+        if (fullName && nameInput === fullName) {
+          return child;
+        }
+      }
+    }
+
+    return null;
   }
 
   private buildReviewSummaryFromContext(context: APIContext): string {
@@ -3028,18 +3146,84 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // Batch sibling registration: handle "add another child?" response
     if (context.step === FlowStep.FORM_FILL && context.awaitingAdditionalChild) {
       const lowerInput = input.toLowerCase().trim();
-      const isYes = /^(yes|y|yeah|yep|sure|ok|add|another|add another|yes please|yup)$/i.test(lowerInput) ||
-                    lowerInput.includes('add another') || lowerInput.includes('yes');
       const isNo = /^(no|n|nope|done|continue|proceed|finish|that's it|that's all|no thanks|no more)$/i.test(lowerInput) ||
                    lowerInput.includes('no more') || lowerInput.includes('continue to payment') || lowerInput.includes('done');
       
-      if (isYes) {
-        return await this.handleAction("add_another_child", {}, sessionId, context, input);
-      }
       if (isNo) {
         return await this.handleAction("finish_child_selection", {}, sessionId, context, input);
       }
-      // If neither yes nor no, they may have typed the next child's name directly.
+
+      // Check if input matches a saved child from the presented list (number or name)
+      const remainingSaved = context.remainingSavedChildrenForSelection || [];
+      if (remainingSaved.length > 0) {
+        // Check for "different child" option (last number in list)
+        const differentChildNum = remainingSaved.length + 1;
+        const isDifferentChild = /\b(different|new|another)\s+(child|kid)\b/i.test(lowerInput) ||
+          new RegExp(`^\\s*${differentChildNum}\\s*$`).test(lowerInput);
+        
+        if (isDifferentChild) {
+          // User wants to enter a new child - ask for name+age
+          this.updateContext(sessionId, { 
+            awaitingAdditionalChild: false, 
+            awaitingAdditionalChildInfo: true,
+            remainingSavedChildrenForSelection: undefined
+          });
+          const participantCount = context.participants?.length || 0;
+          return this.formatResponse(
+            `No problem! What's the child's **name and age**? (e.g., "Sarah Smith, 8")`,
+            undefined,
+            []
+          );
+        }
+
+        const matchedChild = this.matchSavedChildFromInput(input, remainingSaved);
+        if (matchedChild) {
+          // Add the matched saved child to participants
+          const participants = context.participants || [];
+          participants.push({
+            firstName: matchedChild.first_name,
+            lastName: matchedChild.last_name,
+            dob: matchedChild.dob || undefined
+          });
+          
+          const pendingParticipants = participants.map((p: any) => ({ ...p }));
+          
+          this.updateContext(sessionId, {
+            participants,
+            pendingParticipants,
+            childInfo: {
+              name: `${matchedChild.first_name} ${matchedChild.last_name}`.trim(),
+              firstName: matchedChild.first_name,
+              lastName: matchedChild.last_name,
+              dob: matchedChild.dob || undefined
+            },
+            awaitingAdditionalChild: false,
+            remainingSavedChildrenForSelection: undefined
+          });
+          
+          Logger.info('[handleMessage] ✅ Saved child selected from list', {
+            childName: `${matchedChild.first_name} ${matchedChild.last_name}`,
+            participantCount: participants.length
+          });
+          
+          // Now show "add another?" prompt again (or proceed if at limit)
+          return await this.handleAction("select_child", { 
+            first_name: matchedChild.first_name,
+            last_name: matchedChild.last_name,
+            dob: matchedChild.dob,
+            _alreadyAdded: true // Signal that we already added, just need to show next prompt
+          }, sessionId, this.getContext(sessionId), input);
+        }
+      }
+      
+      // Check for simple yes (proceed to add_another_child which will show saved children or ask for info)
+      const isYes = /^(yes|y|yeah|yep|sure|ok|add|another|add another|yes please|yup)$/i.test(lowerInput) ||
+                    lowerInput.includes('add another') || lowerInput.includes('yes');
+      if (isYes) {
+        return await this.handleAction("add_another_child", {}, sessionId, context, input);
+      }
+
+      // If neither yes nor no nor saved child match, they may have typed the next child's name directly.
       // If it looks like a child line (e.g., "Mina Messinger, 7"), route to select_child.
       const maybeChild = this.parseChildLine(input);
       if (maybeChild) {
@@ -8432,6 +8616,79 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       input 
     });
 
+    // If child was already added via saved child selection (matchSavedChildFromInput in handleMessage),
+    // skip directly to showing the "add another?" prompt
+    if (payload?._alreadyAdded) {
+      Logger.info('[handleSelectChild] Child already added, showing add another prompt');
+      // Re-fetch context to get the updated participants list
+      const freshContext = this.getContext(sessionId);
+      const participants = freshContext.participants || [];
+      const programName = freshContext.selectedProgram?.title || freshContext.selectedProgram?.name || 'this program';
+      
+      // Check available slots before offering to add more children
+      const availableSlots = freshContext.selectedProgram?.available_slots;
+      const hasLimitedSlots = typeof availableSlots === 'number' && availableSlots > 0;
+      const remainingSlots = hasLimitedSlots ? availableSlots - participants.length : Infinity;
+      
+      // Batch sibling registration: offer to add another child (up to 3, but also respect available slots)
+      const canAddMore = participants.length < 3 && remainingSlots > 0;
+      
+      if (canAddMore) {
+        const childNames = participants.map((p: any) => p.firstName).join(', ');
+        const countText = participants.length === 1 
+          ? `I have ${participants[0]?.firstName || 'the child'}'s information.`
+          : `✅ ${participants.length} children added (${childNames}).`;
+        
+        const slotsWarning = hasLimitedSlots && remainingSlots <= 2
+          ? `\n\n⚠️ Only ${remainingSlots} spot${remainingSlots === 1 ? '' : 's'} remaining in this class.`
+          : '';
+
+        // Load remaining saved children to offer as options
+        const remainingSavedChildren = await this.getRemainingSavedChildren(sessionId, freshContext);
+        
+        if (remainingSavedChildren.length > 0) {
+          const savedChildList = remainingSavedChildren
+            .map((c, i) => `${i + 1}. ${c.display}`)
+            .join('\n');
+          const differentChildOption = `${remainingSavedChildren.length + 1}. Different child (enter new info)`;
+          
+          this.updateContext(sessionId, { 
+            awaitingAdditionalChild: true,
+            remainingSavedChildrenForSelection: remainingSavedChildren
+          });
+          
+          return this.formatResponse(
+            `${countText}\n\n` +
+            `Would you like to register another child for **${programName}**?${slotsWarning}\n\n` +
+            `**Your saved children:**\n${savedChildList}\n${differentChildOption}\n\n` +
+            `Reply with a number, name, or "no" to continue.\n\n` +
+            `**Note:** The $20.00 SignupAssist fee is the same whether you register 1, 2, or 3 children.`,
+            undefined,
+            [
+              { label: "No, continue to payment", action: "finish_child_selection", variant: "outline" }
+            ]
+          );
+        }
+        
+        // No saved children available - show simple yes/no prompt
+        this.updateContext(sessionId, { awaitingAdditionalChild: true });
+        
+        return this.formatResponse(
+          `${countText}\n\n` +
+          `Would you like to register another child for **${programName}**?${slotsWarning}\n\n` +
+          `**Note:** The $20.00 SignupAssist fee is the same whether you register 1, 2, or 3 children.`,
+          undefined,
+          [
+            { label: "Yes, add another child", action: "add_another_child", variant: "accent" },
+            { label: "No, continue to payment", action: "finish_child_selection", variant: "outline" }
+          ]
+        );
+      }
+      
+      // Can't add more - proceed to finish
+      return await this.handleFinishChildSelection({}, sessionId, freshContext);
+    }
+
     // Extract child info from payload first (UI action)
     let childInfo: { firstName: string; lastName: string; age?: number } | null = null;
     
@@ -8538,8 +8795,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     const canAddMore = participants.length < 3 && remainingSlots > 0;
     
     if (canAddMore) {
-      this.updateContext(sessionId, { awaitingAdditionalChild: true });
-      
       const childNames = participants.map(p => p.firstName).join(', ');
       const countText = participants.length === 1 
         ? `I have ${childInfo.firstName}'s information.`
@@ -8549,6 +8804,38 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const slotsWarning = hasLimitedSlots && remainingSlots <= 2
         ? `\n\n⚠️ Only ${remainingSlots} spot${remainingSlots === 1 ? '' : 's'} remaining in this class.`
         : '';
+
+      // Load remaining saved children to offer as options
+      const remainingSavedChildren = await this.getRemainingSavedChildren(sessionId, context);
+      
+      if (remainingSavedChildren.length > 0) {
+        // Show saved children as numbered options with "Different child" always last
+        const savedChildList = remainingSavedChildren
+          .map((c, i) => `${i + 1}. ${c.display}`)
+          .join('\n');
+        const differentChildOption = `${remainingSavedChildren.length + 1}. Different child (enter new info)`;
+        
+        // Store the list for matching later
+        this.updateContext(sessionId, { 
+          awaitingAdditionalChild: true,
+          remainingSavedChildrenForSelection: remainingSavedChildren
+        });
+        
+        return this.formatResponse(
+          `${countText}\n\n` +
+          `Would you like to register another child for **${programName}**?${slotsWarning}\n\n` +
+          `**Your saved children:**\n${savedChildList}\n${differentChildOption}\n\n` +
+          `Reply with a number, name, or "no" to continue.\n\n` +
+          `**Note:** The $20.00 SignupAssist fee is the same whether you register 1, 2, or 3 children.`,
+          undefined,
+          [
+            { label: "No, continue to payment", action: "finish_child_selection", variant: "outline" }
+          ]
+        );
+      }
+      
+      // No saved children available - show simple yes/no prompt
+      this.updateContext(sessionId, { awaitingAdditionalChild: true });
       
       return this.formatResponse(
         `${countText}\n\n` +
@@ -8644,13 +8931,39 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       );
     }
 
-    // Reset awaitingAdditionalChild and ask for next child's info
-    this.updateContext(sessionId, { awaitingAdditionalChild: false, awaitingAdditionalChildInfo: true });
-    
     // Warn if slots are limited
     const slotsNote = hasLimitedSlots && remainingSlots <= 2
       ? `\n\n⚠️ Only ${remainingSlots} spot${remainingSlots === 1 ? '' : 's'} remaining.`
       : '';
+
+    // Load remaining saved children to offer as options
+    const remainingSavedChildren = await this.getRemainingSavedChildren(sessionId, context);
+    
+    if (remainingSavedChildren.length > 0) {
+      // Show saved children as numbered options with "Different child" always last
+      const savedChildList = remainingSavedChildren
+        .map((c, i) => `${i + 1}. ${c.display}`)
+        .join('\n');
+      const differentChildOption = `${remainingSavedChildren.length + 1}. Different child (enter new info)`;
+      
+      // Store the list for matching later
+      this.updateContext(sessionId, { 
+        awaitingAdditionalChild: true,
+        awaitingAdditionalChildInfo: false,
+        remainingSavedChildrenForSelection: remainingSavedChildren
+      });
+      
+      return this.formatResponse(
+        `Great! Let's add child #${participantCount + 1}.${slotsNote}\n\n` +
+        `**Your saved children:**\n${savedChildList}\n${differentChildOption}\n\n` +
+        `Reply with a number, name, or type new child info (e.g., "Sarah Smith, 8").`,
+        undefined,
+        []
+      );
+    }
+
+    // No saved children available - ask for name+age
+    this.updateContext(sessionId, { awaitingAdditionalChild: false, awaitingAdditionalChildInfo: true });
 
     return this.formatResponse(
       `Great! Let's add child #${participantCount + 1}.${slotsNote}\n\n` +
