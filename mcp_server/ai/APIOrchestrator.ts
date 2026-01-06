@@ -977,12 +977,18 @@ export default class APIOrchestrator implements IOrchestrator {
     }
     // For multiple children, calculate total program fee (program fee × child count)
     const numChildren = participantDisplay.length;
-    const programFeeNote = numChildren > 1 
-      ? ` × ${numChildren} children` 
-      : "";
+    let programFeeDisplay = formattedTotal;
+    if (numChildren > 1) {
+      // Calculate and display total: "$50.00 × 2 children = $100.00"
+      const totalFeeCents = (Number.isFinite(feeCents) && feeCents > 0) ? feeCents * numChildren : 0;
+      const formattedTotalFee = totalFeeCents > 0 ? formatCurrencyFromCents(totalFeeCents) : '';
+      programFeeDisplay = formattedTotalFee 
+        ? `${formattedTotal} × ${numChildren} children = ${formattedTotalFee}`
+        : `${formattedTotal} × ${numChildren} children`;
+    }
     msg += opensAtDisplay
-      ? `- **Program Fee:** ${formattedTotal}${programFeeNote} (paid to provider only if we successfully register you when it opens)\n`
-      : `- **Program Fee:** ${formattedTotal}${programFeeNote} (paid to provider only if booking succeeds)\n`;
+      ? `- **Program Fee:** ${programFeeDisplay} (paid to provider only if we successfully register you when it opens)\n`
+      : `- **Program Fee:** ${programFeeDisplay} (paid to provider only if booking succeeds)\n`;
     
     // Flat success fee messaging for multiple children
     const successFeeNote = numChildren > 1 
