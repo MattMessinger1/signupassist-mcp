@@ -768,3 +768,38 @@ User types "2" → Mina is added → shows "add another?" prompt with remaining 
   - `testDifferentChildOption()` — user types the "different child" number to enter new info
 - `npm run test:sibling-flow` ✅ (all 5 test cases pass)
 
+---
+
+## 2026-01-05 — Fix: multi-child booking crash (`Cannot read properties of undefined (reading 'trim')`)
+
+### Symptom (prod)
+
+- When trying to book 2 children for a class, the booking failed with:
+  ```
+  [Bookeo] Error confirming booking: TypeError: Cannot read properties of undefined (reading 'trim')
+      at confirmBooking (bookeo.js:730:52)
+  ```
+
+### Root cause
+
+- `mcp_server/providers/bookeo.ts` called `.trim()` directly on `delegate_data.firstName`, `delegate_data.lastName`, and `delegate_data.email` without null checks
+- `mcp_server/ai/APIOrchestrator.ts` mapped delegate fields assuming exact field names (`delegate_firstName` vs `firstName`), causing undefined values when field structures varied
+
+### Fix (code)
+
+- `mcp_server/providers/bookeo.ts`
+  - Added null-safe extraction: `String(delegate_data?.firstName || '').trim()`
+  - Added explicit validation with clear error message before API call
+  - Logs which fields are missing for debugging
+
+- `mcp_server/ai/APIOrchestrator.ts`
+  - Made `mappedDelegateData` extraction null-safe with fallback field names
+  - Added validation before calling `bookeo.confirm_booking`
+  - Added logging to help debug delegate data structure issues
+
+### How to verify
+
+- Complete a multi-child booking (e.g., Percy + Mina for the same class)
+- Expected: booking succeeds with both children
+- Logs should show: `[confirmPayment] Mapped delegate data { hasFirstName: true, hasLastName: true, hasEmail: true, ... }`
+

@@ -870,13 +870,39 @@ async function confirmBooking(args: {
     // real-world failures like "Invalid phone number type" when sending phoneNumbers
     // objects. Since phone is optional for v1 and not required for booking execution,
     // we omit it from the payload to maximize reliability (and minimize PII sent).
+    
+    // Safely extract delegate fields with null checks
+    const delegateFirstName = String(delegate_data?.firstName || '').trim();
+    const delegateLastName = String(delegate_data?.lastName || '').trim();
+    const delegateEmail = String(delegate_data?.email || '').trim();
+    
+    // Validate required delegate fields
+    if (!delegateFirstName || !delegateLastName || !delegateEmail) {
+      console.error('[Bookeo] Missing delegate fields:', {
+        hasFirstName: !!delegateFirstName,
+        hasLastName: !!delegateLastName,
+        hasEmail: !!delegateEmail,
+        delegate_data_keys: delegate_data ? Object.keys(delegate_data) : 'null'
+      });
+      const friendlyError: ParentFriendlyError = {
+        display: 'Missing parent/guardian contact information',
+        recovery: 'Please provide your first name, last name, and email address',
+        severity: 'medium',
+        code: 'VALIDATION_ERROR'
+      };
+      return {
+        success: false,
+        error: friendlyError
+      };
+    }
+    
     const bookingPayload = {
       eventId: resolvedEventId,
       productId: program_ref,
       customer: {
-        firstName: delegate_data.firstName.trim(),
-        lastName: delegate_data.lastName.trim(),
-        emailAddress: delegate_data.email.trim(),
+        firstName: delegateFirstName,
+        lastName: delegateLastName,
+        emailAddress: delegateEmail,
       },
       participants: {
         numbers: [

@@ -6249,14 +6249,35 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       }
 
       // Map form field names to Bookeo API format (API-first, ChatGPT compliant)
+      // IMPORTANT: Null-safe extraction - delegate_data may have different field structures
       const mappedDelegateData = {
-        firstName: delegate_data.delegate_firstName,
-        lastName: delegate_data.delegate_lastName,
-        email: delegate_data.delegate_email,
-        phone: delegate_data.delegate_phone,
-        dateOfBirth: delegate_data.delegate_dob,
-        relationship: delegate_data.delegate_relationship
+        firstName: String(delegate_data?.delegate_firstName || delegate_data?.firstName || '').trim(),
+        lastName: String(delegate_data?.delegate_lastName || delegate_data?.lastName || '').trim(),
+        email: String(delegate_data?.delegate_email || delegate_data?.email || '').trim(),
+        phone: delegate_data?.delegate_phone || delegate_data?.phone || undefined,
+        dateOfBirth: delegate_data?.delegate_dob || delegate_data?.dateOfBirth || delegate_data?.dob || undefined,
+        relationship: delegate_data?.delegate_relationship || delegate_data?.relationship || undefined
       };
+      
+      // Log for debugging multi-child booking issues
+      Logger.info("[confirmPayment] Mapped delegate data", {
+        hasFirstName: !!mappedDelegateData.firstName,
+        hasLastName: !!mappedDelegateData.lastName,
+        hasEmail: !!mappedDelegateData.email,
+        source_keys: delegate_data ? Object.keys(delegate_data) : 'null'
+      });
+      
+      // Validate critical delegate fields
+      if (!mappedDelegateData.firstName || !mappedDelegateData.lastName || !mappedDelegateData.email) {
+        Logger.error("[confirmPayment] Missing critical delegate fields after mapping", {
+          firstName: mappedDelegateData.firstName || 'MISSING',
+          lastName: mappedDelegateData.lastName || 'MISSING',
+          email: mappedDelegateData.email || 'MISSING'
+        });
+        return this.formatError(
+          "Missing parent/guardian information. Please provide your name and email address."
+        );
+      }
 
       const mappedParticipantData = participant_data.map((p: any) => ({
         firstName: p.firstName,
