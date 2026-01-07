@@ -241,6 +241,10 @@ interface APIContext {
     delegate?: Array<{ key: string; label?: string; required?: boolean; type?: string }>;
     participant?: Array<{ key: string; label?: string; required?: boolean; type?: string }>;
   };
+
+  // Provider constraint: maximum number of participants allowed per booking (if known).
+  // (Some Bookeo products only allow 1 participant per booking.)
+  maxParticipantsPerBooking?: number;
 }
 
 /**
@@ -2734,11 +2738,20 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           // ✅ Batch sibling registration: Before advancing to PAYMENT, offer to add another child
           const hasChildInfo = !!(context.childInfo?.firstName || context.childInfo?.name);
           const currentParticipants = context.participants?.length || (hasChildInfo ? 1 : 0);
+          const maxPerBookingRaw = Number(
+            (context.maxParticipantsPerBooking != null
+              ? context.maxParticipantsPerBooking
+              : (context.selectedProgram as any)?.max_participants) ?? 3
+          );
+          const maxParticipantsAllowed =
+            Number.isFinite(maxPerBookingRaw) && maxPerBookingRaw > 0
+              ? Math.max(1, Math.min(3, Math.floor(maxPerBookingRaw)))
+              : 3;
           const availableSlots = context.selectedProgram?.available_slots;
           const hasLimitedSlots = typeof availableSlots === 'number' && availableSlots > 0;
           const remainingSlots = hasLimitedSlots ? availableSlots - currentParticipants : Infinity;
           
-          if (hasChildInfo && currentParticipants < 3 && remainingSlots > 0 && !context.awaitingAdditionalChild) {
+          if (hasChildInfo && currentParticipants < maxParticipantsAllowed && remainingSlots > 0 && !context.awaitingAdditionalChild) {
             // Store current child in participants array if not already there
             if (!context.participants?.length && context.childInfo) {
               const participants = [{
@@ -2758,11 +2771,15 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             const slotsWarning = hasLimitedSlots && remainingSlots <= 2
               ? `\n\n⚠️ Only ${remainingSlots} spot${remainingSlots === 1 ? '' : 's'} remaining in this class.`
               : '';
+            const feeNote =
+              maxParticipantsAllowed > 1
+                ? `**Note:** The $20.00 SignupAssist fee is the same whether you register 1 or ${maxParticipantsAllowed} child${maxParticipantsAllowed === 1 ? '' : 'ren'}.`
+                : `**Note:** The $20.00 SignupAssist fee is charged only upon successful registration.`;
             
             return this.formatResponse(
               `I have ${childName}'s information.\n\n` +
               `Would you like to register another child for **${programName}**?${slotsWarning}\n\n` +
-              `**Note:** The $20.00 SignupAssist fee is the same whether you register 1, 2, or 3 children.`,
+              feeNote,
               undefined,
               [
                 { label: "Yes, add another child", action: "add_another_child", variant: "accent" },
@@ -3170,8 +3187,50 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       };
     }
 
-    // ChatGPT NL: Check for secondary actions FIRST (view receipts, cancel, audit trail)
-    const secondaryAction = this.parseSecondaryAction(input);
+    // ChatGPT NL: Secondary actions (receipts / cancel existing registration / audit trail).
+    //
+    // IMPORTANT: Avoid false-positives when the user (or the model) pastes a wizard transcript.
+    // Example: Review summaries contain both "booking" and "...or cancel to abort", which should NOT
+    // be treated as "cancel my registration" account-management intent.
+    const secondaryAction = (() => {
+      const normalized = trimmed.toLowerCase();
+      const isMultiline = /[\r\n]/.test(input);
+      const looksLikeWizardTranscript =
+        /\bstep\s+\d+\/\d+\b/i.test(input) ||
+        /\bprogram fee\b/i.test(input) ||
+        /\bsignupassist fee\b/i.test(input) ||
+        /\bpayment method\b/i.test(input) ||
+        /\bplease review the details\b/i.test(input);
+
+      const hasExplicitRef =
+        /\b(?:reg|sch)-[0-9a-f]{6,12}\b/i.test(input) ||
+        /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i.test(input);
+
+      // In the middle of the signup wizard, only treat messages as "account management" if the user
+      // is explicitly commanding it (or provides a REG-/SCH- code).
+      const startsWithCommand = /^(?:please\s+)?(?:(?:can|could|would)\s+you\s+)?(audit|trail|history|log|activity|view|show|list|cancel|remove|delete|undo)\b/i.test(normalized);
+
+      // If the input looks like a pasted transcript, don't run secondary-action parsing unless it's clearly a command.
+      if ((isMultiline || looksLikeWizardTranscript) && !startsWithCommand && !hasExplicitRef) return null;
+
+      // Outside BROWSE, require explicit command framing (or a REG/SCH ref) to avoid hijacking the wizard.
+      if (context.step !== FlowStep.BROWSE && !startsWithCommand && !hasExplicitRef) return null;
+
+      const parsed = this.parseSecondaryAction(input);
+
+      // During the wizard, never treat ambiguous "cancel ..." text as an account cancellation unless a REG/SCH ref is provided.
+      // (The wizard uses "cancel" to mean "abort this in-progress signup".)
+      if (
+        parsed?.action === 'cancel_registration' &&
+        !parsed.payload?.registration_ref &&
+        context.step !== FlowStep.BROWSE
+      ) {
+        return null;
+      }
+
+      return parsed;
+    })();
+
     if (secondaryAction) {
       Logger.info('[NL Parse] Secondary action detected at start of handleMessage', {
         source: 'natural_language',
@@ -5786,7 +5845,22 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             type: f.type
           }))
         };
-        await this.updateContextAndAwait(sessionId, { requiredFields });
+        const rawMaxParticipants = Number(
+          (formDiscoveryResult as any)?.data?.metadata?.max_participants ??
+            (questions as any)?.max_participants ??
+            (context.selectedProgram as any)?.max_participants ??
+            (context.selectedProgram as any)?.maxParticipants ??
+            undefined
+        );
+        const maxParticipantsPerBooking =
+          Number.isFinite(rawMaxParticipants) && rawMaxParticipants > 0
+            ? Math.floor(rawMaxParticipants)
+            : undefined;
+
+        await this.updateContextAndAwait(sessionId, {
+          requiredFields,
+          ...(maxParticipantsPerBooking ? { maxParticipantsPerBooking } : {}),
+        });
       }
 
       // Prompt for delegate email first and clear any stale form fragments
@@ -6266,6 +6340,32 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         num_participants,
         num_participants_in_array: participant_data.length
       });
+
+      // Provider constraint: some programs only allow 1 participant per booking (Bookeo enforces this server-side).
+      // If we know the limit, fail fast with a clear message instead of letting Bookeo return a 400.
+      const maxPerBookingRaw = Number(
+        (context.maxParticipantsPerBooking != null
+          ? context.maxParticipantsPerBooking
+          : (context.selectedProgram as any)?.max_participants) ?? NaN
+      );
+      const numParticipantsInt = Number(num_participants ?? participant_data.length);
+      if (
+        Number.isFinite(maxPerBookingRaw) &&
+        maxPerBookingRaw > 0 &&
+        Number.isFinite(numParticipantsInt) &&
+        numParticipantsInt > maxPerBookingRaw
+      ) {
+        const names = Array.isArray(participant_data)
+          ? participant_data
+              .map((p: any) => `${String(p?.firstName || "").trim()} ${String(p?.lastName || "").trim()}`.trim())
+              .filter((n: string) => n.length > 0)
+          : [];
+        const who = names.length > 0 ? ` (${names.join(", ")})` : "";
+        return this.formatError(
+          `This class only allows **${Math.floor(maxPerBookingRaw)} participant${Math.floor(maxPerBookingRaw) === 1 ? "" : "s"} per booking** with the provider.\n\n` +
+            `You currently have ${numParticipantsInt} selected${who}. Please register one child at a time for this class.`
+        );
+      }
 
       // PART 2.5: Validate booking window using Bookeo's rules
       const slotTime = context.selectedProgram?.earliest_slot_time;
@@ -9031,6 +9131,15 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     context: APIContext
   ): Promise<OrchestratorResponse> {
     const participantCount = context.participants?.length || 0;
+    const maxPerBookingRaw = Number(
+      (context.maxParticipantsPerBooking != null
+        ? context.maxParticipantsPerBooking
+        : (context.selectedProgram as any)?.max_participants) ?? 3
+    );
+    const maxParticipantsAllowed =
+      Number.isFinite(maxPerBookingRaw) && maxPerBookingRaw > 0
+        ? Math.max(1, Math.min(3, Math.floor(maxPerBookingRaw)))
+        : 3;
     const programName = context.selectedProgram?.title || context.selectedProgram?.name || 'this program';
     
     // Check available slots
@@ -9046,9 +9155,18 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     });
 
     // Check if we can add more children
-    if (participantCount >= 3) {
+    if (participantCount >= maxParticipantsAllowed) {
       // Already at max - shouldn't happen but handle gracefully
-      return this.handleFinishChildSelection(payload, sessionId, context);
+      const limitNote =
+        maxParticipantsAllowed === 1
+          ? `This class only allows **1 participant per booking** with the provider.`
+          : `This class allows up to **${maxParticipantsAllowed} participants per booking**.`;
+      this.updateContext(sessionId, { awaitingAdditionalChild: false, awaitingAdditionalChildInfo: false });
+      return this.formatResponse(
+        `${limitNote}\n\nLet’s continue with the registration for the child you already selected.`,
+        undefined,
+        [{ label: "Continue to payment", action: "finish_child_selection", variant: "accent" }]
+      );
     }
     
     if (remainingSlots <= 0) {

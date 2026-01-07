@@ -207,13 +207,92 @@ async function testDifferentChildOption() {
   );
 }
 
+async function testSecondaryActionDoesNotHijackWizardTranscript() {
+  const orch = new APIOrchestrator({ tools: new Map() });
+  const sessionId = "regression-secondary-action-hijack";
+
+  // Ensure we don't hit any DB persistence paths in this regression.
+  orch.updateContextAndAwait = async (sid, patch) => {
+    orch.updateContext(sid, patch);
+  };
+
+  // If secondary-action parsing fires incorrectly, it will call handleAction('cancel_registration', ...)
+  orch.handleAction = async (action) => {
+    assert.notEqual(action, "cancel_registration", "Wizard transcript should not be mis-parsed as cancel_registration");
+    return { message: "ok" };
+  };
+
+  orch.sessions.set(sessionId, {
+    step: "REVIEW",
+    // Not important for this regression; we only care about the early secondary-action routing.
+    selectedProgram: { title: "CLASS X", available_slots: 10 },
+  });
+
+  const pastedReviewTranscript =
+    `Step 4/5 — Review & consent\n\n` +
+    `Program Fee: $40.00 (paid to provider only if booking succeeds)\n` +
+    `SignupAssist Fee: $20.00 (charged only upon successful registration)\n\n` +
+    `If everything is correct, type book now to continue or cancel to abort.`;
+
+  const resp = await orch.handleMessage(pastedReviewTranscript, sessionId, orch.getContext(sessionId));
+  assert.ok(resp && typeof resp.message === "string", "Should return a response");
+}
+
+async function testBookeoMaxParticipantsPreventsSiblingPrompt() {
+  const orch = new APIOrchestrator({ tools: new Map() });
+  const sessionId = "regression-max-participants";
+
+  // Prevent any DB persistence paths in this regression.
+  orch.updateContextAndAwait = async (sid, patch) => {
+    orch.updateContext(sid, patch);
+  };
+
+  // Avoid any downstream Supabase/payment calls; we only care that we DON'T show the sibling prompt.
+  orch.submitForm = async () => ({ message: "PAYMENT_OK" });
+
+  orch.sessions.set(sessionId, {
+    step: "FORM_FILL",
+    selectedProgram: { title: "CLASS Y", available_slots: 10 },
+    requiredFields: { delegate: [], participant: [] },
+    maxParticipantsPerBooking: 1,
+    childInfo: { firstName: "Simon", lastName: "Messinger", dob: "2016-03-19", name: "Simon Messinger" },
+  });
+
+  const resp = await orch.handleAction(
+    "submit_form",
+    {
+      // Provide already-two-tier data so the submit_form normalizer doesn't wipe it out
+      // (and so COPPA checks can pass without DB calls).
+      formData: {
+        delegate: {
+          delegate_email: "matt@example.com",
+          delegate_firstName: "Matt",
+          delegate_lastName: "Messinger",
+          delegate_relationship: "Parent",
+          delegate_dob: "05/13/1976",
+        },
+        participants: [{ firstName: "Simon", lastName: "Messinger", dob: "2016-03-19" }],
+        numParticipants: 1,
+      },
+    },
+    sessionId,
+    orch.getContext(sessionId),
+    "Simon Messinger, 9"
+  );
+
+  assert.ok(!/register another child/i.test(String(resp?.message || "")), "Should not ask to add another child when maxParticipantsPerBooking=1");
+  assert.ok(/PAYMENT_OK/.test(String(resp?.message || "")), "Should proceed to payment/next step when maxParticipantsPerBooking=1");
+}
+
 async function run() {
   await testHiddenProgramFiltering();
   await testSiblingChildCaptureAndReviewFallback();
   await testSavedChildSelectionByNumber();
   await testSavedChildSelectionByName();
   await testDifferentChildOption();
-  console.log("✅ PASS: sibling add-child + hidden closed program + saved child selection regressions");
+  await testSecondaryActionDoesNotHijackWizardTranscript();
+  await testBookeoMaxParticipantsPreventsSiblingPrompt();
+  console.log("✅ PASS: sibling add-child + hidden closed program + saved child selection + secondary-action + max participants regressions");
 }
 
 run().catch((err) => {

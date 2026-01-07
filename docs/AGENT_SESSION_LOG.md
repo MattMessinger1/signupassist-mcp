@@ -803,3 +803,40 @@ User types "2" → Mina is added → shows "add another?" prompt with remaining 
 - Expected: booking succeeds with both children
 - Logs should show: `[confirmPayment] Mapped delegate data { hasFirstName: true, hasLastName: true, hasEmail: true, ... }`
 
+---
+
+## 2026-01-07 — Fix: NL “cancel_registration” misfire during signup + enforce Bookeo per-booking max participants
+
+### Symptoms (prod)
+
+- During an in-progress signup, logs sometimes showed:
+  - `[NL Parse] Secondary action detected: cancel_registration`
+  - even when the user was not trying to cancel anything (e.g., mid “book now” flow)
+- Bookeo sometimes rejected multi-participant bookings with:
+  - `"The maximum number of people for a booking for '<program>' is 1"`
+
+### Root causes
+
+- `handleMessage()` ran `parseSecondaryAction()` **before** wizard step handling; if the user/model pasted a review transcript, it contained both:
+  - “booking succeeds” (contains **booking**)
+  - “...or cancel to abort” (contains **cancel**)
+  This matched the generic cancel-registration regex and hijacked the flow.
+- We weren’t enforcing Bookeo’s **per-product max participants per booking** (from cached `signup_form.max_participants`), so we offered sibling add‑child even when the provider disallowed it.
+
+### Fix (code)
+
+- `mcp_server/ai/APIOrchestrator.ts`
+  - Added a guard to only treat “secondary actions” as account-management commands when they are **explicit**:
+    - skip parsing for multi-line / wizard-transcript-like input unless it starts with a command or contains a REG/SCH ref
+    - during the wizard, never route to `cancel_registration` unless the user provides a REG/SCH ref
+  - Added `APIContext.maxParticipantsPerBooking` and populate it from `bookeo.discover_required_fields`
+  - Sibling add‑child prompting now respects `maxParticipantsPerBooking`
+  - `confirmPayment()` fails fast with a clear message if selected participants exceed the provider limit
+
+### Verification
+
+- Extended regression test `scripts/regressionSiblingAndHiddenPrograms.js`:
+  - `testSecondaryActionDoesNotHijackWizardTranscript()`
+  - `testBookeoMaxParticipantsPreventsSiblingPrompt()`
+- `npm run test:sibling-flow` ✅
+
