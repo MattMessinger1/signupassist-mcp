@@ -863,6 +863,60 @@ export default class APIOrchestrator implements IOrchestrator {
     return out.filter((p) => Boolean(p.firstName || p.lastName));
   }
 
+  private validateContextForStep(sessionId: string, context: APIContext): APIContext {
+    const patch: Partial<APIContext> = {};
+
+    // Invariants: sibling sub-states should only be active in FORM_FILL and must be mutually exclusive.
+    if (context.step !== FlowStep.FORM_FILL) {
+      if (
+        context.awaitingAdditionalChild ||
+        context.awaitingAdditionalChildInfo ||
+        context.remainingSavedChildrenForSelection
+      ) {
+        patch.awaitingAdditionalChild = false;
+        patch.awaitingAdditionalChildInfo = false;
+        patch.remainingSavedChildrenForSelection = undefined;
+      }
+    } else {
+      // FORM_FILL: enforce mutual exclusivity
+      if (context.awaitingAdditionalChildInfo) {
+        if (context.awaitingAdditionalChild || context.remainingSavedChildrenForSelection) {
+          patch.awaitingAdditionalChild = false;
+          patch.remainingSavedChildrenForSelection = undefined;
+        }
+      }
+      if (context.remainingSavedChildrenForSelection && !context.awaitingAdditionalChild) {
+        patch.awaitingAdditionalChild = true;
+        patch.awaitingAdditionalChildInfo = false;
+      }
+      if (context.awaitingAdditionalChild && context.awaitingAdditionalChildInfo) {
+        patch.awaitingAdditionalChild = false;
+      }
+    }
+
+    // Invariants: advanced steps require a selected program. If missing, recover to BROWSE.
+    const requiresProgram =
+      context.step === FlowStep.FORM_FILL ||
+      context.step === FlowStep.REVIEW ||
+      context.step === FlowStep.PAYMENT ||
+      context.step === FlowStep.SUBMIT;
+    if (requiresProgram && !context.selectedProgram) {
+      patch.step = FlowStep.BROWSE;
+      // Clear step-specific state that is meaningless without a program, but preserve user-entered data where possible.
+      patch.requiredFields = undefined;
+      patch.reviewSummaryShown = undefined;
+      patch.paymentAuthorized = undefined;
+      patch.pendingProviderConfirmation = undefined;
+    }
+
+    if (Object.keys(patch).length > 0) {
+      this.updateContext(sessionId, patch);
+      return this.getContext(sessionId);
+    }
+
+    return context;
+  }
+
   /**
    * Get saved children that haven't been registered yet in this session.
    * Loads from DB if not cached, filters out children already in context.participants.
@@ -3244,6 +3298,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         []
       );
     }
+
+    // Defensive: enforce step invariants and sibling sub-state consistency before any further routing.
+    context = this.validateContextForStep(sessionId, context);
     
     // Batch sibling registration: handle "add another child?" response
     if (context.step === FlowStep.FORM_FILL && context.awaitingAdditionalChild) {
@@ -9482,6 +9539,67 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     return newContext;
   }
 
+  private normalizeSiblingFlowUpdates(current: APIContext, updates: Partial<APIContext>): Partial<APIContext> {
+    const u: Partial<APIContext> = { ...updates };
+    const hasOwn = (k: string) => Object.prototype.hasOwnProperty.call(updates as any, k);
+    const nextStep: FlowStep = (u.step !== undefined ? (u.step as FlowStep) : current.step);
+
+    // Entering FORM_FILL: reset sibling sub-state unless explicitly set in this patch.
+    if (nextStep === FlowStep.FORM_FILL && current.step !== FlowStep.FORM_FILL) {
+      if (!hasOwn("awaitingAdditionalChild")) u.awaitingAdditionalChild = false;
+      if (!hasOwn("awaitingAdditionalChildInfo")) u.awaitingAdditionalChildInfo = false;
+      if (!hasOwn("remainingSavedChildrenForSelection")) u.remainingSavedChildrenForSelection = undefined;
+    }
+
+    // Sibling sub-state should only be active in FORM_FILL. Clear it when leaving (or outside) FORM_FILL.
+    if (nextStep !== FlowStep.FORM_FILL) {
+      if (
+        current.awaitingAdditionalChild ||
+        current.awaitingAdditionalChildInfo ||
+        current.remainingSavedChildrenForSelection ||
+        hasOwn("awaitingAdditionalChild") ||
+        hasOwn("awaitingAdditionalChildInfo") ||
+        hasOwn("remainingSavedChildrenForSelection")
+      ) {
+        u.awaitingAdditionalChild = false;
+        u.awaitingAdditionalChildInfo = false;
+        u.remainingSavedChildrenForSelection = undefined;
+      }
+      return u;
+    }
+
+    // FORM_FILL: enforce mutual exclusivity.
+    if (u.awaitingAdditionalChildInfo === true) {
+      u.awaitingAdditionalChild = false;
+      u.remainingSavedChildrenForSelection = undefined;
+    }
+
+    if (u.awaitingAdditionalChild === true) {
+      u.awaitingAdditionalChildInfo = false;
+      // If we are showing a simple yes/no prompt, clear any stale saved-child list.
+      if (!hasOwn("remainingSavedChildrenForSelection")) {
+        u.remainingSavedChildrenForSelection = undefined;
+      }
+    }
+
+    if (u.awaitingAdditionalChild === false) {
+      // Leaving the prompt state -> clear any stale saved-child list.
+      u.remainingSavedChildrenForSelection = undefined;
+    }
+
+    if (hasOwn("remainingSavedChildrenForSelection")) {
+      const list = Array.isArray(u.remainingSavedChildrenForSelection) ? u.remainingSavedChildrenForSelection : [];
+      if (list.length > 0) {
+        u.awaitingAdditionalChild = true;
+        u.awaitingAdditionalChildInfo = false;
+      } else {
+        u.remainingSavedChildrenForSelection = undefined;
+      }
+    }
+
+    return u;
+  }
+
   /**
    * Update session context (now also persists to Supabase)
    * ENHANCED: Added detailed tracing to debug session persistence issues
@@ -9516,6 +9634,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     if (updates.step !== undefined && updates.step !== current.step) {
       updates.wizardProgress = undefined;
     }
+
+    // Sibling flow invariants: ensure sibling sub-states don't conflict and don't leak across steps.
+    updates = this.normalizeSiblingFlowUpdates(current, updates);
     
     const updated = { ...current, ...updates };
     this.sessions.set(sessionId, updated);
@@ -9576,6 +9697,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     if (updates.step !== undefined && updates.step !== current.step) {
       updates.wizardProgress = undefined;
     }
+
+    // Sibling flow invariants: ensure sibling sub-states don't conflict and don't leak across steps.
+    updates = this.normalizeSiblingFlowUpdates(current, updates);
     
     const updated = { ...current, ...updates };
     this.sessions.set(sessionId, updated);
