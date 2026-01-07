@@ -540,14 +540,9 @@ async function createHold(args: {
   const { eventId, productId, firstName, lastName, email, phone, adults, children, org_ref } = args;
   
   console.log(`[Bookeo] Creating hold for event: ${eventId}, product: ${productId}`);
-
-  // Null-safe trims (avoid calling .trim() on non-strings)
-  const firstNameTrim = String(firstName ?? '').trim();
-  const lastNameTrim = String(lastName ?? '').trim();
-  const emailTrim = String(email ?? '').trim();
   
   // Input validation
-  if (!eventId || !productId || !firstNameTrim || !lastNameTrim || !emailTrim || adults < 0 || children < 0) {
+  if (!eventId || !productId || !firstName || !lastName || !email || adults < 0 || children < 0) {
     const friendlyError: ParentFriendlyError = {
       display: 'Please provide all required information',
       recovery: 'Ensure first name, last name, email, and number of guests are provided',
@@ -562,7 +557,7 @@ async function createHold(args: {
   
   // Email validation
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(emailTrim)) {
+  if (!emailRegex.test(email)) {
     const friendlyError: ParentFriendlyError = {
       display: 'Invalid email address',
       recovery: 'Please provide a valid email address',
@@ -586,9 +581,9 @@ async function createHold(args: {
       eventId,
       productId,
       customer: {
-        firstName: firstNameTrim,
-        lastName: lastNameTrim,
-        emailAddress: emailTrim,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        emailAddress: email.trim(),
       },
       participants: {
         numbers: [

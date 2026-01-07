@@ -225,17 +225,6 @@ interface APIContext {
     program_data?: any;       // Cached program data for sibling registration
   };
 
-  /**
-   * Short-lived booking idempotency (ChatGPT reliability):
-   * Protect against duplicate "confirm_payment" / booking tool calls caused by retries.
-   * Store only a short hash key (no raw email/PII).
-   */
-  bookingAttempt?: {
-    key: string; // short hash
-    started_at: string; // ISO timestamp
-    status: "in_flight";
-  };
-
   // Avoid repeated DB lookups for returning-user prefill within a session
   delegatePrefillAttempted?: boolean;
 
@@ -264,13 +253,6 @@ export default class APIOrchestrator implements IOrchestrator {
   private mcpServer: any;
   // Ensure DB persists happen in-order per sessionId (prevents late writes overwriting newer state).
   private persistQueue: Map<string, Promise<void>> = new Map();
-  // Best-effort in-memory memoization for common read-only MCP calls (perf; no correctness dependency).
-  private toolMemo: Map<string, { expiresAt: number; value: any }> = new Map();
-  // Coalesce multiple updateContext() calls into fewer DB writes (flushes before response return).
-  private persistDebounce: Map<
-    string,
-    { timer: any; latest: APIContext; promise: Promise<void>; resolve: () => void; reject: (e: any) => void }
-  > = new Map();
 
   private isProductionRuntime(): boolean {
     const nodeEnv = String(process.env.NODE_ENV || "").toLowerCase();
@@ -304,13 +286,6 @@ export default class APIOrchestrator implements IOrchestrator {
     return Math.max(250, Math.min(raw, 30_000));
   }
 
-  private getBookingIdempotencyWindowMs(): number {
-    const raw = Number(process.env.MCP_BOOKING_IDEMPOTENCY_WINDOW_MS || 120_000);
-    if (!Number.isFinite(raw) || raw <= 0) return 120_000;
-    // Clamp to sane bounds (30s .. 10m)
-    return Math.max(30_000, Math.min(raw, 10 * 60_000));
-  }
-
   private buildRetryDedupeKey(action: string | undefined, payload: any, input: string): string {
     const a = String(action || "").trim();
     const msg = String(input || "").trim();
@@ -321,55 +296,6 @@ export default class APIOrchestrator implements IOrchestrator {
         : "";
     const raw = `${a}|${payloadKeys}|${msg}`;
     return crypto.createHash("sha256").update(raw).digest("hex").slice(0, 16);
-  }
-
-  private buildBookingIdempotencyKey(input: {
-    program_ref: string;
-    event_id: string;
-    participant_count: number;
-    delegate_email: string;
-  }): string {
-    const programRef = String(input.program_ref || "").trim();
-    const eventId = String(input.event_id || "").trim();
-    const participantCount = Number(input.participant_count || 0);
-    const delegateEmail = String(input.delegate_email || "").trim().toLowerCase();
-    const raw = `${programRef}|${eventId}|${participantCount}|${delegateEmail}`;
-    return crypto.createHash("sha256").update(raw).digest("hex").slice(0, 16);
-  }
-
-  private buildToolMemoKey(sessionId: string, toolName: string, args: any): string {
-    const sid = String(sessionId || "").trim();
-    const t = String(toolName || "").trim();
-    const stableArgs =
-      args && typeof args === "object" && !Array.isArray(args)
-        ? Object.keys(args)
-            .sort()
-            .map((k) => `${k}:${String((args as any)[k])}`)
-            .join("|")
-        : String(args ?? "");
-    // Hash to avoid keeping raw identifiers/PII in cache keys.
-    return crypto.createHash("sha256").update(`${sid}|${t}|${stableArgs}`).digest("hex").slice(0, 16);
-  }
-
-  private async memoizedInvokeMCPTool(
-    sessionId: string,
-    toolName: string,
-    args: any,
-    ttlMs: number
-  ): Promise<any> {
-    const now = Date.now();
-    const ttl = Number.isFinite(ttlMs) && ttlMs > 0 ? ttlMs : 0;
-    if (ttl <= 0) return await this.invokeMCPTool(toolName, args);
-
-    const key = this.buildToolMemoKey(sessionId, toolName, args);
-    const hit = this.toolMemo.get(key);
-    if (hit && hit.expiresAt > now) {
-      return hit.value;
-    }
-
-    const value = await this.invokeMCPTool(toolName, args);
-    this.toolMemo.set(key, { expiresAt: now + ttl, value });
-    return value;
   }
 
   private getDebugUserFilter(): string | null {
@@ -842,155 +768,6 @@ export default class APIOrchestrator implements IOrchestrator {
     return { first_name, last_name, display: display || "Saved child" };
   }
 
-  private safeTrim(value: any): string {
-    return String(value ?? "").trim();
-  }
-
-  private normalizeDelegateForProvider(delegateData: any): {
-    firstName: string;
-    lastName: string;
-    email: string;
-    phone?: string;
-    dateOfBirth?: string;
-    relationship?: string;
-  } {
-    const firstName = this.safeTrim(
-      delegateData?.delegate_firstName ??
-        delegateData?.firstName ??
-        delegateData?.first_name ??
-        delegateData?.given_name
-    );
-    const lastName = this.safeTrim(
-      delegateData?.delegate_lastName ??
-        delegateData?.lastName ??
-        delegateData?.last_name ??
-        delegateData?.family_name
-    );
-    const email = this.safeTrim(
-      delegateData?.delegate_email ??
-        delegateData?.email ??
-        delegateData?.emailAddress ??
-        delegateData?.email_address
-    );
-    const phoneRaw = this.safeTrim(delegateData?.delegate_phone ?? delegateData?.phone);
-    const relationship = this.safeTrim(delegateData?.delegate_relationship ?? delegateData?.relationship);
-
-    const dobRaw = this.safeTrim(
-      delegateData?.delegate_dob ??
-        delegateData?.dateOfBirth ??
-        delegateData?.dob ??
-        delegateData?.date_of_birth
-    );
-    const dobParsed = dobRaw ? this.parseDateFromText(dobRaw) || dobRaw : "";
-
-    return {
-      firstName,
-      lastName,
-      email,
-      phone: phoneRaw || undefined,
-      dateOfBirth: dobParsed || undefined,
-      relationship: relationship || undefined,
-    };
-  }
-
-  private normalizeParticipantsForProvider(participantData: any): Array<{
-    firstName: string;
-    lastName: string;
-    dateOfBirth?: string;
-    grade?: string;
-    age?: number;
-  }> {
-    const list: any[] = Array.isArray(participantData)
-      ? participantData
-      : participantData
-        ? [participantData]
-        : [];
-
-    const out: Array<{ firstName: string; lastName: string; dateOfBirth?: string; grade?: string; age?: number }> = [];
-    for (const p of list) {
-      const nameRaw = this.safeTrim(p?.name);
-      const firstName =
-        this.safeTrim(p?.firstName ?? p?.first_name) ||
-        (nameRaw ? this.safeTrim(nameRaw.split(/\s+/)[0]) : "");
-      const lastName =
-        this.safeTrim(p?.lastName ?? p?.last_name) ||
-        (nameRaw ? this.safeTrim(nameRaw.split(/\s+/).slice(1).join(" ")) : "");
-
-      const dobRaw = this.safeTrim(p?.dateOfBirth ?? p?.dob ?? p?.date_of_birth);
-      const dobParsed = dobRaw ? this.parseDateFromText(dobRaw) || dobRaw : "";
-      const grade = this.safeTrim(p?.grade);
-      const ageNum =
-        typeof p?.age === "number"
-          ? p.age
-          : (this.safeTrim(p?.age) ? Number(this.safeTrim(p?.age)) : NaN);
-
-      out.push({
-        firstName,
-        lastName,
-        dateOfBirth: dobParsed || undefined,
-        grade: grade || undefined,
-        age: Number.isFinite(ageNum) ? ageNum : undefined,
-      });
-    }
-
-    // Preserve ordering but drop completely blank entries
-    return out.filter((p) => Boolean(p.firstName || p.lastName));
-  }
-
-  private validateContextForStep(sessionId: string, context: APIContext): APIContext {
-    const patch: Partial<APIContext> = {};
-
-    // Invariants: sibling sub-states should only be active in FORM_FILL and must be mutually exclusive.
-    if (context.step !== FlowStep.FORM_FILL) {
-      if (
-        context.awaitingAdditionalChild ||
-        context.awaitingAdditionalChildInfo ||
-        context.remainingSavedChildrenForSelection
-      ) {
-        patch.awaitingAdditionalChild = false;
-        patch.awaitingAdditionalChildInfo = false;
-        patch.remainingSavedChildrenForSelection = undefined;
-      }
-    } else {
-      // FORM_FILL: enforce mutual exclusivity
-      if (context.awaitingAdditionalChildInfo) {
-        if (context.awaitingAdditionalChild || context.remainingSavedChildrenForSelection) {
-          patch.awaitingAdditionalChild = false;
-          patch.remainingSavedChildrenForSelection = undefined;
-        }
-      }
-      if (context.remainingSavedChildrenForSelection && !context.awaitingAdditionalChild) {
-        patch.awaitingAdditionalChild = true;
-        patch.awaitingAdditionalChildInfo = false;
-      }
-      if (context.awaitingAdditionalChild && context.awaitingAdditionalChildInfo) {
-        patch.awaitingAdditionalChild = false;
-      }
-    }
-
-    // Invariants: advanced steps require a selected program. If missing, recover to BROWSE.
-    const requiresProgram =
-      context.step === FlowStep.FORM_FILL ||
-      context.step === FlowStep.REVIEW ||
-      context.step === FlowStep.PAYMENT ||
-      context.step === FlowStep.SUBMIT;
-    if (requiresProgram && !context.selectedProgram) {
-      patch.step = FlowStep.BROWSE;
-      // Clear step-specific state that is meaningless without a program, but preserve user-entered data where possible.
-      patch.requiredFields = undefined;
-      patch.reviewSummaryShown = undefined;
-      patch.paymentAuthorized = undefined;
-      patch.pendingProviderConfirmation = undefined;
-    }
-
-    if (Object.keys(patch).length > 0) {
-      this.updateContext(sessionId, patch);
-      return this.getContext(sessionId);
-    }
-
-    return context;
-  }
-
   /**
    * Get saved children that haven't been registered yet in this session.
    * Loads from DB if not cached, filters out children already in context.participants.
@@ -1005,12 +782,7 @@ export default class APIOrchestrator implements IOrchestrator {
     // Lazy-load saved children if not cached
     if (!Array.isArray(context.savedChildren)) {
       try {
-        const listRes = await this.memoizedInvokeMCPTool(
-          sessionId,
-          "user.list_children",
-          { user_id: context.user_id },
-          120_000
-        );
+        const listRes = await this.invokeMCPTool("user.list_children", { user_id: context.user_id });
         const children = Array.isArray(listRes?.data?.children) ? listRes.data.children : [];
         context.savedChildren = children
           .map((c: any) => {
@@ -1035,21 +807,6 @@ export default class APIOrchestrator implements IOrchestrator {
     const saved = context.savedChildren || [];
     const participants = context.participants || [];
 
-    // Determine delegate identity (best-effort) so we can avoid offering the delegate as a "child"
-    // in sibling selection. (Some historical data has a bogus saved child record matching the delegate.)
-    const fd: any = context.formData || {};
-    const delegateRaw =
-      (fd && typeof fd === "object" && (fd.delegate_data || fd.delegate)) ||
-      (fd?.formData && (fd.formData.delegate || fd.formData.delegate_data)) ||
-      context.pendingDelegateInfo ||
-      {};
-    const normalizedDelegate = this.normalizeDelegateForProvider(delegateRaw);
-    const delegateFormLike = {
-      delegate_firstName: normalizedDelegate.firstName,
-      delegate_lastName: normalizedDelegate.lastName,
-      delegate_dob: normalizedDelegate.dateOfBirth,
-    };
-
     // Filter out children already registered in this session (match by first+last name, case-insensitive)
     const remaining = saved.filter((child) => {
       const childFirst = String(child.first_name || "").toLowerCase().trim();
@@ -1059,21 +816,7 @@ export default class APIOrchestrator implements IOrchestrator {
         const pLast = String(p.lastName || "").toLowerCase().trim();
         return pFirst === childFirst && pLast === childLast;
       });
-
-      if (alreadyRegistered) return false;
-
-      // Filter out bogus saved-child records that match the delegate (same name + DOB when available)
-      // to avoid ever presenting/adding the delegate as a participant.
-      if (this.looksLikeDelegateChild(child, delegateFormLike)) return false;
-
-      // Filter out "children" with DOB indicating they are adults (age >= 18).
-      // This is a safety guard specifically for sibling registration.
-      const cDobRaw = String((child as any)?.dob || "").trim();
-      const cDobIso = cDobRaw ? (this.parseDateFromText(cDobRaw) || cDobRaw) : "";
-      const ageYears = cDobIso ? this.computeAgeYearsFromISODate(String(cDobIso).slice(0, 10)) : null;
-      if (ageYears != null && ageYears >= 18) return false;
-
-      return true;
+      return !alreadyRegistered;
     });
 
     // Add display name for each
@@ -1160,27 +903,24 @@ export default class APIOrchestrator implements IOrchestrator {
       [];
     let participants = Array.isArray(participantsRaw) ? participantsRaw : [participantsRaw].filter(Boolean);
     // Fallback: during multi-child selection, participants may live on context.* until submitForm normalizes them.
-    // Also: if formData has a stale single participant but context has more, prefer context for correctness.
-    const fromContext =
-      (Array.isArray(context.participants) && context.participants.length > 0
-        ? context.participants
-        : (Array.isArray(context.pendingParticipants) ? context.pendingParticipants : [])) as any[];
-    if (participants.length === 0 || fromContext.length > participants.length) {
+    if (participants.length === 0) {
+      const fromContext =
+        (Array.isArray(context.participants) && context.participants.length > 0
+          ? context.participants
+          : (Array.isArray(context.pendingParticipants) ? context.pendingParticipants : [])) as any[];
       participants = fromContext;
     }
-    const normalizedParticipants = this.normalizeParticipantsForProvider(participants);
-
     // Build participant display for single or multiple children
     const participantDisplay: string[] = [];
-    if (normalizedParticipants.length > 0) {
-      for (const p of normalizedParticipants) {
+    if (participants.length > 0) {
+      for (const p of participants) {
         const rawName = p.firstName
           ? `${p.firstName} ${p.lastName || ""}`.trim()
           : "";
         const name = rawName
           ? this.sanitizeSavedChildName(rawName, "").display
           : "participant";
-        const dob = this.formatISODateForPrompt(p.dateOfBirth);
+        const dob = this.formatISODateForPrompt(p.dob || p.date_of_birth);
         const detail = dob ? ` (DOB: ${dob})` : (p.age ? ` (Age: ${p.age})` : "");
         participantDisplay.push(`${name}${detail}`);
       }
@@ -1194,10 +934,11 @@ export default class APIOrchestrator implements IOrchestrator {
       participantDisplay.push("your child");
     }
 
-    const normalizedDelegate = this.normalizeDelegateForProvider(delegate);
-    const parentName = `${normalizedDelegate.firstName} ${normalizedDelegate.lastName}`.trim();
-    const parentDob = this.formatISODateForPrompt(normalizedDelegate.dateOfBirth);
-    const parentRel = this.safeTrim(normalizedDelegate.relationship);
+    const parentFirst = String(delegate.delegate_firstName || delegate.firstName || delegate.first_name || "").trim();
+    const parentLast = String(delegate.delegate_lastName || delegate.lastName || delegate.last_name || "").trim();
+    const parentName = `${parentFirst} ${parentLast}`.trim();
+    const parentDob = this.formatISODateForPrompt(delegate.delegate_dob || delegate.date_of_birth || delegate.dob);
+    const parentRel = String(delegate.delegate_relationship || delegate.relationship || "").trim();
 
     const sessionDate = context.selectedProgram?.earliest_slot_time
       ? this.formatTimeForUser(context.selectedProgram.earliest_slot_time, context)
@@ -1207,17 +948,10 @@ export default class APIOrchestrator implements IOrchestrator {
     const opensAtDisplay = scheduledIso ? this.formatTimeForUser(scheduledIso, context) : null;
 
     const feeCents = Number(fd?.program_fee_cents ?? context.schedulingData?.program_fee_cents ?? 0);
-    const priceString = String(context.selectedProgram?.price || "").trim();
-    const parsedBasePrice = priceString ? Number.parseFloat(priceString.replace(/[^0-9.]/g, "")) : NaN;
-    const basePriceCents =
-      Number.isFinite(parsedBasePrice) && parsedBasePrice > 0
-        ? Math.round(parsedBasePrice * 100)
-        : null;
-
     const formattedTotal =
       Number.isFinite(feeCents) && feeCents > 0
         ? formatCurrencyFromCents(feeCents)
-        : (priceString || "TBD");
+        : (context.selectedProgram?.price || "TBD");
     const successFee = formatCurrencyFromCents(2000);
 
     let msg = "Please review the details below:\n\n";
@@ -1241,38 +975,16 @@ export default class APIOrchestrator implements IOrchestrator {
       msg += `- **Set & forget:** We’ll register you the moment it opens.\n`;
       msg += `- **Charges now:** $0.00 (no charges unless registration succeeds)\n`;
     }
-    // For multiple children, show an equation: unit × N children = total
+    // For multiple children, calculate total program fee (program fee × child count)
     const numChildren = participantDisplay.length;
     let programFeeDisplay = formattedTotal;
     if (numChildren > 1) {
-      const approxEqual = (a: number, b: number) => Math.abs(a - b) <= 1;
-
-      if (Number.isFinite(feeCents) && feeCents > 0) {
-        // We *expect* program_fee_cents to be the TOTAL, but some older/stale sessions may carry a per-child amount.
-        // Use selectedProgram.price (when parseable) as a sanity check.
-        let totalCents = feeCents;
-        let unitCents = Math.round(totalCents / numChildren);
-
-        if (basePriceCents != null) {
-          if (approxEqual(feeCents, basePriceCents)) {
-            // Looks like per-child leaked in; compute total from unit × children.
-            unitCents = basePriceCents;
-            totalCents = basePriceCents * numChildren;
-          } else if (approxEqual(feeCents, basePriceCents * numChildren)) {
-            // Stored total matches expected total; use the displayed unit from the base price.
-            unitCents = basePriceCents;
-            totalCents = feeCents;
-          }
-        }
-
-        programFeeDisplay = `${formatCurrencyFromCents(unitCents)} × ${numChildren} children = ${formatCurrencyFromCents(totalCents)}`;
-      } else if (basePriceCents != null) {
-        const totalCents = basePriceCents * numChildren;
-        programFeeDisplay = `${formatCurrencyFromCents(basePriceCents)} × ${numChildren} children = ${formatCurrencyFromCents(totalCents)}`;
-      } else {
-        // Fallback: we don't have a numeric total or unit; keep the prior display without an equation total.
-        programFeeDisplay = `${formattedTotal} × ${numChildren} children`;
-      }
+      // Calculate and display total: "$50.00 × 2 children = $100.00"
+      const totalFeeCents = (Number.isFinite(feeCents) && feeCents > 0) ? feeCents * numChildren : 0;
+      const formattedTotalFee = totalFeeCents > 0 ? formatCurrencyFromCents(totalFeeCents) : '';
+      programFeeDisplay = formattedTotalFee 
+        ? `${formattedTotal} × ${numChildren} children = ${formattedTotalFee}`
+        : `${formattedTotal} × ${numChildren} children`;
     }
     msg += opensAtDisplay
       ? `- **Program Fee:** ${programFeeDisplay} (paid to provider only if we successfully register you when it opens)\n`
@@ -2479,8 +2191,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       // can restore wizardProgress / requested triad fields reliably.
       // ----------------------------------------------------------------
       try {
-        // Flush any coalesced (debounced) updateContext writes for this request.
-        await this.flushDebouncedPersist(contextSessionId);
         const pending = this.persistQueue.get(contextSessionId);
         if (pending) {
           await pending;
@@ -2559,9 +2269,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         const ignore = typeof payload?.ignoreAudienceMismatch === 'boolean' ? payload.ignoreAudienceMismatch : false;
         this.updateContext(sessionId, { 
           ignoreAudienceMismatch: ignore,
-          // Clear any prior "activity filter" state so "browse classes" truly shows everything.
-          requestedActivity: undefined,
-          requestedLocation: undefined,
           selectedProgram: null,
           step: FlowStep.BROWSE,
           wizardProgress: undefined,
@@ -2713,12 +2420,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             // Returning-user UX: prefill delegate fields from saved profile once per session.
             if (context.user_id && !context.delegatePrefillAttempted) {
               try {
-                const profileRes = await this.memoizedInvokeMCPTool(
-                  sessionId,
-                  "user.get_delegate_profile",
-                  { user_id: context.user_id },
-                  120_000
-                );
+                const profileRes = await this.invokeMCPTool("user.get_delegate_profile", { user_id: context.user_id });
                 const p = profileRes?.data?.profile;
                 if (p) {
                   const updated: Record<string, any> = { ...(context.formData || {}) };
@@ -2758,12 +2460,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               // Lazy-load children once per session if not already present
               if (!Array.isArray(context.savedChildren)) {
                 try {
-                  const listRes = await this.memoizedInvokeMCPTool(
-                    sessionId,
-                    "user.list_children",
-                    { user_id: context.user_id },
-                    120_000
-                  );
+                  const listRes = await this.invokeMCPTool("user.list_children", { user_id: context.user_id });
                   const children = Array.isArray(listRes?.data?.children) ? listRes.data.children : [];
                   context.savedChildren = children
                     .map((c: any) => {
@@ -2786,44 +2483,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               }
 
               const saved = Array.isArray(context.savedChildren) ? context.savedChildren : [];
-              // Filter out:
-              // - bogus saved-child rows that match the delegate (historical bug)
-              // - adult "children" (DOB implies age >= 18)
-              const dFirst = String((current as any)?.delegate_firstName || "").trim();
-              const dLast = String((current as any)?.delegate_lastName || "").trim();
-              const dDobRaw = String((current as any)?.delegate_dob || "").trim();
-              const dDob = dDobRaw ? (this.parseDateFromText(dDobRaw) || dDobRaw) : "";
-              const filteredSaved = saved.filter((c: any) => {
-                // Strict match (name + DOB) when available
-                if (this.looksLikeDelegateChild(c, current)) return false;
-
-                const cFirst = String(c?.first_name || "").trim();
-                const cLast = String(c?.last_name || "").trim();
-                const cDobRaw = String(c?.dob || "").trim();
-                const cDobIso = cDobRaw ? (this.parseDateFromText(cDobRaw) || cDobRaw) : "";
-
-                // Name-only delegate match: if names match and either DOB is missing (corrupted record),
-                // treat it as the delegate and exclude. If both DOBs exist and differ, keep (rare, but possible).
-                if (
-                  dFirst &&
-                  dLast &&
-                  cFirst &&
-                  cLast &&
-                  cFirst.toLowerCase() === dFirst.toLowerCase() &&
-                  cLast.toLowerCase() === dLast.toLowerCase()
-                ) {
-                  if (!cDobIso || !dDob) return false;
-                  if (String(cDobIso).slice(0, 10) === String(dDob).slice(0, 10)) return false;
-                }
-
-                // Adult filter (DOB implies age >= 18)
-                const ageYears = cDobIso
-                  ? this.computeAgeYearsFromISODate(String(cDobIso).slice(0, 10))
-                  : null;
-                if (ageYears != null && ageYears >= 18) return false;
-
-                return true;
-              });
+              const filteredSaved = saved.filter((c: any) => !this.looksLikeDelegateChild(c, current));
               if (filteredSaved.length !== saved.length) {
                 // Hide obviously-bad “saved child” records (historical bug: child == delegate).
                 // We persist the filtered list so the UX stays consistent across turns.
@@ -3045,76 +2705,20 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
             if (!alreadyTwoTier) {
               const delegate: Record<string, any> = {};
+              const participant: Record<string, any> = {};
               for (const f of context.requiredFields?.delegate || []) {
                 if (fd[f.key] != null) delegate[f.key] = fd[f.key];
               }
-
-              // Build a participant template from the flat schema-key formData (for non-name fields).
-              const participantTemplate: Record<string, any> = {};
-              const participantFields = (context.requiredFields?.participant || []).filter((f: any) => f?.key);
-              for (const f of participantFields) {
-                if (fd[f.key] != null) participantTemplate[f.key] = fd[f.key];
+              for (const f of context.requiredFields?.participant || []) {
+                if (fd[f.key] != null) participant[f.key] = fd[f.key];
               }
-
-              // If we have a multi-child selection in context, carry it forward into the two-tier payload
-              // so Review/ConfirmPayment sees all children (not just the first/last hydrated flat row).
-              const ctxParticipants: any[] =
-                (Array.isArray(context.pendingParticipants) && context.pendingParticipants.length > 0)
-                  ? context.pendingParticipants
-                  : (Array.isArray(context.participants) && context.participants.length > 0)
-                    ? context.participants
-                    : [];
-
-              const participants = (ctxParticipants.length > 0 ? ctxParticipants : [participantTemplate]).map((p: any) => {
-                const out: Record<string, any> = { ...participantTemplate };
-
-                const nameRaw = this.safeTrim(p?.name);
-                const first =
-                  this.safeTrim(p?.firstName ?? p?.first_name) ||
-                  (nameRaw ? this.safeTrim(nameRaw.split(/\s+/)[0]) : "");
-                const last =
-                  this.safeTrim(p?.lastName ?? p?.last_name) ||
-                  (nameRaw ? this.safeTrim(nameRaw.split(/\s+/).slice(1).join(" ")) : "");
-                const dobRaw = this.safeTrim(p?.dob ?? p?.dateOfBirth ?? p?.date_of_birth);
-                const dob = dobRaw ? (this.parseDateFromText(dobRaw) || dobRaw) : "";
-                const ageNum =
-                  typeof p?.age === "number"
-                    ? p.age
-                    : (this.safeTrim(p?.age) ? Number(this.safeTrim(p?.age)) : NaN);
-                const ageFromDob =
-                  dob ? this.computeAgeYearsFromISODate(String(dob).slice(0, 10)) : null;
-                const age = Number.isFinite(ageNum) ? ageNum : (ageFromDob != null ? ageFromDob : undefined);
-
-                // Fill required participant schema fields by heuristic (Bookeo uses a small stable set)
-                for (const f of participantFields) {
-                  const k = String(f.key || "");
-                  const lk = k.toLowerCase();
-                  if (first && lk.includes("first") && lk.includes("name")) out[k] = first;
-                  else if (last && lk.includes("last") && lk.includes("name")) out[k] = last;
-                  else if (dob && (lk.includes("dob") || lk.includes("birth"))) out[k] = dob;
-                  else if (age != null && lk.includes("age") && !lk.includes("stage")) out[k] = age;
-                }
-
-                // Always include normalized keys for downstream name display + provider normalization
-                if (first) out.firstName = first;
-                if (last) out.lastName = last;
-                if (dob) {
-                  out.dob = dob;
-                  if (out.dateOfBirth == null) out.dateOfBirth = dob;
-                  if (out.date_of_birth == null) out.date_of_birth = dob;
-                }
-                if (age != null && out.age == null) out.age = age;
-                if (!out.name && (first || last)) out.name = `${first} ${last}`.trim();
-
-                return out;
-              });
 
               payload = {
                 ...payload,
                 formData: {
                   delegate,
-                  participants,
-                  numParticipants: participants.length,
+                  participants: [participant],
+                  numParticipants: 1,
                 },
               };
             }
@@ -3544,20 +3148,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         []
       );
     }
-
-    // Defensive: enforce step invariants and sibling sub-state consistency before any further routing.
-    context = this.validateContextForStep(sessionId, context);
     
     // Batch sibling registration: handle "add another child?" response
     if (context.step === FlowStep.FORM_FILL && context.awaitingAdditionalChild) {
-      const rawTrimmed = String(input || "").trim();
-      const lowerInput = rawTrimmed.toLowerCase();
-      const isNo =
-                   /^\s*no\b/i.test(lowerInput) || // "no", "no thanks", "no all good", etc.
-                   /\ball\s+good\b/i.test(lowerInput) ||
-                   /\bthat's\s+all\b/i.test(lowerInput) ||
-                   /\bwe'?re\s+good\b/i.test(lowerInput) ||
-                   /^(no|n|nope|done|continue|proceed|finish|that's it|that's all|no thanks|no more)$/i.test(lowerInput) ||
+      const lowerInput = input.toLowerCase().trim();
+      const isNo = /^(no|n|nope|done|continue|proceed|finish|that's it|that's all|no thanks|no more)$/i.test(lowerInput) ||
                    lowerInput.includes('no more') || lowerInput.includes('continue to payment') || lowerInput.includes('done');
       
       if (isNo) {
@@ -3589,49 +3184,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
         const matchedChild = this.matchSavedChildFromInput(input, remainingSaved);
         if (matchedChild) {
-          // Safety guard: never allow an adult/delegate-like record to be added as a child
-          const fd: any = context.formData || {};
-          const delegateRaw =
-            (fd && typeof fd === "object" && (fd.delegate_data || fd.delegate)) ||
-            (fd?.formData && (fd.formData.delegate || fd.formData.delegate_data)) ||
-            context.pendingDelegateInfo ||
-            {};
-          const normalizedDelegate = this.normalizeDelegateForProvider(delegateRaw);
-          const delegateFormLike = {
-            delegate_firstName: normalizedDelegate.firstName,
-            delegate_lastName: normalizedDelegate.lastName,
-            delegate_dob: normalizedDelegate.dateOfBirth,
-          };
-
-          const matchedDobRaw = String((matchedChild as any)?.dob || "").trim();
-          const matchedDobIso = matchedDobRaw ? (this.parseDateFromText(matchedDobRaw) || matchedDobRaw) : "";
-          const matchedAgeYears = matchedDobIso ? this.computeAgeYearsFromISODate(String(matchedDobIso).slice(0, 10)) : null;
-          const isDelegateLike = this.looksLikeDelegateChild(
-            { first_name: matchedChild.first_name, last_name: matchedChild.last_name, dob: matchedChild.dob },
-            delegateFormLike
-          );
-          const isAdult = matchedAgeYears != null && matchedAgeYears >= 18;
-
-          if (isDelegateLike || isAdult) {
-            const filtered = remainingSaved.filter((c: any) => String(c.id) !== String((matchedChild as any).id));
-            const list = filtered.map((c: any, i: number) => `${i + 1}. ${c.display}`).join("\n");
-            const differentChildOption = `${filtered.length + 1}. Different child (enter new info)`;
-            this.updateContext(sessionId, {
-              awaitingAdditionalChild: true,
-              awaitingAdditionalChildInfo: false,
-              remainingSavedChildrenForSelection: filtered
-            });
-
-            return this.formatResponse(
-              `That saved participant looks like an **adult** (or matches the parent/guardian), so I won’t add it as a child.\n\n` +
-                (filtered.length > 0
-                  ? `**Your saved children:**\n${list}\n${differentChildOption}\n\nReply with a number, name, or \"no\" to continue.`
-                  : `Please type the child's **name and age** (e.g., \"Sarah Smith, 8\"), or reply \"no\" to continue.`),
-              undefined,
-              []
-            );
-          }
-
           // Add the matched saved child to participants
           const participants = context.participants || [];
           participants.push({
@@ -3834,45 +3386,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     let storedCity: string | undefined;
     let storedState: string | undefined;
     if (context.step === FlowStep.BROWSE) {
-
-    // ----------------------------------------------------------------------
-    // CRITICAL UX GUARD:
-    // If we already showed a program list, the user's next message is most
-    // likely a selection (number/title). Do NOT re-run activation/location
-    // discovery here, because inputs like "Marine Science" can hijack the flow
-    // and incorrectly trigger the STEM+city prompts.
-    // ----------------------------------------------------------------------
-    const hasDisplayedPrograms =
-      Array.isArray(context.displayedPrograms) && context.displayedPrograms.length > 0;
-    if (hasDisplayedPrograms) {
-      const selected = this.parseProgramSelection(input, context.displayedPrograms!);
-      if (selected) {
-        Logger.info('[handleMessage] ✅ BROWSE list active: selecting program from user input', {
-          source: 'browse_list_fast_path',
-          program_ref: selected.program_ref,
-          input_len: String(input || '').trim().length
-        });
-        return await this.selectProgram(
-          {
-            program_ref: selected.program_ref,
-            program_name: selected.title,
-            program_data: selected.program_data
-          },
-          sessionId,
-          context,
-          input
-        );
-      }
-    } else {
     
     if (context.user_id) {
       try {
-        const profileResult = await this.memoizedInvokeMCPTool(
-          sessionId,
-          'user.get_delegate_profile',
-          { user_id: context.user_id },
-          120_000
-        );
+        const profileResult = await this.invokeMCPTool('user.get_delegate_profile', {
+          user_id: context.user_id
+        });
         if (profileResult?.data?.profile) {
           storedCity = profileResult.data.profile.city;
           storedState = profileResult.data.profile.state;
@@ -4113,7 +3632,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       });
     }
     }
-    }
 
     // LOW confidence for AUTHENTICATED users: Context-aware responses based on flow step
     // Also handles ChatGPT NL parsing for form fill and payment steps
@@ -4209,15 +3727,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         if (this.hasSignupIntent(input) || this.hasProgramWords(input)) {
           const orgRef = context.orgRef || "aim-design";
           // Wizard UX: treat explicit browse/signup intent as a fresh Step 1 turn (no "continued").
-          this.updateContext(sessionId, {
-            orgRef,
-            // Clear any stale activity/location filters from prior sessions so we show the full catalog.
-            requestedActivity: undefined,
-            requestedLocation: undefined,
-            pendingProviderConfirmation: undefined,
-            step: FlowStep.BROWSE,
-            wizardProgress: undefined
-          });
+          this.updateContext(sessionId, { orgRef, pendingProviderConfirmation: undefined, step: FlowStep.BROWSE, wizardProgress: undefined });
           return await this.searchPrograms(orgRef, sessionId);
         }
 
@@ -4583,12 +4093,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         if (indicatesPaymentDone) {
           Logger.info('[Payment] User indicates payment method setup is done, checking status...');
           if (context.user_id) {
-            const checkRes = await this.memoizedInvokeMCPTool(
-              sessionId,
-              'stripe.check_payment_status',
-              { user_id: context.user_id },
-              15_000
-            );
+            const checkRes = await this.invokeMCPTool('stripe.check_payment_status', { user_id: context.user_id });
             if (checkRes.success && checkRes.data?.hasPaymentMethod) {
               const { last4, brand } = checkRes.data;
               // After payment method is confirmed, proceed to REVIEW (final consent).
@@ -4676,12 +4181,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
         // If we know a card exists but don't have display details yet, fetch once from source-of-truth.
         if (!display && context.user_id && context.hasPaymentMethod) {
-          const checkRes = await this.memoizedInvokeMCPTool(
-            sessionId,
-            "stripe.check_payment_status",
-            { user_id: context.user_id },
-            15_000
-          );
+          const checkRes = await this.invokeMCPTool("stripe.check_payment_status", { user_id: context.user_id });
           if (checkRes.success && checkRes.data?.hasPaymentMethod) {
             const { last4, brand } = checkRes.data;
             this.updateContext(sessionId, {
@@ -6589,22 +6089,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     try {
       Logger.info("[confirmPayment] Starting immediate booking flow");
 
-      // ChatGPT reliability: if a booking just completed and we receive a duplicate confirm_payment
-      // call (retry), replay the last completion instead of attempting to book again.
-      if (context.step === FlowStep.COMPLETED && context.lastCompletion?.kind === "immediate" && context.lastCompletion?.message) {
-        const completedAtMs = Date.parse(String(context.lastCompletion.completed_at || ""));
-        const ageMs = Number.isFinite(completedAtMs) ? Date.now() - completedAtMs : NaN;
-        const isRecent = Number.isFinite(ageMs) && ageMs >= 0 && ageMs < this.getBookingIdempotencyWindowMs();
-        if (isRecent) {
-          return this.formatResponse(
-            `${context.lastCompletion.message}\n\nIf you'd like to sign up for another class, say **browse classes**.`,
-            undefined,
-            undefined,
-            { skipWizardProgress: true }
-          );
-        }
-      }
-
       // ⚠️ HARD STEP GATE: Must have selected a program
       if (!context.selectedProgram?.program_ref) {
         Logger.warn('[confirmPayment] ⛔ STEP GATE: No selected program - cannot proceed');
@@ -6654,66 +6138,35 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         keys: formData ? Object.keys(formData) : []
       });
       
-      const delegate_data =
-        (formData as any)?.delegate_data ||
-        (formData as any)?.delegate ||
-        (formData as any)?.formData?.delegate_data ||
-        (formData as any)?.formData?.delegate ||
-        {};
-      const participant_data =
-        (formData as any)?.participant_data ||
-        (formData as any)?.participants ||
-        (formData as any)?.formData?.participant_data ||
-        (formData as any)?.formData?.participants ||
-        [];
-      const num_participants = (formData as any)?.num_participants;
+      const delegate_data = formData?.delegate_data;
+      const participant_data = formData?.participant_data;
+      const num_participants = formData?.num_participants;
       const event_id = payload.event_id || formData?.event_id;
       
       const programName = context.selectedProgram?.title || "program";
       const programRef = context.selectedProgram?.program_ref;
       const orgRef = context.selectedProgram?.org_ref || context.orgRef;
 
-      const normalizedDelegate = this.normalizeDelegateForProvider(delegate_data);
-      const normalizedParticipants = this.normalizeParticipantsForProvider(participant_data);
-
-      const derivedNumParticipants = normalizedParticipants.length > 0 ? normalizedParticipants.length : 0;
-      const requestedNumParticipants = Number(num_participants);
-      const finalNumParticipants =
-        Number.isFinite(requestedNumParticipants) && requestedNumParticipants > 0
-          ? requestedNumParticipants
-          : derivedNumParticipants;
-
-      // Validation with detailed logging (no PII)
-      if (!event_id || !programRef || !orgRef || derivedNumParticipants < 1) {
+      // Validation with detailed logging
+      if (!delegate_data || !participant_data || !event_id || !programRef || !orgRef) {
         Logger.error("[confirmPayment] Missing required data", {
           has_formData: !!formData,
-          has_delegate_obj: !!delegate_data,
-          participant_count: derivedNumParticipants,
+          has_delegate: !!delegate_data,
+          has_participants: !!participant_data,
           has_event_id: !!event_id,
           has_program_ref: !!programRef,
           // Log what we actually have
-          delegate_keys: delegate_data ? Object.keys(delegate_data) : 'MISSING',
-          participant_type: Array.isArray(participant_data) ? 'array' : typeof participant_data
+          delegate_data_preview: delegate_data ? 'exists' : 'MISSING',
+          participant_data_preview: participant_data ? 'exists' : 'MISSING'
         });
         return this.formatError("Missing required booking information. Please try again.");
-      }
-      if (!normalizedDelegate.firstName || !normalizedDelegate.lastName || !normalizedDelegate.email) {
-        Logger.error("[confirmPayment] Missing critical delegate fields after normalization", {
-          hasFirstName: !!normalizedDelegate.firstName,
-          hasLastName: !!normalizedDelegate.lastName,
-          hasEmail: !!normalizedDelegate.email,
-          delegate_keys: delegate_data ? Object.keys(delegate_data) : 'MISSING'
-        });
-        return this.formatError(
-          "Missing parent/guardian information. Please provide your name and email address."
-        );
       }
 
       Logger.info("[confirmPayment] Validated booking data", { 
         program_ref: programRef, 
         org_ref: orgRef,
-        num_participants: finalNumParticipants,
-        num_participants_in_array: derivedNumParticipants
+        num_participants,
+        num_participants_in_array: participant_data.length
       });
 
       // PART 2.5: Validate booking window using Bookeo's rules
@@ -6781,7 +6234,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       
       if (!userId) {
         Logger.warn("[confirmPayment] No user_id in context or payload - attempting email lookup");
-        const delegateEmail = normalizedDelegate.email;
+        const delegateEmail = delegate_data.delegate_email || delegate_data.email;
         
         if (delegateEmail) {
           const supabase = this.getSupabaseClient();
@@ -6801,53 +6254,44 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         }
       }
 
-      // Normalize to provider canonical shapes (null-safe)
-      const mappedDelegateData = normalizedDelegate;
-      const mappedParticipantData = normalizedParticipants.map((p: any) => ({
+      // Map form field names to Bookeo API format (API-first, ChatGPT compliant)
+      // IMPORTANT: Null-safe extraction - delegate_data may have different field structures
+      const mappedDelegateData = {
+        firstName: String(delegate_data?.delegate_firstName || delegate_data?.firstName || '').trim(),
+        lastName: String(delegate_data?.delegate_lastName || delegate_data?.lastName || '').trim(),
+        email: String(delegate_data?.delegate_email || delegate_data?.email || '').trim(),
+        phone: delegate_data?.delegate_phone || delegate_data?.phone || undefined,
+        dateOfBirth: delegate_data?.delegate_dob || delegate_data?.dateOfBirth || delegate_data?.dob || undefined,
+        relationship: delegate_data?.delegate_relationship || delegate_data?.relationship || undefined
+      };
+      
+      // Log for debugging multi-child booking issues
+      Logger.info("[confirmPayment] Mapped delegate data", {
+        hasFirstName: !!mappedDelegateData.firstName,
+        hasLastName: !!mappedDelegateData.lastName,
+        hasEmail: !!mappedDelegateData.email,
+        source_keys: delegate_data ? Object.keys(delegate_data) : 'null'
+      });
+      
+      // Validate critical delegate fields
+      if (!mappedDelegateData.firstName || !mappedDelegateData.lastName || !mappedDelegateData.email) {
+        Logger.error("[confirmPayment] Missing critical delegate fields after mapping", {
+          firstName: mappedDelegateData.firstName || 'MISSING',
+          lastName: mappedDelegateData.lastName || 'MISSING',
+          email: mappedDelegateData.email || 'MISSING'
+        });
+        return this.formatError(
+          "Missing parent/guardian information. Please provide your name and email address."
+        );
+      }
+
+      const mappedParticipantData = participant_data.map((p: any) => ({
         firstName: p.firstName,
         lastName: p.lastName,
-        dateOfBirth: p.dateOfBirth,
-        grade: p.grade,
+        dateOfBirth: p.dob,  // Form uses 'dob', API expects 'dateOfBirth'
+        grade: p.grade
         // allergies field REMOVED for ChatGPT App Store compliance (PHI prohibition)
       }));
-
-      // ----------------------------------------------------------------
-      // Booking idempotency guard (ChatGPT retries / duplicate tool calls)
-      // ----------------------------------------------------------------
-      const bookingKey = this.buildBookingIdempotencyKey({
-        program_ref: String(programRef || ""),
-        event_id: String(event_id || ""),
-        participant_count: finalNumParticipants,
-        delegate_email: String(mappedDelegateData.email || ""),
-      });
-      const priorAttempt = context.bookingAttempt;
-      if (priorAttempt?.key === bookingKey && priorAttempt.status === "in_flight") {
-        const startedAtMs = Date.parse(String(priorAttempt.started_at || ""));
-        const ageMs = Number.isFinite(startedAtMs) ? Date.now() - startedAtMs : NaN;
-        const isRecent = Number.isFinite(ageMs) && ageMs >= 0 && ageMs < this.getBookingIdempotencyWindowMs();
-        if (isRecent) {
-          return this.formatResponse(
-            `I'm already working on that booking. Please wait a moment.\n\nIf it still doesn’t complete, say **view my registrations**.`,
-            undefined,
-            undefined,
-            { skipWizardProgress: true }
-          );
-        }
-      }
-
-      // Mark as in-flight (await persistence so other Railway instances can see it)
-      try {
-        await this.updateContextAndAwait(sessionId, {
-          bookingAttempt: { key: bookingKey, started_at: new Date().toISOString(), status: "in_flight" }
-        });
-        context = this.getContext(sessionId);
-      } catch {
-        // Best-effort fallback: still set in memory
-        this.updateContext(sessionId, {
-          bookingAttempt: { key: bookingKey, started_at: new Date().toISOString(), status: "in_flight" }
-        });
-        context = this.getContext(sessionId);
-      }
 
       // PART 5: Create mandate BEFORE booking (for audit compliance)
       Logger.info("[confirmPayment] Creating mandate for audit trail...");
@@ -6885,13 +6329,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         org_ref: orgRef,
         delegate_data: mappedDelegateData,
         participant_data: mappedParticipantData,
-        num_participants: finalNumParticipants
+        num_participants
       }, { mandate_id, user_id: userId }); // Pass audit context for ChatGPT compliance
 
       if (!bookingResponse.success || !bookingResponse.data?.booking_number) {
         Logger.error("[confirmPayment] Booking failed", bookingResponse);
-        // Allow retries after failure
-        this.updateContext(sessionId, { bookingAttempt: undefined });
         return this.formatError(
           bookingResponse.error?.display || "Failed to create booking. Please try again."
         );
@@ -6962,11 +6404,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       // Step 4: Create registration record for receipts/audit trail
       if (userId) {
         try {
-          const delegateName = `${mappedDelegateData.firstName || ''} ${mappedDelegateData.lastName || ''}`.trim();
-          const delegateEmail = mappedDelegateData.email || '';
-          const participantNames = mappedParticipantData
-            .map((p: any) => `${p.firstName || ''} ${p.lastName || ''}`.trim())
-            .filter((name: string) => name.length > 0);
+          const delegateName = `${delegate_data.delegate_firstName || ''} ${delegate_data.delegate_lastName || ''}`.trim();
+          const delegateEmail = delegate_data.delegate_email || delegate_data.email || '';
+          const participantNames = participant_data.map((p: any) => 
+            `${p.firstName || ''} ${p.lastName || ''}`.trim()
+          ).filter((name: string) => name.length > 0);
           
           // Get program cost from context formData (stored in submitForm)
           const amountCents = context.formData?.program_fee_cents || 0;
@@ -7053,7 +6495,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         stripeCheckoutUrl: undefined,
         stripeCheckoutSessionId: undefined,
         stripeCheckoutCreatedAt: undefined,
-        bookingAttempt: undefined,
         // Keep delegate info for sibling registration (only email and name, not PII)
         pendingDelegateInfo: context.pendingDelegateInfo ? {
           email: context.pendingDelegateInfo.email,
@@ -7104,12 +6545,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       return successResponse;
     } catch (error) {
       Logger.error("[confirmPayment] Unexpected error:", error);
-      // Best-effort: clear in-flight dedupe so user can retry
-      try {
-        this.updateContext(sessionId, { bookingAttempt: undefined });
-      } catch {
-        // ignore
-      }
       return this.formatError("Booking failed due to unexpected error. Please contact support.");
     }
   }
@@ -9073,12 +8508,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     Logger.info('[loadSavedChildren] Loading saved children via MCP tool', { userId });
     
     try {
-      const result = await this.memoizedInvokeMCPTool(
-        sessionId,
-        'user.list_children',
-        { user_id: userId },
-        120_000
-      );
+      const result = await this.invokeMCPTool('user.list_children', { user_id: userId });
       
       if (!result?.success) {
         Logger.warn('[loadSavedChildren] MCP tool failed:', result?.error);
@@ -9301,12 +8731,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const userId = context.user_id || payload.user_id;
       if (userId) {
         try {
-          const listRes = await this.memoizedInvokeMCPTool(
-            sessionId,
-            'user.list_children',
-            { user_id: userId },
-            120_000
-          );
+          const listRes = await this.invokeMCPTool('user.list_children', { user_id: userId });
           const children = listRes?.data?.children || [];
           const match = children.find((c: any) => c.id === payload.child_id);
           if (match) {
@@ -9684,12 +9109,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     Logger.info('[loadDelegateProfile] Loading delegate profile via MCP tool', { userId });
     
     try {
-      const result = await this.memoizedInvokeMCPTool(
-        sessionId,
-        'user.get_delegate_profile',
-        { user_id: userId },
-        120_000
-      );
+      const result = await this.invokeMCPTool('user.get_delegate_profile', { user_id: userId });
       
       if (!result?.success) {
         Logger.warn('[loadDelegateProfile] MCP tool failed:', result?.error);
@@ -9917,55 +9337,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     return next;
   }
 
-  private getPersistDebounceMs(): number {
-    const raw = Number(process.env.MCP_SESSION_PERSIST_DEBOUNCE_MS || 25);
-    if (!Number.isFinite(raw) || raw < 0) return 25;
-    // Clamp to sane bounds (0ms disables debounce)
-    return Math.max(0, Math.min(raw, 500));
-  }
-
-  private enqueuePersistDebounced(sessionId: string, context: APIContext): Promise<void> {
-    const ms = this.getPersistDebounceMs();
-    if (ms <= 0) return this.enqueuePersist(sessionId, context);
-
-    const existing = this.persistDebounce.get(sessionId);
-    if (existing) {
-      existing.latest = context;
-      clearTimeout(existing.timer);
-      existing.timer = setTimeout(() => {
-        // Fire-and-forget; the stored promise will resolve/reject.
-        void this.flushDebouncedPersist(sessionId);
-      }, ms);
-      return existing.promise;
-    }
-
-    let resolve!: () => void;
-    let reject!: (e: any) => void;
-    const promise = new Promise<void>((res, rej) => {
-      resolve = res;
-      reject = rej;
-    });
-    const timer = setTimeout(() => {
-      void this.flushDebouncedPersist(sessionId);
-    }, ms);
-    this.persistDebounce.set(sessionId, { timer, latest: context, promise, resolve, reject });
-    return promise;
-  }
-
-  private async flushDebouncedPersist(sessionId: string): Promise<void> {
-    const state = this.persistDebounce.get(sessionId);
-    if (!state) return;
-    clearTimeout(state.timer);
-    this.persistDebounce.delete(sessionId);
-
-    try {
-      await this.enqueuePersist(sessionId, state.latest);
-      state.resolve();
-    } catch (e) {
-      state.reject(e);
-    }
-  }
-
   /**
    * Get session context (auto-initialize if needed)
    * Now checks Supabase if not in memory (for ChatGPT multi-turn support)
@@ -10013,67 +9384,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     return newContext;
   }
 
-  private normalizeSiblingFlowUpdates(current: APIContext, updates: Partial<APIContext>): Partial<APIContext> {
-    const u: Partial<APIContext> = { ...updates };
-    const hasOwn = (k: string) => Object.prototype.hasOwnProperty.call(updates as any, k);
-    const nextStep: FlowStep = (u.step !== undefined ? (u.step as FlowStep) : current.step);
-
-    // Entering FORM_FILL: reset sibling sub-state unless explicitly set in this patch.
-    if (nextStep === FlowStep.FORM_FILL && current.step !== FlowStep.FORM_FILL) {
-      if (!hasOwn("awaitingAdditionalChild")) u.awaitingAdditionalChild = false;
-      if (!hasOwn("awaitingAdditionalChildInfo")) u.awaitingAdditionalChildInfo = false;
-      if (!hasOwn("remainingSavedChildrenForSelection")) u.remainingSavedChildrenForSelection = undefined;
-    }
-
-    // Sibling sub-state should only be active in FORM_FILL. Clear it when leaving (or outside) FORM_FILL.
-    if (nextStep !== FlowStep.FORM_FILL) {
-      if (
-        current.awaitingAdditionalChild ||
-        current.awaitingAdditionalChildInfo ||
-        current.remainingSavedChildrenForSelection ||
-        hasOwn("awaitingAdditionalChild") ||
-        hasOwn("awaitingAdditionalChildInfo") ||
-        hasOwn("remainingSavedChildrenForSelection")
-      ) {
-        u.awaitingAdditionalChild = false;
-        u.awaitingAdditionalChildInfo = false;
-        u.remainingSavedChildrenForSelection = undefined;
-      }
-      return u;
-    }
-
-    // FORM_FILL: enforce mutual exclusivity.
-    if (u.awaitingAdditionalChildInfo === true) {
-      u.awaitingAdditionalChild = false;
-      u.remainingSavedChildrenForSelection = undefined;
-    }
-
-    if (u.awaitingAdditionalChild === true) {
-      u.awaitingAdditionalChildInfo = false;
-      // If we are showing a simple yes/no prompt, clear any stale saved-child list.
-      if (!hasOwn("remainingSavedChildrenForSelection")) {
-        u.remainingSavedChildrenForSelection = undefined;
-      }
-    }
-
-    if (u.awaitingAdditionalChild === false) {
-      // Leaving the prompt state -> clear any stale saved-child list.
-      u.remainingSavedChildrenForSelection = undefined;
-    }
-
-    if (hasOwn("remainingSavedChildrenForSelection")) {
-      const list = Array.isArray(u.remainingSavedChildrenForSelection) ? u.remainingSavedChildrenForSelection : [];
-      if (list.length > 0) {
-        u.awaitingAdditionalChild = true;
-        u.awaitingAdditionalChildInfo = false;
-      } else {
-        u.remainingSavedChildrenForSelection = undefined;
-      }
-    }
-
-    return u;
-  }
-
   /**
    * Update session context (now also persists to Supabase)
    * ENHANCED: Added detailed tracing to debug session persistence issues
@@ -10108,9 +9418,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     if (updates.step !== undefined && updates.step !== current.step) {
       updates.wizardProgress = undefined;
     }
-
-    // Sibling flow invariants: ensure sibling sub-states don't conflict and don't leak across steps.
-    updates = this.normalizeSiblingFlowUpdates(current, updates);
     
     const updated = { ...current, ...updates };
     this.sessions.set(sessionId, updated);
@@ -10127,8 +9434,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     
     this.debugLog('[updateContext] TRACE: Updating session', tracePayload);
     
-    // Async persist to DB (coalesced; flushes before response return for durability)
-    this.enqueuePersistDebounced(sessionId, updated)
+    // Async persist to DB (fire-and-forget for performance)
+    this.enqueuePersist(sessionId, updated)
       .then(() => {
         this.debugLog('[updateContext] TRACE: Persist completed', { sessionId });
       })
@@ -10171,9 +9478,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     if (updates.step !== undefined && updates.step !== current.step) {
       updates.wizardProgress = undefined;
     }
-
-    // Sibling flow invariants: ensure sibling sub-states don't conflict and don't leak across steps.
-    updates = this.normalizeSiblingFlowUpdates(current, updates);
     
     const updated = { ...current, ...updates };
     this.sessions.set(sessionId, updated);
