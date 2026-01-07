@@ -684,6 +684,90 @@ export default class APIOrchestrator implements IOrchestrator {
     return email || undefined;
   }
 
+  /**
+   * Best-effort recovery for required delegate fields used by Bookeo booking payloads.
+   * We must have: firstName, lastName, email.
+   *
+   * Sources (in priority order):
+   * - current delegate_data (from formData)
+   * - pendingDelegateInfo (parsed from chat)
+   * - user.get_delegate_profile (saved profile)
+   * - supabase auth user email (admin lookup) as a last resort for email
+   */
+  private async recoverDelegateDataForBooking(
+    sessionId: string,
+    context: APIContext,
+    delegate_data: any
+  ): Promise<any> {
+    const d = (delegate_data && typeof delegate_data === "object") ? { ...delegate_data } : {};
+
+    let firstName = String(d?.delegate_firstName || d?.delegate_firstname || d?.delegateFirstName || d?.firstName || d?.first_name || "").trim();
+    let lastName = String(d?.delegate_lastName || d?.delegate_lastname || d?.delegateLastName || d?.lastName || d?.last_name || "").trim();
+    let email = String(d?.delegate_email || d?.email || d?.emailAddress || d?.email_address || "").trim();
+
+    // Pending parsed info (chat)
+    const pending = context.pendingDelegateInfo || {};
+    if (!firstName && pending.firstName) firstName = String(pending.firstName).trim();
+    if (!lastName && pending.lastName) lastName = String(pending.lastName).trim();
+    if (!email) {
+      const fromPending = pending.email ? String(pending.email).trim() : "";
+      const fromContext = this.resolveDelegateEmailFromContext(context) || "";
+      email = String(fromPending || fromContext || "").trim();
+    }
+
+    const userId = context.user_id;
+
+    // Saved profile (delegate_profiles)
+    if (userId && (!firstName || !lastName)) {
+      try {
+        const profRes = await this.invokeMCPTool("user.get_delegate_profile", { user_id: userId });
+        const p = profRes?.data?.profile;
+        if (p) {
+          if (!firstName && p.first_name) firstName = String(p.first_name).trim();
+          if (!lastName && p.last_name) lastName = String(p.last_name).trim();
+          // Some deployments may store email on delegate_profiles; if present, use it.
+          if (!email && p.email) email = String(p.email).trim();
+
+          // Also backfill optional fields if present
+          if (p.phone && d.delegate_phone == null && d.phone == null) d.delegate_phone = p.phone;
+          if (p.date_of_birth && d.delegate_dob == null && d.dob == null) d.delegate_dob = String(p.date_of_birth);
+          if (p.default_relationship && d.delegate_relationship == null && d.relationship == null) {
+            d.delegate_relationship = String(p.default_relationship);
+          }
+        }
+      } catch (e) {
+        Logger.warn("[recoverDelegateDataForBooking] Failed to load delegate profile (non-fatal)", e);
+      }
+    }
+
+    // Last resort: email from Supabase auth user record
+    if (userId && !email) {
+      try {
+        const supabase = this.getSupabaseClient();
+        const res = await supabase.auth.admin.getUserById(userId);
+        const authEmail = res?.data?.user?.email;
+        if (authEmail) email = String(authEmail).trim();
+      } catch (e) {
+        Logger.warn("[recoverDelegateDataForBooking] Failed to load auth user email (non-fatal)", e);
+      }
+    }
+
+    if (firstName) {
+      d.delegate_firstName = d.delegate_firstName || firstName;
+      d.firstName = d.firstName || firstName;
+    }
+    if (lastName) {
+      d.delegate_lastName = d.delegate_lastName || lastName;
+      d.lastName = d.lastName || lastName;
+    }
+    if (email) {
+      d.delegate_email = d.delegate_email || email;
+      d.email = d.email || email;
+    }
+
+    return d;
+  }
+
   private fieldLabelForPrompt(group: "delegate" | "participant", rawLabel: string): string {
     const s = String(rawLabel || "").trim() || (group === "delegate" ? "Parent/guardian info" : "Child info");
     const lower = s.toLowerCase();
@@ -6074,6 +6158,20 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     }
 
     Logger.info('[submitForm] All required fields collected; transitioning to REVIEW phase');
+
+    // Ensure the review summary includes the required parent/guardian info used by provider booking.
+    // (Some Bookeo schemas do not mark name fields as required, but Bookeo booking still needs them.)
+    try {
+      const ctxNow = this.getContext(sessionId);
+      const fdNow: any = ctxNow.formData || {};
+      const recoveredDelegate = await this.recoverDelegateDataForBooking(sessionId, ctxNow, fdNow?.delegate_data);
+      if (recoveredDelegate && recoveredDelegate !== fdNow?.delegate_data) {
+        this.updateContext(sessionId, { formData: { ...fdNow, delegate_data: recoveredDelegate } });
+      }
+    } catch (e) {
+      Logger.warn("[submitForm] Failed to recover delegate fields for review (non-fatal):", e);
+    }
+
     return this.formatResponse(this.buildReviewSummaryFromContext(this.getContext(sessionId)));
   }
 
@@ -6128,7 +6226,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       }
 
       // Get booking data from payload (primary) or context (fallback)
-      const formData = payload.formData || context.formData;
+      let formData: any = payload.formData || context.formData;
       
       // Avoid logging raw formData (can contain PII). Only log high-level shape.
       Logger.info("[confirmPayment] 🔍 FormData source:", {
@@ -6138,7 +6236,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         keys: formData ? Object.keys(formData) : []
       });
       
-      const delegate_data = formData?.delegate_data;
+      let delegate_data = formData?.delegate_data;
       const participant_data = formData?.participant_data;
       const num_participants = formData?.num_participants;
       const event_id = payload.event_id || formData?.event_id;
@@ -6252,6 +6350,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             Logger.warn("[confirmPayment] Could not find user_id via email lookup");
           }
         }
+      }
+
+      // Recover missing delegate fields (first/last/email) from saved profile / auth record as needed.
+      // This avoids "Missing parent/guardian information" at booking time when schema didn't force collection.
+      delegate_data = await this.recoverDelegateDataForBooking(sessionId, context, delegate_data);
+      if (delegate_data && formData?.delegate_data !== delegate_data) {
+        formData = { ...(formData || {}), delegate_data };
+        this.updateContext(sessionId, { formData });
       }
 
       // Map form field names to Bookeo API format (API-first, ChatGPT compliant)
