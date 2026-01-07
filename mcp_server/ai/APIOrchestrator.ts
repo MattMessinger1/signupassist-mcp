@@ -3707,6 +3707,36 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     let storedCity: string | undefined;
     let storedState: string | undefined;
     if (context.step === FlowStep.BROWSE) {
+
+    // ----------------------------------------------------------------------
+    // CRITICAL UX GUARD:
+    // If we already showed a program list, the user's next message is most
+    // likely a selection (number/title). Do NOT re-run activation/location
+    // discovery here, because inputs like "Marine Science" can hijack the flow
+    // and incorrectly trigger the STEM+city prompts.
+    // ----------------------------------------------------------------------
+    const hasDisplayedPrograms =
+      Array.isArray(context.displayedPrograms) && context.displayedPrograms.length > 0;
+    if (hasDisplayedPrograms) {
+      const selected = this.parseProgramSelection(input, context.displayedPrograms!);
+      if (selected) {
+        Logger.info('[handleMessage] ✅ BROWSE list active: selecting program from user input', {
+          source: 'browse_list_fast_path',
+          program_ref: selected.program_ref,
+          input_len: String(input || '').trim().length
+        });
+        return await this.selectProgram(
+          {
+            program_ref: selected.program_ref,
+            program_name: selected.title,
+            program_data: selected.program_data
+          },
+          sessionId,
+          context,
+          input
+        );
+      }
+    } else {
     
     if (context.user_id) {
       try {
@@ -3954,6 +3984,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         hasSelectedProgram: !!context.selectedProgram,
         hasPendingProviderConfirmation: !!context.pendingProviderConfirmation,
       });
+    }
     }
     }
 

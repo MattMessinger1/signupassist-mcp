@@ -391,6 +391,54 @@ async function testDelegateLikeChildIsNotSelectable() {
   );
 }
 
+async function testBrowseSelectionDoesNotTriggerActivityLocationPrompts() {
+  const orch = new APIOrchestrator({ tools: new Map() });
+  const sessionId = "regression-browse-selection-fastpath";
+
+  // Prevent any DB persistence paths in this regression.
+  orch.updateContextAndAwait = async (sid, patch) => {
+    orch.updateContext(sid, patch);
+  };
+
+  // Stub selectProgram so we don't pull schemas/tools in this regression.
+  orch.selectProgram = async (payload) => {
+    return { message: `SELECTED:${payload?.program_ref || "none"}` };
+  };
+
+  orch.sessions.set(sessionId, {
+    step: "BROWSE",
+    orgRef: "aim-design",
+    displayedPrograms: [
+      {
+        title: "CLASS 1: Kids Ski Jumping – Beginner Level Age 7-11",
+        program_ref: "REF_1",
+        program_data: { title: "CLASS 1: Kids Ski Jumping – Beginner Level Age 7-11", program_ref: "REF_1", org_ref: "aim-design" },
+      },
+      {
+        title: "CLASS 2: STEM Robotics Lab – Intro to Sensors (Ages 9–13)",
+        program_ref: "REF_2",
+        program_data: { title: "CLASS 2: STEM Robotics Lab – Intro to Sensors (Ages 9–13)", program_ref: "REF_2", org_ref: "aim-design" },
+      },
+      {
+        // Contains "Science" which previously could hijack to activity+city prompts
+        title: "CLASS 3: Ocean Explorers – Marine Science for Kids (Ages 7–11)",
+        program_ref: "REF_3",
+        program_data: { title: "CLASS 3: Ocean Explorers – Marine Science for Kids (Ages 7–11)", program_ref: "REF_3", org_ref: "aim-design" },
+      },
+      {
+        title: "Coding Course",
+        program_ref: "REF_4",
+        program_data: { title: "Coding Course", program_ref: "REF_4", org_ref: "aim-design" },
+      },
+    ],
+  });
+
+  const ctx = orch.getContext(sessionId);
+  const resp = await orch.handleMessage("CLASS 3: Ocean Explorers – Marine Science for Kids (Ages 7–11)", sessionId, ctx);
+  assert.ok(resp?.message?.includes("SELECTED:REF_3"), "Should select the program, not ask for city/age");
+  assert.ok(!/what city are you in\\?/i.test(resp?.message || ""), "Should not trigger location prompt during selection");
+}
+
 async function run() {
   await testHiddenProgramFiltering();
   await testSiblingChildCaptureAndReviewFallback();
@@ -400,6 +448,7 @@ async function run() {
   await testBookingIdempotencyAndNormalization();
   await testProgramFeeEquationUsesTotal();
   await testDelegateLikeChildIsNotSelectable();
+  await testBrowseSelectionDoesNotTriggerActivityLocationPrompts();
   console.log("✅ PASS: sibling add-child + hidden closed program + saved child selection + idempotency + fee + delegate-child regressions");
 }
 
