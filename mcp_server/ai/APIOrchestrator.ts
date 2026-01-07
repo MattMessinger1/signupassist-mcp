@@ -1207,10 +1207,17 @@ export default class APIOrchestrator implements IOrchestrator {
     const opensAtDisplay = scheduledIso ? this.formatTimeForUser(scheduledIso, context) : null;
 
     const feeCents = Number(fd?.program_fee_cents ?? context.schedulingData?.program_fee_cents ?? 0);
+    const priceString = String(context.selectedProgram?.price || "").trim();
+    const parsedBasePrice = priceString ? Number.parseFloat(priceString.replace(/[^0-9.]/g, "")) : NaN;
+    const basePriceCents =
+      Number.isFinite(parsedBasePrice) && parsedBasePrice > 0
+        ? Math.round(parsedBasePrice * 100)
+        : null;
+
     const formattedTotal =
       Number.isFinite(feeCents) && feeCents > 0
         ? formatCurrencyFromCents(feeCents)
-        : (context.selectedProgram?.price || "TBD");
+        : (priceString || "TBD");
     const successFee = formatCurrencyFromCents(2000);
 
     let msg = "Please review the details below:\n\n";
@@ -1234,19 +1241,36 @@ export default class APIOrchestrator implements IOrchestrator {
       msg += `- **Set & forget:** We’ll register you the moment it opens.\n`;
       msg += `- **Charges now:** $0.00 (no charges unless registration succeeds)\n`;
     }
-    // For multiple children, calculate total program fee (program fee × child count)
+    // For multiple children, show an equation: unit × N children = total
     const numChildren = participantDisplay.length;
     let programFeeDisplay = formattedTotal;
     if (numChildren > 1) {
-      // IMPORTANT: program_fee_cents is the TOTAL for all children (not per-child).
-      // Display the equation as: unit × N children = total
+      const approxEqual = (a: number, b: number) => Math.abs(a - b) <= 1;
+
       if (Number.isFinite(feeCents) && feeCents > 0) {
-        const unitCents = Math.round(feeCents / numChildren);
-        const unit = formatCurrencyFromCents(unitCents);
-        const total = formatCurrencyFromCents(feeCents);
-        programFeeDisplay = `${unit} × ${numChildren} children = ${total}`;
+        // We *expect* program_fee_cents to be the TOTAL, but some older/stale sessions may carry a per-child amount.
+        // Use selectedProgram.price (when parseable) as a sanity check.
+        let totalCents = feeCents;
+        let unitCents = Math.round(totalCents / numChildren);
+
+        if (basePriceCents != null) {
+          if (approxEqual(feeCents, basePriceCents)) {
+            // Looks like per-child leaked in; compute total from unit × children.
+            unitCents = basePriceCents;
+            totalCents = basePriceCents * numChildren;
+          } else if (approxEqual(feeCents, basePriceCents * numChildren)) {
+            // Stored total matches expected total; use the displayed unit from the base price.
+            unitCents = basePriceCents;
+            totalCents = feeCents;
+          }
+        }
+
+        programFeeDisplay = `${formatCurrencyFromCents(unitCents)} × ${numChildren} children = ${formatCurrencyFromCents(totalCents)}`;
+      } else if (basePriceCents != null) {
+        const totalCents = basePriceCents * numChildren;
+        programFeeDisplay = `${formatCurrencyFromCents(basePriceCents)} × ${numChildren} children = ${formatCurrencyFromCents(totalCents)}`;
       } else {
-        // Fallback: we don't have a numeric total; keep the prior display without an equation total.
+        // Fallback: we don't have a numeric total or unit; keep the prior display without an equation total.
         programFeeDisplay = `${formattedTotal} × ${numChildren} children`;
       }
     }
