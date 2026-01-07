@@ -225,6 +225,17 @@ interface APIContext {
     program_data?: any;       // Cached program data for sibling registration
   };
 
+  /**
+   * Short-lived booking idempotency (ChatGPT reliability):
+   * Protect against duplicate "confirm_payment" / booking tool calls caused by retries.
+   * Store only a short hash key (no raw email/PII).
+   */
+  bookingAttempt?: {
+    key: string; // short hash
+    started_at: string; // ISO timestamp
+    status: "in_flight";
+  };
+
   // Avoid repeated DB lookups for returning-user prefill within a session
   delegatePrefillAttempted?: boolean;
 
@@ -286,6 +297,13 @@ export default class APIOrchestrator implements IOrchestrator {
     return Math.max(250, Math.min(raw, 30_000));
   }
 
+  private getBookingIdempotencyWindowMs(): number {
+    const raw = Number(process.env.MCP_BOOKING_IDEMPOTENCY_WINDOW_MS || 120_000);
+    if (!Number.isFinite(raw) || raw <= 0) return 120_000;
+    // Clamp to sane bounds (30s .. 10m)
+    return Math.max(30_000, Math.min(raw, 10 * 60_000));
+  }
+
   private buildRetryDedupeKey(action: string | undefined, payload: any, input: string): string {
     const a = String(action || "").trim();
     const msg = String(input || "").trim();
@@ -295,6 +313,20 @@ export default class APIOrchestrator implements IOrchestrator {
         ? Object.keys(payload).sort().join(",")
         : "";
     const raw = `${a}|${payloadKeys}|${msg}`;
+    return crypto.createHash("sha256").update(raw).digest("hex").slice(0, 16);
+  }
+
+  private buildBookingIdempotencyKey(input: {
+    program_ref: string;
+    event_id: string;
+    participant_count: number;
+    delegate_email: string;
+  }): string {
+    const programRef = String(input.program_ref || "").trim();
+    const eventId = String(input.event_id || "").trim();
+    const participantCount = Number(input.participant_count || 0);
+    const delegateEmail = String(input.delegate_email || "").trim().toLowerCase();
+    const raw = `${programRef}|${eventId}|${participantCount}|${delegateEmail}`;
     return crypto.createHash("sha256").update(raw).digest("hex").slice(0, 16);
   }
 
@@ -6242,6 +6274,22 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     try {
       Logger.info("[confirmPayment] Starting immediate booking flow");
 
+      // ChatGPT reliability: if a booking just completed and we receive a duplicate confirm_payment
+      // call (retry), replay the last completion instead of attempting to book again.
+      if (context.step === FlowStep.COMPLETED && context.lastCompletion?.kind === "immediate" && context.lastCompletion?.message) {
+        const completedAtMs = Date.parse(String(context.lastCompletion.completed_at || ""));
+        const ageMs = Number.isFinite(completedAtMs) ? Date.now() - completedAtMs : NaN;
+        const isRecent = Number.isFinite(ageMs) && ageMs >= 0 && ageMs < this.getBookingIdempotencyWindowMs();
+        if (isRecent) {
+          return this.formatResponse(
+            `${context.lastCompletion.message}\n\nIf you'd like to sign up for another class, say **browse classes**.`,
+            undefined,
+            undefined,
+            { skipWizardProgress: true }
+          );
+        }
+      }
+
       // ⚠️ HARD STEP GATE: Must have selected a program
       if (!context.selectedProgram?.program_ref) {
         Logger.warn('[confirmPayment] ⛔ STEP GATE: No selected program - cannot proceed');
@@ -6448,6 +6496,44 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         // allergies field REMOVED for ChatGPT App Store compliance (PHI prohibition)
       }));
 
+      // ----------------------------------------------------------------
+      // Booking idempotency guard (ChatGPT retries / duplicate tool calls)
+      // ----------------------------------------------------------------
+      const bookingKey = this.buildBookingIdempotencyKey({
+        program_ref: String(programRef || ""),
+        event_id: String(event_id || ""),
+        participant_count: finalNumParticipants,
+        delegate_email: String(mappedDelegateData.email || ""),
+      });
+      const priorAttempt = context.bookingAttempt;
+      if (priorAttempt?.key === bookingKey && priorAttempt.status === "in_flight") {
+        const startedAtMs = Date.parse(String(priorAttempt.started_at || ""));
+        const ageMs = Number.isFinite(startedAtMs) ? Date.now() - startedAtMs : NaN;
+        const isRecent = Number.isFinite(ageMs) && ageMs >= 0 && ageMs < this.getBookingIdempotencyWindowMs();
+        if (isRecent) {
+          return this.formatResponse(
+            `I'm already working on that booking. Please wait a moment.\n\nIf it still doesn’t complete, say **view my registrations**.`,
+            undefined,
+            undefined,
+            { skipWizardProgress: true }
+          );
+        }
+      }
+
+      // Mark as in-flight (await persistence so other Railway instances can see it)
+      try {
+        await this.updateContextAndAwait(sessionId, {
+          bookingAttempt: { key: bookingKey, started_at: new Date().toISOString(), status: "in_flight" }
+        });
+        context = this.getContext(sessionId);
+      } catch {
+        // Best-effort fallback: still set in memory
+        this.updateContext(sessionId, {
+          bookingAttempt: { key: bookingKey, started_at: new Date().toISOString(), status: "in_flight" }
+        });
+        context = this.getContext(sessionId);
+      }
+
       // PART 5: Create mandate BEFORE booking (for audit compliance)
       Logger.info("[confirmPayment] Creating mandate for audit trail...");
       let mandate_id: string | undefined;
@@ -6489,6 +6575,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
       if (!bookingResponse.success || !bookingResponse.data?.booking_number) {
         Logger.error("[confirmPayment] Booking failed", bookingResponse);
+        // Allow retries after failure
+        this.updateContext(sessionId, { bookingAttempt: undefined });
         return this.formatError(
           bookingResponse.error?.display || "Failed to create booking. Please try again."
         );
@@ -6650,6 +6738,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         stripeCheckoutUrl: undefined,
         stripeCheckoutSessionId: undefined,
         stripeCheckoutCreatedAt: undefined,
+        bookingAttempt: undefined,
         // Keep delegate info for sibling registration (only email and name, not PII)
         pendingDelegateInfo: context.pendingDelegateInfo ? {
           email: context.pendingDelegateInfo.email,
@@ -6700,6 +6789,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       return successResponse;
     } catch (error) {
       Logger.error("[confirmPayment] Unexpected error:", error);
+      // Best-effort: clear in-flight dedupe so user can retry
+      try {
+        this.updateContext(sessionId, { bookingAttempt: undefined });
+      } catch {
+        // ignore
+      }
       return this.formatError("Booking failed due to unexpected error. Please contact support.");
     }
   }
