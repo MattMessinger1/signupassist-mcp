@@ -768,6 +768,101 @@ export default class APIOrchestrator implements IOrchestrator {
     return { first_name, last_name, display: display || "Saved child" };
   }
 
+  private safeTrim(value: any): string {
+    return String(value ?? "").trim();
+  }
+
+  private normalizeDelegateForProvider(delegateData: any): {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone?: string;
+    dateOfBirth?: string;
+    relationship?: string;
+  } {
+    const firstName = this.safeTrim(
+      delegateData?.delegate_firstName ??
+        delegateData?.firstName ??
+        delegateData?.first_name ??
+        delegateData?.given_name
+    );
+    const lastName = this.safeTrim(
+      delegateData?.delegate_lastName ??
+        delegateData?.lastName ??
+        delegateData?.last_name ??
+        delegateData?.family_name
+    );
+    const email = this.safeTrim(
+      delegateData?.delegate_email ??
+        delegateData?.email ??
+        delegateData?.emailAddress ??
+        delegateData?.email_address
+    );
+    const phoneRaw = this.safeTrim(delegateData?.delegate_phone ?? delegateData?.phone);
+    const relationship = this.safeTrim(delegateData?.delegate_relationship ?? delegateData?.relationship);
+
+    const dobRaw = this.safeTrim(
+      delegateData?.delegate_dob ??
+        delegateData?.dateOfBirth ??
+        delegateData?.dob ??
+        delegateData?.date_of_birth
+    );
+    const dobParsed = dobRaw ? this.parseDateFromText(dobRaw) || dobRaw : "";
+
+    return {
+      firstName,
+      lastName,
+      email,
+      phone: phoneRaw || undefined,
+      dateOfBirth: dobParsed || undefined,
+      relationship: relationship || undefined,
+    };
+  }
+
+  private normalizeParticipantsForProvider(participantData: any): Array<{
+    firstName: string;
+    lastName: string;
+    dateOfBirth?: string;
+    grade?: string;
+    age?: number;
+  }> {
+    const list: any[] = Array.isArray(participantData)
+      ? participantData
+      : participantData
+        ? [participantData]
+        : [];
+
+    const out: Array<{ firstName: string; lastName: string; dateOfBirth?: string; grade?: string; age?: number }> = [];
+    for (const p of list) {
+      const nameRaw = this.safeTrim(p?.name);
+      const firstName =
+        this.safeTrim(p?.firstName ?? p?.first_name) ||
+        (nameRaw ? this.safeTrim(nameRaw.split(/\s+/)[0]) : "");
+      const lastName =
+        this.safeTrim(p?.lastName ?? p?.last_name) ||
+        (nameRaw ? this.safeTrim(nameRaw.split(/\s+/).slice(1).join(" ")) : "");
+
+      const dobRaw = this.safeTrim(p?.dateOfBirth ?? p?.dob ?? p?.date_of_birth);
+      const dobParsed = dobRaw ? this.parseDateFromText(dobRaw) || dobRaw : "";
+      const grade = this.safeTrim(p?.grade);
+      const ageNum =
+        typeof p?.age === "number"
+          ? p.age
+          : (this.safeTrim(p?.age) ? Number(this.safeTrim(p?.age)) : NaN);
+
+      out.push({
+        firstName,
+        lastName,
+        dateOfBirth: dobParsed || undefined,
+        grade: grade || undefined,
+        age: Number.isFinite(ageNum) ? ageNum : undefined,
+      });
+    }
+
+    // Preserve ordering but drop completely blank entries
+    return out.filter((p) => Boolean(p.firstName || p.lastName));
+  }
+
   /**
    * Get saved children that haven't been registered yet in this session.
    * Loads from DB if not cached, filters out children already in context.participants.
@@ -910,17 +1005,19 @@ export default class APIOrchestrator implements IOrchestrator {
           : (Array.isArray(context.pendingParticipants) ? context.pendingParticipants : [])) as any[];
       participants = fromContext;
     }
+    const normalizedParticipants = this.normalizeParticipantsForProvider(participants);
+
     // Build participant display for single or multiple children
     const participantDisplay: string[] = [];
-    if (participants.length > 0) {
-      for (const p of participants) {
+    if (normalizedParticipants.length > 0) {
+      for (const p of normalizedParticipants) {
         const rawName = p.firstName
           ? `${p.firstName} ${p.lastName || ""}`.trim()
           : "";
         const name = rawName
           ? this.sanitizeSavedChildName(rawName, "").display
           : "participant";
-        const dob = this.formatISODateForPrompt(p.dob || p.date_of_birth);
+        const dob = this.formatISODateForPrompt(p.dateOfBirth);
         const detail = dob ? ` (DOB: ${dob})` : (p.age ? ` (Age: ${p.age})` : "");
         participantDisplay.push(`${name}${detail}`);
       }
@@ -934,11 +1031,10 @@ export default class APIOrchestrator implements IOrchestrator {
       participantDisplay.push("your child");
     }
 
-    const parentFirst = String(delegate.delegate_firstName || delegate.firstName || delegate.first_name || "").trim();
-    const parentLast = String(delegate.delegate_lastName || delegate.lastName || delegate.last_name || "").trim();
-    const parentName = `${parentFirst} ${parentLast}`.trim();
-    const parentDob = this.formatISODateForPrompt(delegate.delegate_dob || delegate.date_of_birth || delegate.dob);
-    const parentRel = String(delegate.delegate_relationship || delegate.relationship || "").trim();
+    const normalizedDelegate = this.normalizeDelegateForProvider(delegate);
+    const parentName = `${normalizedDelegate.firstName} ${normalizedDelegate.lastName}`.trim();
+    const parentDob = this.formatISODateForPrompt(normalizedDelegate.dateOfBirth);
+    const parentRel = this.safeTrim(normalizedDelegate.relationship);
 
     const sessionDate = context.selectedProgram?.earliest_slot_time
       ? this.formatTimeForUser(context.selectedProgram.earliest_slot_time, context)
@@ -6138,35 +6234,66 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         keys: formData ? Object.keys(formData) : []
       });
       
-      const delegate_data = formData?.delegate_data;
-      const participant_data = formData?.participant_data;
-      const num_participants = formData?.num_participants;
+      const delegate_data =
+        (formData as any)?.delegate_data ||
+        (formData as any)?.delegate ||
+        (formData as any)?.formData?.delegate_data ||
+        (formData as any)?.formData?.delegate ||
+        {};
+      const participant_data =
+        (formData as any)?.participant_data ||
+        (formData as any)?.participants ||
+        (formData as any)?.formData?.participant_data ||
+        (formData as any)?.formData?.participants ||
+        [];
+      const num_participants = (formData as any)?.num_participants;
       const event_id = payload.event_id || formData?.event_id;
       
       const programName = context.selectedProgram?.title || "program";
       const programRef = context.selectedProgram?.program_ref;
       const orgRef = context.selectedProgram?.org_ref || context.orgRef;
 
-      // Validation with detailed logging
-      if (!delegate_data || !participant_data || !event_id || !programRef || !orgRef) {
+      const normalizedDelegate = this.normalizeDelegateForProvider(delegate_data);
+      const normalizedParticipants = this.normalizeParticipantsForProvider(participant_data);
+
+      const derivedNumParticipants = normalizedParticipants.length > 0 ? normalizedParticipants.length : 0;
+      const requestedNumParticipants = Number(num_participants);
+      const finalNumParticipants =
+        Number.isFinite(requestedNumParticipants) && requestedNumParticipants > 0
+          ? requestedNumParticipants
+          : derivedNumParticipants;
+
+      // Validation with detailed logging (no PII)
+      if (!event_id || !programRef || !orgRef || derivedNumParticipants < 1) {
         Logger.error("[confirmPayment] Missing required data", {
           has_formData: !!formData,
-          has_delegate: !!delegate_data,
-          has_participants: !!participant_data,
+          has_delegate_obj: !!delegate_data,
+          participant_count: derivedNumParticipants,
           has_event_id: !!event_id,
           has_program_ref: !!programRef,
           // Log what we actually have
-          delegate_data_preview: delegate_data ? 'exists' : 'MISSING',
-          participant_data_preview: participant_data ? 'exists' : 'MISSING'
+          delegate_keys: delegate_data ? Object.keys(delegate_data) : 'MISSING',
+          participant_type: Array.isArray(participant_data) ? 'array' : typeof participant_data
         });
         return this.formatError("Missing required booking information. Please try again.");
+      }
+      if (!normalizedDelegate.firstName || !normalizedDelegate.lastName || !normalizedDelegate.email) {
+        Logger.error("[confirmPayment] Missing critical delegate fields after normalization", {
+          hasFirstName: !!normalizedDelegate.firstName,
+          hasLastName: !!normalizedDelegate.lastName,
+          hasEmail: !!normalizedDelegate.email,
+          delegate_keys: delegate_data ? Object.keys(delegate_data) : 'MISSING'
+        });
+        return this.formatError(
+          "Missing parent/guardian information. Please provide your name and email address."
+        );
       }
 
       Logger.info("[confirmPayment] Validated booking data", { 
         program_ref: programRef, 
         org_ref: orgRef,
-        num_participants,
-        num_participants_in_array: participant_data.length
+        num_participants: finalNumParticipants,
+        num_participants_in_array: derivedNumParticipants
       });
 
       // PART 2.5: Validate booking window using Bookeo's rules
@@ -6234,7 +6361,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       
       if (!userId) {
         Logger.warn("[confirmPayment] No user_id in context or payload - attempting email lookup");
-        const delegateEmail = delegate_data.delegate_email || delegate_data.email;
+        const delegateEmail = normalizedDelegate.email;
         
         if (delegateEmail) {
           const supabase = this.getSupabaseClient();
@@ -6254,42 +6381,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         }
       }
 
-      // Map form field names to Bookeo API format (API-first, ChatGPT compliant)
-      // IMPORTANT: Null-safe extraction - delegate_data may have different field structures
-      const mappedDelegateData = {
-        firstName: String(delegate_data?.delegate_firstName || delegate_data?.firstName || '').trim(),
-        lastName: String(delegate_data?.delegate_lastName || delegate_data?.lastName || '').trim(),
-        email: String(delegate_data?.delegate_email || delegate_data?.email || '').trim(),
-        phone: delegate_data?.delegate_phone || delegate_data?.phone || undefined,
-        dateOfBirth: delegate_data?.delegate_dob || delegate_data?.dateOfBirth || delegate_data?.dob || undefined,
-        relationship: delegate_data?.delegate_relationship || delegate_data?.relationship || undefined
-      };
-      
-      // Log for debugging multi-child booking issues
-      Logger.info("[confirmPayment] Mapped delegate data", {
-        hasFirstName: !!mappedDelegateData.firstName,
-        hasLastName: !!mappedDelegateData.lastName,
-        hasEmail: !!mappedDelegateData.email,
-        source_keys: delegate_data ? Object.keys(delegate_data) : 'null'
-      });
-      
-      // Validate critical delegate fields
-      if (!mappedDelegateData.firstName || !mappedDelegateData.lastName || !mappedDelegateData.email) {
-        Logger.error("[confirmPayment] Missing critical delegate fields after mapping", {
-          firstName: mappedDelegateData.firstName || 'MISSING',
-          lastName: mappedDelegateData.lastName || 'MISSING',
-          email: mappedDelegateData.email || 'MISSING'
-        });
-        return this.formatError(
-          "Missing parent/guardian information. Please provide your name and email address."
-        );
-      }
-
-      const mappedParticipantData = participant_data.map((p: any) => ({
+      // Normalize to provider canonical shapes (null-safe)
+      const mappedDelegateData = normalizedDelegate;
+      const mappedParticipantData = normalizedParticipants.map((p: any) => ({
         firstName: p.firstName,
         lastName: p.lastName,
-        dateOfBirth: p.dob,  // Form uses 'dob', API expects 'dateOfBirth'
-        grade: p.grade
+        dateOfBirth: p.dateOfBirth,
+        grade: p.grade,
         // allergies field REMOVED for ChatGPT App Store compliance (PHI prohibition)
       }));
 
@@ -6329,7 +6427,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         org_ref: orgRef,
         delegate_data: mappedDelegateData,
         participant_data: mappedParticipantData,
-        num_participants
+        num_participants: finalNumParticipants
       }, { mandate_id, user_id: userId }); // Pass audit context for ChatGPT compliance
 
       if (!bookingResponse.success || !bookingResponse.data?.booking_number) {
@@ -6404,11 +6502,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       // Step 4: Create registration record for receipts/audit trail
       if (userId) {
         try {
-          const delegateName = `${delegate_data.delegate_firstName || ''} ${delegate_data.delegate_lastName || ''}`.trim();
-          const delegateEmail = delegate_data.delegate_email || delegate_data.email || '';
-          const participantNames = participant_data.map((p: any) => 
-            `${p.firstName || ''} ${p.lastName || ''}`.trim()
-          ).filter((name: string) => name.length > 0);
+          const delegateName = `${mappedDelegateData.firstName || ''} ${mappedDelegateData.lastName || ''}`.trim();
+          const delegateEmail = mappedDelegateData.email || '';
+          const participantNames = mappedParticipantData
+            .map((p: any) => `${p.firstName || ''} ${p.lastName || ''}`.trim())
+            .filter((name: string) => name.length > 0);
           
           // Get program cost from context formData (stored in submitForm)
           const amountCents = context.formData?.program_fee_cents || 0;
