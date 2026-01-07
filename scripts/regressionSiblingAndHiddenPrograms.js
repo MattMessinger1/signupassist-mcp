@@ -321,6 +321,76 @@ async function testBookingIdempotencyAndNormalization() {
   assert.equal(typeof lastConfirmArgs.delegate_data.email, "string", "delegate email should be a string");
 }
 
+async function testProgramFeeEquationUsesTotal() {
+  const orch = new APIOrchestrator({ tools: new Map() });
+  const sessionId = "regression-fee-equation";
+
+  orch.sessions.set(sessionId, {
+    step: "REVIEW",
+    selectedProgram: { title: "CLASS X", available_slots: 10, price: "$40.00" },
+    participants: [
+      { firstName: "Percy", lastName: "Messinger", dob: "2014-11-26" },
+      { firstName: "Simon", lastName: "Messinger", dob: "2016-03-19" },
+      { firstName: "Mina", lastName: "Messinger", dob: "2018-03-15" },
+    ],
+    formData: {
+      program_fee_cents: 12000, // TOTAL for all 3 children
+      delegate_data: {
+        delegate_firstName: "Matt",
+        delegate_lastName: "Messinger",
+        delegate_email: "matt@example.com",
+        delegate_dob: "06/15/1984",
+        delegate_relationship: "Parent",
+      },
+    },
+  });
+
+  const summary = orch.buildReviewSummaryFromContext(orch.getContext(sessionId));
+  assert.ok(
+    summary.includes("$40.00 × 3 children = $120.00"),
+    "Fee equation should compute unit from total program_fee_cents"
+  );
+}
+
+async function testDelegateLikeChildIsNotSelectable() {
+  const orch = new APIOrchestrator({ tools: new Map() });
+  const sessionId = "regression-delegate-like-child";
+
+  // Simulate saved children list that incorrectly includes an adult/delegate-like record.
+  const savedChildren = [
+    { id: "child-1", first_name: "Percy", last_name: "Messinger", dob: "2014-11-26", display: "Percy Messinger" },
+    { id: "child-2", first_name: "Matthew", last_name: "Messinger", dob: "1976-05-13", display: "Matthew Messinger" }, // bogus adult
+  ];
+
+  orch.sessions.set(sessionId, {
+    step: "FORM_FILL",
+    selectedProgram: { title: "CLASS X", available_slots: 10 },
+    participants: [{ firstName: "Simon", lastName: "Messinger", dob: "2016-03-19" }],
+    awaitingAdditionalChild: true,
+    remainingSavedChildrenForSelection: savedChildren,
+    formData: {
+      delegate_data: {
+        delegate_firstName: "Matthew",
+        delegate_lastName: "Messinger",
+        delegate_dob: "05/13/1976",
+        delegate_email: "matt@example.com",
+      },
+    },
+    user_id: "test-user-123",
+    savedChildren,
+  });
+
+  // User selects "2" which would be the adult/delegate-like record.
+  const resp = await orch.handleMessage("2", sessionId, orch.getContext(sessionId));
+  const ctx = orch.getContext(sessionId);
+
+  assert.equal(ctx.participants.length, 1, "Delegate-like child should NOT be added to participants");
+  assert.ok(
+    /won't add|adult|parent\/guardian/i.test(String(resp?.message || "")),
+    "Should explain why it wasn't added"
+  );
+}
+
 async function run() {
   await testHiddenProgramFiltering();
   await testSiblingChildCaptureAndReviewFallback();
@@ -328,7 +398,9 @@ async function run() {
   await testSavedChildSelectionByName();
   await testDifferentChildOption();
   await testBookingIdempotencyAndNormalization();
-  console.log("✅ PASS: sibling add-child + hidden closed program + saved child selection + idempotency regressions");
+  await testProgramFeeEquationUsesTotal();
+  await testDelegateLikeChildIsNotSelectable();
+  console.log("✅ PASS: sibling add-child + hidden closed program + saved child selection + idempotency + fee + delegate-child regressions");
 }
 
 run().catch((err) => {

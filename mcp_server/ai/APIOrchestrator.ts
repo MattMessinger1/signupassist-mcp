@@ -1035,6 +1035,21 @@ export default class APIOrchestrator implements IOrchestrator {
     const saved = context.savedChildren || [];
     const participants = context.participants || [];
 
+    // Determine delegate identity (best-effort) so we can avoid offering the delegate as a "child"
+    // in sibling selection. (Some historical data has a bogus saved child record matching the delegate.)
+    const fd: any = context.formData || {};
+    const delegateRaw =
+      (fd && typeof fd === "object" && (fd.delegate_data || fd.delegate)) ||
+      (fd?.formData && (fd.formData.delegate || fd.formData.delegate_data)) ||
+      context.pendingDelegateInfo ||
+      {};
+    const normalizedDelegate = this.normalizeDelegateForProvider(delegateRaw);
+    const delegateFormLike = {
+      delegate_firstName: normalizedDelegate.firstName,
+      delegate_lastName: normalizedDelegate.lastName,
+      delegate_dob: normalizedDelegate.dateOfBirth,
+    };
+
     // Filter out children already registered in this session (match by first+last name, case-insensitive)
     const remaining = saved.filter((child) => {
       const childFirst = String(child.first_name || "").toLowerCase().trim();
@@ -1044,7 +1059,21 @@ export default class APIOrchestrator implements IOrchestrator {
         const pLast = String(p.lastName || "").toLowerCase().trim();
         return pFirst === childFirst && pLast === childLast;
       });
-      return !alreadyRegistered;
+
+      if (alreadyRegistered) return false;
+
+      // Filter out bogus saved-child records that match the delegate (same name + DOB when available)
+      // to avoid ever presenting/adding the delegate as a participant.
+      if (this.looksLikeDelegateChild(child, delegateFormLike)) return false;
+
+      // Filter out "children" with DOB indicating they are adults (age >= 18).
+      // This is a safety guard specifically for sibling registration.
+      const cDobRaw = String((child as any)?.dob || "").trim();
+      const cDobIso = cDobRaw ? (this.parseDateFromText(cDobRaw) || cDobRaw) : "";
+      const ageYears = cDobIso ? this.computeAgeYearsFromISODate(String(cDobIso).slice(0, 10)) : null;
+      if (ageYears != null && ageYears >= 18) return false;
+
+      return true;
     });
 
     // Add display name for each
@@ -1208,12 +1237,17 @@ export default class APIOrchestrator implements IOrchestrator {
     const numChildren = participantDisplay.length;
     let programFeeDisplay = formattedTotal;
     if (numChildren > 1) {
-      // Calculate and display total: "$50.00 × 2 children = $100.00"
-      const totalFeeCents = (Number.isFinite(feeCents) && feeCents > 0) ? feeCents * numChildren : 0;
-      const formattedTotalFee = totalFeeCents > 0 ? formatCurrencyFromCents(totalFeeCents) : '';
-      programFeeDisplay = formattedTotalFee 
-        ? `${formattedTotal} × ${numChildren} children = ${formattedTotalFee}`
-        : `${formattedTotal} × ${numChildren} children`;
+      // IMPORTANT: program_fee_cents is the TOTAL for all children (not per-child).
+      // Display the equation as: unit × N children = total
+      if (Number.isFinite(feeCents) && feeCents > 0) {
+        const unitCents = Math.round(feeCents / numChildren);
+        const unit = formatCurrencyFromCents(unitCents);
+        const total = formatCurrencyFromCents(feeCents);
+        programFeeDisplay = `${unit} × ${numChildren} children = ${total}`;
+      } else {
+        // Fallback: we don't have a numeric total; keep the prior display without an equation total.
+        programFeeDisplay = `${formattedTotal} × ${numChildren} children`;
+      }
     }
     msg += opensAtDisplay
       ? `- **Program Fee:** ${programFeeDisplay} (paid to provider only if we successfully register you when it opens)\n`
@@ -3428,6 +3462,49 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
         const matchedChild = this.matchSavedChildFromInput(input, remainingSaved);
         if (matchedChild) {
+          // Safety guard: never allow an adult/delegate-like record to be added as a child
+          const fd: any = context.formData || {};
+          const delegateRaw =
+            (fd && typeof fd === "object" && (fd.delegate_data || fd.delegate)) ||
+            (fd?.formData && (fd.formData.delegate || fd.formData.delegate_data)) ||
+            context.pendingDelegateInfo ||
+            {};
+          const normalizedDelegate = this.normalizeDelegateForProvider(delegateRaw);
+          const delegateFormLike = {
+            delegate_firstName: normalizedDelegate.firstName,
+            delegate_lastName: normalizedDelegate.lastName,
+            delegate_dob: normalizedDelegate.dateOfBirth,
+          };
+
+          const matchedDobRaw = String((matchedChild as any)?.dob || "").trim();
+          const matchedDobIso = matchedDobRaw ? (this.parseDateFromText(matchedDobRaw) || matchedDobRaw) : "";
+          const matchedAgeYears = matchedDobIso ? this.computeAgeYearsFromISODate(String(matchedDobIso).slice(0, 10)) : null;
+          const isDelegateLike = this.looksLikeDelegateChild(
+            { first_name: matchedChild.first_name, last_name: matchedChild.last_name, dob: matchedChild.dob },
+            delegateFormLike
+          );
+          const isAdult = matchedAgeYears != null && matchedAgeYears >= 18;
+
+          if (isDelegateLike || isAdult) {
+            const filtered = remainingSaved.filter((c: any) => String(c.id) !== String((matchedChild as any).id));
+            const list = filtered.map((c: any, i: number) => `${i + 1}. ${c.display}`).join("\n");
+            const differentChildOption = `${filtered.length + 1}. Different child (enter new info)`;
+            this.updateContext(sessionId, {
+              awaitingAdditionalChild: true,
+              awaitingAdditionalChildInfo: false,
+              remainingSavedChildrenForSelection: filtered
+            });
+
+            return this.formatResponse(
+              `That saved participant looks like an **adult** (or matches the parent/guardian), so I won’t add it as a child.\n\n` +
+                (filtered.length > 0
+                  ? `**Your saved children:**\n${list}\n${differentChildOption}\n\nReply with a number, name, or \"no\" to continue.`
+                  : `Please type the child's **name and age** (e.g., \"Sarah Smith, 8\"), or reply \"no\" to continue.`),
+              undefined,
+              []
+            );
+          }
+
           // Add the matched saved child to participants
           const participants = context.participants || [];
           participants.push({
