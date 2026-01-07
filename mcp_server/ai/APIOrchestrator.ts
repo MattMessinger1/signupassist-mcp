@@ -264,6 +264,13 @@ export default class APIOrchestrator implements IOrchestrator {
   private mcpServer: any;
   // Ensure DB persists happen in-order per sessionId (prevents late writes overwriting newer state).
   private persistQueue: Map<string, Promise<void>> = new Map();
+  // Best-effort in-memory memoization for common read-only MCP calls (perf; no correctness dependency).
+  private toolMemo: Map<string, { expiresAt: number; value: any }> = new Map();
+  // Coalesce multiple updateContext() calls into fewer DB writes (flushes before response return).
+  private persistDebounce: Map<
+    string,
+    { timer: any; latest: APIContext; promise: Promise<void>; resolve: () => void; reject: (e: any) => void }
+  > = new Map();
 
   private isProductionRuntime(): boolean {
     const nodeEnv = String(process.env.NODE_ENV || "").toLowerCase();
@@ -328,6 +335,41 @@ export default class APIOrchestrator implements IOrchestrator {
     const delegateEmail = String(input.delegate_email || "").trim().toLowerCase();
     const raw = `${programRef}|${eventId}|${participantCount}|${delegateEmail}`;
     return crypto.createHash("sha256").update(raw).digest("hex").slice(0, 16);
+  }
+
+  private buildToolMemoKey(sessionId: string, toolName: string, args: any): string {
+    const sid = String(sessionId || "").trim();
+    const t = String(toolName || "").trim();
+    const stableArgs =
+      args && typeof args === "object" && !Array.isArray(args)
+        ? Object.keys(args)
+            .sort()
+            .map((k) => `${k}:${String((args as any)[k])}`)
+            .join("|")
+        : String(args ?? "");
+    // Hash to avoid keeping raw identifiers/PII in cache keys.
+    return crypto.createHash("sha256").update(`${sid}|${t}|${stableArgs}`).digest("hex").slice(0, 16);
+  }
+
+  private async memoizedInvokeMCPTool(
+    sessionId: string,
+    toolName: string,
+    args: any,
+    ttlMs: number
+  ): Promise<any> {
+    const now = Date.now();
+    const ttl = Number.isFinite(ttlMs) && ttlMs > 0 ? ttlMs : 0;
+    if (ttl <= 0) return await this.invokeMCPTool(toolName, args);
+
+    const key = this.buildToolMemoKey(sessionId, toolName, args);
+    const hit = this.toolMemo.get(key);
+    if (hit && hit.expiresAt > now) {
+      return hit.value;
+    }
+
+    const value = await this.invokeMCPTool(toolName, args);
+    this.toolMemo.set(key, { expiresAt: now + ttl, value });
+    return value;
   }
 
   private getDebugUserFilter(): string | null {
@@ -963,7 +1005,12 @@ export default class APIOrchestrator implements IOrchestrator {
     // Lazy-load saved children if not cached
     if (!Array.isArray(context.savedChildren)) {
       try {
-        const listRes = await this.invokeMCPTool("user.list_children", { user_id: context.user_id });
+        const listRes = await this.memoizedInvokeMCPTool(
+          sessionId,
+          "user.list_children",
+          { user_id: context.user_id },
+          120_000
+        );
         const children = Array.isArray(listRes?.data?.children) ? listRes.data.children : [];
         context.savedChildren = children
           .map((c: any) => {
@@ -2373,6 +2420,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       // can restore wizardProgress / requested triad fields reliably.
       // ----------------------------------------------------------------
       try {
+        // Flush any coalesced (debounced) updateContext writes for this request.
+        await this.flushDebouncedPersist(contextSessionId);
         const pending = this.persistQueue.get(contextSessionId);
         if (pending) {
           await pending;
@@ -2602,7 +2651,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             // Returning-user UX: prefill delegate fields from saved profile once per session.
             if (context.user_id && !context.delegatePrefillAttempted) {
               try {
-                const profileRes = await this.invokeMCPTool("user.get_delegate_profile", { user_id: context.user_id });
+                const profileRes = await this.memoizedInvokeMCPTool(
+                  sessionId,
+                  "user.get_delegate_profile",
+                  { user_id: context.user_id },
+                  120_000
+                );
                 const p = profileRes?.data?.profile;
                 if (p) {
                   const updated: Record<string, any> = { ...(context.formData || {}) };
@@ -2642,7 +2696,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               // Lazy-load children once per session if not already present
               if (!Array.isArray(context.savedChildren)) {
                 try {
-                  const listRes = await this.invokeMCPTool("user.list_children", { user_id: context.user_id });
+                  const listRes = await this.memoizedInvokeMCPTool(
+                    sessionId,
+                    "user.list_children",
+                    { user_id: context.user_id },
+                    120_000
+                  );
                   const children = Array.isArray(listRes?.data?.children) ? listRes.data.children : [];
                   context.savedChildren = children
                     .map((c: any) => {
@@ -3574,9 +3633,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     
     if (context.user_id) {
       try {
-        const profileResult = await this.invokeMCPTool('user.get_delegate_profile', {
-          user_id: context.user_id
-        });
+        const profileResult = await this.memoizedInvokeMCPTool(
+          sessionId,
+          'user.get_delegate_profile',
+          { user_id: context.user_id },
+          120_000
+        );
         if (profileResult?.data?.profile) {
           storedCity = profileResult.data.profile.city;
           storedState = profileResult.data.profile.state;
@@ -4278,7 +4340,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         if (indicatesPaymentDone) {
           Logger.info('[Payment] User indicates payment method setup is done, checking status...');
           if (context.user_id) {
-            const checkRes = await this.invokeMCPTool('stripe.check_payment_status', { user_id: context.user_id });
+            const checkRes = await this.memoizedInvokeMCPTool(
+              sessionId,
+              'stripe.check_payment_status',
+              { user_id: context.user_id },
+              15_000
+            );
             if (checkRes.success && checkRes.data?.hasPaymentMethod) {
               const { last4, brand } = checkRes.data;
               // After payment method is confirmed, proceed to REVIEW (final consent).
@@ -4366,7 +4433,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
         // If we know a card exists but don't have display details yet, fetch once from source-of-truth.
         if (!display && context.user_id && context.hasPaymentMethod) {
-          const checkRes = await this.invokeMCPTool("stripe.check_payment_status", { user_id: context.user_id });
+          const checkRes = await this.memoizedInvokeMCPTool(
+            sessionId,
+            "stripe.check_payment_status",
+            { user_id: context.user_id },
+            15_000
+          );
           if (checkRes.success && checkRes.data?.hasPaymentMethod) {
             const { last4, brand } = checkRes.data;
             this.updateContext(sessionId, {
@@ -8758,7 +8830,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     Logger.info('[loadSavedChildren] Loading saved children via MCP tool', { userId });
     
     try {
-      const result = await this.invokeMCPTool('user.list_children', { user_id: userId });
+      const result = await this.memoizedInvokeMCPTool(
+        sessionId,
+        'user.list_children',
+        { user_id: userId },
+        120_000
+      );
       
       if (!result?.success) {
         Logger.warn('[loadSavedChildren] MCP tool failed:', result?.error);
@@ -8981,7 +9058,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const userId = context.user_id || payload.user_id;
       if (userId) {
         try {
-          const listRes = await this.invokeMCPTool('user.list_children', { user_id: userId });
+          const listRes = await this.memoizedInvokeMCPTool(
+            sessionId,
+            'user.list_children',
+            { user_id: userId },
+            120_000
+          );
           const children = listRes?.data?.children || [];
           const match = children.find((c: any) => c.id === payload.child_id);
           if (match) {
@@ -9359,7 +9441,12 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     Logger.info('[loadDelegateProfile] Loading delegate profile via MCP tool', { userId });
     
     try {
-      const result = await this.invokeMCPTool('user.get_delegate_profile', { user_id: userId });
+      const result = await this.memoizedInvokeMCPTool(
+        sessionId,
+        'user.get_delegate_profile',
+        { user_id: userId },
+        120_000
+      );
       
       if (!result?.success) {
         Logger.warn('[loadDelegateProfile] MCP tool failed:', result?.error);
@@ -9587,6 +9674,55 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     return next;
   }
 
+  private getPersistDebounceMs(): number {
+    const raw = Number(process.env.MCP_SESSION_PERSIST_DEBOUNCE_MS || 25);
+    if (!Number.isFinite(raw) || raw < 0) return 25;
+    // Clamp to sane bounds (0ms disables debounce)
+    return Math.max(0, Math.min(raw, 500));
+  }
+
+  private enqueuePersistDebounced(sessionId: string, context: APIContext): Promise<void> {
+    const ms = this.getPersistDebounceMs();
+    if (ms <= 0) return this.enqueuePersist(sessionId, context);
+
+    const existing = this.persistDebounce.get(sessionId);
+    if (existing) {
+      existing.latest = context;
+      clearTimeout(existing.timer);
+      existing.timer = setTimeout(() => {
+        // Fire-and-forget; the stored promise will resolve/reject.
+        void this.flushDebouncedPersist(sessionId);
+      }, ms);
+      return existing.promise;
+    }
+
+    let resolve!: () => void;
+    let reject!: (e: any) => void;
+    const promise = new Promise<void>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+    const timer = setTimeout(() => {
+      void this.flushDebouncedPersist(sessionId);
+    }, ms);
+    this.persistDebounce.set(sessionId, { timer, latest: context, promise, resolve, reject });
+    return promise;
+  }
+
+  private async flushDebouncedPersist(sessionId: string): Promise<void> {
+    const state = this.persistDebounce.get(sessionId);
+    if (!state) return;
+    clearTimeout(state.timer);
+    this.persistDebounce.delete(sessionId);
+
+    try {
+      await this.enqueuePersist(sessionId, state.latest);
+      state.resolve();
+    } catch (e) {
+      state.reject(e);
+    }
+  }
+
   /**
    * Get session context (auto-initialize if needed)
    * Now checks Supabase if not in memory (for ChatGPT multi-turn support)
@@ -9748,8 +9884,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     
     this.debugLog('[updateContext] TRACE: Updating session', tracePayload);
     
-    // Async persist to DB (fire-and-forget for performance)
-    this.enqueuePersist(sessionId, updated)
+    // Async persist to DB (coalesced; flushes before response return for durability)
+    this.enqueuePersistDebounced(sessionId, updated)
       .then(() => {
         this.debugLog('[updateContext] TRACE: Persist completed', { sessionId });
       })
