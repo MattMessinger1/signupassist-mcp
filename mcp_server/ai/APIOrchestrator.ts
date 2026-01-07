@@ -1160,11 +1160,12 @@ export default class APIOrchestrator implements IOrchestrator {
       [];
     let participants = Array.isArray(participantsRaw) ? participantsRaw : [participantsRaw].filter(Boolean);
     // Fallback: during multi-child selection, participants may live on context.* until submitForm normalizes them.
-    if (participants.length === 0) {
-      const fromContext =
-        (Array.isArray(context.participants) && context.participants.length > 0
-          ? context.participants
-          : (Array.isArray(context.pendingParticipants) ? context.pendingParticipants : [])) as any[];
+    // Also: if formData has a stale single participant but context has more, prefer context for correctness.
+    const fromContext =
+      (Array.isArray(context.participants) && context.participants.length > 0
+        ? context.participants
+        : (Array.isArray(context.pendingParticipants) ? context.pendingParticipants : [])) as any[];
+    if (participants.length === 0 || fromContext.length > participants.length) {
       participants = fromContext;
     }
     const normalizedParticipants = this.normalizeParticipantsForProvider(participants);
@@ -2534,6 +2535,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         const ignore = typeof payload?.ignoreAudienceMismatch === 'boolean' ? payload.ignoreAudienceMismatch : false;
         this.updateContext(sessionId, { 
           ignoreAudienceMismatch: ignore,
+          // Clear any prior "activity filter" state so "browse classes" truly shows everything.
+          requestedActivity: undefined,
+          requestedLocation: undefined,
           selectedProgram: null,
           step: FlowStep.BROWSE,
           wizardProgress: undefined,
@@ -2758,7 +2762,44 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               }
 
               const saved = Array.isArray(context.savedChildren) ? context.savedChildren : [];
-              const filteredSaved = saved.filter((c: any) => !this.looksLikeDelegateChild(c, current));
+              // Filter out:
+              // - bogus saved-child rows that match the delegate (historical bug)
+              // - adult "children" (DOB implies age >= 18)
+              const dFirst = String((current as any)?.delegate_firstName || "").trim();
+              const dLast = String((current as any)?.delegate_lastName || "").trim();
+              const dDobRaw = String((current as any)?.delegate_dob || "").trim();
+              const dDob = dDobRaw ? (this.parseDateFromText(dDobRaw) || dDobRaw) : "";
+              const filteredSaved = saved.filter((c: any) => {
+                // Strict match (name + DOB) when available
+                if (this.looksLikeDelegateChild(c, current)) return false;
+
+                const cFirst = String(c?.first_name || "").trim();
+                const cLast = String(c?.last_name || "").trim();
+                const cDobRaw = String(c?.dob || "").trim();
+                const cDobIso = cDobRaw ? (this.parseDateFromText(cDobRaw) || cDobRaw) : "";
+
+                // Name-only delegate match: if names match and either DOB is missing (corrupted record),
+                // treat it as the delegate and exclude. If both DOBs exist and differ, keep (rare, but possible).
+                if (
+                  dFirst &&
+                  dLast &&
+                  cFirst &&
+                  cLast &&
+                  cFirst.toLowerCase() === dFirst.toLowerCase() &&
+                  cLast.toLowerCase() === dLast.toLowerCase()
+                ) {
+                  if (!cDobIso || !dDob) return false;
+                  if (String(cDobIso).slice(0, 10) === String(dDob).slice(0, 10)) return false;
+                }
+
+                // Adult filter (DOB implies age >= 18)
+                const ageYears = cDobIso
+                  ? this.computeAgeYearsFromISODate(String(cDobIso).slice(0, 10))
+                  : null;
+                if (ageYears != null && ageYears >= 18) return false;
+
+                return true;
+              });
               if (filteredSaved.length !== saved.length) {
                 // Hide obviously-bad “saved child” records (historical bug: child == delegate).
                 // We persist the filtered list so the UX stays consistent across turns.
@@ -2980,20 +3021,76 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
             if (!alreadyTwoTier) {
               const delegate: Record<string, any> = {};
-              const participant: Record<string, any> = {};
               for (const f of context.requiredFields?.delegate || []) {
                 if (fd[f.key] != null) delegate[f.key] = fd[f.key];
               }
-              for (const f of context.requiredFields?.participant || []) {
-                if (fd[f.key] != null) participant[f.key] = fd[f.key];
+
+              // Build a participant template from the flat schema-key formData (for non-name fields).
+              const participantTemplate: Record<string, any> = {};
+              const participantFields = (context.requiredFields?.participant || []).filter((f: any) => f?.key);
+              for (const f of participantFields) {
+                if (fd[f.key] != null) participantTemplate[f.key] = fd[f.key];
               }
+
+              // If we have a multi-child selection in context, carry it forward into the two-tier payload
+              // so Review/ConfirmPayment sees all children (not just the first/last hydrated flat row).
+              const ctxParticipants: any[] =
+                (Array.isArray(context.pendingParticipants) && context.pendingParticipants.length > 0)
+                  ? context.pendingParticipants
+                  : (Array.isArray(context.participants) && context.participants.length > 0)
+                    ? context.participants
+                    : [];
+
+              const participants = (ctxParticipants.length > 0 ? ctxParticipants : [participantTemplate]).map((p: any) => {
+                const out: Record<string, any> = { ...participantTemplate };
+
+                const nameRaw = this.safeTrim(p?.name);
+                const first =
+                  this.safeTrim(p?.firstName ?? p?.first_name) ||
+                  (nameRaw ? this.safeTrim(nameRaw.split(/\s+/)[0]) : "");
+                const last =
+                  this.safeTrim(p?.lastName ?? p?.last_name) ||
+                  (nameRaw ? this.safeTrim(nameRaw.split(/\s+/).slice(1).join(" ")) : "");
+                const dobRaw = this.safeTrim(p?.dob ?? p?.dateOfBirth ?? p?.date_of_birth);
+                const dob = dobRaw ? (this.parseDateFromText(dobRaw) || dobRaw) : "";
+                const ageNum =
+                  typeof p?.age === "number"
+                    ? p.age
+                    : (this.safeTrim(p?.age) ? Number(this.safeTrim(p?.age)) : NaN);
+                const ageFromDob =
+                  dob ? this.computeAgeYearsFromISODate(String(dob).slice(0, 10)) : null;
+                const age = Number.isFinite(ageNum) ? ageNum : (ageFromDob != null ? ageFromDob : undefined);
+
+                // Fill required participant schema fields by heuristic (Bookeo uses a small stable set)
+                for (const f of participantFields) {
+                  const k = String(f.key || "");
+                  const lk = k.toLowerCase();
+                  if (first && lk.includes("first") && lk.includes("name")) out[k] = first;
+                  else if (last && lk.includes("last") && lk.includes("name")) out[k] = last;
+                  else if (dob && (lk.includes("dob") || lk.includes("birth"))) out[k] = dob;
+                  else if (age != null && lk.includes("age") && !lk.includes("stage")) out[k] = age;
+                }
+
+                // Always include normalized keys for downstream name display + provider normalization
+                if (first) out.firstName = first;
+                if (last) out.lastName = last;
+                if (dob) {
+                  out.dob = dob;
+                  if (out.dateOfBirth == null) out.dateOfBirth = dob;
+                  if (out.date_of_birth == null) out.date_of_birth = dob;
+                }
+                if (age != null && out.age == null) out.age = age;
+                if (!out.name && (first || last)) out.name = `${first} ${last}`.trim();
+
+                return out;
+              });
 
               payload = {
                 ...payload,
                 formData: {
                   delegate,
-                  participants: [participant],
-                  numParticipants: 1,
+                  participants,
+                  numParticipants: participants.length,
                 },
               };
             }
@@ -3429,8 +3526,14 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     
     // Batch sibling registration: handle "add another child?" response
     if (context.step === FlowStep.FORM_FILL && context.awaitingAdditionalChild) {
-      const lowerInput = input.toLowerCase().trim();
-      const isNo = /^(no|n|nope|done|continue|proceed|finish|that's it|that's all|no thanks|no more)$/i.test(lowerInput) ||
+      const rawTrimmed = String(input || "").trim();
+      const lowerInput = rawTrimmed.toLowerCase();
+      const isNo =
+                   /^\s*no\b/i.test(lowerInput) || // "no", "no thanks", "no all good", etc.
+                   /\ball\s+good\b/i.test(lowerInput) ||
+                   /\bthat's\s+all\b/i.test(lowerInput) ||
+                   /\bwe'?re\s+good\b/i.test(lowerInput) ||
+                   /^(no|n|nope|done|continue|proceed|finish|that's it|that's all|no thanks|no more)$/i.test(lowerInput) ||
                    lowerInput.includes('no more') || lowerInput.includes('continue to payment') || lowerInput.includes('done');
       
       if (isNo) {
@@ -4082,7 +4185,15 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         if (this.hasSignupIntent(input) || this.hasProgramWords(input)) {
           const orgRef = context.orgRef || "aim-design";
           // Wizard UX: treat explicit browse/signup intent as a fresh Step 1 turn (no "continued").
-          this.updateContext(sessionId, { orgRef, pendingProviderConfirmation: undefined, step: FlowStep.BROWSE, wizardProgress: undefined });
+          this.updateContext(sessionId, {
+            orgRef,
+            // Clear any stale activity/location filters from prior sessions so we show the full catalog.
+            requestedActivity: undefined,
+            requestedLocation: undefined,
+            pendingProviderConfirmation: undefined,
+            step: FlowStep.BROWSE,
+            wizardProgress: undefined
+          });
           return await this.searchPrograms(orgRef, sessionId);
         }
 

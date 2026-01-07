@@ -439,6 +439,130 @@ async function testBrowseSelectionDoesNotTriggerActivityLocationPrompts() {
   assert.ok(!/what city are you in\\?/i.test(resp?.message || ""), "Should not trigger location prompt during selection");
 }
 
+async function testSiblingNoAllGoodRoutesToFinishChildSelection() {
+  const orch = new APIOrchestrator({ tools: new Map() });
+  const sessionId = "regression-sibling-no-all-good";
+  let calledAction = null;
+
+  // Stub handleAction so we can verify routing without running the full payment path.
+  orch.handleAction = async (action) => {
+    calledAction = action;
+    return { message: "FINISH_CALLED" };
+  };
+
+  orch.sessions.set(sessionId, {
+    step: "FORM_FILL",
+    selectedProgram: { title: "CLASS X", available_slots: 10 },
+    participants: [
+      { firstName: "Percy", lastName: "Messinger", dob: "2014-11-26" },
+      { firstName: "Simon", lastName: "Messinger", dob: "2016-03-19" },
+    ],
+    awaitingAdditionalChild: true,
+  });
+
+  const resp = await orch.handleMessage("No all good", sessionId, orch.getContext(sessionId));
+  assert.equal(calledAction, "finish_child_selection", "Should route denial phrase to finish_child_selection");
+  assert.ok(String(resp?.message || "").includes("FINISH_CALLED"), "Should return the finish handler response");
+}
+
+async function testBrowseActionClearsRequestedActivity() {
+  const orch = new APIOrchestrator({ tools: new Map() });
+  const sessionId = "regression-clear-requested-activity";
+
+  // Stub searchPrograms to avoid any provider calls
+  orch.searchPrograms = async () => ({ message: "OK" });
+
+  orch.sessions.set(sessionId, {
+    step: "BROWSE",
+    requestedActivity: "stem",
+    requestedLocation: "Madison, WI",
+  });
+
+  await orch.handleAction("search_programs", { orgRef: "aim-design" }, sessionId, orch.getContext(sessionId));
+  const ctx = orch.getContext(sessionId);
+  assert.equal(ctx.requestedActivity, undefined, "search_programs should clear requestedActivity");
+  assert.equal(ctx.requestedLocation, undefined, "search_programs should clear requestedLocation");
+}
+
+async function testReviewSummaryPrefersContextParticipantsWhenFormDataStale() {
+  const orch = new APIOrchestrator({ tools: new Map() });
+  const sessionId = "regression-review-participant-preference";
+
+  orch.sessions.set(sessionId, {
+    step: "REVIEW",
+    selectedProgram: { title: "CLASS X", available_slots: 10, price: "$28.00" },
+    participants: [
+      { firstName: "Percy", lastName: "Messinger", dob: "2014-11-26" },
+      { firstName: "Simon", lastName: "Messinger", dob: "2016-03-19" },
+    ],
+    formData: {
+      // Stale: only one participant present
+      participants: [{ firstName: "Percy", lastName: "Messinger", dob: "2014-11-26" }],
+      program_fee_cents: 2800,
+      delegate_data: {
+        delegate_firstName: "Matt",
+        delegate_lastName: "Messinger",
+        delegate_email: "matt@example.com",
+        delegate_dob: "05/13/1976",
+        delegate_relationship: "Parent",
+      },
+    },
+  });
+
+  const summary = orch.buildReviewSummaryFromContext(orch.getContext(sessionId));
+  assert.ok(/Participants\s*\(2 children\)/i.test(summary), "Review summary should list 2 children when context has 2");
+}
+
+async function testInitialSavedParticipantListFiltersAdults() {
+  const orch = new APIOrchestrator({ tools: new Map() });
+  const sessionId = "regression-saved-list-filters-adults";
+
+  // Ensure no DB persistence in this regression.
+  orch.updateContextAndAwait = async (sid, patch) => {
+    orch.updateContext(sid, patch);
+  };
+
+  orch.sessions.set(sessionId, {
+    step: "FORM_FILL",
+    selectedProgram: { title: "CLASS X", available_slots: 10 },
+    delegatePrefillAttempted: true,
+    requiredFields: {
+      delegate: [
+        { key: "delegate_firstName", required: true, label: "First Name" },
+        { key: "delegate_lastName", required: true, label: "Last Name" },
+        { key: "delegate_email", required: true, label: "Email" },
+      ],
+      participant: [
+        { key: "firstName", required: true, label: "First Name" },
+        { key: "lastName", required: true, label: "Last Name" },
+        { key: "dob", required: true, label: "DOB" },
+      ],
+    },
+    // Delegate filled; participant missing
+    formData: {
+      delegate_firstName: "Matt",
+      delegate_lastName: "Messinger",
+      delegate_email: "matt@example.com",
+      delegate_dob: "05/13/1976",
+      delegate_relationship: "Parent",
+    },
+    user_id: "test-user-123",
+    savedChildren: [
+      { id: "c1", first_name: "Simon", last_name: "Messinger", dob: "2016-03-19" },
+      { id: "c2", first_name: "Percy", last_name: "Messinger", dob: "2014-11-26" },
+      // Adult record should be filtered out
+      { id: "c3", first_name: "Matthew", last_name: "Messinger", dob: "1976-05-13" },
+    ],
+  });
+
+  const resp = await orch.handleAction("submit_form", { formData: orch.getContext(sessionId).formData }, sessionId, orch.getContext(sessionId), "");
+  const msg = String(resp?.message || "");
+  assert.ok(/I found 2 saved participant/i.test(msg), "Should report 2 saved participants after filtering adults");
+  assert.ok(msg.includes("Simon Messinger"), "Should include Simon");
+  assert.ok(msg.includes("Percy Messinger"), "Should include Percy");
+  assert.ok(!msg.includes("Matthew Messinger"), "Should not include adult saved participant");
+}
+
 async function run() {
   await testHiddenProgramFiltering();
   await testSiblingChildCaptureAndReviewFallback();
@@ -449,7 +573,11 @@ async function run() {
   await testProgramFeeEquationUsesTotal();
   await testDelegateLikeChildIsNotSelectable();
   await testBrowseSelectionDoesNotTriggerActivityLocationPrompts();
-  console.log("✅ PASS: sibling add-child + hidden closed program + saved child selection + idempotency + fee + delegate-child regressions");
+  await testSiblingNoAllGoodRoutesToFinishChildSelection();
+  await testBrowseActionClearsRequestedActivity();
+  await testReviewSummaryPrefersContextParticipantsWhenFormDataStale();
+  await testInitialSavedParticipantListFiltersAdults();
+  console.log("✅ PASS: sibling add-child + hidden closed program + saved child selection + idempotency + fee + delegate-child + browse regressions");
 }
 
 run().catch((err) => {
