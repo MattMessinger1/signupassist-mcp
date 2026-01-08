@@ -316,6 +316,42 @@ async function testProgramFeeEquationUsesTotalNotDoubleCounted() {
   );
 }
 
+async function testStep1AgeAfterCityAutoListsPrograms() {
+  const orch = new APIOrchestrator({ tools: new Map() });
+  const sessionId = "regression-step1-age-triad";
+
+  // Prevent any DB persistence paths in this regression.
+  orch.updateContextAndAwait = async (sid, patch) => {
+    orch.updateContext(sid, patch);
+  };
+
+  // Seed BROWSE triad state.
+  orch.sessions.set(sessionId, {
+    step: "BROWSE",
+    orgRef: "aim-design",
+    requestedActivity: "robotics",
+    requestedLocation: "Madison, WI",
+  });
+
+  // Make the activation gate succeed without DB.
+  orch.countCachedProgramMatchesForOrg = async () => 1;
+
+  // Assert we proceed to listing programs (instead of the generic fallback prompt).
+  let listed = false;
+  orch.searchPrograms = async (orgRef, sid) => {
+    assert.equal(orgRef, "aim-design");
+    assert.equal(sid, sessionId);
+    listed = true;
+    return { message: "LISTED_PROGRAMS" };
+  };
+
+  const resp = await orch.handleMessage("10", sessionId, orch.getContext(sessionId));
+  assert.ok(listed, "Should list programs immediately after age when activity+city already known");
+  assert.ok(String(resp?.message || "").includes("LISTED_PROGRAMS"), "Should return program list response");
+  const ctx = orch.getContext(sessionId);
+  assert.equal(ctx.childInfo?.age, 10, "Child age should be persisted in context");
+}
+
 async function run() {
   await testHiddenProgramFiltering();
   await testSiblingChildCaptureAndReviewFallback();
@@ -325,6 +361,7 @@ async function run() {
   await testSecondaryActionDoesNotHijackWizardTranscript();
   await testBookeoMaxParticipantsPreventsSiblingPrompt();
   await testProgramFeeEquationUsesTotalNotDoubleCounted();
+  await testStep1AgeAfterCityAutoListsPrograms();
   console.log("✅ PASS: sibling add-child + hidden closed program + saved child selection + secondary-action + max participants regressions");
 }
 

@@ -3497,29 +3497,62 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // captured activity + location in prior turns.
     // ------------------------------------------------------------------------
     const ageOnly = this.extractChildAgeFromSearchQuery(input);
-    const hasPendingTriad =
+    const hasDisplayedPrograms =
+      Array.isArray(context.displayedPrograms) && context.displayedPrograms.length > 0;
+    const hasPendingTriadBase =
       context.step === FlowStep.BROWSE &&
       !context.selectedProgram &&
-      !!context.requestedActivity &&
-      !!context.requestedLocation;
+      !hasDisplayedPrograms &&
+      !!context.requestedActivity;
 
-    if (ageOnly && hasPendingTriad) {
+    if (ageOnly && hasPendingTriadBase) {
       const orgRef = context.orgRef || "aim-design";
+      let resolvedLocation: string | undefined = context.requestedLocation;
 
-      // Persist age so we don't re-ask
-      this.updateContext(sessionId, {
-        childInfo: { ...(context.childInfo || { name: "" }), age: ageOnly }
-      });
+      // If location wasn't persisted (multi-instance / race), recover it from the delegate profile when authenticated.
+      if (!resolvedLocation && context.user_id) {
+        try {
+          const profileResult = await this.invokeMCPTool('user.get_delegate_profile', {
+            user_id: context.user_id
+          });
+          const profile = profileResult?.data?.profile;
+          const city = String(profile?.city || "").trim();
+          const state = String(profile?.state || "").trim();
+          if (city) {
+            resolvedLocation = state ? `${city}, ${state}` : city;
+          }
+        } catch (e) {
+          Logger.warn('[TRIAD_COMPLETION] Failed to recover location from delegate profile (non-fatal)', e);
+        }
+      }
+
+      // Persist age (and recovered location if needed) so we don't re-ask across turns.
+      const triadPatch: Partial<APIContext> = {
+        childInfo: { ...(context.childInfo || { name: "" }), age: ageOnly },
+        ...(resolvedLocation ? { requestedLocation: resolvedLocation } : {}),
+      };
+      await this.updateContextAndAwait(sessionId, triadPatch);
+
+      // If we still don't have a location, ask for it now (we have activity + age already).
+      const refreshed = this.getContext(sessionId);
+      if (!refreshed.requestedLocation) {
+        const displayName = getActivityDisplayName(refreshed.requestedActivity!);
+        return this.formatResponse(
+          `Got it — **age ${ageOnly}**.\n\nTo find ${displayName} programs near you, what city are you in?`,
+          undefined,
+          []
+        );
+      }
 
       const matchCount = await this.countCachedProgramMatchesForOrg({
         orgRef,
-        normalizedActivity: context.requestedActivity!,
+        normalizedActivity: refreshed.requestedActivity!,
         ageYears: ageOnly
       });
 
       if (matchCount === 0) {
         return this.formatResponse(
-          `I don’t have any **${getActivityDisplayName(context.requestedActivity!)}** programs for **age ${ageOnly}** in my listings right now.\n\nIf you want, tell me another activity (or a different city) and I’ll try again.`,
+          `I don’t have any **${getActivityDisplayName(refreshed.requestedActivity!)}** programs for **age ${ageOnly}** in my listings right now.\n\nIf you want, tell me another activity (or a different city) and I’ll try again.`,
           undefined,
           [
             { label: "Start over", action: "clear_context", payload: {}, variant: "outline" as const }
@@ -3638,7 +3671,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           });
           
           // Store context and proceed directly to search
-          this.updateContext(sessionId, { 
+          await this.updateContextAndAwait(sessionId, { 
             requestedActivity: detectedActivity,
             requestedLocation: cityMatch,
             step: FlowStep.BROWSE,
@@ -3697,7 +3730,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         
         // City detected but out of coverage - store context and handle gracefully
         if (locationCheck.found && !locationCheck.isInCoverage) {
-          this.updateContext(sessionId, { 
+          await this.updateContextAndAwait(sessionId, { 
             requestedActivity: detectedActivity,
             requestedLocation: cityMatch,
             step: FlowStep.BROWSE,
@@ -3731,7 +3764,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         if (detectedAge) {
           updates.childInfo = { ...(context.childInfo || { name: "" }), age: detectedAge };
         }
-        this.updateContext(sessionId, updates);
+        // Awaited persist: prevents losing requestedActivity across the city/age turn boundary.
+        await this.updateContextAndAwait(sessionId, updates);
 
         const displayName = getActivityDisplayName(activity);
         if (this.detectNonUSLocationHint(input)) {
@@ -4821,7 +4855,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
     // Persist requested location so age-only follow-ups (e.g., "10") can complete the triad across turns.
     // (We already do this for out-of-coverage above; this covers in-coverage locations.)
-    this.updateContext(sessionId, {
+    await this.updateContextAndAwait(sessionId, {
       requestedLocation: state ? `${city}, ${state}` : city
     });
 
