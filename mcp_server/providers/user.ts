@@ -12,6 +12,52 @@ const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+function computeAgeYearsFromISODate(dobIso: string): number | null {
+  const iso = String(dobIso || '').slice(0, 10);
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (!Number.isFinite(y) || !Number.isFinite(mo) || !Number.isFinite(d)) return null;
+  const now = new Date();
+  let age = now.getUTCFullYear() - y;
+  const nowM = now.getUTCMonth() + 1;
+  const nowD = now.getUTCDate();
+  if (nowM < mo || (nowM === mo && nowD < d)) age -= 1;
+  return age;
+}
+
+async function getDelegateProfileForUser(user_id: string): Promise<DelegateProfile | null> {
+  const { data: profile, error } = await supabase
+    .from('delegate_profiles')
+    .select('user_id, first_name, last_name, date_of_birth')
+    .eq('user_id', user_id)
+    .maybeSingle();
+  if (error) {
+    Logger.warn('[User] Failed to load delegate profile for child hygiene (non-fatal)', { error });
+    return null;
+  }
+  return (profile as any) || null;
+}
+
+function looksLikeDelegateChildRecord(child: any, profile: DelegateProfile): boolean {
+  const cFirst = String(child?.first_name || '').trim().toLowerCase();
+  const cLast = String(child?.last_name || '').trim().toLowerCase();
+  const cDob = String(child?.dob || '').slice(0, 10);
+
+  const dFirst = String(profile?.first_name || '').trim().toLowerCase();
+  const dLast = String(profile?.last_name || '').trim().toLowerCase();
+  const dDob = String(profile?.date_of_birth || '').slice(0, 10);
+
+  if (!cFirst || !cLast || !cDob) return false;
+  if (!dFirst || !dLast || !dDob) return false;
+
+  // Strong match: same DOB + last name + first-name prefix (Matt vs Matthew)
+  const firstPrefixMatch = cFirst.startsWith(dFirst) || dFirst.startsWith(cFirst);
+  return cDob === dDob && cLast === dLast && firstPrefixMatch;
+}
+
 export interface UserTool {
   name: string;
   description: string;
@@ -75,6 +121,10 @@ async function listChildren(args: {
   console.log(`[User] Listing children for user: ${user_id}`);
   
   try {
+    // Data hygiene: remove any bogus "child" rows that appear to be the delegate profile (historical bug).
+    // This is best-effort and non-fatal; we never want those records to surface in chat.
+    const delegateProfile = await getDelegateProfileForUser(user_id);
+
     const { data: children, error } = await supabase
       .from('children')
       .select('id, user_id, first_name, last_name, dob, created_at')
@@ -92,11 +142,39 @@ async function listChildren(args: {
       return { success: false, error: friendlyError };
     }
     
-    console.log(`[User] ✅ Found ${children?.length || 0} children for user`);
+    const rows = (children || []) as any[];
+
+    let cleaned = rows;
+    if (delegateProfile && delegateProfile.date_of_birth && delegateProfile.last_name) {
+      const toDelete = rows.filter((c) => looksLikeDelegateChildRecord(c, delegateProfile));
+      if (toDelete.length > 0) {
+        const ids = toDelete.map((c) => c.id).filter(Boolean);
+        try {
+          const { error: delErr } = await supabase.from('children').delete().in('id', ids).eq('user_id', user_id);
+          if (delErr) {
+            Logger.warn('[User] Failed to delete delegate-like child records (non-fatal)', { delErr });
+          } else {
+            Logger.info('[User] Deleted delegate-like child records', { count: ids.length });
+          }
+        } catch (e) {
+          Logger.warn('[User] Exception deleting delegate-like child records (non-fatal)', { e });
+        }
+        cleaned = rows.filter((c) => !ids.includes(c.id));
+      }
+    }
+
+    // Also exclude adults (18+) from the "children" list (SignupAssist is for kid registrations).
+    cleaned = cleaned.filter((c) => {
+      const dobIso = c?.dob ? String(c.dob).slice(0, 10) : '';
+      const age = dobIso ? computeAgeYearsFromISODate(dobIso) : null;
+      return age == null ? true : age < 18;
+    });
+
+    console.log(`[User] ✅ Found ${cleaned?.length || 0} children for user`);
     
     return {
       success: true,
-      data: { children: (children || []) as ChildRecord[] }
+      data: { children: cleaned as ChildRecord[] }
     };
     
   } catch (error: any) {
@@ -127,6 +205,29 @@ async function createChild(args: {
   console.log(`[User] Creating child for user: ${user_id}, name: ${first_name} ${last_name}`);
   
   try {
+    const dobIso = dob ? String(dob).slice(0, 10) : '';
+    const age = dobIso ? computeAgeYearsFromISODate(dobIso) : null;
+    if (age != null && age >= 18) {
+      const friendlyError: ParentFriendlyError = {
+        display: 'That participant looks like an adult',
+        recovery: 'Please add a child under 18 (or register the adult directly with the provider).',
+        severity: 'low',
+        code: 'VALIDATION_ERROR'
+      };
+      return { success: false, error: friendlyError };
+    }
+
+    const delegateProfile = await getDelegateProfileForUser(user_id);
+    if (delegateProfile && looksLikeDelegateChildRecord({ first_name, last_name, dob: dobIso }, delegateProfile)) {
+      const friendlyError: ParentFriendlyError = {
+        display: 'That participant matches the parent/guardian profile',
+        recovery: 'Please add a child participant (not the parent/guardian).',
+        severity: 'low',
+        code: 'VALIDATION_ERROR'
+      };
+      return { success: false, error: friendlyError };
+    }
+
     const { data: child, error } = await supabase
       .from('children')
       .insert({

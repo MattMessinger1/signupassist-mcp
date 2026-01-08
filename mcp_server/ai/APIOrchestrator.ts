@@ -895,8 +895,32 @@ export default class APIOrchestrator implements IOrchestrator {
     const saved = context.savedChildren || [];
     const participants = context.participants || [];
 
+    const isAdult = (dob?: string | null): boolean => {
+      const iso = dob ? this.parseDateFromText(String(dob)) || String(dob) : null;
+      const age = iso ? this.computeAgeYearsFromISODate(String(iso).slice(0, 10)) : null;
+      return age != null && age >= 18;
+    };
+
+    const delegateMatchesChild = (child: any): boolean => {
+      const d = context.pendingDelegateInfo || {};
+      const dFirst = String(d.firstName || "").trim();
+      const dLast = String(d.lastName || "").trim();
+      const dDob = String(d.dob || "").trim();
+      if (!dFirst || !dLast || !dDob) return false;
+      return this.looksLikeDelegateChild(child, {
+        delegate_firstName: dFirst,
+        delegate_lastName: dLast,
+        delegate_dob: dDob,
+      } as any);
+    };
+
     // Filter out children already registered in this session (match by first+last name, case-insensitive)
     const remaining = saved.filter((child) => {
+      // Defensive: never offer adult participants from "children" table
+      if (isAdult(child?.dob)) return false;
+      // Defensive: never offer a record that looks like the delegate (historical data bug)
+      if (delegateMatchesChild(child)) return false;
+
       const childFirst = String(child.first_name || "").toLowerCase().trim();
       const childLast = String(child.last_name || "").toLowerCase().trim();
       const alreadyRegistered = participants.some((p: any) => {
@@ -1063,25 +1087,45 @@ export default class APIOrchestrator implements IOrchestrator {
       msg += `- **Set & forget:** We’ll register you the moment it opens.\n`;
       msg += `- **Charges now:** $0.00 (no charges unless registration succeeds)\n`;
     }
-    // For multiple children, calculate total program fee (program fee × child count)
+    // For multiple children, show a clear unit-price equation without double-counting.
+    // NOTE: `program_fee_cents` is already the TOTAL for all participants (computed in submitForm).
     const numChildren = participantDisplay.length;
     let programFeeDisplay = formattedTotal;
     if (numChildren > 1) {
-      // Calculate and display total: "$50.00 × 2 children = $100.00"
-      const totalFeeCents = (Number.isFinite(feeCents) && feeCents > 0) ? feeCents * numChildren : 0;
-      const formattedTotalFee = totalFeeCents > 0 ? formatCurrencyFromCents(totalFeeCents) : '';
-      programFeeDisplay = formattedTotalFee 
-        ? `${formattedTotal} × ${numChildren} children = ${formattedTotalFee}`
-        : `${formattedTotal} × ${numChildren} children`;
+      const totalFeeCents = Number.isFinite(feeCents) && feeCents > 0 ? feeCents : 0;
+      if (totalFeeCents > 0) {
+        const unitCents = Math.round(totalFeeCents / numChildren);
+        // Only show the unit equation if it stays consistent when re-multiplied.
+        const consistent = unitCents * numChildren === totalFeeCents;
+        const formattedTotalFee = formatCurrencyFromCents(totalFeeCents);
+        if (consistent && unitCents > 0) {
+          const formattedUnit = formatCurrencyFromCents(unitCents);
+          programFeeDisplay = `${formattedUnit} × ${numChildren} children = ${formattedTotalFee}`;
+        } else {
+          programFeeDisplay = `${formattedTotalFee} total for ${numChildren} children`;
+        }
+      } else {
+        programFeeDisplay = `${formattedTotal} × ${numChildren} children`;
+      }
     }
     msg += opensAtDisplay
       ? `- **Program Fee:** ${programFeeDisplay} (paid to provider only if we successfully register you when it opens)\n`
       : `- **Program Fee:** ${programFeeDisplay} (paid to provider only if booking succeeds)\n`;
     
-    // Flat success fee messaging for multiple children
-    const successFeeNote = numChildren > 1 
-      ? ` (flat fee for 1-3 children)` 
-      : "";
+    // Success fee note: only describe a multi-child flat fee when the provider allows >1 per booking.
+    const maxPerBookingRaw = Number(
+      (context.maxParticipantsPerBooking != null
+        ? context.maxParticipantsPerBooking
+        : (context.selectedProgram as any)?.max_participants) ?? 3
+    );
+    const maxParticipantsAllowed =
+      Number.isFinite(maxPerBookingRaw) && maxPerBookingRaw > 0
+        ? Math.max(1, Math.min(3, Math.floor(maxPerBookingRaw)))
+        : 3;
+    const successFeeNote =
+      numChildren > 1 && maxParticipantsAllowed > 1
+        ? ` (flat fee for 1-${maxParticipantsAllowed} children)`
+        : "";
     msg += opensAtDisplay
       ? `- **SignupAssist Fee:** ${successFee}${successFeeNote} (charged only if we successfully register you when it opens)\n`
       : `- **SignupAssist Fee:** ${successFee}${successFeeNote} (charged only upon successful registration)\n`;
@@ -5327,6 +5371,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         // Clear stale selection/form/payment state in the SAME persisted write as displayedPrograms.
         // This prevents late background persists from overwriting newer state (multi-instance Railway).
         selectedProgram: null,
+        maxParticipantsPerBooking: undefined,
         formData: undefined,
         schedulingData: undefined,
         paymentAuthorized: false,
@@ -5667,6 +5712,17 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     }
     const orgRef = programData?.org_ref || 'aim-design';
 
+    // Prefer cached program data for provider constraint: max participants allowed per booking.
+    const initialMaxPerBookingRaw = Number(
+      (programData as any)?.max_participants ??
+        (programData as any)?.maxParticipants ??
+        undefined
+    );
+    const initialMaxParticipantsPerBooking =
+      Number.isFinite(initialMaxPerBookingRaw) && initialMaxPerBookingRaw > 0
+        ? Math.floor(initialMaxPerBookingRaw)
+        : undefined;
+
     // Update context (clear displayedPrograms since we're moving to next step)
     // CRITICAL: Use awaited persist to prevent race conditions
     this.debugLog('[selectProgram] TRACE: About to persist selectedProgram', {
@@ -5679,6 +5735,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     await this.updateContextAndAwait(sessionId, {
       step: FlowStep.FORM_FILL,
       selectedProgram: programData,
+      ...(initialMaxParticipantsPerBooking ? { maxParticipantsPerBooking: initialMaxParticipantsPerBooking } : {}),
       displayedPrograms: undefined // Clear to prevent stale data
     });
     
@@ -5846,10 +5903,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           }))
         };
         const rawMaxParticipants = Number(
-          (formDiscoveryResult as any)?.data?.metadata?.max_participants ??
-            (questions as any)?.max_participants ??
-            (context.selectedProgram as any)?.max_participants ??
+          (context.selectedProgram as any)?.max_participants ??
             (context.selectedProgram as any)?.maxParticipants ??
+            (formDiscoveryResult as any)?.data?.metadata?.max_participants ??
+            (questions as any)?.max_participants ??
             undefined
         );
         const maxParticipantsPerBooking =
@@ -8863,8 +8920,18 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const hasLimitedSlots = typeof availableSlots === 'number' && availableSlots > 0;
       const remainingSlots = hasLimitedSlots ? availableSlots - participants.length : Infinity;
       
-      // Batch sibling registration: offer to add another child (up to 3, but also respect available slots)
-      const canAddMore = participants.length < 3 && remainingSlots > 0;
+      const maxPerBookingRaw = Number(
+        (freshContext.maxParticipantsPerBooking != null
+          ? freshContext.maxParticipantsPerBooking
+          : (freshContext.selectedProgram as any)?.max_participants) ?? 3
+      );
+      const maxParticipantsAllowed =
+        Number.isFinite(maxPerBookingRaw) && maxPerBookingRaw > 0
+          ? Math.max(1, Math.min(3, Math.floor(maxPerBookingRaw)))
+          : 3;
+
+      // Batch sibling registration: offer to add another child (up to 3, but also respect provider per-booking limit + available slots)
+      const canAddMore = participants.length < maxParticipantsAllowed && remainingSlots > 0;
       
       if (canAddMore) {
         const childNames = participants.map((p: any) => p.firstName).join(', ');
@@ -8890,12 +8957,17 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             remainingSavedChildrenForSelection: remainingSavedChildren
           });
           
+          const feeNote =
+            maxParticipantsAllowed > 1
+              ? `**Note:** The $20.00 SignupAssist fee is the same whether you register 1 or ${maxParticipantsAllowed} child${maxParticipantsAllowed === 1 ? '' : 'ren'}.`
+              : `**Note:** This class only allows **1 participant per booking** with the provider.`;
+
           return this.formatResponse(
             `${countText}\n\n` +
             `Would you like to register another child for **${programName}**?${slotsWarning}\n\n` +
             `**Your saved children:**\n${savedChildList}\n${differentChildOption}\n\n` +
             `Reply with a number, name, or "no" to continue.\n\n` +
-            `**Note:** The $20.00 SignupAssist fee is the same whether you register 1, 2, or 3 children.`,
+            feeNote,
             undefined,
             [
               { label: "No, continue to payment", action: "finish_child_selection", variant: "outline" }
@@ -8906,10 +8978,15 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         // No saved children available - show simple yes/no prompt
         this.updateContext(sessionId, { awaitingAdditionalChild: true });
         
+        const feeNote =
+          maxParticipantsAllowed > 1
+            ? `**Note:** The $20.00 SignupAssist fee is the same whether you register 1 or ${maxParticipantsAllowed} child${maxParticipantsAllowed === 1 ? '' : 'ren'}.`
+            : `**Note:** This class only allows **1 participant per booking** with the provider.`;
+
         return this.formatResponse(
           `${countText}\n\n` +
           `Would you like to register another child for **${programName}**?${slotsWarning}\n\n` +
-          `**Note:** The $20.00 SignupAssist fee is the same whether you register 1, 2, or 3 children.`,
+          feeNote,
           undefined,
           [
             { label: "Yes, add another child", action: "add_another_child", variant: "accent" },

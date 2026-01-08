@@ -284,6 +284,38 @@ async function testBookeoMaxParticipantsPreventsSiblingPrompt() {
   assert.ok(/PAYMENT_OK/.test(String(resp?.message || "")), "Should proceed to payment/next step when maxParticipantsPerBooking=1");
 }
 
+async function testProgramFeeEquationUsesTotalNotDoubleCounted() {
+  const orch = new APIOrchestrator({ tools: new Map() });
+  const sessionId = "regression-fee-equation";
+
+  orch.sessions.set(sessionId, {
+    step: "REVIEW",
+    selectedProgram: { title: "CLASS Z", available_slots: 10, price: "$40.00" },
+    participants: [
+      { firstName: "Simon", lastName: "Messinger", dob: "2016-03-19" },
+      { firstName: "Percy", lastName: "Messinger", dob: "2014-11-26" },
+    ],
+    formData: {
+      // TOTAL for all participants (2 × $40.00 = $80.00)
+      program_fee_cents: 8000,
+      delegate_data: {
+        delegate_firstName: "Matt",
+        delegate_lastName: "Messinger",
+        delegate_email: "matt@example.com",
+        delegate_dob: "1976-05-13",
+        delegate_relationship: "parent",
+      },
+    },
+    maxParticipantsPerBooking: 3,
+  });
+
+  const summary = orch.buildReviewSummaryFromContext(orch.getContext(sessionId));
+  assert.ok(
+    /\$40\.00\s*×\s*2\s+children\s*=\s*\$80\.00/.test(summary),
+    "Program Fee equation should show unit × count = total without double counting"
+  );
+}
+
 async function run() {
   await testHiddenProgramFiltering();
   await testSiblingChildCaptureAndReviewFallback();
@@ -292,6 +324,7 @@ async function run() {
   await testDifferentChildOption();
   await testSecondaryActionDoesNotHijackWizardTranscript();
   await testBookeoMaxParticipantsPreventsSiblingPrompt();
+  await testProgramFeeEquationUsesTotalNotDoubleCounted();
   console.log("✅ PASS: sibling add-child + hidden closed program + saved child selection + secondary-action + max participants regressions");
 }
 
