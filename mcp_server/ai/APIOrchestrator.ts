@@ -6771,9 +6771,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         program_fee: programFeeDisplayForReceipt,
         success_fee_cents: 2000,
       });
+      const providerDisplayName = orgRef === "aim-design" ? "AIM Design" : orgRef || "the provider";
+      const successFeeDisplay = formatCurrencyFromCents(2000);
       const providerPaymentNote = providerCheckoutUrlSafe
-        ? `\n\n💳 **Provider payment:** ${providerCheckoutUrlSafe}\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the ${formatCurrencyFromCents(2000)} success fee._`
-        : `\n\n💳 **Provider payment:** The provider will collect the program fee via their official checkout (often sent by email).\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the ${formatCurrencyFromCents(2000)} success fee._`;
+        ? `\n\n💳 **Payment:** ${providerDisplayName} charges the program fee via Bookeo/Stripe at booking time. If you still need to complete provider payment, use: ${providerCheckoutUrlSafe}\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the ${successFeeDisplay} success fee._`
+        : `\n\n💳 **Payment:** ${providerDisplayName} charges the program fee via Bookeo/Stripe at booking time (as a separate charge). SignupAssist charges the ${successFeeDisplay} success fee separately — you may see two charges to the same card.\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the ${successFeeDisplay} success fee._`;
 
       const finalMessage = `${message}${providerPaymentNote}`;
 
@@ -6893,6 +6895,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const programFee = (programFeeCents / 100).toFixed(2);
       const totalAmount = ((programFeeCents + 2000) / 100).toFixed(2);
       const programName = context.selectedProgram?.title || formData?.program_name || "Program";
+      const providerDisplayName = "AIM Design";
       
       // Format card display
       const cardDisplay = cardLast4 && cardBrand 
@@ -6912,9 +6915,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const authCard: CardSpec = {
         title: "💳 Payment Authorization",
         description: `**Payment Method:** ${cardDisplay}\n\n` +
-          `**Program Fee:** $${programFee} (charged by the provider via their official checkout)\n` +
-          `**SignupAssist Fee:** $20.00 (charged only if registration succeeds)\n\n` +
-          `**Total:** $${totalAmount}`,
+          `**Program Fee:** $${programFee} (charged by ${providerDisplayName} via Bookeo/Stripe if booking succeeds)\n` +
+          `**SignupAssist Fee:** $20.00 (charged separately only if booking succeeds)\n\n` +
+          `**Total (two separate charges):** $${totalAmount}`,
         metadata: {
           programFeeCents,
           serviceFeeCents: 2000,

@@ -6,7 +6,7 @@ export const COPY = {
       "Every step is recorded in your Audit Trail.",
       "Program fee refunds are handled by the provider. Success fee refunds are handled by SignupAssist (by Shipworx).",
     ],
-    payment: "Payments are handled by Stripe / the provider. SignupAssist never sees your full card number.",
+    payment: "Payments are processed by Stripe. The provider charges the program fee, and SignupAssist charges its $20 fee separately. SignupAssist never sees your full card number.",
     refundHelp: "Need help with a refund? Email support@shipworx.ai",
   },
   fees: {

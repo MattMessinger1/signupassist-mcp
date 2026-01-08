@@ -22,7 +22,7 @@ export function addResponsibleDelegateFooter(message: string): string {
 export function addAPISecurityContext(message: string, providerName: string): string {
   return `${message}
 
-🔒 *Your data stays secure:* ${providerName} handles payment processing via official checkout. SignupAssist never stores card numbers.`;
+🔒 *Your data stays secure:* ${providerName} charges the program fee via Bookeo/Stripe, and SignupAssist never stores card numbers.`;
 }
 
 
