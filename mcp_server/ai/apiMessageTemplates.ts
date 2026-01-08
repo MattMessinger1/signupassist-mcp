@@ -239,7 +239,7 @@ Booking #${bookingNumber} · ${startTime}
 ${participantsLine}
 
 **Fees**
-- Program fee: ${programFeeDisplay} (handled by the provider)
+- Program fee: ${programFeeDisplay} (charged by ${providerName} at booking time)
 - SignupAssist success fee: ${successFeeDisplay}${flatFeeNote} (charged only upon successful registration)
 ${calendarSection}
 
