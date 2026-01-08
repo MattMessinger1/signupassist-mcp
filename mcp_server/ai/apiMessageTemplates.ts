@@ -239,7 +239,7 @@ Booking #${bookingNumber} · ${startTime}
 ${participantsLine}
 
 **Fees**
-- Program fee: ${programFeeDisplay} (charged by ${providerName} at booking time)
+- Program fee: ${programFeeDisplay} (charged by ${providerName} at booking time to the same card you set up via Stripe)
 - SignupAssist success fee: ${successFeeDisplay}${flatFeeNote} (charged only upon successful registration)
 ${calendarSection}
 

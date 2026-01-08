@@ -6760,7 +6760,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         Number.isFinite(programFeeCentsForReceipt) && programFeeCentsForReceipt > 0
           ? "" // use cents-based formatting in the template
           : String(context.selectedProgram?.price || "TBD");
+      const providerDisplayNameForReceipt = orgRef === "aim-design" ? "AIM Design" : orgRef || "the provider";
       const message = getAPISuccessMessage({
+        provider_name: providerDisplayNameForReceipt,
         program_name: programName,
         booking_number,
         start_time: start_time || "TBD",
@@ -6771,11 +6773,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         program_fee: programFeeDisplayForReceipt,
         success_fee_cents: 2000,
       });
-      const providerDisplayName = orgRef === "aim-design" ? "AIM Design" : orgRef || "the provider";
+      const providerDisplayName = providerDisplayNameForReceipt;
       const successFeeDisplay = formatCurrencyFromCents(2000);
       const providerPaymentNote = providerCheckoutUrlSafe
         ? `\n\n💳 **Payment:** ${providerDisplayName} charges the program fee via Bookeo/Stripe at booking time. If you still need to complete provider payment, use: ${providerCheckoutUrlSafe}\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the ${successFeeDisplay} success fee._`
-        : `\n\n💳 **Payment:** ${providerDisplayName} charges the program fee via Bookeo/Stripe at booking time (as a separate charge). SignupAssist charges the ${successFeeDisplay} success fee separately — you may see two charges to the same card.\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the ${successFeeDisplay} success fee._`;
+        : `\n\n💳 **Payment:** ${providerDisplayName} charges the program fee via Bookeo/Stripe at booking time to the same card you set up via Stripe (as a separate charge). SignupAssist charges the ${successFeeDisplay} success fee separately — you’ll see two separate charges to that same card.\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the ${successFeeDisplay} success fee._`;
 
       const finalMessage = `${message}${providerPaymentNote}`;
 
@@ -6915,8 +6917,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const authCard: CardSpec = {
         title: "💳 Payment Authorization",
         description: `**Payment Method:** ${cardDisplay}\n\n` +
-          `**Program Fee:** $${programFee} (charged by ${providerDisplayName} via Bookeo/Stripe if booking succeeds)\n` +
-          `**SignupAssist Fee:** $20.00 (charged separately only if booking succeeds)\n\n` +
+          `**Program Fee:** $${programFee} (charged by ${providerDisplayName} via Bookeo/Stripe to this same card if booking succeeds)\n` +
+          `**SignupAssist Fee:** $20.00 (charged separately to this same card only if booking succeeds)\n\n` +
           `**Total (two separate charges):** $${totalAmount}`,
         metadata: {
           programFeeCents,
