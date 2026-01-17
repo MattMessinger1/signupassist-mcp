@@ -364,8 +364,8 @@ Continued use of the Services after changes constitutes acceptance of the update
 ```
 Shipworx LLC
 Attn: Privacy
-[Street Address]
-[City, State, ZIP]
+2800 E Enterprise Ave, Suite 333
+Appleton, WI 54913
 United States
 ```
 

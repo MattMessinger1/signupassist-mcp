@@ -378,8 +378,8 @@ These Terms do not create any third-party beneficiary rights.
 ```
 Shipworx LLC
 Attn: Legal Department
-[Street Address]
-[City, State ZIP]
+2800 E Enterprise Ave, Suite 333
+Appleton, WI 54913
 United States
 ```
 
