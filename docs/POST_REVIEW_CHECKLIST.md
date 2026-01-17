@@ -250,6 +250,11 @@ npm install twilio
 https://7d57b46b6deeea10790f0c73646a1971@o4510723123970048.ingest.us.sentry.io/4510723130392576
 ```
 | `RESEND_API_KEY` | Email sending | P0 |
+
+**Your Resend API Key (add after review):**
+```
+re_LSqFoiB3_F13Tzo3hBFE2WNLmt6Ugff1L
+```
 | `REDIS_URL` | Rate limiting + cache | P1 |
 | `TWILIO_ACCOUNT_SID` | SMS | P2 |
 | `TWILIO_AUTH_TOKEN` | SMS | P2 |
