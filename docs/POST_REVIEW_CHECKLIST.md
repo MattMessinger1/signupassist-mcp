@@ -244,6 +244,11 @@ npm install twilio
 | Variable | Purpose | Priority |
 |----------|---------|----------|
 | `SENTRY_DSN` | Error tracking | P0 |
+
+**Your Sentry DSN (add after review):**
+```
+https://7d57b46b6deeea10790f0c73646a1971@o4510723123970048.ingest.us.sentry.io/4510723130392576
+```
 | `RESEND_API_KEY` | Email sending | P0 |
 | `REDIS_URL` | Rate limiting + cache | P1 |
 | `TWILIO_ACCOUNT_SID` | SMS | P2 |
