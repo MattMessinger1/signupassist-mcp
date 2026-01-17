@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow, formatISO } from "date-fns";
-import { AlertCircle, BarChart3, DatabaseZap, ExternalLink, FileText, Loader2, Shield } from "lucide-react";
+import { AlertCircle, BarChart3, DatabaseZap, DollarSign, ExternalLink, FileText, Loader2, Shield, TrendingUp } from "lucide-react";
 
 import { Header } from "@/components/Header";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -48,6 +48,35 @@ type AuditEventsResponse = {
   next_offset: number | null;
 };
 
+type FinancialMetrics = {
+  total_revenue_cents: number;
+  total_registrations: number;
+  registrations_by_status: {
+    completed: number;
+    pending: number;
+    failed: number;
+  };
+  monthly_revenue_cents: number;
+  monthly_registrations: number;
+  avg_fee_cents: number;
+  recent_registrations: Array<{
+    id: string;
+    booking_number: string | null;
+    program_name: string;
+    delegate_name: string;
+    success_fee_cents: number;
+    status: string;
+    created_at: string;
+  }>;
+  recent_charges: Array<{
+    id: string;
+    amount_cents: number;
+    status: string;
+    charged_at: string;
+    stripe_payment_intent: string | null;
+  }>;
+};
+
 function envBool(key: string): boolean {
   // Vite envs must be prefixed with VITE_ to be exposed to the client.
   const v = (import.meta as any)?.env?.[key];
@@ -62,6 +91,11 @@ function envStr(key: string): string {
 function trimId(id?: string | null): string {
   if (!id) return "";
   return id.length > 10 ? `${id.slice(0, 8)}…` : id;
+}
+
+function formatCents(cents: number | null | undefined): string {
+  if (cents == null) return "$0.00";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
 }
 
 async function fetchAdminJson<T>(baseUrl: string, path: string, accessToken: string): Promise<T> {
@@ -135,6 +169,13 @@ export default function AdminConsole() {
     staleTime: 10_000,
   });
 
+  const financialQuery = useQuery({
+    queryKey: ["admin-financial", apiBaseUrl],
+    enabled: enabled && !!apiBaseUrl && hasSession,
+    queryFn: () => fetchAdminJson<FinancialMetrics>(apiBaseUrl, "/admin/api/financial", session!.access_token),
+    staleTime: 30_000,
+  });
+
   // Hard gate: if the console is disabled, behave like it doesn't exist.
   if (!enabled) return <NotFound />;
 
@@ -195,10 +236,14 @@ export default function AdminConsole() {
           )}
 
           <Tabs defaultValue="overview" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="overview" className="flex items-center gap-2">
                 <BarChart3 className="h-4 w-4" />
                 Overview
+              </TabsTrigger>
+              <TabsTrigger value="financial" className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                Financial
               </TabsTrigger>
               <TabsTrigger value="audit" className="flex items-center gap-2">
                 <FileText className="h-4 w-4" />
@@ -326,6 +371,142 @@ export default function AdminConsole() {
                   </CardContent>
                 </Card>
               </div>
+            </TabsContent>
+
+            <TabsContent value="financial" className="space-y-4 mt-6">
+              {financialQuery.isError && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>
+                    {financialQuery.error instanceof Error ? financialQuery.error.message : "Failed to load financial data"}
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {financialQuery.isLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-sm text-muted-foreground">Total Revenue</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-3xl font-bold text-green-600">
+                          {formatCents(financialQuery.data?.total_revenue_cents)}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          From {financialQuery.data?.total_registrations ?? 0} completed registrations
+                        </div>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-sm text-muted-foreground">This Month</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-3xl font-bold flex items-center gap-2">
+                          <TrendingUp className="h-6 w-6 text-green-500" />
+                          {formatCents(financialQuery.data?.monthly_revenue_cents)}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {financialQuery.data?.monthly_registrations ?? 0} registrations this month
+                        </div>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-sm text-muted-foreground">Avg Fee</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-3xl font-bold">
+                          {formatCents(financialQuery.data?.avg_fee_cents)}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">Per completed registration</div>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-sm text-muted-foreground">Registration Status</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-1 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-green-600">Completed</span>
+                            <span className="font-medium">{financialQuery.data?.registrations_by_status?.completed ?? 0}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-yellow-600">Pending</span>
+                            <span className="font-medium">{financialQuery.data?.registrations_by_status?.pending ?? 0}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-red-600">Failed/Cancelled</span>
+                            <span className="font-medium">{financialQuery.data?.registrations_by_status?.failed ?? 0}</span>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Recent Registrations</CardTitle>
+                      <CardDescription>Latest completed and pending registrations</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {(financialQuery.data?.recent_registrations?.length || 0) === 0 ? (
+                        <div className="text-sm text-muted-foreground py-4 text-center">
+                          No registrations yet. Revenue will appear here once users complete bookings.
+                        </div>
+                      ) : (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Date</TableHead>
+                              <TableHead>Program</TableHead>
+                              <TableHead>Customer</TableHead>
+                              <TableHead>Status</TableHead>
+                              <TableHead className="text-right">Fee</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {(financialQuery.data?.recent_registrations || []).map((r) => (
+                              <TableRow key={r.id}>
+                                <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                                  {new Date(r.created_at).toLocaleDateString()}
+                                </TableCell>
+                                <TableCell className="font-medium max-w-[200px] truncate">
+                                  {r.program_name}
+                                </TableCell>
+                                <TableCell>{r.delegate_name}</TableCell>
+                                <TableCell>
+                                  <Badge
+                                    variant={
+                                      r.status === "completed" || r.status === "confirmed"
+                                        ? "default"
+                                        : r.status === "pending"
+                                          ? "secondary"
+                                          : "destructive"
+                                    }
+                                  >
+                                    {r.status}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-right font-medium">
+                                  {formatCents(r.success_fee_cents)}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
+                    </CardContent>
+                  </Card>
+                </>
+              )}
             </TabsContent>
 
             <TabsContent value="audit" className="space-y-4 mt-6">

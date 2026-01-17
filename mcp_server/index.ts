@@ -1810,6 +1810,86 @@ class SignupAssistMCPServer {
           return;
         }
 
+        // GET /admin/api/financial
+        if (method === 'GET' && pathname === '/admin/api/financial') {
+          const now = new Date();
+          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+          const startOfMonthIso = startOfMonth.toISOString();
+
+          // Query registrations for revenue metrics
+          const { data: registrations, error: regError } = await supabase
+            .from('registrations')
+            .select('id, success_fee_cents, status, created_at, booking_number, program_name, delegate_name');
+
+          if (regError) {
+            json(500, { error: 'registrations_query_failed', message: regError.message });
+            return;
+          }
+
+          const regs = (registrations || []) as any[];
+
+          // Calculate metrics
+          const completedRegs = regs.filter((r) => r.status === 'completed' || r.status === 'confirmed');
+          const pendingRegs = regs.filter((r) => r.status === 'pending');
+          const failedRegs = regs.filter((r) => r.status === 'failed' || r.status === 'cancelled');
+
+          const totalRevenueCents = completedRegs.reduce((sum, r) => sum + (r.success_fee_cents || 0), 0);
+          const monthlyRegs = completedRegs.filter((r) => new Date(r.created_at) >= startOfMonth);
+          const monthlyRevenueCents = monthlyRegs.reduce((sum, r) => sum + (r.success_fee_cents || 0), 0);
+
+          const avgFeeCents = completedRegs.length > 0 
+            ? Math.round(totalRevenueCents / completedRegs.length) 
+            : 0;
+
+          // Query recent charges from charges table
+          const { data: charges, error: chargeError } = await supabase
+            .from('charges')
+            .select('id, amount_cents, status, charged_at, stripe_payment_intent')
+            .order('charged_at', { ascending: false })
+            .limit(50);
+
+          if (chargeError) {
+            // Non-fatal - we can still return registration metrics
+            console.warn('[admin/financial] Failed to query charges:', chargeError.message);
+          }
+
+          // Recent registrations for display (most recent 20)
+          const recentRegistrations = regs
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            .slice(0, 20)
+            .map((r) => ({
+              id: r.id,
+              booking_number: r.booking_number,
+              program_name: r.program_name,
+              delegate_name: r.delegate_name,
+              success_fee_cents: r.success_fee_cents,
+              status: r.status,
+              created_at: r.created_at,
+            }));
+
+          json(200, {
+            total_revenue_cents: totalRevenueCents,
+            total_registrations: completedRegs.length,
+            registrations_by_status: {
+              completed: completedRegs.length,
+              pending: pendingRegs.length,
+              failed: failedRegs.length,
+            },
+            monthly_revenue_cents: monthlyRevenueCents,
+            monthly_registrations: monthlyRegs.length,
+            avg_fee_cents: avgFeeCents,
+            recent_registrations: recentRegistrations,
+            recent_charges: (charges || []).map((c: any) => ({
+              id: c.id,
+              amount_cents: c.amount_cents,
+              status: c.status,
+              charged_at: c.charged_at,
+              stripe_payment_intent: c.stripe_payment_intent,
+            })),
+          });
+          return;
+        }
+
         json(404, { error: 'Not found' });
         return;
       }
