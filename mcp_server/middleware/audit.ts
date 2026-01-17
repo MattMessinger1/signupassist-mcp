@@ -6,6 +6,7 @@
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 import { verifyMandate } from '../lib/mandates.js';
+import { capturePostHogEvent } from '../lib/posthog.js';
 
 // Initialize Supabase client for backend operations
 const supabaseUrl = process.env.SUPABASE_URL!;
@@ -252,6 +253,11 @@ export async function auditToolCall<T>(
   requiredScope?: string
 ): Promise<T> {
   let auditId: string | null = null;
+  const startedAtMs = Date.now();
+  const distinctId =
+    (context.user_id && typeof context.user_id === 'string' ? context.user_id : '') ||
+    (context.plan_execution_id && typeof context.plan_execution_id === 'string' ? context.plan_execution_id : '') ||
+    'unknown';
   
   try {
     // Skip audit logging ONLY if no audit identifiers are present
@@ -275,6 +281,14 @@ export async function auditToolCall<T>(
     if (!shouldSkipAudit) {
       auditId = await logToolCallStart(context, args);
     }
+
+    // Best-effort product analytics: record tool call start (never blocks tool execution)
+    void capturePostHogEvent('tool_call_started', distinctId, {
+      tool: context.tool,
+      plan_execution_id: context.plan_execution_id,
+      mandate_id: context.mandate_id,
+      has_mandate_jws: !!context.mandate_jws,
+    });
     
     // ======= PRODUCTION MANDATE ENFORCEMENT =======
     // Only bypass in explicit test environments
@@ -362,11 +376,20 @@ export async function auditToolCall<T>(
 
     // Execute the tool
     const result = await toolHandler();
+    const durationMs = Date.now() - startedAtMs;
     
     // Log successful completion
     if (auditId) {
       await logToolCallFinish(auditId, result, 'allowed');
     }
+
+    void capturePostHogEvent('tool_call_finished', distinctId, {
+      tool: context.tool,
+      plan_execution_id: context.plan_execution_id,
+      mandate_id: context.mandate_id,
+      decision: 'allowed',
+      duration_ms: durationMs,
+    });
     
     return result;
   } catch (error) {
@@ -374,6 +397,15 @@ export async function auditToolCall<T>(
     if (auditId) {
       await logToolCallFinish(auditId, { error: error.message }, 'denied');
     }
+
+    void capturePostHogEvent('tool_call_finished', distinctId, {
+      tool: context.tool,
+      plan_execution_id: context.plan_execution_id,
+      mandate_id: context.mandate_id,
+      decision: 'denied',
+      duration_ms: Date.now() - startedAtMs,
+      error: error?.message,
+    });
     throw error;
   }
 }

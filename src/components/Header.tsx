@@ -1,8 +1,7 @@
-import { LogOut, User, Shield, Menu } from 'lucide-react';
+import { LogOut, Shield, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,6 +12,7 @@ import {
 export function Header() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const adminEnabled = String(import.meta.env.VITE_ADMIN_CONSOLE_ENABLED || '').toLowerCase() === 'true';
 
   return (
     <header className="border-b bg-card">
@@ -40,6 +40,11 @@ export function Header() {
             <Button variant="ghost" size="sm" onClick={() => navigate('/mandates')}>
               Receipts
             </Button>
+            {adminEnabled && user && (
+              <Button variant="ghost" size="sm" onClick={() => navigate('/admin')}>
+                Admin
+              </Button>
+            )}
           </nav>
         </div>
 
@@ -78,6 +83,11 @@ export function Header() {
               <DropdownMenuItem onClick={() => navigate('/mandates')}>
                 Receipts
               </DropdownMenuItem>
+              {adminEnabled && user && (
+                <DropdownMenuItem onClick={() => navigate('/admin')}>
+                  Admin
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>

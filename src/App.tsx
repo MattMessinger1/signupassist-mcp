@@ -17,6 +17,7 @@ import NotFound from "./pages/NotFound";
 import { DisambiguationDemo } from "./components/DisambiguationDemo";
 import ChatTestHarness from "./pages/ChatTestHarness";
 import MCPChatTest from "./pages/MCPChatTest";
+import AdminConsole from "./pages/admin/AdminConsole";
 
 const queryClient = new QueryClient();
 
@@ -35,6 +36,7 @@ const App = () => (
             <Route path="/credentials" element={<Credentials />} />
             <Route path="/discovery-runs" element={<DiscoveryRuns />} />
             <Route path="/mandates" element={<MandatesAudit />} />
+            <Route path="/admin" element={<AdminConsole />} />
             <Route path="/flow-test" element={<FlowTester />} />
             <Route path="/login-test" element={<LoginTest />} />
             <Route path="/disambiguation-demo" element={<DisambiguationDemo />} />
