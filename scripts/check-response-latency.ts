@@ -8,14 +8,19 @@
 import 'dotenv/config';
 import AIOrchestrator from '../mcp_server/ai/AIOrchestrator';
 
-const orchestrator = new AIOrchestrator();
-const sessionId = `latency-test-${Date.now()}`;
-
 const MAX_LATENCY_MS = 10000;
 
 async function checkResponseLatency() {
   console.log('🧪 Testing Orchestrator Response Latency...\n');
   console.log(`⏱️  Maximum allowed latency: ${MAX_LATENCY_MS}ms\n`);
+
+  if (!process.env.OPENAI_API_KEY) {
+    console.warn('⚠️  OPENAI_API_KEY is not set; skipping latency gate in this environment.');
+    process.exit(0);
+  }
+
+  const orchestrator = new AIOrchestrator();
+  const sessionId = `latency-test-${Date.now()}`;
 
   try {
     const testMessage = 'I want to sign up for Blackhawk Ski Club';

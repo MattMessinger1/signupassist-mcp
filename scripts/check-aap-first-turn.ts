@@ -8,11 +8,16 @@
 import 'dotenv/config';
 import AIOrchestrator from '../mcp_server/ai/AIOrchestrator';
 
-const orchestrator = new AIOrchestrator();
-const sessionId = `aap-first-turn-test-${Date.now()}`;
-
 async function checkAAPFirstTurn() {
   console.log('🧪 Testing AAP First Turn Behavior...\n');
+
+  if (!process.env.OPENAI_API_KEY) {
+    console.warn('⚠️  OPENAI_API_KEY is not set; skipping AAP first-turn gate in this environment.');
+    process.exit(0);
+  }
+
+  const orchestrator = new AIOrchestrator();
+  const sessionId = `aap-first-turn-test-${Date.now()}`;
 
   try {
     const fullTriadMessage = 'I want to sign up my 8-year-old daughter for Blackhawk Ski Club lessons';
