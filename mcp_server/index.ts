@@ -677,6 +677,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { getPlaceholderImage } from './lib/placeholderImages.js';
+import { evaluateChildRegistrationScope, getChildScopeBlockedMessage } from './lib/childScopeGuardrail.js';
 import { formatCurrencyFromCents } from './utils/money.js';
 
 import { createServer } from 'http';
@@ -4069,6 +4070,27 @@ class SignupAssistMCPServer {
               location: userLocation,
               userTimezone
             });
+
+            // Child-scope guardrail: block explicit adult-only signup requests at the HTTP boundary
+            // before dispatching any orchestrator/tool actions.
+            const scopeDecision = evaluateChildRegistrationScope({
+              message,
+              action,
+              payload,
+            });
+            if (scopeDecision.blocked) {
+              const guardrailMessage = getChildScopeBlockedMessage();
+              res.writeHead(200, {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*',
+              });
+              res.end(JSON.stringify({
+                message: guardrailMessage,
+                metadata: { suppressWizardHeader: true, outOfScope: true },
+                context: { step: 'BROWSE' },
+              }));
+              return;
+            }
             
             // ================================================================
             // AUTH0 JWT VERIFICATION (Production ChatGPT App Store Flow)
