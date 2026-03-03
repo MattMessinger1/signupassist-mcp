@@ -1991,6 +1991,7 @@ class SignupAssistMCPServer {
       <li><code>/.well-known/oauth-authorization-server</code> — OAuth discovery metadata</li>
       <li><code>/oauth/authorize</code> — OAuth authorization proxy</li>
       <li><code>/oauth/token</code> — OAuth token proxy</li>
+      <li><code>/safety</code> — Safety & Acceptable Use</li>
       <li><code>/privacy</code> — Privacy policy</li>
       <li><code>/terms</code> — Terms of Use</li>
     </ul>
@@ -1999,6 +2000,7 @@ class SignupAssistMCPServer {
     <ul>
       <li><a href="${baseUrl}/.well-known/chatgpt-apps-manifest.json">ChatGPT Apps manifest</a></li>
       <li><a href="${baseUrl}/.well-known/oauth-authorization-server">OAuth metadata</a></li>
+      <li><a href="${baseUrl}/safety">Safety & Acceptable Use</a></li>
       <li><a href="${baseUrl}/privacy">Privacy policy</a></li>
       <li><a href="${baseUrl}/terms">Terms of Use</a></li>
       <li><a href="${baseUrl}/mcp/openapi.json">OpenAPI (legacy tooling)</a></li>
@@ -3244,7 +3246,7 @@ class SignupAssistMCPServer {
               json.api.server_url = `${baseUrl}/sse`;
             }
             json.logo_url = `${baseUrl}/logo-512.svg`;
-            json.legal_info_url = `${baseUrl}/privacy`;
+            json.legal_info_url = `${baseUrl}/safety`;
             out = JSON.stringify(json, null, 2);
           } catch (e: any) {
             console.warn('[MANIFEST] Failed to rewrite /mcp/manifest.json URLs:', e?.message);
@@ -3318,7 +3320,7 @@ class SignupAssistMCPServer {
               json.api.server_url = `${baseUrl}/sse`;
             }
             json.logo_url = `${baseUrl}/logo-512.svg`;
-            json.legal_info_url = `${baseUrl}/privacy`;
+            json.legal_info_url = `${baseUrl}/safety`;
             out = JSON.stringify(json, null, 2);
           } catch (e: any) {
             console.warn('[MANIFEST] Failed to rewrite /mcp URLs:', e?.message);
@@ -3762,7 +3764,7 @@ class SignupAssistMCPServer {
               json.api.url = `${baseUrl}/mcp/openapi.json`;
             }
             if (json?.logo_url) json.logo_url = `${baseUrl}/logo-512.svg`;
-            if (json?.legal_info_url) json.legal_info_url = `${baseUrl}/privacy`;
+            if (json?.legal_info_url) json.legal_info_url = `${baseUrl}/safety`;
             out = JSON.stringify(json, null, 2);
           } catch (e: any) {
             console.warn('[AI-PLUGIN] Failed to rewrite URLs:', e?.message);
@@ -3819,7 +3821,7 @@ class SignupAssistMCPServer {
               json.api.url = `${baseUrl}/mcp/openapi.json`;
             }
             if (json?.logo_url) json.logo_url = `${baseUrl}/logo-512.svg`;
-            if (json?.legal_info_url) json.legal_info_url = `${baseUrl}/privacy`;
+            if (json?.legal_info_url) json.legal_info_url = `${baseUrl}/safety`;
             out = JSON.stringify(json, null, 2);
           } catch (e: any) {
             console.warn('[CONNECTOR] Failed to rewrite URLs:', e?.message);
@@ -4420,7 +4422,7 @@ class SignupAssistMCPServer {
                 json.api.server_url = `${baseUrl}/sse`;
               }
               json.logo_url = `${baseUrl}/logo-512.svg`;
-              json.legal_info_url = `${baseUrl}/privacy`;
+              json.legal_info_url = `${baseUrl}/safety`;
               out = JSON.stringify(json, null, 2);
             } catch (e: any) {
               console.warn('[MANIFEST] Failed to rewrite chatgpt-apps-manifest.json URLs:', e?.message);
@@ -4503,6 +4505,62 @@ class SignupAssistMCPServer {
             'Access-Control-Allow-Origin': '*'
           });
           res.end('Failed to load privacy policy.');
+          return;
+        }
+      }
+
+      // --- Legal: Safety & Acceptable Use (served from repo markdown for review clarity)
+      if ((req.method === 'GET' || req.method === 'HEAD') && (url.pathname === '/safety' || url.pathname === '/safety.html')) {
+        try {
+          const mdPath = path.resolve(process.cwd(), 'docs', 'SAFETY_POLICY.md');
+          const md = existsSync(mdPath)
+            ? readFileSync(mdPath, 'utf-8')
+            : 'Safety policy not found. Please contact support@shipworx.ai.';
+
+          const escapeHtml = (s: string) =>
+            s
+              .replace(/&/g, '&amp;')
+              .replace(/</g, '&lt;')
+              .replace(/>/g, '&gt;')
+              .replace(/"/g, '&quot;')
+              .replace(/'/g, '&#39;');
+
+          const html = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SignupAssist Safety Policy</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; line-height: 1.5; margin: 40px auto; max-width: 980px; padding: 0 16px; }
+      pre { white-space: pre-wrap; word-wrap: break-word; }
+      .muted { color: #555; }
+      .topbar { display:flex; justify-content:space-between; gap:16px; align-items:flex-end; margin-bottom:16px; }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <h1>Safety & Acceptable Use</h1>
+      <div class="muted">Served by SignupAssist MCP</div>
+    </div>
+    <pre>${escapeHtml(md)}</pre>
+  </body>
+</html>`;
+
+          res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Access-Control-Allow-Origin': '*'
+          });
+          if (req.method === 'HEAD') res.end();
+          else res.end(html);
+          return;
+        } catch (err: any) {
+          console.error('[SAFETY] Error serving safety policy:', err);
+          res.writeHead(500, {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Access-Control-Allow-Origin': '*'
+          });
+          res.end('Failed to load safety policy.');
           return;
         }
       }
