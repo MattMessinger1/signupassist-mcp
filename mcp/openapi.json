@@ -3,7 +3,7 @@
   "info": {
     "title": "SignupAssist",
     "version": "2.4.0",
-    "description": "**SignupAssist helps parents find and register their children for activities.** Just tell me what you're looking for!\n\n**How to use:** Simply describe what you need - like 'find robotics classes for my 8 year old in Madison WI' or 'sign up for swim lessons'. I understand natural language and will guide you through the entire registration process.\n\n**What I can help with:** robotics, STEM, coding, swim lessons, summer camps, sports, art, music, dance, martial arts, and more.\n\n**Coverage:** US-based providers, primarily in the Midwest with expanding coverage.\n\n---\n\n## Trust & Security\n\n**Nothing is booked or charged until you press Confirm.** Every step is recorded in your Audit Trail for full transparency.\n\n- **Payment Security:** Payments are handled by Stripe. SignupAssist never sees your full card number.\n- **Refunds:** Program fee refunds are handled by the provider. SignupAssist success fee refunds are handled by SignupAssist.\n- **Responsible Delegate:** All actions are audited with timestamps and mandate tracking for compliance.\n\n---\n\n## Payment Flow\n\n1. Browse & select a program\n2. Fill out the registration form\n3. Set up payment method (Stripe)\n4. Review & authorize payment\n5. Confirm booking\n\n---\n\n## Action Categories\n\n**Discovery:** search_programs, browse_all_programs, clear_activity_filter, show_out_of_area_programs, confirm_provider, deny_provider\n\n**Selection:** select_program\n\n**Registration:** submit_form, load_saved_children, save_child\n\n**Profile:** load_delegate_profile, save_delegate_profile, save_location\n\n**Payment:** setup_payment_method, setup_payment, check_payment_method, show_payment_authorization, authorize_payment, confirm_payment\n\n**Scheduling:** schedule_auto_registration, confirm_scheduled_registration\n\n**Audit:** view_receipts, view_audit_trail\n\n**Cancellation:** cancel_registration, confirm_cancel_registration\n\n**Flow Control:** cancel_flow, clear_context",
+    "description": "**SignupAssist is a family-safe assistant for parent-managed child activity registration.** It is designed only for helping parents/guardians find and enroll children in classes, camps, and lessons. It does not provide adult, sexual, dating, or NSFW services.\n\n**How to use:** Describe what you need, like 'find robotics classes for my 8-year-old in Madison WI' or 'help enroll my child in swim lessons'. SignupAssist guides you step-by-step and asks for confirmation before any external action.\n\n**Coverage:** US-based providers, primarily in the Midwest with expanding coverage.\n\n---\n\n## Trust & Safety\n\n**Nothing is booked or charged until you press Confirm.** Every step is recorded in your Audit Trail for transparency.\n\n- **Family-safe scope:** Child registration workflows only; out-of-scope adult-only requests are declined.\n- **Payment Security:** Payments are handled by Stripe. SignupAssist never sees your full card number.\n- **Responsible Delegate:** Actions are audited with timestamps and mandate tracking.\n\n- **Consent-first execution:** No external action before explicit confirm.",
     "contact": {
       "email": "support@shipworx.ai"
     },
@@ -32,7 +32,10 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "required": ["message", "sessionId"],
+                "required": [
+                  "message",
+                  "sessionId"
+                ],
                 "properties": {
                   "message": {
                     "type": "string",
@@ -110,23 +113,23 @@
                     "sessionId": "chatgpt-session-123"
                   }
                 },
-"select_program_action": {
-  "summary": "Select a program - MUST pass payload from displayed card button",
-  "description": "When user confirms a program selection, use the EXACT payload from the displayed card's button. The payload contains program_ref and program_data which are required for registration. If only one program was shown and user says 'yes', the backend will auto-select it.",
-  "value": {
-    "message": "yes",
-    "sessionId": "chatgpt-session-123",
-    "action": "select_program",
-    "payload": {
-      "program_ref": "robotics-sensors-9-13",
-      "program_data": {
-        "title": "STEM Robotics Lab – Intro to Sensors (Ages 9–13)",
-        "org_ref": "aim-design",
-        "price": "$40.00"
-      }
-    }
-  }
-},
+                "select_program_action": {
+                  "summary": "Select a program - MUST pass payload from displayed card button",
+                  "description": "When user confirms a program selection, use the EXACT payload from the displayed card's button. The payload contains program_ref and program_data which are required for registration. If only one program was shown and user says 'yes', the backend will auto-select it.",
+                  "value": {
+                    "message": "yes",
+                    "sessionId": "chatgpt-session-123",
+                    "action": "select_program",
+                    "payload": {
+                      "program_ref": "robotics-sensors-9-13",
+                      "program_data": {
+                        "title": "STEM Robotics Lab \u2013 Intro to Sensors (Ages 9\u201313)",
+                        "org_ref": "aim-design",
+                        "price": "$40.00"
+                      }
+                    }
+                  }
+                },
                 "submit_registration_form": {
                   "summary": "Submit registration form with delegate and participant info",
                   "value": {
@@ -192,9 +195,15 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "error": { "type": "string" },
-                    "requiresAuth": { "type": "boolean" },
-                    "authUrl": { "type": "string" }
+                    "error": {
+                      "type": "string"
+                    },
+                    "requiresAuth": {
+                      "type": "boolean"
+                    },
+                    "authUrl": {
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -207,8 +216,12 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "error": { "type": "string" },
-                    "details": { "type": "string" }
+                    "error": {
+                      "type": "string"
+                    },
+                    "details": {
+                      "type": "string"
+                    }
                   }
                 }
               }
@@ -217,88 +230,14 @@
         },
         "security": [
           {},
-          { "oauth2": ["openid", "profile", "email"] }
-        ]
-      }
-    },
-    "/sse": {
-      "get": {
-        "summary": "SSE Connection Endpoint",
-        "description": "Establishes a Server-Sent Events (SSE) connection for MCP communication. ChatGPT Apps Connector uses this to receive streaming responses from the MCP server. The connection stays open and the server pushes events as they occur.",
-        "operationId": "sseConnect",
-        "responses": {
-          "200": {
-            "description": "SSE stream established",
-            "content": {
-              "text/event-stream": {
-                "schema": {
-                  "type": "string",
-                  "description": "Server-Sent Events stream with MCP JSON-RPC messages"
-                }
-              }
-            }
-          }
-        },
-        "security": []
-      }
-    },
-    "/messages": {
-      "post": {
-        "summary": "SSE Message Endpoint",
-        "description": "Receives JSON-RPC messages from the client and forwards them to the MCP server through the SSE transport. Requires an active SSE session established via /sse endpoint.",
-        "operationId": "sseMessage",
-        "parameters": [
           {
-            "name": "sessionId",
-            "in": "query",
-            "required": true,
-            "description": "Session ID from the SSE connection",
-            "schema": {
-              "type": "string"
-            }
+            "oauth2": [
+              "openid",
+              "profile",
+              "email"
+            ]
           }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "description": "JSON-RPC 2.0 message for MCP protocol",
-                "properties": {
-                  "jsonrpc": {
-                    "type": "string",
-                    "enum": ["2.0"]
-                  },
-                  "method": {
-                    "type": "string",
-                    "description": "MCP method name (e.g., 'tools/list', 'tools/call')"
-                  },
-                  "params": {
-                    "type": "object",
-                    "description": "Method parameters"
-                  },
-                  "id": {
-                    "type": ["string", "number"],
-                    "description": "Request ID for correlation"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Message processed successfully"
-          },
-          "400": {
-            "description": "Missing sessionId parameter"
-          },
-          "404": {
-            "description": "Session not found - reconnect to /sse"
-          }
-        },
-        "security": []
+        ]
       }
     },
     "/signupassist/start": {
@@ -325,7 +264,13 @@
             "description": "Optional category filter",
             "schema": {
               "type": "string",
-              "enum": ["all", "lessons", "camps", "events", "tours"],
+              "enum": [
+                "all",
+                "lessons",
+                "camps",
+                "events",
+                "tours"
+              ],
               "default": "all"
             }
           }
@@ -344,134 +289,6 @@
         },
         "security": []
       }
-    },
-    "/tools/call": {
-      "post": {
-        "summary": "Direct tool access (internal use only)",
-        "description": "Execute a specific registration tool directly. **Most users should use /orchestrator/chat instead** - it's easier and handles everything automatically.",
-        "operationId": "callTool",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": ["tool", "args"],
-                "properties": {
-                  "tool": {
-                    "type": "string",
-                    "enum": [
-                      "bookeo.find_programs",
-                      "bookeo.get_registration_form",
-                      "bookeo.reserve_spot",
-                      "bookeo.confirm_booking",
-                      "bookeo.cancel_booking"
-                    ],
-                    "description": "Tool to execute. Use 'bookeo.find_programs' to search for classes, 'bookeo.get_registration_form' to see what info is needed, 'bookeo.reserve_spot' to hold a spot, 'bookeo.confirm_booking' to finalize."
-                  },
-                  "args": {
-                    "type": "object",
-                    "description": "Tool-specific arguments",
-                    "additionalProperties": true
-                  },
-                  "mandate_id": {
-                    "type": "string",
-                    "description": "Optional mandate ID for audit trail",
-                    "format": "uuid"
-                  },
-                  "plan_execution_id": {
-                    "type": "string",
-                    "description": "Optional plan execution ID for tracking",
-                    "format": "uuid"
-                  }
-                }
-              },
-              "examples": {
-                "bookeo_find_programs": {
-                  "summary": "Find programs at a Bookeo-powered organization",
-                  "value": {
-                    "tool": "bookeo.find_programs",
-                    "args": {
-                      "org_ref": "aim-design",
-                      "category": "all"
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful tool execution",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProviderResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Invalid request",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": { "type": "string" },
-                    "details": { "type": "string" }
-                  }
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Unauthorized - OAuth token invalid or missing",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": { "type": "string" }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Tool not found",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": { "type": "string" },
-                    "available_tools": {
-                      "type": "array",
-                      "items": { "type": "string" }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "500": {
-            "description": "Internal server error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": { "type": "string" },
-                    "details": { "type": "string" }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
     }
   },
   "components": {
@@ -479,7 +296,9 @@
       "ChatResponse": {
         "type": "object",
         "description": "Response from the chat orchestrator containing the assistant message and optional UI elements",
-        "required": ["message"],
+        "required": [
+          "message"
+        ],
         "properties": {
           "message": {
             "type": "string",
@@ -487,7 +306,9 @@
           },
           "cards": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/UICard" },
+            "items": {
+              "$ref": "#/components/schemas/UICard"
+            },
             "description": "UI cards for programs, forms, confirmations, or other structured content"
           },
           "cta": {
@@ -496,23 +317,35 @@
             "properties": {
               "buttons": {
                 "type": "array",
-                "items": { "$ref": "#/components/schemas/Button" }
+                "items": {
+                  "$ref": "#/components/schemas/Button"
+                }
               }
             }
           },
           "actions": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/Button" },
+            "items": {
+              "$ref": "#/components/schemas/Button"
+            },
             "description": "Available actions the user can take (legacy format, prefer cta.buttons)"
           },
           "contextUpdates": {
             "type": "object",
             "description": "State changes from this interaction (for debugging/tracking)",
             "properties": {
-              "currentStep": { "type": "string" },
-              "selectedProgram": { "type": "string" },
-              "selectedChild": { "type": "string" },
-              "provider": { "type": "string" }
+              "currentStep": {
+                "type": "string"
+              },
+              "selectedProgram": {
+                "type": "string"
+              },
+              "selectedChild": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              }
             },
             "additionalProperties": true
           },
@@ -522,7 +355,15 @@
             "properties": {
               "componentType": {
                 "type": "string",
-                "enum": ["payment_setup", "form", "confirmation", "audit_trail", "program_list", "profile", "schedule"],
+                "enum": [
+                  "payment_setup",
+                  "form",
+                  "confirmation",
+                  "audit_trail",
+                  "program_list",
+                  "profile",
+                  "schedule"
+                ],
                 "description": "UI component type hint for rendering"
               },
               "next_action": {
@@ -553,19 +394,31 @@
           },
           "suggestedQueries": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "Suggested follow-up queries the user might want to ask",
             "examples": [
-              ["Show me the schedule", "What ages is this for?", "How much does it cost?"]
+              [
+                "Show me the schedule",
+                "What ages is this for?",
+                "How much does it cost?"
+              ]
             ]
           },
           "error": {
             "type": "object",
             "description": "Error information if the request failed",
             "properties": {
-              "code": { "type": "string" },
-              "message": { "type": "string" },
-              "recoveryHint": { "type": "string" }
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "recoveryHint": {
+                "type": "string"
+              }
             }
           },
           "session_context": {
@@ -578,7 +431,10 @@
       "Button": {
         "type": "object",
         "description": "Interactive button for user actions",
-        "required": ["label", "action"],
+        "required": [
+          "label",
+          "action"
+        ],
         "properties": {
           "label": {
             "type": "string",
@@ -595,7 +451,11 @@
           },
           "variant": {
             "type": "string",
-            "enum": ["accent", "outline", "destructive"],
+            "enum": [
+              "accent",
+              "outline",
+              "destructive"
+            ],
             "default": "accent"
           },
           "requiresAuth": {
@@ -619,12 +479,18 @@
           },
           "next_actions": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {
+              "type": "string"
+            },
             "description": "Suggested next actions for the user"
           },
           "confidence": {
             "type": "string",
-            "enum": ["high", "medium", "low"],
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ],
             "description": "Confidence level of the response"
           }
         }
@@ -632,41 +498,81 @@
       "UICard": {
         "type": "object",
         "description": "UI card specification for consistent rendering of programs, forms, and confirmations",
-        "required": ["title"],
+        "required": [
+          "title"
+        ],
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["program", "form", "confirmation", "error", "info", "audit_trail", "payment", "schedule"],
+            "enum": [
+              "program",
+              "form",
+              "confirmation",
+              "error",
+              "info",
+              "audit_trail",
+              "payment",
+              "schedule"
+            ],
             "description": "Card type for rendering hints"
           },
-          "title": { "type": "string" },
-          "subtitle": { "type": "string" },
-          "description": { "type": "string" },
-          "imageUrl": { "type": "string", "format": "uri" },
+          "title": {
+            "type": "string"
+          },
+          "subtitle": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "imageUrl": {
+            "type": "string",
+            "format": "uri"
+          },
           "metadata": {
             "type": "object",
             "description": "Structured data (price, dates, age range, etc.)",
             "properties": {
-              "price": { "type": "string" },
-              "ageRange": { "type": "string" },
-              "dates": { "type": "string" },
-              "location": { "type": "string" },
-              "spotsAvailable": { "type": "integer" },
-              "mandate_id": { "type": "string" },
-              "registration_id": { "type": "string" }
+              "price": {
+                "type": "string"
+              },
+              "ageRange": {
+                "type": "string"
+              },
+              "dates": {
+                "type": "string"
+              },
+              "location": {
+                "type": "string"
+              },
+              "spotsAvailable": {
+                "type": "integer"
+              },
+              "mandate_id": {
+                "type": "string"
+              },
+              "registration_id": {
+                "type": "string"
+              }
             },
             "additionalProperties": true
           },
           "buttons": {
             "type": "array",
-            "items": { "$ref": "#/components/schemas/Button" }
+            "items": {
+              "$ref": "#/components/schemas/Button"
+            }
           }
         }
       },
       "ParentFriendlyError": {
         "type": "object",
         "description": "Parent-friendly error structure",
-        "required": ["display", "recovery", "severity"],
+        "required": [
+          "display",
+          "recovery",
+          "severity"
+        ],
         "properties": {
           "display": {
             "type": "string",
@@ -678,7 +584,11 @@
           },
           "severity": {
             "type": "string",
-            "enum": ["low", "medium", "high"]
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
           },
           "code": {
             "type": "string",
@@ -689,28 +599,42 @@
       "ProviderResponse": {
         "type": "object",
         "description": "Standard response format for all provider tools",
-        "required": ["success"],
+        "required": [
+          "success"
+        ],
         "properties": {
-          "success": { "type": "boolean" },
+          "success": {
+            "type": "boolean"
+          },
           "data": {
             "type": "object",
             "additionalProperties": true
           },
-          "meta": { "$ref": "#/components/schemas/ToolMetadata" },
+          "meta": {
+            "$ref": "#/components/schemas/ToolMetadata"
+          },
           "ui": {
             "type": "object",
             "properties": {
               "cards": {
                 "type": "array",
-                "items": { "$ref": "#/components/schemas/UICard" }
+                "items": {
+                  "$ref": "#/components/schemas/UICard"
+                }
               },
-              "message": { "type": "string" }
+              "message": {
+                "type": "string"
+              }
             }
           },
           "error": {
             "oneOf": [
-              { "$ref": "#/components/schemas/ParentFriendlyError" },
-              { "type": "string" }
+              {
+                "$ref": "#/components/schemas/ParentFriendlyError"
+              },
+              {
+                "type": "string"
+              }
             ]
           },
           "timestamp": {
@@ -718,115 +642,6 @@
             "format": "date-time"
           }
         }
-      },
-      "bookeo.find_programs_input": {
-        "type": "object",
-        "description": "Search for available classes and programs at an organization",
-        "properties": {
-          "org_ref": {
-            "type": "string",
-            "description": "Organization ID (e.g., 'aim-design' for AIM Design in Madison)"
-          },
-          "category": {
-            "type": "string",
-            "description": "Activity type filter: 'stem', 'robotics', 'art', 'all'"
-          }
-        },
-        "required": ["org_ref"],
-        "additionalProperties": false
-      },
-      "bookeo.get_registration_form_input": {
-        "type": "object",
-        "description": "Get the registration form fields needed to sign up for a class",
-        "properties": {
-          "program_ref": {
-            "type": "string",
-            "description": "Program ID from find_programs results"
-          },
-          "org_ref": {
-            "type": "string",
-            "description": "Organization ID"
-          }
-        },
-        "required": ["program_ref", "org_ref"],
-        "additionalProperties": false
-      },
-      "bookeo.reserve_spot_input": {
-        "type": "object",
-        "description": "Temporarily reserve a spot in a class while completing registration",
-        "properties": {
-          "eventId": {
-            "type": "string",
-            "description": "Class session ID"
-          },
-          "productId": {
-            "type": "string",
-            "description": "Program ID"
-          },
-          "firstName": {
-            "type": "string",
-            "description": "Parent's first name"
-          },
-          "lastName": {
-            "type": "string",
-            "description": "Parent's last name"
-          },
-          "email": {
-            "type": "string",
-            "format": "email",
-            "description": "Parent's email"
-          },
-          "phone": {
-            "type": "string",
-            "description": "Parent's phone (optional)"
-          },
-          "adults": {
-            "type": "integer",
-            "description": "Number of adults attending"
-          },
-          "children": {
-            "type": "integer",
-            "description": "Number of children to register"
-          },
-          "org_ref": {
-            "type": "string",
-            "description": "Organization ID"
-          }
-        },
-        "required": ["eventId", "productId", "firstName", "lastName", "email", "adults", "children", "org_ref"],
-        "additionalProperties": false
-      },
-      "bookeo.confirm_booking_input": {
-        "type": "object",
-        "description": "Complete the registration and confirm the booking",
-        "properties": {
-          "holdId": {
-            "type": "string",
-            "description": "Reservation ID from reserve_spot"
-          },
-          "org_ref": {
-            "type": "string",
-            "description": "Organization ID"
-          }
-        },
-        "required": ["holdId", "org_ref"],
-        "additionalProperties": false
-      },
-      "bookeo.cancel_booking_input": {
-        "type": "object",
-        "description": "Cancel an existing registration",
-        "properties": {
-          "bookingNumber": {
-            "type": "string",
-            "description": "Confirmation number to cancel"
-          },
-          "org_ref": {
-            "type": "string",
-            "description": "Organization ID"
-          }
-        },
-        "required": ["bookingNumber", "org_ref"],
-        "additionalProperties": false
       }
     },
     "securitySchemes": {
@@ -848,6 +663,12 @@
     }
   },
   "security": [
-    { "oauth2": ["openid", "profile", "email"] }
+    {
+      "oauth2": [
+        "openid",
+        "profile",
+        "email"
+      ]
+    }
   ]
 }
