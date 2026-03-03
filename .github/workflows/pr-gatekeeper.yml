@@ -32,10 +32,10 @@ jobs:
         run: npx vitest run mcp_server/lib/openaiHelpers.test.ts --reporter=verbose
 
       - name: Verify no repeated AAP prompts
-        run: node scripts/check-aap-first-turn.js
+        run: npx tsx scripts/check-aap-first-turn.ts
 
       - name: Check latency budget
-        run: node scripts/check-response-latency.js
+        run: npx tsx scripts/check-response-latency.ts
 
       - name: Block if violations
         run: |

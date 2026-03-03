@@ -62,8 +62,15 @@ function convertInputSchema(toolName: string, inputSchema: any): any {
 export function generateOpenAPISpec(
   tools: MCPTool[],
   baseUrl: string = 'https://signupassist-production.up.railway.app',
-  version: string = '1.0.0'
+  version: string = '1.0.0',
+  options?: {
+    includeInternalEndpoints?: boolean;
+    includeToolSchemas?: boolean;
+  }
 ): OpenAPISpec {
+  const includeInternalEndpoints = options?.includeInternalEndpoints ?? true;
+  const includeToolSchemas = options?.includeToolSchemas ?? true;
+
   const spec: OpenAPISpec = {
     openapi: '3.1.0',
     info: {
@@ -107,25 +114,28 @@ export function generateOpenAPISpec(
     ]
   };
 
-  // Generate schemas for each tool
-  tools.forEach((tool) => {
-    const toolSchema = convertInputSchema(tool.name, tool.inputSchema);
-    spec.components.schemas[`${tool.name}_input`] = toolSchema;
-    
-    // Create response schema
-    spec.components.schemas[`${tool.name}_response`] = {
-      type: 'object',
-      properties: {
-        success: { type: 'boolean' },
-        data: { type: 'object', additionalProperties: true },
-        error: { type: 'string' }
-      }
-    };
-  });
+  if (includeToolSchemas) {
+    // Generate schemas for each tool
+    tools.forEach((tool) => {
+      const toolSchema = convertInputSchema(tool.name, tool.inputSchema);
+      spec.components.schemas[`${tool.name}_input`] = toolSchema;
 
-  // Create unified /tools/call endpoint
-  spec.paths['/tools/call'] = {
-    post: {
+      // Create response schema
+      spec.components.schemas[`${tool.name}_response`] = {
+        type: 'object',
+        properties: {
+          success: { type: 'boolean' },
+          data: { type: 'object', additionalProperties: true },
+          error: { type: 'string' }
+        }
+      };
+    });
+  }
+
+  if (includeInternalEndpoints) {
+    // Create unified /tools/call endpoint
+    spec.paths['/tools/call'] = {
+      post: {
       summary: 'Execute MCP tool',
       description: 'Execute any registered MCP tool by name with provided arguments',
       operationId: 'callTool',
@@ -222,8 +232,9 @@ export function generateOpenAPISpec(
           }
         }
       }
-    }
-  };
+      }
+    };
+  }
 
   return spec;
 }
