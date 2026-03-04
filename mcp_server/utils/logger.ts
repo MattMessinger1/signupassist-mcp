@@ -3,12 +3,7 @@
  * Provides structured logging with timestamps and sensitive data protection
  */
 
-// Keys that should always be redacted
-const SENSITIVE_KEYS = [
-  'email', 'phone', 'password', 'token', 'secret', 'ssn', 'card',
-  'credit', 'api_key', 'apiKey', 'authorization', 'credential',
-  'dob', 'dateOfBirth', 'date_of_birth', 'birth', 'social',
-];
+import { sanitizeForLogs, isSensitiveKeyName } from './sanitization.js';
 
 // Patterns to detect and redact in string values
 const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
@@ -20,8 +15,7 @@ const CARD_REGEX = /\b(?:\d{4}[-\s]?){3}\d{4}\b/g;
  * Check if a key name indicates sensitive data
  */
 function isSensitiveKey(key: string): boolean {
-  const lowerKey = key.toLowerCase();
-  return SENSITIVE_KEYS.some(sk => lowerKey.includes(sk.toLowerCase()));
+  return isSensitiveKeyName(key);
 }
 
 /**
@@ -100,17 +94,14 @@ function normalizePayload(payload: unknown): Record<string, unknown> {
  */
 export function redactPayload(payload: Record<string, unknown>, depth = 0): Record<string, unknown> {
   if (depth > 10) return { _redacted: '[DEPTH_LIMIT]' };
-  
+
+  const keySanitized = sanitizeForLogs(payload, depth + 1);
   const result: Record<string, unknown> = {};
-  
-  for (const [key, value] of Object.entries(payload)) {
-    if (isSensitiveKey(key)) {
-      result[key] = '[REDACTED]';
-    } else {
-      result[key] = redactValue(value, depth);
-    }
+
+  for (const [key, value] of Object.entries(keySanitized)) {
+    result[key] = redactValue(value, depth + 1);
   }
-  
+
   return result;
 }
 

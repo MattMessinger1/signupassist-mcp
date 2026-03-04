@@ -6,6 +6,7 @@
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 import { verifyMandate } from '../lib/mandates.js';
+import { sanitizeForLogs } from '../utils/sanitization.js';
 
 // Initialize Supabase client for backend operations
 const supabaseUrl = process.env.SUPABASE_URL!;
@@ -70,20 +71,7 @@ async function computeHash(obj: any): Promise<string> {
  * Redact sensitive information from result objects
  */
 function redactSensitiveData(obj: any): any {
-  if (!obj || typeof obj !== 'object') return obj;
-  
-  const redacted = { ...obj };
-  const sensitiveKeys = ['password', 'token', 'key', 'secret', 'credit_card', 'ssn', 'credentials'];
-  
-  for (const key of Object.keys(redacted)) {
-    if (sensitiveKeys.some(sensitive => key.toLowerCase().includes(sensitive))) {
-      redacted[key] = '[REDACTED]';
-    } else if (typeof redacted[key] === 'object') {
-      redacted[key] = redactSensitiveData(redacted[key]);
-    }
-  }
-  
-  return redacted;
+  return sanitizeForLogs(obj);
 }
 
 /**
@@ -92,47 +80,7 @@ function redactSensitiveData(obj: any): any {
  * (emails, DOBs, phone numbers, child details, free-text) in args_json.
  */
 function redactArgsForAudit(obj: any): any {
-  if (obj == null) return obj;
-  if (Array.isArray(obj)) return obj.map(redactArgsForAudit);
-  if (typeof obj !== 'object') return obj;
-
-  const out: any = {};
-  for (const [k, v] of Object.entries(obj)) {
-    const key = String(k).toLowerCase();
-
-    const isPiiKey =
-      key.includes('email') ||
-      key.includes('dob') ||
-      key.includes('date_of_birth') ||
-      key.includes('birth') ||
-      key.includes('phone') ||
-      key.includes('first_name') ||
-      key.includes('last_name') ||
-      key.includes('firstname') ||
-      key.includes('lastname') ||
-      key.includes('child') ||
-      key.includes('participant') ||
-      key.includes('delegate') ||
-      key.includes('address') ||
-      key.includes('notes') ||
-      key.includes('message') ||
-      key.includes('text');
-
-    const isSecretKey =
-      key.includes('token') ||
-      key.includes('secret') ||
-      key.includes('key') ||
-      key.includes('authorization') ||
-      key.includes('cookie');
-
-    if (isSecretKey || isPiiKey) {
-      out[k] = '[REDACTED]';
-      continue;
-    }
-
-    out[k] = redactArgsForAudit(v);
-  }
-  return out;
+  return sanitizeForLogs(obj);
 }
 
 /**
