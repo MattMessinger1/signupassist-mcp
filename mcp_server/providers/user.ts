@@ -12,6 +12,19 @@ const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+function toDecryptedDelegateProfile(profile: any): DelegateProfile {
+  if (!profile || typeof profile !== 'object') return profile;
+
+  // During PII migration windows, some environments may return encrypted column names
+  // while others still expose plain-text fields. Keep the shape stable for caller logic.
+  return {
+    ...profile,
+    first_name: profile.first_name ?? profile.first_name_encrypted,
+    last_name: profile.last_name ?? profile.last_name_encrypted,
+    date_of_birth: profile.date_of_birth ?? profile.date_of_birth_encrypted
+  };
+}
+
 function computeAgeYearsFromISODate(dobIso: string): number | null {
   const iso = String(dobIso || '').slice(0, 10);
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -39,7 +52,7 @@ async function getDelegateProfileForUser(user_id: string): Promise<DelegateProfi
     Logger.warn('[User] Failed to load delegate profile for child hygiene (non-fatal)', { error });
     return null;
   }
-  return (profile as any) || null;
+  return profile ? toDecryptedDelegateProfile(profile) : null;
 }
 
 function looksLikeDelegateChildRecord(child: any, profile: DelegateProfile): boolean {
