@@ -200,6 +200,7 @@ export const SCOPE_REQUIREMENTS: Record<string, string[]> = {
   'user.list_children': [MANDATE_SCOPES.READ_CHILDREN],
   'user.create_child': [MANDATE_SCOPES.WRITE_CHILDREN],
   'user.update_child': [MANDATE_SCOPES.WRITE_CHILDREN],
+  'user.delete_child': [MANDATE_SCOPES.WRITE_CHILDREN],
   'user.check_payment_method': [MANDATE_SCOPES.READ_BILLING],
   'user.get_delegate_profile': [MANDATE_SCOPES.READ_PROFILE],
   'user.update_delegate_profile': [MANDATE_SCOPES.WRITE_PROFILE]
