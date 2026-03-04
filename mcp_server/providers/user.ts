@@ -31,7 +31,7 @@ function computeAgeYearsFromISODate(dobIso: string): number | null {
 async function getDelegateProfileForUser(user_id: string): Promise<DelegateProfile | null> {
   const { data: profile, error } = await supabase
     .from('delegate_profiles')
-    .select('user_id, first_name, last_name, date_of_birth')
+    .select('user_id, first_name, last_name, date_of_birth, parental_consent, parental_consent_at')
     .eq('user_id', user_id)
     .maybeSingle();
   if (error) {
@@ -106,6 +106,21 @@ export interface DelegateProfile {
   default_relationship?: string;
   city?: string;      // For location-based provider matching
   state?: string;     // For location-based provider matching
+  parental_consent?: boolean;
+  parental_consent_at?: string;
+}
+
+async function ensureParentalConsentForChildWrites(user_id: string): Promise<ParentFriendlyError | null> {
+  const profile = await getDelegateProfileForUser(user_id);
+  if (!profile || profile.parental_consent !== true) {
+    return {
+      display: 'Before saving child details, I need your explicit parental consent',
+      recovery: 'Please confirm consent in your parent/guardian profile, then try again.',
+      severity: 'low',
+      code: 'PARENTAL_CONSENT_REQUIRED'
+    };
+  }
+  return null;
 }
 
 /**
@@ -205,6 +220,11 @@ async function createChild(args: {
   console.log(`[User] Creating child for user: ${user_id}, name: ${first_name} ${last_name}`);
   
   try {
+    const consentError = await ensureParentalConsentForChildWrites(user_id);
+    if (consentError) {
+      return { success: false, error: consentError };
+    }
+
     const dobIso = dob ? String(dob).slice(0, 10) : '';
     const age = dobIso ? computeAgeYearsFromISODate(dobIso) : null;
     if (age != null && age >= 18) {
@@ -342,6 +362,11 @@ async function updateChild(args: {
   console.log(`[User] Updating child: ${child_id} for user: ${user_id}`);
   
   try {
+    const consentError = await ensureParentalConsentForChildWrites(user_id);
+    if (consentError) {
+      return { success: false, error: consentError };
+    }
+
     // First verify ownership
     const { data: existing, error: fetchError } = await supabase
       .from('children')
@@ -555,12 +580,35 @@ async function updateDelegateProfile(args: {
   default_relationship?: string;
   city?: string;
   state?: string;
+  parental_consent?: boolean;
 }): Promise<ProviderResponse<{ profile: DelegateProfile }>> {
-  const { user_id, first_name, last_name, phone, email, date_of_birth, default_relationship, city, state } = args;
+  const { user_id, first_name, last_name, phone, email, date_of_birth, default_relationship, city, state, parental_consent } = args;
   
   Logger.info('[User] Updating delegate profile', { user_id });
   
   try {
+    if (date_of_birth !== undefined) {
+      const ageYears = computeAgeYearsFromISODate(date_of_birth);
+      if (ageYears == null) {
+        const friendlyError: ParentFriendlyError = {
+          display: 'Please enter date of birth as YYYY-MM-DD',
+          recovery: 'Use a valid date so we can verify parent/guardian eligibility.',
+          severity: 'low',
+          code: 'VALIDATION_ERROR'
+        };
+        return { success: false, error: friendlyError };
+      }
+      if (ageYears < 18) {
+        const friendlyError: ParentFriendlyError = {
+          display: 'SignupAssist requires a parent/legal guardian age 18+',
+          recovery: 'Please have an adult parent or legal guardian complete this profile.',
+          severity: 'low',
+          code: 'VALIDATION_ERROR'
+        };
+        return { success: false, error: friendlyError };
+      }
+    }
+
     const updates: any = { user_id };
     if (first_name !== undefined) updates.first_name = first_name;
     if (last_name !== undefined) updates.last_name = last_name;
@@ -568,6 +616,10 @@ async function updateDelegateProfile(args: {
     if (default_relationship !== undefined) updates.default_relationship = default_relationship;
     if (city !== undefined) updates.city = city;
     if (state !== undefined) updates.state = state;
+    if (parental_consent !== undefined) {
+      updates.parental_consent = parental_consent;
+      updates.parental_consent_at = parental_consent ? new Date().toISOString() : null;
+    }
     if (phone !== undefined) updates.phone = phone;
     // Note: email stored in auth.users, but can be cached here if needed
     
@@ -806,6 +858,10 @@ export const userTools: UserTool[] = [
         state: {
           type: 'string',
           description: 'User state/province for location-based provider matching'
+        },
+        parental_consent: {
+          type: 'boolean',
+          description: 'Explicit consent from parent/guardian to store child profile information'
         }
       },
       required: ['user_id']
