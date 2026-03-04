@@ -77,7 +77,7 @@ function computeAgeYearsFromISODate(dobIso: string): number | null {
 async function getDelegateProfileForUser(user_id: string): Promise<DelegateProfile | null> {
   const { data: profile, error } = await supabase
     .from('delegate_profiles')
-    .select('id, user_id, first_name, last_name, date_of_birth, first_name_encrypted, last_name_encrypted, date_of_birth_encrypted')
+    .select('*')
     .eq('user_id', user_id)
     .maybeSingle();
   if (error) {
@@ -522,7 +522,7 @@ export async function getDelegateProfile(args: {
  * Updates or creates delegate profile (audited for compliance)
  * Required scope: user:write:profile
  * 
- * PII stored directly - Supabase encrypts data at rest
+ * PII fields are encrypted at application layer before persistence
  */
 export async function updateDelegateProfile(args: {
   user_id: string;
