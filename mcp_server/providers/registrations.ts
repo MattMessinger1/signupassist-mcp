@@ -12,6 +12,52 @@ const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+
+type RegistrationThrottleBucket = { resetAt: number; count: number };
+
+const registrationThrottleBuckets: Map<string, RegistrationThrottleBucket> = new Map();
+
+function normalizeThrottleValue(raw: string | undefined, fallback: number): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.floor(n);
+}
+
+function consumeRegistrationThrottle(key: string, max: number, windowMs: number): { allowed: boolean; retryAfterSec: number } {
+  const now = Date.now();
+  let bucket = registrationThrottleBuckets.get(key);
+  if (!bucket || now >= bucket.resetAt) {
+    bucket = { count: 0, resetAt: now + windowMs };
+    registrationThrottleBuckets.set(key, bucket);
+  }
+
+  bucket.count += 1;
+  const allowed = bucket.count <= max;
+  const retryAfterSec = allowed ? 0 : Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
+  return { allowed, retryAfterSec };
+}
+
+export function __shouldThrottleRegistrationCreate(args: { user_id: string; participant_names: string[] }): { limited: boolean; retryAfterSec: number; dimension?: 'user' | 'child' } {
+  const windowMs = normalizeThrottleValue(process.env.REGISTRATION_THROTTLE_WINDOW_MS, 24 * 60 * 60 * 1000);
+  const perUserMax = normalizeThrottleValue(process.env.REGISTRATION_THROTTLE_USER_MAX_PER_DAY, 12);
+  const perChildMax = normalizeThrottleValue(process.env.REGISTRATION_THROTTLE_CHILD_MAX_PER_DAY, 6);
+
+  const userCheck = consumeRegistrationThrottle(`registration:user:${args.user_id}`, perUserMax, windowMs);
+  if (!userCheck.allowed) return { limited: true, retryAfterSec: userCheck.retryAfterSec, dimension: 'user' };
+
+  const normalizedChildren = Array.from(new Set((args.participant_names || []).map((name) => String(name || '').trim().toLowerCase()).filter(Boolean)));
+  for (const childName of normalizedChildren) {
+    const childCheck = consumeRegistrationThrottle(`registration:child:${args.user_id}:${childName}`, perChildMax, windowMs);
+    if (!childCheck.allowed) return { limited: true, retryAfterSec: childCheck.retryAfterSec, dimension: 'child' };
+  }
+
+  return { limited: false, retryAfterSec: 0 };
+}
+
+export function __resetRegistrationThrottleForTests(): void {
+  registrationThrottleBuckets.clear();
+}
+
 export interface RegistrationTool {
   name: string;
   description: string;
@@ -64,7 +110,7 @@ export interface RegistrationRecord {
  * 
  * Email stored directly - Supabase encrypts data at rest
  */
-async function createRegistration(args: {
+export async function createRegistration(args: {
   user_id: string;
   mandate_id?: string;
   charge_id?: string;
@@ -122,6 +168,25 @@ async function createRegistration(args: {
   });
   
   try {
+    const throttle = __shouldThrottleRegistrationCreate({ user_id, participant_names });
+    if (throttle.limited) {
+      Logger.warn('[Registrations] Registration create throttled', {
+        user_id,
+        retryAfterSec: throttle.retryAfterSec,
+        dimension: throttle.dimension,
+      });
+      const friendlyError: ParentFriendlyError = {
+        display: 'Too many signup attempts; please try again later.',
+        recovery: 'Please wait a bit before trying another signup.',
+        severity: 'low',
+        code: 'REGISTRATION_RATE_LIMITED'
+      };
+      return {
+        success: false,
+        error: friendlyError
+      };
+    }
+
     // Build insert payload - store email directly (Supabase encrypts at rest)
     const insertPayload: any = {
       user_id,
