@@ -406,6 +406,85 @@ async function updateChild(args: {
 }
 
 /**
+ * Tool: user.delete_child
+ * Deletes an existing child record owned by the user (audited for compliance)
+ * Required scope: user:write:children
+ */
+async function deleteChild(args: {
+  user_id: string;
+  child_id: string;
+}): Promise<ProviderResponse<{ deleted: boolean; child_id: string }>> {
+  const { user_id, child_id } = args;
+
+  Logger.info('[User] Deleting child', { user_id, child_id });
+
+  try {
+    const { data: existingChild, error: fetchError } = await supabase
+      .from('children')
+      .select('id')
+      .eq('id', child_id)
+      .eq('user_id', user_id)
+      .maybeSingle();
+
+    if (fetchError) {
+      Logger.error('[User] Database error validating child ownership for delete', { fetchError, user_id, child_id });
+      const friendlyError: ParentFriendlyError = {
+        display: 'Unable to remove this child right now',
+        recovery: 'Please try again in a moment.',
+        severity: 'low',
+        code: 'USER_DELETE_CHILD_LOOKUP_FAILED'
+      };
+      return { success: false, error: friendlyError };
+    }
+
+    if (!existingChild) {
+      const friendlyError: ParentFriendlyError = {
+        display: 'Child record not found',
+        recovery: 'That child may already be removed, or belongs to another account.',
+        severity: 'low',
+        code: 'USER_CHILD_NOT_FOUND'
+      };
+      return { success: false, error: friendlyError };
+    }
+
+    const { error: deleteError } = await supabase
+      .from('children')
+      .delete()
+      .eq('id', child_id)
+      .eq('user_id', user_id);
+
+    if (deleteError) {
+      Logger.error('[User] Database error deleting child', { deleteError, user_id, child_id });
+      const friendlyError: ParentFriendlyError = {
+        display: 'Unable to remove this child right now',
+        recovery: 'Please try again.',
+        severity: 'low',
+        code: 'USER_DELETE_CHILD_FAILED'
+      };
+      return { success: false, error: friendlyError };
+    }
+
+    Logger.info('[User] Child deleted successfully', { user_id, child_id });
+    return {
+      success: true,
+      data: {
+        deleted: true,
+        child_id,
+      }
+    };
+  } catch (error: any) {
+    Logger.error('[User] Error deleting child', { error, user_id, child_id });
+    const friendlyError: ParentFriendlyError = {
+      display: 'Unable to remove this child right now',
+      recovery: 'Please try again.',
+      severity: 'low',
+      code: 'USER_API_ERROR'
+    };
+    return { success: false, error: friendlyError };
+  }
+}
+
+/**
  * Tool: user.get_delegate_profile
  * Gets the delegate profile for a user (audited for compliance)
  * Required scope: user:read:profile
@@ -641,6 +720,31 @@ export const userTools: UserTool[] = [
         { plan_execution_id: null, tool: 'user.update_child', mandate_id: args._audit?.mandate_id },
         args,
         () => updateChild(args)
+      );
+    }
+  },
+  {
+    name: 'user.delete_child',
+    description: 'Delete an existing child record (requires user:write:children scope)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user_id: {
+          type: 'string',
+          description: 'Supabase user ID'
+        },
+        child_id: {
+          type: 'string',
+          description: 'Child record ID to delete'
+        }
+      },
+      required: ['user_id', 'child_id']
+    },
+    handler: async (args: any) => {
+      return auditToolCall(
+        { plan_execution_id: null, tool: 'user.delete_child', mandate_id: args._audit?.mandate_id },
+        args,
+        () => deleteChild(args)
       );
     }
   },
