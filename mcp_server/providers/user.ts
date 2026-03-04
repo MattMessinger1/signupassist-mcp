@@ -31,7 +31,8 @@ function computeAgeYearsFromISODate(dobIso: string): number | null {
 async function getDelegateProfileForUser(user_id: string): Promise<DelegateProfile | null> {
   const { data: profile, error } = await supabase
     .from('delegate_profiles')
-    .select('user_id, first_name, last_name, date_of_birth, parental_consent, parental_consent_at')
+    // Keep this query resilient across schema migrations (e.g. consent + encrypted PII columns).
+    .select('*')
     .eq('user_id', user_id)
     .maybeSingle();
   if (error) {
