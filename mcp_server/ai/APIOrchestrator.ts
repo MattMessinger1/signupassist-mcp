@@ -168,6 +168,7 @@ interface APIContext {
   // Returning-user UX: for exactly 1 saved child, avoid silent auto-use.
   awaitingSingleChildChoice?: boolean;
   declinedSingleSavedChild?: boolean;
+  parentalConsentConfirmed?: boolean;
 
   // REVIEW UX: ensure we always show the full review summary before asking yes/cancel.
   reviewSummaryShown?: boolean;
@@ -2715,7 +2716,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
                   const childLine = childDob ? `- Child: ${childName} (DOB: ${childDob})` : `- Child: ${childName}`;
 
                   return this.formatResponse(
-                    `Step 2/5 — Parent & child info\n\nOn file:\n${childLine}\n${parentLines.length ? parentLines.join("\n") : "- Parent/guardian: (not saved yet)"}\n\n${stillNeeded}\n\nReply with the missing field(s) to use this info. Or reply **different child** and provide the child’s name + DOB.\n\nNext: I’ll confirm your payment method (Stripe), then show a final review before booking.`,
+                    `Step 2/5 — Parent & child info\n\nOn file:\n${childLine}\n${parentLines.length ? parentLines.join("\n") : "- Parent/guardian: (not saved yet)"}\n\n${stillNeeded}\n\nReply with the missing field(s) to use this info. Or reply **different child** and provide the child’s name + DOB.\n\nNext: I’ll confirm your payment method (Stripe), then show a final review before booking.\n\nBefore I save any child profile for future use, I’ll ask for explicit parental consent.`,
                     undefined,
                     []
                   );
@@ -2730,7 +2731,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
                   return `${i + 1}. ${name}`;
                 });
                 return this.formatResponse(
-                  `Step 2/5 — Parent & child info\n\nI found ${savedEffective.length} saved participant${savedEffective.length === 1 ? "" : "s"}.\n\n${lines.join("\n")}\n\nReply with a number (e.g., "1"), or type a new child name + DOB.`,
+                  `Step 2/5 — Parent & child info\n\nI found ${savedEffective.length} saved participant${savedEffective.length === 1 ? "" : "s"}.\n\n${lines.join("\n")}\n\nReply with a number (e.g., "1"), or type a new child name + DOB.\n\nBefore I save any child profile for future use, I’ll ask for explicit parental consent.`,
                   undefined,
                   []
                 );
@@ -6096,6 +6097,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       Logger.info('[submitForm] User authenticated with user_id:', userId);
     }
 
+    const parentalConsentConfirmed =
+      payload?.parental_consent === true ||
+      formData?.delegate?.parental_consent === true ||
+      formData?.delegate?.delegate_parental_consent === true;
+
     // Save delegate profile if requested (ChatGPT App Store compliant)
     if (payload.saveDelegateProfile && userId && formData.delegate) {
       Logger.info('[submitForm] Saving delegate profile for user:', userId);
@@ -6106,7 +6112,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           last_name: formData.delegate.delegate_lastName,
           phone: formData.delegate.delegate_phone,
           date_of_birth: formData.delegate.delegate_dob,
-          default_relationship: formData.delegate.delegate_relationship
+          default_relationship: formData.delegate.delegate_relationship,
+          parental_consent: parentalConsentConfirmed
         });
         Logger.info('[submitForm] ✅ Delegate profile saved');
       } catch (error) {
@@ -6117,6 +6124,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
     // Save new children if requested (ChatGPT App Store compliant)
     if (payload.saveNewChildren && userId && Array.isArray(payload.saveNewChildren)) {
+      if (!parentalConsentConfirmed) {
+        Logger.warn('[submitForm] Skipping child save: explicit parental consent not provided');
+      } else {
       Logger.info('[submitForm] Saving new children for user:', { userId, count: payload.saveNewChildren.length });
       for (const child of payload.saveNewChildren) {
         try {
@@ -6135,6 +6145,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           Logger.warn('[submitForm] Failed to save child (non-fatal):', error);
           // Non-fatal - continue with registration
         }
+      }
       }
     }
 
@@ -9489,7 +9500,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       return this.formatError("Please sign in to save your profile.");
     }
     
-    const { first_name, last_name, phone, date_of_birth, default_relationship } = payload;
+    const { first_name, last_name, phone, date_of_birth, default_relationship, parental_consent } = payload;
     
     Logger.info('[saveDelegateProfile] Saving delegate profile via MCP tool', { userId });
     
@@ -9500,7 +9511,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         last_name,
         phone,
         date_of_birth,
-        default_relationship
+        default_relationship,
+        parental_consent
       });
       
       if (!result?.success) {
@@ -9511,7 +9523,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       Logger.info('[saveDelegateProfile] ✅ Profile saved');
       
       return {
-        message: "✅ Your information has been saved for future registrations!",
+        message: "✅ Your information (including parental consent status) has been saved for future registrations!",
         metadata: { savedProfile: result.data?.profile }
       };
     } catch (error) {

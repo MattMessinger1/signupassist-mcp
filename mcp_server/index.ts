@@ -685,6 +685,7 @@ import { URL, fileURLToPath } from 'url';
 import { readFileSync, existsSync } from 'fs';
 import path, { dirname } from 'path';
 import crypto from 'crypto';
+import { sanitizeForLogs } from './utils/sanitization.js';
 
 // ✅ Fix for ESM __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -4060,7 +4061,7 @@ class SignupAssistMCPServer {
             const parsedBody = JSON.parse(body);
             const { message, sessionId, action, payload, userLocation, userJwt, category, childAge, currentAAP, userTimezone, user_id } = parsedBody;
             
-            console.log('[Orchestrator] Request params:', { 
+            console.log('[Orchestrator] Request params:', sanitizeForLogs({ 
               hasMessage: !!message,
               hasAction: !!action,
               hasAAP: !!currentAAP,
@@ -4068,8 +4069,9 @@ class SignupAssistMCPServer {
               hasChildAge: !!childAge,
               hasLocation: !!(userLocation?.lat && userLocation?.lng),
               location: userLocation,
-              userTimezone
-            });
+              userTimezone,
+              payload,
+            }));
 
             // Child-scope guardrail: block explicit adult-only signup requests at the HTTP boundary
             // before dispatching any orchestrator/tool actions.

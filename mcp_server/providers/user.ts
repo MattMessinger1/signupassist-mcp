@@ -58,6 +58,19 @@ function toDecryptedDelegateProfile(row: any): DelegateProfile {
   };
 }
 
+function toDecryptedDelegateProfile(profile: any): DelegateProfile {
+  if (!profile || typeof profile !== 'object') return profile;
+
+  // During PII migration windows, some environments may return encrypted column names
+  // while others still expose plain-text fields. Keep the shape stable for caller logic.
+  return {
+    ...profile,
+    first_name: profile.first_name ?? profile.first_name_encrypted,
+    last_name: profile.last_name ?? profile.last_name_encrypted,
+    date_of_birth: profile.date_of_birth ?? profile.date_of_birth_encrypted
+  };
+}
+
 function computeAgeYearsFromISODate(dobIso: string): number | null {
   const iso = String(dobIso || '').slice(0, 10);
   const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -77,6 +90,7 @@ function computeAgeYearsFromISODate(dobIso: string): number | null {
 async function getDelegateProfileForUser(user_id: string): Promise<DelegateProfile | null> {
   const { data: profile, error } = await supabase
     .from('delegate_profiles')
+<
     .select('*')
     .eq('user_id', user_id)
     .maybeSingle();
@@ -152,6 +166,21 @@ export interface DelegateProfile {
   default_relationship?: string;
   city?: string;      // For location-based provider matching
   state?: string;     // For location-based provider matching
+  parental_consent?: boolean;
+  parental_consent_at?: string;
+}
+
+async function ensureParentalConsentForChildWrites(user_id: string): Promise<ParentFriendlyError | null> {
+  const profile = await getDelegateProfileForUser(user_id);
+  if (!profile || profile.parental_consent !== true) {
+    return {
+      display: 'Before saving child details, I need your explicit parental consent',
+      recovery: 'Please confirm consent in your parent/guardian profile, then try again.',
+      severity: 'low',
+      code: 'PARENTAL_CONSENT_REQUIRED'
+    };
+  }
+  return null;
 }
 
 /**
@@ -251,6 +280,11 @@ export async function createChild(args: {
   console.log(`[User] Creating child for user: ${user_id}, name: ${first_name} ${last_name}`);
   
   try {
+    const consentError = await ensureParentalConsentForChildWrites(user_id);
+    if (consentError) {
+      return { success: false, error: consentError };
+    }
+
     const dobIso = dob ? String(dob).slice(0, 10) : '';
     const age = dobIso ? computeAgeYearsFromISODate(dobIso) : null;
     if (age != null && age >= 18) {
@@ -391,6 +425,11 @@ export async function updateChild(args: {
   console.log(`[User] Updating child: ${child_id} for user: ${user_id}`);
   
   try {
+    const consentError = await ensureParentalConsentForChildWrites(user_id);
+    if (consentError) {
+      return { success: false, error: consentError };
+    }
+
     // First verify ownership
     const { data: existing, error: fetchError } = await supabase
       .from('children')
@@ -455,6 +494,85 @@ export async function updateChild(args: {
     console.error('[User] Error updating child:', error);
     const friendlyError: ParentFriendlyError = {
       display: 'Unable to update child information',
+      recovery: 'Please try again.',
+      severity: 'low',
+      code: 'USER_API_ERROR'
+    };
+    return { success: false, error: friendlyError };
+  }
+}
+
+/**
+ * Tool: user.delete_child
+ * Deletes an existing child record owned by the user (audited for compliance)
+ * Required scope: user:write:children
+ */
+async function deleteChild(args: {
+  user_id: string;
+  child_id: string;
+}): Promise<ProviderResponse<{ deleted: boolean; child_id: string }>> {
+  const { user_id, child_id } = args;
+
+  Logger.info('[User] Deleting child', { user_id, child_id });
+
+  try {
+    const { data: existingChild, error: fetchError } = await supabase
+      .from('children')
+      .select('id')
+      .eq('id', child_id)
+      .eq('user_id', user_id)
+      .maybeSingle();
+
+    if (fetchError) {
+      Logger.error('[User] Database error validating child ownership for delete', { fetchError, user_id, child_id });
+      const friendlyError: ParentFriendlyError = {
+        display: 'Unable to remove this child right now',
+        recovery: 'Please try again in a moment.',
+        severity: 'low',
+        code: 'USER_DELETE_CHILD_LOOKUP_FAILED'
+      };
+      return { success: false, error: friendlyError };
+    }
+
+    if (!existingChild) {
+      const friendlyError: ParentFriendlyError = {
+        display: 'Child record not found',
+        recovery: 'That child may already be removed, or belongs to another account.',
+        severity: 'low',
+        code: 'USER_CHILD_NOT_FOUND'
+      };
+      return { success: false, error: friendlyError };
+    }
+
+    const { error: deleteError } = await supabase
+      .from('children')
+      .delete()
+      .eq('id', child_id)
+      .eq('user_id', user_id);
+
+    if (deleteError) {
+      Logger.error('[User] Database error deleting child', { deleteError, user_id, child_id });
+      const friendlyError: ParentFriendlyError = {
+        display: 'Unable to remove this child right now',
+        recovery: 'Please try again.',
+        severity: 'low',
+        code: 'USER_DELETE_CHILD_FAILED'
+      };
+      return { success: false, error: friendlyError };
+    }
+
+    Logger.info('[User] Child deleted successfully', { user_id, child_id });
+    return {
+      success: true,
+      data: {
+        deleted: true,
+        child_id,
+      }
+    };
+  } catch (error: any) {
+    Logger.error('[User] Error deleting child', { error, user_id, child_id });
+    const friendlyError: ParentFriendlyError = {
+      display: 'Unable to remove this child right now',
       recovery: 'Please try again.',
       severity: 'low',
       code: 'USER_API_ERROR'
@@ -534,12 +652,35 @@ export async function updateDelegateProfile(args: {
   default_relationship?: string;
   city?: string;
   state?: string;
+  parental_consent?: boolean;
 }): Promise<ProviderResponse<{ profile: DelegateProfile }>> {
-  const { user_id, first_name, last_name, phone, email, date_of_birth, default_relationship, city, state } = args;
+  const { user_id, first_name, last_name, phone, email, date_of_birth, default_relationship, city, state, parental_consent } = args;
   
   Logger.info('[User] Updating delegate profile', { user_id });
   
   try {
+    if (date_of_birth !== undefined) {
+      const ageYears = computeAgeYearsFromISODate(date_of_birth);
+      if (ageYears == null) {
+        const friendlyError: ParentFriendlyError = {
+          display: 'Please enter date of birth as YYYY-MM-DD',
+          recovery: 'Use a valid date so we can verify parent/guardian eligibility.',
+          severity: 'low',
+          code: 'VALIDATION_ERROR'
+        };
+        return { success: false, error: friendlyError };
+      }
+      if (ageYears < 18) {
+        const friendlyError: ParentFriendlyError = {
+          display: 'SignupAssist requires a parent/legal guardian age 18+',
+          recovery: 'Please have an adult parent or legal guardian complete this profile.',
+          severity: 'low',
+          code: 'VALIDATION_ERROR'
+        };
+        return { success: false, error: friendlyError };
+      }
+    }
+
     const updates: any = { user_id };
     if (first_name !== undefined) {
       updates.first_name = null;
@@ -556,14 +697,7 @@ export async function updateDelegateProfile(args: {
     if (default_relationship !== undefined) updates.default_relationship = default_relationship;
     if (city !== undefined) updates.city = city;
     if (state !== undefined) updates.state = state;
-    if (phone !== undefined) {
-      updates.phone = null;
-      updates.phone_encrypted = maybeEncrypt(phone);
-    }
-    if (email !== undefined) {
-      updates.email = null;
-      updates.email_encrypted = maybeEncrypt(email);
-    }
+
     // Note: email stored in auth.users, but can be cached here if needed
     
     const { data: profile, error } = await supabase
@@ -719,6 +853,31 @@ export const userTools: UserTool[] = [
     }
   },
   {
+    name: 'user.delete_child',
+    description: 'Delete an existing child record (requires user:write:children scope)',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        user_id: {
+          type: 'string',
+          description: 'Supabase user ID'
+        },
+        child_id: {
+          type: 'string',
+          description: 'Child record ID to delete'
+        }
+      },
+      required: ['user_id', 'child_id']
+    },
+    handler: async (args: any) => {
+      return auditToolCall(
+        { plan_execution_id: null, tool: 'user.delete_child', mandate_id: args._audit?.mandate_id },
+        args,
+        () => deleteChild(args)
+      );
+    }
+  },
+  {
     name: 'user.get_delegate_profile',
     description: 'Get delegate profile for a user (requires user:read:profile scope)',
     inputSchema: {
@@ -776,6 +935,10 @@ export const userTools: UserTool[] = [
         state: {
           type: 'string',
           description: 'User state/province for location-based provider matching'
+        },
+        parental_consent: {
+          type: 'boolean',
+          description: 'Explicit consent from parent/guardian to store child profile information'
         }
       },
       required: ['user_id']

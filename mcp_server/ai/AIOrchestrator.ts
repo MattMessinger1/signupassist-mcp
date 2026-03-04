@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import Logger from "../utils/logger.js";
+import { sanitizeForLogs } from "../utils/sanitization.js";
 import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
 import { parseProviderInput, ParsedProviderInput } from "../utils/parseInput.js";
 import { lookupLocalProvider, googlePlacesSearch, searchOrganizations } from "../utils/providerSearch.js";
@@ -3326,12 +3327,7 @@ Which would you prefer?`;
    * @returns Sanitized copy of the object
    */
   private sanitize(obj: Record<string, any>): Record<string, any> {
-    const clone = JSON.parse(JSON.stringify(obj));
-    if (clone.password) clone.password = "***";
-    if (clone.cardNumber) clone.cardNumber = "***";
-    if (clone.ssn) clone.ssn = "***";
-    if (clone.apiKey) clone.apiKey = "***";
-    return clone;
+    return sanitizeForLogs(obj);
   }
 
   /**

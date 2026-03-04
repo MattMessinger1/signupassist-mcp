@@ -4,6 +4,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { sanitizeForLogs } from '../utils/sanitization.js';
 
 const supabaseUrl = process.env.SUPABASE_URL || process.env.SB_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SB_SERVICE_ROLE_KEY || '';
@@ -43,7 +44,7 @@ export interface ToneChangeEntry {
  * Safe to call even if Supabase is not configured (logs to console only)
  */
 export async function logAudit(entry: AuditLogEntry): Promise<void> {
-  console.log('[AuditLogger]', entry);
+  console.log('[AuditLogger]', sanitizeForLogs(entry));
 
   if (!supabase) {
     console.warn('[AuditLogger] Supabase not configured, skipping database insert');
@@ -75,7 +76,7 @@ export async function logAudit(entry: AuditLogEntry): Promise<void> {
  * Log a tone configuration change for audit trail
  */
 export async function logToneChange(entry: ToneChangeEntry): Promise<void> {
-  console.log('[ToneChangeLogger]', entry);
+  console.log('[ToneChangeLogger]', sanitizeForLogs(entry));
 
   if (!supabase) {
     console.warn('[ToneChangeLogger] Supabase not configured, skipping database insert');
@@ -113,7 +114,7 @@ export async function logMandateEvent(entry: {
   scopes: string[];
   reason?: string;
 }): Promise<void> {
-  console.log('[MandateAudit]', entry.action, ':', entry.mandate_id || 'new');
+  console.log('[MandateAudit]', entry.action, ':', entry.mandate_id || 'new', sanitizeForLogs(entry));
 
   if (!supabase) {
     console.warn('[MandateAudit] Supabase not configured, skipping database insert');
@@ -156,7 +157,7 @@ export async function logProgramInteraction(entry: {
   restriction_reason?: string;
   access_level?: string;
 }): Promise<void> {
-  console.log('[ProgramInteraction]', entry.action, ':', entry.program_ref || 'unknown');
+  console.log('[ProgramInteraction]', entry.action, ':', entry.program_ref || 'unknown', sanitizeForLogs(entry));
 
   if (!supabase) {
     console.warn('[ProgramInteraction] Supabase not configured, skipping database insert');
