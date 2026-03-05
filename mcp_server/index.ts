@@ -677,7 +677,8 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { z } from 'zod';
 import { getPlaceholderImage } from './lib/placeholderImages.js';
-import { evaluateChildRegistrationScope, getChildScopeBlockedMessage } from './lib/childScopeGuardrail.js';
+import { buildChildScopeOutOfScopeResponse, evaluateChildRegistrationScope } from './lib/childScopeGuardrail.js';
+import { telemetry } from './lib/telemetry.js';
 import { formatCurrencyFromCents } from './utils/money.js';
 
 import { createServer } from 'http';
@@ -4081,16 +4082,22 @@ class SignupAssistMCPServer {
               payload,
             });
             if (scopeDecision.blocked) {
-              const guardrailMessage = getChildScopeBlockedMessage();
+              telemetry.record('guardrail_blocked_request', {
+                guardrail: 'child_scope',
+                reason: scopeDecision.reason,
+                hasAction: Boolean(action),
+                hasMessage: Boolean(String(message || '').trim()),
+              });
+              telemetry.incrementCounter('guardrail.child_scope.blocked_total');
+              if (scopeDecision.reason === 'adult_signup_request') {
+                telemetry.incrementCounter('guardrail.child_scope.blocked_adult_signup_total');
+              }
+
               res.writeHead(200, {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*',
               });
-              res.end(JSON.stringify({
-                message: guardrailMessage,
-                metadata: { suppressWizardHeader: true, outOfScope: true },
-                context: { step: 'BROWSE' },
-              }));
+              res.end(JSON.stringify(buildChildScopeOutOfScopeResponse()));
               return;
             }
             

@@ -9,6 +9,18 @@ export interface ChildScopeGuardResult {
   reason?: 'adult_signup_request';
 }
 
+export interface ChildScopeOutOfScopeResponse {
+  message: string;
+  metadata: {
+    suppressWizardHeader: true;
+    outOfScope: true;
+    reason: 'adult_signup_request';
+  };
+  context: {
+    step: 'BROWSE';
+  };
+}
+
 const SIGNUP_INTENT_RE = /\b(sign\s*up|signup|register|registration|enroll|enrol|book|booking)\b/i;
 const ADULT_AUDIENCE_RE = /\b(adults?|adult-only|18\+|21\+|over\s*18|grown[-\s]?ups?|seniors?)\b/i;
 const ADULT_PARTICIPANT_RE = /\b(for\s+me|for\s+myself|register\s+me|enroll\s+me|book\s+me|my\s+(wife|husband|partner|boyfriend|girlfriend))\b/i;
@@ -49,4 +61,18 @@ export function getChildScopeBlockedMessage(): string {
     "If you need an adult registration, please register directly with the provider.",
     "I can still help you find and register classes for a child anytime."
   ].join(' ');
+}
+
+export function buildChildScopeOutOfScopeResponse(): ChildScopeOutOfScopeResponse {
+  return {
+    message: getChildScopeBlockedMessage(),
+    metadata: {
+      suppressWizardHeader: true,
+      outOfScope: true,
+      reason: 'adult_signup_request',
+    },
+    context: {
+      step: 'BROWSE',
+    },
+  };
 }

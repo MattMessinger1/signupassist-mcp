@@ -11,6 +11,7 @@ interface TelemetryEvent {
 
 class Telemetry {
   private events: TelemetryEvent[] = [];
+  private counters = new Map<string, number>();
 
   /**
    * Record a telemetry event
@@ -28,6 +29,25 @@ class Telemetry {
     console.log(`[TELEMETRY] ${event}:`, JSON.stringify(metadata));
   }
 
+
+  /**
+   * Increment a telemetry counter by name
+   */
+  incrementCounter(name: string, by = 1): number {
+    const current = this.counters.get(name) ?? 0;
+    const next = current + by;
+    this.counters.set(name, next);
+    console.log(`[TELEMETRY] counter.${name}: ${next}`);
+    return next;
+  }
+
+  /**
+   * Get a telemetry counter value
+   */
+  getCounter(name: string): number {
+    return this.counters.get(name) ?? 0;
+  }
+
   /**
    * Get all recorded events
    */
@@ -40,6 +60,7 @@ class Telemetry {
    */
   clear(): void {
     this.events = [];
+    this.counters.clear();
   }
 
   /**
