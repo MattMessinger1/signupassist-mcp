@@ -3,6 +3,8 @@
  * Records events for monitoring, debugging, and analytics
  */
 
+import Logger from '../utils/logger.js';
+
 interface TelemetryEvent {
   event: string;
   metadata: Record<string, any>;
@@ -24,6 +26,13 @@ class Telemetry {
     };
 
     this.events.push(telemetryEvent);
+
+    // Export to durable log sink for production dashboarding.
+    Logger.info('[telemetry_event]', {
+      event,
+      metadata,
+      timestamp: telemetryEvent.timestamp,
+    });
     
     // Log to console for immediate visibility
     console.log(`[TELEMETRY] ${event}:`, JSON.stringify(metadata));
@@ -33,10 +42,23 @@ class Telemetry {
   /**
    * Increment a telemetry counter by name
    */
-  incrementCounter(name: string, by = 1): number {
+  incrementCounter(
+    name: string,
+    by = 1,
+    tags: Record<string, string | number | boolean | undefined> = {}
+  ): number {
     const current = this.counters.get(name) ?? 0;
     const next = current + by;
     this.counters.set(name, next);
+
+    // Export to durable metric sink for production dashboarding.
+    Logger.info('[metrics]', {
+      metric_type: 'counter',
+      metric_name: name,
+      value: next,
+      tags,
+    });
+
     console.log(`[TELEMETRY] counter.${name}: ${next}`);
     return next;
   }
