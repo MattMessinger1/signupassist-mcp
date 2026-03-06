@@ -283,8 +283,6 @@ function shouldDebugForMcpMessage(msg: any, verifiedUserId?: string): boolean {
 // ============================================================
 // Security quick wins: lightweight rate limiting (in-memory)
 // ============================================================
-type RateBucket = { resetAt: number; count: number };
-const rateBuckets: Map<string, RateBucket> = new Map();
 const activeSseByKey: Map<string, number> = new Map();
 
 function isRateLimitEnabled(): boolean {
@@ -293,58 +291,6 @@ function isRateLimitEnabled(): boolean {
   // Default on in production, off elsewhere.
   if (!raw) return String(process.env.NODE_ENV || "").toLowerCase() === "production";
   return raw === "true" || raw === "1" || raw === "on" || raw === "yes";
-}
-
-function normalizeIp(raw: string): string {
-  const s = String(raw || "").trim();
-  if (!s) return "";
-  // Common Node format: ::ffff:1.2.3.4
-  if (s.startsWith("::ffff:")) return s.slice("::ffff:".length);
-  return s;
-}
-
-function getClientIp(req: any): string {
-  const xff = String(req?.headers?.["x-forwarded-for"] || "");
-  const first = xff.split(",")[0]?.trim();
-  const real = String(req?.headers?.["x-real-ip"] || "").trim();
-  const remote = req?.socket?.remoteAddress ? String(req.socket.remoteAddress) : "";
-  return normalizeIp(first || real || remote) || "unknown";
-}
-
-function getRateLimitKey(req: any): string {
-  const authHeader = String(req?.headers?.["authorization"] || "").trim();
-  const token = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7).trim() : "";
-  if (token) {
-    // Never store raw tokens; hash to reduce sensitivity and cardinality.
-    const h = crypto.createHash("sha256").update(token).digest("hex").slice(0, 16);
-    return `tok_${h}`;
-  }
-  return `ip_${getClientIp(req)}`;
-}
-
-function pruneRateBuckets(nowMs: number) {
-  // Opportunistic cleanup to avoid unbounded growth (Auth0 JWTs are high-cardinality).
-  if (rateBuckets.size < 5000) return;
-  for (const [k, v] of rateBuckets) {
-    if (nowMs >= v.resetAt) rateBuckets.delete(k);
-  }
-  if (rateBuckets.size > 20000) rateBuckets.clear();
-}
-
-function consumeRateLimit(key: string, max: number, windowMs: number): { allowed: boolean; retryAfterSec: number } {
-  const now = Date.now();
-  pruneRateBuckets(now);
-
-  const bucketKey = `${key}`;
-  let b = rateBuckets.get(bucketKey);
-  if (!b || now >= b.resetAt) {
-    b = { count: 0, resetAt: now + windowMs };
-    rateBuckets.set(bucketKey, b);
-  }
-  b.count += 1;
-  const allowed = b.count <= max;
-  const retryAfterSec = allowed ? 0 : Math.max(1, Math.ceil((b.resetAt - now) / 1000));
-  return { allowed, retryAfterSec };
 }
 
 // Body size caps (quick win): avoid unbounded buffering on POST endpoints.
@@ -686,6 +632,7 @@ import { URL, fileURLToPath } from 'url';
 import { readFileSync, existsSync } from 'fs';
 import path, { dirname } from 'path';
 import crypto from 'crypto';
+import { consumeRateLimit, getStableRateLimitKey } from './lib/rateLimit.js';
 import { sanitizeForLogs } from './utils/sanitization.js';
 
 // ✅ Fix for ESM __dirname
@@ -1583,7 +1530,7 @@ class SignupAssistMCPServer {
 
       // --- Rate limiting (quick win)
       if (isRateLimitEnabled()) {
-        const key = getRateLimitKey(req);
+        const key = getStableRateLimitKey(req);
         const windowMs = Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000);
         const window = Number.isFinite(windowMs) && windowMs > 0 ? windowMs : 60_000;
 
@@ -2404,7 +2351,7 @@ class SignupAssistMCPServer {
 
           // Limit concurrent SSE streams per auth token (or per IP when unauthenticated).
           // This protects the server from retry storms without penalizing other users (token-hash keyed).
-          const sseKey = getRateLimitKey(req);
+          const sseKey = getStableRateLimitKey(req);
           const maxActiveRaw = Number(process.env.SSE_MAX_ACTIVE || 5);
           const maxActive = Number.isFinite(maxActiveRaw) && maxActiveRaw > 0 ? Math.max(1, Math.min(maxActiveRaw, 50)) : 5;
           const currentActive = activeSseByKey.get(sseKey) || 0;
