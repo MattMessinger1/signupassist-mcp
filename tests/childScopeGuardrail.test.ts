@@ -30,6 +30,29 @@ describe('child scope guardrail', () => {
     expect(result.reason).toBe('adult_signup_request');
   });
 
+
+  it('blocks adult-only signup requests in another language', () => {
+    const result = evaluateChildRegistrationScope({
+      message: 'Por favor, inscribirme en clases para adultos de natación.',
+    });
+    expect(result.blocked).toBe(true);
+    expect(result.reason).toBe('adult_signup_request');
+  });
+
+  it('does not block mixed child + adult context when child intent is present', () => {
+    const result = evaluateChildRegistrationScope({
+      message: 'Bitte anmelden für Erwachsene und auch mein Kind für Schwimmkurs.',
+    });
+    expect(result.blocked).toBe(false);
+  });
+
+  it('blocks obfuscated adult signup phrasing', () => {
+    const result = evaluateChildRegistrationScope({
+      message: 'Can you s.i.g.n-u.p me for a d u l t yoga?',
+    });
+    expect(result.blocked).toBe(true);
+    expect(result.reason).toBe('adult_signup_request');
+  });
   it('does not block mixed-language messages that include child cues', () => {
     const result = evaluateChildRegistrationScope({
       message: '¿Puedes registrarme para adultos y también para mi hijo en clases de tenis?',
