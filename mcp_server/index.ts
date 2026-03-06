@@ -4059,9 +4059,14 @@ class SignupAssistMCPServer {
                 hasAction: Boolean(action),
                 hasMessage: Boolean(String(message || '').trim()),
               });
-              telemetry.incrementCounter('guardrail.child_scope.blocked_total');
+              const guardrailMetricTags = {
+                route: '/v1/chat',
+                env: process.env.NODE_ENV || 'development',
+                reason: scopeDecision.reason,
+              };
+              telemetry.incrementCounter('guardrail.child_scope.blocked_total', 1, guardrailMetricTags);
               if (scopeDecision.reason === 'adult_signup_request') {
-                telemetry.incrementCounter('guardrail.child_scope.blocked_adult_signup_total');
+                telemetry.incrementCounter('guardrail.child_scope.blocked_adult_signup_total', 1, guardrailMetricTags);
               }
 
               res.writeHead(200, {
