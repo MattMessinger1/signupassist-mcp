@@ -2861,6 +2861,30 @@ class SignupAssistMCPServer {
         }));
         return;
       }
+
+      // --- Optional debug telemetry endpoint (explicitly opt-in)
+      const telemetryDebugEnabled = String(process.env.EXPOSE_TELEMETRY_DEBUG || '').toLowerCase() === 'true';
+      if (telemetryDebugEnabled && req.method === 'GET' && url.pathname === '/debug/telemetry') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          ok: true,
+          counters: telemetry.getCounters(),
+          events: {
+            total: telemetry.getEvents().length,
+            blockedRequests: telemetry.getEventsByType('guardrail_blocked_request').length,
+          },
+          ts: Date.now(),
+        }));
+        return;
+      }
+
+      if (telemetryDebugEnabled && req.method === 'POST' && url.pathname === '/debug/telemetry/clear') {
+        telemetry.clear();
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, cleared: true, ts: Date.now() }));
+        return;
+      }
+
       
       // --- Keep-warm ping endpoint to prevent cold starts
       if (req.method === 'GET' && url.pathname === '/ping') {

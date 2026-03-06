@@ -69,6 +69,13 @@ class Telemetry {
   getEventsByType(event: string): TelemetryEvent[] {
     return this.events.filter(e => e.event === event);
   }
+
+  /**
+   * Snapshot all counters
+   */
+  getCounters(): Record<string, number> {
+    return Object.fromEntries(this.counters.entries());
+  }
 }
 
 // Singleton instance
