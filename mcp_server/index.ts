@@ -245,6 +245,47 @@ function isMcpRefreshDebugEnabled(): boolean {
   return String(process.env.DEBUG_MCP_REFRESH || "").toLowerCase() === "true";
 }
 
+
+function getRequestClientIp(req: any): string | undefined {
+  const forwarded = req.headers['x-forwarded-for'] as string | string[] | undefined;
+  const rawForwarded = Array.isArray(forwarded) ? forwarded[0] : forwarded;
+  const firstForwarded = typeof rawForwarded === 'string' ? rawForwarded.split(',')[0]?.trim() : undefined;
+  const rawIp = firstForwarded || req.socket?.remoteAddress;
+  if (!rawIp) return undefined;
+  return rawIp.startsWith('::ffff:') ? rawIp.replace('::ffff:', '') : rawIp;
+}
+
+function isInternalOrLocalIp(ip?: string): boolean {
+  if (!ip) return false;
+  if (ip === '127.0.0.1' || ip === '::1') return true;
+
+  const kind = isIP(ip);
+  if (kind === 4) {
+    const [a, b] = ip.split('.').map((part) => Number(part));
+    if (a === 10) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 169 && b === 254) return true;
+    return false;
+  }
+
+  if (kind === 6) {
+    const normalized = ip.toLowerCase();
+    return normalized.startsWith('fc') || normalized.startsWith('fd') || normalized.startsWith('fe80:');
+  }
+
+  return false;
+}
+
+function isAuthorizedForTelemetryDebug(req: any): boolean {
+  const expectedToken = String(process.env.EXPOSE_TELEMETRY_DEBUG_TOKEN || '').trim();
+  const providedToken = String(req.headers['x-debug-token'] || '').trim();
+  const hasValidToken = !!expectedToken && providedToken === expectedToken;
+  const clientIp = getRequestClientIp(req);
+  const fromInternalNetwork = isInternalOrLocalIp(clientIp);
+  return hasValidToken || fromInternalNetwork;
+}
+
 function redactForLogs(input: string): string {
   const s = String(input || "");
   // Emails
@@ -631,6 +672,7 @@ import { createServer } from 'http';
 import { URL, fileURLToPath } from 'url';
 import { readFileSync, existsSync } from 'fs';
 import path, { dirname } from 'path';
+import { isIP } from 'node:net';
 import crypto from 'crypto';
 import { consumeRateLimit, getStableRateLimitKey } from './lib/rateLimit.js';
 import { sanitizeForLogs } from './utils/sanitization.js';
@@ -2864,6 +2906,16 @@ class SignupAssistMCPServer {
 
       // --- Optional debug telemetry endpoint (explicitly opt-in)
       const telemetryDebugEnabled = String(process.env.EXPOSE_TELEMETRY_DEBUG || '').toLowerCase() === 'true';
+      const isTelemetryDebugRoute =
+        (req.method === 'GET' && url.pathname === '/debug/telemetry') ||
+        (req.method === 'POST' && url.pathname === '/debug/telemetry/clear');
+
+      if (telemetryDebugEnabled && isTelemetryDebugRoute && !isAuthorizedForTelemetryDebug(req)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'forbidden' }));
+        return;
+      }
+
       if (telemetryDebugEnabled && req.method === 'GET' && url.pathname === '/debug/telemetry') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
