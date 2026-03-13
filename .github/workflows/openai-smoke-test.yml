@@ -44,7 +44,7 @@ jobs:
           VITE_MCP_BASE_URL: ${{ vars.VITE_MCP_BASE_URL || 'https://signupassist-mcp-production.up.railway.app' }}
       
       - name: Run unit tests
-        run: npx vitest run mcp_server/lib/openaiHelpers.test.ts --reporter=verbose
+        run: npm run -s test:openai-smoke
       
       - name: Run OpenAI smoke test
         env:
