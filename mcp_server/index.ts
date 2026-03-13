@@ -3685,17 +3685,9 @@ class SignupAssistMCPServer {
       // --- Streamable HTTP transport at /mcp (MCP 2025-03-26+)
       // ChatGPT "Scan Tools" sends POST /mcp with JSON-RPC bodies for
       // initialize and tools/list. Handle these the same way as POST /sse.
-      if (req.method === 'POST' && (url.pathname === '/mcp' || url.pathname === '/mcp/')) {
-        const contentType = String(req.headers['content-type'] || '');
-        if (!contentType.toLowerCase().includes('application/json')) {
-          res.writeHead(415, {
-            'Content-Type': 'application/json; charset=utf-8',
-            'Access-Control-Allow-Origin': '*',
-          });
-          res.end(JSON.stringify({ error: 'unsupported_media_type', message: 'Expected application/json' }));
-          return;
-        }
-
+      // Also accept POST / as a fallback for clients that use the base URL directly.
+      if (req.method === 'POST' && (url.pathname === '/mcp' || url.pathname === '/mcp/' || url.pathname === '/') &&
+          String(req.headers['content-type'] || '').toLowerCase().includes('application/json')) {
         const maxBodyBytes = 64 * 1024;
         let body = '';
         for await (const chunk of req) {
