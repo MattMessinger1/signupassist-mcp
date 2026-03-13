@@ -3994,11 +3994,11 @@ class SignupAssistMCPServer {
           // Legacy/alternate path used by some OpenAI UIs
           url.pathname === "/.well-known/openai-verification.txt" ||
           url.pathname === "/mcp/.well-known/openai-verification.txt" ||
-          // Domain verification paths used by newer connector UIs.
-          // Some UIs append a suffix/filename variant after the base path, so
-          // we match by prefix to avoid brittle exact-path failures.
-          url.pathname.startsWith("/.well-known/openai-domain-verification") ||
-          url.pathname.startsWith("/mcp/.well-known/openai-domain-verification") ||
+          // Domain verification path used by newer connector UIs
+          url.pathname === "/.well-known/openai-domain-verification" ||
+          url.pathname === "/.well-known/openai-domain-verification.txt" ||
+          url.pathname === "/mcp/.well-known/openai-domain-verification" ||
+          url.pathname === "/mcp/.well-known/openai-domain-verification.txt" ||
           // Current ChatGPT Apps UI path
           url.pathname === "/.well-known/openai-apps-challenge" ||
           url.pathname === "/mcp/.well-known/openai-apps-challenge"
