@@ -2055,14 +2055,14 @@ class SignupAssistMCPServer {
           // ----------------------------------------------------------------
           if (req.method === 'POST') {
             const contentType = String(req.headers['content-type'] || '');
-            const contentLength = Number(req.headers['content-length'] || 0);
+            const contentLengthHeader = req.headers['content-length'];
+            const contentLength = Number(contentLengthHeader || 0);
             const maxDiscoveryBodyBytes = 64 * 1024; // 64KB safety cap
+            const hasJsonBody = contentType.toLowerCase().includes('application/json');
+            const bodyLengthLooksSafe =
+              !contentLengthHeader || (contentLength > 0 && contentLength <= maxDiscoveryBodyBytes);
 
-            if (
-              contentLength > 0 &&
-              contentLength <= maxDiscoveryBodyBytes &&
-              contentType.toLowerCase().includes('application/json')
-            ) {
+            if (hasJsonBody && bodyLengthLooksSafe) {
               if (isMcpRefreshDebugEnabled()) {
                 console.log(
                   `[DEBUG_MCP_REFRESH] /sse has JSON body contentLength=${contentLength} contentType=${JSON.stringify(contentType)}`
@@ -2072,7 +2072,15 @@ class SignupAssistMCPServer {
               let body = '';
               for await (const chunk of req) {
                 body += chunk;
-                if (body.length > maxDiscoveryBodyBytes) break;
+                if (body.length > maxDiscoveryBodyBytes) {
+                  res.writeHead(413, {
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'Access-Control-Allow-Origin': '*',
+                    'Cache-Control': 'no-store',
+                  });
+                  res.end(JSON.stringify({ error: 'request_too_large' }));
+                  return;
+                }
               }
 
               let parsed: any = null;
@@ -2333,6 +2341,16 @@ class SignupAssistMCPServer {
                 );
                 return;
               }
+
+              // Empty/invalid JSON payloads should fail fast with finite JSON.
+              // Some scanners POST a probe body to /sse and expect a quick response.
+              res.writeHead(400, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Access-Control-Allow-Origin': '*',
+                'Cache-Control': 'no-store',
+              });
+              res.end(JSON.stringify({ error: 'invalid_jsonrpc_request' }));
+              return;
             }
           }
 
