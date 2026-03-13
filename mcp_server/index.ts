@@ -2326,12 +2326,34 @@ class SignupAssistMCPServer {
             if (hasJsonBody && bodyLengthHeaderPresentButInvalid) {
               // Invalid Content-Length on JSON probes should fail fast instead of opening SSE.
               writeNoStoreJson(res, 400, { error: 'invalid_content_length' });
+            const contentLengthHeader = req.headers['content-length'];
+            const contentLength = Number(contentLengthHeader || 0);
+            const maxDiscoveryBodyBytes = 64 * 1024; // 64KB safety cap
+            const hasJsonBody = contentType.toLowerCase().includes('application/json');
+            const bodyLengthLooksSafe =
+              !contentLengthHeader || (contentLength > 0 && contentLength <= maxDiscoveryBodyBytes);
+            const bodyLengthHeaderPresentButInvalid = !!contentLengthHeader && (!Number.isFinite(contentLength) || contentLength <= 0);
+
+            if (hasJsonBody && bodyLengthHeaderPresentButInvalid) {
+              // Invalid Content-Length on JSON probes should fail fast instead of opening SSE.
+              res.writeHead(400, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Access-Control-Allow-Origin': '*',
+                'Cache-Control': 'no-store',
+              });
+              res.end(JSON.stringify({ error: 'invalid_content_length' }));
               return;
             }
 
             if (hasJsonBody && !bodyLengthLooksSafe) {
               // Oversized JSON probes should return a finite 413 (not fall through to SSE stream).
               writeNoStoreJson(res, 413, { error: 'request_too_large' });
+              res.writeHead(413, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Access-Control-Allow-Origin': '*',
+                'Cache-Control': 'no-store',
+              });
+              res.end(JSON.stringify({ error: 'request_too_large' }));
               return;
             }
 
@@ -2347,6 +2369,12 @@ class SignupAssistMCPServer {
                 body += chunk;
                 if (body.length > maxDiscoveryBodyBytes) {
                   writeNoStoreJson(res, 413, { error: 'request_too_large' });
+                  res.writeHead(413, {
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'Access-Control-Allow-Origin': '*',
+                    'Cache-Control': 'no-store',
+                  });
+                  res.end(JSON.stringify({ error: 'request_too_large' }));
                   return;
                 }
               }
@@ -4160,6 +4188,22 @@ class SignupAssistMCPServer {
 
       // --- OpenAI Domain Verification (for ChatGPT app submission)
       if ((req.method === "GET" || req.method === "HEAD") && isOpenAIDomainVerificationPath(url.pathname)) {
+      if (
+        (req.method === "GET" || req.method === "HEAD") &&
+        (
+          // Legacy/alternate path used by some OpenAI UIs
+          url.pathname === "/.well-known/openai-verification.txt" ||
+          url.pathname === "/mcp/.well-known/openai-verification.txt" ||
+          // Domain verification path used by newer connector UIs
+          url.pathname === "/.well-known/openai-domain-verification" ||
+          url.pathname === "/.well-known/openai-domain-verification.txt" ||
+          url.pathname === "/mcp/.well-known/openai-domain-verification" ||
+          url.pathname === "/mcp/.well-known/openai-domain-verification.txt" ||
+          // Current ChatGPT Apps UI path
+          url.pathname === "/.well-known/openai-apps-challenge" ||
+          url.pathname === "/mcp/.well-known/openai-apps-challenge"
+        )
+      ) {
         let verificationToken = (process.env.OPENAI_VERIFICATION_TOKEN || '').trim();
 
         // Optional fallback: allow storing the token as a static file in the repo.

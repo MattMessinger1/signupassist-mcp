@@ -32,6 +32,7 @@
     "test:openai-smoke": "vitest run mcp_server/lib/openaiHelpers.test.ts --reporter=verbose",
     "check:merge-hotspots": "node scripts/fixMergeHotspots.js",
     "fix:merge-hotspots": "node scripts/fixMergeHotspots.js --write"
+    "test:openai-smoke": "vitest run mcp_server/lib/openaiHelpers.test.ts --reporter=verbose"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
