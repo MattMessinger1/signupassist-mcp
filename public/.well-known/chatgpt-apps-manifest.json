@@ -16,7 +16,7 @@
   },
   "api": {
     "type": "mcp",
-    "server_url": "https://signupassist.shipworx.ai/sse"
+    "server_url": "https://signupassist.shipworx.ai/mcp"
   },
   "logo_url": "https://signupassist.shipworx.ai/logo-512.svg",
   "contact_email": "support@shipworx.ai",

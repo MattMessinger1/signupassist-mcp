@@ -3658,7 +3658,7 @@ class SignupAssistMCPServer {
               json.auth.token_url = `${baseUrl}/oauth/token`;
             }
             if (json?.api?.type === 'mcp') {
-              json.api.server_url = `${baseUrl}/sse`;
+              json.api.server_url = `${baseUrl}/mcp`;
             }
             json.logo_url = `${baseUrl}/logo-512.svg`;
             json.legal_info_url = `${baseUrl}/safety`;
@@ -3679,6 +3679,119 @@ class SignupAssistMCPServer {
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Failed to load manifest', details: error.message }));
         }
+        return;
+      }
+
+      // --- Streamable HTTP transport at /mcp (MCP 2025-03-26+)
+      // ChatGPT "Scan Tools" sends POST /mcp with JSON-RPC bodies for
+      // initialize and tools/list. Handle these the same way as POST /sse.
+      if (req.method === 'POST' && (url.pathname === '/mcp' || url.pathname === '/mcp/')) {
+        const contentType = String(req.headers['content-type'] || '');
+        if (!contentType.toLowerCase().includes('application/json')) {
+          res.writeHead(415, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Access-Control-Allow-Origin': '*',
+          });
+          res.end(JSON.stringify({ error: 'unsupported_media_type', message: 'Expected application/json' }));
+          return;
+        }
+
+        const maxBodyBytes = 64 * 1024;
+        let body = '';
+        for await (const chunk of req) {
+          body += chunk;
+          if (body.length > maxBodyBytes) {
+            res.writeHead(413, {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Access-Control-Allow-Origin': '*',
+            });
+            res.end(JSON.stringify({ error: 'request_too_large' }));
+            return;
+          }
+        }
+
+        let parsed: any = null;
+        try { parsed = JSON.parse(body); } catch { /* ignore */ }
+
+        const methodName = parsed?.method ? String(parsed.method) : '';
+        console.log(`[MCP] POST /mcp methodName=${methodName || 'unknown'}`);
+
+        if (methodName === 'initialize') {
+          const requestedVersion =
+            (parsed?.params?.protocolVersion as string | undefined) ||
+            (parsed?.params?.protocol_version as string | undefined) ||
+            '2025-03-26';
+
+          const serverVersion =
+            process.env.APP_VERSION ||
+            process.env.RAILWAY_GIT_COMMIT_SHA ||
+            VERSION_INFO.commit ||
+            'dev';
+
+          res.writeHead(200, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-store',
+          });
+          res.end(JSON.stringify({
+            jsonrpc: '2.0',
+            id: parsed?.id ?? 0,
+            result: {
+              protocolVersion: requestedVersion,
+              capabilities: { tools: {} },
+              serverInfo: { name: 'SignupAssist MCP', version: serverVersion },
+            },
+          }));
+          return;
+        }
+
+        if (methodName === 'tools/list') {
+          const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
+          const apiTools = Array.from(this.tools.values())
+            .filter((tool) => tool?._meta?.["openai/visibility"] !== "private")
+            .map((tool) => ({
+              name: tool.name,
+              description: tool.description,
+              inputSchema: tool.inputSchema,
+              _meta: tool._meta,
+            }));
+          const visibleTools = includePrivate
+            ? apiTools
+            : apiTools.filter((t) => t._meta?.["openai/visibility"] === "public");
+
+          console.log(
+            `[MCP] POST /mcp tools/list returning ${visibleTools.length} tools:`,
+            visibleTools.map((t) => t.name)
+          );
+
+          res.writeHead(200, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-store',
+          });
+          res.end(JSON.stringify({
+            jsonrpc: '2.0',
+            id: parsed?.id ?? 1,
+            result: { tools: visibleTools },
+          }));
+          return;
+        }
+
+        if (methodName.startsWith('notifications/')) {
+          res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
+          res.end();
+          return;
+        }
+
+        res.writeHead(400, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+        });
+        res.end(JSON.stringify({
+          jsonrpc: '2.0',
+          id: parsed?.id ?? null,
+          error: { code: -32601, message: `Method not found: ${methodName || '(empty)'}` },
+        }));
         return;
       }
 
@@ -3732,7 +3845,7 @@ class SignupAssistMCPServer {
               json.auth.token_url = `${baseUrl}/oauth/token`;
             }
             if (json?.api?.type === 'mcp') {
-              json.api.server_url = `${baseUrl}/sse`;
+              json.api.server_url = `${baseUrl}/mcp`;
             }
             json.logo_url = `${baseUrl}/logo-512.svg`;
             json.legal_info_url = `${baseUrl}/safety`;
@@ -4877,7 +4990,7 @@ class SignupAssistMCPServer {
                 json.auth.token_url = `${baseUrl}/oauth/token`;
               }
               if (json?.api?.type === 'mcp') {
-                json.api.server_url = `${baseUrl}/sse`;
+                json.api.server_url = `${baseUrl}/mcp`;
               }
               json.logo_url = `${baseUrl}/logo-512.svg`;
               json.legal_info_url = `${baseUrl}/safety`;
