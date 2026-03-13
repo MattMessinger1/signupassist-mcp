@@ -854,7 +854,8 @@ class SignupAssistMCPServer {
           name: tool.name,
           description: tool.description,
           inputSchema: tool.inputSchema,
-          _meta: tool._meta  // Include ChatGPT Apps SDK widget metadata
+          annotations: tool.annotations,
+          _meta: tool._meta,
         }));
 
       // Default: only return publicly-visible tools (reduces model confusion and enforces SSoT via signupassist.chat).
@@ -1328,10 +1329,13 @@ class SignupAssistMCPServer {
           content: [{ type: "text", text }],
         };
       },
+      annotations: {
+        readOnlyHint: false,
+        openWorldHint: false,
+        destructiveHint: false,
+      },
       _meta: {
         ...CHATGPT_APPS_V1_META,
-        // This tool can ultimately book/charge after explicit confirmation, so it is NOT "read-only".
-        // Lower-level tools remain private and are invoked internally by the orchestrator with audit logging.
         "openai/safety": "write",
         ...applyV1Visibility("signupassist.chat", { "openai/safety": "write" }),
         ...applyWizardMeta("signupassist.chat")
@@ -2474,6 +2478,7 @@ class SignupAssistMCPServer {
                     name: tool.name,
                     description: tool.description,
                     inputSchema: tool.inputSchema,
+                    annotations: tool.annotations,
                     _meta: tool._meta,
                   }));
                 const visibleTools = includePrivate
@@ -2843,6 +2848,7 @@ class SignupAssistMCPServer {
                 name: tool.name,
                 description: tool.description,
                 inputSchema: tool.inputSchema,
+                annotations: tool.annotations,
                 _meta: tool._meta,
               }));
             const visibleTools = includePrivate
@@ -2961,6 +2967,7 @@ class SignupAssistMCPServer {
                   name: tool.name,
                   description: tool.description,
                   inputSchema: tool.inputSchema,
+                  annotations: tool.annotations,
                   _meta: tool._meta,
                 }));
 
@@ -3137,6 +3144,7 @@ class SignupAssistMCPServer {
                   name: tool.name,
                   description: tool.description,
                   inputSchema: tool.inputSchema,
+                  annotations: tool.annotations,
                   _meta: tool._meta,
                 }));
               const visibleTools = includePrivate
@@ -3745,6 +3753,7 @@ class SignupAssistMCPServer {
               name: tool.name,
               description: tool.description,
               inputSchema: tool.inputSchema,
+              annotations: tool.annotations,
               _meta: tool._meta,
             }));
           const visibleTools = includePrivate
