@@ -450,6 +450,40 @@ function isOpenAIDomainVerificationPath(pathname: string): boolean {
   );
 }
 
+function writeNoStoreJson(res: any, statusCode: number, body: unknown): void {
+  res.writeHead(statusCode, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': '*',
+    'Cache-Control': 'no-store',
+  });
+  res.end(JSON.stringify(body));
+}
+
+function getJsonProbeHeaderValidation(opts: {
+  contentType: string;
+  contentLengthHeader: string | string[] | undefined;
+  maxBytes: number;
+}) {
+  const contentLengthHeaderRaw = opts.contentLengthHeader;
+  const contentLengthHeader = Array.isArray(contentLengthHeaderRaw)
+    ? contentLengthHeaderRaw[0]
+    : contentLengthHeaderRaw;
+
+  const contentLength = Number(contentLengthHeader || 0);
+  const hasJsonBody = String(opts.contentType || '').toLowerCase().includes('application/json');
+  const bodyLengthLooksSafe =
+    !contentLengthHeader || (contentLength > 0 && contentLength <= opts.maxBytes);
+  const bodyLengthHeaderPresentButInvalid =
+    !!contentLengthHeader && (!Number.isFinite(contentLength) || contentLength <= 0);
+
+  return {
+    hasJsonBody,
+    contentLength,
+    bodyLengthLooksSafe,
+    bodyLengthHeaderPresentButInvalid,
+  };
+}
+
 function respondOpenApiDisabled(req: any, res: any, endpoint: string) {
   const baseUrl = getRequestBaseUrl(req);
   res.writeHead(410, {
@@ -2253,33 +2287,27 @@ class SignupAssistMCPServer {
           // ----------------------------------------------------------------
           if (req.method === 'POST') {
             const contentType = String(req.headers['content-type'] || '');
-            const contentLengthHeader = req.headers['content-length'];
-            const contentLength = Number(contentLengthHeader || 0);
             const maxDiscoveryBodyBytes = 64 * 1024; // 64KB safety cap
-            const hasJsonBody = contentType.toLowerCase().includes('application/json');
-            const bodyLengthLooksSafe =
-              !contentLengthHeader || (contentLength > 0 && contentLength <= maxDiscoveryBodyBytes);
-            const bodyLengthHeaderPresentButInvalid = !!contentLengthHeader && (!Number.isFinite(contentLength) || contentLength <= 0);
+            const {
+              hasJsonBody,
+              contentLength,
+              bodyLengthLooksSafe,
+              bodyLengthHeaderPresentButInvalid,
+            } = getJsonProbeHeaderValidation({
+              contentType,
+              contentLengthHeader: req.headers['content-length'],
+              maxBytes: maxDiscoveryBodyBytes,
+            });
 
             if (hasJsonBody && bodyLengthHeaderPresentButInvalid) {
               // Invalid Content-Length on JSON probes should fail fast instead of opening SSE.
-              res.writeHead(400, {
-                'Content-Type': 'application/json; charset=utf-8',
-                'Access-Control-Allow-Origin': '*',
-                'Cache-Control': 'no-store',
-              });
-              res.end(JSON.stringify({ error: 'invalid_content_length' }));
+              writeNoStoreJson(res, 400, { error: 'invalid_content_length' });
               return;
             }
 
             if (hasJsonBody && !bodyLengthLooksSafe) {
               // Oversized JSON probes should return a finite 413 (not fall through to SSE stream).
-              res.writeHead(413, {
-                'Content-Type': 'application/json; charset=utf-8',
-                'Access-Control-Allow-Origin': '*',
-                'Cache-Control': 'no-store',
-              });
-              res.end(JSON.stringify({ error: 'request_too_large' }));
+              writeNoStoreJson(res, 413, { error: 'request_too_large' });
               return;
             }
 
@@ -2294,12 +2322,7 @@ class SignupAssistMCPServer {
               for await (const chunk of req) {
                 body += chunk;
                 if (body.length > maxDiscoveryBodyBytes) {
-                  res.writeHead(413, {
-                    'Content-Type': 'application/json; charset=utf-8',
-                    'Access-Control-Allow-Origin': '*',
-                    'Cache-Control': 'no-store',
-                  });
-                  res.end(JSON.stringify({ error: 'request_too_large' }));
+                  writeNoStoreJson(res, 413, { error: 'request_too_large' });
                   return;
                 }
               }
