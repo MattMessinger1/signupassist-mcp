@@ -29,7 +29,7 @@ jobs:
         run: npm run test --if-present
 
       - name: Verify OpenAI Payloads (Responses + ChatCompletions)
-        run: npx vitest run mcp_server/lib/openaiHelpers.test.ts --reporter=verbose
+        run: npm run -s test:openai-smoke
 
       - name: Verify no repeated AAP prompts
         run: npx tsx scripts/check-aap-first-turn.ts
