@@ -4392,25 +4392,26 @@ class SignupAssistMCPServer {
           url.pathname === "/mcp/.well-known/openai-apps-challenge"
         )
       ) {
-        let verificationToken = (process.env.OPENAI_VERIFICATION_TOKEN || '').trim();
+        let verificationToken = '';
 
-        // Optional fallback: allow storing the token as a static file in the repo.
-        // Useful if you prefer not to manage a Railway env var for a non-secret verification token.
-        if (!verificationToken) {
-          try {
-            const candidates = [
-              path.resolve(process.cwd(), "public", ".well-known", "openai-apps-challenge"),
-              path.resolve(process.cwd(), "public", ".well-known", "openai-verification.txt"),
-            ];
-            for (const p of candidates) {
-              if (existsSync(p)) {
-                verificationToken = String(readFileSync(p, "utf8") || "").trim();
-                if (verificationToken) break;
-              }
+        // Prefer the static file (committed to repo, deploys automatically) over
+        // the env var so token updates don't require a Railway env var change.
+        try {
+          const candidates = [
+            path.resolve(process.cwd(), "public", ".well-known", "openai-apps-challenge"),
+            path.resolve(process.cwd(), "public", ".well-known", "openai-verification.txt"),
+          ];
+          for (const p of candidates) {
+            if (existsSync(p)) {
+              verificationToken = String(readFileSync(p, "utf8") || "").trim();
+              if (verificationToken) break;
             }
-          } catch {
-            // ignore
           }
+        } catch {
+          // ignore
+        }
+        if (!verificationToken) {
+          verificationToken = (process.env.OPENAI_VERIFICATION_TOKEN || '').trim();
         }
 
         if (!verificationToken) {
