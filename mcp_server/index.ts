@@ -3989,11 +3989,16 @@ class SignupAssistMCPServer {
 
       // --- OpenAI Domain Verification (for ChatGPT app submission)
       if (
-        req.method === "GET" &&
+        (req.method === "GET" || req.method === "HEAD") &&
         (
           // Legacy/alternate path used by some OpenAI UIs
           url.pathname === "/.well-known/openai-verification.txt" ||
           url.pathname === "/mcp/.well-known/openai-verification.txt" ||
+          // Domain verification path used by newer connector UIs
+          url.pathname === "/.well-known/openai-domain-verification" ||
+          url.pathname === "/.well-known/openai-domain-verification.txt" ||
+          url.pathname === "/mcp/.well-known/openai-domain-verification" ||
+          url.pathname === "/mcp/.well-known/openai-domain-verification.txt" ||
           // Current ChatGPT Apps UI path
           url.pathname === "/.well-known/openai-apps-challenge" ||
           url.pathname === "/mcp/.well-known/openai-apps-challenge"
@@ -4036,6 +4041,11 @@ class SignupAssistMCPServer {
           "Cache-Control": "no-store",
           "Access-Control-Allow-Origin": "*"
         });
+        if (req.method === "HEAD") {
+          res.end();
+          console.log("[ROUTE] OpenAI domain verification HEAD for", url.pathname);
+          return;
+        }
         res.end(verificationToken);
         console.log("[ROUTE] Served OpenAI domain verification token for", url.pathname);
         return;
