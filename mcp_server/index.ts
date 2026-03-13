@@ -429,6 +429,14 @@ function getRequestBaseUrl(req: any): string {
   return host ? `${proto}://${host}` : "https://signupassist-mcp-production.up.railway.app";
 }
 
+function getDefaultOauthRedirectUri(): string {
+  const fromEnv = String(process.env.OAUTH_DEFAULT_REDIRECT_URI || '').trim();
+  if (fromEnv) return fromEnv;
+
+  // OpenAI's canonical callback (legacy + still widely used by scanners/tools).
+  return 'https://oauth.openai.com/v1/callback';
+}
+
 function respondOpenApiDisabled(req: any, res: any, endpoint: string) {
   const baseUrl = getRequestBaseUrl(req);
   res.writeHead(410, {
@@ -1766,6 +1774,12 @@ class SignupAssistMCPServer {
           auth0Url.searchParams.set('client_id', AUTH0_CLIENT_ID);
         }
 
+        // Some scanners/probes hit authorize without redirect_uri.
+        // Default to a known OpenAI callback so /oauth/authorize always produces a valid redirect target.
+        if (!auth0Url.searchParams.has('redirect_uri')) {
+          auth0Url.searchParams.set('redirect_uri', getDefaultOauthRedirectUri());
+        }
+
         // Make it easy to switch accounts inside ChatGPT's embedded browser.
         // Without this, Auth0 can silently reuse an existing SSO session.
         if (!auth0Url.searchParams.has('prompt')) {
@@ -1824,6 +1838,9 @@ class SignupAssistMCPServer {
           // This avoids "invalid_client" errors if the ChatGPT UI has stale/incorrect values.
           if (AUTH0_CLIENT_ID) tokenParams.client_id = AUTH0_CLIENT_ID;
           if (AUTH0_CLIENT_SECRET) tokenParams.client_secret = AUTH0_CLIENT_SECRET;
+
+          // Keep token exchange resilient when clients/scanners omit redirect_uri.
+          if (!tokenParams.redirect_uri) tokenParams.redirect_uri = getDefaultOauthRedirectUri();
           
           // Forward to Auth0 token endpoint
           const auth0TokenUrl = `https://${AUTH0_DOMAIN}/oauth/token`;
@@ -1867,6 +1884,63 @@ class SignupAssistMCPServer {
           res.writeHead(500, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Token exchange failed', details: error?.message }));
         }
+        return;
+      }
+
+      // --- OAuth Debug Endpoint (GET/HEAD /oauth/debug)
+      // Safe, redacted diagnostics for app-submission and OAuth troubleshooting.
+      if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/oauth/debug') {
+        const baseUrl = getRequestBaseUrl(req);
+        const configuredDefaultRedirect = String(process.env.OAUTH_DEFAULT_REDIRECT_URI || '').trim();
+        const effectiveDefaultRedirect = getDefaultOauthRedirectUri();
+
+        const debugPayload = {
+          ok: true,
+          env: {
+            node_env: process.env.NODE_ENV || null,
+            railway_public_domain: process.env.RAILWAY_PUBLIC_DOMAIN || null,
+          },
+          oauth: {
+            base_url: baseUrl,
+            authorization_endpoint: `${baseUrl}/oauth/authorize`,
+            token_endpoint: `${baseUrl}/oauth/token`,
+            metadata_endpoint: `${baseUrl}/.well-known/oauth-authorization-server`,
+            oidc_metadata_endpoint: `${baseUrl}/.well-known/openid-configuration`,
+            auth0_domain: AUTH0_DOMAIN,
+            auth0_client_id_present: !!AUTH0_CLIENT_ID,
+            auth0_client_secret_present: !!AUTH0_CLIENT_SECRET,
+            auth0_audience: AUTH0_AUDIENCE,
+            auth0_oauth_prompt: process.env.AUTH0_OAUTH_PROMPT || 'login',
+            default_redirect_uri: effectiveDefaultRedirect,
+            default_redirect_uri_source: configuredDefaultRedirect ? 'env:OAUTH_DEFAULT_REDIRECT_URI' : 'builtin',
+            recommended_openai_callbacks: [
+              'https://oauth.openai.com/v1/callback',
+              'https://chatgpt.com/connector/oauth/<connector_id>'
+            ],
+          },
+          hints: [
+            'Add the exact ChatGPT OAuth Redirect URL shown in App Submission to your Auth0 Allowed Callback URLs.',
+            'Ensure AUTH0_CLIENT_ID / AUTH0_CLIENT_SECRET match the same Auth0 application.',
+            'If scan still fails, check Railway logs for [OAUTH] lines during the scan window.'
+          ]
+        } as const;
+
+        if (req.method === 'HEAD') {
+          res.writeHead(200, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-store',
+          });
+          res.end();
+          return;
+        }
+
+        res.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-store',
+        });
+        res.end(JSON.stringify(debugPayload, null, 2));
         return;
       }
 
@@ -2055,14 +2129,37 @@ class SignupAssistMCPServer {
           // ----------------------------------------------------------------
           if (req.method === 'POST') {
             const contentType = String(req.headers['content-type'] || '');
-            const contentLength = Number(req.headers['content-length'] || 0);
+            const contentLengthHeader = req.headers['content-length'];
+            const contentLength = Number(contentLengthHeader || 0);
             const maxDiscoveryBodyBytes = 64 * 1024; // 64KB safety cap
+            const hasJsonBody = contentType.toLowerCase().includes('application/json');
+            const bodyLengthLooksSafe =
+              !contentLengthHeader || (contentLength > 0 && contentLength <= maxDiscoveryBodyBytes);
+            const bodyLengthHeaderPresentButInvalid = !!contentLengthHeader && (!Number.isFinite(contentLength) || contentLength <= 0);
 
-            if (
-              contentLength > 0 &&
-              contentLength <= maxDiscoveryBodyBytes &&
-              contentType.toLowerCase().includes('application/json')
-            ) {
+            if (hasJsonBody && bodyLengthHeaderPresentButInvalid) {
+              // Invalid Content-Length on JSON probes should fail fast instead of opening SSE.
+              res.writeHead(400, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Access-Control-Allow-Origin': '*',
+                'Cache-Control': 'no-store',
+              });
+              res.end(JSON.stringify({ error: 'invalid_content_length' }));
+              return;
+            }
+
+            if (hasJsonBody && !bodyLengthLooksSafe) {
+              // Oversized JSON probes should return a finite 413 (not fall through to SSE stream).
+              res.writeHead(413, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Access-Control-Allow-Origin': '*',
+                'Cache-Control': 'no-store',
+              });
+              res.end(JSON.stringify({ error: 'request_too_large' }));
+              return;
+            }
+
+            if (hasJsonBody && bodyLengthLooksSafe) {
               if (isMcpRefreshDebugEnabled()) {
                 console.log(
                   `[DEBUG_MCP_REFRESH] /sse has JSON body contentLength=${contentLength} contentType=${JSON.stringify(contentType)}`
@@ -2072,7 +2169,15 @@ class SignupAssistMCPServer {
               let body = '';
               for await (const chunk of req) {
                 body += chunk;
-                if (body.length > maxDiscoveryBodyBytes) break;
+                if (body.length > maxDiscoveryBodyBytes) {
+                  res.writeHead(413, {
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'Access-Control-Allow-Origin': '*',
+                    'Cache-Control': 'no-store',
+                  });
+                  res.end(JSON.stringify({ error: 'request_too_large' }));
+                  return;
+                }
               }
 
               let parsed: any = null;
@@ -2333,6 +2438,16 @@ class SignupAssistMCPServer {
                 );
                 return;
               }
+
+              // Empty/invalid JSON payloads should fail fast with finite JSON.
+              // Some scanners POST a probe body to /sse and expect a quick response.
+              res.writeHead(400, {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Access-Control-Allow-Origin': '*',
+                'Cache-Control': 'no-store',
+              });
+              res.end(JSON.stringify({ error: 'invalid_jsonrpc_request' }));
+              return;
             }
           }
 
@@ -3874,11 +3989,16 @@ class SignupAssistMCPServer {
 
       // --- OpenAI Domain Verification (for ChatGPT app submission)
       if (
-        req.method === "GET" &&
+        (req.method === "GET" || req.method === "HEAD") &&
         (
           // Legacy/alternate path used by some OpenAI UIs
           url.pathname === "/.well-known/openai-verification.txt" ||
           url.pathname === "/mcp/.well-known/openai-verification.txt" ||
+          // Domain verification paths used by newer connector UIs.
+          // Some UIs append a suffix/filename variant after the base path, so
+          // we match by prefix to avoid brittle exact-path failures.
+          url.pathname.startsWith("/.well-known/openai-domain-verification") ||
+          url.pathname.startsWith("/mcp/.well-known/openai-domain-verification") ||
           // Current ChatGPT Apps UI path
           url.pathname === "/.well-known/openai-apps-challenge" ||
           url.pathname === "/mcp/.well-known/openai-apps-challenge"
@@ -3921,6 +4041,11 @@ class SignupAssistMCPServer {
           "Cache-Control": "no-store",
           "Access-Control-Allow-Origin": "*"
         });
+        if (req.method === "HEAD") {
+          res.end();
+          console.log("[ROUTE] OpenAI domain verification HEAD for", url.pathname);
+          return;
+        }
         res.end(verificationToken);
         console.log("[ROUTE] Served OpenAI domain verification token for", url.pathname);
         return;
