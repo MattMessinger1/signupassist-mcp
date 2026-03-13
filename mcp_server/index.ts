@@ -1620,6 +1620,280 @@ class SignupAssistMCPServer {
 
       console.log(`[REQUEST] ${method} ${pathname}`);
 
+      // ==================== ADMIN API (PREVIEW / OPS) ====================
+      // The admin console is a separate web UI (not used by ChatGPT).
+      // Keep this surface isolated, fully gated, and non-invasive to core MCP/OAuth/SSE routes.
+      if (pathname.startsWith('/admin/api/')) {
+        const adminApiEnabled = process.env.ADMIN_API_ENABLED === 'true';
+        if (!adminApiEnabled) {
+          res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify({ error: 'Not found' }));
+          return;
+        }
+
+        const json = (status: number, body: any) => {
+          res.writeHead(status, {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-store',
+          });
+          res.end(JSON.stringify(body));
+        };
+
+        const isAdminEmailAllowed = (email?: string | null): boolean => {
+          const raw = String(process.env.ADMIN_EMAIL_ALLOWLIST || '').trim();
+          if (!raw) return false;
+          const allow = raw
+            .split(',')
+            .map((s) => s.trim().toLowerCase())
+            .filter(Boolean);
+          const e = String(email || '').trim().toLowerCase();
+          if (!e) return false;
+          return allow.includes(e);
+        };
+
+        const bearer = extractBearerToken(req.headers['authorization'] as string | undefined);
+        if (!bearer) {
+          json(401, { error: 'authentication_required', message: 'Bearer token required' });
+          return;
+        }
+
+        // Validate Supabase user session token (frontend uses Supabase auth).
+        // We do NOT trust client-supplied identity; we resolve it via Supabase Auth.
+        let adminUser: { id: string; email?: string | null } | null = null;
+        try {
+          const { data, error } = await supabase.auth.getUser(bearer);
+          if (error || !data?.user) {
+            json(401, { error: 'invalid_token', message: 'Invalid or expired token' });
+            return;
+          }
+          adminUser = { id: String(data.user.id), email: data.user.email };
+        } catch {
+          json(401, { error: 'invalid_token', message: 'Invalid or expired token' });
+          return;
+        }
+
+        if (!isAdminEmailAllowed(adminUser.email)) {
+          json(403, { error: 'forbidden', message: 'Admin access required' });
+          return;
+        }
+
+        // GET /admin/api/me
+        if (method === 'GET' && pathname === '/admin/api/me') {
+          json(200, { user_id: adminUser.id, email: adminUser.email, is_admin: true });
+          return;
+        }
+
+        // GET /admin/api/metrics (24h window)
+        if (method === 'GET' && pathname === '/admin/api/metrics') {
+          const now = new Date();
+          const from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+          const fromIso = from.toISOString();
+
+          const baseCount = () =>
+            supabase
+              .from('audit_events')
+              .select('id', { count: 'exact', head: true })
+              .eq('event_type', 'tool_call')
+              .gte('created_at', fromIso);
+
+          const [{ count: total }, { count: allowed }, { count: denied }, { count: pending }] = await Promise.all([
+            baseCount(),
+            baseCount().eq('decision', 'allowed'),
+            baseCount().eq('decision', 'denied'),
+            baseCount().eq('decision', 'pending'),
+          ]);
+
+          // For top lists, pull a bounded set of recent events and aggregate in-memory.
+          const sampleLimitRaw = Number(process.env.ADMIN_METRICS_SAMPLE_LIMIT || 5000);
+          const sampleLimit = Number.isFinite(sampleLimitRaw) && sampleLimitRaw > 0 ? Math.min(sampleLimitRaw, 20000) : 5000;
+          const { data: rows, error } = await supabase
+            .from('audit_events')
+            .select('tool, provider, decision, user_id, created_at, event_type')
+            .eq('event_type', 'tool_call')
+            .gte('created_at', fromIso)
+            .order('created_at', { ascending: false })
+            .limit(sampleLimit);
+
+          if (error) {
+            json(500, { error: 'metrics_query_failed', message: error.message });
+            return;
+          }
+
+          const topTools = new Map<string, { tool: string; count: number; allowed: number; denied: number }>();
+          const topProviders = new Map<string, { provider: string; count: number; allowed: number; denied: number }>();
+          const uniqueUsers = new Set<string>();
+
+          for (const r of rows || []) {
+            const tool = (r as any).tool ? String((r as any).tool) : 'unknown';
+            const provider = (r as any).provider ? String((r as any).provider) : 'unknown';
+            const decision = (r as any).decision ? String((r as any).decision) : 'pending';
+            const uid = (r as any).user_id ? String((r as any).user_id) : '';
+            if (uid) uniqueUsers.add(uid);
+
+            const t = topTools.get(tool) || { tool, count: 0, allowed: 0, denied: 0 };
+            t.count += 1;
+            if (decision === 'allowed') t.allowed += 1;
+            if (decision === 'denied') t.denied += 1;
+            topTools.set(tool, t);
+
+            const p = topProviders.get(provider) || { provider, count: 0, allowed: 0, denied: 0 };
+            p.count += 1;
+            if (decision === 'allowed') p.allowed += 1;
+            if (decision === 'denied') p.denied += 1;
+            topProviders.set(provider, p);
+          }
+
+          const sortDesc = <T extends { count: number }>(a: T, b: T) => b.count - a.count;
+          const totalNum = typeof total === 'number' ? total : 0;
+          const allowedNum = typeof allowed === 'number' ? allowed : 0;
+          const deniedNum = typeof denied === 'number' ? denied : 0;
+          const pendingNum = typeof pending === 'number' ? pending : 0;
+          const denom = allowedNum + deniedNum;
+
+          json(200, {
+            window: { from: fromIso, to: now.toISOString() },
+            audit_events: {
+              total: totalNum,
+              allowed: allowedNum,
+              denied: deniedNum,
+              pending: pendingNum,
+              success_rate: denom > 0 ? allowedNum / denom : null,
+            },
+            unique_users: uniqueUsers.size,
+            top_tools: Array.from(topTools.values()).sort(sortDesc).slice(0, 25),
+            top_providers: Array.from(topProviders.values()).sort(sortDesc).slice(0, 25),
+          });
+          return;
+        }
+
+        // GET /admin/api/audit-events
+        if (method === 'GET' && pathname === '/admin/api/audit-events') {
+          const limitRaw = Number(url.searchParams.get('limit') || '100');
+          const limit = Number.isFinite(limitRaw) ? Math.max(10, Math.min(limitRaw, 500)) : 100;
+          const offsetRaw = Number(url.searchParams.get('offset') || '0');
+          const offset = Number.isFinite(offsetRaw) ? Math.max(0, Math.min(offsetRaw, 100_000)) : 0;
+          const q = String(url.searchParams.get('q') || '').trim();
+          const decision = String(url.searchParams.get('decision') || '').trim();
+          const provider = String(url.searchParams.get('provider') || '').trim();
+          const tool = String(url.searchParams.get('tool') || '').trim();
+
+          let query = supabase
+            .from('audit_events')
+            .select(
+              'id,created_at,event_type,provider,org_ref,tool,decision,user_id,plan_execution_id,mandate_id',
+            )
+            .order('created_at', { ascending: false })
+            .range(offset, offset + limit - 1);
+
+          if (decision && ['allowed', 'denied', 'pending'].includes(decision)) query = query.eq('decision', decision);
+          if (provider && provider !== 'all') query = query.eq('provider', provider);
+          if (tool && tool !== 'all') query = query.eq('tool', tool);
+
+          // Lightweight multi-field search (best-effort)
+          if (q) {
+            const escaped = q.replace(/%/g, '\\%').replace(/_/g, '\\_');
+            query = query.or(
+              `tool.ilike.%${escaped}%,provider.ilike.%${escaped}%,org_ref.ilike.%${escaped}%,user_id.ilike.%${escaped}%`,
+            );
+          }
+
+          const { data, error } = await query;
+          if (error) {
+            json(500, { error: 'query_failed', message: error.message });
+            return;
+          }
+
+          const events = (data || []) as any[];
+          const nextOffset = events.length < limit ? null : offset + limit;
+          json(200, { events, next_offset: nextOffset });
+          return;
+        }
+
+        // GET /admin/api/financial
+        if (method === 'GET' && pathname === '/admin/api/financial') {
+          const now = new Date();
+          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+          const startOfMonthIso = startOfMonth.toISOString();
+
+          // Query registrations for revenue metrics
+          const { data: registrations, error: regError } = await supabase
+            .from('registrations')
+            .select('id, success_fee_cents, status, created_at, booking_number, program_name, delegate_name');
+
+          if (regError) {
+            json(500, { error: 'registrations_query_failed', message: regError.message });
+            return;
+          }
+
+          const regs = (registrations || []) as any[];
+
+          // Calculate metrics
+          const completedRegs = regs.filter((r) => r.status === 'completed' || r.status === 'confirmed');
+          const pendingRegs = regs.filter((r) => r.status === 'pending');
+          const failedRegs = regs.filter((r) => r.status === 'failed' || r.status === 'cancelled');
+
+          const totalRevenueCents = completedRegs.reduce((sum, r) => sum + (r.success_fee_cents || 0), 0);
+          const monthlyRegs = completedRegs.filter((r) => new Date(r.created_at) >= startOfMonth);
+          const monthlyRevenueCents = monthlyRegs.reduce((sum, r) => sum + (r.success_fee_cents || 0), 0);
+
+          const avgFeeCents = completedRegs.length > 0 
+            ? Math.round(totalRevenueCents / completedRegs.length) 
+            : 0;
+
+          // Query recent charges from charges table
+          const { data: charges, error: chargeError } = await supabase
+            .from('charges')
+            .select('id, amount_cents, status, charged_at, stripe_payment_intent')
+            .order('charged_at', { ascending: false })
+            .limit(50);
+
+          if (chargeError) {
+            // Non-fatal - we can still return registration metrics
+            console.warn('[admin/financial] Failed to query charges:', chargeError.message);
+          }
+
+          // Recent registrations for display (most recent 20)
+          const recentRegistrations = regs
+            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+            .slice(0, 20)
+            .map((r) => ({
+              id: r.id,
+              booking_number: r.booking_number,
+              program_name: r.program_name,
+              delegate_name: r.delegate_name,
+              success_fee_cents: r.success_fee_cents,
+              status: r.status,
+              created_at: r.created_at,
+            }));
+
+          json(200, {
+            total_revenue_cents: totalRevenueCents,
+            total_registrations: completedRegs.length,
+            registrations_by_status: {
+              completed: completedRegs.length,
+              pending: pendingRegs.length,
+              failed: failedRegs.length,
+            },
+            monthly_revenue_cents: monthlyRevenueCents,
+            monthly_registrations: monthlyRegs.length,
+            avg_fee_cents: avgFeeCents,
+            recent_registrations: recentRegistrations,
+            recent_charges: (charges || []).map((c: any) => ({
+              id: c.id,
+              amount_cents: c.amount_cents,
+              status: c.status,
+              charged_at: c.charged_at,
+              stripe_payment_intent: c.stripe_payment_intent,
+            })),
+          });
+          return;
+        }
+
+        json(404, { error: 'Not found' });
+        return;
+      }
+
       // --- Bookeo API Helper (for deprecated legacy endpoints)
       // Extract Bookeo credentials once for all handlers
       const BOOKEO_API_KEY = process.env.BOOKEO_API_KEY;

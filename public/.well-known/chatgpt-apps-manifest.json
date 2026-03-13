@@ -10,7 +10,8 @@
     "token_url": "https://signupassist.shipworx.ai/oauth/token",
     "scope": "openid profile email",
     "redirect_urls": [
-      "https://oauth.openai.com/v1/callback"
+      "https://oauth.openai.com/v1/callback",
+      "https://chatgpt.com/connector/oauth/qihc_l1a3oTW"
     ]
   },
   "api": {

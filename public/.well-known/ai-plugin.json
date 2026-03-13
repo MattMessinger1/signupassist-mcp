@@ -9,7 +9,10 @@
     "authorization_url": "https://signupassist-mcp-production.up.railway.app/oauth/authorize",
     "token_url": "https://signupassist-mcp-production.up.railway.app/oauth/token",
     "scope": "openid profile email",
-    "redirect_urls": ["https://oauth.openai.com/v1/callback"]
+    "redirect_urls": [
+      "https://oauth.openai.com/v1/callback",
+      "https://chatgpt.com/connector/oauth/qihc_l1a3oTW"
+    ]
   },
   "api": {
     "type": "openapi",

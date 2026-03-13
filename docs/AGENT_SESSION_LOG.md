@@ -840,3 +840,52 @@ User types "2" → Mina is added → shows "add another?" prompt with remaining 
   - `testBookeoMaxParticipantsPreventsSiblingPrompt()`
 - `npm run test:sibling-flow` ✅
 
+---
+
+## 2026-01-08 — V1 Admin Console scaffolding (preview-only)
+
+### What we added (high signal)
+
+- **Feature-flagged admin UI**
+  - New route: `/admin` → `src/pages/admin/AdminConsole.tsx`
+  - Gated by: `VITE_ADMIN_CONSOLE_ENABLED=true` (otherwise behaves like a 404)
+  - Uses Supabase auth (same as the rest of the web app) and calls a backend admin API for cross-user data.
+
+- **Admin API (MCP server)**
+  - New endpoints under `/admin/api/*` in `mcp_server/index.ts`
+  - Disabled by default unless `ADMIN_API_ENABLED=true`
+  - Auth model:
+    - Requires `Authorization: Bearer <Supabase access token>`
+    - Validates token via `supabase.auth.getUser(token)`
+    - Enforces `ADMIN_EMAIL_ALLOWLIST` (comma-separated)
+  - Endpoints:
+    - `GET /admin/api/me`
+    - `GET /admin/api/metrics` (24h window; counts + top tools/providers)
+    - `GET /admin/api/audit-events` (filters: q/decision/provider/tool; pagination via limit/offset)
+
+- **PostHog capture (optional, non-blocking)**
+  - New helper: `mcp_server/lib/posthog.ts`
+  - Wired into `mcp_server/middleware/audit.ts` to emit:
+    - `tool_call_started`
+    - `tool_call_finished` (decision + duration_ms)
+  - No-op unless `POSTHOG_API_KEY` is set.
+
+### Safety posture
+
+- Built for **preview/staging** first; nothing is required to be deployed to production while ChatGPT review is ongoing.
+- Admin API is isolated and returns 404 when disabled; does not affect OAuth/SSE/tool behavior.
+
+### Env vars needed (no secrets in this file)
+
+- MCP server:
+  - `ADMIN_API_ENABLED=true`
+  - `ADMIN_EMAIL_ALLOWLIST=you@domain.com,...`
+  - `POSTHOG_API_KEY=...` (optional)
+  - `POSTHOG_HOST=https://app.posthog.com` (optional; EU: `https://eu.posthog.com`)
+- Frontend:
+  - `VITE_ADMIN_CONSOLE_ENABLED=true`
+  - `VITE_ADMIN_API_BASE_URL=https://<mcp-server-domain>`
+
+### Docs
+
+- Added `docs/ADMIN_CONSOLE.md` with setup + endpoint details.
