@@ -459,6 +459,30 @@ function writeNoStoreJson(res: any, statusCode: number, body: unknown): void {
   res.end(JSON.stringify(body));
 }
 
+function getRootProbeMetadata(req: any) {
+  const baseUrl = getRequestBaseUrl(req);
+  return {
+    ok: true,
+    service: 'signupassist-mcp',
+    endpoints: {
+      mcp_sse: `${baseUrl}/sse`,
+      mcp_messages: `${baseUrl}/messages`,
+      mcp_manifest: `${baseUrl}/.well-known/chatgpt-apps-manifest.json`,
+      oauth_metadata: `${baseUrl}/.well-known/oauth-authorization-server`,
+      oauth_authorize: `${baseUrl}/oauth/authorize`,
+      oauth_token: `${baseUrl}/oauth/token`,
+      oauth_debug: `${baseUrl}/oauth/debug`,
+    },
+  } as const;
+}
+
+function shouldServeRootSpa(req: any): boolean {
+  const accept = String(req?.headers?.accept || '').toLowerCase();
+  const prefersHtml = accept.includes('text/html');
+  const forceSpa = process.env.ALLOW_ROOT_SPA === 'true';
+  return prefersHtml && forceSpa;
+}
+
 function getJsonProbeHeaderValidation(opts: {
   contentType: string;
   contentLengthHeader: string | string[] | undefined;
@@ -5084,39 +5108,19 @@ class SignupAssistMCPServer {
       // Root compatibility for scanner/probe clients:
       // If root is requested for JSON/unknown probe traffic, return finite JSON metadata
       // instead of SPA index.html (which can cause opaque "internal service error" in scanners).
-      if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/') {
-        const accept = String(req.headers['accept'] || '').toLowerCase();
-        const prefersHtml = accept.includes('text/html');
-        const forceSpa = process.env.ALLOW_ROOT_SPA === 'true';
-
-        if (!prefersHtml || !forceSpa) {
-          const baseUrl = getRequestBaseUrl(req);
-          const payload = {
-            ok: true,
-            service: 'signupassist-mcp',
-            endpoints: {
-              mcp_sse: `${baseUrl}/sse`,
-              mcp_messages: `${baseUrl}/messages`,
-              mcp_manifest: `${baseUrl}/.well-known/chatgpt-apps-manifest.json`,
-              oauth_metadata: `${baseUrl}/.well-known/oauth-authorization-server`,
-              oauth_authorize: `${baseUrl}/oauth/authorize`,
-              oauth_token: `${baseUrl}/oauth/token`,
-              oauth_debug: `${baseUrl}/oauth/debug`,
-            },
-          } as const;
-
-          res.writeHead(200, {
-            'Content-Type': 'application/json; charset=utf-8',
-            'Access-Control-Allow-Origin': '*',
-            'Cache-Control': 'no-store',
-          });
-          if (req.method === 'HEAD') {
-            res.end();
-            return;
-          }
-          res.end(JSON.stringify(payload, null, 2));
+      if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/' && !shouldServeRootSpa(req)) {
+        const payload = getRootProbeMetadata(req);
+        res.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'no-store',
+        });
+        if (req.method === 'HEAD') {
+          res.end();
           return;
         }
+        res.end(JSON.stringify(payload, null, 2));
+        return;
       }
 
       if (req.method === 'GET') {
