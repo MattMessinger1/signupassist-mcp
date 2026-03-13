@@ -28,7 +28,10 @@
     "worker:scheduled": "node dist/mcp_server/worker/scheduledRegistrationWorker.js",
     "v1:preflight": "tsx scripts/v1_preflight.ts",
     "v1:watch-scheduled": "tsx scripts/v1_watch_scheduled.ts",
-    "prestart": "npm run mcp:build"
+    "prestart": "npm run mcp:build",
+    "test:openai-smoke": "vitest run mcp_server/lib/openaiHelpers.test.ts --reporter=verbose",
+    "check:merge-hotspots": "node scripts/fixMergeHotspots.js",
+    "fix:merge-hotspots": "node scripts/fixMergeHotspots.js --write"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -112,8 +115,10 @@
   "devDependencies": {
     "@types/node": "^20.19.17",
     "eslint": "^8.57.0",
+    "tinyexec": "^1.0.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2",
-    "vite": "^7.1.7"
+    "vite": "^7.1.7",
+    "vitest": "^4.1.0"
   }
 }

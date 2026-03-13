@@ -22,6 +22,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Detect unresolved merge markers
+        run: |
+          if rg -n '^(<<<<<<<|=======|>>>>>>>)' mcp_server/index.ts; then
+            echo "❌ Unresolved merge conflict markers found in mcp_server/index.ts"
+            exit 1
+          fi
+
+      - name: Detect duplicate merge hotspot blocks
+        run: npm run -s check:merge-hotspots
+
       - name: Compile TypeScript
         run: npx tsc -p tsconfig.mcp.json --noEmit
 
@@ -29,7 +39,7 @@ jobs:
         run: npm run test --if-present
 
       - name: Verify OpenAI Payloads (Responses + ChatCompletions)
-        run: npx vitest run mcp_server/lib/openaiHelpers.test.ts --reporter=verbose
+        run: npm run -s test:openai-smoke
 
       - name: Verify no repeated AAP prompts
         run: npx tsx scripts/check-aap-first-turn.ts
