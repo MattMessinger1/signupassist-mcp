@@ -437,6 +437,19 @@ function getDefaultOauthRedirectUri(): string {
   return 'https://oauth.openai.com/v1/callback';
 }
 
+function isOpenAIDomainVerificationPath(pathname: string): boolean {
+  const p = String(pathname || '');
+  return (
+    p === '/.well-known/openai-verification.txt' ||
+    p === '/mcp/.well-known/openai-verification.txt' ||
+    // Newer connector/domain-verification UIs can append filename/suffix variants.
+    p.startsWith('/.well-known/openai-domain-verification') ||
+    p.startsWith('/mcp/.well-known/openai-domain-verification') ||
+    p === '/.well-known/openai-apps-challenge' ||
+    p === '/mcp/.well-known/openai-apps-challenge'
+  );
+}
+
 function respondOpenApiDisabled(req: any, res: any, endpoint: string) {
   const baseUrl = getRequestBaseUrl(req);
   res.writeHead(410, {
@@ -4099,22 +4112,7 @@ class SignupAssistMCPServer {
       }
 
       // --- OpenAI Domain Verification (for ChatGPT app submission)
-      if (
-        (req.method === "GET" || req.method === "HEAD") &&
-        (
-          // Legacy/alternate path used by some OpenAI UIs
-          url.pathname === "/.well-known/openai-verification.txt" ||
-          url.pathname === "/mcp/.well-known/openai-verification.txt" ||
-          // Domain verification paths used by newer connector UIs.
-          // Some UIs append a suffix/filename variant after the base path, so
-          // we match by prefix to avoid brittle exact-path failures.
-          url.pathname.startsWith("/.well-known/openai-domain-verification") ||
-          url.pathname.startsWith("/mcp/.well-known/openai-domain-verification") ||
-          // Current ChatGPT Apps UI path
-          url.pathname === "/.well-known/openai-apps-challenge" ||
-          url.pathname === "/mcp/.well-known/openai-apps-challenge"
-        )
-      ) {
+      if ((req.method === "GET" || req.method === "HEAD") && isOpenAIDomainVerificationPath(url.pathname)) {
         let verificationToken = (process.env.OPENAI_VERIFICATION_TOKEN || '').trim();
 
         // Optional fallback: allow storing the token as a static file in the repo.
