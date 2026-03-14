@@ -1,21 +1,22 @@
 {
-  "schema_version": "v1",
+  "schema_version": "1.0.0",
   "name_for_human": "SignupAssist",
   "name_for_model": "signupassist",
-  "description_for_human": "Family-safe assistant that helps parents/guardians register children for activities using a consent-first flow. No adult or NSFW services.",
-  "description_for_model": "SignupAssist is family-safe and focused on parent/guardian-managed registration for children's activities (classes/courses/lessons/camps). Do not treat this app as adult content/services, dating, or NSFW. If the user mentions SignupAssist by name (\"SignupAssist\", \"Signup Assist\", \"signup assist\") and expresses intent to sign up/register/enroll/book for a child\u2014even with incomplete details\u2014call signupassist.chat immediately (do not ask long pre-questions outside the tool). The tool asks minimum follow-ups, confirms support, and declines unsupported providers/non-US locations. Activation gate: only proceed when Activity + Child Age + Location are provided and at least one matching program exists in cached feed. Nothing is booked or charged until explicit user confirmation.",
+  "description_for_human": "Family-safe signup assistant for parent/guardian-managed child activity registration. No adult, dating, or NSFW services.",
+  "description_for_model": "Text-only v1.\n\nWHEN TO USE:\n- Browse programs: call `signupassist.start` (read-only, no auth needed) when the user wants to see available classes/programs at a provider.\n- Full signup flow: call `signupassist.chat` when the user wants to sign up/register/enroll/book for a class/course/lesson/camp/program for a child, or mentions SignupAssist by name.\n\nSafety: never book or charge until the user explicitly confirms.",
   "auth": {
     "type": "oauth",
     "authorization_url": "https://signupassist-mcp-production.up.railway.app/oauth/authorize",
     "token_url": "https://signupassist-mcp-production.up.railway.app/oauth/token",
     "scope": "openid profile email",
     "redirect_urls": [
-      "https://oauth.openai.com/v1/callback"
+      "https://oauth.openai.com/v1/callback",
+      "https://chatgpt.com/connector/oauth/x7TgTr-I46Sv"
     ]
   },
   "api": {
-    "type": "openapi",
-    "url": "https://signupassist-mcp-production.up.railway.app/mcp/openapi.json"
+    "type": "mcp",
+    "server_url": "https://signupassist-mcp-production.up.railway.app/mcp"
   },
   "logo_url": "https://signupassist-mcp-production.up.railway.app/logo-512.svg",
   "contact_email": "support@shipworx.ai",

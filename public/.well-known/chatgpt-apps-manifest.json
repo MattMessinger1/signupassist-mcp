@@ -3,7 +3,7 @@
   "name_for_human": "SignupAssist",
   "name_for_model": "signupassist",
   "description_for_human": "Family-safe signup assistant for parent/guardian-managed child activity registration. No adult, dating, or NSFW services.",
-  "description_for_model": "Text-only v1.\n\nWHEN TO USE (HIGH-INTENT):\n- If the user wants to sign up / register / enroll / book / complete a signup for a class/course/lesson/camp/program for a child.\n- If the user mentions SignupAssist by name (\"SignupAssist\", \"Signup Assist\", \"signup assist\") and expresses signup intent, CALL `signupassist.chat` immediately \u2014 even if they only provide one detail.\n\nExample that MUST invoke:\n- \"I'd like to signup for a course with signup assist\"\n\nFLOW:\n- Call `signupassist.chat` to start or continue the signup wizard.\n- Always pass a stable `sessionId` (for ChatGPT you can use `chatgpt`).\n- The tool will ask the minimum follow-ups (activity, child age, US city/state), confirm whether the requested signup is supported, and show matching options from the internal program database/cache.\n- If the request is out-of-scope (non-US or unsupported provider/activity), the tool will decline gracefully.\n- Do NOT use Web Search inside the SignupAssist flow.\n\nUX REQUIREMENTS:\n- For `signupassist.chat` outputs: every user-visible message MUST start with the wizard header line: \"Step N/5 \u2014 ...\".\n- After calling `signupassist.chat`, display the returned text to the user verbatim. Do NOT paraphrase, reformat, or remove the header.\n\nSafety: never book or charge until the user explicitly confirms.",
+  "description_for_model": "Text-only v1.\n\nWHEN TO USE:\n- Browse programs: call `signupassist.start` (read-only, no auth needed) when the user wants to see available classes/programs at a provider.\n- Full signup flow: call `signupassist.chat` when the user wants to sign up/register/enroll/book for a class/course/lesson/camp/program for a child, or mentions SignupAssist by name.\n\nExample triggers:\n- \"Show me AIM Design programs\" → signupassist.start\n- \"Sign up my kid for robotics\" → signupassist.chat\n- \"Use Signup Assist to enroll my child\" → signupassist.chat\n\nFLOW:\n- `signupassist.start`: browse programs at a provider (read-only, returns program list).\n- `signupassist.chat`: full signup wizard with Step 1/5..5/5 headers. Asks minimum follow-ups, confirms support, shows matching options. Display returned text verbatim.\n\nSafety: never book or charge until the user explicitly confirms.",
   "auth": {
     "type": "oauth",
     "authorization_url": "https://signupassist.shipworx.ai/oauth/authorize",
@@ -11,7 +11,7 @@
     "scope": "openid profile email",
     "redirect_urls": [
       "https://oauth.openai.com/v1/callback",
-      "https://chatgpt.com/connector/oauth/qihc_l1a3oTW"
+      "https://chatgpt.com/connector/oauth/x7TgTr-I46Sv"
     ]
   },
   "api": {

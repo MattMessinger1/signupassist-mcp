@@ -490,6 +490,7 @@ function v1VisibilityForTool(toolName: string, toolMeta: Record<string, any> = {
   // We still REGISTER all tools (so the orchestrator can call them internally),
   // but we only LIST the canonical chat tool for the model.
   if (toolName === "signupassist.chat") return "public";
+  if (toolName === "signupassist.start") return "public";
   return "private";
 }
 
@@ -1191,6 +1192,11 @@ class SignupAssistMCPServer {
         } catch {
           return raw;
         }
+      },
+      annotations: {
+        readOnlyHint: true,
+        openWorldHint: false,
+        destructiveHint: false,
       },
       _meta: {
         ...CHATGPT_APPS_V1_META,

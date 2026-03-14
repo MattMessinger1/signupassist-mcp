@@ -1,9 +1,9 @@
 {
-  "schema_version": "v1",
+  "schema_version": "1.0.0",
   "name_for_human": "SignupAssist",
   "name_for_model": "signupassist",
-  "description_for_human": "Securely automates activity sign-ups for parents.",
-  "description_for_model": "SignupAssist helps parents find and register for kids activities. Always route the user-facing flow through signupassist.chat; do not call provider tools directly unless explicitly instructed.",
+  "description_for_human": "Family-safe signup assistant for parent/guardian-managed child activity registration. No adult, dating, or NSFW services.",
+  "description_for_model": "Text-only v1.\n\nWHEN TO USE:\n- Browse programs: call `signupassist.start` (read-only, no auth needed) when the user wants to see available classes/programs at a provider.\n- Full signup flow: call `signupassist.chat` when the user wants to sign up/register/enroll/book for a class/course/lesson/camp/program for a child, or mentions SignupAssist by name.\n\nSafety: never book or charge until the user explicitly confirms.",
   "auth": {
     "type": "oauth",
     "authorization_url": "https://signupassist-mcp-production.up.railway.app/oauth/authorize",
@@ -11,14 +11,14 @@
     "scope": "openid profile email",
     "redirect_urls": [
       "https://oauth.openai.com/v1/callback",
-      "https://chatgpt.com/connector/oauth/qihc_l1a3oTW"
+      "https://chatgpt.com/connector/oauth/x7TgTr-I46Sv"
     ]
   },
   "api": {
-    "type": "openapi",
-    "url": "https://signupassist-mcp-production.up.railway.app/mcp/openapi.json"
+    "type": "mcp",
+    "server_url": "https://signupassist-mcp-production.up.railway.app/mcp"
   },
   "logo_url": "https://signupassist-mcp-production.up.railway.app/logo-512.svg",
   "contact_email": "support@shipworx.ai",
-  "legal_info_url": "https://signupassist-mcp-production.up.railway.app/privacy"
+  "legal_info_url": "https://signupassist-mcp-production.up.railway.app/safety"
 }
