@@ -92,6 +92,9 @@ COPY --from=builder /app/mcp ./mcp
 COPY public ./public
 COPY index.html ./
 
+# Copy docs (legal policies served at /safety and /privacy)
+COPY docs ./docs
+
 # Copy ChatGPT Apps SDK widget bundle and HTML (optional - may not exist)
 RUN mkdir -p app/web/dist
 COPY --from=builder /app/app/web/dist/ ./app/web/dist/
