@@ -61,10 +61,8 @@ function stripWizardHeader(message: string): string {
 // (including cached tool names from previous versions).
 // ============================================================
 const CHATGPT_AUTH0_CANONICAL_TOOL = "signupassist.chat";
-const CHATGPT_AUTH0_ALLOWED_TOOLS = new Set<string>([CHATGPT_AUTH0_CANONICAL_TOOL]);
+const CHATGPT_AUTH0_ALLOWED_TOOLS = new Set<string>([CHATGPT_AUTH0_CANONICAL_TOOL, "signupassist.start"]);
 const CHATGPT_AUTH0_TOOL_ALIASES: Record<string, string> = {
-  // Legacy/cached public tools from earlier iterations.
-  "signupassist.start": CHATGPT_AUTH0_CANONICAL_TOOL,
   "signupassist.find": CHATGPT_AUTH0_CANONICAL_TOOL,
 };
 
@@ -594,9 +592,10 @@ function isAllowUnauthReadonlyToolsEnabled(): boolean {
   return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
 }
 
+const UNAUTH_READONLY_TOOLS = new Set<string>(["signupassist.start"]);
+
 function isUnauthReadonlyToolAllowed(toolName: string): boolean {
-  // V1 posture: OAuth required for all tools/call (no unauth allowlist).
-  return false;
+  return UNAUTH_READONLY_TOOLS.has(toolName);
 }
 
 // Import Auth0 middleware and protected actions config
@@ -2601,6 +2600,13 @@ class SignupAssistMCPServer {
                   }
                 }
 
+                // Allow read-only tools without auth (bootstrap/discovery).
+                if (!isAuthorized && isUnauthReadonlyToolAllowed(toolName)) {
+                  isAuthorized = true;
+                  authSource = 'none';
+                  console.log(`[AUTH] Allowing unauthenticated call to read-only tool via /sse: ${toolName}`);
+                }
+
                 if (isProd && !isAuthorized) {
                   const baseUrl = getRequestBaseUrl(req);
                   res.writeHead(401, {
@@ -3787,6 +3793,106 @@ class SignupAssistMCPServer {
         if (methodName.startsWith('notifications/')) {
           res.writeHead(204, { 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
           res.end();
+          return;
+        }
+
+        // ---- tools/call via Streamable HTTP ----
+        if (methodName === 'tools/call') {
+          let toolName = parsed?.params?.name ? String(parsed.params.name) : '';
+
+          const isProd = process.env.NODE_ENV === 'production';
+          const authHeader = req.headers['authorization'] as string | undefined;
+          const expectedToken = process.env.MCP_ACCESS_TOKEN;
+
+          let isAuthorized = false;
+          let authSource: 'mcp_access_token' | 'auth0' | 'dev' | 'none' = 'none';
+          let verifiedUserId: string | undefined;
+
+          if (!isProd) {
+            isAuthorized = true;
+            authSource = 'dev';
+          } else {
+            if (expectedToken && authHeader === `Bearer ${expectedToken}`) {
+              isAuthorized = true;
+              authSource = 'mcp_access_token';
+            } else {
+              const bearerToken = extractBearerToken(authHeader);
+              if (bearerToken) {
+                try {
+                  const payload = await verifyAuth0Token(bearerToken);
+                  verifiedUserId = await this.resolveSupabaseUserIdFromAuth0(payload);
+                  isAuthorized = true;
+                  authSource = 'auth0';
+                } catch (e: any) {
+                  console.warn('[AUTH] Auth0 JWT rejected for /mcp tools/call:', e?.message);
+                }
+              }
+            }
+          }
+
+          // Allow read-only tools without auth (bootstrap/discovery).
+          if (!isAuthorized && isUnauthReadonlyToolAllowed(toolName)) {
+            isAuthorized = true;
+            authSource = 'none';
+            console.log(`[AUTH] Allowing unauthenticated call to read-only tool: ${toolName}`);
+          }
+
+          if (isProd && !isAuthorized) {
+            const baseUrl = getRequestBaseUrl(req);
+            res.writeHead(401, {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Access-Control-Allow-Origin': '*',
+              'Cache-Control': 'no-store',
+              'WWW-Authenticate': `Bearer realm="signupassist", error="authentication_required", authorization_uri="${baseUrl}/oauth/authorize", token_uri="${baseUrl}/oauth/token"`,
+            });
+            res.end(JSON.stringify({ jsonrpc: '2.0', id: parsed?.id ?? null, error: { code: -32600, message: 'OAuth token required' } }));
+            console.log('[AUTH] Unauthorized tools/call via POST /mcp (OAuth required)');
+            return;
+          }
+
+          const rawArgs = (parsed?.params?.arguments ?? {}) as any;
+          let argsObj = rawArgs && typeof rawArgs === 'object' && !Array.isArray(rawArgs) ? { ...rawArgs } : {};
+
+          const normalized = normalizeChatGPTAuth0ToolCall({
+            isProd,
+            authSource,
+            toolName,
+            args: argsObj,
+            fallbackSessionId: verifiedUserId || 'chatgpt',
+            verifiedUserId,
+          });
+          if (normalized.blockedReason) {
+            res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
+            res.end(JSON.stringify({ jsonrpc: '2.0', id: parsed?.id ?? null, error: { code: -32601, message: normalized.blockedReason } }));
+            return;
+          }
+          toolName = normalized.toolName;
+          argsObj = normalized.args;
+
+          if (!toolName || !this.tools.has(toolName)) {
+            res.writeHead(404, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
+            res.end(JSON.stringify({ jsonrpc: '2.0', id: parsed?.id ?? null, error: { code: -32601, message: `Tool ${toolName || '(missing)'} not found` } }));
+            return;
+          }
+
+          if (toolName === 'signupassist.chat') {
+            if (verifiedUserId) argsObj.userId = verifiedUserId;
+            if (!argsObj.sessionId) argsObj.sessionId = verifiedUserId || 'chatgpt';
+          }
+
+          let toolResult: any;
+          try {
+            console.log(`[MCP] POST /mcp tools/call tool=${toolName} auth=${authSource}`);
+            const tool = this.tools.get(toolName)!;
+            const raw = await tool.handler(argsObj);
+            toolResult = mcpOk(raw);
+          } catch (err: any) {
+            console.error(`[MCP] POST /mcp tools/call failed tool=${toolName}:`, err);
+            toolResult = mcpError(`Tool ${toolName} failed`, { message: err?.message });
+          }
+
+          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify({ jsonrpc: '2.0', id: parsed?.id ?? 1, result: toolResult }));
           return;
         }
 
