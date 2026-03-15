@@ -556,8 +556,12 @@ export default class APIOrchestrator implements IOrchestrator {
   }
 
   private isUserDenial(input: string): boolean {
-    const denyPatterns = /^(no|nope|nah|don't|do not|dont|stop|never mind|nevermind|not now|cancel|abort)\.?!?$/i;
-    return denyPatterns.test((input || "").trim());
+    const trimmed = (input || "").trim();
+    const exactDeny = /^(no|nope|nah|don't|do not|dont|stop|never mind|nevermind|not now|cancel|abort)\.?!?$/i;
+    if (exactDeny.test(trimmed)) return true;
+    // Catch "no child #2", "no thanks", "no I changed my mind", etc.
+    if (/^no\b/i.test(trimmed) && !/^no[a-z]/i.test(trimmed)) return true;
+    return false;
   }
 
   // ---------------------------------------------------------------------------
@@ -5289,8 +5293,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const requestedActivity = (context.requestedActivity || "").toLowerCase().trim();
       if (requestedActivity) {
         const keywords = requestedActivity.split(/\s+/).filter(Boolean);
-        const matchesKeyword = (text: string) =>
-          keywords.every((kw) => text.toLowerCase().includes(kw));
+        const matchesKeyword = (text: string) => {
+          const lower = text.toLowerCase();
+          return keywords.every((kw) => {
+            const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return new RegExp(`\\b${escaped}\\b`, 'i').test(lower);
+          });
+        };
         const filtered = programs.filter((p: any) => {
           const t = (p.title || "") + " " + (p.description || "");
           return matchesKeyword(t);
@@ -5748,8 +5757,18 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     const orgRef = programData?.org_ref || 'aim-design';
 
     // Prefer cached program data for provider constraint: max participants allowed per booking.
+    // Check booking_limits array (Bookeo format: [{max:N, min:N}]) as primary source,
+    // then fall back to flat max_participants / maxParticipants fields.
+    const bookingLimits = Array.isArray((programData as any)?.booking_limits)
+      ? (programData as any).booking_limits : [];
+    const bookingLimitsMax = bookingLimits.length > 0
+      ? Math.min(...bookingLimits
+          .filter((l: any) => typeof l?.max === 'number' && l.max > 0 && !l.peopleCategoryId)
+          .map((l: any) => l.max))
+      : undefined;
     const initialMaxPerBookingRaw = Number(
-      (programData as any)?.max_participants ??
+      bookingLimitsMax ??
+        (programData as any)?.max_participants ??
         (programData as any)?.maxParticipants ??
         undefined
     );
@@ -5937,8 +5956,16 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             type: f.type
           }))
         };
+        const formBookingLimits = Array.isArray((context.selectedProgram as any)?.booking_limits)
+          ? (context.selectedProgram as any).booking_limits : [];
+        const formBookingLimitsMax = formBookingLimits.length > 0
+          ? Math.min(...formBookingLimits
+              .filter((l: any) => typeof l?.max === 'number' && l.max > 0 && !l.peopleCategoryId)
+              .map((l: any) => l.max))
+          : undefined;
         const rawMaxParticipants = Number(
-          (context.selectedProgram as any)?.max_participants ??
+          formBookingLimitsMax ??
+            (context.selectedProgram as any)?.max_participants ??
             (context.selectedProgram as any)?.maxParticipants ??
             (formDiscoveryResult as any)?.data?.metadata?.max_participants ??
             (questions as any)?.max_participants ??
