@@ -1012,7 +1012,7 @@ class SignupAssistMCPServer {
     this.tools.set("signupassist.start", {
       name: "signupassist.start",
       description:
-        "Read-only discovery entrypoint. Call this FIRST for class browsing and before any signup flow.\n\nOptionally pass `query` (the user's request) so results can be prioritized for activity/age/location.\n\nNo booking, no payment, no writes.",
+        "Read-only program browser. Use ONLY when the user wants to browse or see what classes/programs are available — NOT for signup/registration/enrollment.\n\nFor signup intent, call signupassist.chat instead.\n\nOptionally pass `query` so results can be prioritized for activity/age/location.\n\nNo booking, no payment, no writes.",
       inputSchema: {
         type: "object",
         properties: {
@@ -1181,7 +1181,7 @@ class SignupAssistMCPServer {
             const meta = bits.length ? ` — ${bits.join(" • ")}` : "";
             lines.push(`- ${p.title}${meta}`);
           }
-          lines.push("", `If you want to sign up, tell me which one you want and I’ll guide you through registration.`);
+          lines.push("", `To sign up for any of these, say "sign up for [program name]".`);
 
           const text = lines.join("\n").trim();
           return {
