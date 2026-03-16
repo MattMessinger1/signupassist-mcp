@@ -212,7 +212,7 @@ Signup Assist operates on a "Responsible Delegate" model where you authorize us 
 
 When you request a registration, you grant a **mandate** - a scoped, time-limited authorization:
 
-- **Scoped Permissions:** Each mandate specifies exactly what actions are authorized (e.g., "register [Child Name] for [Program Name]")
+- **Scoped Permissions:** Each mandate specifies exactly what actions are authorized (e.g., "register [Participant Name] for [Program Name]")
 - **Spending Limits:** Mandates include maximum amounts when applicable
 - **Time-Limited:** Mandates expire automatically (typically within 24 hours)
 - **Revocable:** You can revoke mandates at any time
