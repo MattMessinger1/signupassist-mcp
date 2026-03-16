@@ -1,7 +1,7 @@
 # SHIPWORX LLC PRIVACY POLICY (SIGNUP ASSIST)
 
 **Effective Date:** December 19, 2025  
-**Last Updated:** December 19, 2025
+**Last Updated:** March 15, 2026
 
 This Privacy Policy explains how Shipworx LLC ("Shipworx," "we," "us," or "our") collects, uses, discloses, and protects information when you use Signup Assist (the "App"), including when the App is accessed through ChatGPT or similar interfaces, and when you visit our website at shipworx.ai (collectively, the "Services").
 
@@ -37,25 +37,24 @@ If you create an account or authenticate through ChatGPT, we collect:
 - Authentication identifiers (Auth0 user ID)
 - Account preferences and settings
 
-### B. Delegate (Parent/Guardian) Information
+### B. Account Holder Information
 
-When you use Signup Assist as a "Responsible Delegate," you may provide:
+When you use Signup Assist, you may provide:
 - First and last name
 - Email address and phone number
 - Date of birth (for age verification)
 - City and state of residence
-- Relationship to participants (e.g., parent, guardian)
 
-### C. Participant (Child) Information
+### C. Participant Information
 
-When you register children or dependents for activities, you provide:
+When you register participants for activities, you provide:
 - First and last name
-- Date of birth (required for age-appropriate program matching)
+- Date of birth (required for age-appropriate program matching by providers)
 
 This information is stored to:
 - Pre-fill future registration forms
-- Verify age requirements for activities
-- Enable you to manage multiple children's registrations
+- Verify age requirements set by activity providers
+- Enable you to manage multiple registrations
 
 ### D. Information from ChatGPT (App Requests)
 
@@ -99,34 +98,32 @@ If we become aware that we received Restricted Data, we will take reasonable ste
 
 ---
 
-## 5. CHILDREN'S PRIVACY
+## 5. PARTICIPANT DATA PRIVACY
 
-Signup Assist helps parents and guardians register children for activities. This section explains how we handle children's information.
+Signup Assist allows account holders to register participants for activities. This section explains how we handle participant information.
 
 ### What We Collect
 
-When you use our service, you provide your child's:
+When you register a participant, you provide:
 - First and last name
 - Date of birth (for age verification by activity providers)
 
-### How We Protect Children's Data
+### How We Protect Participant Data
 
-- **Parental Control:** Only authenticated parents/guardians can access and manage children's records
-- **No Direct Interaction:** Children cannot create accounts or interact with the service directly
-- **Limited Purpose:** Children's data is used solely to complete registrations you authorize
-- **Deletion Rights:** You may request deletion of children's data at any time
+- **Account Holder Control:** Only authenticated account holders can access and manage participant records
+- **Limited Purpose:** Participant data is used solely to complete registrations you authorize
+- **Deletion Rights:** You may request deletion of participant data at any time
 
 ### What We Do NOT Do
 
-- Allow children under 13 to use the service directly
-- Contact children directly for any purpose
-- Share children's information for marketing or advertising
-- Retain children's data after you request deletion
-- Sell or share children's information with third parties for their marketing
+- Allow anyone under 13 to use the service directly
+- Share participant information for marketing or advertising
+- Retain participant data after you request deletion
+- Sell or share participant information with third parties for their marketing
 
-### COPPA Compliance
+### Age Requirements
 
-If you believe we may have collected personal information about a child under 13 without proper parental consent, contact us immediately at privacy@shipworx.ai and we will take steps to delete it.
+All users of SignupAssist must be at least 13 years old. The service is designed for users who are managing activity registrations. If you believe information was collected from someone under 13, contact us at privacy@shipworx.ai.
 
 ---
 
@@ -136,7 +133,7 @@ We use information for the following purposes:
 
 ### Provide Registration Services
 - Process registration requests through activity provider APIs
-- Match your children to age-appropriate programs
+- Match participants to age-appropriate programs
 - Execute scheduled registrations at specified times
 - Generate confirmation records for your reference
 
@@ -235,7 +232,7 @@ Our system enforces strict boundaries:
 
 - Actions are limited to permissions you explicitly authorize
 - We cannot exceed spending limits you set
-- Registration actions are specific to named children and programs
+- Registration actions are specific to named participants and programs
 - Expired mandates cannot be used
 
 ---
@@ -246,8 +243,8 @@ We retain information only as long as reasonably necessary for the purposes desc
 
 | Data Type | Retention Period |
 |-----------|------------------|
-| Delegate profile | Until account deletion requested |
-| Children records | Until you delete them |
+| Account profile | Until account deletion requested |
+| Participant records | Until you delete them |
 | Mandates (authorizations) | 24 hours (auto-expire), records kept 90 days |
 | Audit logs | 90 days |
 | Payment method info (last4/brand only) | Until you remove payment method |
@@ -293,13 +290,13 @@ You may:
 
 To make a request, contact privacy@shipworx.ai. We may need to verify your identity.
 
-### B. Manage Children's Data
+### B. Manage Participant Data
 
 You can:
-- View all children's profiles in your account
-- Edit children's information at any time
-- Delete individual children's records
-- Request complete deletion of all children's data
+- View all participant profiles in your account
+- Edit participant information at any time
+- Delete individual participant records
+- Request complete deletion of all participant data
 
 ### C. Audit Trail Access
 
@@ -375,8 +372,8 @@ United States
 
 | Topic | Key Point |
 |-------|-----------|
-| **What We Collect** | Delegate info, children's names/DOB, registration details |
-| **Children's Data** | Collected only for registrations you authorize; you control deletion |
+| **What We Collect** | Account info, participant names/DOB, registration details |
+| **Participant Data** | Collected only for registrations you authorize; you control deletion |
 | **Credentials** | We do NOT store your provider login passwords |
 | **AI Processing** | OpenAI helps understand your requests |
 | **Sharing** | Only with service providers listed above; never sold |

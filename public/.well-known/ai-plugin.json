@@ -2,8 +2,8 @@
   "schema_version": "1.0.0",
   "name_for_human": "SignupAssist",
   "name_for_model": "signupassist",
-  "description_for_human": "Family-safe signup assistant for parent/guardian-managed child activity registration. No adult, dating, or NSFW services.",
-  "description_for_model": "Text-only v1.\n\nWHEN TO USE:\n- Browse programs: call `signupassist.start` (read-only, no auth needed) when the user wants to see available classes/programs at a provider.\n- Full signup flow: call `signupassist.chat` when the user wants to sign up/register/enroll/book for a class/course/lesson/camp/program for a child, or mentions SignupAssist by name.\n\nSafety: never book or charge until the user explicitly confirms.",
+  "description_for_human": "Activity enrollment assistant that helps you find and register for local classes, camps, and lessons.",
+  "description_for_model": "Text-only v1.\n\nWHEN TO USE:\n- Browse programs: call `signupassist.start` (read-only, no auth needed) when the user wants to see available classes/programs at a provider.\n- Full signup flow: call `signupassist.chat` when the user wants to sign up/register/enroll/book for a class/course/lesson/camp/program, or mentions SignupAssist by name.\n\nSafety: never book or charge until the user explicitly confirms.",
   "auth": {
     "type": "oauth",
     "authorization_url": "https://signupassist-mcp-production.up.railway.app/oauth/authorize",

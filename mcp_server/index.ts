@@ -1213,13 +1213,13 @@ class SignupAssistMCPServer {
     this.tools.set("signupassist.find", {
       name: "signupassist.find",
       description:
-        "Find classes and programs for kids in Madison, WI (AIM Design). Read-only.\n\nUse this for prompts like \"robotics classes in Madison for my 9-year-old\". Pass the full user request as `query` when possible.\n\nNo booking, no payment, no writes.",
+        "Find classes and programs in Madison, WI (AIM Design). Read-only.\n\nUse this for prompts like \"robotics classes in Madison\". Pass the full user request as `query` when possible.\n\nNo booking, no payment, no writes.",
       inputSchema: {
         type: "object",
         properties: {
           query: { type: "string", description: "User request text (recommended)" },
           activity: { type: "string", description: "Optional activity keyword (e.g. robotics, coding, stem)" },
-          child_age: { type: "number", description: "Optional child's age (3-18)" },
+          child_age: { type: "number", description: "Optional participant age (3-18)" },
           location: { type: "string", description: "Optional location text (e.g. Madison, WI)" },
           org_ref: { type: "string", description: "Organization reference slug (defaults to aim-design)" },
           category: { type: "string", description: "Optional category filter (e.g. robotics, camps, etc.)" },
@@ -1269,7 +1269,7 @@ class SignupAssistMCPServer {
     this.tools.set("signupassist.chat", {
       name: "signupassist.chat",
       description:
-        "SignupAssist signup matcher + registration wizard for kids' activities (classes/courses/lessons/camps) (API-first).\n\nUse this when the user wants to sign up/register/enroll/book for a class/course/lesson/camp/program — OR when they mention SignupAssist by name (\"SignupAssist\", \"Signup Assist\", \"signup assist\").\n\nExample triggers:\n- \"I'd like to signup for a course with signup assist\"\n- \"Use SignupAssist to sign up my kid for a class\"\n\nIMPORTANT: If the user expresses signup intent but provides insufficient details (e.g., only an activity, provider name, or location), CALL THIS TOOL IMMEDIATELY. Do not ask long pre-questions outside the tool; this tool will ask the minimum follow-ups and confirm whether the requested signup is supported.\n\nThis tool checks supported providers/coverage, shows relevant available options from our internal program cache, and guides the user step-by-step.\n\nCRITICAL: After calling this tool, respond to the user with EXACTLY the returned text (verbatim). Do not paraphrase. If the returned text includes a leading \"Step N/5 — ...\" header, keep it.\n\nIMPORTANT: This tool may perform consequential actions ONLY after explicit user confirmation (e.g., booking with the provider and charging the $20.00 success fee). Payment method entry always happens on Stripe-hosted Checkout (we never see card numbers).",
+        "SignupAssist signup matcher + registration wizard for activities (classes/courses/lessons/camps) (API-first).\n\nUse this when the user wants to sign up/register/enroll/book for a class/course/lesson/camp/program — OR when they mention SignupAssist by name (\"SignupAssist\", \"Signup Assist\", \"signup assist\").\n\nExample triggers:\n- \"I'd like to signup for a course with signup assist\"\n- \"Use SignupAssist to sign up for a class\"\n\nIMPORTANT: If the user expresses signup intent but provides insufficient details (e.g., only an activity, provider name, or location), CALL THIS TOOL IMMEDIATELY. Do not ask long pre-questions outside the tool; this tool will ask the minimum follow-ups and confirm whether the requested signup is supported.\n\nThis tool checks supported providers/coverage, shows relevant available options from our internal program cache, and guides the user step-by-step.\n\nCRITICAL: After calling this tool, respond to the user with EXACTLY the returned text (verbatim). Do not paraphrase. If the returned text includes a leading \"Step N/5 — ...\" header, keep it.\n\nIMPORTANT: This tool may perform consequential actions ONLY after explicit user confirmation (e.g., booking with the provider and charging the $20.00 success fee). Payment method entry always happens on Stripe-hosted Checkout (we never see card numbers).",
       inputSchema: {
         type: "object",
         properties: {
@@ -3651,7 +3651,7 @@ class SignupAssistMCPServer {
                   schema_version: "1.0.0",
                   name_for_human: "SignupAssist",
                   name_for_model: "signupassist",
-                  description_for_human: "SignupAssist helps parents discover, schedule, and complete class signups for their children."
+                  description_for_human: "SignupAssist helps you discover, schedule, and complete class signups for local activities."
                 },
                 null,
                 2
@@ -3932,7 +3932,7 @@ class SignupAssistMCPServer {
                   schema_version: "1.0.0",
                   name_for_human: "SignupAssist",
                   name_for_model: "signupassist",
-                  description_for_human: "SignupAssist helps parents discover, schedule, and complete class signups for their children."
+                  description_for_human: "SignupAssist helps you discover, schedule, and complete class signups for local activities."
                 },
                 null,
                 2
@@ -5128,7 +5128,7 @@ class SignupAssistMCPServer {
           schema_version: "1.0.0",
           name_for_human: "SignupAssist",
           name_for_model: "signupassist",
-          description_for_human: "SignupAssist helps parents discover, schedule, and complete class signups for their children."
+          description_for_human: "SignupAssist helps you discover, schedule, and complete class signups for local activities."
         };
         res.writeHead(200, { 
           'Content-Type': 'application/json',
