@@ -53,8 +53,8 @@ We cannot refund the Success Fee in these situations:
 ### 1. Change of Mind
 If you decide you no longer want the registration after it has been successfully completed.
 
-### 2. Child Cannot Attend
-If your child cannot attend due to illness, schedule conflicts, or other personal reasons after the registration is complete.
+### 2. Participant Cannot Attend
+If the participant cannot attend due to illness, schedule conflicts, or other personal reasons after the registration is complete.
 
 ### 3. Provider's Cancellation Policy
 Refunds for the **Program Fee** are subject to the activity provider's own cancellation and refund policies. SignupAssist has no control over provider refund policies.

@@ -84,7 +84,7 @@ export function PlanPreview({
   };
 
   const categoryTitles = {
-    child_info: 'Child Information',
+    child_info: 'Participant Information',
     program_selection: 'Program Selection',
     legal_waivers: 'Legal & Waivers',
     emergency_contacts: 'Emergency Contacts',

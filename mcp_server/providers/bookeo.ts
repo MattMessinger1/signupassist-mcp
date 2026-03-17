@@ -645,7 +645,7 @@ async function createHold(args: {
       ui: {
         cards: [{
           title: 'Confirm Your Booking',
-          description: `**Program:** ${programName}\n**Guests:** ${adults} adult(s), ${children} child(ren)\n**Total:** $${(totalCost.amount / 100).toFixed(2)}\n\nShall I confirm this booking?`,
+          description: `**Program:** ${programName}\n**Guests:** ${adults} adult(s), ${children} participant(s)\n**Total:** $${(totalCost.amount / 100).toFixed(2)}\n\nShall I confirm this booking?`,
           metadata: {
             componentType: 'confirmation',
             componentData: {
@@ -885,7 +885,7 @@ async function confirmBooking(args: {
         delegate_data_keys: delegate_data ? Object.keys(delegate_data) : 'null'
       });
       const friendlyError: ParentFriendlyError = {
-        display: 'Missing parent/guardian contact information',
+        display: 'Missing contact information for the account holder',
         recovery: 'Please provide your first name, last name, and email address',
         severity: 'medium',
         code: 'VALIDATION_ERROR'
@@ -1304,7 +1304,7 @@ Safe to call for exploring registration requirements.`,
         email: { type: 'string', format: 'email', description: 'Customer email' },
         phone: { type: 'string', description: 'Customer phone (optional)' },
         adults: { type: 'number', minimum: 0, description: 'Number of adults' },
-        children: { type: 'number', minimum: 0, description: 'Number of children' },
+        children: { type: 'number', minimum: 0, description: 'Number of participants' },
         org_ref: { type: 'string', description: 'Organization reference' }
       },
       required: ['eventId', 'productId', 'firstName', 'lastName', 'email', 'adults', 'children', 'org_ref']

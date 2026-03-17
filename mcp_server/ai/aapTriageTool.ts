@@ -93,7 +93,7 @@ A field is "missing" if its status is "unknown".
   - If asked_flags for that field is true: Do NOT propose another question; assume the parent was unable or unwilling to answer.
 
 - Questions must be short, parent‑friendly, and target one field at a time:
-  - Age: "How old is your child, or what grade are they in?"
+  - Age: "How old is the participant, or what grade are they in?"
   - Activity: "What kind of activity are you looking for (for example: swim, ski, music, tennis)?"
   - Provider: "Do you have a specific organization in mind, or should I show you options?"
   - Location: "Which city are you in? (e.g., Madison, Milwaukee, Waukesha)"
@@ -404,7 +404,7 @@ function buildFallbackQuestions(
   const questions: string[] = [];
   
   if ((!aap?.age || aap.age.status === 'unknown') && !asked.asked_age) {
-    questions.push("How old is your child, or what grade are they in?");
+    questions.push("How old is the participant, or what grade are they in?");
   }
   
   if ((!aap?.activity || aap.activity.status === 'unknown') && !asked.asked_activity) {

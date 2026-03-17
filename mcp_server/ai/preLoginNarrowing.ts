@@ -194,7 +194,7 @@ Guidelines:
 
 Examples:
 - Missing age only: "What's your child's age? (Helps me show the right programs)"
-- Missing activity + age: "What activity are you interested in, and how old is your child?"
+- Missing activity + age: "What activity are you interested in, and how old is the participant?"
 - Missing all three: "Which organization are you looking at? What activity interests you? And what's your child's age?"
 
 Generate ONE question that asks for all missing items in a natural, friendly way.`,

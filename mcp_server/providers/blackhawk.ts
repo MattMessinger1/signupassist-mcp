@@ -152,12 +152,12 @@ export async function refreshBlackhawkPrograms(): Promise<number> {
         if (checkId.includes('membership')) {
           basePrereqChecks['membership'] = { required: true, check: checkId, message: 'Active club membership required.' };
         } else if (checkId.includes('waiver')) {
-          basePrereqChecks['waiver'] = { required: true, check: checkId, message: 'Parent/guardian waiver must be signed.' };
+          basePrereqChecks['waiver'] = { required: true, check: checkId, message: 'Waiver must be signed by an authorized adult.' };
         } else if (checkId.includes('payment')) {
           basePrereqChecks['payment_method'] = { required: true, check: checkId, message: 'Credit card on file required.' };
         } else if (result.label && result.label.toLowerCase().includes('child profile')) {
           // Child profile prerequisite (ensure at least one child/participant)
-          basePrereqChecks['child_profile'] = { required: true, check: checkId || 'family.children', message: 'Child name, DOB, emergency contact required.' };
+          basePrereqChecks['child_profile'] = { required: true, check: checkId || 'family.children', message: 'Participant name, DOB, emergency contact required.' };
         }
       }
     }
@@ -421,7 +421,7 @@ export async function refreshBlackhawkProgramDetail(program_ref: string): Promis
         else if (checkId.includes('waiver')) prereqData['waiver'] = { required: true, check: checkId, message: 'Waiver must be signed.' };
         else if (checkId.includes('payment')) prereqData['payment_method'] = { required: true, check: checkId, message: 'Payment method on file required.' };
         else if (result.label?.toLowerCase().includes('child profile')) {
-          prereqData['child_profile'] = { required: true, check: checkId || 'family.children', message: 'Child profile required.' };
+          prereqData['child_profile'] = { required: true, check: checkId || 'family.children', message: 'Participant profile required.' };
         }
       }
     }

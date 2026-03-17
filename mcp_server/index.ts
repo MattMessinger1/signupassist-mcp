@@ -16,7 +16,7 @@ type OrchestratorStep = "BROWSE" | "FORM_FILL" | "REVIEW" | "PAYMENT" | "SUBMIT"
 function wizardTitle(step: WizardStep): string {
   switch (step) {
     case "1": return "Finding classes";
-    case "2": return "Parent & child info";
+    case "2": return "Account holder & participant info";
     case "3": return "Payment method (Stripe)";
     case "4": return "Review & consent";
     case "5": return "Registering";
@@ -139,17 +139,17 @@ function normalizeChatGPTAuth0ToolCall(params: {
 function microQuestionEmail(programName?: string): string {
   const p = programName ? ` for **${programName}**` : "";
   return (
-    `Step 2/5 — Parent & child info\n\n` +
+    `Step 2/5 — Account holder & participant info\n\n` +
     `🔐 I'll only ask for what the provider requires.\n\n` +
     `Please reply with everything in **one message** so we can move faster${p}:\n` +
-    `- Parent/guardian email\n` +
-    `- Parent/guardian first & last name\n` +
-    `- Parent/guardian date of birth (MM/DD/YYYY)\n` +
-    `- Relationship to the child (e.g., Parent)\n` +
-    `- Child first & last name\n` +
-    `- Child date of birth (MM/DD/YYYY)\n` +
+    `- Your email\n` +
+    `- Your first & last name\n` +
+    `- Your date of birth (MM/DD/YYYY)\n` +
+    `- Relationship to the participant (e.g., Parent)\n` +
+    `- Participant first & last name\n` +
+    `- Participant date of birth (MM/DD/YYYY)\n` +
     `Optional: phone number or logistical notes (e.g., pickup instructions)\n\n` +
-    `Example: Email: name@example.com; Name: Jane Doe; DOB: 05/13/1976; Relationship: Parent; Child: Alex Doe; Child DOB: 02/17/2014; Phone: 555-123-4567`
+    `Example: Email: name@example.com; Name: Jane Doe; DOB: 05/13/1976; Relationship: Parent; Participant: Alex Doe; Participant DOB: 02/17/2014; Phone: 555-123-4567`
   );
 }
 

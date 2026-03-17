@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title desc">
   <title id="title">Signup Assist</title>
-  <desc id="desc">A friendly shield with a heart to represent trusted, secure help for families. Optimized for light backgrounds.</desc>
+  <desc id="desc">A friendly shield with a heart to represent trusted, secure activity enrollment. Optimized for light backgrounds.</desc>
 
   <defs>
     <linearGradient id="shield" x1="18" y1="12" x2="46" y2="52">

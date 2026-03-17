@@ -434,7 +434,7 @@ export const mandateTools = [
         },
         child_id: {
           type: 'string',
-          description: 'Optional: UUID of child if mandate is child-specific'
+          description: 'Optional: UUID of participant if mandate is participant-specific'
         },
         program_ref: {
           type: 'string',
@@ -468,7 +468,7 @@ export const mandateTools = [
         },
         delegate: {
           type: 'object',
-          description: 'Delegate (guardian) information with delegate_firstName, delegate_lastName, delegate_email, delegate_phone'
+          description: 'Account holder information with delegate_firstName, delegate_lastName, delegate_email, delegate_phone'
         },
         participants: {
           type: 'array',
@@ -521,7 +521,7 @@ export const mandateTools = [
         },
         delegate: {
           type: 'object',
-          description: 'Delegate (guardian) information'
+          description: 'Account holder information'
         },
         participants: {
           type: 'array',

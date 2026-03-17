@@ -148,9 +148,9 @@ export function getAPIFormIntroMessage(vars: APIMessageVariables): string {
   const programName = vars.program_name || "this program";
 
   return (
-    `${stepHeader(2, "Parent & child info")}\n` +
+    `${stepHeader(2, "Account holder & participant info")}\n` +
     `${trustLine("privacy")}\n\n` +
-    `To start signing up for **${programName}**, what's the parent/guardian **email**?\n` +
+    `To start signing up for **${programName}**, what's your **email**?\n` +
     `Reply like: Email: name@example.com\n\n` +
     `Note: This is the email the provider will send the confirmation to.`
   );
@@ -243,7 +243,7 @@ ${participantsLine}
 - SignupAssist success fee: ${successFeeDisplay}${flatFeeNote} (charged only upon successful registration)
 ${calendarSection}
 
-${providerName} will email your confirmation to the parent/guardian email you provided. Questions about the class? Contact them directly.`;
+${providerName} will email your confirmation to the email you provided. Questions about the class? Contact them directly.`;
 }
 
 /**
@@ -531,7 +531,7 @@ _(If you were looking for a different organization, let me know.)_`;
 export function getPostDiscoveryCTAMessage(vars: {
   provider_name?: string;
 }): string {
-  return `Which one would you like to sign up for, and how old is your child?`;
+  return `Which one would you like to sign up for, and how old is the participant?`;
 }
 
 /**

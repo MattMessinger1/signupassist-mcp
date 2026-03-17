@@ -365,7 +365,7 @@ export const prompts = {
       ].join('\n'),
     tools: {
       checkPrereqs: (org: string) =>
-        `Check prerequisites for ${org}: verify login, membership, waiver, payment method, and child profiles. Use audit only once per session.`,
+        `Check prerequisites for ${org}: verify login, membership, waiver, payment method, and participant profiles. Use audit only once per session.`,
       findPrograms: (org: string) =>
         `Fetch current programs for ${org}. Use feed if available, otherwise scrape live. Return title + open time.`,
       register: (org: string) =>
@@ -412,7 +412,7 @@ export const prompts = {
         description: 'Liability waiver (often bundled with membership)',
       },
       child: {
-        title: 'Child Profile',
+        title: 'Participant Profile',
         description: 'At least one child must be added to your account',
       },
     },

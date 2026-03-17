@@ -778,7 +778,7 @@ export default class APIOrchestrator implements IOrchestrator {
   }
 
   private fieldLabelForPrompt(group: "delegate" | "participant", rawLabel: string): string {
-    const s = String(rawLabel || "").trim() || (group === "delegate" ? "Parent/guardian info" : "Child info");
+    const s = String(rawLabel || "").trim() || (group === "delegate" ? "Account holder info" : "Participant info");
     const lower = s.toLowerCase();
 
     // Normalize common phrasing from provider schemas
@@ -787,9 +787,9 @@ export default class APIOrchestrator implements IOrchestrator {
     else if (lower.includes("first") && lower.includes("name")) core = "first name";
     else if (lower.includes("last") && lower.includes("name")) core = "last name";
     else if (lower.includes("date of birth") || lower.includes("dob") || lower.includes("birth")) core = "date of birth (MM/DD/YYYY)";
-    else if (lower.includes("relationship")) core = "relationship to the child (Parent/Guardian)";
+    else if (lower.includes("relationship")) core = "relationship to the participant (e.g., Parent)";
 
-    const prefix = group === "delegate" ? "Parent/guardian" : "Child";
+    const prefix = group === "delegate" ? "Account holder" : "Participant";
     // Title-case the first letter of the core label for readability.
     const niceCore = core.length ? core[0].toUpperCase() + core.slice(1) : core;
     return `${prefix} ${niceCore}`;
@@ -858,7 +858,7 @@ export default class APIOrchestrator implements IOrchestrator {
     const last_name = parts.slice(1).join(" ");
     const display = `${first_name} ${last_name}`.trim();
 
-    return { first_name, last_name, display: display || "Saved child" };
+    return { first_name, last_name, display: display || "Saved participant" };
   }
 
   /**
@@ -939,7 +939,7 @@ export default class APIOrchestrator implements IOrchestrator {
     // Add display name for each
     return remaining.map((c) => ({
       ...c,
-      display: `${c.first_name} ${c.last_name}`.trim() || "Saved child"
+      display: `${c.first_name} ${c.last_name}`.trim() || "Saved participant"
     }));
   }
 
@@ -1083,7 +1083,7 @@ export default class APIOrchestrator implements IOrchestrator {
         msg += `  ${i + 1}. ${p}\n`;
       });
     }
-    if (parentName) msg += `- **Parent/Guardian:** ${parentName}\n`;
+    if (parentName) msg += `- **Account holder:** ${parentName}\n`;
     if (parentRel) msg += `- **Relationship:** ${parentRel}\n`;
     if (parentDob) msg += `- **Parent DOB:** ${parentDob}\n`;
     if (sessionDate) msg += `- **Date:** ${sessionDate}\n`;
@@ -2634,7 +2634,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               // Show what we will reuse + ask only what's missing (often email), with an easy “different child” path.
               if (savedEffective.length === 1 && !hasPickedChild && !context.declinedSingleSavedChild) {
                 const only = savedEffective[0];
-                const childName = `${only.first_name} ${only.last_name}`.trim() || "Saved child";
+                const childName = `${only.first_name} ${only.last_name}`.trim() || "Saved participant";
                 const childDob = this.formatISODateForPrompt(only.dob || undefined);
 
                 // Derive parent/guardian info from current (prefilled) delegate fields if available.
@@ -2710,17 +2710,17 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
                   const stillNeeded = missingDelegateLabels.length
                     ? `Still needed:\n- ${missingDelegateLabels.join("\n- ")}`
-                    : `Still needed: nothing else for parent/child info.`;
+                    : `Still needed: nothing else for account holder & participant info.`;
 
                   const parentLines: string[] = [];
-                  if (parentName) parentLines.push(`- Parent/guardian: ${parentName}`);
+                  if (parentName) parentLines.push(`- Account holder: ${parentName}`);
                   if (parentRel) parentLines.push(`- Relationship: ${parentRel}`);
-                  if (parentDob) parentLines.push(`- Parent DOB: ${parentDob}`);
+                  if (parentDob) parentLines.push(`- DOB: ${parentDob}`);
 
-                  const childLine = childDob ? `- Child: ${childName} (DOB: ${childDob})` : `- Child: ${childName}`;
+                  const childLine = childDob ? `- Participant: ${childName} (DOB: ${childDob})` : `- Participant: ${childName}`;
 
                   return this.formatResponse(
-                    `Step 2/5 — Parent & child info\n\nOn file:\n${childLine}\n${parentLines.length ? parentLines.join("\n") : "- Parent/guardian: (not saved yet)"}\n\n${stillNeeded}\n\nReply with the missing field(s) to use this info. Or reply **different child** and provide the child’s name + DOB.\n\nNext: I’ll confirm your payment method (Stripe), then show a final review before booking.\n\nBefore I save any child profile for future use, I’ll ask for explicit parental consent.`,
+                    `Step 2/5 — Account holder & participant info\n\nOn file:\n${childLine}\n${parentLines.length ? parentLines.join("\n") : "- Account holder: (not saved yet)"}\n\n${stillNeeded}\n\nReply with the missing field(s) to use this info. Or reply **different participant** and provide the participant’s name + DOB.\n\nNext: I’ll confirm your payment method (Stripe), then show a final review before booking.\n\nBefore I save any participant profile for future use, I’ll ask for explicit consent.`,
                     undefined,
                     []
                   );
@@ -2731,11 +2731,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               if (savedEffective.length > 1 && !hasPickedChild) {
                 this.updateContext(sessionId, { awaitingChildSelection: true });
                 const lines = savedEffective.slice(0, 6).map((c, i) => {
-                  const name = `${c.first_name} ${c.last_name}`.trim() || "Saved child";
+                  const name = `${c.first_name} ${c.last_name}`.trim() || "Saved participant";
                   return `${i + 1}. ${name}`;
                 });
                 return this.formatResponse(
-                  `Step 2/5 — Parent & child info\n\nI found ${savedEffective.length} saved participant${savedEffective.length === 1 ? "" : "s"}.\n\n${lines.join("\n")}\n\nReply with a number (e.g., "1"), or type a new child name + DOB.\n\nBefore I save any child profile for future use, I’ll ask for explicit parental consent.`,
+                  `Step 2/5 — Account holder & participant info\n\nI found ${savedEffective.length} saved participant${savedEffective.length === 1 ? "" : "s"}.\n\n${lines.join("\n")}\n\nReply with a number (e.g., "1"), or type a new participant name + DOB.\n\nBefore I save any participant profile for future use, I’ll ask for explicit consent.`,
                   undefined,
                   []
                 );
@@ -2764,11 +2764,11 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               const footer =
                 remainingCount > 0
                   ? `After these, I'll ask for the remaining ${remainingCount} item${remainingCount === 1 ? "" : "s"}.`
-                  : `That should be everything I need for parent/child info. Next: I'll confirm your payment method (Stripe), then show a final review before booking.`;
+                  : `That should be everything I need for account holder & participant info. Next: I'll confirm your payment method (Stripe), then show a final review before booking.`;
               const groupIntro =
                 delegateMissing.length > 0
-                  ? `First, for the **parent/guardian (you)**:`
-                  : `Now, for the **child**:`;
+                  ? `First, for the **account holder (you)**:`
+                  : `Now, for the **participant**:`;
               
               // Add email clarification note when asking for email
               const askingForEmail = nextChunk.some(f => f.key.toLowerCase().includes('email'));
@@ -2777,7 +2777,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
                 : '';
 
               return this.formatResponse(
-                `Step 2/5 — Parent & child info\n\n${groupIntro}\n- ${nextChunk.map((x) => x.label).join("\n- ")}\n\n${footer}${emailNote}\nReply in one message (commas are fine).`,
+                `Step 2/5 — Account holder & participant info\n\n${groupIntro}\n- ${nextChunk.map((x) => x.label).join("\n- ")}\n\n${footer}${emailNote}\nReply in one message (commas are fine).`,
                 undefined,
                 []
               );
@@ -2874,8 +2874,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             }
           }
 
-          // COPPA / eligibility enforcement (hard gate):
-          // Only a parent/legal guardian age 18+ can proceed.
+          // Eligibility enforcement (hard gate):
+          // Only an authorized adult age 18+ can proceed.
           const twoTier: any = payload?.formData;
           const delegate = twoTier?.delegate || {};
           const relRaw = String(
@@ -2897,7 +2897,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
           if (!rel || (rel !== "parent" && rel !== "guardian")) {
             return this.formatResponse(
-              `To keep this COPPA-compliant, I can only proceed if you're the **parent** or **legal guardian (18+)**.\n\nPlease reply with:\n- Relationship (Parent or Guardian)`,
+              `For verification, I need to confirm your relationship to the participant.\n\nPlease reply with:\n- Relationship (Parent or Guardian)`,
               undefined,
               []
             );
@@ -2905,7 +2905,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
           if (!dobIso || ageYears == null) {
             return this.formatResponse(
-              `To keep this COPPA-compliant, I need to confirm the responsible adult is **18+**.\n\nPlease reply with your date of birth as **MM/DD/YYYY**.`,
+              `For verification, I need to confirm the account holder is **18+**.\n\nPlease reply with your date of birth as **MM/DD/YYYY**.`,
               undefined,
               []
             );
@@ -2915,7 +2915,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             // Do not proceed; do not persist children/profile.
             this.updateContext(sessionId, { step: FlowStep.BROWSE, selectedProgram: undefined, formData: undefined });
             return this.formatResponse(
-              `Sorry — SignupAssist can only be used by a **parent/legal guardian age 18+**.\n\nPlease have a parent/guardian sign in to continue.`,
+              `Sorry — SignupAssist requires the account holder to be **18 or older**.\n\nPlease have an authorized adult sign in to continue.`,
               undefined,
               []
             );
@@ -3686,7 +3686,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           // If age is missing, ask for it (A-A-L triad requirement before discovery)
           if (!detectedAge) {
             return this.formatResponse(
-              `Got it — ${getActivityDisplayName(detectedActivity)} in ${locationCheck.city}${locationCheck.state ? `, ${locationCheck.state}` : ''}.\n\nHow old is your child?`,
+              `Got it — ${getActivityDisplayName(detectedActivity)} in ${locationCheck.city}${locationCheck.state ? `, ${locationCheck.state}` : ''}.\n\nHow old is the participant?`,
               undefined,
               []
             );
@@ -3829,7 +3829,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           context.requestedAdults === true
             ? "Got it — adults." 
             : context.requestedAdults === false
-              ? "Got it — kids." 
+              ? "Got it — youth programs." 
               : "Got it.";
 
         return this.formatResponse(
@@ -4195,7 +4195,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
               }
               if (!userEmail) {
                 return this.formatResponse(
-                  `To set up payment, please share the parent/guardian email address.`,
+                  `To set up payment, please share your email address.`,
                   undefined,
                   []
                 );
@@ -4276,7 +4276,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           const userEmail = this.resolveDelegateEmailFromContext(context);
           if (!userId) return this.formatError("Missing user identity for payment setup. Please sign in again.");
           if (!userEmail) {
-            return this.formatResponse(`To set up payment, please share the parent/guardian email address.`);
+            return this.formatResponse(`To set up payment, please share your email address.`);
           }
 
           try {
@@ -4355,7 +4355,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           const userEmail = this.resolveDelegateEmailFromContext(context);
           if (!userId) return this.formatError("Missing user identity for payment setup. Please sign in again.");
           if (!userEmail) {
-            return this.formatResponse(`To set up payment, please share the parent/guardian email address.`);
+            return this.formatResponse(`To set up payment, please share your email address.`);
           }
 
           try {
@@ -4898,7 +4898,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
     if (!ageYears) {
       return this.formatResponse(
-        `Got it — ${getActivityDisplayName(normalizedActivity)} in ${city}${state ? `, ${state}` : ''}.\n\nHow old is your child?`,
+        `Got it — ${getActivityDisplayName(normalizedActivity)} in ${city}${state ? `, ${state}` : ''}.\n\nHow old is the participant?`,
         undefined,
         []
       );
@@ -5374,7 +5374,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         if (mismatch.hasMismatch) {
           const providerDisplayName = orgRef === "aim-design" ? "AIM Design" : orgRef;
           return this.formatResponse(
-            `I found ${mismatch.programCount} class${mismatch.programCount !== 1 ? 'es' : ''} at ${providerDisplayName}, but they're for ${mismatch.foundAudience || 'kids'}—not adults. We don't have adult classes at this provider yet. Sorry!`,
+            `I found ${mismatch.programCount} class${mismatch.programCount !== 1 ? 'es' : ''} at ${providerDisplayName}, but they're for ${mismatch.foundAudience || 'youth'}—not adults. We don't have adult classes at this provider yet. Sorry!`,
             undefined,
             [
               { label: "Start Over", action: "clear_context", payload: {}, variant: "accent" }
@@ -6329,7 +6329,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const userIdForStripe = userId;
       if (!userIdForStripe) return this.formatError("Missing user identity for payment setup. Please sign in again.");
       if (!userEmail) {
-        return this.formatResponse(`To set up payment, please share the parent/guardian email address.`, undefined, []);
+        return this.formatResponse(`To set up payment, please share your email address.`, undefined, []);
       }
       try {
         const base =
@@ -6616,7 +6616,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           email: mappedDelegateData.email || 'MISSING'
         });
         return this.formatError(
-          "Missing parent/guardian information. Please provide your name and email address."
+          "Missing account holder information. Please provide your name and email address."
         );
       }
 
@@ -9013,7 +9013,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       if (canAddMore) {
         const childNames = participants.map((p: any) => p.firstName).join(', ');
         const countText = participants.length === 1 
-          ? `I have ${participants[0]?.firstName || 'the child'}'s information.`
+          ? `I have ${participants[0]?.firstName || 'the participant'}'s information.`
           : `✅ ${participants.length} children added (${childNames}).`;
         
         const slotsWarning = hasLimitedSlots && remainingSlots <= 2
@@ -9027,7 +9027,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           const savedChildList = remainingSavedChildren
             .map((c, i) => `${i + 1}. ${c.display}`)
             .join('\n');
-          const differentChildOption = `${remainingSavedChildren.length + 1}. Different child (enter new info)`;
+          const differentChildOption = `${remainingSavedChildren.length + 1}. Different participant (enter new info)`;
           
           this.updateContext(sessionId, { 
             awaitingAdditionalChild: true,
@@ -9200,7 +9200,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         const savedChildList = remainingSavedChildren
           .map((c, i) => `${i + 1}. ${c.display}`)
           .join('\n');
-        const differentChildOption = `${remainingSavedChildren.length + 1}. Different child (enter new info)`;
+        const differentChildOption = `${remainingSavedChildren.length + 1}. Different participant (enter new info)`;
         
         // Store the list for matching later
         this.updateContext(sessionId, { 
@@ -9317,7 +9317,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           : `This class allows up to **${maxParticipantsAllowed} participants per booking**.`;
       this.updateContext(sessionId, { awaitingAdditionalChild: false, awaitingAdditionalChildInfo: false });
       return this.formatResponse(
-        `${limitNote}\n\nLet’s continue with the registration for the child you already selected.`,
+        `${limitNote}\n\nLet’s continue with the registration for the participant you already selected.`,
         undefined,
         [{ label: "Continue to payment", action: "finish_child_selection", variant: "accent" }]
       );
@@ -9349,7 +9349,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       const savedChildList = remainingSavedChildren
         .map((c, i) => `${i + 1}. ${c.display}`)
         .join('\n');
-      const differentChildOption = `${remainingSavedChildren.length + 1}. Different child (enter new info)`;
+      const differentChildOption = `${remainingSavedChildren.length + 1}. Different participant (enter new info)`;
       
       // Store the list for matching later
       this.updateContext(sessionId, { 
@@ -9361,7 +9361,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       return this.formatResponse(
         `Great! Let's add child #${participantCount + 1}.${slotsNote}\n\n` +
         `**Your saved children:**\n${savedChildList}\n${differentChildOption}\n\n` +
-        `Reply with a number, name, or type new child info (e.g., "Sarah Smith, 8").`,
+        `Reply with a number, name, or type new participant info (e.g., "Sarah Smith, 8").`,
         undefined,
         []
       );

@@ -11,7 +11,7 @@ const PREREQS: PrereqItem[] = [
   { id: 'account', label: 'Account Status - SkiClubPro credentials verified', status: 'pass' },
   { id: 'membership', label: 'Membership Status - Active club membership confirmed', status: 'pass' },
   { id: 'payment', label: 'Payment Method - Valid payment method on file', status: 'pass' },
-  { id: 'child', label: 'Child Information - Complete child profile (name, DOB)', status: 'pass' },
+  { id: 'child', label: 'Participant Information - Complete participant profile (name, DOB)', status: 'pass' },
 ];
 
 export function PrereqsChecklist() {

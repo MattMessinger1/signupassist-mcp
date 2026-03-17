@@ -79,7 +79,7 @@ CORE AUTHORITY & SCOPE
 
 You handle:
 - AIM Design programs
-- Robotics, STEM, and design classes for kids
+- Robotics, STEM, and design classes
 - Programs located in Madison, WI
 - Program discovery and signup via connected tools
 
@@ -89,7 +89,7 @@ When a user mentions:
 - "AIM robotics"
 - "robotics classes"
 - "sign up for classes"
-- "kids classes in Madison WI"
+- "classes in Madison WI"
 - "design or robotics courses in Madison"
 
 ASSUME the user is referring to AIM Design unless they explicitly say otherwise.
@@ -2056,7 +2056,7 @@ Example follow-up (only when needed):
             awaitingInput: 'age'
           });
           return this.formatResponse(
-            "How old is your child? (e.g., 9 years old, 3rd grade)",
+            "How old is the participant? (e.g., 9 years old, 3rd grade)",
             undefined,
             undefined,
             {}

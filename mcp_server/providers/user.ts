@@ -180,7 +180,7 @@ export async function listChildren(args: {
     if (error) {
       console.error('[User] Database error listing children:', error);
       const friendlyError: ParentFriendlyError = {
-        display: 'Unable to load your saved children',
+        display: 'Unable to load your saved participants',
         recovery: 'Please try again in a moment.',
         severity: 'low',
         code: 'USER_LIST_CHILDREN_FAILED'
@@ -226,7 +226,7 @@ export async function listChildren(args: {
   } catch (error: any) {
     console.error('[User] Error listing children:', error);
     const friendlyError: ParentFriendlyError = {
-      display: 'Unable to load your saved children',
+      display: 'Unable to load your saved participants',
       recovery: 'Please try again in a moment.',
       severity: 'low',
       code: 'USER_API_ERROR'
@@ -256,7 +256,7 @@ export async function createChild(args: {
     if (age != null && age >= 18) {
       const friendlyError: ParentFriendlyError = {
         display: 'That participant looks like an adult',
-        recovery: 'Please add a child under 18 (or register the adult directly with the provider).',
+        recovery: 'Please add a participant under 18 (or register the adult directly with the provider).',
         severity: 'low',
         code: 'VALIDATION_ERROR'
       };
@@ -267,7 +267,7 @@ export async function createChild(args: {
     if (delegateProfile && looksLikeDelegateChildRecord({ first_name, last_name, dob: dobIso }, delegateProfile)) {
       const friendlyError: ParentFriendlyError = {
         display: 'That participant matches the parent/guardian profile',
-        recovery: 'Please add a child participant (not the parent/guardian).',
+        recovery: 'Please add a participant (not the account holder).',
         severity: 'low',
         code: 'VALIDATION_ERROR'
       };
@@ -291,7 +291,7 @@ export async function createChild(args: {
     if (error) {
       console.error('[User] Database error creating child:', error);
       const friendlyError: ParentFriendlyError = {
-        display: 'Unable to save child information',
+        display: 'Unable to save participant information',
         recovery: 'Please try again.',
         severity: 'low',
         code: 'USER_CREATE_CHILD_FAILED'
@@ -309,7 +309,7 @@ export async function createChild(args: {
   } catch (error: any) {
     console.error('[User] Error creating child:', error);
     const friendlyError: ParentFriendlyError = {
-      display: 'Unable to save child information',
+      display: 'Unable to save participant information',
       recovery: 'Please try again.',
       severity: 'low',
       code: 'USER_API_ERROR'
@@ -608,7 +608,7 @@ export async function updateDelegateProfile(args: {
 export const userTools: UserTool[] = [
   {
     name: 'user.list_children',
-    description: 'List saved children for a user (requires user:read:children scope)',
+    description: 'List saved participants for a user (requires user:read:children scope)',
     inputSchema: {
       type: 'object',
       properties: {
@@ -629,7 +629,7 @@ export const userTools: UserTool[] = [
   },
   {
     name: 'user.create_child',
-    description: 'Create a new saved child for a user (requires user:write:children scope)',
+    description: 'Create a new saved participant for a user (requires user:write:children scope)',
     inputSchema: {
       type: 'object',
       properties: {
@@ -639,15 +639,15 @@ export const userTools: UserTool[] = [
         },
         first_name: {
           type: 'string',
-          description: 'Child\'s first name'
+          description: 'Participant\'s first name'
         },
         last_name: {
           type: 'string',
-          description: 'Child\'s last name'
+          description: 'Participant\'s last name'
         },
         dob: {
           type: 'string',
-          description: 'Child\'s date of birth (ISO 8601 date)'
+          description: 'Participant\'s date of birth (ISO 8601 date)'
         }
       },
       required: ['user_id', 'first_name', 'last_name']
@@ -683,7 +683,7 @@ export const userTools: UserTool[] = [
   },
   {
     name: 'user.update_child',
-    description: 'Update an existing child record (requires user:write:children scope)',
+    description: 'Update an existing participant record (requires user:write:children scope)',
     inputSchema: {
       type: 'object',
       properties: {
@@ -693,19 +693,19 @@ export const userTools: UserTool[] = [
         },
         child_id: {
           type: 'string',
-          description: 'Child record ID to update'
+          description: 'Participant record ID to update'
         },
         first_name: {
           type: 'string',
-          description: 'Child\'s first name'
+          description: 'Participant\'s first name'
         },
         last_name: {
           type: 'string',
-          description: 'Child\'s last name'
+          description: 'Participant\'s last name'
         },
         dob: {
           type: 'string',
-          description: 'Child\'s date of birth (ISO 8601 date)'
+          description: 'Participant\'s date of birth (ISO 8601 date)'
         }
       },
       required: ['user_id', 'child_id']

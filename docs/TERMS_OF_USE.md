@@ -37,12 +37,12 @@ The Services are intended for users located in the **United States only**.
 | Requirement | Minimum Age |
 |------------|-------------|
 | Account creation / Service use | 18 years old |
-| Personal data submission | 13 years old (parental consent required) |
+| Personal data submission | 13 years old (with account holder authorization) |
 
-### Children's Data
-- The Services are **not directed** to children under 13
-- You must **not** use the Services to submit personal information about children under 13 without parental consent
-- We comply with COPPA requirements for any children's data processed through the Responsible Delegate model
+### Participant Data
+- The Services are **not directed** to users under 13
+- You must **not** use the Services to submit personal information about individuals under 13 without proper authorization from an adult account holder
+- We comply with applicable data protection requirements for any participant data processed through the Responsible Delegate model
 
 ---
 
@@ -92,7 +92,7 @@ When connecting Signup Assist to another service (e.g., activity registration pr
 | Protected health information (PHI) | Medical records, diagnoses, prescriptions |
 | Government identifiers | Social Security numbers, passport numbers |
 | Access credentials | Passwords, MFA/OTP codes, API keys (in chat) |
-| Children's data (under 13) | Without parental consent |
+| Participant data (under 13) | Without account holder authorization |
 
 **Consequence of Violation**: If you submit restricted data, you do so at your own risk. We may:
 - Delete the data
@@ -125,7 +125,7 @@ When you authorize Signup Assist to act on your behalf:
 ### Definition
 "User Content" means information you submit to the Services, including:
 - Text and instructions you provide
-- Child/participant information for registrations
+- Participant information for registrations
 - Preferences and scheduling data
 - Responses to program questions
 
@@ -143,7 +143,7 @@ You grant Shipworx a limited, non-exclusive, worldwide, royalty-free license to 
 You represent that:
 - You have all rights necessary to provide User Content
 - Your content does not violate these Terms or applicable law
-- Information about children is provided with proper parental authority
+- Information about participants is provided with proper authorization
 
 ---
 

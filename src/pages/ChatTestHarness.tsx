@@ -209,7 +209,7 @@ function ChatTestHarnessContent({ mockAuthenticated, onToggleAuth }: ChatTestHar
         const welcomeMessage: ChatMessage = {
           id: "welcome-1",
           sender: "assistant" as const,
-          text: "Hi! I'm here to help you sign up for kids activities. What are you looking for today?",
+          text: "Hi! I'm here to help you sign up for activities. What are you looking for today?",
           timestamp: new Date(),
         };
         return [welcomeMessage];
@@ -387,7 +387,7 @@ function ChatTestHarnessContent({ mockAuthenticated, onToggleAuth }: ChatTestHar
           "Great choice! To reserve your spot, I'll need a few details:\n\n" +
           "• Your first and last name\n" +
           "• Email address\n" +
-          "• Number of adults and children\n\n" +
+          "• Number of adults and participants\n\n" +
           "Please provide this information and I'll complete your reservation.",
           "form",
           {
@@ -480,7 +480,7 @@ function ChatTestHarnessContent({ mockAuthenticated, onToggleAuth }: ChatTestHar
     const welcomeMessage: ChatMessage = {
       id: "welcome-1",
       sender: "assistant" as const,
-      text: "Hi! I'm here to help you sign up for kids activities. What are you looking for today?",
+      text: "Hi! I'm here to help you sign up for activities. What are you looking for today?",
       timestamp: new Date(),
     };
     setMessages([welcomeMessage]);

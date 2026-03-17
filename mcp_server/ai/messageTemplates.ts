@@ -155,7 +155,7 @@ It looks like the page took too long to load. Let's try again in a few seconds â
  * Pre-action confirmation request (before enrollment/payment)
  */
 export function getConfirmationMessage(vars: MessageVariables): string {
-  const childName = vars.child_name || "your child";
+  const childName = vars.child_name || "the participant";
   const programName = vars.program_name || "this program";
   
   return `Before I proceed, let me confirm: I'll enroll ${childName} in ${programName}. Does everything look correct? (Reply "Yes" to continue or let me know what needs to change.)`;
@@ -312,7 +312,7 @@ _(If you were looking for a different organization, just let me know.)_`;
  * Follow-up prompt after showing programs
  */
 export function getPostProgramsCTAMessage(): string {
-  return `Which one would you like to sign up for, and how old is your child?`;
+  return `Which one would you like to sign up for, and how old is the participant?`;
 }
 
 /**

@@ -93,7 +93,7 @@ export function validateTriad(triad: ActivationTriad): ActivationCheckResult {
   } else if (missingFields.includes('activity')) {
     nextQuestion = "What type of class or activity are you interested in? (e.g., robotics, coding, STEM)";
   } else if (missingFields.includes('age')) {
-    nextQuestion = "How old is your child?";
+    nextQuestion = "How old is the participant?";
   }
   
   // Calculate confidence score
@@ -316,7 +316,7 @@ export function checkActivation(
 const TRIAD_QUESTIONS = {
   provider: "Which organization would you like to sign up with?",
   activity: "What type of class or activity are you looking for?",
-  age: "How old is your child?",
+  age: "How old is the participant?",
   location: "What city are you in?"
 } as const;
 
@@ -357,7 +357,7 @@ ACTIVATION POLICY (STRICT):
 QUESTION ORDERING:
 1. If provider unknown: "Which organization would you like to sign up with?"
 2. If activity unknown: "What type of class are you looking for?"
-3. If age unknown: "How old is your child?"
+3. If age unknown: "How old is the participant?"
 Never ask multiple triad questions in the same turn.
 
 PII/PAYMENT GATES:

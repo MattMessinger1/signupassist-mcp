@@ -50,7 +50,7 @@ export const PROGRAM_MAPPINGS: Record<string, ProgramDetails[]> = {
       text_ref: 'blackhawk_intermediate_sun',
       actual_id: '311',
       title: 'Intermediate Skiing - Sunday Afternoon',
-      description: 'For kids who can ski basic slopes confidently',
+      description: 'For participants who can ski basic slopes confidently',
       org_ref: 'blackhawk-ski-club',
       schedule: 'Registration opens December 15th, 2025',
       age_range: '8-14 years',
