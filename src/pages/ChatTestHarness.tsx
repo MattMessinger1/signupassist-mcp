@@ -14,7 +14,6 @@ import { ChatInput } from "@/components/chat-test/ChatInput";
 import { DebugPanel, LogEntry } from "@/components/chat-test/DebugPanel";
 
 import { OAuthConnectDialog } from "@/components/OAuthConnectDialog";
-import { SystemUserSetup } from "@/components/SystemUserSetup";
 import type { ChatMessage } from "@/components/chat-test/MessageBubble";
 import { checkMCPHealth, type MCPHealthCheckResult, callMCPTool } from "@/lib/chatMcpClient";
 import { createLogEntry, type LogLevel, type LogCategory } from "@/lib/debugLogger";
@@ -107,7 +106,6 @@ function ChatTestHarnessContent({ mockAuthenticated, onToggleAuth }: ChatTestHar
   } | null>(null);
   const [lastQuestionType, setLastQuestionType] = useState<'age' | 'category' | 'provider' | null>(null);
   const [isRefreshingCache, setIsRefreshingCache] = useState(false);
-  const [showSystemUserSetup, setShowSystemUserSetup] = useState(false);
 
   // Mount guard
   const welcomeShownRef = useRef(false);
@@ -579,11 +577,6 @@ function ChatTestHarnessContent({ mockAuthenticated, onToggleAuth }: ChatTestHar
         />
       )}
 
-      <Dialog open={showSystemUserSetup} onOpenChange={setShowSystemUserSetup}>
-        <DialogContent className="max-w-md">
-          <SystemUserSetup />
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

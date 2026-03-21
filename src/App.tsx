@@ -8,7 +8,6 @@ import Index from "./pages/Index";
 import PlanBuilderWithStripe from "./pages/PlanBuilder";
 import Auth from "./pages/auth";
 import Credentials from "./pages/Credentials";
-import LoginTest from "./pages/LoginTest";
 import RegistrationDashboard from "./pages/RegistrationDashboard";
 import DiscoveryRuns from "./pages/DiscoveryRuns";
 import MandatesAudit from "./pages/MandatesAudit";
@@ -38,7 +37,6 @@ const App = () => (
             <Route path="/mandates" element={<MandatesAudit />} />
             <Route path="/admin" element={<AdminConsole />} />
             <Route path="/flow-test" element={<FlowTester />} />
-            <Route path="/login-test" element={<LoginTest />} />
             <Route path="/disambiguation-demo" element={<DisambiguationDemo />} />
             <Route path="/chat-test" element={<ChatTestHarness />} />
             <Route path="/mcp-chat-test" element={<MCPChatTest />} />
