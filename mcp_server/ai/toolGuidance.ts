@@ -1,63 +1,9 @@
 /**
  * Tool Guidance for AIOrchestrator
- * 
- * TOOL_GUIDANCE__LOGIN_WRAPPER_ANTIBOT
- * 
- * scp.login Anti-bot Tool Guidance:
- * 
- * Rules:
- * 1. If anti-bot waits exceed 6.5 seconds without clear progress, immediately navigate 
- *    to /registration and continue (fast-path).
- * 2. On first success, persist cookies+localStorage and tag session_issued_at.
- * 3. On reuse, skip anti-bot waits and go straight to /registration.
- * 4. Never re-login if a fresh session_token exists (issued < ttl-30s).
- * 
- * Implementation:
- * - 6.5s timeout cap in mcp_server/lib/login.ts (ANTIBOT_MAX_WAIT_MS)
- * - Session persistence via storageState (cookies + localStorage)
- * - session_issued_at tracked in AIOrchestrator context
- * - Session reuse check validates: session_token + org_ref match + (now - session_issued_at < ttl-30s)
- * 
- * Why: Prevents unnecessary delays, improves reliability, follows Design DNA 
- * (minimize friction, transparent behavior).
- * 
- * ───────────────────────────────────────────────────────────────────────────
- * 
- * TOOL_GUIDANCE__AUTO_PROGRAM_DISCOVERY_V2
- * 
- * Goal: After successful provider login, automatically fetch and display programs.
- * Do NOT prompt the user for intent — immediately call scp.find_programs.
- * 
- * Flow:
- * 1. credentials_submitted triggers handleAutoProgramDiscovery()
- * 2. Reuse existing session token — never start new login unless session expired
- * 3. Call scp.find_programs with { org_ref, session_token, category: "all" }
- * 4. Force navigation to /registration (skip dashboard redirect)
- * 5. Wait for page readiness with timeout handling
- * 6. Extract programs using runThreePassExtractor
- *    - Vision pass: gpt-5-2025-08-07 (multimodal)
- *    - Text extraction: gpt-5-mini-2025-08-07
- * 7. Group programs using groupProgramsByTheme (gpt-5-mini-2025-08-07)
- *    - Themes: Lessons, Camps, Race Team, Other
- *    - Limit: 4 cards per group
- * 8. Return: message → grouped cards → CTA chips
- * 
- * Error handling:
- * - Page readiness timeout: Return timeout error with auto-retry option
- * - Session expired: Prompt to reconnect
- * - No programs: Offer to search other providers
- * - Max retries (2): Offer manual reconnect
- * 
- * Expected Log Sequence:
- * 1️⃣ ✅ Reusing session from token (or 🔁 New session will be created)
- * 2️⃣ Navigated to: /registration (or Already on programs page)
- * 3️⃣ Extractor model: gpt-5-2025-08-07 (vision), gpt-5-mini-2025-08-07 (text)
- * 4️⃣ Programs found: >0
- * 5️⃣ Classified into N theme groups
- * 6️⃣ Assistant shows grouped cards (no intent prompt)
- * 
- * Why: Eliminates friction, follows Design DNA (predictable rhythm), 
- * maintains security transparency, and handles timeouts gracefully.
+ *
+ * Bookeo API tools use server-side credentials; program discovery reads from the
+ * provider feed/cache via `bookeo.find_programs`. No browser automation or
+ * anti-bot handling is required for the default flow.
  */
 
 export interface SessionReuseConfig {
@@ -86,21 +32,21 @@ export function shouldReuseSession(sessionToken?: string): boolean {
  */
 export function getProgramCategory(intent?: string): "lessons" | "all" {
   if (!intent) return SESSION_REUSE_CONFIG.defaultCategory || "lessons";
-  
+
   const lowerIntent = intent.toLowerCase();
   if (lowerIntent.includes("lesson") || lowerIntent.includes("class")) {
     return "lessons";
   }
-  
+
   return "all";
 }
 
 /**
- * Tool calling workflow for post-login program discovery
+ * Tool calling workflow for program discovery (Bookeo API)
  */
 export const TOOL_WORKFLOW = {
   /**
-   * Step 1: Check session validity
+   * Step 1: Check session validity (optional client/session markers)
    */
   checkSession: async (sessionToken?: string) => {
     if (shouldReuseSession(sessionToken)) {
@@ -108,26 +54,24 @@ export const TOOL_WORKFLOW = {
     }
     return { valid: false, requiresLogin: true };
   },
-  
+
   /**
-   * Step 2: Call find_programs with session
+   * Step 2: Load programs via Bookeo-backed discovery
    */
   findPrograms: {
-    toolName: "scp.find_programs",
-    requiredArgs: ["org_ref", "session_token"],
-    optionalArgs: ["category"],
-    navigationTarget: "/registration",
-    skipDashboard: true
+    toolName: "bookeo.find_programs",
+    requiredArgs: ["org_ref"],
+    optionalArgs: ["category", "user_jwt", "mandate_jws", "user_id"]
   },
-  
+
   /**
-   * Step 3: Extract programs using Three-Pass Extractor
+   * Step 3: Field metadata comes from API discovery (see discover_required_fields)
    */
   extractPrograms: {
-    toolName: "runThreePassExtractor",
-    requiredFor: "structured program data"
+    toolName: "bookeo.discover_required_fields",
+    requiredFor: "structured program + form field data"
   },
-  
+
   /**
    * Step 4: Group and display
    */

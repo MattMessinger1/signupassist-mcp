@@ -10,10 +10,9 @@ import { createHash } from 'crypto';
 
 // PACK-B: Environment-driven configuration
 const ALG = process.env.MANDATE_SIGNING_ALG || "HS256";
-const SECRET = process.env.MANDATE_SIGNING_SECRET || process.env.MANDATE_SIGNING_KEY || "";
 const ISS = process.env.MANDATE_ISSUER || "signupassist-platform";
 const AUD = process.env.MANDATE_AUDIENCE || "signupassist-mcp";
-const DEFAULT_SCOPES = (process.env.MANDATE_DEFAULT_SCOPES || "scp:authenticate,scp:read:listings")
+const DEFAULT_SCOPES = (process.env.MANDATE_DEFAULT_SCOPES || "bookeo:authenticate,bookeo:read_products")
   .split(",")
   .map(s => s.trim())
   .filter(Boolean);
@@ -43,27 +42,32 @@ export interface VerificationContext {
   now?: Date;
 }
 
+function getSigningSecret(): string {
+  return process.env.MANDATE_SIGNING_SECRET || process.env.MANDATE_SIGNING_KEY || "";
+}
+
 /**
  * Get the signing key (supports both MANDATE_SIGNING_SECRET and legacy MANDATE_SIGNING_KEY)
  */
 function getKey() {
-  if (!SECRET) {
+  const secret = getSigningSecret();
+  if (!secret) {
     throw new Error("MANDATE_SIGNING_SECRET or MANDATE_SIGNING_KEY not set");
   }
   
   // If the secret looks like base64 (legacy format), decode it
-  if (SECRET.match(/^[A-Za-z0-9+/=]+$/)) {
+  if (secret.match(/^[A-Za-z0-9+/=]+$/)) {
     try {
-      const keyBuffer = Buffer.from(SECRET, 'base64');
+      const keyBuffer = Buffer.from(secret, 'base64');
       return createSecretKey(keyBuffer);
     } catch {
       // Fall back to raw string
-      return createSecretKey(Buffer.from(SECRET));
+      return createSecretKey(Buffer.from(secret));
     }
   }
   
   // Use raw string as secret
-  return createSecretKey(Buffer.from(SECRET));
+  return createSecretKey(Buffer.from(secret));
 }
 
 /**
@@ -71,7 +75,7 @@ function getKey() {
  */
 export async function createMandate(
   userId: string, 
-  provider: "skiclubpro", 
+  provider: string = "bookeo", 
   extraScopes: string[] = []
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
@@ -161,21 +165,20 @@ export async function issueMandate(
   
   // Extract extra scopes beyond defaults
   const extraScopes = payload.scope.filter(s => !DEFAULT_SCOPES.includes(s));
-  return createMandate(payload.user_id, payload.provider as "skiclubpro", extraScopes);
+  return createMandate(payload.user_id, payload.provider, extraScopes);
 }
 
 // ============= Mandate Scope Configuration =============
 
 export const MANDATE_SCOPES = {
-  // Platform scopes
-  AUTHENTICATE: 'scp:authenticate',
-  READ_LISTINGS: 'scp:read:listings',
-  REGISTER: 'scp:register',
-  PAY: 'scp:pay',
-  DISCOVER_FIELDS: 'scp:discover:fields',
+  // Bookeo / platform-aligned scopes
+  AUTHENTICATE: 'bookeo:authenticate',
+  READ_LISTINGS: 'bookeo:read_products',
+  REGISTER: 'bookeo:create_booking',
+  PAY: 'bookeo:pay',
+  DISCOVER_FIELDS: 'bookeo:discover_fields',
   PLATFORM_SUCCESS_FEE: 'platform:success_fee',
   
-  // Provider-specific scopes (Bookeo)
   BOOKEO_CREATE_BOOKING: 'bookeo:create_booking',
   BOOKEO_READ_PRODUCTS: 'bookeo:read_products',
   BOOKEO_READ_SLOTS: 'bookeo:read_slots',
@@ -189,13 +192,11 @@ export const MANDATE_SCOPES = {
 } as const;
 
 export const SCOPE_REQUIREMENTS: Record<string, string[]> = {
-  'scp.login': [MANDATE_SCOPES.AUTHENTICATE],
-  'scp.find_programs': [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.READ_LISTINGS],
-  'scp.discover_required_fields': [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.DISCOVER_FIELDS],
-  'scp.register': [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.REGISTER],
-  'scp.pay': [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.PAY],
-  // Bookeo tool mapping
+  'bookeo.find_programs': [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.READ_LISTINGS],
+  'bookeo.discover_required_fields': [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.DISCOVER_FIELDS],
+  'bookeo.create_hold': [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.REGISTER],
   'bookeo.confirm_booking': [MANDATE_SCOPES.BOOKEO_CREATE_BOOKING],
+  'bookeo.cancel_booking': [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.REGISTER],
   // User data tool mapping (ChatGPT App Store compliance)
   'user.list_children': [MANDATE_SCOPES.READ_CHILDREN],
   'user.create_child': [MANDATE_SCOPES.WRITE_CHILDREN],

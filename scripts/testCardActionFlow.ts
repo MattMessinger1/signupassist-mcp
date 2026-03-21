@@ -30,7 +30,7 @@ const TEST_ACTIONS: TestAction[] = [
   {
     name: "Step 1: Select Provider",
     action: "select_provider",
-    payload: { name: "Blackhawk Ski Club", orgRef: "blackhawk" },
+    payload: { name: "AIM Design", orgRef: "aim-design" },
     expectedStep: FlowStep.LOGIN,
     expectedFields: ["message", "cards"],
   },
@@ -81,7 +81,7 @@ async function runCardActionTest() {
   
   try {
     const searchResponse = await orchestrator.generateResponse(
-      "I need ski lessons at Blackhawk",
+      "I need classes at AIM Design",
       sessionId
     );
     

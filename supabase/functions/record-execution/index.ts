@@ -6,8 +6,8 @@ const corsHeaders = {
 };
 
 /**
- * Record execution results from Browserbase automation
- * 
+ * Record execution results
+ *
  * Flow: Receive results → Update plan_executions → Return confirmation
  */
 Deno.serve(async (req) => {

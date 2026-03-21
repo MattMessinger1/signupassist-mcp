@@ -84,10 +84,10 @@ export function parseAAPTriad(message: string, context?: Partial<AAPTriad>): AAP
   let provider = context?.provider;
   if (!provider) {
     const providerPatterns = [
-      /blackhawk|black hawk/i,
-      /vail|vail resorts/i,
+      /\baim\s+design\b/i,
+      /\baim\s+robotics\b/i,
+      /robotics|stem|design\s+class/i,
       /ymca|y\.m\.c\.a/i,
-      /ski\s+club/i,
     ];
     
     for (const pattern of providerPatterns) {
@@ -121,7 +121,7 @@ export function buildAAPQuestion(triad: AAPTriad): string | null {
   const questions = {
     age: "What's your child's age? (This helps me show age-appropriate programs)",
     activity: "What activity are you interested in? (e.g., skiing, swimming, soccer)",
-    provider: "Which organization? (e.g., Blackhawk Ski Club, YMCA)",
+    provider: "Which organization? (e.g., AIM Design, YMCA)",
   };
   
   // Get all missing questions
@@ -174,7 +174,7 @@ export async function buildNaturalAAPQuestion(
       switch (item) {
         case 'age': return 'child\'s age';
         case 'activity': return 'activity type (e.g., skiing, swimming)';
-        case 'provider': return 'organization name (e.g., Blackhawk Ski Club, YMCA)';
+        case 'provider': return 'organization name (e.g., AIM Design, YMCA)';
         default: return item;
       }
     });
@@ -294,8 +294,8 @@ function normalizeProviderRef(provider?: string): string | undefined {
   if (!provider) return undefined;
   
   const lower = provider.toLowerCase();
-  if (lower.includes('blackhawk') || lower.includes('black hawk')) {
-    return 'blackhawk-ski';
+  if (lower.includes('aim design') || lower.includes('aimdesign')) {
+    return 'aim-design';
   }
   if (lower.includes('vail')) {
     return 'vail-resorts';

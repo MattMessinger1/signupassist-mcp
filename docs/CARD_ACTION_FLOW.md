@@ -66,13 +66,13 @@ User: "I need ski lessons"
   message: "I found 2 matches",
   cards: [
     {
-      title: "Blackhawk Ski Club",
+      title: "AIM Design",
       subtitle: "Middleton, WI",
       buttons: [
         { label: "Yes – That's Mine", action: "select_provider", variant: "accent" },
         { label: "Not This One", action: "reject_provider", variant: "outline" }
       ],
-      metadata: { orgRef: "blackhawk" }
+      metadata: { orgRef: "aim-design" }
     }
   ]
 }
@@ -83,19 +83,19 @@ User: "I need ski lessons"
 User clicks "Yes – That's Mine"
 → MessageBubble.handleCardButtonClick("select_provider", metadata)
 → MessageList forwards to ChatTestHarness.handleCardAction
-→ handleCardAction("select_provider", { orgRef: "blackhawk" })
+→ handleCardAction("select_provider", { orgRef: "aim-design" })
 ```
 
 ### 4. Context Updated
 ```typescript
 setState(prev => ({
   ...prev,
-  orgRef: "blackhawk"
+  orgRef: "aim-design"
 }));
 
 // Orchestrator context also updates
 orchestrator.updateContext(sessionId, {
-  provider: { name: "Blackhawk Ski Club", orgRef: "blackhawk" },
+  provider: { name: "AIM Design", orgRef: "aim-design" },
   step: FlowStep.LOGIN
 });
 ```
@@ -117,13 +117,13 @@ addAssistantMessage(
 When card actions fire, you'll see this in the console:
 
 ```
-[MessageBubble] Button clicked: select_provider { orgRef: "blackhawk" }
-[HARNESS] Card action triggered: select_provider { orgRef: "blackhawk" }
-[FLOW] select_provider → Blackhawk Ski Club
+[MessageBubble] Button clicked: select_provider { orgRef: "aim-design" }
+[HARNESS] Card action triggered: select_provider { orgRef: "aim-design" }
+[FLOW] select_provider → AIM Design
 [CONTEXT] {
   "sessionId": "test-session-123",
   "step": 4,
-  "provider": "Blackhawk Ski Club",
+  "provider": "AIM Design",
   "program": null,
   "loginCompleted": false,
   "confirmed": false
@@ -139,8 +139,8 @@ When card actions fire, you'll see this in the console:
    [UI] ProviderCard rendered
 
 2. User clicks: "Yes – That's Mine"
-   [USER] Click: select_provider "Blackhawk Ski Club"
-   [CONTEXT] step=4 provider=Blackhawk
+   [USER] Click: select_provider "AIM Design"
+   [CONTEXT] step=4 provider=AIM Design
    [UI] LoginForm rendered
 
 3. User submits login form
@@ -227,15 +227,15 @@ This helps debug state transitions and verify that context is updating correctly
 [HARNESS] User input: I need ski lessons
 [MCP] Tool invoked: search_provider
 [HARNESS] 📦 Rendering cards: 1
-[HARNESS]   Card 1: Blackhawk Ski Club
+[HARNESS]   Card 1: AIM Design
 [HARNESS]     Buttons: Yes – That's Mine, Not This One
-[MessageBubble] Button clicked: select_provider { orgRef: "blackhawk" }
-[HARNESS] Card action triggered: select_provider { orgRef: "blackhawk" }
+[MessageBubble] Button clicked: select_provider { orgRef: "aim-design" }
+[HARNESS] Card action triggered: select_provider { orgRef: "aim-design" }
 [FLOW] select_provider → the one
 [CONTEXT] {
   "sessionId": "...",
   "step": 4,
-  "provider": "Blackhawk Ski Club",
+  "provider": "AIM Design",
   ...
 }
 ```

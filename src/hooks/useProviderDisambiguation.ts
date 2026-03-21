@@ -76,7 +76,7 @@ export function useProviderDisambiguation() {
           name: providerData.name,
           location: providerData.location,
           orgRef: providerData.orgRef,
-          provider: providerData.provider || 'skiclubpro'
+          provider: providerData.provider || 'bookeo'
         } 
       } : null);
       
@@ -215,7 +215,7 @@ export function useProviderDisambiguation() {
         name: providerData.name,
         location: providerData.location,
         orgRef: providerData.orgRef,
-        provider: providerData.provider || 'skiclubpro'
+        provider: providerData.provider || 'bookeo'
       } 
     } : null);
 
@@ -230,7 +230,7 @@ export function useProviderDisambiguation() {
       };
     }
 
-    const provider = providerData.provider || 'skiclubpro';
+    const provider = providerData.provider || 'bookeo';
     const hasCredential = await checkCredential(provider, user.id);
 
     if (hasCredential) {

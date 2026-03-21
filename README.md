@@ -1,6 +1,6 @@
 SignupAssist MCP
 
-SignupAssist MCP (Model Context Protocol) is an AI-driven agent designed to help users find and register for extracurricular activities in a safe, conversational way. It is focused on activity enrollment workflows and does not provide adult, dating, or NSFW services. It automates tasks like logging into provider websites, discovering and filling out registration forms, and submitting enrollments on the user’s behalf – all under explicit user mandates and strict oversight. Built to integrate with ChatGPT’s conversational interface, SignupAssist emphasizes a user-friendly experience while ensuring that every action is transparent, authorized, and secure.
+SignupAssist MCP (Model Context Protocol) is an AI-driven assistant for finding and completing activity registrations in a safe, conversational way. It is focused on enrollment workflows and does not provide adult, dating, or NSFW services. **Production flows use provider HTTP APIs (Bookeo)** for catalog sync, form discovery, and booking—under explicit user mandates, audit logging, and scope checks. Built to integrate with ChatGPT’s conversational interface, SignupAssist emphasizes clarity, authorization, and security.
 
 Design Principles (ChatGPT-Native UX & Safety)
 
@@ -20,47 +20,19 @@ Consistent Visual Rhythm & Hierarchy: Each step in the flow follows the same pre
 
 Technical Features & Architecture
 
-Antibot-Aware Automation: SignupAssist navigates provider websites in a human-like manner to evade bot detection. It simulates real user behavior with techniques like realistic typing speeds, randomized input delays, and detection of hidden honeypot fields that some sites use to trap bots
-GitHub
-. By mimicking a normal user and avoiding known bot triggers, it can log in and browse without getting blocked by anti-bot defenses.
+**API-first providers:** Program catalogs and registration flows integrate through documented HTTP APIs (e.g. **Bookeo** for products, availability, and bookings). Supabase edge functions such as `sync-bookeo` keep `cached_provider_feed` up to date on a schedule.
 
-Smart Form Submission Helpers: Many registration sites inject dynamic anti-bot tokens or use client-side scripts to validate forms. The MCP agent includes helpers that wait for required JavaScript-generated tokens or fields to appear before submitting a form
-GitHub
-. For example, on Drupal-based activity sites like SkiClubPro, the assistant will pause until an anti-bot token is present, ensuring the submission isn’t rejected for missing hidden fields
-GitHub
-.
+**Mandate scope enforcement:** Actions are gated by signed mandates (scopes, caps, expiry). The MCP server and edge functions record tool usage for auditability.
 
-Mandate Scope Enforcement: Every action the agent takes is gated by a signed mandate from the account holder defining what’s allowed – e.g. “log in to Provider X”, “register participant for Program Y”, “use saved payment Z up to $ amount”. The MCP core strictly enforces these scopes: it will only perform actions covered by the user’s explicit mandate, nothing more. All operations are tied back to the mandate ID and recorded, producing a transparent audit log of what was done under which permission
-GitHub
-. This prevents scope creep and ensures the assistant cannot do anything outside the user’s authorized requests.
+**A-A-P narrowing:** The orchestrator narrows by Age, Activity, and Provider early so searches stay focused.
 
-Pre-Login A-A-P Narrowing: To optimize discovery and avoid unnecessary steps, the system first narrows down the context using the A-A-P triad – Age, Activity type, and Provider. On each request, if any of these key parameters are missing or ambiguous, the assistant will ask the user (at most once per missing item) to clarify. Using Age-Activity-Provider as a filter, SignupAssist can then target the appropriate program listings and forms, rather than blindly searching across all possibilities. This early A-A-P narrowing focuses the automation on the relevant programs and reduces extraneous browsing.
+**Caching:** Feed rows and discovery hints are cached to keep chat turns fast; stale data is refreshed via scheduled syncs.
 
-Cron-Prefetching & Feed Caching: The architecture shifts heavy data fetching out of the real-time chat flow by using background cron jobs. Providers that support it can supply structured program feeds which the system periodically fetches and caches. On each user query, SignupAssist first checks the prefetched feed data for available programs. If the feed is fresh (within a defined TTL), results are served near-instantly without hitting the live website. If data is stale or missing, the assistant will quickly return what it has and silently trigger a background refresh (using a “stale-while-revalidate” strategy) so that updated info can be loaded by the next turn. This feed-first approach greatly reduces latency and cost by avoiding redundant live scraping for popular providers, and falls back to on-demand page fetches only when necessary. In short, most program search results come from a fast cache, keeping the conversation snappy.
+**Telemetry & logging:** Tool calls, sync jobs, and orchestrator steps emit structured logs for debugging and operations.
 
-Session Reuse & Deterministic Orchestration: The MCP orchestrator ensures efficient and reliable tool usage. It produces deterministic tool calls – given the same context and query, it will generate the same sequence of tool invocations with stable parameters. This idempotent behavior makes debugging and testing easier, and avoids unpredictable AI loops. Additionally, the agent reuses sessions and avoids duplicate work: it will never run two login processes in parallel for the same user and provider, and it keeps an active session alive to use across multiple steps. Once logged in, the session is retained and refreshed only as needed (e.g. when a mandate is near expiry or a session cookie times out). By reusing browser sessions, SignupAssist minimizes extra logins and keeps context (like cookies or authentication state) warm throughout the signup flow.
+**Security & data privacy:** Sensitive values live in Supabase/Stripe with least-privilege access; the UI avoids collecting more than needed for the current step.
 
-Cache-Based Extraction: When live web scraping or form discovery is unavoidable, the system employs caching at the page-level to avoid repeating expensive extractions. Pages are keyed by a hash or stable identifier, and their parsed content is cached for a short window (e.g. 5–15 minutes). If another user or step needs the same page data shortly after, the cached result is used instead of re-scraping. The cache is careful to invalidate or update when A-A-P context changes, so that, for example, age-specific program filtering is always correct. This strategy, combined with limited concurrency, keeps the system responsive even under load by cutting down duplicate work.
-
-Telemetry & Logging: The platform logs fine-grained telemetry for each operation to aid in observability and tuning. Every time a program search or form extraction runs, it records metrics such as whether a cached feed was used, how old the data was, if it had to fall back to a live scrape, how long extraction took, how many items or snippets were found, etc. These telemetry events (e.g. feed_hit, feed_age_ms, fallback_to_live, extract_ms, counts of items) are stored alongside audit logs. This not only provides a performance audit trail but also helps developers identify bottlenecks or failures in the field. For example, if a particular provider’s feed is often stale or incomplete, the logs will make that visible so the team can improve the feed or adjust the scraping logic.
-
-Security & Data Privacy: All sensitive data is handled with care. User credentials and payment information are never stored in plaintext by SignupAssist – they remain in secure storage (e.g. Supabase with RLS policies, Stripe’s vault, etc.) and are retrieved only when needed via secure methods (for instance, through a Supabase Edge Function that returns credentials on-demand). The assistant’s messaging reinforces this by reminding users that their private data stays with the provider or payment processor. Furthermore, the system abides by a data minimization principle: it only asks for information that is essential for the current step (for example, it won’t ask for a participant’s birthdate or any details unless they are required for a form at hand). This reduces unnecessary data collection and aligns with privacy best practices.
-
-Future-Ready: Verifiable Credentials & Trusted Automation: The long-term vision for SignupAssist is to move away from relying solely on human-like behavior to bypass bot checks, and instead collaborate with providers on a trust-based model. The team is exploring W3C Verifiable Credentials (VCs) and similar cryptographic tokens to prove the legitimacy of the automation
-GitHub
-. In the future, parents’ authorizations could be converted into cryptographic credentials that the agent presents to provider sites. A provider could verify the token (for example, via a plugin or API) to confirm:
-
-the request comes from an AI agent operating with a real parent’s consent, and
-
-the action (login, registration, payment) is within the approved scope
-GitHub
-.
-
-With such verifiable delegate tokens in place, providers would be able to confidently skip anti-bot measures (like CAPTCHAs or honeypot fields) when they see a valid MCP credential, knowing the action is authorized and legitimate
-GitHub
-. This approach – part of what we call the “Responsible Delegate Mode” – would shift the system from mimicking humans to being recognized as an authorized agent in its own right
-GitHub
-. In practical terms, this could mean smoother, faster sign-ups with even less friction, once the industry is ready to accept these standards. (Note: This capability is on the roadmap and not yet in production, pending provider adoption of such verification methods.)
+**Future:** Deeper provider OAuth and verifiable delegation remain on the roadmap as APIs mature.
 
 Getting Started (Development Setup)
 
@@ -88,10 +60,6 @@ GitHub
 Supabase Connection: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (for database and storage access)
 GitHub
 . You should have a Supabase project set up; use the URL and the Service Role API key from your instance.
-
-Browser Automation (Browserbase): BROWSERBASE_API_KEY and BROWSERBASE_PROJECT_ID (if using an external browser automation service for running headless browser tasks)
-GitHub
-.
 
 Google Places API Key: GOOGLE_PLACES_API_KEY for location-based provider search fallback
 GitHub
@@ -133,7 +101,7 @@ Verification: If running locally without a full Supabase setup, you might disabl
 GitHub
 . However, for full functionality, having the Supabase backend configured is recommended.
 
-Test the Flow: With the server and frontend running and your environment configured, you can simulate a signup conversation. For example, in the chat UI, type something like “Sign up my 8-year-old for ski lessons at Blackhawk Ski Club” and follow the prompts. The assistant should walk through provider selection, login (you’ll be prompted to provide saved credentials or enter them), program search results, form filling, and confirmation. Use the Debug Panel in the test harness to see tool calls and responses in real time
+Test the Flow: With the server and frontend running and your environment configured, you can simulate a signup conversation. For example, in the chat UI, try “Find AIM Design classes for my 8-year-old” and follow the prompts. The assistant should walk through provider selection, program search, prerequisites, and booking steps as configured. Use the Debug Panel in the test harness to see tool calls and responses in real time
 GitHub
 GitHub
 . This is useful for development and verifying that each step (login, find_programs, check_prerequisites, etc.) is working as expected.
@@ -238,9 +206,7 @@ Extend Providers & Forms: A common contribution is adding support for new activi
 GitHub
 . Make sure to include the provider’s details in the discovery feed (if applicable) and add any unique form field hints or login steps needed. We encourage writing unit tests or using the Chat Test Harness to simulate a full flow with the new provider.
 
-Enhance Anti-bot and Security Measures: As websites evolve, so do their bot defenses. Contributors can help by improving the anti-bot evasion techniques (e.g., handling new types of CAPTCHAs or honeypot patterns) and expanding the debugging tools for it
-GitHub
-. Similarly, if you have ideas for integrating verifiable credentials or OAuth flows once providers support them, those contributions would be valuable (keeping in mind backward compatibility).
+Enhance provider integrations: Help extend Bookeo (and future API providers) with clearer error handling, retries, and tests. OAuth and additional providers are welcome as long as they follow mandate and audit patterns.
 
 Follow the Architecture Patterns: When altering the orchestration logic or adding new tools, strive to keep calls deterministic and idempotent, reuse sessions where possible, and utilize caching layers appropriately. These patterns (detailed in Technical Features) are critical for performance and maintainability. Log relevant telemetry for any new tool or process so we can observe its impact in production.
 

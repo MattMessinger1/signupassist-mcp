@@ -24,7 +24,7 @@ This runbook guides you through the final phase of the AAP system migration: rem
 tsx scripts/testNewAAP.ts
 
 # Expected output:
-# Test Case 1 (Blackhawk Loop): ✅ PASS
+# Test Case 1 (Bookeo / AIM Design loop): ✅ PASS
 # Test Case 2 (Declined Provider): ✅ PASS
 # Test Case 3 (All-At-Once): ✅ PASS
 # Overall: ✅ ALL TESTS PASSED
@@ -134,7 +134,7 @@ git push origin aap-phase4-cleanup
 
 # Test in staging
 # - Navigate to /chat-test
-# - Try: "I'd like to sign up my kids for blackhawk ski"
+# - Try: "I'd like to sign up my kids for AIM Design classes"
 # - Expect: Asks for age only, no provider re-ask
 ```
 

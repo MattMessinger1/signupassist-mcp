@@ -1,7 +1,7 @@
 /**
  * @deprecated AAP Triage Tool - DEPRECATED as of January 2025
  * 
- * This tool was designed for scraping-based providers that required
+ * This tool was designed for legacy flows that required
  * age/activity/provider information BEFORE discovery could begin.
  * 
  * With API-only architecture, we now:
@@ -60,7 +60,7 @@ PROVIDER (ChatGPT-specific)
 - Extract organization name if mentioned:
   * "ABC Swim School" → provider.search_query = "ABC Swim School"
   * "XYZ Music" → provider.search_query = "XYZ Music"
-  * "Blackhawk Ski" → provider.search_query = "Blackhawk Ski"
+  * "AIM Design" → provider.search_query = "AIM Design"
 - If you can map to a known org_ref, set normalized.org_ref and mode = "named"
 - If you cannot confidently map, set normalized = null and mode = "local"
 
@@ -76,13 +76,12 @@ LOCATION EXTRACTION (ChatGPT-specific):
 IMPORTANT: For provider.normalized, you MUST return an object with this structure:
 {
   "org_ref": "org-slug" | null,
-  "backend": "bookeo" | "skiclubpro" | "campminder" | null,
+  "backend": "bookeo" | "campminder" | null,
   "display_name": "Organization Name" | null
 }
 
 Example mappings:
-- "Blackhawk" → { org_ref: "blackhawk-ski-club", backend: "skiclubpro", display_name: "Blackhawk Ski Club" }
-- "Bookeo" or "AIM Design" → { org_ref: "aim-design", backend: "bookeo", display_name: "AIM Design" }
+- "AIM Design" or "robotics classes Madison" → { org_ref: "aim-design", backend: "bookeo", display_name: "AIM Design" }
 - Unknown provider → { org_ref: null, backend: null, display_name: null }
 
 FOLLOW‑UP QUESTIONS:

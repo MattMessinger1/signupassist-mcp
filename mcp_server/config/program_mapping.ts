@@ -1,6 +1,6 @@
 /**
- * Program mapping configuration for SkiClubPro
- * Maps user-friendly program references to actual SkiClubPro program IDs
+ * Program mapping configuration
+ * Maps user-friendly program references to provider-specific program IDs
  */
 
 export interface ProgramMapping {
@@ -11,10 +11,6 @@ export interface ProgramMapping {
   org_ref: string;
 }
 
-/**
- * Program mappings for different ski clubs
- * This allows us to map user-friendly names to actual SkiClubPro numeric IDs
- */
 export interface ProgramDetails extends ProgramMapping {
   schedule: string;
   age_range: string;
@@ -22,70 +18,36 @@ export interface ProgramDetails extends ProgramMapping {
   price: string;
 }
 
+/** Bookeo-oriented example mappings (product/slot identifiers are illustrative). */
 export const PROGRAM_MAPPINGS: Record<string, ProgramDetails[]> = {
-  'blackhawk-ski-club': [
+  'aim-design': [
     {
-      text_ref: 'blackhawk_winter',
-      actual_id: '309',
-      title: 'Nordic Kids Wednesday',
-      description: 'Wednesday Nordic Kids Program',
-      org_ref: 'blackhawk-ski-club',
-      schedule: 'Registration opens December 1st, 2025',
-      age_range: '6-12 years',
-      skill_level: 'All levels',
-      price: '$175/session'
-    },
-    {
-      text_ref: 'blackhawk_beginner_sat',
-      actual_id: '310',
-      title: 'Beginner Skiing - Saturday Morning',
-      description: 'Perfect for first-time skiers ages 4-8',
-      org_ref: 'blackhawk-ski-club',
-      schedule: 'Registration opens November 15th, 2025',
-      age_range: '4-8 years',
+      text_ref: 'aim_robotics_intro',
+      actual_id: 'PRODUCT_ROBOTICS_INTRO',
+      title: 'Intro to Robotics',
+      description: 'STEM robotics for beginners',
+      org_ref: 'aim-design',
+      schedule: 'See Bookeo calendar',
+      age_range: '8–14 years',
       skill_level: 'Beginner',
-      price: '$165/session'
-    },
-    {
-      text_ref: 'blackhawk_intermediate_sun',
-      actual_id: '311',
-      title: 'Intermediate Skiing - Sunday Afternoon',
-      description: 'For participants who can ski basic slopes confidently',
-      org_ref: 'blackhawk-ski-club',
-      schedule: 'Registration opens December 15th, 2025',
-      age_range: '8-14 years',
-      skill_level: 'Intermediate',
-      price: '$185/session'
-    }
-  ],
-  
-  'oak-park-ski-club': [
-    {
-      text_ref: 'oakpark_beginner',
-      actual_id: '201',
-      title: 'Beginner Program',
-      description: 'Entry level skiing program',
-      org_ref: 'oak-park-ski-club',
-      schedule: 'Registration opens January 10th, 2026',
-      age_range: '5-10 years',
-      skill_level: 'Beginner',
-      price: '$150/session'
+      price: 'Varies'
     }
   ]
 };
 
+const DEFAULT_ORG = 'aim-design';
+
 /**
- * Get the actual SkiClubPro program ID from a text reference
+ * Resolve a text reference to a provider program ID
  */
-export function getProgramId(textRef: string, orgRef: string = 'blackhawk-ski-club'): string {
-  const mappings = PROGRAM_MAPPINGS[orgRef] || PROGRAM_MAPPINGS['blackhawk-ski-club'];
-  const mapping = mappings.find(m => m.text_ref === textRef);
-  
+export function getProgramId(textRef: string, orgRef: string = DEFAULT_ORG): string {
+  const mappings = PROGRAM_MAPPINGS[orgRef] || PROGRAM_MAPPINGS[DEFAULT_ORG];
+  const mapping = mappings?.find(m => m.text_ref === textRef);
+
   if (mapping) {
     return mapping.actual_id;
   }
-  
-  // If no mapping found, assume it might already be an ID or return as-is
+
   console.warn(`No program mapping found for ${textRef} in ${orgRef}, using as-is`);
   return textRef;
 }
@@ -93,14 +55,14 @@ export function getProgramId(textRef: string, orgRef: string = 'blackhawk-ski-cl
 /**
  * Get program info by text reference
  */
-export function getProgramInfo(textRef: string, orgRef: string = 'blackhawk-ski-club'): ProgramDetails | null {
-  const mappings = PROGRAM_MAPPINGS[orgRef] || PROGRAM_MAPPINGS['blackhawk-ski-club'];
-  return mappings.find(m => m.text_ref === textRef) || null;
+export function getProgramInfo(textRef: string, orgRef: string = DEFAULT_ORG): ProgramDetails | null {
+  const mappings = PROGRAM_MAPPINGS[orgRef] || PROGRAM_MAPPINGS[DEFAULT_ORG];
+  return mappings?.find(m => m.text_ref === textRef) || null;
 }
 
 /**
  * Get all available programs for an organization
  */
-export function getAvailablePrograms(orgRef: string = 'blackhawk-ski-club'): ProgramDetails[] {
-  return PROGRAM_MAPPINGS[orgRef] || PROGRAM_MAPPINGS['blackhawk-ski-club'] || [];
+export function getAvailablePrograms(orgRef: string = DEFAULT_ORG): ProgramDetails[] {
+  return PROGRAM_MAPPINGS[orgRef] || PROGRAM_MAPPINGS[DEFAULT_ORG] || [];
 }

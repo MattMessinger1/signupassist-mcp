@@ -9,12 +9,13 @@ function sanitizeErrorText(txt: string): string {
   // Remove email addresses
   txt = txt.replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}/g, '[EMAIL]');
   
-  // Remove phone numbers (various formats)
-  txt = txt.replace(/\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g, '[PHONE]');
-  txt = txt.replace(/\+?\d{1,3}[-.\s]?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}/g, '[PHONE]');
+  // Remove 13+ digit runs (credit card numbers) BEFORE phone numbers
+  txt = txt.replace(/\d{13,}/g, '[CC]');
   
-  // Remove 13-19 digit runs (credit card numbers)
-  txt = txt.replace(/\d{13,19}/g, '[CC]');
+  // Remove phone numbers: international format (+1 555 123 4567, +44 20 1234 5678)
+  txt = txt.replace(/\+\d{1,3}[-.\s]?\(?\d{2,4}\)?[-.\s]?\d{3,4}[-.\s]?\d{4}/g, '[PHONE]');
+  // Remove phone numbers: US format (555-123-4567, (555) 123-4567, 5551234567)
+  txt = txt.replace(/\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g, '[PHONE]');
   
   return txt;
 }

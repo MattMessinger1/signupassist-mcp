@@ -172,7 +172,7 @@ function generateAlternativeFieldName(label: string): string {
  * Adds smart field mappings for common form patterns
  */
 function addSmartFieldMappings(answers: Record<string, any>, childData: { name: string; dob: string }): void {
-  // Common field name patterns that might be used in SkiClubPro forms
+  // Common field name patterns used in provider forms
   const commonMappings = {
     // Child name variations
     'child_name': childData.name,

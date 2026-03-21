@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
     }
 
     // Extract provider from plan
-    const provider = plan.provider || 'skiclubpro';
+    const provider = plan.provider || 'bookeo';
 
     // Helper function to add timeout to promises
     const PREREQ_TIMEOUT_MS = 30000; // 30 seconds

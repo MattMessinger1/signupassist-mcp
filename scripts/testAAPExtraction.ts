@@ -2,7 +2,7 @@
  * Test script for AAP (Age-Activity-Provider) extraction
  * 
  * Tests the AI-powered intent parsing to ensure proper extraction of:
- * - Provider names (especially "blackhawk")
+ * - Provider names (especially aim-design / Bookeo orgs)
  * - Activity categories
  * - Child ages
  * 
@@ -16,8 +16,8 @@ import { mapIntentToAAP } from "../mcp_server/ai/preLoginNarrowing.js";
 const testCases = [
   {
     description: "First message - provider only",
-    input: "I'd like to sign up my kids for blackhawk",
-    expectedProvider: "blackhawk-ski-club",
+    input: "I'd like to sign up my kids for AIM Design",
+    expectedProvider: "aim-design",
     expectedCategory: null,
     expectedAge: null
   },
@@ -30,8 +30,8 @@ const testCases = [
   },
   {
     description: "Combined message - all three",
-    input: "blackhawk ski lessons for 9 year old",
-    expectedProvider: "blackhawk-ski-club",
+    input: "AIM Design robotics for 9 year old",
+    expectedProvider: "aim-design",
     expectedCategory: "lessons",
     expectedAge: 9
   },
@@ -44,15 +44,15 @@ const testCases = [
   },
   {
     description: "Provider with 'for' preposition",
-    input: "sign up for blackhawk",
-    expectedProvider: "blackhawk-ski-club",
+    input: "sign up for AIM Design",
+    expectedProvider: "aim-design",
     expectedCategory: null,
     expectedAge: null
   },
   {
     description: "Provider with 'at' preposition",
-    input: "register at blackhawk ski club",
-    expectedProvider: "blackhawk-ski-club",
+    input: "register at AIM Design STEM",
+    expectedProvider: "aim-design",
     expectedCategory: null,
     expectedAge: null
   }
@@ -107,7 +107,7 @@ console.log("\n\n🔄 Testing Context Merging\n");
 console.log("=".repeat(60));
 
 const contextTest = {
-  firstMessage: "I'd like to sign up my kids for blackhawk",
+  firstMessage: "I'd like to sign up my kids for AIM Design",
   secondMessage: "9 and ski lessons"
 };
 
@@ -130,12 +130,12 @@ const secondTriad = mapIntentToAAP(secondResult, {
 
 console.log(`   Second AAP:`, secondTriad);
 
-if (secondTriad.complete && secondTriad.provider === "blackhawk-ski-club" && secondTriad.age === 9) {
+if (secondTriad.complete && secondTriad.provider === "aim-design" && secondTriad.age === 9) {
   console.log(`\n   ✅ PASS - Context preserved and merged correctly`);
   passCount++;
 } else {
   console.log(`\n   ❌ FAIL - Context merge failed`);
-  console.log(`      Expected: complete=true, provider="blackhawk-ski-club", age=9`);
+  console.log(`      Expected: complete=true, provider="aim-design", age=9`);
   console.log(`      Got: complete=${secondTriad.complete}, provider="${secondTriad.provider}", age=${secondTriad.age}`);
   failCount++;
 }

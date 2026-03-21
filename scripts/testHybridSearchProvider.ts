@@ -7,7 +7,7 @@ import { lookupLocalProvider, googlePlacesSearch } from "../mcp_server/utils/pro
 
     // Test 1: Local provider lookup
     console.log("1️⃣ Testing local provider lookup:");
-    const localResult = await lookupLocalProvider("Blackhawk Ski Club");
+    const localResult = await lookupLocalProvider("AIM Design");
     console.log("Local lookup result:", localResult);
 
     // Test 2: Google Places API (first call - should hit API)

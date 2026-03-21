@@ -71,8 +71,8 @@ export class EvaluationService {
    * Evaluate provider coverage
    */
   private async evaluateCoverage(): Promise<CoverageMetrics> {
-    const allProviders = ['skiclubpro', 'daysmart', 'campminder'];
-    const implementedProviders = ['skiclubpro']; // TODO: Update as providers are implemented
+    const allProviders = ['bookeo', 'daysmart', 'campminder'];
+    const implementedProviders = ['bookeo']; // TODO: Update as providers are implemented
     
     return {
       totalProviders: allProviders.length,
@@ -80,7 +80,7 @@ export class EvaluationService {
       coveragePercentage: (implementedProviders.length / allProviders.length) * 100,
       missingProviders: allProviders.filter(p => !implementedProviders.includes(p)),
       implementedFeatures: {
-        login: 1, // Only SkiClubPro has login implemented
+        login: 1,
         register: 1,
         payment: 0,
         availability: 1
@@ -103,7 +103,7 @@ export class EvaluationService {
         'system_error': 1
       },
       providerWinRates: {
-        'skiclubpro': 0.87,
+        'bookeo': 0.87,
         'daysmart': 0.0, // Not implemented
         'campminder': 0.0 // Not implemented
       }

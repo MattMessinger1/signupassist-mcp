@@ -2,15 +2,12 @@
  * Scheduled Provider Feed Refresh (API-Only)
  * 
  * This edge function refreshes the cached_provider_feed table for API-based
- * providers only. Scraping-based providers (e.g., SkiClubPro) are excluded
- * to avoid burning Browserbase sessions.
+ * providers only. Only API-based providers are included.
  * 
  * What it does:
  * 1. Auto-discovers organizations that support automated sync
  * 2. Calls appropriate sync method (edge function or MCP tool)
  * 3. Only syncs API-based providers (Bookeo, CampMinder, etc.)
- * 
- * Scraping providers remain manual-refresh only.
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';

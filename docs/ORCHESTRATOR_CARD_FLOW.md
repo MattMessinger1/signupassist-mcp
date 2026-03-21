@@ -43,7 +43,7 @@ interface CardSpec {
 - Always follows: Assistant message → Card → CTA
 - Example:
   ```
-  Message: "I found 3 matches for Blackhawk Ski Club"
+  Message: "I found 3 matches for AIM Design"
   Cards: [Provider cards with "Select" buttons]
   ```
 
@@ -92,7 +92,7 @@ The orchestrator routes through Steps 3-6:
 ```typescript
 Input: "I need ski lessons"
 Output: {
-  message: "🔍 I found 2 matches for Blackhawk Ski Club",
+  message: "🔍 I found 2 matches for AIM Design",
   cards: [ProviderCard1, ProviderCard2]
 }
 ```
@@ -147,7 +147,7 @@ Validates:
    [HARNESS] Provider search initiated
    [MCP] → calling tool: scp:find_programs
    [HARNESS] 📦 Rendering cards: 2
-   [HARNESS]   Card 1: Blackhawk Ski Club
+   [HARNESS]   Card 1: AIM Design
    [HARNESS]     Buttons: Yes – That's Mine, Not This One
    ```
 
@@ -182,7 +182,7 @@ PII is automatically masked before logging.
 1. **Persist to Supabase**: Replace in-memory sessions with `agentic_checkout_sessions` table
 2. **Enhanced Cards**: Add images, progress indicators, ratings
 3. **Structured Output**: Use OpenAI tool calling for consistent JSON responses
-4. **Multi-Provider**: Support providers beyond skiclubpro
+4. **Multi-Provider**: Support additional providers
 
 ## Migration Guide
 

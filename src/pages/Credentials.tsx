@@ -80,7 +80,7 @@ export default function Credentials() {
       const { data: result, error } = await supabase.functions.invoke('store-credentials', {
         body: {
           alias: data.alias,
-          provider_slug: 'skiclubpro',
+          provider_slug: 'bookeo',
           email: data.email,
           password: data.password,
         }

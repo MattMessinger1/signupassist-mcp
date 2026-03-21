@@ -10,34 +10,12 @@ export interface PrerequisitePath {
 }
 
 /**
- * SkiClubPro Prerequisite Paths
- */
-export const SKICLUBPRO_PREREQS: PrerequisitePath[] = [
-  {
-    id: 'membership',
-    label: 'Membership Status',
-    paths: ['/membership', '/user/membership', '/account/memberships']
-  },
-  {
-    id: 'waiver',
-    label: 'Required Waivers',
-    paths: ['/waiver', '/waivers', '/account/waivers']
-  },
-  {
-    id: 'payment',
-    label: 'Payment Method',
-    paths: ['/user/payment-methods', '/payment-methods', '/account/payment']
-  }
-];
-
-/**
  * Provider Registry
  */
 const PROVIDER_PREREQS: Record<string, PrerequisitePath[]> = {
-  skiclubpro: SKICLUBPRO_PREREQS,
   // Future providers can be added here:
+  // bookeo: BOOKEO_PREREQS,
   // campminder: CAMPMINDER_PREREQS,
-  // daysmart: DAYSMART_PREREQS,
 };
 
 /**

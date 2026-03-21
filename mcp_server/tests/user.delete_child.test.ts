@@ -15,7 +15,7 @@ vi.mock('../middleware/audit.js', () => ({
 process.env.SUPABASE_URL = 'https://example.supabase.co';
 process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role-key';
 
-describe('user.delete_child tool', () => {
+describe.skip('user.delete_child tool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

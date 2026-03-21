@@ -102,7 +102,7 @@ async function logToolCallStart(context: AuditContext, args: any): Promise<strin
       .from('audit_events')
       .insert({
         event_type: 'tool_call',
-        provider: 'skiclubpro',
+        provider: 'bookeo',
         plan_execution_id: context.plan_execution_id,
         mandate_id: context.mandate_id,
         user_id: context.user_id || null,

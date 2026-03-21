@@ -120,10 +120,10 @@ checkAndRequestMissingIntent
 
 ### Example 1: All intent provided upfront
 ```
-User: "I need ski lessons at Blackhawk for my 9 year old"
+User: "I need STEM classes at AIM Design for my 9 year old"
 
 System: (Parses intent silently)
-  ✓ provider: "blackhawk-ski-club"
+  ✓ provider: "aim-design"
   ✓ category: "lessons"
   ✓ age: 9
 
@@ -132,25 +132,25 @@ System: (Proceeds directly to provider search)
 
 ### Example 2: Missing pieces
 ```
-User: "I need ski lessons"
+User: "I need STEM classes"
 
 System: "Which provider or club? And what's your child's age?"
 
-User: "Blackhawk, age 9"
+User: "AIM Design, age 9"
 
 System: (Now complete - proceeds)
 ```
 
 ### Example 3: User declines
 ```
-User: "I need ski lessons at Blackhawk"
+User: "I need STEM classes at AIM Design"
 
 System: "What's your child's age?"
 
 User: "prefer not to say"
 
 System: (Uses defaults)
-  ✓ provider: "blackhawk-ski-club"
+  ✓ provider: "aim-design"
   ✓ category: "lessons"
   ✓ age: undefined (will show all age ranges)
 
@@ -172,8 +172,8 @@ anything else → "all"
 ### Manual Testing via Chat Test Harness
 1. Navigate to `/chat-test`
 2. Test various input patterns:
-   - Complete intent: "blackhawk ski lessons, age 9"
-   - Partial intent: "blackhawk ski lessons"
+   - Complete intent: "AIM Design STEM classes, age 9"
+   - Partial intent: "AIM Design STEM classes"
    - Declining: "prefer not to say"
 3. Observe console logs:
    ```

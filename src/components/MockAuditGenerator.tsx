@@ -21,11 +21,11 @@ const EVENT_TYPES = [
 ];
 
 const TOOLS = [
-  'skiclubpro_login',
-  'skiclubpro_register',
-  'skiclubpro_pay',
-  'skiclubpro_check_availability',
-  'scp.check_prerequisites'
+  'bookeo.find_programs',
+  'bookeo.discover_required_fields',
+  'bookeo.create_hold',
+  'bookeo.confirm_booking',
+  'bookeo.check_prerequisites'
 ];
 
 const DECISIONS = ['allowed', 'denied', 'pending'];
@@ -59,7 +59,7 @@ export function MockAuditGenerator({ mandates, onEventCreated }: MockAuditGenera
           event_type: eventType,
           tool,
           decision,
-          provider: mandate?.provider || 'skiclubpro',
+          provider: mandate?.provider || 'bookeo',
           org_ref: 'test-org',
           started_at: new Date().toISOString(),
           finished_at: new Date().toISOString(),

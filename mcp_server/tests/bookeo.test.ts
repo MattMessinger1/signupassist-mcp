@@ -3,7 +3,30 @@
  * Tests for Bookeo API integration
  */
 
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: vi.fn(() => ({
+    from: vi.fn().mockReturnThis(),
+    select: vi.fn().mockReturnThis(),
+    insert: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    single: vi.fn(),
+  })),
+}));
+
+vi.mock('../middleware/audit', () => ({
+  auditToolCall: vi.fn(async (_ctx: any, _args: any, fn: any) => fn()),
+  createAuditMiddleware: vi.fn(),
+}));
+
+vi.hoisted(() => {
+  process.env.SUPABASE_URL = 'https://test.supabase.co';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-key';
+  process.env.BOOKEO_API_KEY = 'test-api-key';
+  process.env.BOOKEO_SECRET_KEY = 'test-secret-key';
+});
+
 import { bookeoTools } from '../providers/bookeo.js';
 
 describe('Bookeo Provider', () => {
@@ -31,8 +54,8 @@ describe('Bookeo Provider', () => {
   it('should export confirm_booking tool', () => {
     const confirmTool = bookeoTools.find(t => t.name === 'bookeo.confirm_booking');
     expect(confirmTool).toBeDefined();
-    expect(confirmTool?.inputSchema.required).toContain('holdId');
-    expect(confirmTool?.inputSchema.required).toContain('email');
+    expect(confirmTool?.inputSchema.required).toContain('event_id');
+    expect(confirmTool?.inputSchema.required).toContain('delegate_data');
   });
 
   it('should have proper tool structure', () => {
@@ -44,8 +67,8 @@ describe('Bookeo Provider', () => {
     });
   });
   
-  it('should have exactly 4 tools', () => {
-    expect(bookeoTools.length).toBe(4);
+  it('should have exactly 6 tools', () => {
+    expect(bookeoTools.length).toBe(6);
   });
 
   it('should include source_provider and org_ref on all tool handlers', () => {

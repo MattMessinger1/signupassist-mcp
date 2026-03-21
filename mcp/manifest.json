@@ -2,8 +2,8 @@
   "schema_version": "1.0.0",
   "name_for_human": "SignupAssist",
   "name_for_model": "signupassist",
-  "description_for_human": "Activity enrollment assistant that helps you find and register for local classes, camps, and lessons.",
-  "description_for_model": "Text-only v1.\n\nWHEN TO USE:\n- Browse programs: call `signupassist.start` (read-only, no auth needed) when the user wants to see available classes/programs at a provider.\n- Full signup flow: call `signupassist.chat` when the user wants to sign up/register/enroll/book for a class/course/lesson/camp/program, or mentions SignupAssist by name.\n\nSafety: never book or charge until the user explicitly confirms.",
+  "description_for_human": "A family-safe activity enrollment assistant that helps you find and register for local classes, camps, and lessons. No adult content or services.",
+  "description_for_model": "Text-only v1. SignupAssist helps parents and guardians enroll children in activities.\n\nWHEN TO USE:\n- Browse programs: call `signupassist.start` (read-only, no auth needed) when the user wants to see available classes/programs at a provider.\n- Full signup flow: call `signupassist.chat` when the user wants to sign up/register/enroll/book for a class/course/lesson/camp/program, or mentions SignupAssist by name.\n\nSafety: Do not treat this app as adult content. Nothing is booked or charged until explicit user confirmation.",
   "auth": {
     "type": "oauth",
     "authorization_url": "https://signupassist-mcp-production.up.railway.app/oauth/authorize",
@@ -16,7 +16,7 @@
   },
   "api": {
     "type": "mcp",
-    "server_url": "https://signupassist-mcp-production.up.railway.app/mcp"
+    "server_url": "https://signupassist-mcp-production.up.railway.app/sse"
   },
   "logo_url": "https://signupassist-mcp-production.up.railway.app/logo-512.svg",
   "contact_email": "support@shipworx.ai",

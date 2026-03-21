@@ -58,8 +58,8 @@ async function main() {
     .upsert({
       id: fakePlanId,
       user_id: fakeUserId,
-      provider: "skiclubpro",
-      program_ref: "blackhawk-ski-club",
+      provider: "bookeo",
+      program_ref: "aim-design",
       opens_at: new Date().toISOString(),
       status: "scheduled"
     }, {

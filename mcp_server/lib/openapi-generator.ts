@@ -250,46 +250,26 @@ function generateToolExamples(tools: MCPTool[]): Record<string, any> {
     
     // Create example based on tool name and provider prefix
     if (tool.name.includes('find_programs')) {
-      // Different examples for different backends
-      const isBookeo = tool.name.startsWith('bookeo.');
-      const isSCP = tool.name.startsWith('scp.');
-      
       examples[exampleName] = {
         summary: `Example: ${tool.description}`,
         value: {
           tool: tool.name,
-          args: isBookeo 
-            ? {
-                org_ref: 'bookeo-default',
-                category: 'lessons',
-                user_id: 'user-123'
-              }
-            : {
-                session_id: 'example-session-123',
-                mandate_id: '550e8400-e29b-41d4-a716-446655440000',
-                query: 'ski lessons',
-                organization_id: 'blackhawk'
-              }
+          args: {
+            org_ref: 'aim-design',
+            category: 'lessons',
+            user_id: 'user-123'
+          }
         }
       };
     } else if (tool.name.includes('discover_required_fields') || tool.name.includes('discover_fields')) {
-      const isBookeo = tool.name.startsWith('bookeo.');
-      
       examples[exampleName] = {
         summary: `Example: ${tool.description}`,
         value: {
           tool: tool.name,
-          args: isBookeo
-            ? {
-                program_ref: 'PRODUCT_123',
-                org_ref: 'bookeo-default'
-              }
-            : {
-                session_id: 'example-session-123',
-                mandate_id: '550e8400-e29b-41d4-a716-446655440000',
-                program_id: 'blackhawk_winter_lessons',
-                organization_id: 'blackhawk'
-              }
+          args: {
+            program_ref: 'PRODUCT_123',
+            org_ref: 'aim-design'
+          }
         }
       };
     } else if (tool.name.includes('login')) {
@@ -300,7 +280,7 @@ function generateToolExamples(tools: MCPTool[]): Record<string, any> {
           args: {
             session_id: 'example-session-123',
             mandate_id: '550e8400-e29b-41d4-a716-446655440000',
-            organization_id: 'blackhawk',
+            org_ref: 'aim-design',
             credential_id: 'cred-12345'
           }
         }
@@ -313,8 +293,8 @@ function generateToolExamples(tools: MCPTool[]): Record<string, any> {
           args: {
             session_id: 'example-session-123',
             mandate_id: '550e8400-e29b-41d4-a716-446655440000',
-            organization_id: 'blackhawk',
-            program_id: 'blackhawk_winter_lessons'
+            org_ref: 'aim-design',
+            program_ref: 'PRODUCT_ROBOTICS_INTRO'
           }
         }
       };
@@ -326,8 +306,8 @@ function generateToolExamples(tools: MCPTool[]): Record<string, any> {
           args: {
             session_id: 'example-session-123',
             mandate_id: '550e8400-e29b-41d4-a716-446655440000',
-            program_id: 'blackhawk_winter_lessons',
-            organization_id: 'blackhawk',
+            program_ref: 'PRODUCT_ROBOTICS_INTRO',
+            org_ref: 'aim-design',
             child_id: 'child-123',
             form_data: {
               emergency_contact: 'Jane Doe',
@@ -344,7 +324,7 @@ function generateToolExamples(tools: MCPTool[]): Record<string, any> {
           args: {
             session_id: 'example-session-123',
             mandate_id: '550e8400-e29b-41d4-a716-446655440000',
-            organization_id: 'blackhawk',
+            org_ref: 'aim-design',
             amount: 150.00,
             payment_method_id: 'pm_card_visa'
           }

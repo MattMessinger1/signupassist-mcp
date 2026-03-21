@@ -1,7 +1,7 @@
 {
   "name": "signupassist-mcp",
   "private": true,
-  "version": "0.0.0",
+  "version": "2.4.0",
   "type": "module",
   "engines": {
     "node": "20.x"
@@ -13,10 +13,11 @@
     "start": "npm run mcp:start",
     "mcp:start": "node dist/mcp_server/index.js",
     "build:dev": "vite build --mode development",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings=0",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.mcp.json --noEmit",
     "preview": "vite preview",
     "mcp:dev": "node --loader ts-node/esm mcp_server/index.ts",
-    "test:cred": "tsx scripts/testCredSealKey.ts",
     "test:smoke": "tsx scripts/runSmokeTests.ts",
     "test:sse": "tsx scripts/smokeMcpSse.ts",
     "test:e2e": "tsx scripts/smokeE2E.ts",
@@ -91,8 +92,6 @@
     "next-themes": "^0.3.0",
     "openai": "^6.4.0",
     "p-limit": "^7.2.0",
-    "playwright": "^1.55.1",
-    "playwright-core": "^1.55.1",
     "postcss": "^8.5.6",
     "react": "^18.2.0",
     "react-day-picker": "^9.11.1",
@@ -111,11 +110,16 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@eslint/js": "^9.0.0",
     "@types/node": "^20.19.17",
-    "eslint": "^8.57.0",
+    "eslint": "^9.0.0",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-refresh": "^0.4.0",
+    "globals": "^15.0.0",
     "tinyexec": "^1.0.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2",
+    "typescript-eslint": "^8.0.0",
     "vite": "^7.1.7",
     "vitest": "^4.1.0"
   }

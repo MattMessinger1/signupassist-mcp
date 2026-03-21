@@ -4,7 +4,7 @@
 
 export interface ScheduledSignup {
   id: string;
-  provider: 'skiclubpro' | 'daysmart' | 'campminder';
+  provider: 'bookeo' | 'daysmart' | 'campminder';
   triggerTime: Date;
   signupParams: any;
   status: 'pending' | 'running' | 'completed' | 'failed';
@@ -84,9 +84,9 @@ export class SignupScheduler {
    */
   private async executeProviderSignup(signup: ScheduledSignup): Promise<{ success: boolean; data?: any }> {
     switch (signup.provider) {
-      case 'skiclubpro':
-        // TODO: Call SkiClubPro signup logic
-        throw new Error('SkiClubPro signup execution not implemented');
+      case 'bookeo':
+        // TODO: Call Bookeo booking/signup logic
+        throw new Error('Bookeo scheduled signup execution not implemented');
       
       case 'daysmart':
         // TODO: Call DaySmart signup logic

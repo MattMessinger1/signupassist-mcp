@@ -28,12 +28,12 @@ export function DisambiguationDemo() {
   const simulateSingleMatch = () => {
     const assistantMsg = handleSingleMatch(
       {
-        name: "Blackhawk Ski Club",
+        name: "AIM Design",
         city: "Middleton, WI",
         address: "123 Ski Lane, Middleton, WI 53562",
-        orgRef: "blackhawk-ski",
+        orgRef: "aim-design",
       },
-      "Blackhawk Ski Club"
+      "AIM Design"
     );
     
     setMessages(prev => [...prev, assistantMsg]);
@@ -43,25 +43,25 @@ export function DisambiguationDemo() {
     const assistantMsg = handleMultipleMatches(
       [
         {
-          name: "Blackhawk Ski Club",
+          name: "AIM Design",
           city: "Middleton, WI",
           address: "123 Ski Lane, Middleton, WI 53562",
-          orgRef: "blackhawk-middleton",
+          orgRef: "aim-design-middleton",
         },
         {
-          name: "Blackhawk Ski Club",
+          name: "AIM Design",
           city: "Madison, WI",
           address: "456 Snow Drive, Madison, WI 53703",
-          orgRef: "blackhawk-madison",
+          orgRef: "aim-design-madison",
         },
         {
-          name: "Blackhawk Ski Club",
+          name: "AIM Design",
           city: "Verona, WI",
           address: "789 Slope Road, Verona, WI 53593",
-          orgRef: "blackhawk-verona",
+          orgRef: "aim-design-verona",
         },
       ],
-      "Blackhawk"
+      "AIM Design"
     );
     
     setMessages(prev => [...prev, assistantMsg]);
@@ -179,15 +179,15 @@ export function DisambiguationDemo() {
       // Simulate finding results based on the new input
       const normalizedInput = input.toLowerCase();
       
-      if (normalizedInput.includes("blackhawk") || normalizedInput.includes("middleton")) {
+      if (normalizedInput.includes("aim design") || normalizedInput.includes("aim-design") || normalizedInput.includes("middleton")) {
         // Simulate finding a single match
         setTimeout(() => {
           const assistantMsg = handleSingleMatch(
             {
-              name: "Blackhawk Ski Club",
+              name: "AIM Design",
               city: "Middleton, WI",
               address: "123 Ski Lane, Middleton, WI 53562",
-              orgRef: "blackhawk-ski",
+              orgRef: "aim-design",
             },
             input
           );
@@ -307,7 +307,7 @@ export function DisambiguationDemo() {
           <p className="text-xs text-muted-foreground">
             <strong>Single Match:</strong> Try "yes", "that's it", "no"<br />
             <strong>Multiple Matches:</strong> Try "Middleton", "the Madison one", "none of these", "not sure"<br />
-            <strong>No Match:</strong> Try "Blackhawk Middleton", "Sunshine Chicago", or any other search term<br />
+            <strong>No Match:</strong> Try "AIM Design Middleton", "Sunshine Chicago", or any other search term<br />
             <strong>After Confirmation:</strong> Try "oops, not that one" or "that's not my club" to restart
           </p>
         </CardContent>

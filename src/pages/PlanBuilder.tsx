@@ -767,7 +767,7 @@ const PlanBuilder = () => {
         stage: "prereq",
         program_ref: programRef,
         credential_id: credentialId,
-        base_url: "https://blackhawk.skiclubpro.team",
+        base_url: "https://api.bookeo.com/v2",
       });
 
       console.log('[prereq] Poll response:', data);
@@ -858,7 +858,7 @@ const PlanBuilder = () => {
         body: {
           stage: 'prereq',
           plan_id: undefined,
-          base_url: `https://blackhawk.skiclubpro.com`,
+          base_url: `https://api.bookeo.com/v2`,
           program_ref: programRef,
           credential_id: credentialId,
           child_id: selectedChildId || undefined,
@@ -1201,8 +1201,8 @@ const PlanBuilder = () => {
           max_amount_cents: maxCostCents,
           valid_from: new Date().toISOString(),
           valid_until: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days
-          provider: 'skiclubpro',
-          scope: ['scp:authenticate', 'scp:login', 'scp:enroll', 'scp:pay', 'scp:write:register', 'signupassist:fee'],
+          provider: 'bookeo',
+          scope: ['bookeo:read_products', 'bookeo:read_slots', 'bookeo:create_booking', 'bookeo:confirm_booking', 'signupassist:fee'],
           credential_id: formData.credentialId
         }
       });
@@ -1257,7 +1257,7 @@ const PlanBuilder = () => {
           child_name: selectedChildName,
           opens_at: opensAtISO,
           mandate_id: data.mandate_id,
-          provider: 'skiclubpro',
+          provider: 'bookeo',
           answers: formData.answers
         }
       });
@@ -1659,8 +1659,8 @@ const PlanBuilder = () => {
         <Alert className="mb-6 border-orange-200 bg-orange-50">
           <AlertTriangle className="h-4 w-4 text-orange-600" />
           <AlertDescription className="text-orange-800">
-            <strong>Important:</strong> You must already be a member of Blackhawk Ski Club to register.
-            If not, please purchase membership before creating this plan.
+            <strong>Important:</strong> You must already meet the organization&apos;s requirements (account, membership, or waivers) before registering.
+            Complete any required setup with the provider before creating this plan.
           </AlertDescription>
         </Alert>
 
@@ -1716,7 +1716,7 @@ const PlanBuilder = () => {
                       <Badge variant="outline" className="text-xs">Step 1</Badge>
                       <CardTitle className="flex items-center gap-2">
                         <Shield className="h-5 w-5" />
-                        {prompts.ui.titles.signin('Blackhawk')}
+                        {prompts.ui.titles.signin('your provider')}
                       </CardTitle>
                     </div>
                     {form.watch('credentialId') && <CheckCircle className="h-5 w-5 text-green-600" />}
@@ -1736,7 +1736,7 @@ const PlanBuilder = () => {
                           <CredentialPicker
                             value={field.value}
                             onChange={field.onChange}
-                            provider="skiclubpro"
+                            provider="bookeo"
                           />
                         </FormControl>
                         <FormMessage />
@@ -2181,7 +2181,7 @@ const PlanBuilder = () => {
                 programRef={programRef}
                 credentialId={credentialId}
                 openTimeISO={openTimeISO}
-                orgRef="blackhawk-ski-club"
+                orgRef="aim-design"
                 programTitle={friendlyProgramTitle || programRef}
                 answers={form.watch('answers') || {}}
                 detectedPriceCents={detectedPriceCents}
@@ -2286,7 +2286,7 @@ const PlanBuilder = () => {
           onApprove={(maxCostCents) => createMandate(maxCostCents)}
           programRef={friendlyProgramTitle || form.watch('programRef')}
           childName="Selected Child"
-          scopes={['scp:login', 'scp:enroll', 'scp:pay', 'scp:write:register', 'signupassist:fee']}
+          scopes={['bookeo:read_products', 'bookeo:read_slots', 'bookeo:create_booking', 'bookeo:confirm_booking', 'signupassist:fee']}
           loading={isCreatingMandate}
         />
       </div>

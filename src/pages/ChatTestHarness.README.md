@@ -123,7 +123,7 @@ All UI interactions trigger real MCP tool calls:
 
 All MCP calls are logged to the console with details:
 ```
-[MCP] Calling tool: scp:find_programs { org_ref: "blackhawk-ski-club", query: "ski" }
+[MCP] Calling tool: scp:find_programs { org_ref: "aim-design", query: "ski" }
 [MCP] Tool call success: { success: true, programs: [...] }
 ```
 

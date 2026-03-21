@@ -152,7 +152,7 @@ const { data: cacheEntry, error } = await this.supabase
       ]
     }
   ],
-  "deep_link": "https://blackhawk.skiclubpro.team/registration/beginner-alpine/start?ref=signupassist",
+  "deep_link": "https://bookeo.com/book/beginner-alpine?ref=signupassist",
   "cta": {
     "label": "Ready to proceed",
     "action": "show_finish_options",
@@ -255,7 +255,7 @@ Enhanced logging for debugging:
 
 ```
 [DB Cache] ✓ Enhanced hit {
-  orgRef: 'blackhawk-ski',
+  orgRef: 'aim-design',
   category: 'all',
   childAge: 'age 8',
   themes: 3,

@@ -4,6 +4,7 @@
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { invokeMCPTool } from '../_shared/mcpClient.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -38,6 +39,9 @@ interface FieldSchema {
   }>;
 }
 
+/** Default Bookeo org when plan has no org in metadata */
+const DEFAULT_ORG_REF = 'aim-design';
+
 /**
  * Discover required fields for a plan
  */
@@ -60,31 +64,34 @@ async function discoverPlanFields(plan: Plan): Promise<FieldSchema | null> {
       console.error('Failed to create plan execution:', executionError);
       return null;
     }
-    
-    // Call the SkiClubPro discover fields tool via function invocation
-    const { data: discoveryResult, error: discoveryError } = await supabase.functions.invoke('skiclubpro-tools', {
-      body: {
-        tool: 'scp.discover_required_fields',
-        args: {
-          program_ref: plan.program_ref,
-          mandate_id: plan.mandate_id,
-          plan_execution_id: planExecution.id
-        }
-      }
-    });
-    
-    if (discoveryError) {
-      console.error('Field discovery failed:', discoveryError);
-      
-      // Update plan execution with failure
+
+    const meta = (plan as { meta?: { org_ref?: string } }).meta;
+    const org_ref = meta?.org_ref ?? DEFAULT_ORG_REF;
+
+    const discoveryResult = await invokeMCPTool(
+      'bookeo.discover_required_fields',
+      {
+        program_ref: plan.program_ref,
+        org_ref,
+        mandate_id: plan.mandate_id,
+        plan_execution_id: planExecution.id,
+      },
+      { mandate_id: plan.mandate_id, plan_execution_id: planExecution.id, skipAudit: true },
+    );
+
+    if (discoveryResult?.error || discoveryResult?.success === false) {
+      const msg =
+        typeof discoveryResult?.error === 'string'
+          ? discoveryResult.error
+          : discoveryResult?.message || 'Field discovery failed';
+      console.error('Field discovery failed:', msg);
       await supabase
         .from('plan_executions')
         .update({
           finished_at: new Date().toISOString(),
-          result: `field_discovery_failed: ${discoveryError.message}`
+          result: `field_discovery_failed: ${msg}`,
         })
         .eq('id', planExecution.id);
-      
       return null;
     }
     
@@ -139,7 +146,7 @@ async function processScheduledPlans(): Promise<{ processed: number; failed: num
       .from('plans')
       .select('*')
       .eq('status', 'scheduled')
-      .eq('provider', 'skiclubpro')
+      .eq('provider', 'bookeo')
       .gte('opens_at', new Date().toISOString())
       .lte('opens_at', sevenDaysFromNow.toISOString());
     
@@ -149,7 +156,7 @@ async function processScheduledPlans(): Promise<{ processed: number; failed: num
     }
     
     if (!plans || plans.length === 0) {
-      console.log('No scheduled SkiClubPro plans found for the next 7 days');
+      console.log('No scheduled Bookeo plans found for the next 7 days');
       return { processed: 0, failed: 0 };
     }
     

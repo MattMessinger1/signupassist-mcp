@@ -13,13 +13,13 @@ export interface SelectorSet {
 }
 
 export interface ProviderConfig {
-  id: string; // 'skiclubpro', 'campminder', 'daysmart'
-  name: string; // Display name: 'SkiClubPro'
+  id: string; // 'bookeo', 'campminder', 'daysmart'
+  name: string; // Display name: e.g. 'Bookeo'
   urlPattern: 'subdomain' | 'path' | 'custom';
   
   tools: {
-    findPrograms: string; // Tool name: 'scp.find_programs'
-    discoverFields: string; // Tool name: 'scp.discover_required_fields'
+    findPrograms: string; // e.g. 'bookeo.find_programs'
+    discoverFields: string; // e.g. 'bookeo.discover_required_fields'
   };
   
   // Provider-specific behavior functions

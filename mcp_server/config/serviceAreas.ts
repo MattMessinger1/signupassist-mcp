@@ -17,19 +17,19 @@ export interface ServiceRegion {
 // Currently active service areas
 export const ACTIVE_REGIONS: ServiceRegion[] = [
   // Madison, WI metro area
-  { city: 'Madison', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['blackhawk-ski-club'] },
-  { city: 'Middleton', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['blackhawk-ski-club'] },
-  { city: 'Verona', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['blackhawk-ski-club'] },
-  { city: 'Fitchburg', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['blackhawk-ski-club'] },
-  { city: 'Waunakee', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['blackhawk-ski-club'] },
-  { city: 'Sun Prairie', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['blackhawk-ski-club'] },
-  { city: 'Monona', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['blackhawk-ski-club'] },
-  { city: 'Cottage Grove', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['blackhawk-ski-club'] },
-  { city: 'DeForest', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['blackhawk-ski-club'] },
-  { city: 'Oregon', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['blackhawk-ski-club'] },
-  { city: 'Stoughton', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['blackhawk-ski-club'] },
-  { city: 'Mount Horeb', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['blackhawk-ski-club'] },
-  { city: 'Cross Plains', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['blackhawk-ski-club'] },
+  { city: 'Madison', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
+  { city: 'Middleton', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
+  { city: 'Verona', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
+  { city: 'Fitchburg', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
+  { city: 'Waunakee', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
+  { city: 'Sun Prairie', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
+  { city: 'Monona', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
+  { city: 'Cottage Grove', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
+  { city: 'DeForest', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
+  { city: 'Oregon', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
+  { city: 'Stoughton', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
+  { city: 'Mount Horeb', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
+  { city: 'Cross Plains', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
 ];
 
 // Coming soon regions (announced expansion)

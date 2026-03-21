@@ -7,7 +7,7 @@ import { googlePlacesSearch } from "../mcp_server/utils/providerSearch";
 
     const examples = [
       { name: "YMCA Madison" },
-      { name: "Blackhawk Ski Club", location: "Middleton WI" },
+      { name: "AIM Design", location: "Madison WI" },
       { name: "Boys and Girls Club", location: "Madison WI" },
     ];
 

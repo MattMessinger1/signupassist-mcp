@@ -89,7 +89,7 @@ Production build configuration with CI-friendly settings:
 #### `skipLibCheck: true` ✅
 Skips type checking of declaration files (`.d.ts`) from `node_modules`.
 
-**Why**: Prevents CI breakages from third-party library type changes (e.g., Playwright, Browserbase).
+**Why**: Prevents CI breakages from third-party library type changes in dependencies.
 
 #### `noErrorTruncation: true` ✅
 Displays full error messages without truncation.

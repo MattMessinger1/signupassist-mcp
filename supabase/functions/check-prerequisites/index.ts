@@ -83,66 +83,24 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Run MCP prerequisite checks using shared client
+    console.log('Credential loaded for prerequisite check:', !!credentialData);
+
+    // Run MCP prerequisite checks (Bookeo API health + generic checks)
     const checks = [];
 
     try {
-      // Check account status
-      const accountStatus = await invokeMCPTool('scp.check_account_status', { 
-        credential_data: credentialData 
-      }, { skipAudit: true }); // Skip audit for prerequisite checks
-      
+      const apiPing = await invokeMCPTool('bookeo.test_connection', {}, { skipAudit: true });
       checks.push({
-        check: 'Account Status',
-        status: accountStatus.status === 'active' ? 'pass' : 'fail',
-        message: accountStatus.message || 'Account status check completed'
+        check: 'Provider API',
+        status: apiPing?.success === true ? 'pass' : 'fail',
+        message: apiPing?.message || 'Bookeo API connectivity check completed',
       });
     } catch (error) {
-      console.error('Account status check failed:', error);
+      console.error('Bookeo API check failed:', error);
       checks.push({
-        check: 'Account Status',
+        check: 'Provider API',
         status: 'fail',
-        message: 'Failed to check account status'
-      });
-    }
-
-    try {
-      // Check membership status
-      const membershipStatus = await invokeMCPTool('scp.check_membership_status', { 
-        credential_data: credentialData 
-      }, { skipAudit: true });
-      
-      checks.push({
-        check: 'Membership Status',
-        status: membershipStatus.is_member ? 'pass' : 'fail',
-        message: membershipStatus.message || 'Membership status check completed'
-      });
-    } catch (error) {
-      console.error('Membership status check failed:', error);
-      checks.push({
-        check: 'Membership Status',
-        status: 'fail',
-        message: 'Failed to check membership status'
-      });
-    }
-
-    try {
-      // Check stored payment method
-      const paymentStatus = await invokeMCPTool('scp.check_payment_method', { 
-        credential_data: credentialData 
-      }, { skipAudit: true });
-      
-      checks.push({
-        check: 'Payment Method',
-        status: paymentStatus.has_payment_method ? 'pass' : 'fail',
-        message: paymentStatus.message || 'Payment method check completed'
-      });
-    } catch (error) {
-      console.error('Payment method check failed:', error);
-      checks.push({
-        check: 'Payment Method',
-        status: 'fail',
-        message: 'Failed to check payment method'
+        message: 'Failed to verify Bookeo API connectivity',
       });
     }
 
@@ -202,55 +160,6 @@ interface PrerequisiteResult {
   overall_status: 'ready' | 'blocked' | 'warnings';
   checks: PrerequisiteCheck[];
   can_proceed: boolean;
-}
-
-async function checkSkiClubProMembership(userId: string): Promise<PrerequisiteCheck> {
-  try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
-
-    const { data: credentials, error } = await supabase
-      .from('stored_credentials')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('provider', 'skiclubpro')
-      .eq('alias', 'main')
-      .maybeSingle();
-
-    if (error) {
-      return {
-        type: 'membership',
-        status: 'failed',
-        message: 'Unable to verify membership credentials',
-        blocking: true
-      };
-    }
-
-    if (!credentials) {
-      return {
-        type: 'membership',
-        status: 'failed',
-        message: 'No SkiClubPro credentials found. Please add your login details first.',
-        blocking: true
-      };
-    }
-
-    return {
-      type: 'membership',
-      status: 'passed',
-      message: 'SkiClubPro credentials verified',
-      blocking: false
-    };
-  } catch (error) {
-    return {
-      type: 'membership',
-      status: 'failed',
-      message: `Membership check failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      blocking: true
-    };
-  }
 }
 
 async function checkChildInformation(userId: string, childId: string): Promise<PrerequisiteCheck> {
@@ -372,10 +281,6 @@ async function checkAllPrerequisites(
   childId?: string
 ): Promise<PrerequisiteResult> {
   const checks: PrerequisiteCheck[] = [];
-
-  if (provider === 'skiclubpro') {
-    checks.push(await checkSkiClubProMembership(userId));
-  }
 
   if (childId) {
     checks.push(await checkChildInformation(userId, childId));

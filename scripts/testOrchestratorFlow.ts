@@ -28,7 +28,7 @@ interface TestStep {
 const TEST_STEPS: TestStep[] = [
   {
     name: "Step 3: Provider Search",
-    input: "I need ski lessons at Blackhawk Ski Club in Madison",
+    input: "I need classes at AIM Design in Madison",
     expectedFields: ["message", "cards"],
   },
   {
@@ -99,7 +99,7 @@ async function runSmokeTest() {
         orchestrator.updateContext(sessionId, {
           provider: {
             name: firstCard.title,
-            orgRef: firstCard.metadata?.orgRef || "blackhawk"
+            orgRef: firstCard.metadata?.orgRef || "aim-design"
           }
         });
         console.log("\n🔧 Context updated: Provider selected");

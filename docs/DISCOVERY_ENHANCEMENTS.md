@@ -428,7 +428,7 @@ export async function discoverFieldsSerially(
 
 #### Step 6: Store Events in Discovery Runs (30 min)
 
-**File: `mcp_server/providers/skiclubpro.ts`** (update existing)
+**File: `mcp_server/providers/bookeo.ts`** (update existing)
 
 ```typescript
 import { clearEvents, getEvents, getStageSummary } from '../lib/events.js';

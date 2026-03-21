@@ -154,8 +154,8 @@ Ensure these are set in Railway:
 - `OPENAI_MODEL` - (optional) Defaults to gpt-4o
 - `SUPABASE_URL` - Your Supabase URL
 - `SUPABASE_SERVICE_ROLE_KEY` - Your Supabase service role key
-- `BROWSERBASE_API_KEY` - Your Browserbase API key
-- `BROWSERBASE_PROJECT_ID` - Your Browserbase project ID
+- `BOOKEO_API_KEY` / `BOOKEO_SECRET_KEY` - Bookeo API credentials (provider catalog & bookings)
+- `MCP_SERVER_URL` / `MCP_ACCESS_TOKEN` - MCP HTTP endpoint and auth where required
 
 ## Troubleshooting
 

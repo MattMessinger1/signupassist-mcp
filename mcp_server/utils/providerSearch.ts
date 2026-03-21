@@ -38,8 +38,8 @@ export interface Provider {
 
 // Multi-Backend Provider Search Interfaces
 export interface SearchQuery {
-  name?: string;        // "Bookeo Demo" or "Blackhawk"
-  city?: string;        // "Madison" or "Middleton"
+  name?: string;        // e.g. organization display name
+  city?: string;        // e.g. "Madison"
   category?: string;    // "swim", "ski", "lessons"
 }
 
@@ -49,11 +49,11 @@ export interface OrgSearchResult extends OrgConfig {
 }
 
 const knownProviders: Record<string, Provider> = {
-  blackhawk: {
-    name: "Blackhawk Ski Club",
-    city: "Middleton",
+  aimdesign: {
+    name: "AIM Design",
+    city: "Madison",
     state: "WI",
-    orgRef: "blackhawk-ski-club",
+    orgRef: "aim-design",
     source: "local",
   },
 };
@@ -69,7 +69,7 @@ export async function lookupLocalProvider(name: string): Promise<Provider | null
 }
 
 /**
- * Search organizations across all registered providers (Bookeo, SkiClubPro, CampMinder)
+ * Search organizations across all registered providers (Bookeo)
  * Returns top 3 matches ranked by confidence score
  * 
  * @param query - Search criteria (name, city, category)

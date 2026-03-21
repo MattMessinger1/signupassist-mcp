@@ -37,21 +37,20 @@ export const DEMO_TEST_DATA = {
 // ============= Provider Configuration =============
 
 export const PROVIDERS = {
-  skiclubpro: {
-    id: "skiclubpro",
-    name: "SkiClubPro",
-    defaultOrg: "blackhawk-ski-club",
+  bookeo: {
+    id: "bookeo",
+    name: "Bookeo",
+    defaultOrg: "aim-design",
     tools: {
-      login: "skiclubpro_login",
-      findPrograms: "skiclubpro_find_programs",
-      checkPrerequisites: "skiclubpro_check_prerequisites",
-      register: "skiclubpro_register",
+      login: "bookeo.authenticate",
+      findPrograms: "bookeo.find_programs",
+      checkPrerequisites: "bookeo.check_prerequisites",
+      register: "bookeo.confirm_booking",
     },
   },
-  // Future providers can be added here
 } as const;
 
-export const DEFAULT_PROVIDER = PROVIDERS.skiclubpro;
+export const DEFAULT_PROVIDER = PROVIDERS.bookeo;
 
 // ============= Mock Data =============
 
@@ -235,13 +234,13 @@ export const TEST_SCENARIOS: TestScenario[] = [
   {
     id: 'login',
     name: 'Login Flow',
-    orchestratorInput: 'I need to connect to Blackhawk Ski Club',
+    orchestratorInput: 'I need to connect to AIM Design (Bookeo)',
     mcpToolCall: {
-      tool: 'scp:login',
+      tool: 'bookeo.find_programs',
       args: {
         email: TEST_CREDENTIALS.email,
         password: TEST_CREDENTIALS.password,
-        org_ref: 'blackhawk',
+        org_ref: 'aim-design',
       },
     },
     expectedOutputs: {
@@ -258,12 +257,12 @@ export const TEST_SCENARIOS: TestScenario[] = [
   {
     id: 'program_search',
     name: 'Program Search',
-    orchestratorInput: 'Show me ski lessons for kids',
+    orchestratorInput: 'Show me classes for kids',
     mcpToolCall: {
-      tool: 'scp:find_programs',
+      tool: 'bookeo.find_programs',
       args: {
-        query: 'ski lessons',
-        org_ref: 'blackhawk',
+        query: 'classes',
+        org_ref: 'aim-design',
       },
     },
     expectedOutputs: {
@@ -281,9 +280,9 @@ export const TEST_SCENARIOS: TestScenario[] = [
     name: 'Check Prerequisites',
     orchestratorInput: 'What do I need to complete?',
     mcpToolCall: {
-      tool: 'scp:check_prerequisites',
+      tool: 'bookeo.check_prerequisites',
       args: {
-        org_ref: 'blackhawk',
+        org_ref: 'aim-design',
       },
     },
     expectedOutputs: {

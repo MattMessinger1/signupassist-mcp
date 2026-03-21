@@ -8,12 +8,12 @@ const session = "manual-orch-test";
   console.log("=== Testing Manual Orchestration Flow ===\n");
   
   console.log("STEP 1: Provider Search");
-  let result = await orchestrator.generateResponse("Blackhawk Ski Club", session);
+  let result = await orchestrator.generateResponse("AIM Design", session);
   console.log("Result:", JSON.stringify(result, null, 2));
   console.log("\n---\n");
 
   console.log("STEP 2: Program Selection");
-  orchestrator.updateContext(session, { provider: { name: "Blackhawk Ski Club", orgRef: "blackhawk" } });
+  orchestrator.updateContext(session, { provider: { name: "AIM Design", orgRef: "aim-design" } });
   result = await orchestrator.generateResponse("Show me programs", session);
   console.log("Result:", JSON.stringify(result, null, 2));
   console.log("\n---\n");
