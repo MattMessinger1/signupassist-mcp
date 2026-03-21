@@ -3,16 +3,17 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { auditToolCall, logEvidence, createAuditMiddleware, AuditContext } from '../middleware/audit';
 
-const mockSupabase = {
-  from: vi.fn().mockReturnThis(),
-  select: vi.fn().mockReturnThis(),
-  insert: vi.fn().mockReturnThis(),
-  update: vi.fn().mockReturnThis(),
-  eq: vi.fn().mockReturnThis(),
-  single: vi.fn().mockReturnThis(),
-};
+const { mockSupabase } = vi.hoisted(() => ({
+  mockSupabase: {
+    from: vi.fn().mockReturnThis(),
+    select: vi.fn().mockReturnThis(),
+    insert: vi.fn().mockReturnThis(),
+    update: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    single: vi.fn().mockReturnThis(),
+  },
+}));
 
 vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(() => mockSupabase),
@@ -21,6 +22,8 @@ vi.mock('@supabase/supabase-js', () => ({
 vi.mock('../lib/mandates', () => ({
   verifyMandate: vi.fn(),
 }));
+
+import { auditToolCall, logEvidence, createAuditMiddleware, AuditContext } from '../middleware/audit';
 
 Object.defineProperty(global, 'crypto', {
   value: {

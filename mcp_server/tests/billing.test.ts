@@ -21,9 +21,10 @@ const { mockStripe, mockSupabase } = vi.hoisted(() => ({
 
 vi.mock('../lib/mandates');
 vi.mock('../middleware/audit');
-vi.mock('stripe', () => ({
-  default: vi.fn(() => mockStripe)
-}));
+vi.mock('stripe', () => {
+  function MockStripe() { return mockStripe; }
+  return { default: MockStripe };
+});
 vi.mock('@supabase/supabase-js', () => ({
   createClient: vi.fn(() => mockSupabase)
 }));

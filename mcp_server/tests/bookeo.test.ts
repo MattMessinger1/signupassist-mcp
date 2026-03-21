@@ -3,7 +3,23 @@
  * Tests for Bookeo API integration
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: vi.fn(() => ({
+    from: vi.fn().mockReturnThis(),
+    select: vi.fn().mockReturnThis(),
+    insert: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    single: vi.fn(),
+  })),
+}));
+
+vi.mock('../middleware/audit', () => ({
+  auditToolCall: vi.fn(async (_ctx: any, _args: any, fn: any) => fn()),
+  createAuditMiddleware: vi.fn(),
+}));
+
 import { bookeoTools } from '../providers/bookeo.js';
 
 describe('Bookeo Provider', () => {
