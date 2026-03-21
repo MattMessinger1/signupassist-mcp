@@ -3,13 +3,13 @@
 **Effective Date:** January 3, 2026  
 **Last Updated:** March 15, 2026
 
-SignupAssist is an activity enrollment assistant that helps users find and register for local classes, camps, and lessons through a guided wizard.
+SignupAssist is a family-safe activity enrollment assistant that helps users find and register for local classes, camps, and lessons through a guided wizard.
 
 ## Service Classification
 
-- SignupAssist is an activity enrollment tool for general audiences (ages 13+).
+- SignupAssist is a family-safe activity enrollment tool for general audiences (ages 13+).
 - Users browse programs, review details, and confirm registrations through a step-by-step flow.
-- SignupAssist is **not** an adult-content service, dating service, or NSFW platform.
+- SignupAssist is **not** an adult-content service, dating service, or NSFW platform. It does not provide sexual content or any adult services.
 - All users must be at least 13 years old to use the service.
 
 ## How It Works
