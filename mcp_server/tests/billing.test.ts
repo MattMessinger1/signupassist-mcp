@@ -3,43 +3,37 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+const { mockStripe, mockSupabase } = vi.hoisted(() => ({
+  mockStripe: {
+    paymentIntents: {
+      create: vi.fn()
+    }
+  },
+  mockSupabase: {
+    from: vi.fn().mockReturnThis(),
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    single: vi.fn(),
+    insert: vi.fn().mockReturnThis()
+  }
+}));
+
+vi.mock('../lib/mandates');
+vi.mock('../middleware/audit');
+vi.mock('stripe', () => ({
+  default: vi.fn(() => mockStripe)
+}));
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: vi.fn(() => mockSupabase)
+}));
+
 import { chargeOnSuccess } from '../lib/billing';
 import { verifyMandate } from '../lib/mandates';
 import { auditToolCall } from '../middleware/audit';
 
-// Mock dependencies
-vi.mock('../lib/mandates');
-vi.mock('../middleware/audit');
-vi.mock('stripe');
-vi.mock('@supabase/supabase-js');
-
 const mockVerifyMandate = vi.mocked(verifyMandate);
 const mockAuditToolCall = vi.mocked(auditToolCall);
-
-// Mock Stripe
-const mockStripe = {
-  paymentIntents: {
-    create: vi.fn()
-  }
-};
-
-// Mock Supabase
-const mockSupabase = {
-  from: vi.fn().mockReturnThis(),
-  select: vi.fn().mockReturnThis(),
-  eq: vi.fn().mockReturnThis(),
-  single: vi.fn(),
-  insert: vi.fn().mockReturnThis()
-};
-
-// Setup mocks
-vi.mock('stripe', () => ({
-  default: vi.fn(() => mockStripe)
-}));
-
-vi.mock('@supabase/supabase-js', () => ({
-  createClient: vi.fn(() => mockSupabase)
-}));
 
 describe('Billing Integration', () => {
   const validArgs = {

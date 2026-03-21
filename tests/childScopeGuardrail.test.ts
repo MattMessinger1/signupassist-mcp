@@ -78,7 +78,7 @@ describe('child scope guardrail', () => {
 
   it('returns a clear out-of-scope message', () => {
     const msg = getChildScopeBlockedMessage().toLowerCase();
-    expect(msg).toContain('child activity registration');
+    expect(msg).toContain('youth activity enrollment');
     expect(msg).toContain('adult-only signup requests');
     expect(msg).toContain('register directly with the provider');
   });
@@ -89,6 +89,6 @@ describe('child scope guardrail', () => {
     expect(response.metadata.suppressWizardHeader).toBe(true);
     expect(response.metadata.reason).toBe('adult_signup_request');
     expect(response.context.step).toBe('BROWSE');
-    expect(response.message).toContain('SignupAssist is focused on parent/guardian-managed child activity registration.');
+    expect(response.message).toContain('SignupAssist is focused on youth activity enrollment.');
   });
 });

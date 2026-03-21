@@ -3,7 +3,7 @@
  * Tests for Bookeo API integration
  */
 
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from 'vitest';
 import { bookeoTools } from '../providers/bookeo.js';
 
 describe('Bookeo Provider', () => {

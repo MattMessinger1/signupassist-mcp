@@ -98,9 +98,9 @@ If we become aware that we received Restricted Data, we will take reasonable ste
 
 ---
 
-## 5. PARTICIPANT DATA PRIVACY
+## 5. PARTICIPANT DATA PRIVACY (INCLUDING CHILDREN)
 
-Signup Assist allows account holders to register participants for activities. This section explains how we handle participant information.
+Signup Assist allows account holders to register participants — including children — for activities. This section explains how we handle participant information.
 
 ### What We Collect
 

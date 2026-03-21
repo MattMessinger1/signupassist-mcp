@@ -18,4 +18,16 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  test: {
+    exclude: [
+      'node_modules/**',
+      'dist/**',
+      // Deno tests (import from https:// URLs)
+      'tests/fingerprint-crypto.test.ts',
+      'tests/useDiscoveryHelpers.test.ts',
+      // Node test runner tests (use node:test, not vitest)
+      'mcp_server/tests/piiCrypto.test.ts',
+      'mcp_server/tests/user.pii.integration.test.ts',
+    ],
+  },
 }));
