@@ -868,7 +868,7 @@ export function MCPChat({
 
   // Suggested prompts for high-intent users (execution-focused, not discovery)
   const suggestedPrompts = [
-    "Register Emma for Blackhawk ski lessons",
+    "Register Emma for AIM Design ski lessons",
     "Sign up for the Saturday soccer session",
     "Complete my AIM Design camp registration",
   ];

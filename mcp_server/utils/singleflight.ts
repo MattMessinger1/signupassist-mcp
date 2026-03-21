@@ -11,7 +11,7 @@ const inflight = new Map<string, Promise<any>>();
  * If the same key is already in-flight, returns the existing promise
  * Otherwise, executes the function and tracks it until completion
  * 
- * @param key - Unique identifier for the operation (e.g., "login:user123:blackhawk")
+ * @param key - Unique identifier for the operation (e.g., "login:user123:aim-design")
  * @param fn - Async function to execute
  * @returns Promise resolving to the function's result
  */

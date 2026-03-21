@@ -7,7 +7,7 @@ The `buildProgramMappings.ts` script analyzes successful registrations from the 
 ## Purpose
 
 This script enables Phase 4 of the intent-driven fast-path optimization:
-- Reduces scrape time from 30s to 2-3s for high-intent users
+- Reduces time-to-intent match by reusing successful program mappings
 - Automatically learns from successful registration patterns
 - Calculates confidence scores based on historical frequency
 - Extracts keywords for better intent matching
@@ -50,7 +50,7 @@ The script generates a JSON file with the following structure:
       "ageMin": 6,
       "ageMax": 12,
       "category": "lessons",
-      "provider": "blackhawk-ski-club",
+      "provider": "aim-design",
       "keywords": ["nordic", "wednesday", "kids"],
       "confidence": 0.92,
       "season": "winter",

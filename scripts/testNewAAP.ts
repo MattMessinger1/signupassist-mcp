@@ -13,14 +13,14 @@ import type { AAPTriad, AAPAskedFlags } from "../mcp_server/types/aap.js";
 console.log("🧪 Testing New AAP Triage System\n");
 console.log("=" .repeat(60));
 
-// Test Case 1: "Blackhawk ski" loop fix
+// Test Case 1: "AIM Design" loop fix
 async function testCase1() {
-  console.log("\n📋 TEST CASE 1: Blackhawk Ski Loop Fix");
+  console.log("\n📋 TEST CASE 1: AIM Design Loop Fix");
   console.log("-".repeat(60));
   
   // Turn 1: User mentions provider + activity, missing age
   const turn1Messages = [
-    { role: 'user', content: "I'd like to sign up my kids for blackhawk ski" }
+    { role: 'user', content: "I'd like to sign up my kids for AIM Design classes" }
   ];
   
   const askedFlags1: AAPAskedFlags = {
@@ -30,7 +30,7 @@ async function testCase1() {
     asked_location: false
   };
   
-  const result1 = await triageAAP(turn1Messages, null, {}, askedFlags1, "I'd like to sign up my kids for blackhawk ski");
+  const result1 = await triageAAP(turn1Messages, null, {}, askedFlags1, "I'd like to sign up my kids for AIM Design classes");
   
   console.log("\n✅ Turn 1 Results:");
   console.log("AAP State:", JSON.stringify(result1.aap, null, 2));
@@ -50,7 +50,7 @@ async function testCase1() {
   
   // Turn 2: User provides age
   const turn2Messages = [
-    { role: 'user', content: "I'd like to sign up my kids for blackhawk ski" },
+    { role: 'user', content: "I'd like to sign up my kids for AIM Design classes" },
     { role: 'assistant', content: result1.followup_questions[0] },
     { role: 'user', content: "9" }
   ];
@@ -279,7 +279,7 @@ async function testCase3() {
   console.log("-".repeat(60));
   
   const messages = [
-    { role: 'user', content: "Sign up my 9 year old for blackhawk ski lessons" }
+    { role: 'user', content: "Sign up my 9 year old for AIM Design robotics" }
   ];
   
   const askedFlags: AAPAskedFlags = {
@@ -289,7 +289,7 @@ async function testCase3() {
     asked_location: false
   };
   
-  const result = await triageAAP(messages, null, {}, askedFlags, "Sign up my 9 year old for blackhawk ski lessons");
+  const result = await triageAAP(messages, null, {}, askedFlags, "Sign up my 9 year old for AIM Design robotics");
   
   console.log("\n✅ Results:");
   console.log("AAP State:", JSON.stringify(result.aap, null, 2));
@@ -308,7 +308,7 @@ async function testCase3() {
   // Test discovery planner
   if (pass) {
     console.log("\n🔍 Testing Discovery Planner...");
-    const plan = await planProgramDiscovery(result.aap, "Sign up my 9 year old for blackhawk ski lessons");
+    const plan = await planProgramDiscovery(result.aap, "Sign up my 9 year old for AIM Design robotics");
     console.log("Discovery Plan:", JSON.stringify(plan, null, 2));
   }
   
@@ -328,7 +328,7 @@ async function testCase3() {
     console.log("\n" + "=".repeat(60));
     console.log("📊 FINAL RESULTS");
     console.log("=".repeat(60));
-    console.log(`Test Case 1 (Blackhawk Loop): ${results[0] ? "✅ PASS" : "❌ FAIL"}`);
+    console.log(`Test Case 1 (AIM Design Loop): ${results[0] ? "✅ PASS" : "❌ FAIL"}`);
     console.log(`Test Case 2 (Declined Provider): ${results[1] ? "✅ PASS" : "❌ FAIL"}`);
     console.log(`Test Case 3 (All-At-Once): ${results[2] ? "✅ PASS" : "❌ FAIL"}`);
     console.log(`Test Case 4 (Local Search): ${results[3] ? "✅ PASS" : "❌ FAIL"}`);  // NEW

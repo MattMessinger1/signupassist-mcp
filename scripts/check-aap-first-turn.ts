@@ -20,7 +20,7 @@ async function checkAAPFirstTurn() {
   const sessionId = `aap-first-turn-test-${Date.now()}`;
 
   try {
-    const fullTriadMessage = 'I want to sign up my 8-year-old daughter for Blackhawk Ski Club lessons';
+    const fullTriadMessage = 'I want to sign up my 8-year-old daughter for AIM Design robotics classes';
 
     console.log(`📝 User message: "${fullTriadMessage}"\n`);
 

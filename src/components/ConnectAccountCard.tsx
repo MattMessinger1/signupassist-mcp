@@ -31,15 +31,9 @@ export function ConnectAccountCard({ provider, orgName, orgRef }: ConnectAccount
     // Construct signup URL based on provider
     let signupUrl = '';
     
-    if (provider === 'skiclubpro') {
-      // Extract base domain from orgRef
-      const baseDomain = orgRef === 'blackhawk-ski-club'
-        ? 'blackhawk.skiclubpro.team'
-        : `${orgRef.replace(/[^a-z0-9-]/g, '').toLowerCase()}.skiclubpro.team`;
-      
-      signupUrl = `https://${baseDomain}/register`;
+    if (provider === 'bookeo') {
+      signupUrl = 'https://bookeo.com';
     } else {
-      // Fallback for other providers
       signupUrl = `https://${provider}.com/signup`;
     }
 

@@ -59,7 +59,7 @@ describe('Billing Integration', () => {
     mockVerifyMandate.mockResolvedValue({
       verified: true,
       user_id: 'user-123',
-      provider: 'skiclubpro',
+      provider: 'bookeo',
       credential_type: 'jws'
     });
 
@@ -110,7 +110,7 @@ describe('Billing Integration', () => {
         status: 'succeeded'
       });
 
-      expect(mockVerifyMandate).toHaveBeenCalledWith('mandate-456', 'scp:pay');
+      expect(mockVerifyMandate).toHaveBeenCalledWith('mandate-456', 'bookeo:pay');
       expect(mockStripe.paymentIntents.create).toHaveBeenCalledWith({
         amount: 5000,
         currency: 'usd',
@@ -154,10 +154,10 @@ describe('Billing Integration', () => {
       expect(mockStripe.paymentIntents.create).not.toHaveBeenCalled();
     });
 
-    it('should throw error if mandate missing scp:pay scope', async () => {
-      mockVerifyMandate.mockRejectedValue(new Error('Mandate missing required scope: scp:pay'));
+    it('should throw error if mandate missing bookeo:pay scope', async () => {
+      mockVerifyMandate.mockRejectedValue(new Error('Mandate missing required scope: bookeo:pay'));
 
-      await expect(chargeOnSuccess(validArgs)).rejects.toThrow('Mandate missing required scope: scp:pay');
+      await expect(chargeOnSuccess(validArgs)).rejects.toThrow('Mandate missing required scope: bookeo:pay');
     });
 
     it('should throw error if plan execution not found', async () => {

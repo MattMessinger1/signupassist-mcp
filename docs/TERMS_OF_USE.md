@@ -193,7 +193,7 @@ We may modify fees with reasonable notice. Continued use after fee changes const
 
 ### Third-Party Integrations
 The Services interact with third-party services including:
-- Activity registration providers (Bookeo, SkiClubPro, etc.)
+- Activity registration providers (e.g., Bookeo-backed catalogs)
 - Authentication providers (Auth0)
 - Payment processors (Stripe)
 - AI platforms (OpenAI)

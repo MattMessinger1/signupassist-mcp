@@ -25,10 +25,10 @@ interface ProgramBrowserProps {
   credentialId: string | null;                 // ✅ pass from parent
   onProgramSelect: (program: { ref: string; title: string }) => void;
   selectedProgram?: string;
-  orgRef?: string;                              // default 'blackhawk-ski-club'
+  orgRef?: string;                              // default 'aim-design'
 }
 
-export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram, orgRef = 'blackhawk-ski-club' }: ProgramBrowserProps) {
+export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram, orgRef = 'aim-design' }: ProgramBrowserProps) {
   const [open, setOpen] = useState(false);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [loading, setLoading] = useState(false);
@@ -51,7 +51,7 @@ export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram,
     if (!credentialId) {
       toast({
         title: "Select an account",
-        description: "Choose your Blackhawk (SkiClubPro) credential first.",
+        description: "Choose your provider credential first.",
         variant: "destructive"
       });
       return;
@@ -62,10 +62,10 @@ export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram,
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('No active session');
 
-      toast({ title: "Connecting…", description: prompts.ui.programs.helper('Blackhawk') });
+      toast({ title: "Connecting…", description: prompts.ui.programs.helper('your provider') });
 
       console.log('[ProgramBrowser] Invoking mcp-executor with args:', {
-        tool: 'scp:find_programs',
+        tool: 'bookeo.find_programs',
         credential_id: credentialId,
         org_ref: orgRef,
         query
@@ -73,7 +73,7 @@ export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram,
 
       const { data, error } = await supabase.functions.invoke('mcp-executor', {
         body: {
-          tool: 'scp:find_programs',
+          tool: 'bookeo.find_programs',
           args: {
             query: query || undefined,
             credential_id: credentialId,
@@ -142,7 +142,7 @@ export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram,
               </Button>
             </DialogTrigger>
           </TooltipTrigger>
-          <TooltipContent side="top">{prompts.ui.programs.helper('Blackhawk')}</TooltipContent>
+          <TooltipContent side="top">{prompts.ui.programs.helper('your provider')}</TooltipContent>
         </Tooltip>
 
         <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
@@ -150,7 +150,7 @@ export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram,
             <div className="flex items-start justify-between gap-3">
               <div>
                 <DialogTitle className="flex items-center gap-2"><Info className="h-4 w-4" /> {prompts.ui.titles.program}</DialogTitle>
-                <DialogDescription>{prompts.ui.programs.helper('Blackhawk')}</DialogDescription>
+                <DialogDescription>{prompts.ui.programs.helper('your provider')}</DialogDescription>
               </div>
               <Badge variant={credentialId ? 'secondary' : 'destructive'}>
                 {credentialId ? 'Login Ready' : 'No Credentials'}
@@ -174,7 +174,7 @@ export function ProgramBrowser({ credentialId, onProgramSelect, selectedProgram,
           <div className="flex-1 overflow-y-auto">
             {!credentialId ? (
               <div className="text-center py-8 text-muted-foreground">
-                Add your Blackhawk credentials in Settings, then try again.
+                Add your provider credentials in Settings, then try again.
               </div>
             ) : loading ? (
               <div className="flex items-center justify-center py-8"><Loader2 className="h-6 w-6 animate-spin mr-2" /> Loading…</div>

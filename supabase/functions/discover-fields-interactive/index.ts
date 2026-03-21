@@ -221,8 +221,8 @@ async function runDiscoveryInBackground(jobId: string, requestBody: RequestBody,
     const mandatePayload = {
       mandate_id,
       user_id: user.id,
-      provider: 'skiclubpro',
-      scopes: ['scp:read:listings'],
+      provider: 'bookeo',
+      scopes: ['bookeo:read_products', 'bookeo:discover_fields'],
       program_ref,
       max_amount_cents: 0,
       valid_from: validFrom.toISOString(),
@@ -252,8 +252,8 @@ async function runDiscoveryInBackground(jobId: string, requestBody: RequestBody,
     await supabase.from('mandates').insert({
       id: mandate_id,
       user_id: user.id,
-      provider: 'skiclubpro',
-      scope: ['scp:read:listings'],
+      provider: 'bookeo',
+      scope: ['bookeo:read_products', 'bookeo:discover_fields'],
       program_ref,
       max_amount_cents: 0,
       valid_from: mandatePayload.valid_from,
@@ -267,14 +267,14 @@ async function runDiscoveryInBackground(jobId: string, requestBody: RequestBody,
     const formFingerprint = await generateFormFingerprint(`${program_ref}|${credential_id}`);
     
     const { data: prereqHints } = await supabase.rpc("get_best_hints", {
-      p_provider: "skiclubpro",
+      p_provider: "bookeo",
       p_program: `${program_ref}_prereqs`,
       p_stage: "prerequisites",
     });
     const warmHintsPrereqs = prereqHints?.hints ?? {};
 
     const { data: programHints } = await supabase.rpc("get_best_hints", {
-      p_provider: "skiclubpro",
+      p_provider: "bookeo",
       p_program: program_ref,
       p_stage: "program",
     });
@@ -283,8 +283,9 @@ async function runDiscoveryInBackground(jobId: string, requestBody: RequestBody,
     // Call MCP discovery with explicit stage parameter
     const userJwt = authHeader.replace('Bearer ', '');
     
-    const result = await invokeMCPTool("scp.discover_required_fields", {
+    const result = await invokeMCPTool("bookeo.discover_required_fields", {
       program_ref,
+      org_ref: 'aim-design',
       mandate_id,
       credential_id,
       user_jwt: userJwt,

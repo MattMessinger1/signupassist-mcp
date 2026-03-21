@@ -182,7 +182,7 @@ Deno.serve(async (req) => {
     }
 
     // Default scopes for system mandate
-    const mandateScopes = scopes || ['scp:authenticate', 'scp:discover:fields'];
+    const mandateScopes = scopes || ['bookeo:authenticate', 'bookeo:discover_fields'];
     const validDuration = valid_duration_minutes || 10080; // 7 days default
 
     console.log('[create-system-mandate] Creating mandate for user:', user_id);
@@ -199,7 +199,7 @@ Deno.serve(async (req) => {
     const result = await createOrRefreshMandate(
       supabase,
       user_id,
-      'skiclubpro',
+      'bookeo',
       'system', // org_ref for system-level operations
       mandateScopes,
       validDuration

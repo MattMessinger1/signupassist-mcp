@@ -12,7 +12,6 @@ import { getMessageForState } from "./messageTemplates.js";
 import { buildGroupedCardsPayload, buildSimpleCardsFromGrouped, detectAdultRequest, detectAgeMismatch } from "./cardPayloadBuilder.js";
 import { filterByAge, classifyIntentStrength, pickLikelyProgram, type ParsedIntent, type ExtendedIntent } from "../lib/intentParser.js";
 import { normalizeEmailWithAI, generatePersonalizedMessage } from "../lib/aiIntentParser.js";
-import { singleFlight } from "../utils/singleflight.js";
 import type { SessionContext } from "../types.js";
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '../../src/integrations/supabase/types.js';
@@ -309,8 +308,8 @@ class AIOrchestrator {
 
     // Few-shot examples to maintain consistent tone and style
     this.exampleMessages = [
-      { role: "user", content: "Blackhawk ski Madison" },
-      { role: "assistant", content: "🔍 I found **Blackhawk Ski Club (Middleton, WI)**. Is that correct?" },
+      { role: "user", content: "robotics classes in Madison" },
+      { role: "assistant", content: "🔍 I found **AIM Design (Madison, WI)**. Is that correct?" },
       { role: "user", content: "Yes" },
       { role: "assistant", content: "✅ Great! Let's check available classes next." }
     ];
@@ -1298,7 +1297,7 @@ class AIOrchestrator {
     needsMoreInfo: boolean;
   }> {
     const systemPrompt = `You are a setup assistant. Parse the user's free text for three fields:
-- provider (e.g., "Blackhawk Ski Club")
+- provider (e.g., "AIM Design")
 - activity/category (e.g., "ski lessons", "race team", "math tutoring")
 - child's age or age range
 
@@ -1368,8 +1367,8 @@ Example follow-up (only when needed):
   }
 
   /**
-   * Search for programs using Three-Pass Extractor
-   * Calls scp.find_programs and formats results as cards
+   * Search for programs via Bookeo-backed discovery
+   * Calls bookeo.find_programs and formats results as cards
    * Now uses message templates for consistent parent-friendly communication
    */
   private async handleProgramSearch(
@@ -1403,8 +1402,8 @@ Example follow-up (only when needed):
     Logger.info(`[handleProgramSearch] Fetching ${intentCategory} programs for ${context.provider.name}`);
     
     try {
-      // Call scp.find_programs tool
-      const result = await this.callTool('scp.find_programs', {
+      // Call bookeo.find_programs tool
+      const result = await this.callTool('bookeo.find_programs', {
         credential_id: context.credential_id,
         session_token: context.provider_session_token,
         org_ref: context.provider.orgRef,
@@ -1556,11 +1555,11 @@ Example follow-up (only when needed):
    */
   /**
    * Handle credential submission without double-login
-   * Reuses session_token if available, otherwise performs login
+   * Reuses session_token if available; otherwise proceeds with API discovery (no browser login).
    */
   private async handleAction_credentials_submitted(ctx: SessionContext, payload: any, sessionId?: string): Promise<OrchestratorResponse> {
     // TASK 1: Enhanced session reuse check - verify both token and expiry
-    const targetOrg = ctx?.provider?.orgRef ?? "blackhawk-ski";
+    const targetOrg = ctx?.provider?.orgRef ?? "aim-design";
     const now = Date.now();
     const sessionTTL = ctx.session_ttl_ms || 300000; // Default 5 min
     
@@ -1575,7 +1574,7 @@ Example follow-up (only when needed):
       Logger.info("[orchestrator] ✅ Reusing valid session_token - skipping login entirely");
       Logger.info(`[orchestrator] Session valid until: ${new Date(ctx.session_token_expires_at!).toISOString()}`);
       
-      // Mark login as complete without calling scp.login
+      // Mark login as complete (Bookeo uses server-side API credentials)
       await this.updateContext(sessionId, {
         login_status: "success",
         loginCompleted: true
@@ -1586,33 +1585,17 @@ Example follow-up (only when needed):
       return await this.handleAutoProgramDiscovery(updatedCtx, { mandate_jws: ctx.mandate_jws }, sessionId);
     }
     
-    // No valid session - need to login
-    Logger.info("[orchestrator] No valid session found - performing login to obtain session_token…");
-    
-    // Update context with payload data
+    // No reusable client session — legacy browser login removed; Bookeo discovery uses API fetch server-side.
+    Logger.info("[orchestrator] No valid session token — marking flow ready for API discovery (no browser login)");
+
     ctx.provider_cookies = payload?.cookies ? Object.values(payload.cookies) : ctx.provider_cookies;
     ctx.credential_id = payload?.credential_id ?? ctx.credential_id;
 
     const mandate_jws = ctx.mandate_jws ?? process.env.DEV_MANDATE_JWS;
-    
-    // Single-flight guard: ensure at most one login per {user_id, org_ref} at a time
-    const loginKey = `login:${extractUserIdFromJWT(ctx.user_jwt)}:${targetOrg}`;
-    const loginRes = await singleFlight(loginKey, async () => {
-      return await this.callTool("scp.login", {
-        credential_id: ctx.credential_id,
-        org_ref: targetOrg,
-        user_jwt: ctx.user_jwt,
-        mandate_jws,
-        destination: process.env.SKICLUBPRO_LOGIN_GOTO_DEST || "/registration"
-      }, sessionId);
-    });
-
-    if (!loginRes?.session_token) throw new Error("Login did not return session_token");
-    
-    // Persist session token with proper expiry tracking
     const expiresAt = Date.now() + sessionTTL;
+
     await this.updateContext(sessionId, {
-      session_token: loginRes.session_token,
+      session_token: ctx.session_token ?? `bookeo-api:${targetOrg}`,
       session_issued_at: Date.now(),
       session_token_expires_at: expiresAt,
       session_ttl_ms: sessionTTL,
@@ -1620,10 +1603,9 @@ Example follow-up (only when needed):
       login_status: "success",
       loginCompleted: true
     });
-    
-    Logger.info(`[orchestrator] ✅ Login successful - session valid until ${new Date(expiresAt).toISOString()}`);
-    
-    // Get fresh context after persistence
+
+    Logger.info(`[orchestrator] ✅ Session marker set for API discovery until ${new Date(expiresAt).toISOString()}`);
+
     const updatedCtx = await this.getContext(sessionId);
     return await this.handleAutoProgramDiscovery(updatedCtx, { mandate_jws }, sessionId);
   }
@@ -1644,7 +1626,7 @@ Example follow-up (only when needed):
       return this.buildScheduleFilterPrompt(sessionId);
     }
     
-    // Cache disabled - proceed directly to live scraping
+    // Cache disabled - proceed directly to API discovery
     const cacheKey = `programs:${ctx.provider.orgRef}:${ctx.category || 'all'}`;
     Logger.info(`[Live Discovery] No cache, calling provider directly`, {
       orgRef: ctx.provider.orgRef,
@@ -1658,7 +1640,7 @@ Example follow-up (only when needed):
       return await this.presentProgramsAsCards(ctx, cachedPrograms);
     }
     
-    Logger.info(`[Cache Miss] ${ctx.provider.orgRef}:${ctx.category || 'all'} - proceeding with live scrape`);
+    Logger.info(`[Cache Miss] ${ctx.provider.orgRef}:${ctx.category || 'all'} - proceeding with API fetch`);
     
     // Phase 2: Check for high-intent fast-path eligibility
     const isHighIntent = ctx.intentStrength === "high";
@@ -1714,7 +1696,7 @@ Example follow-up (only when needed):
       });
     }
     
-    const res = await this.callTool("scp.find_programs", args, sessionId);
+    const res = await this.callTool("bookeo.find_programs", args, sessionId);
     
     // Phase C: Persist session token if refreshed during discovery
     if (res?.session_token) {
@@ -1732,8 +1714,8 @@ Example follow-up (only when needed):
     const programCount = Object.values(programs).flat().length;
     
     if (fastPathEligible && programCount === 0) {
-      // Fast-path failed to find target program - retry with full scrape
-      Logger.warn('[Fast-Path Failed] Target program not found, falling back to full scrape', {
+      // Fast-path failed to find target program - retry with full API discovery
+      Logger.warn('[Fast-Path Failed] Target program not found, falling back to full API discovery', {
         sessionId,
         targetRef: ctx.targetProgram!.program_ref
       });
@@ -1744,7 +1726,7 @@ Example follow-up (only when needed):
       delete fallbackArgs.filter_mode;
       delete fallbackArgs.fallback_to_full;
       
-      const fallbackRes = await this.callTool("scp.find_programs", fallbackArgs, sessionId);
+      const fallbackRes = await this.callTool("bookeo.find_programs", fallbackArgs, sessionId);
       if (fallbackRes?.session_token) ctx.session_token = fallbackRes.session_token;
       
       const fallbackPrograms = fallbackRes?.programs_by_theme || {};
@@ -1774,7 +1756,7 @@ Example follow-up (only when needed):
    * Handle extractor test action
    */
   private async handleAction_run_extractor_test(ctx: SessionContext, sessionId?: string): Promise<OrchestratorResponse> {
-    const orgRef = ctx?.provider?.orgRef ?? "blackhawk-ski";
+    const orgRef = ctx?.provider?.orgRef ?? "aim-design";
     const category = "all";
     const cacheKey = `programs:${orgRef}:${category}`;
     
@@ -1788,20 +1770,20 @@ Example follow-up (only when needed):
     }
     
     const args = {
-      org_ref: ctx?.provider?.orgRef ?? "blackhawk-ski",
+      org_ref: ctx?.provider?.orgRef ?? "aim-design",
       session_token: ctx.session_token,
       category: "all",
       mandate_jws: ctx.mandate_jws ?? process.env.DEV_MANDATE_JWS
     };
     
     const startMs = Date.now();
-    let res = await this.callTool("scp.find_programs", args, sessionId);
+    let res = await this.callTool("bookeo.find_programs", args, sessionId);
     
     // Quick Win #6: Category fallback - if category-scoped results are empty, retry with "all"
     if (args.category !== "all" && (!res?.programs_by_theme || Object.keys(res.programs_by_theme).length === 0)) {
       Logger.info(`[orchestrator] Category "${args.category}" yielded zero results, retrying with "all"`);
       args.category = "all";
-      res = await this.callTool("scp.find_programs", args, sessionId);
+      res = await this.callTool("bookeo.find_programs", args, sessionId);
     }
     
     if (res?.session_token) {
@@ -2164,7 +2146,7 @@ Example follow-up (only when needed):
               title: `Connect to ${payload.name}`,
               subtitle: "Secure login required",
               description: AUDIT_REMINDER,
-              metadata: { provider: 'skiclubpro', orgRef: payload.orgRef },
+              metadata: { provider: 'bookeo', orgRef: payload.orgRef },
               buttons: [
                 { label: `Connect Account`, action: "connect_account", variant: "accent" }
               ]
@@ -2194,38 +2176,6 @@ Example follow-up (only when needed):
               [{ label: "Log In", action: "redirect_to_auth", variant: "accent" }],
               {}
             );
-          }
-          
-          // First, check if credentials already exist for this provider
-          const userId = extractUserIdFromJWT(currentContext.user_jwt);
-          const existingCred = await this.lookupStoredCredential(userId, payload.provider, payload.orgRef);
-          
-          if (existingCred) {
-            console.log(`[orchestrator] Retrieved credential_id=${existingCred.id} for ${payload.provider}`);
-            
-            // Store credential and provider context at top level for auto-discovery
-            await this.updateContext(sessionId, {
-              credential_id: existingCred.id, // Store at top level for handleAutoProgramDiscovery
-              credentials: {
-                [payload.provider]: {
-                  id: existingCred.id,
-                  credential_id: existingCred.id
-                }
-              },
-              provider: currentContext.provider || { 
-                name: payload.provider, 
-                orgRef: payload.orgRef 
-              },
-              loginCompleted: true,
-              step: FlowStep.PROGRAM_SELECTION
-            });
-            
-            // Auto-trigger program discovery immediately (no button click needed)
-            console.log(`[orchestrator] Auto-triggering program discovery for existing credentials`);
-            
-            // Get fresh context after update
-            const updatedContext = await this.getContext(sessionId);
-            return this.handleAutoProgramDiscovery(updatedContext, undefined, sessionId);
           }
           
           // Store pending login info for credential collection
@@ -2602,7 +2552,7 @@ Example follow-up (only when needed):
           return this.handleAction("select_program", payload, sessionId);
 
         case "view_program":
-          // Quick Win #5: Handle view_program action - call scp.program_field_probe
+          // Load registration field schema via Bookeo API discovery
           const { program_ref: viewProgRef, org_ref: viewOrgRef } = payload || {};
           
           if (!viewProgRef || !viewOrgRef) {
@@ -2617,20 +2567,20 @@ Example follow-up (only when needed):
           Logger.info(`[view_program] Fetching details for program_ref=${viewProgRef}, org_ref=${viewOrgRef}`);
           
           try {
-            // Call scp.program_field_probe to get program details
-            const result = await this.callTool("scp.program_field_probe", {
+            const result = await this.callTool("bookeo.discover_required_fields", {
               org_ref: viewOrgRef,
-              program_ref: viewProgRef,
-              session_token: context.session_token,
-              cookies: context.provider_cookies || [],
-              credential_id: context.credential_id
+              program_ref: viewProgRef
             }, sessionId);
+
+            const pq = result?.data?.program_questions;
+            const delegateFields = pq?.delegate_fields;
+            const participantFields = pq?.participant_fields;
             
-            if (result && result.fields) {
-              // Build a description from the extracted fields
-              const fieldDescriptions = result.fields.map((f: any) => 
-                `**${f.label || f.name}**: ${f.type || 'text'}`
-              ).join('\n');
+            if (result?.success && pq && Array.isArray(delegateFields) && Array.isArray(participantFields)) {
+              const fieldDescriptions = [
+                ...delegateFields.map((f: any) => `**${f.label || f.name || 'Field'}**: ${f.type || 'text'} (delegate)`),
+                ...participantFields.map((f: any) => `**${f.label || f.name || 'Field'}**: ${f.type || 'text'} (participant)`)
+              ].join('\n');
               
               return this.formatResponse(
                 `📋 **Program Registration Form**\n\nRequired fields:\n${fieldDescriptions}`,
@@ -2640,14 +2590,14 @@ Example follow-up (only when needed):
               );
             } else {
               return this.formatResponse(
-                "I found the program but couldn't extract its registration details. Would you like to try again?",
+                "I found the program but couldn't load its registration schema from the API. Would you like to try again?",
                 undefined,
                 [{ label: "Try Again", action: "view_program", variant: "accent", payload: { program_ref: viewProgRef, org_ref: viewOrgRef } }],
                 {}
               );
             }
           } catch (error: any) {
-            Logger.error(`[view_program] Failed to probe program fields:`, error);
+            Logger.error(`[view_program] Failed to load program fields:`, error);
             return this.formatResponse(
               `⚠️ I couldn't load the program details. ${error.message || 'Please try again.'}`,
               undefined,
@@ -2777,9 +2727,9 @@ Which would you prefer?`;
    * PHASE 3: Real MCP integration with retry and timeout
    * 
    * Integrates with MCP tools like:
-   * - scp.check_prerequisites
-   * - scp.discover_required_fields
-   * - scp.submit_registration
+   * - bookeo.find_programs
+   * - bookeo.discover_required_fields
+   * - bookeo.confirm_booking
    * 
    * @param toolName - Name of the tool to invoke
    * @param args - Arguments to pass to the tool
@@ -2794,11 +2744,11 @@ Which would you prefer?`;
 
     // ======= MANDATE ENFORCEMENT =======
     const isProtectedTool = [
-      'scp.login',
-      'scp.find_programs',
-      'scp.register',
-      'scp.pay',
-      'scp.discover_required_fields'
+      'bookeo.find_programs',
+      'bookeo.discover_required_fields',
+      'bookeo.create_hold',
+      'bookeo.confirm_booking',
+      'bookeo.cancel_booking'
     ].includes(toolName);
     
     if (isProtectedTool && sessionId) {
@@ -2839,12 +2789,10 @@ Which would you prefer?`;
 
     // Map internal tool names to MCP tool names
     const mcpToolMapping: Record<string, string> = {
-      'search_provider': 'scp.search_providers',
-      'find_programs': 'scp.get_programs',
-      'check_prerequisites': 'scp.check_prerequisites',
-      'discover_fields': 'scp.discover_required_fields',
-      'submit_registration': 'scp.submit_registration',
-      'program_field_probe': 'scp.program_field_probe'
+      'find_programs': 'bookeo.find_programs',
+      'discover_fields': 'bookeo.discover_required_fields',
+      'submit_registration': 'bookeo.confirm_booking',
+      'program_field_probe': 'bookeo.discover_required_fields'
     };
 
     const mcpToolName = mcpToolMapping[toolName];
@@ -3150,70 +3098,6 @@ Which would you prefer?`;
     return !!item && item.expires > Date.now();
   }
 
-  /**
-   * Lookup stored credentials for a provider
-   * Retrieves credential_id from Supabase for use with scp.login
-   * 
-   * @param userId - User ID from JWT
-   * @param provider - Provider slug (e.g., 'skiclubpro')
-   * @param orgRef - Organization reference (e.g., 'blackhawk-ski')
-   * @returns Promise resolving to credential record or null
-   */
-  private async lookupStoredCredential(
-    userId: string | undefined, 
-    provider: string, 
-    orgRef: string
-  ): Promise<{ id: string; alias: string } | null> {
-    if (!userId) {
-      Logger.warn("[orchestrator] No user_id provided for credential lookup");
-      return null;
-    }
-
-    try {
-      // Import Supabase client from sessionPersistence (already configured there)
-      const { createClient } = await import('@supabase/supabase-js');
-      const supabaseUrl = process.env.SUPABASE_URL || process.env.SB_URL || '';
-      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SB_SERVICE_ROLE_KEY || '';
-      
-      if (!supabaseUrl || !supabaseKey) {
-        Logger.warn("[orchestrator] Supabase credentials not configured - cannot lookup stored credentials");
-        return null;
-      }
-      
-      const supabase = createClient(supabaseUrl, supabaseKey);
-      
-      Logger.info(`[orchestrator] Looking up credentials for user=${userId}, provider=${provider}, org=${orgRef}`);
-      
-      const { data, error } = await supabase
-        .from('stored_credentials')
-        .select('id, alias')
-        .eq('user_id', userId)
-        .eq('provider', provider)
-        .single();
-      
-      if (error) {
-        if (error.code === 'PGRST116') {
-          // No rows found - user hasn't connected account yet
-          Logger.info(`[orchestrator] No stored credentials found for user=${userId}, provider=${provider}`);
-          return null;
-        }
-        Logger.error("[orchestrator] Supabase error looking up credentials:", error);
-        return null;
-      }
-      
-      if (!data) {
-        Logger.info(`[orchestrator] No credentials found for user=${userId}, provider=${provider}`);
-        return null;
-      }
-      
-      Logger.info(`[orchestrator] Retrieved credential_id=${data.id} for ${provider}`);
-      return data;
-    } catch (error) {
-      Logger.error("[orchestrator] Failed to lookup credentials:", error);
-      return null;
-    }
-  }
-
   // ============= Mandate Enforcement Methods =============
 
   /**
@@ -3228,14 +3112,16 @@ Which would you prefer?`;
     let requiredScopes: string[] = [MANDATE_SCOPES.AUTHENTICATE];
     
     // PACK-B: Explicit scope requirements per tool
-    if (toolName === 'scp.find_programs') {
+    if (toolName === 'bookeo.find_programs') {
       requiredScopes = [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.READ_LISTINGS];
-    } else if (toolName === 'scp.discover_required_fields') {
+    } else if (toolName === 'bookeo.discover_required_fields') {
       requiredScopes = [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.DISCOVER_FIELDS];
-    } else if (toolName === 'scp.register') {
+    } else if (toolName === 'bookeo.create_hold') {
       requiredScopes = [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.REGISTER];
-    } else if (toolName === 'scp.pay') {
-      requiredScopes = [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.PAY];
+    } else if (toolName === 'bookeo.confirm_booking') {
+      requiredScopes = [MANDATE_SCOPES.BOOKEO_CREATE_BOOKING];
+    } else if (toolName === 'bookeo.cancel_booking') {
+      requiredScopes = [MANDATE_SCOPES.AUTHENTICATE, MANDATE_SCOPES.REGISTER];
     }
     
     // Phase D: Check if session is still valid (for session reuse optimization)
@@ -3290,7 +3176,7 @@ Which would you prefer?`;
     // PACK-B: Use new createMandate helper
     const { createMandate } = await import('../lib/mandates.js');
     const extraScopes = requiredScopes.filter(s => s !== MANDATE_SCOPES.AUTHENTICATE);
-    const mandate_jws = await createMandate(userId, 'skiclubpro', extraScopes);
+    const mandate_jws = await createMandate(userId, 'bookeo', extraScopes);
     
     // Calculate mandate expiration (default 5 minutes)
     const mandateTTL = 5 * 60 * 1000; // 5 minutes in ms
@@ -3977,7 +3863,7 @@ Return JSON: {
       title: `Connect to ${providerName}`,
       subtitle: "Secure login required",
       description: `You'll be redirected to ${providerName}'s login page. ${AUDIT_REMINDER}`,
-      metadata: { provider: 'skiclubpro', orgRef },
+      metadata: { provider: 'bookeo', orgRef },
       buttons: [
         { label: `Connect ${providerName} Account`, action: "connect_account", variant: "accent" }
       ]
@@ -4060,8 +3946,7 @@ Return JSON: {
   }
 
   /**
-   * Handle field probe step (Step 4.7: Extract form fields via Three-Pass Extractor)
-   * Opens new browser session (Session B), navigates to relevant form, extracts fields
+   * Handle field probe step (Step 4.7): load registration schema via Bookeo API discovery
    */
   private async handleFieldProbe(userMessage: string, sessionId: string): Promise<OrchestratorResponse> {
     const context = await this.getContext(sessionId);
@@ -4074,47 +3959,60 @@ Return JSON: {
         {}
       );
     }
+
+    const orgRef = context.provider?.orgRef;
+    const programRef =
+      (context as any).program?.program_ref ||
+      context.availablePrograms?.find((p: any) => p?.program_ref)?.program_ref;
+
+    if (!orgRef || !programRef) {
+      return this.formatResponse(
+        "Select a specific program first — then I can load its registration fields from the API.",
+        undefined,
+        [{ label: "Browse programs", action: "check_programs", variant: "accent" }],
+        {}
+      );
+    }
     
     this.logAction("tool_invocation", { 
-      toolName: "program_field_probe", 
+      toolName: "bookeo.discover_required_fields", 
       sessionId, 
-      intent: context.programIntent 
+      intent: context.programIntent,
+      program_ref: programRef
     });
     
     try {
-      // Call MCP tool: scp.program_field_probe with cookies from Session A
-      const result = await this.callTool("scp.program_field_probe", {
-        org_ref: context.provider?.orgRef,
-        cookies: context.provider_cookies,  // Pass cookies from Session A
-        intent: context.programIntent,
-        user_jwt: context.user_jwt,
-      });
+      const result = await this.callTool("bookeo.discover_required_fields", {
+        org_ref: orgRef,
+        program_ref: programRef
+      }, sessionId);
       
       if (!result.success) {
-        throw new Error(result.error || "Field probe failed");
+        throw new Error(typeof result.error === 'object' ? (result.error as any)?.display : result.error || "Field discovery failed");
       }
+
+      const pq = result.data?.program_questions;
       
-      // Store extracted fields
       await this.updateContext(sessionId, {
-        extractedFields: result.extractor,
-        field_probe_run_id: result.run_id,
-        step: FlowStep.PROGRAM_SELECTION  // STOP HERE - don't proceed further
+        extractedFields: pq,
+        step: FlowStep.PROGRAM_SELECTION
       });
       
-      const fieldCount = result.extractor?.programs?.length || 0;
       const category = context.programIntent.category || "program";
+      const delegateN = pq?.delegate_fields?.length ?? 0;
+      const partN = pq?.participant_fields?.length ?? 0;
       
       return this.formatResponse(
-        `🔎 I scanned ${context.provider?.name} for a ${category} form and found ${fieldCount} programs. Ready when you are!`,
+        `🔎 Loaded the ${category} registration schema for **${context.provider?.name}** (${delegateN} delegate fields, ${partN} participant fields). Ready when you are!`,
         undefined,
         [{ label: "Continue", action: "check_programs", variant: "accent" }],
-        { extractedFields: result.extractor }
+        { extractedFields: pq }
       );
       
     } catch (error: any) {
       Logger.error(`[handleFieldProbe] Failed:`, error);
       return this.formatResponse(
-        "I had trouble extracting the form fields. Let's try a different approach.",
+        "I had trouble loading the registration fields from the API. Let's try a different approach.",
         undefined,
         [{ label: "Retry", action: "run_field_probe", variant: "accent" }],
         {}
@@ -4167,7 +4065,7 @@ Return JSON: {
         if (cacheAgeHours > 4) {
           Logger.info(`[ProgramSelection] Cache is stale (${cacheAgeHours.toFixed(1)}h), triggering background refresh`);
           // Don't await - let it refresh in background
-          this.callTool("scp.find_programs", {
+          this.callTool("bookeo.find_programs", {
             org_ref: orgRef,
             category,
             credential_id: context.credential_id,
@@ -4178,20 +4076,20 @@ Return JSON: {
         }
       }
       
-      // Fallback to live scrape only if cache is completely empty
+      // Fallback to API fetch only if cache is completely empty
       if (programs.length === 0) {
-        Logger.info(`[ProgramSelection] Cache miss, attempting live scrape`);
+        Logger.info(`[ProgramSelection] Cache miss, attempting API fetch`);
         
         if (context.loginCompleted) {
-          this.logAction("tool_invocation", { toolName: "scp.find_programs", sessionId });
+          this.logAction("tool_invocation", { toolName: "bookeo.find_programs", sessionId });
           const live = await this.callTool(
-            "scp.find_programs",
+            "bookeo.find_programs",
             { org_ref: orgRef, category, credential_id: context.credential_id },
             sessionId
           );
-          programs = live?.programs ?? [];
+          programs = live?.programs ?? live?.data?.programs ?? [];
         } else {
-          Logger.warn(`[ProgramSelection] Cannot live scrape - user not logged in`);
+          Logger.warn(`[ProgramSelection] Cannot API-fetch programs — user flow not marked complete`);
         }
       } else {
         Logger.info(`[ProgramSelection] Cache hit: ${programs.length} programs (age: ${cacheMetadata ? 'fresh' : 'legacy'})`);

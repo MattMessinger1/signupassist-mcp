@@ -18,7 +18,7 @@ Use this checklist before running Phase 4 cleanup to ensure the new AAP system i
 
 ### ⏳ Testing Phase (Before Phase 4)
 - [ ] All test cases pass (`tsx scripts/testNewAAP.ts`)
-  - [ ] Test Case 1: Blackhawk ski loop fix
+  - [ ] Test Case 1: Bookeo / AIM Design loop
   - [ ] Test Case 2: Declined provider handling
   - [ ] Test Case 3: All-at-once input
 - [ ] Manual testing in `/chat-test` with `USE_NEW_AAP=true`
@@ -194,7 +194,7 @@ After Phase 4 cleanup (first 48 hours):
 ```
 [NEW AAP] Using structured AAP triage system
 [AAP Triage] Result: { aap: { age: { status: 'known', ... } }, ready_for_discovery: true }
-[NEW AAP DISCOVERY PLAN] { feed_query: { org_ref: 'blackhawk', ... } }
+[NEW AAP DISCOVERY PLAN] { feed_query: { org_ref: 'aim-design', ... } }
 ```
 
 ### Warning Patterns ⚠️

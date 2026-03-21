@@ -367,7 +367,7 @@ function ChatTestHarnessContent({ mockAuthenticated, onToggleAuth }: ChatTestHar
     // Handle login dialog
     if (action === "show_login_dialog" || action === "connect_account" || action === "show_credentials_card") {
       setLoginDialogData({
-        provider: payload.provider || 'skiclubpro',
+        provider: payload.provider || 'bookeo',
         orgName: payload.orgName || payload.orgRef || 'Provider',
         orgRef: payload.orgRef || 'unknown'
       });

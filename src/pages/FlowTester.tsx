@@ -78,12 +78,12 @@ export default function FlowTester() {
   
   // Configuration state
   const [mandateConfig, setMandateConfig] = useState<MandateConfig>({
-    provider: 'skiclubpro',
-    programRef: 'blackhawk/2024-2025/youth-ski',
+    provider: 'bookeo',
+    programRef: 'bookeo/programs/sample',
     childId: '',
     credentialId: '',
     maxAmountCents: 44000, // $400 program + $40 buffer
-    scopes: ['scp:login', 'scp:enroll', 'scp:write:register', 'scp:pay'],
+    scopes: ['bookeo:create_booking', 'bookeo:read_products', 'bookeo:read_slots', 'platform:success_fee'],
     validUntil: new Date(Date.now() + 24 * 60 * 60 * 1000),
   });
   
@@ -123,22 +123,12 @@ export default function FlowTester() {
         .select('id, first_name, last_name, dob')
         .eq('user_id', user.id);
       
-      // Fetch credentials
-      const { data: credentialsData } = await supabase
-        .from('stored_credentials')
-        .select('id, alias, provider')
-        .eq('user_id', user.id)
-        .eq('provider', 'skiclubpro');
-      
       setChildren(childrenData || []);
-      setCredentials(credentialsData || []);
+      setCredentials([]);
       
       // Set defaults if available
       if (childrenData && childrenData.length > 0) {
         setMandateConfig(prev => ({ ...prev, childId: childrenData[0].id }));
-      }
-      if (credentialsData && credentialsData.length > 0) {
-        setMandateConfig(prev => ({ ...prev, credentialId: credentialsData[0].id }));
       }
       
       setLoadingData(false);

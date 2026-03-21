@@ -66,9 +66,9 @@ Or click the login form when it appears and fill in:
 #### Step 2: Watch the flow
 
 The harness will:
-1. Call `scp:login` tool via MCP server
+1. Call provider auth / session tools via MCP as configured (e.g. Bookeo API context)
 2. Display the response (success or error)
-3. Store the `session_ref` for subsequent calls
+3. Store any session or booking context for subsequent calls
 4. Show the next step (program search)
 
 #### Step 3: Check the Debug Panel
@@ -215,7 +215,7 @@ export const DEMO_TEST_DATA = {
 
 ```typescript
 export const PROVIDERS = {
-  skiclubpro: { /* existing */ },
+  bookeo: { /* existing — AIM Design catalog */ },
   
   // Add new provider
   summercampz: {
@@ -237,8 +237,8 @@ export async function executePayment(
   context: OrchestratorContext
 ): Promise<OrchestratorResult> {
   // Call payment tool
-  const result = await callMCPTool('scp:pay', {
-    session_ref: context.sessionRef,
+  const result = await callMCPTool('bookeo.confirm_booking', {
+    /* ...delegate/participant payload per provider API */
     amount_cents: amount * 100,
   });
   

@@ -5,7 +5,7 @@ const orchestrator = new AIOrchestrator();
 
 (async () => {
   const result = await orchestrator.generateResponse(
-    "I want to sign up my daughter for Blackhawk Ski Club lessons",
+    "I want to sign up my daughter for AIM Design robotics classes",
     "session-openai-test"
   );
 

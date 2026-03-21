@@ -89,7 +89,12 @@ Deno.serve(async (req) => {
 
     // Validate mandate scope includes signup permissions
     const mandate = planData.mandates;
-    if (!mandate.scope.includes('scp:write:register') || mandate.status !== 'active') {
+    const hasBookingScope =
+      Array.isArray(mandate.scope) &&
+      mandate.scope.some((s: string) =>
+        s.includes('bookeo:create_booking') || s.includes('bookeo:register'),
+      );
+    if (!hasBookingScope || mandate.status !== 'active') {
       return new Response(
         JSON.stringify({ error: 'Invalid mandate scope or status for signup' }),
         { 
@@ -139,7 +144,6 @@ Deno.serve(async (req) => {
       PLAN_ID: plan_id,
       SB_URL: Deno.env.get('SUPABASE_URL'),
       SB_SERVICE_ROLE_KEY: Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'),
-      BROWSERBASE_API_KEY: Deno.env.get('BROWSERBASE_API_KEY'),
       CRED_SEAL_KEY: Deno.env.get('CRED_SEAL_KEY'),
       MANDATE_SIGNING_KEY: Deno.env.get('MANDATE_SIGNING_KEY'),
     };

@@ -71,11 +71,11 @@ This document outlines the production-ready backend infrastructure implemented f
 **Supported Tools:**
 | Internal Tool | MCP Tool Name | Purpose |
 |--------------|---------------|---------|
-| `search_provider` | `scp.search_providers` | Find providers by name/location |
-| `find_programs` | `scp.get_programs` | List available programs |
-| `check_prerequisites` | `scp.check_prerequisites` | Verify membership/waivers |
-| `discover_fields` | `scp.discover_required_fields` | Get registration form fields |
-| `submit_registration` | `scp.submit_registration` | Submit final registration |
+| `search_provider` | Provider search / org resolution | Find providers by name/location |
+| `find_programs` | `bookeo.find_programs` | List available programs |
+| `check_prerequisites` | `bookeo.test_connection` | Verify API readiness |
+| `discover_fields` | `bookeo.discover_required_fields` | Get registration form fields |
+| `submit_registration` | `bookeo.confirm_booking` | Confirm booking / registration |
 
 **Environment Variables:**
 ```bash
@@ -102,10 +102,10 @@ USE_REAL_MCP=false  # Uses mock tools
 {
   "action": "credentials_accessed",
   "credential_id": "abc-123",
-  "provider": "skiclubpro",
+  "provider": "bookeo",
   "metadata": {
     "accessed_at": "2025-01-15T14:30:00Z",
-    "credential_alias": "Blackhawk Ski Login"
+    "credential_alias": "AIM Design login"
   }
 }
 ```
@@ -158,7 +158,7 @@ USE_REAL_MCP=false  # Uses mock tools
 
 ### Phase 3: MCP Integration
 - [ ] Set `USE_REAL_MCP=true` in Railway env vars
-- [ ] Search for "Blackhawk Ski Club"
+- [ ] Search for "AIM Design"
 - [ ] Verify real MCP is called (check logs: `[MCP] Calling real tool`)
 - [ ] Test timeout: Set `MCP_SERVER_URL` to invalid URL
 - [ ] Verify friendly error message shown
@@ -193,10 +193,13 @@ SUPABASE_ANON_KEY=<your-anon-key>
 USE_REAL_MCP=true
 MCP_SERVER_URL=https://your-mcp-server.railway.app
 
-# Existing (unchanged)
+# Provider APIs
+BOOKEO_API_KEY=<your-bookeo-api-key>
+BOOKEO_SECRET_KEY=<your-bookeo-secret-key>
+
+# Optional
 OPENAI_API_KEY=<your-key>
 GOOGLE_PLACES_API_KEY=<your-key>
-CRED_SEAL_KEY=<your-key>
 ```
 
 ### Supabase Edge Functions Config

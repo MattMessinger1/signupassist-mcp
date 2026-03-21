@@ -180,7 +180,7 @@ export const prompts = {
       'I authorize SignupAssist to answer additional form questions using the rules above (first/default; $0 options).',
       `I authorize SignupAssist to pay up to ${maxAmount} to complete this registration.`,
       'I understand SignupAssist will pause and contact me if something requires my input (e.g., CAPTCHA or waiver).',
-      'I agree that a simple audit log (including key screenshots) may be kept to confirm the steps taken for my signup.',
+      'I agree that a simple audit log of API actions and confirmations may be kept to verify the steps taken for my signup.',
     ],
     scopeDescriptions: {
       'scp:login': {
@@ -262,15 +262,14 @@ export const prompts = {
         '✓ **Security guarantees:**',
         '  • Your credentials are encrypted end-to-end',
         '  • We never see your full credit card number',
-        '  • Registration happens in an isolated browser session',
-        '  • Session is destroyed immediately after completion',
+        '  • Registration uses the provider API within your authorization',
+        '  • Sensitive tokens are not retained after completion',
         '',
         '✓ **Full transparency:**',
-        '  Every action is logged in your audit trail, including:',
+        '  Key actions are logged in your audit trail, including:',
         '  • When the mandate was issued',
-        '  • What actions were attempted',
-        '  • Screenshots of key moments (form filled, confirmation)',
-        '  • Final outcome (success or any blockers)',
+        '  • What API actions were attempted',
+        '  • Confirmations and final outcome (success or any blockers)',
         '',
         '  [View your audit trail →](/mandates-audit)',
         '',
@@ -349,25 +348,25 @@ export const prompts = {
   backend: {
     runnerPolicy: (orgName: string) =>
       [
-        `SignupAssist v1.0 – Runner Policy (provider-agnostic Browserbase + MCP).`,
+        `SignupAssist – Runner Policy (provider API + MCP).`,
         `Organization: ${orgName}. Do not change providers or programs.`,
-        `Login/session: reuse persisted context if available; if expired, log in once.`,
-        `Navigate to the program page exactly as planned; wait for open time.`,
+        `Authentication: use stored credentials or tokens only as authorized by the mandate.`,
+        `Use the provider API to resolve program details, slots, and booking steps; respect the planned open time.`,
         `Field rules:`,
         `  • Child/profile fields → selected child.`,
         `  • Non-price fields → first real option (skip placeholders).`,
         `  • Price-bearing fields → choose $0 / no-cost option.`,
         `  • If total > maxAmount → STOP and return PRICE_EXCEEDS_LIMIT.`,
         `  • Required text → "N/A".`,
-        `Blockers: CAPTCHA / waiver / modal → STOP and return BLOCKER with reason.`,
-        `Audit: record mandate ID + screenshots (login, filled form, confirmation).`,
+        `Blockers: missing waiver / payment hold / provider error → STOP and return BLOCKER with reason.`,
+        `Audit: record mandate ID, API call summaries, and booking confirmation references.`,
         `Return status: LOGIN_FAILED | PROGRAM_NOT_OPEN | BLOCKER | PRICE_EXCEEDS_LIMIT | REGISTERED.`,
       ].join('\n'),
     tools: {
       checkPrereqs: (org: string) =>
         `Check prerequisites for ${org}: verify login, membership, waiver, payment method, and participant profiles. Use audit only once per session.`,
       findPrograms: (org: string) =>
-        `Fetch current programs for ${org}. Use feed if available, otherwise scrape live. Return title + open time.`,
+        `Fetch current programs for ${org} via the provider API or cached feed. Return title + open time.`,
       register: (org: string) =>
         `Perform registration for ${org}. Respect payment cap, choose defaults/$0 options, capture confirmation.`,
     },
@@ -381,7 +380,7 @@ export const prompts = {
     audit: {
       mandateCreated: 'mandate_created',
       loginAttempt: 'provider_login',
-      sessionStart: 'browserbase_session_started',
+      sessionStart: 'api_session_started',
       preSubmit: 'form_filled_before_submit',
       confirmation: 'registration_confirmation',
     },
@@ -475,12 +474,12 @@ export const prompts = {
   // ------------------------------------------------------------
   credentials: {
     title: 'Credential Manager',
-    description: 'Manage your SkiClubPro login credentials securely',
+    description: 'Manage your provider login credentials securely',
     addTitle: 'Add New Credentials',
-    addDescription: 'Store your SkiClubPro login credentials for automated access',
-    addButton: 'Add SkiClubPro Credentials',
+    addDescription: 'Store your provider login credentials for automated access',
+    addButton: 'Add provider credentials',
     storedTitle: 'Stored Credentials',
-    storedDescription: 'Your saved SkiClubPro login credentials',
+    storedDescription: 'Your saved provider login credentials',
     form: {
       alias: {
         label: 'Alias',
@@ -492,16 +491,16 @@ export const prompts = {
       },
       password: {
         label: 'Password',
-        placeholder: 'Your SkiClubPro password',
+        placeholder: 'Your provider password',
       },
     },
     security: {
       title: 'Security Information',
-      description: 'Your credentials are encrypted using AES-GCM encryption before being stored. Make sure the CRED_SEAL_KEY is properly configured in your Supabase secrets.',
+      description: 'Your credentials are encrypted using AES-GCM before being stored. Ensure server-side encryption secrets are configured in your deployment.',
     },
     empty: {
       title: 'No credentials stored yet',
-      description: 'Add your first SkiClubPro credentials to get started',
+      description: 'Add your first provider credentials to get started',
     },
     actions: {
       store: 'Store Credentials',

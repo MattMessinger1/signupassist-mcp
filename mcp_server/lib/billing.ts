@@ -37,7 +37,7 @@ export async function chargeOnSuccess(args: ChargeOnSuccessArgs): Promise<{ char
     args,
     async () => {
       // Verify mandate has required scope
-      await verifyMandate(args.mandate_id, 'scp:pay');
+      await verifyMandate(args.mandate_id, 'bookeo:pay');
 
       // Look up plan execution
       const { data: planExecution, error: planError } = await supabase

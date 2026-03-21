@@ -305,7 +305,6 @@ export async function inferCityAndProvider(
  */
 export const TOOL_MAPPING = {
   bookeo: 'bookeo.find_programs',
-  skiclubpro: 'scp.find_programs',
   campminder: 'campminder.find_programs'
 } as const;
 

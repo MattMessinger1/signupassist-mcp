@@ -4,10 +4,10 @@ import AIOrchestrator from "../mcp_server/ai/AIOrchestrator";
 
 (async () => {
   const examples = [
-    "Blackhawk ski club Madison",
-    "Enroll at madison nordic ski",
-    "I want Blackhawk in Middleton WI",
-    "blackhawk sklub madisn"
+    "AIM Design Madison",
+    "Enroll at madison STEM classes",
+    "I want AIM Design in Middleton WI",
+    "aim design madisn"
   ];
 
   console.log("🧩 Heuristic parser tests:\n");

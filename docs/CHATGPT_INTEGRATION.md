@@ -26,16 +26,13 @@ SignupAssist integrates with ChatGPT via:
 
 | Tool | Description |
 |------|-------------|
-| `scp.find_programs` | Search available programs at an organization |
-| `scp.discover_required_fields` | Discover form fields for registration |
-| `scp.login` | Authenticate with provider credentials |
-| `scp.register` | Register a child for a program |
-| `scp.pay` | Process payment for registration |
-| `scp:list_children` | List registered children |
-| `scp:check_prerequisites` | Verify account readiness |
-| `scp.check_account_status` | Check account status |
-| `scp.check_membership_status` | Check membership validity |
-| `scp.check_payment_method` | Verify payment method |
+| `bookeo.find_programs` | Search available programs at an organization |
+| `bookeo.discover_required_fields` | Discover form fields for registration |
+| `bookeo.test_connection` | Verify Bookeo API credentials |
+| `bookeo.create_hold` | Create a temporary booking hold |
+| `bookeo.confirm_booking` | Confirm a booking with delegate/participant data |
+| `bookeo.cancel_booking` | Cancel an existing booking |
+| `signupassist.chat` | Main conversational orchestrator entrypoint |
 
 ---
 
@@ -194,9 +191,9 @@ You are SignupAssist, an automated activity registration assistant. You help par
 - Confirm the mandate scope (program, amount limits)
 
 **Tool Usage Guidelines:**
-- Always start with `scp.find_programs` to discover available programs
-- Use `scp:check_prerequisites` before registration
-- Call `scp.discover_required_fields` to understand form requirements
+- Always start with `bookeo.find_programs` to discover available programs
+- Use `bookeo.test_connection` before registration
+- Call `bookeo.discover_required_fields` to understand form requirements
 - Never process payments without explicit user confirmation
 
 **Security:**
@@ -206,14 +203,14 @@ You are SignupAssist, an automated activity registration assistant. You help par
 - Full audit trail is maintained
 
 **Example Workflow:**
-User: "Sign up my child for Blackhawk ski lessons"
-1. Call `scp.find_programs` with organization_id="blackhawk", query="ski lessons"
+User: "Sign up my child for AIM Design ski lessons"
+1. Call `bookeo.find_programs` with organization_id="aim-design", query="ski lessons"
 2. Present options to user
 3. User selects program
-4. Call `scp:check_prerequisites` to verify readiness
-5. Call `scp.discover_required_fields` to get form
+4. Call `bookeo.test_connection` to verify readiness
+5. Call `bookeo.discover_required_fields` to get form
 6. Collect required data from user
-7. Call `scp.register` with form_data
+7. Call `bookeo.confirm_booking` with form_data
 8. Confirm success or handle errors
 
 Always be conversational, clear, and prioritize user consent.
@@ -330,10 +327,10 @@ Say "authorize" to proceed, or "cancel" to stop.
 
 #### 1. Program Discovery
 ```
-User: "Find ski programs at Blackhawk"
+User: "Find ski programs at AIM Design"
 
 Expected:
-- ChatGPT calls scp.find_programs
+- ChatGPT calls bookeo.find_programs
 - Returns list of programs
 - User can select one
 ```
@@ -343,14 +340,14 @@ Expected:
 User: "Am I ready to register?"
 
 Expected:
-- ChatGPT calls scp:check_prerequisites
+- ChatGPT calls bookeo.test_connection
 - Checks account, membership, payment method
 - Informs user of missing items
 ```
 
 #### 3. Full Registration Flow
 ```
-User: "Register my daughter for Winter Lessons at Blackhawk"
+User: "Register my daughter for Winter Lessons at AIM Design"
 
 Expected:
 1. Find programs
@@ -402,11 +399,11 @@ curl -X POST https://signupassist-mcp-production.up.railway.app/tools/call \
   -H 'Authorization: Bearer YOUR_TOKEN' \
   -H 'Content-Type: application/json' \
   -d '{
-    "tool": "scp.find_programs",
+    "tool": "bookeo.find_programs",
     "args": {
       "session_id": "test-123",
       "mandate_id": "550e8400-e29b-41d4-a716-446655440000",
-      "organization_id": "blackhawk"
+      "organization_id": "aim-design"
     }
   }'
 ```
@@ -435,7 +432,7 @@ Regenerate when:
 
 ### Updating Tool Definitions
 
-1. Edit `mcp_server/providers/skiclubpro.ts`
+1. Edit `mcp_server/providers/bookeo.ts`
 2. Run `npm run openapi:generate`
 3. Review changes in `mcp/openapi.json`
 4. Commit and deploy to Railway
@@ -511,7 +508,7 @@ npm run openapi:generate
 
 Provide test credentials for reviewers:
 ```
-Organization: Blackhawk Ski Club
+Organization: AIM Design
 Email: demo@signupassist.ai
 Password: [Provided separately to OpenAI]
 Test Program: Winter Lessons 2025
@@ -620,11 +617,11 @@ The full schema is auto-generated in `mcp/openapi.json`. Key sections:
 
 | Tool | Required Parameters | Optional Parameters |
 |------|-------------------|-------------------|
-| `scp.find_programs` | session_id, mandate_id, organization_id | query |
-| `scp.discover_required_fields` | session_id, mandate_id, program_id, organization_id | - |
-| `scp.login` | session_id, mandate_id, organization_id, credential_id | - |
-| `scp.register` | session_id, mandate_id, program_id, organization_id, form_data | child_id |
-| `scp.pay` | session_id, mandate_id, organization_id, amount | payment_method_id |
+| `bookeo.find_programs` | session_id, mandate_id, organization_id | query |
+| `bookeo.discover_required_fields` | session_id, mandate_id, program_id, organization_id | - |
+| `bookeo.test_connection` | session_id, mandate_id, organization_id | - |
+| `bookeo.confirm_booking` | session_id, mandate_id, program_id, organization_id, form_data | child_id |
+| `bookeo.cancel_booking` | booking_number, org_ref | - |
 
 ### Audit Trail Schema
 

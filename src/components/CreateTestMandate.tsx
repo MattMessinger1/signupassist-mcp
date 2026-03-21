@@ -24,7 +24,7 @@ const AVAILABLE_SCOPES = [
 export function CreateTestMandate({ onMandateCreated }: CreateTestMandateProps) {
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [provider, setProvider] = useState('skiclubpro');
+  const [provider, setProvider] = useState('bookeo');
   const [programRef, setProgramRef] = useState('test-program');
   const [childId, setChildId] = useState('');
   const [credentialId, setCredentialId] = useState('');

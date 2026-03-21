@@ -46,7 +46,7 @@ interface SessionContext {
   provider_cookies?: any[];
   loginCompleted?: boolean;
   step?: number;
-  session_token?: string;      // Browserbase session token (PACK-01)
+  session_token?: string;      // Optional session handle for provider flows when used
   discovery_retry_count?: number;
   mandate_jws?: string;         // Mandate JWT (PACK-07)
   mandate_id?: string;
@@ -55,7 +55,7 @@ interface SessionContext {
 ```
 
 ### ProviderResponse<T>
-Standard response format for all provider tools (SkiClubPro, Shopify, Jackrabbit, etc.).
+Standard response format for all provider tools (Bookeo, CampMinder, etc.).
 
 ```typescript
 interface ProviderResponse<T = any> extends Record<string, any> {

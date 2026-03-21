@@ -40,43 +40,43 @@ serve(async (req) => {
     if (userText.toLowerCase().includes("yes") || userText.toLowerCase().includes("that's it")) {
       // Provider confirmation response
       response = {
-        assistant_message: "Great! We'll work with Blackhawk Ski Club (Middleton, WI). 👍\n\nNext, I'll connect securely to their system to check class availability. You'll log in directly with Blackhawk Ski Club — I never see or store your password.",
+        assistant_message: "Great! We'll work with AIM Design (Bookeo). 👍\n\nNext, I'll use their program catalog to check class availability. API access is configured on our side — you sign in with the provider when prompted.",
         context_update: {
-          provider: "skiclubpro",
-          org_ref: "blackhawk-ski-club",
-          org_name: "Blackhawk Ski Club",
-          org_city: "Middleton, WI"
+          provider: "bookeo",
+          org_ref: "aim-design",
+          org_name: "AIM Design",
+          org_city: "Online / regional programs"
         }
       };
-    } else if (userText.toLowerCase().includes("middleton")) {
+    } else if (userText.toLowerCase().includes("aim") || userText.toLowerCase().includes("design")) {
       // Single match response
       response = {
-        assistant_message: "Great news! I found **Blackhawk Ski Club** in Middleton, WI. Is that the one you mean?\n\n_We only use this info to look up your organization; your data stays private._",
+        assistant_message: "Great news! I found **AIM Design** (Bookeo). Is that the one you mean?\n\n_We only use this to look up programs; your data stays private._",
         payload: {
           type: "provider_confirmation",
           data: {
-            name: "Blackhawk Ski Club",
-            location: "Middleton, WI",
-            orgRef: "blackhawk-ski-club"
+            name: "AIM Design",
+            location: "Programs via Bookeo",
+            orgRef: "aim-design"
           }
         }
       };
-    } else if (userText.toLowerCase().includes("blackhawk")) {
+    } else if (userText.toLowerCase().includes("bookeo") || userText.toLowerCase().includes("classes")) {
       // Multiple match response
       response = {
-        assistant_message: "I found a few organizations named **Blackhawk**. Which one is yours?",
+        assistant_message: "I found a few organizations that might match. Which one is yours?",
         payload: {
           type: "multiple_providers",
           data: [
             {
-              name: "Blackhawk Ski Club",
-              location: "Middleton, WI",
-              orgRef: "blackhawk-ski-club"
+              name: "AIM Design",
+              location: "Primary catalog",
+              orgRef: "aim-design"
             },
             {
-              name: "Blackhawk Ski Club",
-              location: "Madison, WI",
-              orgRef: "blackhawk-ski-club-madison"
+              name: "AIM Design — alternate site",
+              location: "Secondary listing",
+              orgRef: "aim-design-alt"
             }
           ]
         }
@@ -84,7 +84,7 @@ serve(async (req) => {
     } else {
       // No match response
       response = {
-        assistant_message: "Hmm, I didn't find an obvious match for that organization. Could you double-check the name or give me more info (like the city or school name)? 🤔\n\nDon't worry, we only use this info to look up your club, and your data stays private."
+        assistant_message: "Hmm, I didn't find an obvious match for that organization. Could you double-check the name or give me more info (like the city or program type)? 🤔\n\nDon't worry, we only use this to look up your provider, and your data stays private."
       };
     }
 

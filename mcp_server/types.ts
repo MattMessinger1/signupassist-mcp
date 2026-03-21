@@ -46,7 +46,7 @@ export interface SessionContext {
   provider_cookies?: any[];
   loginCompleted?: boolean;
   step?: string | number;  // V1: supports both numeric and string-based FlowStep values
-  session_token?: string;      // persisted session token for Browserbase
+  session_token?: string;      // optional persisted session handle for provider flows
   discovery_retry_count?: number;
   mandate_jws?: string;
   mandate_id?: string;
@@ -197,7 +197,6 @@ export interface ParentFriendlyError {
 /**
  * Standard response format for all provider tools
  * This ensures consistent reporting across all providers
- * (SkiClubPro, Shopify, Jackrabbit, etc.)
  * 
  * Generic type T represents the specific data returned by each provider tool
  */
@@ -214,7 +213,7 @@ export interface ProviderResponse<T = any> extends Record<string, any> {
   login_status?: 'success' | 'failed' | 'cached';
   
   /**
-   * Session token for reusing Browserbase sessions across tool calls
+   * Optional session handle for multi-step provider flows
    */
   session_token?: string;
   

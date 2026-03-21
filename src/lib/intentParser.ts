@@ -6,7 +6,7 @@
  * - Activity category (lessons, camps, race team, etc.)
  * - Child age
  * 
- * This enables targeted scraping and age-based filtering.
+ * This enables targeted discovery and age-based filtering.
  */
 
 export interface ParsedIntent {
@@ -27,7 +27,7 @@ export function parseIntent(message: string): ParsedIntent {
   
   // Provider detection
   const providerPatterns = [
-    { pattern: /blackhawk|black hawk/i, value: 'blackhawk-ski-club' },
+    { pattern: /\baim\s*-?\s*design\b/i, value: 'aim-design' },
     { pattern: /vail|vail resorts/i, value: 'vail' },
     { pattern: /ski\s+club/i, value: 'ski-club' },
   ];
@@ -128,7 +128,7 @@ export function filterByAge<T extends { age_range?: string }>(
 export function buildIntentQuestion(intent: ParsedIntent): string | null {
   const missing: string[] = [];
   
-  if (!intent.provider) missing.push('which provider (e.g., Blackhawk Ski Club)');
+  if (!intent.provider) missing.push('which provider (e.g., AIM Design)');
   if (!intent.category) missing.push('what type of activity (lessons, camps, or race team)');
   if (!intent.childAge) missing.push("your child's age");
   

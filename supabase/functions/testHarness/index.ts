@@ -18,8 +18,8 @@ Deno.serve(async (req) => {
     
     const body = await req.json();
     const user_id = body.user_id || uuidv4();
-    const provider_id = body.provider_id || "skiclubpro";
-    const org_ref = body.org_ref || "mock-org";
+    const provider_id = body.provider_id || "bookeo";
+    const org_ref = body.org_ref || "aim-design";
 
     // Initialize Supabase client
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('[TestHarness] No credentials found, initiating login flow');
+    console.log('[TestHarness] No credentials found, running Bookeo API smoke check');
 
     // 2) Start audit trail
     const auditId = await startLoginAudit({
@@ -78,85 +78,33 @@ Deno.serve(async (req) => {
       org_ref,
       tool: 'testHarness',
       user_id,
-      login_strategy: 'test_automated'
+      login_strategy: 'test_api'
     });
 
-    // 3) Check required environment variables
-    const browserbaseApiKey = Deno.env.get('BROWSERBASE_API_KEY');
-    const browserbaseProjectId = Deno.env.get('BROWSERBASE_PROJECT_ID');
     const mcpServerUrl = Deno.env.get('MCP_SERVER_URL');
+    const mcpAccessToken = Deno.env.get('MCP_ACCESS_TOKEN');
 
-    if (!browserbaseApiKey) {
-      throw new Error('BROWSERBASE_API_KEY not configured');
-    }
-    if (!browserbaseProjectId) {
-      throw new Error('BROWSERBASE_PROJECT_ID not configured');
-    }
     if (!mcpServerUrl) {
       throw new Error('MCP_SERVER_URL not configured');
     }
 
-    console.log('[TestHarness] Creating Browserbase session for mock provider login');
+    console.log('[TestHarness] Calling bookeo.test_connection via MCP');
 
-    // 4) Launch Browserbase session pointing at mock provider
-    const sessionResponse = await fetch('https://www.browserbase.com/v1/sessions', {
-      method: 'POST',
-      headers: {
-        'X-BB-API-Key': browserbaseApiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        projectId: browserbaseProjectId,
-        browserSettings: {
-          fingerprint: {
-            browsers: ['chrome'],
-            operatingSystems: ['windows'],
-            locales: ['en-US'],
-          },
-        },
-      }),
-    });
-
-    if (!sessionResponse.ok) {
-      const errorText = await sessionResponse.text();
-      console.error('[TestHarness] Browserbase session creation failed:', errorText);
-      throw new Error(`Failed to create Browserbase session: ${errorText}`);
-    }
-
-    const sessionData = await sessionResponse.json();
-    console.log('[TestHarness] Browserbase session created:', sessionData.id);
-
-    // 5) Call MCP server to perform the automated login
-    // The MCP server has the Playwright/Browserbase integration
-    console.log('[TestHarness] Calling MCP server to perform automated login');
-    
-    // Get and log MCP access token
-    const mcpAccessToken = Deno.env.get('MCP_ACCESS_TOKEN');
-    console.log('[TestHarness] Sending MCP_ACCESS_TOKEN:', mcpAccessToken?.slice(0, 5) + '...');
-    
     const mcpResponse = await fetch(`${mcpServerUrl}/tools/call`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${mcpAccessToken?.trim()}`
+        'Authorization': `Bearer ${mcpAccessToken?.trim() ?? ''}`
       },
       body: JSON.stringify({
-        tool: 'scp.login',
-        args: {
-          org_ref,
-          email: 'parent@example.com',
-          password: 'password123',
-          user_id,
-          session_id: sessionData.id,
-          test_mode: true, // Flag to indicate test harness mode
-          mock_provider_url: 'http://localhost:4321/user/login'
-        }
+        tool: 'bookeo.test_connection',
+        args: {}
       })
     });
 
     if (!mcpResponse.ok) {
       const errorText = await mcpResponse.text();
-      console.error('[TestHarness] MCP login failed:', errorText);
+      console.error('[TestHarness] MCP test_connection failed:', errorText);
       
       await finishLoginAudit({
         audit_id: auditId,
@@ -168,41 +116,18 @@ Deno.serve(async (req) => {
         }
       });
 
-      throw new Error(`MCP login failed: ${errorText}`);
+      throw new Error(`MCP test_connection failed: ${errorText}`);
     }
 
     const mcpResult = await mcpResponse.json();
     console.log('[TestHarness] MCP result:', JSON.stringify(mcpResult, null, 2));
 
-    // 6) Check if 2FA is required
-    if (mcpResult.requires_2fa || mcpResult.twoFactorRequired) {
-      console.log('[TestHarness] 2FA required, simulating code entry');
-      
-      // In a real test, you'd automate the 2FA code entry
-      // For now, return the status and session info
-      return new Response(
-        JSON.stringify({
-          status: 'requires_2fa',
-          message: '🔐 2FA challenge detected. Code: 654321',
-          session_id: sessionData.id,
-          browserbase_url: `https://www.browserbase.com/sessions/${sessionData.id}`,
-          next_step: 'Automated 2FA handling would occur here'
-        }),
-        { 
-          status: 200,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
+    if (mcpResult?.success === true || mcpResult?.data?.success === true) {
+      console.log('[TestHarness] API check OK, storing test credential record');
 
-    // 7) If login successful, store the credential
-    if (mcpResult.success || mcpResult.logged_in) {
-      console.log('[TestHarness] Login successful, storing test credentials');
-
-      // Store mock encrypted credentials
       const mockEncrypted = btoa(JSON.stringify({
-        email: 'parent@example.com',
-        password: 'password123'
+        provider: 'bookeo',
+        note: 'test_harness_placeholder'
       }));
 
       const { data: storedCred, error: storeError } = await supabase
@@ -222,28 +147,23 @@ Deno.serve(async (req) => {
         console.log('[TestHarness] Credentials stored successfully:', storedCred.id);
       }
 
-      // Finish audit trail
       await finishLoginAudit({
         audit_id: auditId,
         result: 'success',
         details: {
           authentication_status: 'success',
-          authentication_message: 'Test harness login successful ✅',
+          authentication_message: 'Test harness Bookeo API check successful ✅',
           credential_stored: !storeError,
           test_mode: true,
-          browserbase_session: sessionData.id
         }
       });
 
       return new Response(
         JSON.stringify({
           status: 'login_success',
-          message: 'Login simulated and credential saved ✅',
+          message: 'Bookeo API reachable and test credential saved ✅',
           credential_id: storedCred?.id,
-          browserbase_session: sessionData.id,
-          browserbase_url: `https://www.browserbase.com/sessions/${sessionData.id}`,
           test_data: {
-            email: 'parent@example.com',
             provider: provider_id,
             org_ref
           }
@@ -255,15 +175,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 8) Login failed
-    console.log('[TestHarness] Login failed');
+    console.log('[TestHarness] API check did not report success');
     
     await finishLoginAudit({
       audit_id: auditId,
       result: 'failure',
       details: {
-        error_type: 'login_failed',
-        error_message: mcpResult.error || 'Invalid credentials',
+        error_type: 'api_check_failed',
+        error_message: mcpResult?.message || 'Bookeo API check failed',
         authentication_status: 'failed'
       }
     });
@@ -271,9 +190,8 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         status: 'failure',
-        message: 'Login attempt failed',
-        error: mcpResult.error || 'Invalid credentials',
-        browserbase_session: sessionData.id
+        message: 'Bookeo API check failed',
+        error: mcpResult?.message || 'Unknown error',
       }),
       { 
         status: 200,

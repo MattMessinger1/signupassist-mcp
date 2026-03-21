@@ -151,7 +151,7 @@ export function ChildSelect({ value, onChange }: ChildSelectProps) {
       {children.length > 0 && (
         <div>
           <Label htmlFor="child-select">{prompts.ui.child.label}</Label>
-          <p className="text-xs text-muted-foreground mt-1 mb-2">{prompts.ui.child.helper('Blackhawk')}</p>
+          <p className="text-xs text-muted-foreground mt-1 mb-2">{prompts.ui.child.helper('AIM Design')}</p>
           <Select value={value} onValueChange={onChange}>
             <SelectTrigger>
               <SelectValue placeholder={prompts.ui.child.ph} />

@@ -6,9 +6,7 @@ const corsHeaders = {
 };
 
 interface SetupSystemUserRequest {
-  action: 'create' | 'check' | 'store_credentials';
-  skiclubpro_email?: string;
-  skiclubpro_password?: string;
+  action: 'create' | 'check';
 }
 
 Deno.serve(async (req) => {
@@ -29,7 +27,7 @@ Deno.serve(async (req) => {
     );
 
     const body: SetupSystemUserRequest = await req.json();
-    const { action, skiclubpro_email, skiclubpro_password } = body;
+    const { action } = body;
 
     const SYSTEM_EMAIL = 'system@signupassist.internal';
     const SYSTEM_PASSWORD = Deno.env.get('SYSTEM_USER_PASSWORD') || 'SystemUser2024!SecurePassword';
@@ -51,24 +49,12 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Check if credentials are stored
-      const { data: creds, error: credsError } = await supabaseAdmin
-        .from('stored_credentials')
-        .select('id, provider, alias')
-        .eq('user_id', systemUser.id)
-        .eq('provider', 'skiclubpro')
-        .single();
-
       return new Response(
         JSON.stringify({
           exists: true,
           user_id: systemUser.id,
           email: systemUser.email,
-          credentials_stored: !!creds,
-          credential_alias: creds?.alias,
-          message: creds 
-            ? 'System user configured with SkiClubPro credentials'
-            : 'System user exists but no SkiClubPro credentials stored'
+          message: 'System user is configured for internal automation tasks.'
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -98,7 +84,7 @@ Deno.serve(async (req) => {
         email_confirm: true, // Auto-confirm
         user_metadata: {
           role: 'system',
-          purpose: 'cache_scraping'
+          purpose: 'system_automation'
         }
       });
 
@@ -111,62 +97,7 @@ Deno.serve(async (req) => {
           success: true,
           user_id: newUser.user.id,
           email: SYSTEM_EMAIL,
-          message: 'System user created successfully. Next: store SkiClubPro credentials using action=store_credentials'
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Action: Store SkiClubPro credentials for system user
-    if (action === 'store_credentials') {
-      if (!skiclubpro_email || !skiclubpro_password) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            message: 'Missing skiclubpro_email or skiclubpro_password'
-          }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      // Get system user
-      const { data: users } = await supabaseAdmin.auth.admin.listUsers();
-      const systemUser = users?.users.find(u => u.email === SYSTEM_EMAIL);
-
-      if (!systemUser) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            message: 'System user not found. Run action=create first.'
-          }),
-          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      // Encrypt credentials using the store-credentials function
-      const storeCredsResponse = await supabaseAdmin.functions.invoke('store-credentials', {
-        body: {
-          provider_slug: 'skiclubpro',
-          alias: 'system_cache_scraper',
-          email: skiclubpro_email,
-          password: skiclubpro_password,
-          user_id: systemUser.id
-        }
-      });
-
-      if (storeCredsResponse.error) {
-        console.error('[setup-system-user] Failed to store credentials:', storeCredsResponse.error);
-        throw storeCredsResponse.error;
-      }
-
-      console.log('[setup-system-user] Stored credentials for system user');
-
-      return new Response(
-        JSON.stringify({
-          success: true,
-          user_id: systemUser.id,
-          credential_id: storeCredsResponse.data?.id,
-          message: 'SkiClubPro credentials stored for system user. Cache refresh is now ready!'
+          message: 'System user created successfully.'
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -175,7 +106,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        message: 'Invalid action. Use: check, create, or store_credentials'
+        message: 'Invalid action. Use: check or create'
       }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

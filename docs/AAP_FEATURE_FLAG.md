@@ -51,7 +51,7 @@ tsx scripts/testNewAAP.ts
 ```
 
 ### Test Cases
-1. **Blackhawk Ski Loop Fix**: Ensures provider is not re-asked after being mentioned
+1. **AIM Design loop fix**: Ensures provider is not re-asked after being mentioned
 2. **Declined Provider**: Handles "not sure" without loops
 3. **All-At-Once**: Processes complete AAP in single message
 
@@ -69,7 +69,7 @@ tsx scripts/testNewAAP.ts
 
 3. Test in Chat Harness:
    - Navigate to `/chat-test`
-   - Try: "I'd like to sign up my kids for blackhawk ski"
+   - Try: "I'd like to sign up my kids for AIM Design ski lessons"
    - Expect: Asks for age ONLY, never re-asks provider
 
 ## Migration Phases

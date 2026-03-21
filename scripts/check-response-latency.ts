@@ -23,7 +23,7 @@ async function checkResponseLatency() {
   const sessionId = `latency-test-${Date.now()}`;
 
   try {
-    const testMessage = 'I want to sign up for Blackhawk Ski Club';
+    const testMessage = 'I want to sign up for AIM Design classes';
     console.log(`📝 Sending test message: "${testMessage}"\n`);
 
     const startTime = Date.now();

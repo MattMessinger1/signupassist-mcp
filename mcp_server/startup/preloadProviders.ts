@@ -9,8 +9,8 @@ import Logger from '../utils/logger.js';
 const POPULAR_SEARCHES = [
   { name: 'YMCA', location: 'Madison WI' },
   { name: 'Boys and Girls Club', location: 'Madison WI' },
-  { name: 'Blackhawk Ski Club', location: 'Middleton WI' },
-  { name: 'Madison Nordic Ski Club', location: 'Madison WI' },
+  { name: 'AIM Design', location: 'Madison WI' },
+  { name: 'Madison Public Library', location: 'Madison WI' },
   { name: 'Community Center', location: 'Madison WI' },
 ];
 

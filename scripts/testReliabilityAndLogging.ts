@@ -11,10 +11,10 @@ const session = "reliability-test";
   
   // 1. Call a provider search twice (second call should hit cache)
   Logger.info("First call - should execute tool");
-  await orchestrator.callTool("search_provider", { name: "Blackhawk Ski Club" });
+  await orchestrator.callTool("search_provider", { name: "AIM Design" });
   
   Logger.info("\nSecond call - should hit cache");
-  await orchestrator.callTool("search_provider", { name: "Blackhawk Ski Club" });
+  await orchestrator.callTool("search_provider", { name: "AIM Design" });
 
   console.log("\n=== Test 2: Retry Logic ===");
   
@@ -49,7 +49,7 @@ const session = "reliability-test";
   // 4. Test context updates with audit logging
   Logger.info("Testing context updates with audit trail");
   orchestrator.updateContext(session, { 
-    provider: { name: "Blackhawk Ski Club", orgRef: "blackhawk" }
+    provider: { name: "AIM Design", orgRef: "aim-design" }
   });
 
   console.log("\n✅ All reliability tests completed.");

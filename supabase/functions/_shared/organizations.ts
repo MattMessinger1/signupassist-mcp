@@ -5,13 +5,12 @@
 
 export interface OrgConfig {
   orgRef: string;
-  provider: string; // 'skiclubpro', 'campminder', etc.
+  provider: string; // 'bookeo', 'campminder', etc.
   displayName: string;
   categories: string[];
   customDomain?: string;
-  credentialId?: string; // Service credential for automated scraping
   priority: 'high' | 'normal' | 'low';
-  active: boolean; // Enable/disable scraping
+  active: boolean;
 }
 
 // Internal registry
@@ -71,14 +70,12 @@ export function hasOrganization(orgRef: string): boolean {
 // Organization Registrations
 // ============================================================================
 
-// SkiClubPro Organizations
+// Bookeo organizations (API-backed catalog)
 registerOrganization({
-  orgRef: 'blackhawk-ski-club',
-  provider: 'skiclubpro',
-  displayName: 'Blackhawk Ski Club',
-  categories: ['all', 'lessons', 'teams', 'races', 'camps', 'clinics'],
-  customDomain: 'blackhawk.skiclubpro.team',
-  credentialId: Deno.env.get('SCP_SERVICE_CRED_ID'),
+  orgRef: 'aim-design',
+  provider: 'bookeo',
+  displayName: 'AIM Design',
+  categories: ['all', 'lessons', 'camps', 'events'],
   priority: 'high',
   active: true
 });

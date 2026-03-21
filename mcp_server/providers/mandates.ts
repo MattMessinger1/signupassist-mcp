@@ -413,7 +413,7 @@ export const mandateTools = [
         },
         provider: {
           type: 'string',
-          description: 'Provider name (e.g., bookeo, skiclubpro)'
+          description: 'Provider name (e.g., bookeo)'
         },
         org_ref: {
           type: 'string',

@@ -19,7 +19,7 @@ export async function mcpDiscover(body: Record<string, any>) {
         "X-Run-Id": run_id,
       },
       body: JSON.stringify({
-        tool: "scp.discover_required_fields",
+        tool: "bookeo.discover_required_fields",
         args: {
           ...body,
           mode: body.mode || 'full', // Support prerequisites_only mode

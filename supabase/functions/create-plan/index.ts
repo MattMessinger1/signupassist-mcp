@@ -50,7 +50,7 @@ Deno.serve(async (req) => {
       child_id, 
       opens_at,
       mandate_id,
-      provider = 'skiclubpro',
+      provider = 'bookeo',
       answers = null,
       max_provider_charge_cents,
       service_fee_cents,

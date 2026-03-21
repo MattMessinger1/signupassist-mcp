@@ -163,7 +163,7 @@ Deno.serve(async (req) => {
 
 ## ACP-P3: Feed-First Program Listing
 
-**Purpose:** Update ProgramBrowser to prioritize feed data over scraping.
+**Purpose:** Update ProgramBrowser to prioritize cached API feed data.
 
 **Files to Update:**
 - `src/components/ProgramBrowser.tsx`
@@ -177,7 +177,7 @@ const loadProgramsFromFeed = async () => {
     const { data: feedData, error } = await supabase
       .from('program_feeds')
       .select('feed_data')
-      .eq('provider', 'skiclubpro')
+      .eq('provider', 'bookeo')
       .eq('org_ref', orgRef)
       .single();
 
@@ -202,7 +202,7 @@ const loadProgramsFromFeed = async () => {
 
 ## ACP-P4: UI Badges
 
-**Purpose:** Add visual indicators showing data source (feed vs. scraped).
+**Purpose:** Add visual indicators showing data source (live API sync vs. cache).
 
 **Files to Update:**
 - `src/components/ProgramBrowser.tsx`
@@ -587,7 +587,7 @@ Deno.serve(async (req) => {
 
 ## ACP-P10: Audit Source Evidence
 
-**Purpose:** Tag audit events with data source (feed vs. scraped) for transparency.
+**Purpose:** Tag audit events with data source (API vs. cache) for transparency.
 
 **Files to Update:**
 - `mcp_server/middleware/audit.ts`
@@ -599,7 +599,7 @@ Deno.serve(async (req) => {
 // Add to audit event structure
 export interface AuditEventWithSource extends AuditEvent {
   details: {
-    data_source?: 'feed' | 'scraped' | 'manual';
+    data_source?: 'api' | 'cache' | 'manual';
     feed_version?: string;
     confidence_score?: number;
     [key: string]: any;
@@ -614,7 +614,7 @@ export async function logAuditEvent(event: AuditEventWithSource) {
       ...event,
       details: {
         ...event.details,
-        data_source: event.details.data_source || 'scraped',
+        data_source: event.details.data_source || 'cache',
         audit_version: 'v2-acp'
       }
     });
@@ -642,9 +642,8 @@ export async function logAuditEvent(event: AuditEventWithSource) {
 # Credential Evolution
 
 ## Current State (v1)
-- Encrypted username/password stored in `stored_credentials`
-- Sealed with `CRED_SEAL_KEY`
-- One credential per provider per user
+- Sensitive credentials stored encrypted in the database (per provider policy)
+- One credential per provider per user where applicable
 
 ## ACP-Aligned Future (v2)
 - Support OAuth tokens and session tokens
@@ -694,8 +693,8 @@ const ACP_ALIGNED_COPY = {
   transparency_note: "You can view the exact authorization details in the mandate JSON below.",
   
   data_source_badge: {
-    feed: "This program uses structured data for faster, more accurate registration.",
-    scraped: "This program data was discovered from the provider's website."
+    feed: "This program uses structured API data for faster, more accurate registration.",
+    cache: "Showing cached catalog data; sync runs on a schedule."
   },
   
   delegation_summary: "SignupAssist will handle registration automatically at the right time, respecting your payment limits and preferences."

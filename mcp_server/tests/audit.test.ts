@@ -144,10 +144,10 @@ describe('Audit Trail Middleware', () => {
       });
 
       const args = { amount_cents: 5000 };
-      const result = await auditToolCall(mockContext, args, mockToolHandler, 'scp:pay');
+      const result = await auditToolCall(mockContext, args, mockToolHandler, 'bookeo:pay');
 
       // Verify mandate was verified
-      expect(verifyMandate).toHaveBeenCalledWith('mock.jwt.token', 'scp:pay');
+      expect(verifyMandate).toHaveBeenCalledWith('mock.jwt.token', 'bookeo:pay');
       expect(result).toEqual({ success: true, data: 'test result' });
     });
 
@@ -176,7 +176,7 @@ describe('Audit Trail Middleware', () => {
       const args = { amount_cents: 5000 };
       
       await expect(
-        auditToolCall(mockContext, args, mockToolHandler, 'scp:pay')
+        auditToolCall(mockContext, args, mockToolHandler, 'bookeo:pay')
       ).rejects.toThrow('Mandate verification failed: Insufficient scope');
 
       // Verify denial was logged
@@ -276,7 +276,7 @@ describe('Audit Trail Middleware', () => {
         error: null,
       });
 
-      const middleware = createAuditMiddleware(mockContext, 'scp:login');
+      const middleware = createAuditMiddleware(mockContext, 'bookeo:authenticate');
       const args = { username: 'testuser' };
       
       const result = await middleware(args, mockToolHandler);

@@ -39,7 +39,7 @@ export interface Child { ... }              // Family registration entity
 
 **Files Updated**:
 - `mcp_server/lib/sessionPersistence.ts`: Changed `SessionContext` import from `../ai/AIOrchestrator` to `../types`
-- `mcp_server/providers/skiclubpro.ts`: Changed `ProviderResponse` import from `./types` to `../types`
+- `mcp_server/providers/bookeo.ts`: Changed `ProviderResponse` import from `./types` to `../types`
 
 **Import Pattern**:
 ```typescript
@@ -129,7 +129,7 @@ import { ProviderResponse, SessionContext } from 'mcp_server';
 - ✅ `mcp_server/types.ts` - Contains all canonical types
 - ✅ `mcp_server/index.ts` - Re-exports types
 - ✅ `mcp_server/lib/sessionPersistence.ts` - Updated imports
-- ✅ `mcp_server/providers/skiclubpro.ts` - Updated imports
+- ✅ `mcp_server/providers/bookeo.ts` - Updated imports
 - ✅ `mcp_server/providers/types.ts` - Deleted (no longer needed)
 
 ### Type Checking ✅
@@ -208,7 +208,7 @@ If issues arise, rollback steps:
 2. **Revert import changes**:
    ```bash
    git checkout HEAD~1 -- mcp_server/lib/sessionPersistence.ts
-   git checkout HEAD~1 -- mcp_server/providers/skiclubpro.ts
+   git checkout HEAD~1 -- mcp_server/providers/bookeo.ts
    ```
 
 3. **Revert TypeScript config**:

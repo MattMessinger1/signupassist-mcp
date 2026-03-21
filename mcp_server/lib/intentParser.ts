@@ -88,7 +88,7 @@ export function parseIntentRegex(message: string): ParsedIntent {
   
   // Provider detection
   const providerPatterns = [
-    { pattern: /blackhawk|black hawk/i, value: 'blackhawk-ski-club' },
+    { pattern: /\baim\s*-?\s*design\b/i, value: 'aim-design' },
     { pattern: /vail|vail resorts/i, value: 'vail' },
     { pattern: /ski\s+club/i, value: 'ski-club' },
   ];
@@ -288,13 +288,13 @@ export interface ProgramMapping {
  * 2. Fallback to hardcoded mappings below
  */
 let PROGRAM_MAPPINGS: ProgramMapping[] = [
-  // Blackhawk Ski Club - Default fallback mappings
+  // AIM Design (Bookeo) — default fallback mappings
   {
     program_ref: "309",
     ageMin: 6,
     ageMax: 12,
     category: "lessons",
-    provider: "blackhawk-ski-club",
+    provider: "aim-design",
     keywords: ["nordic", "wednesday", "kids"],
     confidence: 0.9,
     season: "winter"
@@ -304,7 +304,7 @@ let PROGRAM_MAPPINGS: ProgramMapping[] = [
     ageMin: 4,
     ageMax: 8,
     category: "lessons",
-    provider: "blackhawk-ski-club",
+    provider: "aim-design",
     keywords: ["beginner", "saturday", "morning"],
     confidence: 0.85,
     season: "winter"
@@ -314,7 +314,7 @@ let PROGRAM_MAPPINGS: ProgramMapping[] = [
     ageMin: 8,
     ageMax: 14,
     category: "lessons",
-    provider: "blackhawk-ski-club",
+    provider: "aim-design",
     keywords: ["intermediate", "sunday", "afternoon"],
     confidence: 0.8,
     season: "winter"

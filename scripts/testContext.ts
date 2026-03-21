@@ -8,7 +8,7 @@ console.log("=== Testing Context Management ===\n");
 // Test 1: Update provider context
 console.log("Test 1: Update provider context");
 orchestrator.updateContext(session, { 
-  provider: { name: "Blackhawk Ski Club", orgRef: "blackhawk-ski" } 
+  provider: { name: "AIM Design", orgRef: "aim-design" } 
 });
 console.log("\n---\n");
 

@@ -17,7 +17,7 @@ import { prompts, fmt } from '@/lib/prompts';
 type Caps = { max_provider_charge_cents: number | null; service_fee_cents: number | null };
 
 interface Props {
-  orgRef: string;                    // e.g. 'blackhawk-ski-club'
+  orgRef: string;                    // e.g. 'aim-design'
   programTitle: string;
   programRef: string;
   credentialId: string;
@@ -69,10 +69,10 @@ export default function MandateSummary({
     cents == null ? '—' : `$${(cents / 100).toFixed(2)} USD`;
 
   const scopeList = useMemo(() => ([
-    { key: 'scp:login', label: 'Sign in to Blackhawk (SkiClubPro) on your behalf' },
-    { key: 'scp:enroll', label: 'Fill and submit the program registration form' },
-    { key: 'scp:write:register', label: 'Click buttons/links required to complete registration' },
-    { key: 'scp:pay', label: `Pay the provider up to your cap (${fmtUSD(caps.max_provider_charge_cents)})` },
+    { key: 'bookeo:read_products', label: 'Read program and product details from the provider API on your behalf' },
+    { key: 'bookeo:read_slots', label: 'Check availability and time slots via the provider API' },
+    { key: 'bookeo:create_booking', label: 'Create holds and bookings within your authorization' },
+    { key: 'bookeo:confirm_booking', label: `Pay the provider up to your cap (${fmtUSD(caps.max_provider_charge_cents)}) when confirming` },
     { key: 'signupassist:fee', label: `Charge a ${fmtUSD(caps.service_fee_cents)} success fee only if we get the spot` },
   ]), [caps]);
 
@@ -133,45 +133,30 @@ export default function MandateSummary({
 
       // 1️⃣  Create mandate
       console.log('[MandateSummary] 🚀 Preparing to call mandate-issue', {
-        provider: 'skiclubpro',
+        provider: 'bookeo',
         program_ref: programRef,
         child_id: childId,
         openTimeISO,
       });
       
-      // 🔍 Dynamically look up stored credential for this user
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('User not authenticated');
+      if (!credentialId) throw new Error('credentialId missing');
 
-      const { data: creds, error: credErr } = await supabase
-        .from('stored_credentials')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('provider', 'skiclubpro')
-        .maybeSingle(); // safe but still strict
-      console.log('[MandateSummary] credential lookup result', creds);
-      if (credErr) {
-        console.error('[MandateSummary] credential lookup failed', credErr);
-        throw new Error('Credential lookup failed');
-      }
-      if (!creds) throw new Error('No stored credential found for this user/provider');
-      const credentialId = creds.id;
-
-      // Construct payload with dynamic credential id
+      // Construct payload with credential id from the plan form
       const nowISO = new Date().toISOString();
       const oneMonthLaterISO = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
       const maxAmountCents = caps.max_provider_charge_cents ?? 0;
 
       const mandatePayload = {
-        provider: 'skiclubpro',
+        provider: 'bookeo',
         program_ref: programRef,
         child_id: childId,
         scopes: [
-          'scp:authenticate',
-          'scp:login',
-          'scp:enroll',
-          'scp:write:register',
-          'scp:pay',
+          'bookeo:read_products',
+          'bookeo:read_slots',
+          'bookeo:create_booking',
+          'bookeo:confirm_booking',
           'signupassist:fee',
         ],
         max_amount_cents: maxAmountCents,
@@ -194,7 +179,7 @@ export default function MandateSummary({
 
       // 2️⃣  Create plan using mandate_id
       const planPayload = {
-        provider: 'skiclubpro',
+        provider: 'bookeo',
         program_ref: programRef,
         child_id: childId,
         opens_at: openTimeISO,

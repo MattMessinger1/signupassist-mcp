@@ -8,8 +8,9 @@ export function registerProvider(provider: string, checkers: Checker[]) {
 }
 
 export function buildBaseUrl(orgRef: string, customDomain?: string) {
-  const sub = customDomain || orgRef;
-  return `https://${sub}.skiclubpro.team`;
+  const base = customDomain || orgRef;
+  if (base.startsWith('http://') || base.startsWith('https://')) return base;
+  return `https://${base}`;
 }
 
 export async function runChecks(provider: string, ctx: Ctx): Promise<Result[]> {

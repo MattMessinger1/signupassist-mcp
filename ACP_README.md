@@ -12,7 +12,7 @@ ACP establishes standards for how AI agents can transact with e-commerce systems
 - **Source attribution** for all decisions and actions
 
 For SignupAssist, adopting ACP principles means:
-- ✅ **More accurate & faster program discovery** via structured feeds instead of scraping
+- ✅ **More accurate & faster program discovery** via structured API feeds and cached catalogs
 - ✅ **Set-and-forget delegation** with one mandate covering login, registration, and payment
 - ✅ **Secure credential reuse** across multiple plans with clear scopes
 - ✅ **Notifications & reminders** for parents before and after registration attempts
@@ -24,7 +24,7 @@ For SignupAssist, adopting ACP principles means:
 
 | SignupAssist Concept | ACP Equivalent | Status |
 |---------------------|----------------|--------|
-| Program discovery via browser automation | Structured product feeds | 🔄 Future (ACP-P1, P2, P3) |
+| Program discovery via provider APIs | Structured product feeds | ✅ Current (Bookeo + cache) |
 | Field discovery + form filling | Checkout session state machine | ✅ Current (can be enhanced) |
 | Mandate with scopes | Delegated authorization token with caps | ✅ Current (enhanced in ACP-P6) |
 | Credential storage | Reusable auth credentials | ✅ Current (evolution in ACP-P11) |
@@ -38,13 +38,13 @@ For SignupAssist, adopting ACP principles means:
 ## ACP Lessons We've Applied
 
 ### 1. Feed-First Program Discovery
-**Current:** We scrape program pages using Browserbase.  
-**ACP-Aligned:** Providers publish structured feeds; we cache and index them. Scraping becomes a fallback.
+**Current:** Provider data is loaded via HTTP APIs (e.g. Bookeo) and cached for chat.  
+**ACP-Aligned:** Structured feeds remain the source of truth; cache TTLs and sync jobs keep data fresh.
 
 **Benefits:**
-- Faster loading (no browser session needed)
-- More accurate data (structured vs. inferred)
-- Lower cost (fewer Browserbase minutes)
+- Fast responses from cached catalogs
+- Accurate structured fields from provider APIs
+- Predictable operational cost
 - Better UX (instant search and filtering)
 
 **Implementation:** See ACP-P1, P2, P3, P4, P5
@@ -97,10 +97,9 @@ For SignupAssist, adopting ACP principles means:
 **Why It Matters:** Each plan gets one mandate containing all scopes and caps. No scope creep, no hidden authorizations.
 
 **Scopes:**
-- `scp:login` – Sign in to provider
-- `scp:enroll` – Fill registration form
-- `scp:write:register` – Submit and confirm
-- `scp:pay` – Charge payment method (up to cap)
+- `bookeo:authenticate` – API authentication context
+- `bookeo:read_products` / `bookeo:discover_fields` – Catalog and form discovery
+- `bookeo:create_booking` – Create/confirm bookings (up to mandate caps)
 - `signupassist:fee` – Charge success fee (only on success)
 
 **Implementation:** ✅ Current mandate system (see `mcp_server/lib/mandates.ts`, enhanced in ACP-P6)
@@ -129,7 +128,7 @@ For SignupAssist, adopting ACP principles means:
 ## Our Future Path
 
 ### Phase 1: Feed Infrastructure (ACP-P1, P2, P3)
-**Goal:** Move from scraping to structured feeds as primary data source.
+**Goal:** Expand structured feed coverage across organizations (API-first).
 
 **Steps:**
 1. ✅ Add `program_feeds` table (ACP-P1)

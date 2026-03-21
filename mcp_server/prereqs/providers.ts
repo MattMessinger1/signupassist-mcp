@@ -1,5 +1,5 @@
 // mcp_server/prereqs/providers.ts
-// API-first only: scraping-based providers (SkiClubPro/Browserbase) are deprecated.
+// API-first only: legacy browser-automation provider flows are not used; Bookeo is API-based.
 
 export function getOrgOverride(_orgRef: string) {
   return {};

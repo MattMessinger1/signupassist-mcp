@@ -120,8 +120,7 @@ export class AuthService {
 
     // Provider-specific validation
     switch (provider) {
-      case 'skiclubpro':
-        // Add SkiClubPro specific validation
+      case 'bookeo':
         return this.isValidEmail(credentials.email);
       
       case 'daysmart':

@@ -40,7 +40,7 @@ export interface LocationHint {
 
 export interface AAPProvider extends AAPField<{
   org_ref: string | null;
-  backend: 'bookeo' | 'skiclubpro' | 'campminder' | null;
+  backend: 'bookeo' | 'campminder' | null;
   display_name: string | null;
 }> {
   search_query?: string;              // "ABC Swim School"
@@ -50,7 +50,7 @@ export interface AAPProvider extends AAPField<{
   
   normalized: {
     org_ref: string | null;
-    backend: 'bookeo' | 'skiclubpro' | 'campminder' | null;
+    backend: 'bookeo' | 'campminder' | null;
     display_name: string | null;
   } | null;
   mode?: 'named' | 'local';          // named provider vs local search
