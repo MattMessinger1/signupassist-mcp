@@ -54,8 +54,8 @@ describe('Bookeo Provider', () => {
   it('should export confirm_booking tool', () => {
     const confirmTool = bookeoTools.find(t => t.name === 'bookeo.confirm_booking');
     expect(confirmTool).toBeDefined();
-    expect(confirmTool?.inputSchema.required).toContain('holdId');
-    expect(confirmTool?.inputSchema.required).toContain('email');
+    expect(confirmTool?.inputSchema.required).toContain('event_id');
+    expect(confirmTool?.inputSchema.required).toContain('delegate_data');
   });
 
   it('should have proper tool structure', () => {
@@ -67,8 +67,8 @@ describe('Bookeo Provider', () => {
     });
   });
   
-  it('should have exactly 4 tools', () => {
-    expect(bookeoTools.length).toBe(4);
+  it('should have exactly 6 tools', () => {
+    expect(bookeoTools.length).toBe(6);
   });
 
   it('should include source_provider and org_ref on all tool handlers', () => {
