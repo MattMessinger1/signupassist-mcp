@@ -1,17 +1,12 @@
 /**
  * Extraction utilities for program data processing
- * Provides HTML snippet cleanup and program validation/deduplication
+ * Provides HTML snippet cleanup, status validation, and text stripping
  */
-
-import type { ProgramData } from "./threePassExtractor.programs.js";
 
 /**
  * Canonicalize an HTML snippet for LLM consumption
  * Strips scripts, styles, excess attributes, collapses whitespace
  * Keeps text content and anchor hrefs for register/details links
- * 
- * @param html - Raw HTML snippet
- * @returns Minified, canonicalized HTML snippet
  */
 export function canonicalizeSnippet(html: string): string {
   let result = html;
@@ -50,53 +45,6 @@ export function canonicalizeSnippet(html: string): string {
   result = uniqueLines.join('\n');
   
   return result;
-}
-
-/**
- * Validate and deduplicate program data
- * - Filters out items without titles
- * - Normalizes status to whitelist values
- * - Deduplicates by program_ref (keeps first occurrence)
- * 
- * @param items - Array of extracted program data
- * @returns Validated and deduplicated program array
- */
-export function validateAndDedupePrograms(items: ProgramData[]): ProgramData[] {
-  // 1. Filter out items without titles
-  let validated = items.filter(item => item.title && item.title.trim().length > 0);
-  
-  // 2. Normalize status to whitelist values
-  validated = validated.map(item => {
-    const status = item.status?.trim() || '';
-    
-    // Check if status is in the whitelist (case-insensitive)
-    const normalizedStatus = VALID_STATUSES.find(
-      validStatus => validStatus.toLowerCase() === status.toLowerCase()
-    );
-    
-    return {
-      ...item,
-      status: normalizedStatus || '-' // Default to '-' if not in whitelist
-    };
-  });
-  
-  // 3. Deduplicate by program_ref (keep first occurrence)
-  const seen = new Set<string>();
-  const deduplicated = validated.filter(item => {
-    if (!item.program_ref) {
-      // Keep items without program_ref (shouldn't happen, but be safe)
-      return true;
-    }
-    
-    if (seen.has(item.program_ref)) {
-      return false; // Skip duplicates
-    }
-    
-    seen.add(item.program_ref);
-    return true;
-  });
-  
-  return deduplicated;
 }
 
 /**
