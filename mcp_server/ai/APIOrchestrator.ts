@@ -62,9 +62,33 @@ import {
   hasProviderForActivity
 } from "../utils/activityMatcher.js";
 import { getAllActiveOrganizations, getOrganization } from "../config/organizations.js";
+import { getProvider } from "../providers/registry.js";
 import { callAI_JSON } from "../lib/aiProvider.js";
 import { checkAudienceMismatch } from "../utils/audienceParser.js";
 import { formatCurrencyFromCents } from "../utils/money.js";
+
+/**
+ * Resolve the correct MCP tool name for a given org's provider.
+ * Falls back to bookeo.* if provider not found (backward-compatible).
+ */
+function getProviderToolName(orgRef: string, toolType: 'findPrograms' | 'discoverFields' | 'confirmBooking'): string {
+  const org = getOrganization(orgRef);
+  const providerId = org?.provider || 'bookeo';
+  const provider = getProvider(providerId);
+
+  if (provider) {
+    if (toolType === 'findPrograms') return provider.tools.findPrograms;
+    if (toolType === 'discoverFields') return provider.tools.discoverFields;
+  }
+
+  // Fallback to bookeo.* for backward compatibility and confirmBooking
+  const fallbackMap: Record<string, string> = {
+    findPrograms: 'bookeo.find_programs',
+    discoverFields: 'bookeo.discover_required_fields',
+    confirmBooking: 'bookeo.confirm_booking'
+  };
+  return fallbackMap[toolType];
+}
 
 // Simple flow steps for API-first providers
 enum FlowStep {
@@ -5254,9 +5278,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       // Get context for timezone formatting
       const context = this.getContext(sessionId);
 
-      // Call Bookeo MCP tool (ensures audit logging)
-      // Note: provider param removed - tool name already selects provider
-      const programsResult = await this.invokeMCPTool('bookeo.find_programs', {
+      // Call provider's find_programs tool (ensures audit logging)
+      const findProgramsTool = getProviderToolName(orgRef, 'findPrograms');
+      Logger.info(`[searchPrograms] Using tool: ${findProgramsTool} for org: ${orgRef}`);
+      const programsResult = await this.invokeMCPTool(findProgramsTool, {
         org_ref: orgRef
       });
       
@@ -5902,8 +5927,9 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         }
       }
 
-      Logger.info('[selectProgram] Calling bookeo.discover_required_fields for audit compliance');
-      const formDiscoveryResult = await this.invokeMCPTool('bookeo.discover_required_fields', {
+      const discoverFieldsTool = getProviderToolName(orgRef, 'discoverFields');
+      Logger.info(`[selectProgram] Calling ${discoverFieldsTool} for audit compliance`);
+      const formDiscoveryResult = await this.invokeMCPTool(discoverFieldsTool, {
         program_ref: programRef,
         org_ref: orgRef
       });
@@ -6656,9 +6682,10 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         Logger.warn("[confirmPayment] No userId - skipping mandate creation");
       }
 
-      // Step 1: Book with Bookeo via MCP tool
-      Logger.info("[confirmPayment] Calling bookeo.confirm_booking...");
-      const bookingResponse = await this.invokeMCPTool('bookeo.confirm_booking', {
+      // Step 1: Book via provider's confirm_booking tool
+      const confirmTool = getProviderToolName(orgRef, 'confirmBooking');
+      Logger.info(`[confirmPayment] Calling ${confirmTool}...`);
+      const bookingResponse = await this.invokeMCPTool(confirmTool, {
         event_id,
         program_ref: programRef,
         org_ref: orgRef,

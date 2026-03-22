@@ -720,6 +720,7 @@ async function getCachedAuth0JwksJson(domain: string): Promise<any> {
 
 // Import tool providers
 import { bookeoTools } from './providers/bookeo.js';
+import { activeNetTools } from './providers/activenet.js';
 import { stripeTools } from './providers/stripe.js';
 import { programFeedTools } from './providers/programFeed.js';
 import { mandateTools } from './providers/mandates.js';
@@ -740,6 +741,7 @@ import { registerAllProviders } from './prereqs/providers.js';
 
 // Import provider and organization registries
 import './providers/bookeo/config.js'; // Auto-registers Bookeo
+import './providers/activenet/config.js'; // Auto-registers Active Network
 import './config/organizations.js'; // Auto-registers organizations
 // import './providers/campminder/config.js'; // Uncomment when ready
 
@@ -901,6 +903,22 @@ class SignupAssistMCPServer {
         _meta: {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),  // Preserve read-only safety metadata
+          ...applyV1Visibility(tool.name, ((tool as any)._meta || {})),
+          ...applyWizardMeta(tool.name)
+        }
+      });
+    });
+
+    // Register Active Network tools
+    activeNetTools.forEach((tool) => {
+      this.tools.set(tool.name, {
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+        handler: tool.handler,
+        _meta: {
+          ...CHATGPT_APPS_V1_META,
+          ...((tool as any)._meta || {}),
           ...applyV1Visibility(tool.name, ((tool as any)._meta || {})),
           ...applyWizardMeta(tool.name)
         }

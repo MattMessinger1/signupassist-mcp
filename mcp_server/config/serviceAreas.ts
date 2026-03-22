@@ -17,19 +17,19 @@ export interface ServiceRegion {
 // Currently active service areas
 export const ACTIVE_REGIONS: ServiceRegion[] = [
   // Madison, WI metro area
-  { city: 'Madison', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
-  { city: 'Middleton', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
-  { city: 'Verona', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
-  { city: 'Fitchburg', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
-  { city: 'Waunakee', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
-  { city: 'Sun Prairie', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
-  { city: 'Monona', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
-  { city: 'Cottage Grove', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
-  { city: 'DeForest', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
-  { city: 'Oregon', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
-  { city: 'Stoughton', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
-  { city: 'Mount Horeb', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
-  { city: 'Cross Plains', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design'] },
+  { city: 'Madison', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design', 'activenet-national'] },
+  { city: 'Middleton', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design', 'activenet-national'] },
+  { city: 'Verona', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design', 'activenet-national'] },
+  { city: 'Fitchburg', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design', 'activenet-national'] },
+  { city: 'Waunakee', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design', 'activenet-national'] },
+  { city: 'Sun Prairie', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design', 'activenet-national'] },
+  { city: 'Monona', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design', 'activenet-national'] },
+  { city: 'Cottage Grove', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design', 'activenet-national'] },
+  { city: 'DeForest', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design', 'activenet-national'] },
+  { city: 'Oregon', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design', 'activenet-national'] },
+  { city: 'Stoughton', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design', 'activenet-national'] },
+  { city: 'Mount Horeb', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design', 'activenet-national'] },
+  { city: 'Cross Plains', state: 'WI', stateFull: 'Wisconsin', status: 'active', providers: ['aim-design', 'activenet-national'] },
 ];
 
 // Coming soon regions (announced expansion)

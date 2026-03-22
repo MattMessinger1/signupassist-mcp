@@ -24,11 +24,15 @@ export interface OrgConfig {
   
   // Backend-specific config (new preferred way)
   apiConfig?: {
-    bookeo?: { 
+    bookeo?: {
       accountId: string;        // "bookeo-default"
     };
-    campminder?: { 
+    campminder?: {
       siteId: string;
+    };
+    activenet?: {
+      kidsOnly?: boolean;       // Filter to kids activities (default true)
+      radius?: number;          // Search radius in miles
     };
   };
   
@@ -113,6 +117,21 @@ registerOrganization({
     bookeo: { 
       accountId: 'aim-design'
     }
+  },
+  priority: 'high',
+  active: true
+});
+
+// ACTIVE Network — National (all US activities, no geo restriction)
+registerOrganization({
+  orgRef: 'activenet-national',
+  provider: 'activenet',
+  displayName: 'ACTIVE Network (National)',
+  searchKeywords: ['camps', 'classes', 'sports', 'arts', 'ymca', 'parks', 'rec', 'dance', 'swim', 'soccer', 'baseball', 'basketball', 'tennis', 'gymnastics'],
+  location: undefined, // National — location comes from user query
+  categories: ['all', 'lessons', 'camps', 'sports', 'arts', 'dance'],
+  apiConfig: {
+    activenet: { kidsOnly: true }
   },
   priority: 'high',
   active: true
