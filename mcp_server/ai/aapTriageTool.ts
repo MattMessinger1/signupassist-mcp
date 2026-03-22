@@ -15,7 +15,7 @@
  * See: mcp_server/ai/AIOrchestrator.ts (lines ~420+) for new flow
  */
 
-import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
+import { callAI_JSON } from "../lib/aiProvider.js";
 
 // Simple in-memory triage cache to skip redundant OpenAI calls
 const triageCache = new Map<string, any>();
@@ -249,7 +249,7 @@ export async function triageAAP(
       return triageCache.get(cacheKey);
     }
     
-    const result = await callOpenAI_JSON({
+    const result = await callAI_JSON({
       model: "gpt-4o-mini",
       system: TRIAGE_AAP_SYSTEM_PROMPT,
       user: {
