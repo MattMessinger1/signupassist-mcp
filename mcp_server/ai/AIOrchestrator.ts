@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import Logger from "../utils/logger.js";
 import { sanitizeForLogs } from "../utils/sanitization.js";
-import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
+import { callAI_JSON } from "../lib/aiProvider.js";
 import { parseProviderInput, ParsedProviderInput } from "../utils/parseInput.js";
 import { lookupLocalProvider, googlePlacesSearch, searchOrganizations } from "../utils/providerSearch.js";
 import type { Provider, OrgSearchResult } from "../utils/providerSearch.js";
@@ -3346,7 +3346,7 @@ Which would you prefer?`;
         price: p.price
       }));
 
-      const result = await callOpenAI_JSON({
+      const result = await callAI_JSON({
         model: "gpt-5-mini-2025-08-07",
         useResponsesAPI: false, // Use Chat Completions for JSON responses
         system: `Analyze these programs and group them into categories like:
@@ -3534,7 +3534,7 @@ Return JSON: {
    */
   private async aiParseProviderInput(userInput: string): Promise<ParsedProviderInput> {
     try {
-      const parsed = await callOpenAI_JSON({
+      const parsed = await callAI_JSON({
         model: "gpt-5-mini-2025-08-07",
         useResponsesAPI: false, // Use Chat Completions for JSON responses
         system: "Extract provider name and city from input. Return JSON with 'name' and 'city' fields. If city is not mentioned, omit the city field.",

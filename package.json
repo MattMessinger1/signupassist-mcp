@@ -33,6 +33,7 @@
     "test:openai-smoke": "vitest run mcp_server/lib/openaiHelpers.test.ts --reporter=verbose"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.80.0",
     "@hookform/resolvers": "^3.10.0",
     "@modelcontextprotocol/sdk": "^1.18.2",
     "@radix-ui/react-accordion": "^1.2.12",
@@ -116,6 +117,7 @@
     "eslint-plugin-react-hooks": "^5.0.0",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^15.0.0",
+    "sharp": "^0.34.5",
     "tinyexec": "^1.0.4",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",

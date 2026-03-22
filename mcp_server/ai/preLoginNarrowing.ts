@@ -158,7 +158,7 @@ export async function buildNaturalAAPQuestion(
   if (triad.complete) return null;
   
   // Import here to avoid circular dependencies
-  const { callOpenAI_JSON } = await import("../lib/openaiHelpers.js");
+  const { callAI_JSON } = await import("../lib/aiProvider.js");
   const Logger = (await import("../utils/logger.js")).default;
   
   try {
@@ -179,7 +179,7 @@ export async function buildNaturalAAPQuestion(
       }
     });
     
-    const result = await callOpenAI_JSON({
+    const result = await callAI_JSON({
       model: "gpt-4o-mini",
       system: `You generate friendly, concise questions for parent registration flows.
 

@@ -2,7 +2,7 @@
  * AAP Discovery Planner - Converts AAP → Feed Queries
  */
 
-import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
+import { callAI_JSON } from "../lib/aiProvider.js";
 import { AAPTriad, DiscoveryPlan } from "../types/aap.js";
 import Logger from "../utils/logger.js";
 
@@ -112,7 +112,7 @@ export async function planProgramDiscovery(
   Logger.info('[AAP Discovery Planner] Input:', { aap, userIntent });
 
   try {
-    const result = await callOpenAI_JSON({
+    const result = await callAI_JSON({
       model: "gpt-4o-mini",
       system: DISCOVERY_PLANNER_SYSTEM_PROMPT,
       user: { aap, user_intent: userIntent },

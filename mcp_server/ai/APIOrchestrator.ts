@@ -62,7 +62,7 @@ import {
   hasProviderForActivity
 } from "../utils/activityMatcher.js";
 import { getAllActiveOrganizations, getOrganization } from "../config/organizations.js";
-import { callOpenAI_JSON } from "../lib/openaiHelpers.js";
+import { callAI_JSON } from "../lib/aiProvider.js";
 import { checkAudienceMismatch } from "../utils/audienceParser.js";
 import { formatCurrencyFromCents } from "../utils/money.js";
 
@@ -2061,7 +2061,7 @@ export default class APIOrchestrator implements IOrchestrator {
     try {
       Logger.info('[classifyInputType] Tier 3 LLM fallback', { input_len: String(input || '').length });
       
-      const llmResult = await callOpenAI_JSON({
+      const llmResult = await callAI_JSON({
         model: 'gpt-4o-mini',
         system: `Classify user input as either an activity/program type or an organization name.
 Activity examples: "swimming", "coding classes", "basket weaving", "darts"

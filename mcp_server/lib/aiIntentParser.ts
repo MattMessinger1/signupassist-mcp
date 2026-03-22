@@ -16,7 +16,7 @@
  * 3. Personalized Messaging - Generates contextual responses based on user signals
  */
 
-import { callOpenAI_JSON } from "./openaiHelpers.js";
+import { callAI_JSON } from "./aiProvider.js";
 import { ParsedIntent } from "./intentParser.js";
 import Logger from "../utils/logger.js";
 
@@ -43,7 +43,7 @@ export async function parseIntentWithAI(message: string): Promise<ExtendedIntent
   try {
     Logger.info('[AI Intent Parser] Processing message:', message);
     
-    const result = await callOpenAI_JSON({
+    const result = await callAI_JSON({
       model: "gpt-4o-mini",
       system: `You are an intent extraction system for child activity registration.
 
@@ -125,7 +125,7 @@ export async function normalizeEmailWithAI(rawEmail: string): Promise<string> {
   try {
     Logger.info('[Email Normalizer] Processing:', rawEmail);
     
-    const result = await callOpenAI_JSON({
+    const result = await callAI_JSON({
       model: "gpt-4o-mini",
       system: `You are an email normalization system.
 
@@ -179,7 +179,7 @@ export async function generatePersonalizedMessage(
   try {
     Logger.info('[Personalized Messaging] Generating for:', { userType, context });
     
-    const result = await callOpenAI_JSON({
+    const result = await callAI_JSON({
       model: "gpt-4o-mini",
       system: `You are a friendly assistant helping parents register kids for activities.
 
