@@ -260,7 +260,7 @@ export const prompts = {
         `  ${validUntil} and cannot be reused after that.`,
         '',
         '✓ **Security guarantees:**',
-        '  • Your credentials are encrypted end-to-end',
+        '  • All provider communication uses official APIs with server-side keys',
         '  • We never see your full credit card number',
         '  • Registration uses the provider API within your authorization',
         '  • Sensitive tokens are not retained after completion',
@@ -350,7 +350,7 @@ export const prompts = {
       [
         `SignupAssist – Runner Policy (provider API + MCP).`,
         `Organization: ${orgName}. Do not change providers or programs.`,
-        `Authentication: use stored credentials or tokens only as authorized by the mandate.`,
+        `Authentication: use API keys and tokens only as authorized by the mandate.`,
         `Use the provider API to resolve program details, slots, and booking steps; respect the planned open time.`,
         `Field rules:`,
         `  • Child/profile fields → selected child.`,

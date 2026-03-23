@@ -148,7 +148,7 @@ git push
 Track these metrics after deployment:
 - Fast-path hit rate (% of high-intent users)
 - Fast-path success rate (% proceeding with suggested program)
-- Time savings (fast-path vs full scrape)
+- Time savings (fast-path vs full catalog search)
 - Mapping accuracy (confidence vs actual conversion)
 
 ## Future Enhancements

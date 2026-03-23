@@ -7,16 +7,16 @@ SignupAssist is a family-safe activity enrollment assistant that helps users fin
 
 ## Service Classification
 
-- SignupAssist is a family-safe activity enrollment tool for general audiences (ages 13+).
-- Users browse programs, review details, and confirm registrations through a step-by-step flow.
+- SignupAssist is a family-safe activity enrollment tool. Account holders must be 18 or older.
+- Parents and guardians use the service to browse programs, review details, and register participants (including children) through a step-by-step flow.
 - SignupAssist is **not** an adult-content service, dating service, or NSFW platform. It does not provide sexual content or any adult services.
-- All users must be at least 13 years old to use the service.
+- The service is not directed at children under 13. All account holders must be at least 18 years old.
 
 ## How It Works
 
 - Users authenticate via OAuth to manage their account and registrations.
 - The app connects to activity providers (e.g., Bookeo) via API to show available programs.
-- No web scraping — all data comes from official provider APIs.
+- All data comes from official provider APIs.
 - Registration details are collected through a conversational wizard with clear step indicators.
 
 ## Consent-First External Actions

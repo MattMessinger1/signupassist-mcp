@@ -12,13 +12,11 @@ This document outlines the production-ready backend infrastructure implemented f
 - `mandate_audit` table with RLS policies
 - `mcp_server/lib/auditLogger.ts` - Centralized audit logging
 - `AIOrchestrator.handleAction()` - Logs all card actions
-- `supabase/functions/cred-get/index.ts` - Logs credential access
+- API-first provider integrations use server-side API keys
 
 **Logged Actions:**
 - `action_select_provider` - Provider selection
 - `action_connect_account` - Account connection initiated
-- `credentials_submitted` - Credentials stored
-- `credentials_accessed` - Credentials decrypted/retrieved
 - `action_select_program` - Program selection
 - `registration_completed` - Final registration submission
 
@@ -89,30 +87,7 @@ USE_REAL_MCP=false  # Uses mock tools
 
 ---
 
-### Phase 4: Credential Usage Tracking ✅
-
-**What:** Log every time credentials are accessed or used to log in to provider.
-
-**Implementation:**
-- `cred-get` edge function - Logs `credentials_accessed` on decrypt
-- Audit log includes: credential_id, provider, timestamp
-
-**Audit Trail Example:**
-```json
-{
-  "action": "credentials_accessed",
-  "credential_id": "abc-123",
-  "provider": "bookeo",
-  "metadata": {
-    "accessed_at": "2025-01-15T14:30:00Z",
-    "credential_alias": "AIM Design login"
-  }
-}
-```
-
----
-
-### Phase 5: Error Recovery & Resilience ✅
+### Phase 4: Error Recovery & Resilience ✅
 
 **What:** Graceful error handling with retry logic and user-friendly messages.
 
@@ -140,8 +115,6 @@ USE_REAL_MCP=false  # Uses mock tools
 - [ ] Go to `/mandates-audit` → "Audit Trail" tab
 - [ ] Verify all actions are logged:
   - [ ] Provider selection
-  - [ ] Credentials submitted
-  - [ ] Credentials accessed
   - [ ] Program selection
   - [ ] Registration completed
 - [ ] Check timestamps are accurate
@@ -164,14 +137,7 @@ USE_REAL_MCP=false  # Uses mock tools
 - [ ] Verify friendly error message shown
 - [ ] Set `USE_REAL_MCP=false` → verify mock tools work
 
-### Phase 4: Credential Tracking
-- [ ] Connect account via LoginCredentialDialog
-- [ ] Check `mandate_audit` table
-- [ ] Verify `credentials_submitted` log exists
-- [ ] Trigger credential retrieval (e.g., program search after login)
-- [ ] Verify `credentials_accessed` log exists with credential_id
-
-### Phase 5: Error Recovery
+### Phase 4: Error Recovery
 - [ ] Disconnect internet → verify network error message
 - [ ] Set invalid MCP URL → verify retry logic works
 - [ ] Log out → trigger action → verify session expiry message
@@ -288,9 +254,8 @@ railway logs --tail
 | 1. Audit Trail | ✅ Complete | ✅ Yes |
 | 2. Session Persistence | ✅ Complete | ✅ Yes |
 | 3. MCP Integration | ✅ Complete | ⚠️  Needs `USE_REAL_MCP=true` |
-| 4. Credential Tracking | ✅ Complete | ✅ Yes |
-| 5. Error Recovery | ✅ Complete | ✅ Yes |
-| 6. Testing | 🟡 Pending | ⏳ Run checklist |
+| 4. Error Recovery | ✅ Complete | ✅ Yes |
+| 5. Testing | 🟡 Pending | ⏳ Run checklist |
 
 **Overall:** Backend is production-ready pending final testing. Set `USE_REAL_MCP=true` in Railway when ready for real provider interactions.
 

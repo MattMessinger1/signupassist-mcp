@@ -73,10 +73,10 @@ The following CI checks must pass before any PR can be merged:
 - **When it runs**: On every PR to main
 - **Failure action**: PR blocked until all validations pass
 
-### CRED_SEAL_KEY Tests (Optional)
-- **What it does**: Validates credential encryption/decryption
+### Security Tests (Optional)
+- **What it does**: Validates security-related functionality
 - **When it runs**: On every push to PR branches
-- **Failure action**: PR blocked if encryption is broken
+- **Failure action**: PR blocked if tests fail
 
 ## Testing Branch Protection
 

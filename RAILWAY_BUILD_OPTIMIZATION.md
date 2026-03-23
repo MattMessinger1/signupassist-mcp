@@ -37,7 +37,7 @@ Ensure these are set in Railway:
 - `SUPABASE_URL` - Supabase project URL
 - `SUPABASE_ANON_KEY` - Supabase anonymous key
 - `OPENAI_API_KEY` - OpenAI API key (from Supabase secrets)
-- `CRED_SEAL_KEY` - Credential encryption key
+- `PII_ENCRYPTION_KEY` - PII encryption key
 
 ## 📊 Expected Build Times
 

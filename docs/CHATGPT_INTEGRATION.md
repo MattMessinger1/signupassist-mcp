@@ -156,7 +156,7 @@ curl -X POST https://dev-33ngu1de5cxjtxyd.us.auth0.com/oauth/token \
 2. Click your profile → "My GPTs" → "Create a GPT"
 3. Configure:
    - **Name**: SignupAssist
-   - **Description**: Automates activity registration with secure credential management
+   - **Description**: Helps parents find and register for children's activities via provider APIs
    - **Instructions**: (See [GPT Instructions](#gpt-instructions))
 
 ### Step 2: Add Action
@@ -186,7 +186,6 @@ You are SignupAssist, an automated activity registration assistant. You help par
 5. Processing payments securely
 
 **Before taking any action, you MUST:**
-- Verify user consent for credential access
 - Explain what data will be accessed
 - Confirm the mandate scope (program, amount limits)
 
@@ -197,9 +196,8 @@ You are SignupAssist, an automated activity registration assistant. You help par
 - Never process payments without explicit user confirmation
 
 **Security:**
-- All credentials are stored encrypted
-- You never see or handle actual passwords
-- Payment processing uses tokenized methods
+- All provider integrations use official REST APIs with server-side API keys
+- Payment processing uses Stripe-hosted checkout (tokenized)
 - Full audit trail is maintained
 
 **Example Workflow:**
@@ -284,10 +282,9 @@ Ready to set up automatic registration for Emma in Beginner Alpine ($125)?
   Jan 20, 2025 at 7:00 AM and cannot be reused after that.
 
 ✓ **Security guarantees:**
-  • Your credentials are encrypted end-to-end
-  • We never see your full credit card number
-  • Registration happens in an isolated browser session
-  • Session is destroyed immediately after completion
+  • All provider communication uses official APIs with server-side keys
+  • We never see your full credit card number (Stripe-hosted checkout)
+  • Every action is logged in your audit trail
 
 ✓ **Full transparency:**
   Every action is logged in your audit trail, including:
@@ -367,7 +364,6 @@ Expected:
 - [ ] Audit trail shows all tool calls
 - [ ] Error messages are user-friendly
 - [ ] Payment processing requires explicit confirmation
-- [ ] Credential access requires user consent
 
 ### Debugging Tools
 
@@ -466,7 +462,7 @@ npm run openapi:generate
 - [ ] OAuth flow is fully tested
 - [ ] Privacy policy URL is active
 - [ ] Terms of service URL is active
-- [ ] Demo credentials are available
+- [ ] Demo account is available
 - [ ] App logo is uploaded (512x512px)
 - [ ] Short description (60 chars) is clear
 - [ ] Full description is comprehensive
@@ -480,7 +476,7 @@ npm run openapi:generate
 
 2. **Security**
    - OAuth is properly configured
-   - Credentials are encrypted
+   - API keys are secured server-side
    - Audit trail is complete
    - GDPR compliance is documented
 
@@ -504,13 +500,11 @@ npm run openapi:generate
 4. Approval or rejection notification
 5. Public listing (if approved)
 
-### Demo Credentials
+### Demo Account
 
-Provide test credentials for reviewers:
+Provide a test account for reviewers:
 ```
 Organization: AIM Design
-Email: demo@signupassist.ai
-Password: [Provided separately to OpenAI]
 Test Program: Winter Lessons 2025
 ```
 

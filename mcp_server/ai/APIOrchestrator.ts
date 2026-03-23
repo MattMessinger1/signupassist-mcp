@@ -2,7 +2,7 @@
  * APIOrchestrator.ts
  * Clean API-first orchestrator for providers with direct API access
  * Flow: BROWSE → FORM_FILL → PAYMENT
- * No scraping, no prerequisites, no session complexity
+ * All provider integrations use official REST APIs
  */
 
 // V1 default: NO widgets. If we ever bring widgets back, flip env var to true.
@@ -5304,9 +5304,6 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         programs = [];
       }
 
-      // Hard filter: remove deprecated SkiClubPro remnants.
-      // IMPORTANT: Do NOT filter by title keywords (e.g., "ski") because Bookeo may legitimately
-      // host classes with those words (and we still want to show them).
       programs = programs.filter((p: any) => {
         const providerRef = (p.provider_ref || p.org_ref || "").toLowerCase();
         return !providerRef.includes("skiclubpro");

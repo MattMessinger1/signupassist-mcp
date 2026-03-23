@@ -3,7 +3,7 @@
  * Production-ready with OAuth manifest served at /mcp for ChatGPT discovery
  * Last deployment: 2025-12-22 - Added resources/list and resources/read handlers
  *
- * NOTE: API-first only (no scraping). SkiClubPro + Browserbase workflows are deprecated.
+ * NOTE: API-first only. All provider integrations use official REST APIs.
  */
 
 // ============================================================
@@ -476,7 +476,6 @@ const CHATGPT_APPS_V1_META = {
 // V1 App Store posture: keep public surface small + mostly read-only.
 // Allow Stripe "setup" flow to remain public (hosted Stripe checkout link), but keep write/execute tools private.
 function v1VisibilityForTool(toolName: string, toolMeta: Record<string, any> = {}): "public" | "private" {
-  // Deprecate SkiClubPro entirely (old scraping workflow)
   if (toolName.startsWith("scp.") || toolName.startsWith("scp:") || toolName.includes("skiclubpro")) {
     return "private";
   }
@@ -766,7 +765,7 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
-// Graceful shutdown handlers (API-first; no Browserbase session cleanup)
+// Graceful shutdown handlers
 function gracefulShutdown(signal: string) {
   console.log(`[SHUTDOWN] Received ${signal}, exiting...`);
   process.exit(0);
@@ -815,7 +814,6 @@ class SignupAssistMCPServer {
   async initializeOrchestrator() {
     // =========================================================================
     // API-FIRST MODE IS NOW THE ONLY RUNTIME PATH
-    // AIOrchestrator (legacy/scraping mode) is deprecated and removed.
     // All flows go through APIOrchestrator for consistency and audit compliance.
     // =========================================================================
     try {
@@ -826,7 +824,7 @@ class SignupAssistMCPServer {
       this.orchestrator = new APIOrchestrator(this); // Pass server instance for MCP tool access
       console.log('✅ [API-FIRST MODE] APIOrchestrator initialized with MCP tool access');
       console.log('✅ API-first providers: Bookeo (aim-design)');
-      console.log('✅ No scraping, no prerequisites, no login required');
+      console.log('✅ No prerequisites, no login required');
       console.log('✅ All API calls go through MCP layer for audit compliance');
       console.log('✅ Unified activation policy: triad + program match required');
       
@@ -4232,7 +4230,7 @@ class SignupAssistMCPServer {
             }
 
             if (!this.tools.has(tool)) {
-              // Return only API-friendly tools in error message (exclude internal/scraping tools)
+              // Return only API-friendly tools in error message
               const apiTools = Array.from(this.tools.keys())
                 .filter(t => t.startsWith('bookeo.') && !t.includes('test'))
                 .sort();
@@ -4530,18 +4528,16 @@ class SignupAssistMCPServer {
       }
 
       // --- Refresh programs feed (DEPRECATED)
-      // Scraping-based providers (SkiClubPro/Browserbase) are removed; this endpoint is intentionally disabled.
       if (req.method === 'POST' && url.pathname === '/refresh-feed') {
         res.writeHead(410, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Deprecated: scraping-based feed refresh removed (API-first only).' }));
+        res.end(JSON.stringify({ error: 'Deprecated endpoint removed.' }));
           return;
         }
         
       // --- Hydrate program details (DEPRECATED)
-      // Scraping-based detail hydration is removed; this endpoint is intentionally disabled.
       if (req.method === 'POST' && url.pathname === '/hydrate-program-details') {
         res.writeHead(410, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Deprecated: scraping-based detail hydration removed (API-first only).' }));
+        res.end(JSON.stringify({ error: 'Deprecated endpoint removed.' }));
         return;
       }
 
@@ -4748,7 +4744,7 @@ class SignupAssistMCPServer {
               const mockResult = {
                 message:
                   "⚠️ SignupAssist is running in limited mode because OPENAI_API_KEY is not configured.\n\n" +
-                  "This deployment is **API-first only** (no SkiClubPro, no Browserbase, no login/scraping).\n\n" +
+                  "This deployment is **API-first only**.\n\n" +
                   "To enable the conversational signup flow, set **OPENAI_API_KEY** and retry."
               };
               

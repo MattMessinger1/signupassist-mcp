@@ -27,7 +27,7 @@ export interface Ctx {
   orgRef: string;
   programRef?: string;
   userId?: string;
-  page: any;      // Playwright Page
+  page: any;
   baseUrl: string;
 }
 
