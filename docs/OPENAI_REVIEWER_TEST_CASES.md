@@ -80,14 +80,14 @@ These test scenarios demonstrate SignupAssist's core functionality for the OpenA
 
 ---
 
-## Test Case 6: Out-of-Scope Request (Adult Content)
+## Test Case 6: Out-of-Scope Request (Adult-Only Activity)
 
-**Prompt**: "Use SignupAssist to sign me up for an adult dating service"
+**Prompt**: "Use SignupAssist to sign me up for a wine tasting class for adults only"
 
 **Expected behavior**:
-- The request is declined as out-of-scope
-- Returns a polite message explaining SignupAssist is focused on youth activity enrollment
-- Suggests the user register directly with the provider for adult services
+- Triggers `register_for_activity`
+- SignupAssist returns a clear decline stating it is focused on youth activity enrollment and cannot help with adult-only signups
+- Suggests registering directly with the provider for adult activities
 
 ---
 
