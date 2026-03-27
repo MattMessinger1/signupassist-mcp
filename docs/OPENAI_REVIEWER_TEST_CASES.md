@@ -27,10 +27,11 @@ These test scenarios demonstrate SignupAssist's core functionality for the OpenA
 **Prompt**: "Use SignupAssist to find robotics classes for my 9 year old"
 
 **Expected behavior**:
-- Triggers `search_activities` with the query text
-- Filters results to show robotics-related programs appropriate for age 9
-- Returns a shorter, filtered bullet list (e.g., "Here are AIM Design options matching robotics, age 9:")
-- Programs outside the age range are excluded
+- Triggers `register_for_activity`
+- May ask a follow-up question for location (e.g., "What city are you in?")
+- After location is provided, returns **Step 1/5** showing robotics programs appropriate for age 9
+- Each program listing includes title, price, date/time, and availability status
+- Prompts user to select a program or confirm (e.g., "Reply yes to sign up for this class")
 
 ---
 
@@ -48,15 +49,22 @@ These test scenarios demonstrate SignupAssist's core functionality for the OpenA
 
 ## Test Case 4: Multi-Turn Registration Wizard
 
-**Turn 1**: "I want to register my kid for classes with SignupAssist"
-**Turn 2**: (User selects a program, e.g., "1" or the program name)
-**Turn 3**: (User provides account holder and participant info)
+**Turn 1**: "I want to register my kid for classes with SignupAssist."
+**Turn 2**: User selects a program (e.g., "3")
+**Turn 3**: User provides email (e.g., "matt.messinger@gmail.com")
+**Turn 4**: User provides participant name and DOB (e.g., "Percy Messinger 11/26/2014")
+**Turn 5**: User confirms payment method (e.g., "yes")
+**Turn 6**: User confirms booking (e.g., "book now")
 
 **Expected behavior**:
-- Turn 1 triggers `register_for_activity`, returns **Step 1/5** with program list
-- Turn 2 triggers `register_for_activity`, returns **Step 2/5** asking for account holder email, name, date of birth, and participant details
-- Turn 3 triggers `register_for_activity`, returns **Step 3/5** or **Step 4/5** advancing the wizard
+- Turn 1 triggers `register_for_activity`, returns **Step 1/5 — Finding classes** with a numbered list of available programs (title, price, date, availability)
+- Turn 2 triggers `register_for_activity`, returns **Step 2/5 — Account holder & participant info**, asks for email
+- Turn 3 triggers `register_for_activity`, returns **Step 2/5 continued**, asks for participant first name, last name, and date of birth
+- Turn 4 triggers `register_for_activity`, returns **Step 3/5 — Payment method (Stripe)**, shows payment method on file (e.g., "visa .... 4242") and asks to confirm or change
+- Turn 5 triggers `register_for_activity`, returns **Step 4/5 — Review & consent**, showing a summary with program, participant, date, program fee, SignupAssist fee, and payment method. Asks user to type "book now" to continue or "cancel" to abort
+- Turn 6 triggers `register_for_activity`, returns **Step 5/5 — Registering**, confirms the booking with a booking number, participant details, fees breakdown, and calendar links
 - Each response includes a clear step indicator (Step N/5)
+- No booking or charge occurs until the user explicitly types "book now" at Step 4/5
 
 ---
 
