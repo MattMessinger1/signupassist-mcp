@@ -522,6 +522,11 @@ export interface ActiveNetTool {
     required?: string[];
   };
   handler: (args: any) => Promise<any>;
+  annotations?: {
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    openWorldHint?: boolean;
+  };
   _meta?: {
     'openai/safety'?: 'read-only' | 'write' | 'sensitive';
   };
@@ -536,6 +541,11 @@ Returns activities near a specified location with registration links.
 Does NOT create registrations or bookings.
 Does NOT charge payments.
 Safe to call for browsing and exploration.`,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    },
     _meta: {
       'openai/safety': 'read-only'
     },
@@ -598,6 +608,11 @@ Returns detailed information about a specific ACTIVE Network activity, including
 Does NOT create registrations or bookings.
 Does NOT charge payments.
 Safe to call for exploring activity details.`,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    },
     _meta: {
       'openai/safety': 'read-only'
     },

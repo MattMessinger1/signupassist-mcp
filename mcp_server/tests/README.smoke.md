@@ -9,7 +9,7 @@ These smoke tests verify the end-to-end **API-only** flow:
 1. **Manifest** - `/.well-known/chatgpt-apps-manifest.json` is reachable and valid
 2. **Program Discovery** - `bookeo.find_programs` returns programs for `aim-design`
 3. **Required Fields** - `bookeo.discover_required_fields` returns `program_questions`
-4. **Canonical Chat** - `signupassist.chat` returns `Step X/5 — …` headers
+4. **Canonical Chat** - `register_for_activity` returns `Step X/5 — …` headers
 5. **No Legacy Providers** - `scp.*` tools are not registered
 
 ## Prerequisites
@@ -46,8 +46,8 @@ Ensure these are configured in your environment:
 [smoke] ✅ manifest ok
 [smoke] ✅ bookeo.find_programs ok
 [smoke] ✅ bookeo.discover_required_fields ok
-[smoke] ✅ signupassist.chat (step 1) ok
-[smoke] ✅ signupassist.chat (follow-up) ok
+[smoke] ✅ register_for_activity (step 1) ok
+[smoke] ✅ register_for_activity (follow-up) ok
 [smoke] ✅ scp.* tools absent
 [smoke] ✅ ALL API-ONLY SMOKE TESTS PASSED
 ```
@@ -58,22 +58,15 @@ Ensure these are configured in your environment:
 - **Root cause**: missing/invalid `MCP_ACCESS_TOKEN` for production `/tools/call`.
 ### `bookeo.find_programs` returns 0 programs
 - **Root cause**: `cached_provider_feed` not populated for `aim-design` or Supabase creds missing on the server.
-### `signupassist.chat` fails
+### `register_for_activity` fails
 - **Root cause**: `OPENAI_API_KEY` missing *and* the input falls into the orchestrator’s LLM fallback path. Try clearer input (“AIM Design classes”) or configure the key.
 
 ## Troubleshooting
 
 ### No Programs Returned
 1. Check OpenAI API key is configured
-2. Verify Browserbase credentials
-3. Check `/registration` page loads correctly
-4. Review three-pass extractor logs
-
-### Session Token Undefined
-1. Verify login success before checking token
-2. Check `generateToken()` is called
-3. Verify `storeSession()` is invoked
-4. Review session persistence logs
+2. Verify Bookeo API keys are set
+3. Check program feed cache is populated in Supabase
 
 ### Mandate Errors in Dev
 1. Ensure `NODE_ENV !== 'production'`

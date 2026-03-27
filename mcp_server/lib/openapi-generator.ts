@@ -78,7 +78,7 @@ export function generateOpenAPISpec(
       version,
       description: 'Automated activity registration system with secure credential management and consent-first flows. Supports program discovery, prerequisite checking, registration, and payment processing.',
       contact: {
-        email: 'support@signupassist.ai'
+        email: 'support@shipworx.ai'
       }
     },
     servers: [

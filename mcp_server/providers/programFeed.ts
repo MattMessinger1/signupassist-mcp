@@ -10,6 +10,11 @@ export const programFeedTools = {
   "program_feed.get": {
     name: "program_feed.get",
     description: "Fetch cached programs for a provider/category.",
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: "object",
       properties: {

@@ -36,8 +36,8 @@
 
 | Tool | Description | Annotations |
 |---|---|---|
-| `signupassist.start` | Start a new registration session | readOnly, openWorld |
-| `signupassist.chat` | Continue registration conversation | readOnly, openWorld |
+| `search_activities` | Start a new registration session | readOnly, openWorld |
+| `register_for_activity` | Continue registration conversation | readOnly, openWorld |
 
 ## Submission Steps
 

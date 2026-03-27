@@ -24,7 +24,7 @@
       "post": {
         "summary": "Talk to SignupAssist",
         "description": "Send natural language messages to find and register for activities. Example: 'find robotics classes in Madison WI'. I'll find matching programs, show you options, and help complete registration.\n\n**Activation gate:** SignupAssist should only proceed to program discovery when the user has provided **Activity + Participant Age + Location (city/state)** AND there is at least one matching program in SignupAssist's cached program feed (database).\n\n**IMPORTANT:** Nothing is booked or charged until the user explicitly confirms. Always show the audit trail option after any action.",
-        "operationId": "chat",
+        "operationId": "register_for_activity",
         "x-openai-isConsequential": false,
         "requestBody": {
           "required": true,
@@ -244,7 +244,7 @@
       "get": {
         "summary": "Show available programs immediately",
         "description": "**CALL THIS FIRST.** Read-only action-first entrypoint. Immediately shows available programs without requiring any user input. Does NOT create bookings. Does NOT charge payments. Safe to call anytime. Use this as the FIRST action when user expresses any intent to find or sign up for classes.",
-        "operationId": "signupassist_start",
+        "operationId": "search_activities",
         "x-openai-isConsequential": false,
         "parameters": [
           {

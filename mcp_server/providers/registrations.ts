@@ -21,6 +21,11 @@ export interface RegistrationTool {
     required?: string[];
   };
   handler: (args: any) => Promise<any>;
+  annotations?: {
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    openWorldHint?: boolean;
+  };
 }
 
 /**
@@ -826,6 +831,11 @@ export const registrationTools: RegistrationTool[] = [
   {
     name: 'registrations.create',
     description: 'Create a registration record after successful booking (for receipts/audit trail)',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -928,6 +938,11 @@ export const registrationTools: RegistrationTool[] = [
   {
     name: 'registrations.list',
     description: 'List user registrations for receipts display, categorized by upcoming/scheduled/past',
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -954,6 +969,11 @@ export const registrationTools: RegistrationTool[] = [
   {
     name: 'registrations.cancel',
     description: 'Cancel a scheduled (pending) registration before it executes',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -979,6 +999,11 @@ export const registrationTools: RegistrationTool[] = [
   {
     name: 'registrations.cancel_with_refund',
     description: 'Cancel a confirmed registration with provider and refund success fee. Orchestrates provider cancellation, fee refund, and audit logging.',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -1008,6 +1033,11 @@ export const registrationTools: RegistrationTool[] = [
   {
     name: 'registrations.modify',
     description: 'Modify an existing registration by cancelling it and creating a new one. Handles fee adjustments and audit logging.',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -1054,6 +1084,11 @@ export const registrationTools: RegistrationTool[] = [
   {
     name: 'registrations.get',
     description: 'Get a single registration by ID with full details for display',
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {

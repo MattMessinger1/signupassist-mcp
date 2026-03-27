@@ -49,8 +49,8 @@ Model mapping:
 
 | Tool | Purpose |
 |---|---|
-| `signupassist.start` | Begin a new registration session |
-| `signupassist.chat` | Continue an existing conversation |
+| `search_activities` | Begin a new registration session |
+| `register_for_activity` | Continue an existing conversation |
 
 Both tools include proper annotations:
 - `readOnlyHint: true`

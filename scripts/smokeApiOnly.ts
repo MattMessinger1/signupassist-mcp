@@ -5,7 +5,7 @@
  * Validates:
  * - Well-known ChatGPT apps manifest is reachable
  * - Bookeo cache-backed tools work (find_programs, discover_required_fields)
- * - Canonical conversational tool `signupassist.chat` responds with Step headers
+ * - Canonical conversational tool `register_for_activity` responds with Step headers
  * - Legacy `scp.*` tools are not present
  *
  * Usage:
@@ -100,26 +100,26 @@ async function main() {
 
   // 3) Canonical chat tool responds with Step headers
   const sessionId = `smoke-${Date.now()}`;
-  const chat1 = await callTool(baseUrl, token, 'signupassist.chat', {
+  const chat1 = await callTool(baseUrl, token, 'register_for_activity', {
     input: 'Sign up for AIM Design classes',
     sessionId,
     userTimezone: 'America/Chicago',
   });
-  assert(chat1.status === 200, `signupassist.chat: expected 200, got ${chat1.status}`);
+  assert(chat1.status === 200, `register_for_activity: expected 200, got ${chat1.status}`);
   const text1 = String(chat1.json?.content?.[0]?.text || '');
-  assert(/^(\*\*)?Step\s+1\/5\s+—/i.test(text1), `signupassist.chat: expected Step 1/5 header, got: ${text1.slice(0, 80)}`);
-  console.log('[smoke] ✅ signupassist.chat (step 1) ok');
+  assert(/^(\*\*)?Step\s+1\/5\s+—/i.test(text1), `register_for_activity: expected Step 1/5 header, got: ${text1.slice(0, 80)}`);
+  console.log('[smoke] ✅ register_for_activity (step 1) ok');
 
   // Try numeric selection; allow any Step header 1..5 (selection may be rejected if list not present).
-  const chat2 = await callTool(baseUrl, token, 'signupassist.chat', {
+  const chat2 = await callTool(baseUrl, token, 'register_for_activity', {
     input: '1',
     sessionId,
     userTimezone: 'America/Chicago',
   });
-  assert(chat2.status === 200, `signupassist.chat (2): expected 200, got ${chat2.status}`);
+  assert(chat2.status === 200, `register_for_activity (2): expected 200, got ${chat2.status}`);
   const text2 = String(chat2.json?.content?.[0]?.text || '');
-  assert(/^(\*\*)?Step\s+[1-5]\/5\s+—/i.test(text2), `signupassist.chat (2): expected Step header, got: ${text2.slice(0, 80)}`);
-  console.log('[smoke] ✅ signupassist.chat (follow-up) ok');
+  assert(/^(\*\*)?Step\s+[1-5]\/5\s+—/i.test(text2), `register_for_activity (2): expected Step header, got: ${text2.slice(0, 80)}`);
+  console.log('[smoke] ✅ register_for_activity (follow-up) ok');
 
   // 4) Legacy scp.* tools should not exist
   const scp = await callTool(baseUrl, token, 'scp.login', { org_ref: 'blackhawk-ski-club' });

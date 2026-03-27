@@ -32,7 +32,7 @@ SignupAssist integrates with ChatGPT via:
 | `bookeo.create_hold` | Create a temporary booking hold |
 | `bookeo.confirm_booking` | Confirm a booking with delegate/participant data |
 | `bookeo.cancel_booking` | Cancel an existing booking |
-| `signupassist.chat` | Main conversational orchestrator entrypoint |
+| `register_for_activity` | Main conversational orchestrator entrypoint |
 
 ---
 
@@ -578,7 +578,7 @@ Test Program: Winter Lessons 2025
 
 - **Documentation**: https://github.com/signupassist/signupassist
 - **Discord**: [Join our community]
-- **Email**: support@signupassist.ai
+- **Email**: support@shipworx.ai
 - **Railway Status**: https://status.railway.app
 
 ---

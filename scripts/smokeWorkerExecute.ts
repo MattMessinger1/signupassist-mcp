@@ -185,7 +185,7 @@ async function waitForCompletionViaReceipts(args: {
   console.log(`[worker-e2e]    poll_ms=${pollMs} timeout_ms=${timeoutMs}`);
 
   while (Date.now() - start <= timeoutMs) {
-    const receipts = await callTool(args.baseUrl, args.token, 'signupassist.chat', {
+    const receipts = await callTool(args.baseUrl, args.token, 'register_for_activity', {
       input: 'view my registrations',
       sessionId,
       userId: args.userId,
@@ -314,22 +314,22 @@ async function main() {
 
   // 5) User-visible receipts/audit (text-only)
   const sessionId = `worker-e2e-${Date.now()}`;
-  const receipts = await callTool(baseUrl, token, 'signupassist.chat', {
+  const receipts = await callTool(baseUrl, token, 'register_for_activity', {
     input: 'view my registrations',
     sessionId,
     userId,
     userTimezone: 'America/Chicago',
   });
-  assert(receipts.status === 200, `signupassist.chat(view receipts): expected 200, got ${receipts.status}`);
+  assert(receipts.status === 200, `register_for_activity(view receipts): expected 200, got ${receipts.status}`);
   console.log('[worker-e2e] ✅ view receipts responded');
 
-  const audit = await callTool(baseUrl, token, 'signupassist.chat', {
+  const audit = await callTool(baseUrl, token, 'register_for_activity', {
     input: `audit ${schCode}`,
     sessionId,
     userId,
     userTimezone: 'America/Chicago',
   });
-  assert(audit.status === 200, `signupassist.chat(audit SCH): expected 200, got ${audit.status}`);
+  assert(audit.status === 200, `register_for_activity(audit SCH): expected 200, got ${audit.status}`);
   console.log('[worker-e2e] ✅ audit SCH responded');
 
   // If receipts linked a REG code, attempt audit REG as well (best-effort evidence).

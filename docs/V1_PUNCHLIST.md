@@ -101,9 +101,9 @@ This is the authoritative checklist for v1. The goal is:
 ## D. Compliance hygiene (reviewers will check these)
 
 - [x] **Single Source of Truth (SSoT) for ChatGPT tool routing**
-  - Canonical tool: `signupassist.chat`
+  - Canonical tool: `register_for_activity`
   - `ListTools` returns **public-only** tools by default (reduces model confusion)
-  - `signupassist.start` is not publicly listed (prevents bypassing orchestrator guardrails)
+  - `search_activities` is not publicly listed (prevents bypassing orchestrator guardrails)
 
 - [x] **No PHI fields** (no allergies/medical notes)
 - [x] **No in-app card input** (Stripe Checkout / tokenization only)
@@ -122,8 +122,8 @@ This is the authoritative checklist for v1. The goal is:
 - [x] Hit `/.well-known/oauth-authorization-server` (200 + correct issuer/endpoints)
 - [ ] OAuth login completes in ChatGPT preview
 - [x] Run `bash scripts/v1_endpoint_smoke.sh https://signupassist.shipworx.ai` (expect 200s + 401 for protected)
-- [x] Run `npm run test:sse` (MCP SSE: OAuth metadata + `/sse`/`/messages` + `signupassist.chat`)
-- [x] Run `tsx scripts/smokeApiOnly.ts` (API-only smoke: manifest + Bookeo + signupassist.chat)
+- [x] Run `npm run test:sse` (MCP SSE: OAuth metadata + `/sse`/`/messages` + `register_for_activity`)
+- [x] Run `tsx scripts/smokeApiOnly.ts` (API-only smoke: manifest + Bookeo + register_for_activity)
 - [x] Run `npm run test:e2e` (safe scheduled smoke: creates SCH ~30 min out, cancels it, checks receipts/audit)
 - [ ] Run `tsx scripts/v1_preflight.ts` in a production-like env (Supabase tables + cached feed)
 - [ ] Search → select → schedule → see SCH receipt

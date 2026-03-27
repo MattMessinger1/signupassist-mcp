@@ -46,7 +46,7 @@ If Runlayer is acting as a gateway, it must forward the `Authorization` header u
 
 ## Tool visibility expectations
 
-- Default posture: `tools/list` returns **public tools only** (today: typically just `signupassist.chat`).
+- Default posture: `tools/list` returns **public tools only** (today: typically just `register_for_activity`).
 - If an enterprise MCP client needs to see more tools, set `MCP_LISTTOOLS_INCLUDE_PRIVATE=true` (see `mcp_server/index.ts`).
 
 ## Audit + compliance expectations (what we log)

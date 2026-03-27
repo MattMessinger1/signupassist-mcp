@@ -81,7 +81,7 @@ runner.on('close', (code) => {
     console.log('Milestones verified:');
     console.log('  ✓ bookeo.find_programs returns programs for aim-design');
     console.log('  ✓ bookeo.discover_required_fields returns required fields');
-    console.log('  ✓ signupassist.chat returns Step headers');
+    console.log('  ✓ register_for_activity returns Step headers');
     console.log('  ✓ scp.* tools are not registered');
   } else {
     console.log(`${colors.red}${colors.bright}✗ SMOKE TESTS FAILED${colors.reset}`);

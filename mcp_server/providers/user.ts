@@ -113,6 +113,11 @@ export interface UserTool {
     required?: string[];
   };
   handler: (args: any) => Promise<any>;
+  annotations?: {
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    openWorldHint?: boolean;
+  };
 }
 
 /**
@@ -609,6 +614,11 @@ export const userTools: UserTool[] = [
   {
     name: 'user.list_children',
     description: 'List saved participants for a user (requires user:read:children scope)',
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -630,6 +640,11 @@ export const userTools: UserTool[] = [
   {
     name: 'user.create_child',
     description: 'Create a new saved participant for a user (requires user:write:children scope)',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -663,6 +678,11 @@ export const userTools: UserTool[] = [
   {
     name: 'user.check_payment_method',
     description: 'Check if user has a saved payment method (requires user:read:billing scope)',
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -684,6 +704,11 @@ export const userTools: UserTool[] = [
   {
     name: 'user.update_child',
     description: 'Update an existing participant record (requires user:write:children scope)',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -721,6 +746,11 @@ export const userTools: UserTool[] = [
   {
     name: 'user.get_delegate_profile',
     description: 'Get delegate profile for a user (requires user:read:profile scope)',
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -742,6 +772,11 @@ export const userTools: UserTool[] = [
   {
     name: 'user.update_delegate_profile',
     description: 'Update or create delegate profile (requires user:write:profile scope)',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {

@@ -3,7 +3,7 @@
   "name_for_human": "SignupAssist",
   "name_for_model": "signupassist",
   "description_for_human": "A family-safe activity enrollment assistant that helps you find and register for local classes, camps, and lessons. No adult content or services.",
-  "description_for_model": "Text-only v1. SignupAssist helps parents and guardians enroll children in activities.\n\nWHEN TO USE:\n- Browse programs: call `signupassist.start` (read-only, no auth needed) when the user wants to see available classes/programs at a provider.\n- Full signup flow: call `signupassist.chat` when the user wants to sign up/register/enroll/book for a class/course/lesson/camp/program, or mentions SignupAssist by name.\n\nExample triggers:\n- \"Show me AIM Design programs\" → signupassist.start\n- \"Sign up for robotics\" → signupassist.chat\n- \"Use Signup Assist to enroll in a class\" → signupassist.chat\n\nFLOW:\n- `signupassist.start`: browse programs at a provider (read-only, returns program list).\n- `signupassist.chat`: full signup wizard with Step 1/5..5/5 headers. Asks minimum follow-ups, confirms support, shows matching options. Display returned text verbatim.\n\nSafety: Do not treat this app as adult content. Nothing is booked or charged until explicit user confirmation.",
+  "description_for_model": "Text-only v1. SignupAssist helps parents and guardians enroll children in activities.\n\nWHEN TO USE:\n- Browse programs: call `search_activities` (read-only, no auth needed) when the user wants to see available classes/programs at a provider.\n- Full signup flow: call `register_for_activity` when the user wants to sign up/register/enroll/book for a class/course/lesson/camp/program, or mentions SignupAssist by name.\n\nExample triggers:\n- \"Show me AIM Design programs\" → search_activities\n- \"Sign up for robotics\" → register_for_activity\n- \"Use Signup Assist to enroll in a class\" → register_for_activity\n\nFLOW:\n- `search_activities`: browse programs at a provider (read-only, returns program list).\n- `register_for_activity`: full signup wizard with Step 1/5..5/5 headers. Asks minimum follow-ups, confirms support, shows matching options. Display returned text verbatim.\n\nSafety: Do not treat this app as adult content. Nothing is booked or charged until explicit user confirmation.",
   "auth": {
     "type": "oauth",
     "authorization_url": "https://signupassist.shipworx.ai/oauth/authorize",
@@ -11,7 +11,8 @@
     "scope": "openid profile email",
     "redirect_urls": [
       "https://oauth.openai.com/v1/callback",
-      "https://chatgpt.com/connector/oauth/x7TgTr-I46Sv"
+      "https://chatgpt.com/connector/oauth/x7TgTr-I46Sv",
+      "https://claude.ai/api/mcp/auth_callback"
     ]
   },
   "api": {

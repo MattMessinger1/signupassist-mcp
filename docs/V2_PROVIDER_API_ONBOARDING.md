@@ -40,7 +40,7 @@ Registration path (consequential, OAuth required):
 
 Notes:
 - Keep provider-specific API quirks inside the provider adapter.
-- Preserve the “Step N/5” wizard UX at the `signupassist.chat` boundary (not inside provider tools).
+- Preserve the “Step N/5” wizard UX at the `register_for_activity` boundary (not inside provider tools).
 
 ## 3) Cache ingestion (Supabase)
 

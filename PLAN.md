@@ -16,7 +16,7 @@ SignupAssist MCP is ~90% ready for ChatGPT App Store submission. For the Claude 
 | `.well-known/chatgpt-apps-manifest.json` | ✅ | Proper manifest with OAuth, MCP URL, logo |
 | `.well-known/openai-apps-challenge` | ✅ | Domain verification token present |
 | OAuth 2.0 authentication | ✅ | Auth0-backed, OpenAI callback URLs configured |
-| Tool annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`) | ✅ | Both `signupassist.start` and `signupassist.chat` annotated |
+| Tool annotations (`readOnlyHint`, `destructiveHint`, `openWorldHint`) | ✅ | Both `search_activities` and `register_for_activity` annotated |
 | Privacy policy | ✅ | `/safety` endpoint + `PRIVACY_POLICY.md` |
 | Contact email | ✅ | `support@shipworx.ai` |
 | Logo (512×512 SVG) | ✅ | `public/logo-512.svg` |
@@ -50,8 +50,8 @@ OpenAI guidelines say: no promotional language, no comparative language, no over
 OpenAI reviewers will test the app using scenarios you provide. Having clear, realistic test prompts improves approval speed.
 
 **Action**: Create `docs/OPENAI_REVIEWER_TEST_CASES.md` with 5–8 test scenarios including:
-- "Show me robotics classes for kids in [city]" → triggers `signupassist.start`
-- "Sign my daughter up for art camp" → triggers `signupassist.chat`
+- "Show me robotics classes for kids in [city]" → triggers `search_activities`
+- "Sign my daughter up for art camp" → triggers `register_for_activity`
 - Expected outputs for each
 
 **Files**: `docs/OPENAI_REVIEWER_TEST_CASES.md` (new)

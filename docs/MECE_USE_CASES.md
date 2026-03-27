@@ -5,7 +5,7 @@ This document is the **single catalog of user-facing use cases** for SignupAssis
 - **Mutually Exclusive**: each use case has one primary intent and one “happy-path” state progression.
 - **Collectively Exhaustive**: taken together, these cover every supported user intent in v1.
 
-**Canonical entry point (SSoT):** In ChatGPT, all user-facing flows must route through the MCP tool **`signupassist.chat`** (not direct provider tools like `bookeo.*`). This keeps step headers, micro-questions, consent gates, and audit posture consistent.
+**Canonical entry point (SSoT):** In ChatGPT, all user-facing flows must route through the MCP tool **`register_for_activity`** (not direct provider tools like `bookeo.*`). This keeps step headers, micro-questions, consent gates, and audit posture consistent.
 
 ---
 
@@ -24,18 +24,18 @@ This document is the **single catalog of user-facing use cases** for SignupAssis
 
 | ID | Group | Primary intent (examples) | Entry points | Auth required | State path (happy) |
 |---:|---|---|---|---|---|
-| U01 | Onboarding/Trust | “What is this?”, “Is this safe?” | `signupassist.chat` | none | `BROWSE` |
-| U02 | Discovery | “Show me AIM Design classes”, “Find robotics classes” | `signupassist.chat` | none | `BROWSE` |
-| U03 | Discovery | “Yes (that provider)”, “AIM Design (yes)” | `signupassist.chat` | none | `BROWSE` |
-| U04 | Registration | “I want #3”, “Sign up for Ocean Explorers” | `signupassist.chat` | none→OAuth later | `BROWSE → FORM_FILL` |
-| U05 | Registration | “My email is…”, “Percy, 11” | `signupassist.chat` | none→OAuth later | `FORM_FILL → REVIEW` |
-| U06 | Registration | “Set it up when registration opens” | `signupassist.chat` | OAuth + mandate | `FORM_FILL → REVIEW → PAYMENT → SUBMIT → COMPLETED` (scheduled) |
-| U07 | Registration | “Book it now”, “Confirm/Authorize” | `signupassist.chat` | OAuth + mandate | `FORM_FILL → REVIEW → PAYMENT → SUBMIT → COMPLETED` |
-| U08 | Account Management | “Add a card”, “Update payment method” | `signupassist.chat` | OAuth | `PAYMENT` |
-| U09 | Post‑Booking | “Show my registrations”, “View receipts” | `signupassist.chat` | OAuth | (no change) |
-| U10 | Post‑Booking | “Cancel SCH‑…”, “Cancel REG‑…” | `signupassist.chat` | OAuth + confirm | (varies) |
-| U11 | Error Recovery | “Start over”, “Clear context” | `signupassist.chat` | none | `BROWSE` |
-| U12 | Error Recovery | “Session expired”, “Something broke” | `signupassist.chat` | none | (varies) |
+| U01 | Onboarding/Trust | “What is this?”, “Is this safe?” | `register_for_activity` | none | `BROWSE` |
+| U02 | Discovery | “Show me AIM Design classes”, “Find robotics classes” | `register_for_activity` | none | `BROWSE` |
+| U03 | Discovery | “Yes (that provider)”, “AIM Design (yes)” | `register_for_activity` | none | `BROWSE` |
+| U04 | Registration | “I want #3”, “Sign up for Ocean Explorers” | `register_for_activity` | none→OAuth later | `BROWSE → FORM_FILL` |
+| U05 | Registration | “My email is…”, “Percy, 11” | `register_for_activity` | none→OAuth later | `FORM_FILL → REVIEW` |
+| U06 | Registration | “Set it up when registration opens” | `register_for_activity` | OAuth + mandate | `FORM_FILL → REVIEW → PAYMENT → SUBMIT → COMPLETED` (scheduled) |
+| U07 | Registration | “Book it now”, “Confirm/Authorize” | `register_for_activity` | OAuth + mandate | `FORM_FILL → REVIEW → PAYMENT → SUBMIT → COMPLETED` |
+| U08 | Account Management | “Add a card”, “Update payment method” | `register_for_activity` | OAuth | `PAYMENT` |
+| U09 | Post‑Booking | “Show my registrations”, “View receipts” | `register_for_activity` | OAuth | (no change) |
+| U10 | Post‑Booking | “Cancel SCH‑…”, “Cancel REG‑…” | `register_for_activity` | OAuth + confirm | (varies) |
+| U11 | Error Recovery | “Start over”, “Clear context” | `register_for_activity` | none | `BROWSE` |
+| U12 | Error Recovery | “Session expired”, “Something broke” | `register_for_activity` | none | (varies) |
 
 ---
 
@@ -44,7 +44,7 @@ This document is the **single catalog of user-facing use cases** for SignupAssis
 ### U01 — Onboarding / Trust
 
 - **User intent / examples**: “What is SignupAssist?”, “Will you store my card?”, “Is this legit?”
-- **Entry points**: `signupassist.chat` (first turn or anytime)
+- **Entry points**: `register_for_activity` (first turn or anytime)
 - **Auth required**: none
 - **States**: stays in `BROWSE` (trust is informational)
 - **Successful exit**: user agrees to proceed to discovery (U02)
@@ -60,7 +60,7 @@ This document is the **single catalog of user-facing use cases** for SignupAssis
 ### U02 — Discovery: Browse programs
 
 - **User intent / examples**: “Show me AIM Design classes”, “Find robotics classes in Madison”
-- **Entry points**: `signupassist.chat`
+- **Entry points**: `register_for_activity`
 - **Auth required**: none
 - **States**: `BROWSE`
 - **Successful exit**: user sees program list and selects one (U04)
@@ -79,7 +79,7 @@ This document is the **single catalog of user-facing use cases** for SignupAssis
 ### U03 — Discovery: Provider confirmation
 
 - **User intent / examples**: user answers “Yes” after “Did you mean AIM Design?”
-- **Entry points**: `signupassist.chat`
+- **Entry points**: `register_for_activity`
 - **Auth required**: none
 - **States**: `BROWSE`
 - **Successful exit**: provider locked and programs shown (U02)
@@ -91,7 +91,7 @@ This document is the **single catalog of user-facing use cases** for SignupAssis
 ### U04 — Registration: Program selection
 
 - **User intent / examples**: “3”, “the first one”, “Sign up for Coding Course”
-- **Entry points**: `signupassist.chat`
+- **Entry points**: `register_for_activity`
 - **Auth required**: none (selection only)
 - **States**: `BROWSE → FORM_FILL`
 - **Successful exit**: program selected and requirements discovered
@@ -109,7 +109,7 @@ This document is the **single catalog of user-facing use cases** for SignupAssis
 ### U05 — Registration: Collect required information (micro‑questions)
 
 - **User intent / examples**: “My email is…”, “Percy Messinger, 11”, “done”
-- **Entry points**: `signupassist.chat`
+- **Entry points**: `register_for_activity`
 - **Auth required**: none for collection; OAuth needed before writes
 - **States**: `FORM_FILL → REVIEW`
 - **Successful exit**: complete form payload assembled for review
@@ -125,7 +125,7 @@ This document is the **single catalog of user-facing use cases** for SignupAssis
 ### U06 — Registration: Schedule‑at‑open (set‑and‑forget)
 
 - **User intent / examples**: “Schedule it”, “Do it when it opens”
-- **Entry points**: `signupassist.chat`
+- **Entry points**: `register_for_activity`
 - **Auth required**: OAuth + explicit confirmation
 - **States**: `FORM_FILL → REVIEW → PAYMENT → SUBMIT → COMPLETED`
 - **Successful exit**: scheduled job created + receipt reference returned (SCH‑…)
@@ -142,7 +142,7 @@ This document is the **single catalog of user-facing use cases** for SignupAssis
 ### U07 — Registration: Book‑now (immediate execution)
 
 - **User intent / examples**: “Confirm”, “Authorize”, “Book it”
-- **Entry points**: `signupassist.chat`
+- **Entry points**: `register_for_activity`
 - **Auth required**: OAuth + explicit confirmation
 - **States**: `FORM_FILL → REVIEW → PAYMENT → SUBMIT → COMPLETED`
 - **Successful exit**: provider booking confirmed + receipt reference returned (REG‑…)
@@ -161,7 +161,7 @@ This document is the **single catalog of user-facing use cases** for SignupAssis
 ### U08 — Account Management: Payment method setup
 
 - **User intent / examples**: “Add a card”, “Update payment method”
-- **Entry points**: `signupassist.chat`
+- **Entry points**: `register_for_activity`
 - **Auth required**: OAuth
 - **States**: typically `PAYMENT` (or stays in current step with a detour)
 - **Successful exit**: payment method saved + user returned to next step
@@ -179,7 +179,7 @@ This document is the **single catalog of user-facing use cases** for SignupAssis
 ### U09 — Post‑Booking: View receipts / history
 
 - **User intent / examples**: “Show my registrations”, “View receipts”
-- **Entry points**: `signupassist.chat`
+- **Entry points**: `register_for_activity`
 - **Auth required**: OAuth
 - **States**: usually does not change flow step
 - **Successful exit**: list of receipts / registrations
@@ -191,7 +191,7 @@ This document is the **single catalog of user-facing use cases** for SignupAssis
 ### U10 — Post‑Booking: Cancel (scheduled or completed)
 
 - **User intent / examples**: “Cancel SCH‑123”, “Cancel REG‑123”
-- **Entry points**: `signupassist.chat`
+- **Entry points**: `register_for_activity`
 - **Auth required**: OAuth + explicit confirmation
 - **States**: may temporarily enter a “confirm cancel” prompt; otherwise unchanged
 - **Successful exit**: cancellation confirmed; refund (if applicable) executed
@@ -208,7 +208,7 @@ This document is the **single catalog of user-facing use cases** for SignupAssis
 ### U11 — Error Recovery: Start over / clear context
 
 - **User intent / examples**: “Start over”, “Clear this”
-- **Entry points**: `signupassist.chat`
+- **Entry points**: `register_for_activity`
 - **Auth required**: none
 - **States**: `BROWSE`
 - **Successful exit**: new browse flow begins
@@ -219,7 +219,7 @@ This document is the **single catalog of user-facing use cases** for SignupAssis
 ### U12 — Error Recovery: Session / provider failures
 
 - **User intent / examples**: “It got stuck”, “Something broke”
-- **Entry points**: `signupassist.chat`
+- **Entry points**: `register_for_activity`
 - **Auth required**: none (unless user requests receipts)
 - **States**: varies
 - **Successful exit**: user can retry, start over, or contact support

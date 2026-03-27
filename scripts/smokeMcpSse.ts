@@ -5,7 +5,7 @@
  * Validates:
  * - `/.well-known/oauth-authorization-server` exists and points to our proxied endpoints
  * - `/sse` returns 401 (prod) when no auth, and connects when Authorization is provided
- * - Can ListTools + call `signupassist.chat` over MCP SSE transport
+ * - Can ListTools + call `register_for_activity` over MCP SSE transport
  *
  * Usage:
  *   MCP_SERVER_URL=https://signupassist-mcp-production.up.railway.app \
@@ -84,7 +84,7 @@ async function main() {
     }
   }
 
-  // 2b) Unauthenticated read-only tool call (signupassist.start) when enabled.
+  // 2b) Unauthenticated read-only tool call (search_activities) when enabled.
   // This should NOT require OAuth; it helps the ChatGPT router prefer the app over Web Search.
   {
     const rpcId = `smoke-unauth-start-${Date.now()}`;
@@ -99,30 +99,30 @@ async function main() {
         id: rpcId,
         method: "tools/call",
         params: {
-          name: "signupassist.start",
+          name: "search_activities",
           arguments: { org_ref: "aim-design", category: "all" },
         },
       }),
     });
 
     if (expectUnauthReadonly) {
-      assert(status === 200, `unauth signupassist.start: expected 200, got ${status} :: ${text.slice(0, 200)}`);
-      assert(json?.jsonrpc === "2.0", "unauth signupassist.start: missing jsonrpc=2.0");
-      assert(String(json?.id) === rpcId, "unauth signupassist.start: id mismatch");
-      assert(Array.isArray(json?.result?.content), "unauth signupassist.start: result.content must be an array");
-      assert((json?.result?.content || []).length > 0, "unauth signupassist.start: result.content must be non-empty");
-      console.log("[smoke-sse] ✅ unauth signupassist.start ok");
+      assert(status === 200, `unauth search_activities: expected 200, got ${status} :: ${text.slice(0, 200)}`);
+      assert(json?.jsonrpc === "2.0", "unauth search_activities: missing jsonrpc=2.0");
+      assert(String(json?.id) === rpcId, "unauth search_activities: id mismatch");
+      assert(Array.isArray(json?.result?.content), "unauth search_activities: result.content must be an array");
+      assert((json?.result?.content || []).length > 0, "unauth search_activities: result.content must be non-empty");
+      console.log("[smoke-sse] ✅ unauth search_activities ok");
     } else {
       // If not enabled, this may 401; treat as informational.
       if (status === 401) {
-        console.log("[smoke-sse] ℹ️ unauth signupassist.start is not enabled (401)");
+        console.log("[smoke-sse] ℹ️ unauth search_activities is not enabled (401)");
       } else {
-        console.log(`[smoke-sse] ℹ️ unauth signupassist.start returned ${status} (flag not enabled?)`);
+        console.log(`[smoke-sse] ℹ️ unauth search_activities returned ${status} (flag not enabled?)`);
       }
     }
   }
 
-  // 2c) Ensure unauthenticated signupassist.chat is still OAuth-gated (in prod).
+  // 2c) Ensure unauthenticated register_for_activity is still OAuth-gated (in prod).
   {
     const rpcId = `smoke-unauth-chat-${Date.now()}`;
     const res = await fetch(`${baseUrl}/sse`, {
@@ -136,17 +136,17 @@ async function main() {
         id: rpcId,
         method: "tools/call",
         params: {
-          name: "signupassist.chat",
+          name: "register_for_activity",
           arguments: { input: "hello", sessionId: `smoke-unauth-${Date.now()}` },
         },
       }),
     });
     if (res.status === 401) {
       const www = res.headers.get("www-authenticate");
-      assert(!!www, "unauth signupassist.chat: expected WWW-Authenticate header");
-      console.log("[smoke-sse] ✅ unauth signupassist.chat remains OAuth-gated (401)");
+      assert(!!www, "unauth register_for_activity: expected WWW-Authenticate header");
+      console.log("[smoke-sse] ✅ unauth register_for_activity remains OAuth-gated (401)");
     } else {
-      console.log(`[smoke-sse] ℹ️ unauth signupassist.chat returned ${res.status} (non-prod or auth posture changed)`);
+      console.log(`[smoke-sse] ℹ️ unauth register_for_activity returned ${res.status} (non-prod or auth posture changed)`);
     }
   }
 
@@ -167,7 +167,7 @@ async function main() {
         id: rpcId,
         method: "tools/call",
         params: {
-          name: "signupassist.chat",
+          name: "register_for_activity",
           arguments: {
             input: "hello",
             sessionId,
@@ -201,7 +201,7 @@ async function main() {
         id: rpcId2,
         method: "tools/call",
         params: {
-          name: "signupassist.chat",
+          name: "register_for_activity",
           arguments: {
             input: "hello",
             sessionId,
@@ -223,7 +223,7 @@ async function main() {
     console.log("[smoke-sse] Skipping POST /sse tools/call smoke (no MCP_ACCESS_TOKEN provided)");
   }
 
-  // 4) If we have a token, connect over SSE and call signupassist.chat
+  // 4) If we have a token, connect over SSE and call register_for_activity
   if (token) {
     const sseUrl = new URL(`${baseUrl}/sse`);
     const transport = new SSEClientTransport(sseUrl, {
@@ -240,8 +240,8 @@ async function main() {
 
     const tools = await client.listTools();
     const toolNames = (tools?.tools || []).map((t: any) => t.name);
-    assert(toolNames.includes("signupassist.chat"), `listTools: expected signupassist.chat, got: ${toolNames.join(", ")}`);
-    assert(toolNames.includes("signupassist.start"), `listTools: expected signupassist.start, got: ${toolNames.join(", ")}`);
+    assert(toolNames.includes("register_for_activity"), `listTools: expected register_for_activity, got: ${toolNames.join(", ")}`);
+    assert(toolNames.includes("search_activities"), `listTools: expected search_activities, got: ${toolNames.join(", ")}`);
     console.log("[smoke-sse] ✅ listTools ok");
 
     // Source-of-truth: provider feed count (via internal tools/call endpoint).
@@ -259,7 +259,7 @@ async function main() {
     assert(totalPrograms > 0, `provider feed: expected total_programs > 0, got ${totalPrograms}`);
 
     const result = await client.callTool({
-      name: "signupassist.chat",
+      name: "register_for_activity",
       arguments: {
         input: "Sign up for AIM Design classes",
         sessionId: `smoke-sse-${Date.now()}`,
@@ -268,8 +268,8 @@ async function main() {
     });
 
     const text = String((result as any)?.content?.[0]?.text || "");
-    assert(text.length > 0, "signupassist.chat: expected non-empty text");
-    assert(/^(\*\*)?Step\s+[1-5]\/5\s+—/i.test(text), `signupassist.chat: expected Step header, got: ${text.slice(0, 80)}`);
+    assert(text.length > 0, "register_for_activity: expected non-empty text");
+    assert(/^(\*\*)?Step\s+[1-5]\/5\s+—/i.test(text), `register_for_activity: expected Step header, got: ${text.slice(0, 80)}`);
 
     // Program list should not be unexpectedly truncated (e.g., 3 of 4).
     // Count enumerated items like "1. ..." in the returned text.
@@ -278,9 +278,9 @@ async function main() {
     const expectedMin = Math.min(totalPrograms, 8);
     assert(
       shown >= expectedMin,
-      `signupassist.chat: expected >=${expectedMin} programs listed (provider total=${totalPrograms}), got ${shown}`
+      `register_for_activity: expected >=${expectedMin} programs listed (provider total=${totalPrograms}), got ${shown}`
     );
-    console.log("[smoke-sse] ✅ signupassist.chat ok");
+    console.log("[smoke-sse] ✅ register_for_activity ok");
 
     await client.close();
     console.log("[smoke-sse] ✅ closed\n");

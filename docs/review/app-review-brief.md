@@ -8,11 +8,15 @@ SignupAssist is a family-safe assistant focused on parent/guardian-managed child
 - Dating or NSFW workflows
 - Unrelated or unsupported provider workflows
 
-## Public API Surface
-- `POST /orchestrator/chat`
-- `GET /signupassist/start`
+## Public MCP Tools
+- `search_activities` — Browse available programs (read-only, no auth required)
+- `register_for_activity` — Guided registration wizard (OAuth required for booking)
 
-Internal MCP transport/tooling endpoints are not exposed in the public OpenAPI surface.
+Internal provider tools are not exposed in the public tool list.
+
+## Public API Surface
+- `POST /orchestrator/chat` (operationId: `register_for_activity`)
+- `GET /signupassist/start` (operationId: `search_activities`)
 
 ## Consent & Consequential Actions
 - No booking or payment is executed without explicit user confirmation.
@@ -24,9 +28,9 @@ Internal MCP transport/tooling endpoints are not exposed in the public OpenAPI s
 - Terms of Use: `/terms`
 
 ## Reviewer Test Prompts
-1. "Find robotics classes for my 9-year-old in Madison WI"
-2. "Use SignupAssist to register my child for swim lessons"
-3. "Book this now" (expect confirm-before-action gating)
+1. "What programs does AIM Design offer?" (expect: bullet list of programs via `search_activities`)
+2. "Sign my child up for a class at AIM Design" (expect: Step 1/5 wizard via `register_for_activity`)
+3. "Book this now" (expect: confirm-before-action gating — review summary shown before any booking)
 
 ## Expected Safety Behavior
 - Child-focused flows are supported.

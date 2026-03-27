@@ -64,7 +64,7 @@ This file exists because chat sessions can get cut off. It is the **repo source 
 - `fix(registrations): retry create without provider_* fields when schema lags`
 - `fix(bookeo): omit phoneNumbers from booking payloads (avoids “Invalid phone number type”)`
 - `fix(chat): prevent ChatGPT preview browse/session regressions (refresh immutable context + in-flow fallback)`
-- `fix(meta): mark signupassist.chat as consequential (Stripe + booking) to avoid “preview-only” fake completions`
+- `fix(meta): mark register_for_activity as consequential (Stripe + booking) to avoid “preview-only” fake completions`
 
 ### Known gaps / next steps (pull from punchlist)
 
@@ -231,7 +231,7 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
   - **OAuth reconnect hardening**: `/oauth/authorize` and `/oauth/token` now force the canonical Auth0 `client_id`/`client_secret` from server env (ignores any stale/incorrect values stored in the ChatGPT UI) and logs truncated Auth0 token errors (no tokens) to speed up debugging.
   - **Set & forget scheduled signup UX**: for “opens later” programs, Step 3/5 and Step 4/5 now explicitly show the **registration open time** and clarify **no charge unless registration succeeds**. Scheduled signup confirmations now store a `lastCompletion.kind="scheduled"` snapshot so ChatGPT empty reconnect calls re-print the scheduling confirmation instead of jumping back to Step 1.
 - `mcp_server/index.ts`
-  - `signupassist.chat` tool handler now **suppresses wizard step headers** when `metadata.suppressWizardHeader=true` (keeps Step headers for the actual signup wizard).
+  - `register_for_activity` tool handler now **suppresses wizard step headers** when `metadata.suppressWizardHeader=true` (keeps Step headers for the actual signup wizard).
 - `mcp_server/ai/APIOrchestrator.ts`
   - Added a **Supabase fetch timeout** (abort after `SUPABASE_FETCH_TIMEOUT_MS`, default 8000ms) to prevent “app hangs” when awaited session persistence to `browser_sessions` stalls.
   - **Wizard UX**: added `wizardProgress` tracking + `metadata.wizardContinued` so multi-turn steps display `Step N/5 continued — …` on follow-up turns (e.g., Step 2/5 often spans multiple messages).
@@ -254,7 +254,7 @@ See `docs/V1_PUNCHLIST.md` for the authoritative checklist. Highest-signal remai
 
 ### Symptom
 
-- Prompts like **“Toronto, Ontario, Canada”** or **“8am yoga at Inner Fire Yoga studio”** were triggering `signupassist.chat` and returning a list of **AIM Design** programs.
+- Prompts like **“Toronto, Ontario, Canada”** or **“8am yoga at Inner Fire Yoga studio”** were triggering `register_for_activity` and returning a list of **AIM Design** programs.
 - Server logs showed `ActivationConfidence` LOW but still proceeded to:
   - `Searching programs for org: aim-design`
   - `bookeo.find_programs`
@@ -339,19 +339,19 @@ We are about to change MCP tool visibility + auth gating for a read-only discove
 
 ---
 
-## 2026-01-03 — Reduce Web Search fallback by enriching `signupassist.start` tool output
+## 2026-01-03 — Reduce Web Search fallback by enriching `search_activities` tool output
 
 ### What changed
 
-- Updated `signupassist.start` to accept an optional `query` and return a **rich plain-text list** of relevant programs in `result.content[]` (so ChatGPT can answer without Web Search).
+- Updated `search_activities` to accept an optional `query` and return a **rich plain-text list** of relevant programs in `result.content[]` (so ChatGPT can answer without Web Search).
 - Strengthened `public/.well-known/chatgpt-apps-manifest.json` instructions to:
-  - call `signupassist.start` first for discovery + signup intents
-  - avoid Web Search if `signupassist.start` returns usable options
+  - call `search_activities` first for discovery + signup intents
+  - avoid Web Search if `search_activities` returns usable options
 
 ### Evidence (prod)
 
 - Deployed commit: `df3f1bcdf8e15086fc57050c71ab392354630775`
-- Unauthed `tools/call signupassist.start` with query `"I'd like to sign up for robotics class for my 9 year old in Madison, WI"` returns content with the robotics program listed.
+- Unauthed `tools/call search_activities` with query `"I'd like to sign up for robotics class for my 9 year old in Madison, WI"` returns content with the robotics program listed.
 
 ---
 
@@ -364,7 +364,7 @@ We are about to change MCP tool visibility + auth gating for a read-only discove
 
 ### Rationale
 
-We are about to simplify the public MCP surface to **one tool** (`signupassist.chat`) and restore **OAuth-required for all tool calls**. If anything regresses with SSE/Auth0/OpenAI connector behavior, redeploy the tag above.
+We are about to simplify the public MCP surface to **one tool** (`register_for_activity`) and restore **OAuth-required for all tool calls**. If anything regresses with SSE/Auth0/OpenAI connector behavior, redeploy the tag above.
 
 ## 2026-01-01 — Fix: `audit REG-...` crashes when audit args are redacted (`participants.map is not a function`)
 
@@ -574,8 +574,8 @@ Fix:
 
 - `mcp_server/index.ts`
   - Enforced an **Auth0 (ChatGPT) tool allowlist** across `/sse` JSON-RPC, `/messages`, and `/tools/call`:
-    - Allow only `signupassist.chat`
-    - Alias cached legacy `signupassist.start` / `signupassist.find` → `signupassist.chat`
+    - Allow only `register_for_activity`
+    - Alias cached legacy `search_activities` / `signupassist.find` → `register_for_activity`
     - Block all other tools for Auth0 callers (prevents internal/private tool paths from being invoked by ChatGPT)
 - `mcp_server/ai/apiMessageTemplates.ts` + `mcp_server/ai/APIOrchestrator.ts`
   - Upgraded the Step 5/5 booking success output to a receipt-style confirmation including:

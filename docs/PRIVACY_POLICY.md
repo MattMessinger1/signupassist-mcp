@@ -1,7 +1,7 @@
 # SHIPWORX LLC PRIVACY POLICY (SIGNUP ASSIST)
 
 **Effective Date:** December 19, 2025  
-**Last Updated:** March 15, 2026
+**Last Updated:** March 23, 2026
 
 This Privacy Policy explains how Shipworx LLC ("Shipworx," "we," "us," or "our") collects, uses, discloses, and protects information when you use Signup Assist (the "App"), including when the App is accessed through ChatGPT or similar interfaces, and when you visit our website at shipworx.ai (collectively, the "Services").
 
@@ -98,13 +98,24 @@ If we become aware that we received Restricted Data, we will take reasonable ste
 
 ---
 
-## 5. PARTICIPANT DATA PRIVACY (INCLUDING CHILDREN)
+## 5. PARTICIPANT DATA PRIVACY (INCLUDING CHILDREN) AND COPPA COMPLIANCE
 
-Signup Assist allows account holders to register participants — including children — for activities. This section explains how we handle participant information.
+Signup Assist allows account holders to register participants — including children — for activities. This section explains how we handle participant information and our compliance with the Children's Online Privacy Protection Act (COPPA).
+
+### COPPA Compliance
+
+Signup Assist is not directed at children under 13. Children do not use the service directly. Instead, a parent, legal guardian, or other authorized adult (the "Responsible Delegate") operates the service and provides participant information on behalf of children. This parent/delegate model means:
+
+- **Only adults operate the service.** All account holders must be at least 18 years old. The account holder authenticates, provides information, authorizes actions, and controls all data.
+- **Verifiable parental involvement.** The adult account holder must authenticate via OAuth (Auth0) before any participant data can be submitted. Every registration action requires an explicit authorization mandate from the authenticated adult.
+- **Minimal data collection.** We collect only the participant's first name, last name, and date of birth — the minimum required by activity providers to complete a registration. We do not collect contact information, photos, location data, or any other personal information directly from children.
+- **No direct interaction with children.** Children never interact with the service, provide their own information, or create accounts. All data is entered and managed by the authenticated adult.
+
+If you believe we have inadvertently collected personal information from a child under 13 without proper parental involvement, contact us immediately at privacy@shipworx.ai and we will promptly delete that information.
 
 ### What We Collect
 
-When you register a participant, you provide:
+When the account holder registers a participant, they provide:
 - First and last name
 - Date of birth (for age verification by activity providers)
 
@@ -112,18 +123,21 @@ When you register a participant, you provide:
 
 - **Account Holder Control:** Only authenticated account holders can access and manage participant records
 - **Limited Purpose:** Participant data is used solely to complete registrations you authorize
-- **Deletion Rights:** You may request deletion of participant data at any time
+- **Deletion Rights:** You may request deletion of participant data at any time; we will delete all associated records promptly
+- **No Profiling:** We do not build behavioral profiles of participants or use participant data for any purpose beyond fulfilling authorized registrations
 
 ### What We Do NOT Do
 
 - Allow anyone under 13 to use the service directly
+- Collect personal information from children without an authenticated adult account holder
 - Share participant information for marketing or advertising
 - Retain participant data after you request deletion
 - Sell or share participant information with third parties for their marketing
+- Use participant data for behavioral advertising or profiling
 
 ### Age Requirements
 
-All users of SignupAssist must be at least 13 years old. The service is designed for users who are managing activity registrations. If you believe information was collected from someone under 13, contact us at privacy@shipworx.ai.
+All account holders must be at least 18 years old. All users of SignupAssist must be at least 13 years old. The service is designed for adults managing activity registrations on behalf of participants. If you believe information was collected from someone under 13 without proper parental involvement, contact us at privacy@shipworx.ai.
 
 ---
 

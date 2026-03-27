@@ -214,7 +214,11 @@ export interface BookeoTool {
     required?: string[];
   };
   handler: (args: any) => Promise<any>;
-  /** Optional safety metadata for OpenAI safety gating */
+  annotations?: {
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    openWorldHint?: boolean;
+  };
   _meta?: {
     'openai/safety'?: 'read-only' | 'write' | 'sensitive';
   };
@@ -1192,6 +1196,11 @@ Verifies Bookeo API credentials using a GET request.
 Does NOT create bookings.
 Does NOT charge payments.
 Safe to call anytime.`,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    },
     _meta: {
       'openai/safety': 'read-only'
     },
@@ -1212,6 +1221,11 @@ Does NOT create bookings.
 Does NOT charge payments.
 Does NOT modify user data.
 Safe to call for browsing and exploration.`,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    },
     _meta: {
       'openai/safety': 'read-only',
     },
@@ -1258,6 +1272,11 @@ Does NOT create bookings.
 Does NOT charge payments.
 Does NOT modify user data.
 Safe to call for exploring registration requirements.`,
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    },
     _meta: {
       'openai/safety': 'read-only'
     },
@@ -1294,6 +1313,11 @@ Safe to call for exploring registration requirements.`,
   {
     name: 'bookeo.create_hold',
     description: 'Create a temporary booking hold with confirmation UI',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -1320,6 +1344,11 @@ Safe to call for exploring registration requirements.`,
   {
     name: 'bookeo.confirm_booking',
     description: 'Create a direct booking with two-tier form data (delegate + participants)',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -1376,6 +1405,11 @@ Safe to call for exploring registration requirements.`,
   {
     name: 'bookeo.cancel_booking',
     description: 'Cancel an existing Bookeo booking (subject to provider cancellation policy)',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {

@@ -110,24 +110,24 @@ async function main() {
   console.log(`[regression] Mode: ${userId ? `returning-user (userId=${userId.slice(0, 8)}…)` : 'new-user'}\n`);
 
   // Step 1: browse/list
-  const chat1 = await callTool(baseUrl, token, 'signupassist.chat', {
+  const chat1 = await callTool(baseUrl, token, 'register_for_activity', {
     input: 'Sign up for AIM Design classes',
     sessionId,
     userTimezone: tz,
     ...(userId ? { userId } : {}),
   });
-  assert(chat1.status === 200, `signupassist.chat step1: expected 200, got ${chat1.status}`);
+  assert(chat1.status === 200, `register_for_activity step1: expected 200, got ${chat1.status}`);
   const text1 = extractText(chat1);
   assert(/^(\*\*)?Step\s+1\/5\s+—/i.test(text1), `expected Step 1/5 header, got: ${text1.slice(0, 120)}`);
 
   // Step 1: select a program by ordinal
-  const chat2 = await callTool(baseUrl, token, 'signupassist.chat', {
+  const chat2 = await callTool(baseUrl, token, 'register_for_activity', {
     input: '1',
     sessionId,
     userTimezone: tz,
     ...(userId ? { userId } : {}),
   });
-  assert(chat2.status === 200, `signupassist.chat select: expected 200, got ${chat2.status}`);
+  assert(chat2.status === 200, `register_for_activity select: expected 200, got ${chat2.status}`);
   const text2 = extractText(chat2);
   assert(/^(\*\*)?Step\s+2\/5\s+—/i.test(text2), `expected Step 2/5 header after selection, got: ${text2.slice(0, 160)}`);
 
@@ -156,26 +156,26 @@ async function main() {
 
   const payload = userId ? (saysNothingElse ? 'ok' : needsEmail ? returningEmail : fullPayload) : fullPayload;
 
-  const chat3 = await callTool(baseUrl, token, 'signupassist.chat', {
+  const chat3 = await callTool(baseUrl, token, 'register_for_activity', {
     input: payload,
     sessionId,
     userTimezone: tz,
     ...(userId ? { userId } : {}),
   });
-  assert(chat3.status === 200, `signupassist.chat step2 payload: expected 200, got ${chat3.status}`);
+  assert(chat3.status === 200, `register_for_activity step2 payload: expected 200, got ${chat3.status}`);
   let text3 = extractText(chat3);
 
   // Step 2 can take multiple turns (schema-driven micro-questions). Keep answering until Step 3/5.
   if (isStep(text3, 2)) {
     for (let i = 0; i < 4; i++) {
       const reply = buildReplyForMissing(text3, returningEmail) || fullPayload;
-      const next = await callTool(baseUrl, token, 'signupassist.chat', {
+      const next = await callTool(baseUrl, token, 'register_for_activity', {
         input: reply,
         sessionId,
         userTimezone: tz,
         ...(userId ? { userId } : {}),
       });
-      assert(next.status === 200, `signupassist.chat step2 follow-up: expected 200, got ${next.status}`);
+      assert(next.status === 200, `register_for_activity step2 follow-up: expected 200, got ${next.status}`);
       text3 = extractText(next);
       if (isStep(text3, 3)) break;
       if (!isStep(text3, 2)) break;
@@ -192,13 +192,13 @@ async function main() {
   // If payment method exists, user can say "yes" to proceed to Step 4/5 Review & consent.
   const hasStripeLink = /Secure Stripe Checkout/i.test(text3) || /\bhttps?:\/\/\S+/i.test(text3);
   if (!hasStripeLink) {
-    const chat4 = await callTool(baseUrl, token, 'signupassist.chat', {
+    const chat4 = await callTool(baseUrl, token, 'register_for_activity', {
       input: 'yes',
       sessionId,
       userTimezone: tz,
       ...(userId ? { userId } : {}),
     });
-    assert(chat4.status === 200, `signupassist.chat step3 confirm payment: expected 200, got ${chat4.status}`);
+    assert(chat4.status === 200, `register_for_activity step3 confirm payment: expected 200, got ${chat4.status}`);
     const text4 = extractText(chat4);
     assert(/^(\*\*)?Step\s+4\/5\s+—/i.test(text4), `expected Step 4/5 header, got: ${text4.slice(0, 160)}`);
     assert(/Please review the details below/i.test(text4), `expected full review summary, got: ${text4.slice(0, 240)}`);
@@ -208,13 +208,13 @@ async function main() {
     // Optional (dangerous if regressed): verify that a generic "yes" in Step 4 does NOT book.
     // Enable only when running against a safe environment/user: REGRESSION_ASSERT_YES_DOESNT_BOOK=1
     if ((process.env.REGRESSION_ASSERT_YES_DOESNT_BOOK || '').trim() === '1') {
-      const chat4b = await callTool(baseUrl, token, 'signupassist.chat', {
+      const chat4b = await callTool(baseUrl, token, 'register_for_activity', {
         input: 'yes',
         sessionId,
         userTimezone: tz,
         ...(userId ? { userId } : {}),
       });
-      assert(chat4b.status === 200, `signupassist.chat step4 generic yes: expected 200, got ${chat4b.status}`);
+      assert(chat4b.status === 200, `register_for_activity step4 generic yes: expected 200, got ${chat4b.status}`);
       const text4b = extractText(chat4b);
       assert(!isStep(text4b, 5), `expected NOT to book on generic "yes" in review, got: ${text4b.slice(0, 200)}`);
       assert(/\bbook now\b/i.test(text4b), `expected reminder to type "book now", got: ${text4b.slice(0, 240)}`);

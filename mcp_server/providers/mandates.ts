@@ -404,6 +404,11 @@ export const mandateTools = [
   {
     name: 'mandates.create',
     description: 'Create a new mandate with specified scopes and validity period. Returns mandate ID and JWS token.',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -459,6 +464,11 @@ export const mandateTools = [
   {
     name: 'mandates.prepare_registration',
     description: 'Prepare a registration by validating data and creating a mandate. Called after user reviews and gives consent.',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -508,6 +518,11 @@ export const mandateTools = [
   {
     name: 'mandates.submit_registration',
     description: 'Submit the final registration after payment is verified. Executes the actual booking.',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -562,6 +577,11 @@ export const mandateTools = [
   {
     name: 'mandates.log_audit_event',
     description: 'Log an audit event for the responsible delegate trail. Call at each registration step.',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -601,6 +621,11 @@ export const mandateTools = [
   {
     name: 'mandates.get_audit_trail',
     description: 'Fetch audit trail events for a mandate or user. Used to display in confirmation/receipts.',
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {

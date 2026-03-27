@@ -110,6 +110,11 @@ export const schedulerTools = [
   {
     name: 'scheduler.schedule_signup',
     description: 'Schedule an auto-registration job to execute at a specific time. Persists full execution payload in scheduled_registrations for the always-on worker.',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {

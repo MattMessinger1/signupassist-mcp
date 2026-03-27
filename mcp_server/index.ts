@@ -60,10 +60,12 @@ function stripWizardHeader(message: string): string {
 // Goal: deterministic UX + prevent ChatGPT from calling any internal/private tools
 // (including cached tool names from previous versions).
 // ============================================================
-const CHATGPT_AUTH0_CANONICAL_TOOL = "signupassist.chat";
-const CHATGPT_AUTH0_ALLOWED_TOOLS = new Set<string>([CHATGPT_AUTH0_CANONICAL_TOOL, "signupassist.start"]);
+const CHATGPT_AUTH0_CANONICAL_TOOL = "register_for_activity";
+const CHATGPT_AUTH0_ALLOWED_TOOLS = new Set<string>([CHATGPT_AUTH0_CANONICAL_TOOL, "search_activities"]);
 const CHATGPT_AUTH0_TOOL_ALIASES: Record<string, string> = {
   "signupassist.find": CHATGPT_AUTH0_CANONICAL_TOOL,
+  "signupassist.chat": CHATGPT_AUTH0_CANONICAL_TOOL,
+  "signupassist.start": "search_activities",
 };
 
 function synthesizeSignupAssistQueryFromArgs(args: any): string {
@@ -97,7 +99,7 @@ function coerceSignupAssistChatArgsFromLegacy(
   const userTimezone = a.userTimezone ? String(a.userTimezone) : undefined;
   const input = synthesizeSignupAssistQueryFromArgs(a);
 
-  // Only pass what `signupassist.chat` expects.
+  // Only pass what `register_for_activity` expects.
   return {
     sessionId,
     input,
@@ -486,8 +488,8 @@ function v1VisibilityForTool(toolName: string, toolMeta: Record<string, any> = {
   //
   // We still REGISTER all tools (so the orchestrator can call them internally),
   // but we only LIST the canonical chat tool for the model.
-  if (toolName === "signupassist.chat") return "public";
-  if (toolName === "signupassist.start") return "public";
+  if (toolName === "register_for_activity") return "public";
+  if (toolName === "search_activities") return "public";
   return "private";
 }
 
@@ -515,13 +517,13 @@ function wizardInvocationForTool(toolName: string): { invoking: string; invoked:
   const step5Invoked  = "Step 5/5 — Registration step complete.";
 
   // Entry point / feed / chat
-  // IMPORTANT: For the single public tool (signupassist.chat), do NOT duplicate a Step header
+  // IMPORTANT: For the single public tool (register_for_activity), do NOT duplicate a Step header
   // in the toolInvocation status text. Some ChatGPT surfaces appear to suppress the first line
   // of tool output when they think "progress" is already shown.
-  if (toolName === "signupassist.chat") {
+  if (toolName === "register_for_activity") {
     return { invoking: "Working…", invoked: "Reply ready." };
   }
-  if (toolName === "signupassist.start" || toolName === "program_feed.get") {
+  if (toolName === "search_activities" || toolName === "program_feed.get") {
     return { invoking: step1Invoking, invoked: step1Invoked };
   }
   if (toolName === "signupassist.find") {
@@ -591,7 +593,7 @@ function isAllowUnauthReadonlyToolsEnabled(): boolean {
   return raw === "true" || raw === "1" || raw === "yes" || raw === "on";
 }
 
-const UNAUTH_READONLY_TOOLS = new Set<string>(["signupassist.start"]);
+const UNAUTH_READONLY_TOOLS = new Set<string>(["search_activities"]);
 
 function isUnauthReadonlyToolAllowed(toolName: string): boolean {
   return UNAUTH_READONLY_TOOLS.has(toolName);
@@ -632,11 +634,11 @@ export function mcpOk(value: unknown) {
       "structuredContent" in v || "content" in v || "_meta" in v || "isError" in v;
 
     if (looksLikeCallToolResult) {
-      if (hasContentArray && (v as any).content.length > 0) return v;
-      return {
+      if (hasContentArray && (v as any).content.length > 0) return truncateToolResponse(v);
+      return truncateToolResponse({
         ...v,
         content: hasContentArray && (v as any).content.length === 0 ? [defaultText] : (hasContentArray ? (v as any).content : [defaultText]),
-      };
+      });
     }
   }
 
@@ -728,6 +730,7 @@ import { registrationTools } from './providers/registrations.js';
 import { userTools } from './providers/user.js';
 // import { daysmartTools } from '../providers/daysmart/index';
 // import { campminderTools } from '../providers/campminder/index';
+import { truncateToolResponse } from './lib/truncateToolResponse.js';
 import { createClient } from '@supabase/supabase-js';
 
 // Initialize Supabase client for database operations (service role)
@@ -780,7 +783,7 @@ class SignupAssistMCPServer {
   private orchestrator: IOrchestrator | null = null;
   private sseTransports: Map<string, any> = new Map(); // SSE session storage
   // Auth binding for MCP SSE transport: sessionId (SSEServerTransport.sessionId) → Supabase auth user id (UUID)
-  // Used to inject `userId` into `signupassist.chat` tool calls so sessions persist per-user AND DB writes use UUIDs.
+  // Used to inject `userId` into `register_for_activity` tool calls so sessions persist per-user AND DB writes use UUIDs.
   private sseSessionUserIds: Map<string, string> = new Map();
   // Cache Auth0 sub → Supabase user id for the lifetime of this process (best-effort).
   private auth0SubToSupabaseUserId: Map<string, string> = new Map();
@@ -858,7 +861,7 @@ class SignupAssistMCPServer {
           _meta: tool._meta,
         }));
 
-      // Default: only return publicly-visible tools (reduces model confusion and enforces SSoT via signupassist.chat).
+      // Default: only return publicly-visible tools (reduces model confusion and enforces SSoT via register_for_activity).
       const visibleTools = includePrivate
         ? apiTools
         : apiTools.filter(t => t._meta?.["openai/visibility"] === "public");
@@ -898,9 +901,10 @@ class SignupAssistMCPServer {
         description: tool.description,
         inputSchema: tool.inputSchema,
         handler: tool.handler,
+        annotations: (tool as any).annotations,
         _meta: {
           ...CHATGPT_APPS_V1_META,
-          ...((tool as any)._meta || {}),  // Preserve read-only safety metadata
+          ...((tool as any)._meta || {}),
           ...applyV1Visibility(tool.name, ((tool as any)._meta || {})),
           ...applyWizardMeta(tool.name)
         }
@@ -914,6 +918,7 @@ class SignupAssistMCPServer {
         description: tool.description,
         inputSchema: tool.inputSchema,
         handler: tool.handler,
+        annotations: (tool as any).annotations,
         _meta: {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
@@ -930,6 +935,7 @@ class SignupAssistMCPServer {
         description: tool.description,
         inputSchema: tool.inputSchema,
         handler: tool.handler,
+        annotations: (tool as any).annotations,
         _meta: {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
@@ -946,6 +952,7 @@ class SignupAssistMCPServer {
         description: tool.description,
         inputSchema: tool.inputSchema,
         handler: tool.handler,
+        annotations: (tool as any).annotations,
         _meta: {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
@@ -962,6 +969,7 @@ class SignupAssistMCPServer {
         description: tool.description,
         inputSchema: tool.inputSchema,
         handler: tool.handler,
+        annotations: (tool as any).annotations,
         _meta: {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
@@ -978,6 +986,7 @@ class SignupAssistMCPServer {
         description: `Program Feed tool: ${name}`,
         inputSchema: tool.inputSchema,
         handler: tool.handler,
+        annotations: (tool as any).annotations,
         _meta: {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
@@ -994,6 +1003,7 @@ class SignupAssistMCPServer {
         description: tool.description,
         inputSchema: tool.inputSchema,
         handler: tool.handler,
+        annotations: (tool as any).annotations,
         _meta: {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
@@ -1010,6 +1020,7 @@ class SignupAssistMCPServer {
         description: tool.description,
         inputSchema: tool.inputSchema,
         handler: tool.handler,
+        annotations: (tool as any).annotations,
         _meta: {
           ...CHATGPT_APPS_V1_META,
           ...((tool as any)._meta || {}),
@@ -1025,10 +1036,10 @@ class SignupAssistMCPServer {
     // This tool exists to prevent "intake-mode stalling".
     // ChatGPT can call this immediately with ZERO info from the user.
     // It shows available programs (no booking, no payment, no writes).
-    this.tools.set("signupassist.start", {
-      name: "signupassist.start",
+    this.tools.set("search_activities", {
+      name: "search_activities",
       description:
-        "Read-only program browser. Use ONLY when the user wants to browse or see what classes/programs are available — NOT for signup/registration/enrollment.\n\nFor signup intent, call signupassist.chat instead.\n\nOptionally pass `query` so results can be prioritized for activity/age/location.\n\nNo booking, no payment, no writes.",
+        "Search for available youth activities, classes, camps, and lessons. Use when the user wants to browse or see what programs are available — NOT for signup/registration/enrollment.\n\nFor signup intent, call register_for_activity instead.\n\nOptionally pass `query` so results can be prioritized for activity/age/location.\n\nNo booking, no payment, no writes.",
       inputSchema: {
         type: "object",
         properties: {
@@ -1216,8 +1227,8 @@ class SignupAssistMCPServer {
       _meta: {
         ...CHATGPT_APPS_V1_META,
         "openai/safety": "read-only",
-        ...applyV1Visibility("signupassist.start", { "openai/safety": "read-only" }),
-        ...applyWizardMeta("signupassist.start")
+        ...applyV1Visibility("search_activities", { "openai/safety": "read-only" }),
+        ...applyWizardMeta("search_activities")
       },
     });
 
@@ -1225,7 +1236,7 @@ class SignupAssistMCPServer {
     // ROUTER-FRIENDLY DISCOVERY ALIAS (READ-ONLY)
     // ============================================================
     // Some ChatGPT routing flows appear to prefer "search/find" semantics over "start".
-    // Keep this as a thin alias to `signupassist.start` so behavior stays consistent.
+    // Keep this as a thin alias to `search_activities` so behavior stays consistent.
     this.tools.set("signupassist.find", {
       name: "signupassist.find",
       description:
@@ -1240,6 +1251,11 @@ class SignupAssistMCPServer {
           org_ref: { type: "string", description: "Organization reference slug (defaults to aim-design)" },
           category: { type: "string", description: "Optional category filter (e.g. robotics, camps, etc.)" },
         },
+      },
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: false,
       },
       handler: async (args: any) => {
         const q = args?.query ? String(args.query) : "";
@@ -1262,8 +1278,8 @@ class SignupAssistMCPServer {
         const org_ref = args?.org_ref || "aim-design";
         const category = args?.category || "all";
 
-        const startTool = this.tools.get("signupassist.start");
-        if (!startTool) throw new Error("signupassist.start is not registered");
+        const startTool = this.tools.get("search_activities");
+        if (!startTool) throw new Error("search_activities is not registered");
         return await startTool.handler({ query: synthesizedQuery, org_ref, category });
       },
       _meta: {
@@ -1282,10 +1298,10 @@ class SignupAssistMCPServer {
     // - Step 1/5..5/5 headers in plain text
     // - No overwhelming field dumps (micro-questions)
     // - Consistent trust cues
-    this.tools.set("signupassist.chat", {
-      name: "signupassist.chat",
+    this.tools.set("register_for_activity", {
+      name: "register_for_activity",
       description:
-        "SignupAssist signup matcher + registration wizard for activities (classes/courses/lessons/camps) (API-first).\n\nUse this when the user wants to sign up/register/enroll/book for a class/course/lesson/camp/program — OR when they mention SignupAssist by name (\"SignupAssist\", \"Signup Assist\", \"signup assist\").\n\nExample triggers:\n- \"I'd like to signup for a course with signup assist\"\n- \"Use SignupAssist to sign up for a class\"\n\nIMPORTANT: If the user expresses signup intent but provides insufficient details (e.g., only an activity, provider name, or location), CALL THIS TOOL IMMEDIATELY. Do not ask long pre-questions outside the tool; this tool will ask the minimum follow-ups and confirm whether the requested signup is supported.\n\nThis tool checks supported providers/coverage, shows relevant available options from our internal program cache, and guides the user step-by-step.\n\nCRITICAL: After calling this tool, respond to the user with EXACTLY the returned text (verbatim). Do not paraphrase. If the returned text includes a leading \"Step N/5 — ...\" header, keep it.\n\nIMPORTANT: This tool may perform consequential actions ONLY after explicit user confirmation (e.g., booking with the provider and charging the $20.00 success fee). Payment method entry always happens on Stripe-hosted Checkout (we never see card numbers).",
+        "Register a child for an activity, class, camp, or lesson through a guided step-by-step wizard.\n\nUse this when the user wants to sign up/register/enroll/book for a class/course/lesson/camp/program — OR when they mention SignupAssist by name (\"SignupAssist\", \"Signup Assist\", \"signup assist\").\n\nExample triggers:\n- \"I'd like to signup for a course with signup assist\"\n- \"Use SignupAssist to sign up for a class\"\n\nIMPORTANT: If the user expresses signup intent but provides insufficient details (e.g., only an activity, provider name, or location), CALL THIS TOOL IMMEDIATELY. Do not ask long pre-questions outside the tool; this tool will ask the minimum follow-ups and confirm whether the requested signup is supported.\n\nThis tool checks supported providers/coverage, shows relevant available options from our internal program cache, and guides the user step-by-step.\n\nCRITICAL: After calling this tool, respond to the user with EXACTLY the returned text (verbatim). Do not paraphrase. If the returned text includes a leading \"Step N/5 — ...\" header, keep it.\n\nIMPORTANT: This tool may perform consequential actions ONLY after explicit user confirmation (e.g., booking with the provider and charging the $20.00 success fee). Payment method entry always happens on Stripe-hosted Checkout (we never see card numbers).",
       inputSchema: {
         type: "object",
         properties: {
@@ -1352,16 +1368,22 @@ class SignupAssistMCPServer {
       },
       annotations: {
         readOnlyHint: false,
+        destructiveHint: true,
         openWorldHint: false,
-        destructiveHint: false,
       },
       _meta: {
         ...CHATGPT_APPS_V1_META,
         "openai/safety": "write",
-        ...applyV1Visibility("signupassist.chat", { "openai/safety": "write" }),
-        ...applyWizardMeta("signupassist.chat")
+        ...applyV1Visibility("register_for_activity", { "openai/safety": "write" }),
+        ...applyWizardMeta("register_for_activity")
       }
     });
+
+    // Backward-compat aliases: ChatGPT may have cached the old tool names.
+    const searchTool = this.tools.get("search_activities")!;
+    const registerTool = this.tools.get("register_for_activity")!;
+    this.tools.set("signupassist.start", { ...searchTool, name: "signupassist.start", _meta: { ...searchTool._meta, "openai/visibility": "private" } });
+    this.tools.set("signupassist.chat", { ...registerTool, name: "signupassist.chat", _meta: { ...registerTool._meta, "openai/visibility": "private" } });
 
     // Future array tools (no-op for now)
     const arrayTools: any[] = [];
@@ -2689,7 +2711,7 @@ class SignupAssistMCPServer {
 
                 // Inject Auth0-derived userId for canonical chat tool so APIOrchestrator can persist per-user.
                 // Also ensure `sessionId` exists (ChatGPT occasionally omits it in some refresh/invoke flows).
-                if (toolName === 'signupassist.chat') {
+                if (toolName === 'register_for_activity') {
                   if (verifiedUserId) argsObj.userId = verifiedUserId;
                   if (!argsObj.sessionId) argsObj.sessionId = verifiedUserId || 'chatgpt';
                 }
@@ -3891,7 +3913,7 @@ class SignupAssistMCPServer {
             return;
           }
 
-          if (toolName === 'signupassist.chat') {
+          if (toolName === 'register_for_activity') {
             if (verifiedUserId) argsObj.userId = verifiedUserId;
             if (!argsObj.sessionId) argsObj.sessionId = verifiedUserId || 'chatgpt';
           }
@@ -4553,7 +4575,7 @@ class SignupAssistMCPServer {
       }
 
       // ============================================================
-      // ACTION-FIRST ENTRYPOINT - signupassist.start via HTTP
+      // ACTION-FIRST ENTRYPOINT - search_activities via HTTP
       // ============================================================
       // ChatGPT can call this immediately with zero user input
       if (url.pathname === '/signupassist/start') {
@@ -4568,17 +4590,16 @@ class SignupAssistMCPServer {
           const org_ref = url.searchParams.get('org_ref') || 'aim-design';
           const category = url.searchParams.get('category') || 'all';
           
-          // Get the signupassist.start tool and call it
-          const tool = this.tools.get('signupassist.start');
+          const tool = this.tools.get('search_activities');
           if (!tool) {
-            res.end(JSON.stringify({ error: 'signupassist.start tool not registered' }));
+            res.end(JSON.stringify({ error: 'search_activities tool not registered' }));
             return;
           }
           
           const result = await tool.handler({ org_ref, category });
           res.end(JSON.stringify(result));
         } catch (err: any) {
-          console.error('[signupassist.start] Error:', err);
+          console.error('[search_activities] Error:', err);
           res.end(JSON.stringify({ error: err.message || 'Unknown error' }));
         }
         return;

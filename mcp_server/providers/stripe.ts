@@ -21,6 +21,11 @@ export interface StripeTool {
     required?: string[];
   };
   handler: (args: any) => Promise<any>;
+  annotations?: {
+    readOnlyHint?: boolean;
+    destructiveHint?: boolean;
+    openWorldHint?: boolean;
+  };
 }
 
 /**
@@ -525,6 +530,11 @@ export const stripeTools: StripeTool[] = [
   {
     name: 'stripe.charge_success_fee',
     description: 'Charge the $20.00 SignupAssist success fee to user\'s saved payment method (only charged after successful booking)',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -573,6 +583,11 @@ export const stripeTools: StripeTool[] = [
   {
     name: 'stripe.refund_success_fee',
     description: 'Refund the $20.00 SignupAssist success fee when provider accepts booking cancellation',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -613,6 +628,11 @@ export const stripeTools: StripeTool[] = [
   {
     name: 'stripe.create_customer',
     description: 'Create a Stripe customer for a user',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -645,6 +665,11 @@ export const stripeTools: StripeTool[] = [
   {
     name: 'stripe.save_payment_method',
     description: 'Save a payment method to a Stripe customer',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -681,6 +706,11 @@ export const stripeTools: StripeTool[] = [
   {
     name: 'stripe.create_checkout_session',
     description: 'Create a Stripe Checkout session in setup mode for collecting payment method. Returns URL to redirect user to Stripe-hosted page.',
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: true,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {
@@ -720,6 +750,11 @@ export const stripeTools: StripeTool[] = [
   {
     name: 'stripe.check_payment_status',
     description: 'Check if user has a saved payment method and return payment status details',
+    annotations: {
+      readOnlyHint: true,
+      destructiveHint: false,
+      openWorldHint: false,
+    },
     inputSchema: {
       type: 'object',
       properties: {

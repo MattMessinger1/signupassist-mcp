@@ -139,19 +139,19 @@ async function main() {
 
   // 4) View receipts via canonical chat (ensures text-only UX + receipts query)
   const sessionId = `e2e-${Date.now()}`;
-  const receipts = await callTool(baseUrl, token, 'signupassist.chat', {
+  const receipts = await callTool(baseUrl, token, 'register_for_activity', {
     input: 'view my registrations',
     sessionId,
     userId,
     userTimezone: 'America/Chicago',
   });
-  assert(receipts.status === 200, `signupassist.chat(view receipts): expected 200, got ${receipts.status}`);
+  assert(receipts.status === 200, `register_for_activity(view receipts): expected 200, got ${receipts.status}`);
   const receiptsText = String(receipts.json?.content?.[0]?.text || '');
   assert(/registrations/i.test(receiptsText), 'view receipts: expected registrations text');
   console.log('[e2e] ✅ view receipts ok');
 
   // 5) Cancel scheduled job via text-only confirmation
-  const cancel1 = await callTool(baseUrl, token, 'signupassist.chat', {
+  const cancel1 = await callTool(baseUrl, token, 'register_for_activity', {
     input: `cancel ${schCode}`,
     sessionId,
     userId,
@@ -161,7 +161,7 @@ async function main() {
   const cancel1Text = String(cancel1.json?.content?.[0]?.text || '');
   assert(/reply\s+\*\*yes\*\*/i.test(cancel1Text), `cancel step1: expected yes/no confirmation prompt, got: ${cancel1Text.slice(0, 120)}`);
 
-  const cancel2 = await callTool(baseUrl, token, 'signupassist.chat', {
+  const cancel2 = await callTool(baseUrl, token, 'register_for_activity', {
     input: 'yes',
     sessionId,
     userId,
@@ -173,7 +173,7 @@ async function main() {
   console.log('[e2e] ✅ cancel SCH flow ok');
 
   // 6) Audit trail should be accessible (may return “not found” if audit not configured for scheduled rows; still useful signal)
-  const audit = await callTool(baseUrl, token, 'signupassist.chat', {
+  const audit = await callTool(baseUrl, token, 'register_for_activity', {
     input: `audit ${schCode}`,
     sessionId,
     userId,
