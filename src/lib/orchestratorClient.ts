@@ -72,20 +72,20 @@ export async function sendMessage(
   
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'X-Mandate-JWS': import.meta.env.VITE_MANDATE_JWS_DEV || '__DEV_BYPASS__'
+    'X-Mandate-JWS': import.meta.env.VITE_MANDATE_JWS_DEV || (import.meta.env.DEV ? '__DEV_BYPASS__' : '')
   };
-  
+
   if (userJwt) {
     headers['Authorization'] = `Bearer ${userJwt}`;
   }
-  
+
   const res = await fetch(`${ORCHESTRATOR_BASE}/orchestrator/chat`, {
     method: 'POST',
     headers,
-    body: JSON.stringify({ 
-      message, 
-      sessionId, 
-      userLocation, 
+    body: JSON.stringify({
+      message,
+      sessionId,
+      userLocation,
       userJwt,
       currentAAP,  // Send structured AAP object (Phase 3)
       category,    // Legacy fallback for backward compatibility
@@ -128,13 +128,13 @@ export async function sendAction(
   
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'X-Mandate-JWS': import.meta.env.VITE_MANDATE_JWS_DEV || '__DEV_BYPASS__'
+    'X-Mandate-JWS': import.meta.env.VITE_MANDATE_JWS_DEV || (import.meta.env.DEV ? '__DEV_BYPASS__' : '')
   };
-  
+
   if (userJwt) {
     headers['Authorization'] = `Bearer ${userJwt}`;
   }
-  
+
   const res = await fetch(`${ORCHESTRATOR_BASE}/orchestrator/chat`, {
     method: 'POST',
     headers,
