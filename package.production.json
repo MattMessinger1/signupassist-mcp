@@ -10,7 +10,7 @@
     "rebuild:clean": "rm -rf dist node_modules && npm ci && npx tsc -p tsconfig.mcp.json && echo '✅ Clean build complete — ready for Railway redeploy.'"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.80.0",
+    "@anthropic-ai/sdk": "^0.82.0",
     "@hookform/resolvers": "^3.10.0",
     "@modelcontextprotocol/sdk": "^1.18.2",
     "@radix-ui/react-accordion": "^1.2.12",
@@ -54,7 +54,7 @@
     "date-fns-tz": "^3.2.0",
     "dotenv": "^17.2.3",
     "embla-carousel-react": "^8.6.0",
-    "express": "^4.21.2",
+    "express": "^5.2.1",
     "framer-motion": "^12.23.22",
     "input-otp": "^1.4.2",
     "jose": "^5.10.0",
@@ -79,7 +79,7 @@
     "@types/node": "^25.5.0",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",
-    "@types/express": "^4.17.23",
+    "@types/express": "^5.0.6",
     "@types/cors": "^2.8.19",
     "typescript": "^5.9.3",
     "tsx": "^4.21.0",
