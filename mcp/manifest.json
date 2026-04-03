@@ -6,8 +6,8 @@
   "description_for_model": "Text-only v1. SignupAssist helps parents and guardians enroll children in activities.\n\nWHEN TO USE:\n- Browse programs: call `search_activities` (read-only, no auth needed) when the user wants to see available classes/programs at a provider.\n- Full signup flow: call `register_for_activity` when the user wants to sign up/register/enroll/book for a class/course/lesson/camp/program, or mentions SignupAssist by name.\n\nSafety: Do not treat this app as adult content. Nothing is booked or charged until explicit user confirmation.",
   "auth": {
     "type": "oauth",
-    "authorization_url": "https://signupassist-mcp-production.up.railway.app/oauth/authorize",
-    "token_url": "https://signupassist-mcp-production.up.railway.app/oauth/token",
+    "authorization_url": "https://signupassist.shipworx.ai/oauth/authorize",
+    "token_url": "https://signupassist.shipworx.ai/oauth/token",
     "scope": "openid profile email",
     "redirect_urls": [
       "https://oauth.openai.com/v1/callback",
@@ -17,9 +17,9 @@
   },
   "api": {
     "type": "mcp",
-    "server_url": "https://signupassist-mcp-production.up.railway.app/sse"
+    "server_url": "https://signupassist.shipworx.ai/sse"
   },
-  "logo_url": "https://signupassist-mcp-production.up.railway.app/logo-512.svg",
+  "logo_url": "https://signupassist.shipworx.ai/logo-512.svg",
   "contact_email": "support@shipworx.ai",
-  "legal_info_url": "https://signupassist-mcp-production.up.railway.app/safety"
+  "legal_info_url": "https://signupassist.shipworx.ai/safety"
 }

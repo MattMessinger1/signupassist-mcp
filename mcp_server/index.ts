@@ -884,10 +884,7 @@ class SignupAssistMCPServer {
         return mcpOk(result);  // Wrap in MCP-compliant format
       } catch (err: any) {
         console.error(`[MCP] Tool ${name} failed:`, err);
-        return mcpError(`Tool ${name} failed`, {
-          message: err?.message,
-          stack: err?.stack
-        });
+        return mcpError(`Tool ${name} failed — please try again.`);
       }
     });
 
@@ -1322,6 +1319,14 @@ class SignupAssistMCPServer {
         const sessionId = String(args?.sessionId || "chatgpt");
         const userTimezone = args?.userTimezone ? String(args.userTimezone) : undefined;
         const userId = args?.userId ? String(args.userId) : undefined;
+
+        // Child-scope guardrail: block adult-only signup requests on the MCP/SSE path
+        const scopeDecision = evaluateChildRegistrationScope({ message: input });
+        if (scopeDecision.blocked) {
+          const oosResp = buildChildScopeOutOfScopeResponse();
+          telemetry.incrementCounter('guardrail.child_scope.blocked_total', 1, { path: 'mcp_tool', reason: scopeDecision.reason ?? 'adult_signup_request' });
+          return { content: [{ type: "text", text: oosResp.message }] };
+        }
 
         // Ensure orchestrator is initialized
         if (!this.orchestrator) {
@@ -2726,10 +2731,7 @@ class SignupAssistMCPServer {
                   toolResult = mcpOk(raw);
                 } catch (err: any) {
                   console.error(`[MCP] /sse tools/call failed (sync) tool=${toolName}:`, err);
-                  toolResult = mcpError(`Tool ${toolName} failed`, {
-                    message: err?.message,
-                    stack: err?.stack,
-                  });
+                  toolResult = mcpError(`Tool ${toolName} failed — please try again.`);
                 }
 
                 res.writeHead(200, {
