@@ -33,7 +33,7 @@
     "test:openai-smoke": "vitest run mcp_server/lib/openaiHelpers.test.ts --reporter=verbose"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.80.0",
+    "@anthropic-ai/sdk": "^0.82.0",
     "@hookform/resolvers": "^3.10.0",
     "@modelcontextprotocol/sdk": "^1.18.2",
     "@radix-ui/react-accordion": "^1.2.12",
@@ -84,7 +84,7 @@
     "date-fns-tz": "^3.2.0",
     "dotenv": "^17.2.3",
     "embla-carousel-react": "^8.6.0",
-    "express": "^4.21.2",
+    "express": "^5.2.1",
     "framer-motion": "^12.23.22",
     "input-otp": "^1.4.2",
     "jose": "^5.10.0",
