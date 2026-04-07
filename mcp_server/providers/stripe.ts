@@ -5,6 +5,7 @@
 
 import { auditToolCall } from '../middleware/audit.js';
 import { createClient } from '@supabase/supabase-js';
+import { refundGuard, DENIAL_MESSAGES } from '../lib/refundGuard.js';
 import type { ProviderResponse, ParentFriendlyError } from '../types.js';
 import { formatCurrencyFromCents } from '../utils/money.js';
 
@@ -254,7 +255,8 @@ async function savePaymentMethod(args: {
 
 /**
  * Tool: stripe.refund_success_fee
- * Refund the $20 SignupAssist success fee when provider accepts booking cancellation
+ * Refund the $20 SignupAssist success fee when provider accepts booking cancellation.
+ * Validated by @mattmessinger/refund-guard (90-day window, amount cap, double-refund protection).
  */
 async function refundSuccessFee(args: {
   charge_id: string;
@@ -262,10 +264,10 @@ async function refundSuccessFee(args: {
   user_id?: string;
   mandate_id?: string;
 }): Promise<ProviderResponse<any>> {
-  const { charge_id, reason, user_id, mandate_id } = args;
-  
+  const { charge_id, reason } = args;
+
   console.log(`[Stripe] Refunding success fee for charge: ${charge_id}`);
-  
+
   if (!charge_id) {
     const friendlyError: ParentFriendlyError = {
       display: 'Unable to process refund',
@@ -273,82 +275,107 @@ async function refundSuccessFee(args: {
       severity: 'medium',
       code: 'STRIPE_MISSING_CHARGE_ID'
     };
-    return {
-      success: false,
-      error: friendlyError
-    };
+    return { success: false, error: friendlyError };
   }
-  
+
   try {
-    // Call the stripe-refund-success-fee edge function via Supabase (service-to-service)
-    const { data, error } = await supabase.functions.invoke(
-      'stripe-refund-success-fee',
-      {
-        body: {
-          charge_id,
-          reason: reason || 'requested_by_customer'
-        }
-      }
-    );
-    
-    if (error) {
-      console.error('[Stripe] Edge function error:', error);
-      const friendlyError: ParentFriendlyError = {
-        display: 'Unable to process refund',
-        recovery: 'The refund could not be processed. Support has been notified.',
-        severity: 'medium',
-        code: 'STRIPE_REFUND_FAILED'
-      };
+    const { data: charge, error: chargeError } = await supabase
+      .from('charges')
+      .select('id, stripe_payment_intent, status, refunded_at, amount_cents, charged_at')
+      .eq('id', charge_id)
+      .single();
+
+    if (chargeError || !charge) {
+      console.error('[Stripe] Charge lookup failed:', chargeError);
       return {
         success: false,
-        error: friendlyError
+        error: {
+          display: 'Charge not found',
+          recovery: 'The charge record could not be located. Please contact support.',
+          severity: 'medium',
+          code: 'STRIPE_CHARGE_NOT_FOUND'
+        } satisfies ParentFriendlyError
       };
     }
-    
-    if (!data?.success) {
-      console.error('[Stripe] Refund failed:', data?.error);
-      const friendlyError: ParentFriendlyError = {
-        display: data?.error || 'Refund failed',
-        recovery: 'Please contact support for assistance.',
-        severity: 'medium',
-        code: 'STRIPE_REFUND_FAILED'
-      };
+
+    const refund = refundGuard.makeRefundTool({
+      sku: 'success_fee',
+      transactionId: charge.stripe_payment_intent ?? charge_id,
+      amountPaidMinorUnits: charge.amount_cents ?? 2000,
+      purchasedAt: new Date(charge.charged_at),
+      refundedAt: charge.refunded_at ? new Date(charge.refunded_at) : null,
+      provider: 'stripe',
+      providerRefundFn: async (amount, _txnId, _currency) => {
+        const amountCents = Math.round(amount * 100);
+        const { data, error } = await supabase.functions.invoke(
+          'stripe-refund-success-fee',
+          { body: { charge_id, amount_cents: amountCents, reason: reason || 'requested_by_customer' } }
+        );
+        if (error) throw new Error(error.message ?? 'Edge function error');
+        if (!data?.success) throw new Error(data?.error ?? 'Refund failed');
+        return data;
+      },
+    });
+
+    const result = await refund();
+
+    if (result.status === 'denied') {
+      console.warn('[Stripe] Refund denied by policy:', result.reason);
       return {
         success: false,
-        error: friendlyError
+        error: {
+          display: 'Refund not allowed',
+          recovery: DENIAL_MESSAGES[result.reason as string] ?? 'Please contact support.',
+          severity: 'medium',
+          code: 'REFUND_GUARD_DENIED'
+        } satisfies ParentFriendlyError
       };
     }
-    
-    const refund_id = data?.refund_id || 'unknown';
+
+    if (result.status === 'error') {
+      console.error('[Stripe] Provider error during refund:', result.detail);
+      return {
+        success: false,
+        error: {
+          display: 'Refund processing error',
+          recovery: 'Please contact support if you don\'t see your refund within 5-10 business days.',
+          severity: 'medium',
+          code: 'STRIPE_API_ERROR'
+        } satisfies ParentFriendlyError
+      };
+    }
+
+    const providerData = result.provider_result as Record<string, any> | undefined;
+    const refund_id = providerData?.refund_id || 'unknown';
+    const amount_refunded_cents = providerData?.amount_refunded_cents || charge.amount_cents || 2000;
     console.log(`[Stripe] ✅ Success fee refunded: ${refund_id}`);
-    
+
     return {
       success: true,
       data: {
         refund_id,
-        refund_status: data?.refund_status,
-        amount_refunded_cents: data?.amount_refunded_cents,
+        refund_status: providerData?.refund_status,
+        amount_refunded_cents,
         charge_id
       },
       ui: {
         cards: [{
           title: 'Refund Processed',
-          description: `${formatCurrencyFromCents(data?.amount_refunded_cents || 2000)} SignupAssist fee refunded successfully`
+          description: `${formatCurrencyFromCents(amount_refunded_cents)} SignupAssist fee refunded successfully`
         }]
       }
     };
-    
+
   } catch (error: any) {
     console.error('[Stripe] Error refunding success fee:', error);
-    const friendlyError: ParentFriendlyError = {
-      display: 'Refund processing error',
-      recovery: 'Please contact support if you don\'t see your refund within 5-10 business days.',
-      severity: 'medium',
-      code: 'STRIPE_API_ERROR'
-    };
     return {
       success: false,
-      error: friendlyError
+      error: {
+        display: 'Refund processing error',
+        recovery: 'Please contact support if you don\'t see your refund within 5-10 business days.',
+        severity: 'medium',
+        code: 'STRIPE_API_ERROR'
+      } satisfies ParentFriendlyError
     };
   }
 }

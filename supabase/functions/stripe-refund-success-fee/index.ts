@@ -32,12 +32,12 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
 
-    // Parse request
-    const { charge_id, reason } = await req.json();
+    // Parse request -- amount_cents is optional (omit for full refund)
+    const { charge_id, amount_cents, reason } = await req.json();
     
     if (!charge_id) throw new Error("charge_id is required");
     
-    logStep("Request parsed", { charge_id, reason });
+    logStep("Request parsed", { charge_id, amount_cents, reason });
 
     // Get charge record to find the Stripe payment intent
     const { data: charge, error: chargeError } = await supabaseClient
@@ -68,10 +68,14 @@ serve(async (req) => {
     const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
 
     // Create refund for the payment intent
-    const refund = await stripe.refunds.create({
+    const refundParams: Stripe.RefundCreateParams = {
       payment_intent: charge.stripe_payment_intent,
-      reason: reason || 'requested_by_customer'
-    });
+      reason: reason || 'requested_by_customer',
+    };
+    if (amount_cents != null && amount_cents > 0) {
+      refundParams.amount = amount_cents;
+    }
+    const refund = await stripe.refunds.create(refundParams);
 
     logStep("Refund created", { 
       refund_id: refund.id,
