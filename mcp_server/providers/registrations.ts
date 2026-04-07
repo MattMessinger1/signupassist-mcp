@@ -535,7 +535,7 @@ async function cancelWithRefund(args: {
             Logger.warn('[Registrations] Refund denied/failed by guard, continuing with cancellation', {
               status: result.status,
               reason: result.reason,
-              message: DENIAL_MESSAGES[result.reason as string],
+              message: DENIAL_MESSAGES[result.reason as string] ?? 'Refund could not be processed.',
             });
           }
         }
