@@ -5,7 +5,11 @@
 
 import { auditToolCall } from '../middleware/audit.js';
 import { createClient } from '@supabase/supabase-js';
-import { refundGuard, DENIAL_MESSAGES } from '../lib/refundGuard.js';
+import {
+  refundSuccessFeeWithGuard,
+  SUCCESS_FEE_REFUND_INPUT_REASONS,
+  type SupabaseRefundClient,
+} from '../lib/refundGuard.js';
 import type { ProviderResponse, ParentFriendlyError } from '../types.js';
 import Logger from '../utils/logger.js';
 
@@ -495,52 +499,20 @@ async function cancelWithRefund(args: {
     let refund_id: string | undefined;
     
     if (registration.charge_id) {
-      try {
-        const { data: charge, error: chargeErr } = await supabase
-          .from('charges')
-          .select('id, stripe_payment_intent, amount_cents, charged_at, refunded_at')
-          .eq('id', registration.charge_id)
-          .single();
+      const refundResult = await refundSuccessFeeWithGuard({
+        supabase: supabase as unknown as SupabaseRefundClient,
+        chargeId: registration.charge_id,
+        reason,
+      });
 
-        if (chargeErr || !charge) {
-          Logger.warn('[Registrations] Charge lookup failed, skipping refund', { chargeErr });
-        } else {
-          const guardedRefund = refundGuard.makeRefundTool({
-            sku: 'success_fee',
-            transactionId: charge.stripe_payment_intent ?? registration.charge_id,
-            amountPaidMinorUnits: charge.amount_cents ?? 2000,
-            purchasedAt: new Date(charge.charged_at),
-            refundedAt: charge.refunded_at ? new Date(charge.refunded_at) : null,
-            provider: 'stripe',
-            providerRefundFn: async (amount, _txnId, _currency) => {
-              const amountCents = Math.round(amount * 100);
-              const { data, error } = await supabase.functions.invoke(
-                'stripe-refund-success-fee',
-                { body: { charge_id: registration.charge_id, amount_cents: amountCents, reason } }
-              );
-              if (error) throw new Error(error.message ?? 'Edge function error');
-              if (!data?.success) throw new Error(data?.error ?? 'Refund failed');
-              return data;
-            },
-          });
-
-          const result = await guardedRefund();
-
-          if (result.status === 'approved') {
-            refunded = true;
-            const providerData = result.provider_result as Record<string, any> | undefined;
-            refund_id = providerData?.refund_id;
-            Logger.info('[Registrations] Success fee refunded', { refund_id });
-          } else {
-            Logger.warn('[Registrations] Refund denied/failed by guard, continuing with cancellation', {
-              status: result.status,
-              reason: result.reason,
-              message: DENIAL_MESSAGES[result.reason as string] ?? 'Refund could not be processed.',
-            });
-          }
-        }
-      } catch (refundErr) {
-        Logger.warn('[Registrations] Refund error but continuing', { refundErr });
+      if (refundResult.success) {
+        refunded = true;
+        refund_id = refundResult.data?.refund_id;
+        Logger.info('[Registrations] Success fee refunded', { refund_id });
+      } else {
+        Logger.warn('[Registrations] Refund denied/failed by guard, continuing with cancellation', {
+          error: refundResult.error,
+        });
       }
     }
     
@@ -1043,7 +1015,8 @@ export const registrationTools: RegistrationTool[] = [
         },
         reason: {
           type: 'string',
-          description: 'Reason for cancellation (for audit trail)'
+          enum: [...SUCCESS_FEE_REFUND_INPUT_REASONS],
+          description: 'Business reason for cancellation/refund. Preferred values: booking_cancelled, requested_by_customer, duplicate_charge, technical_error. Legacy aliases user_requested, provider_cancelled, and duplicate are accepted.'
         }
       },
       required: ['registration_id', 'user_id']

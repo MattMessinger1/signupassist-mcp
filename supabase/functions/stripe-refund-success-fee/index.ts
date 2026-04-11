@@ -12,6 +12,34 @@ const logStep = (step: string, details?: any) => {
   console.log(`[STRIPE-REFUND-FEE] ${step}${detailsStr}`);
 };
 
+type StripeRefundReason = "duplicate" | "fraudulent" | "requested_by_customer";
+
+function normalizeStripeRefundReason(
+  stripeReason?: unknown,
+  legacyReason?: unknown,
+): StripeRefundReason {
+  if (
+    stripeReason === "duplicate" ||
+    stripeReason === "fraudulent" ||
+    stripeReason === "requested_by_customer"
+  ) {
+    return stripeReason;
+  }
+
+  const reason = typeof legacyReason === "string"
+    ? legacyReason.trim().toLowerCase()
+    : "";
+
+  if (reason === "duplicate" || reason === "duplicate_charge") {
+    return "duplicate";
+  }
+  if (reason === "fraudulent") {
+    return "fraudulent";
+  }
+
+  return "requested_by_customer";
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -33,11 +61,12 @@ serve(async (req) => {
     );
 
     // Parse request -- amount_cents is optional (omit for full refund)
-    const { charge_id, amount_cents, reason } = await req.json();
+    const { charge_id, amount_cents, reason, stripe_reason } = await req.json();
+    const safeStripeReason = normalizeStripeRefundReason(stripe_reason, reason);
     
     if (!charge_id) throw new Error("charge_id is required");
     
-    logStep("Request parsed", { charge_id, amount_cents, reason });
+    logStep("Request parsed", { charge_id, amount_cents, reason, stripe_reason: safeStripeReason });
 
     // Get charge record to find the Stripe payment intent
     const { data: charge, error: chargeError } = await supabaseClient
@@ -70,7 +99,7 @@ serve(async (req) => {
     // Create refund for the payment intent
     const refundParams: Stripe.RefundCreateParams = {
       payment_intent: charge.stripe_payment_intent,
-      reason: reason || 'requested_by_customer',
+      reason: safeStripeReason,
     };
     if (amount_cents != null && amount_cents > 0) {
       refundParams.amount = amount_cents;
