@@ -75,7 +75,10 @@ export const SUCCESS_FEE_DENIAL_MESSAGES: Record<string, string> = {
 
 export const refundGuard = new Refunds({
   skus: {
-    success_fee: { refund_window_days: 90 },
+    success_fee: {
+      refund_window_days: 90,
+      allowed_reasons: [...SUCCESS_FEE_REFUND_BUSINESS_REASONS],
+    },
   },
 });
 
@@ -191,7 +194,7 @@ export async function refundSuccessFeeWithGuard({
       },
     });
 
-    const result = await refund();
+    const result = await refund(undefined, { reason: parsedReason.businessReason });
 
     if (result.status === 'denied') {
       return refundDenied(result.reason as string);
