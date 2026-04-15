@@ -9,6 +9,10 @@ This worker is the **always-on** process that executes `scheduled_registrations`
 
 This is required for **“schedule now, execute the second the signup window opens”**.
 
+Platform decision: keep this as an **always-on Railway worker** for V1. Do not
+move scheduled registration execution to cron-only infrastructure unless the
+product explicitly drops second-level competitive timing as a requirement.
+
 ---
 
 ## What runs where
@@ -111,6 +115,15 @@ npm run worker:scheduled
 
 ## How to verify it’s working (smoke test)
 
+Non-destructive repo and health checks:
+
+```bash
+npm run infra:check
+RAILWAY_MCP_URL=https://your-web.up.railway.app \
+RAILWAY_WORKER_URL=https://your-worker.up.railway.app \
+npm run infra:smoke:railway
+```
+
 1) Schedule a signup via chat (creates a row in `scheduled_registrations`).
 2) Confirm it (status should be `pending`).
 3) Set the `scheduled_time` to ~2 minutes in the future (test org/program).
@@ -138,5 +151,4 @@ npm run worker:scheduled
 - **Success fee not charged**
   - Stripe edge function env vars missing
   - mandate missing/invalid
-
 

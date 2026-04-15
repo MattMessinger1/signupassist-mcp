@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>SignupAssist</title>
+    <style>
+      body {
+        width: 320px;
+        margin: 0;
+        padding: 14px;
+        color: #0f172a;
+        font: 13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      h1 {
+        margin: 0 0 4px;
+        font-size: 16px;
+      }
+
+      p {
+        margin: 0 0 12px;
+        color: #475569;
+      }
+
+      label {
+        display: block;
+        margin: 10px 0 4px;
+        font-weight: 600;
+      }
+
+      input {
+        box-sizing: border-box;
+        width: 100%;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+        padding: 8px;
+        font: inherit;
+      }
+
+      button {
+        width: 100%;
+        margin-top: 10px;
+        border: 0;
+        border-radius: 6px;
+        padding: 9px 10px;
+        background: #0f172a;
+        color: #ffffff;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      button.secondary {
+        background: #e2e8f0;
+        color: #0f172a;
+      }
+
+      button.danger {
+        background: #dc2626;
+      }
+
+      #status {
+        min-height: 18px;
+        margin-top: 10px;
+        color: #334155;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>SignupAssist Helper</h1>
+    <p>Supervised mode. Final submit, payment, waivers, login, and sensitive fields always pause.</p>
+
+    <label for="childFirstName">Child first name</label>
+    <input id="childFirstName" autocomplete="off">
+
+    <label for="childLastName">Child last name</label>
+    <input id="childLastName" autocomplete="off">
+
+    <label for="childDob">Child date of birth</label>
+    <input id="childDob" autocomplete="off" placeholder="MM/DD/YYYY">
+
+    <label for="parentEmail">Parent email</label>
+    <input id="parentEmail" autocomplete="off">
+
+    <label for="parentPhone">Parent phone</label>
+    <input id="parentPhone" autocomplete="off">
+
+    <button id="save">Save profile</button>
+    <button id="scan" class="secondary">Scan page</button>
+    <button id="fill">Fill known fields</button>
+    <button id="stop" class="danger">Stop helper</button>
+    <div id="status"></div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

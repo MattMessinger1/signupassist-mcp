@@ -2,6 +2,10 @@
 
 This is the authoritative env-var list for **v1 ChatGPT Apps via MCP**.
 
+Platform decision: V1 stays on **Supabase + Railway**. Do not add Vercel, Neon,
+Clerk, Convex, or another DB/auth/runtime stack unless that decision is
+explicitly reopened.
+
 There are **two processes** in production:
 - **Web (MCP server)**: `npm start` (serves `/sse`, `/orchestrator/chat`, OAuth proxy, manifests)
 - **Worker**: `npm run worker:scheduled` (executes `scheduled_registrations` at `scheduled_time`)
@@ -12,6 +16,13 @@ There are **two processes** in production:
 
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
+
+## Required for frontend builds
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_PUBLISHABLE_KEY`
+- `VITE_MCP_BASE_URL`
+- `VITE_MCP_ACCESS_TOKEN`
 
 ---
 
@@ -81,4 +92,11 @@ These return **413** when exceeded (prevents unbounded buffering).
 
 - `SCHEDULED_WORKER_MAX_ATTEMPT_MS` (default: 120000) — how long to rapid-retry “book at the second”
 
+## Smoke-test helpers (optional)
+
+- `RAILWAY_MCP_URL` or `MCP_SERVER_URL` for `npm run infra:smoke:railway`
+- `RAILWAY_WORKER_URL` or `WORKER_HEALTH_URL` for worker health smoke
+- `RAILWAY_WORKER_HEALTH_REQUIRED=1` to fail when worker health URL is absent
+- `SUPABASE_SMOKE_FUNCTIONS` comma-separated public function names for `npm run infra:smoke:supabase`
+- `STRIPE_AUTOPILOT_PRICE_ID` for `npm run infra:smoke:stripe`
 

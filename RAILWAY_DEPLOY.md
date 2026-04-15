@@ -1,5 +1,15 @@
 # Railway Deployment Guide
 
+## Current Platform Decision
+
+SignupAssist stays on Railway + Supabase for V1. Railway is the production
+runtime for the MCP web service and the always-on scheduled registration worker.
+Supabase remains the source of truth for auth, Postgres, RLS, realtime, Edge
+Functions, migrations, and generated types.
+
+For the operational checklist and smoke commands, see
+[docs/INFRA_RUNBOOK.md](./docs/INFRA_RUNBOOK.md).
+
 ## 🚀 Production Mode: Enable Auto-Deploy on Every Git Push
 
 **Default production posture is ON: every push should auto-deploy. Keep this enabled unless you are intentionally pausing deploys.**
@@ -113,6 +123,20 @@ railway up --service signupassist-mcp-production
 ```
 
 ### Step 3: Verify Deployment
+
+Run the standard pre-deploy checks locally before pushing when possible:
+
+```bash
+npm run predeploy:check
+```
+
+After deploy, run Railway health smoke when URLs are available:
+
+```bash
+RAILWAY_MCP_URL=https://your-web.up.railway.app \
+RAILWAY_WORKER_URL=https://your-worker.up.railway.app \
+npm run infra:smoke:railway
+```
 
 **Check Build Logs:**
 Look for these lines in Railway build logs:

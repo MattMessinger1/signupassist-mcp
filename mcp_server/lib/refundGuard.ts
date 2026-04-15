@@ -194,7 +194,11 @@ export async function refundSuccessFeeWithGuard({
       },
     });
 
-    const result = await refund(undefined, { reason: parsedReason.businessReason });
+    const refundWithReason = refund as unknown as (
+      amount?: number,
+      context?: { reason: SuccessFeeRefundBusinessReason },
+    ) => Promise<Record<string, unknown>>;
+    const result = await refundWithReason(undefined, { reason: parsedReason.businessReason });
 
     if (result.status === 'denied') {
       return refundDenied(result.reason as string);
