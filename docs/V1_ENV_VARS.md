@@ -1,6 +1,9 @@
 # V1 Environment Variables (Web + Worker)
 
-This is the authoritative env-var list for **v1 ChatGPT Apps via MCP**.
+The machine-readable source of truth is `scripts/envRegistry.ts`.
+Use `docs/ENVIRONMENT.md` for the workflow and `npm run env:list -- --target=<target>` for the current target-specific list.
+
+This page summarizes the v1 ChatGPT Apps via MCP env surface.
 
 Platform decision: V1 stays on **Supabase + Railway**. Do not add Vercel, Neon,
 Clerk, Convex, or another DB/auth/runtime stack unless that decision is
@@ -99,4 +102,3 @@ These return **413** when exceeded (prevents unbounded buffering).
 - `RAILWAY_WORKER_HEALTH_REQUIRED=1` to fail when worker health URL is absent
 - `SUPABASE_SMOKE_FUNCTIONS` comma-separated public function names for `npm run infra:smoke:supabase`
 - `STRIPE_AUTOPILOT_PRICE_ID` for `npm run infra:smoke:stripe`
-

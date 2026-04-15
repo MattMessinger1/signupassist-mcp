@@ -31,6 +31,20 @@ That runs:
 INFRA_CHECK_STRICT=1 npm run infra:check
 ```
 
+## Environment Management Workflow
+
+Use `docs/ENVIRONMENT.md` and `scripts/envRegistry.ts` as the source of truth for env vars. The fast path is:
+
+```bash
+npm run env:check -- --target=local
+npm run env:list -- --target=railway-web
+npm run env:write -- --target=railway-web --out=.env.railway-web.generated
+npm run env:write -- --target=railway-worker --out=.env.railway-worker.generated
+npm run env:write -- --target=supabase-functions --out=.env.supabase.generated
+```
+
+Generated `.env.*` files are ignored by git. Use them to apply variables to Railway or Supabase in one pass instead of copying values from scattered docs.
+
 ## Required Environment Checklist
 
 Railway web service:

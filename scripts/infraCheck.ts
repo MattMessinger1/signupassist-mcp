@@ -8,6 +8,7 @@
  */
 import "dotenv/config";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { ENV_TARGET_LABELS, type EnvTarget, getMissingEnvForTarget } from "./envRegistry";
 
 type Check = {
   name: string;
@@ -25,10 +26,6 @@ function add(name: string, ok: boolean, details?: string, warning = false) {
 
 function readJson(path: string) {
   return JSON.parse(readFileSync(path, "utf8"));
-}
-
-function missingEnv(names: string[]) {
-  return names.filter((name) => !process.env[name]);
 }
 
 function countFiles(path: string) {
@@ -91,23 +88,15 @@ try {
   add("railway.json is valid JSON", false, error instanceof Error ? error.message : String(error));
 }
 
-const envGroups: Array<{ name: string; vars: string[] }> = [
-  {
-    name: "Railway web/runtime",
-    vars: ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "BOOKEO_API_KEY", "BOOKEO_SECRET_KEY"],
-  },
-  {
-    name: "Frontend Supabase client",
-    vars: ["VITE_SUPABASE_URL", "VITE_SUPABASE_PUBLISHABLE_KEY"],
-  },
-  {
-    name: "Stripe billing",
-    vars: ["STRIPE_SECRET_KEY", "STRIPE_WEBHOOK_SECRET"],
-  },
+const envGroups: Array<{ name: string; target: EnvTarget }> = [
+  { name: ENV_TARGET_LABELS["railway-web"], target: "railway-web" },
+  { name: ENV_TARGET_LABELS["railway-worker"], target: "railway-worker" },
+  { name: ENV_TARGET_LABELS.frontend, target: "frontend" },
+  { name: ENV_TARGET_LABELS["supabase-functions"], target: "supabase-functions" },
 ];
 
 for (const group of envGroups) {
-  const missing = missingEnv(group.vars);
+  const missing = getMissingEnvForTarget(group.target).map((definition) => definition.name);
   add(
     `Env group configured: ${group.name}`,
     missing.length === 0,
