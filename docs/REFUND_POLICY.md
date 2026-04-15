@@ -2,7 +2,7 @@
 ## SignupAssist Success Fee
 
 **Effective Date:** January 17, 2026  
-**Last Updated:** January 17, 2026
+**Last Updated:** April 15, 2026
 
 ---
 
@@ -18,10 +18,17 @@ SignupAssist charges a **$20.00 Success Fee** only when a registration is succes
 
 | Fee Type | Amount | When Charged |
 |----------|--------|--------------|
+| **SignupAssist Autopilot Subscription** | $9.00/month | Monthly, while renewal is active |
 | **SignupAssist Success Fee** | $20.00 | Only after successful registration |
 | **Program Fee** | Varies | Paid directly to activity provider |
 
 **Important:** The Success Fee is charged by SignupAssist (Shipworx LLC). The Program Fee is charged by and paid to the activity provider (e.g., the ski club, camp, or class provider).
+
+### Subscription Cancellation
+
+The SignupAssist Autopilot subscription can be canceled from the dashboard without emailing support. Canceling stops the next renewal, keeps access active through the paid period, and does not delete profiles or registration history.
+
+Cancellation confirmation states: "You won't be charged again. Access continues until [date]."
 
 ---
 
@@ -134,4 +141,4 @@ We may update this Refund Policy from time to time. Changes will be posted on th
 
 ---
 
-*This Refund Policy is effective as of January 17, 2026.*
+*This Refund Policy is effective as of January 17, 2026 and last updated on April 15, 2026.*

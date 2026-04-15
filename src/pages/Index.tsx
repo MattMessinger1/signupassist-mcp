@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar, Shield, DollarSign, Settings } from 'lucide-react';
+import { Calendar, Shield, DollarSign, Settings, Zap } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useState } from 'react';
 import { prompts } from '@/lib/prompts';
@@ -36,6 +36,12 @@ const Index = () => {
             <Link to="/plan-builder">
               <Button size="lg" className="text-lg px-8 py-3">
                 {prompts.landing.hero.createPlan}
+              </Button>
+            </Link>
+            <Link to="/autopilot">
+              <Button size="lg" variant="accent" className="text-lg px-8 py-3">
+                <Zap className="mr-2 h-5 w-5" />
+                Supervised Autopilot
               </Button>
             </Link>
             <Link to="/dashboard">

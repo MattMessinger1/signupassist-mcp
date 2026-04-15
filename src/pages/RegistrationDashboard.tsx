@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle, XCircle, Clock, AlertTriangle, Eye, RefreshCw, Play, Loader2 } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, AlertTriangle, Eye, RefreshCw, Play, Loader2, Zap } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +13,7 @@ import { format } from 'date-fns';
 import { useAuth } from '@/contexts/AuthContext';
 import { Header } from '@/components/Header';
 import { prompts } from '@/lib/prompts';
+import { BillingCard } from '@/components/BillingCard';
 
 interface Plan {
   id: string;
@@ -217,8 +218,16 @@ export default function RegistrationDashboard() {
               <Button onClick={() => navigate('/plan-builder')}>
                 {prompts.dashboard.createNew}
               </Button>
+              <Button variant="accent" onClick={() => navigate('/autopilot')}>
+                <Zap className="h-4 w-4 mr-2" />
+                Autopilot
+              </Button>
             </div>
           </div>
+        </div>
+
+        <div className="mb-8">
+          <BillingCard userId={user?.id} returnPath="/dashboard" />
         </div>
 
         {/* Stats Overview */}

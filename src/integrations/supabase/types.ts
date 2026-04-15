@@ -132,6 +132,68 @@ export type Database = {
           },
         ]
       }
+      autopilot_runs: {
+        Row: {
+          allowed_actions: Json
+          audit_events: Json
+          caps: Json
+          child_id: string | null
+          confidence: string
+          created_at: string
+          id: string
+          provider_key: string
+          provider_name: string
+          status: string
+          stop_conditions: Json
+          target_program: string | null
+          target_url: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          allowed_actions?: Json
+          audit_events?: Json
+          caps?: Json
+          child_id?: string | null
+          confidence?: string
+          created_at?: string
+          id?: string
+          provider_key: string
+          provider_name: string
+          status?: string
+          stop_conditions?: Json
+          target_program?: string | null
+          target_url: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          allowed_actions?: Json
+          audit_events?: Json
+          caps?: Json
+          child_id?: string | null
+          confidence?: string
+          created_at?: string
+          id?: string
+          provider_key?: string
+          provider_name?: string
+          status?: string
+          stop_conditions?: Json
+          target_program?: string | null
+          target_url?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "autopilot_runs_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       browser_sessions: {
         Row: {
           created_at: string | null
@@ -1073,6 +1135,45 @@ export type Database = {
           payment_method_brand?: string | null
           payment_method_last4?: string | null
           stripe_customer_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_subscriptions: {
+        Row: {
+          cancel_at_period_end: boolean
+          created_at: string
+          current_period_end: string | null
+          plan_id: string
+          price_cents: number
+          status: string
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          plan_id?: string
+          price_cents?: number
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cancel_at_period_end?: boolean
+          created_at?: string
+          current_period_end?: string | null
+          plan_id?: string
+          price_cents?: number
+          status?: string
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           updated_at?: string
           user_id?: string
         }
