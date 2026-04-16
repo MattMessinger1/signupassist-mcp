@@ -39,6 +39,7 @@ const dependencies = {
   ...(packageJson.dependencies || {}),
   ...(packageJson.devDependencies || {}),
 };
+const dockerfile = existsSync("Dockerfile") ? readFileSync("Dockerfile", "utf8") : "";
 
 const requiredFiles = [
   "Dockerfile",
@@ -73,6 +74,8 @@ for (const scriptName of requiredScripts) {
 
 add("Supabase JS dependency is present", Boolean(dependencies["@supabase/supabase-js"]));
 add("Railway Dockerfile is present", existsSync("Dockerfile"));
+add("Railway Docker build copies PostCSS config for Tailwind", dockerfile.includes("COPY postcss.config.js"));
+add("Frontend build compiles Vite assets", String(scripts.build || "").includes("vite build"));
 add("Supabase migrations directory has migrations", countFiles("supabase/migrations") > 0);
 add("Supabase Edge Functions directory has functions", countFiles("supabase/functions") > 0);
 
