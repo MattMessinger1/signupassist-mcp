@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc",
+    "build": "tsc && vite build",
     "postbuild": "mkdir -p dist/mcp && cp mcp/manifest.json dist/mcp/manifest.json",
     "start": "npm run mcp:start",
     "mcp:start": "node dist/mcp_server/index.js",

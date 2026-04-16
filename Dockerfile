@@ -51,6 +51,7 @@ RUN ls -la dist/mcp_server/ai/ || echo "⚠️ AI folder not built"
 COPY index.html ./
 COPY vite.config.ts ./
 COPY tailwind.config.ts ./
+COPY postcss.config.js ./
 
 # Accept VITE_ env vars as build args (Railway passes service variables automatically)
 ARG VITE_SUPABASE_URL
