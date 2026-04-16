@@ -2,13 +2,13 @@
 ## SignupAssist Success Fee
 
 **Effective Date:** January 17, 2026  
-**Last Updated:** April 15, 2026
+**Last Updated:** April 16, 2026
 
 ---
 
 ## Overview
 
-SignupAssist charges a **$20.00 Success Fee** only when a registration is successfully completed with the activity provider. This document explains when refunds are issued and how to request one.
+SignupAssist V1 supervised autopilot is a **$9.00/month subscription** and does **not** charge a $20.00 Success Fee. The $20.00 Success Fee is reserved for the future fully automated Set and Forget product and is charged only when that product successfully completes a registration with the activity provider. This document explains when refunds are issued and how to request one.
 
 ---
 
@@ -19,10 +19,10 @@ SignupAssist charges a **$20.00 Success Fee** only when a registration is succes
 | Fee Type | Amount | When Charged |
 |----------|--------|--------------|
 | **SignupAssist Autopilot Subscription** | $9.00/month | Monthly, while renewal is active |
-| **SignupAssist Success Fee** | $20.00 | Only after successful registration |
+| **SignupAssist Success Fee** | $20.00 | Future Set and Forget only, after successful fully automated registration |
 | **Program Fee** | Varies | Paid directly to activity provider |
 
-**Important:** The Success Fee is charged by SignupAssist (Shipworx LLC). The Program Fee is charged by and paid to the activity provider (e.g., the ski club, camp, or class provider).
+**Important:** Supervised autopilot does not charge the Success Fee. When the future Set and Forget product launches, any Success Fee will be charged by SignupAssist (Shipworx LLC) and disclosed separately. The Program Fee is charged by and paid to the activity provider (e.g., the ski club, camp, or class provider).
 
 ### Subscription Cancellation
 
@@ -34,7 +34,7 @@ Cancellation confirmation states: "You won't be charged again. Access continues 
 
 ## When Refunds ARE Issued
 
-We will refund the $20.00 Success Fee in the following situations:
+For future Set and Forget registrations where a $20.00 Success Fee has been charged, we will refund that fee in the following situations:
 
 ### 1. Provider Cancels the Registration
 If the activity provider cancels your registration (e.g., class cancelled, program discontinued), we will automatically refund your Success Fee within 5-7 business days.
@@ -141,4 +141,4 @@ We may update this Refund Policy from time to time. Changes will be posted on th
 
 ---
 
-*This Refund Policy is effective as of January 17, 2026 and last updated on April 15, 2026.*
+*This Refund Policy is effective as of January 17, 2026 and last updated on April 16, 2026.*

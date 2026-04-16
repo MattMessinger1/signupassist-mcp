@@ -105,12 +105,12 @@ export function PaymentMethodSetup({ onPaymentMethodSaved, hasPaymentMethod }: P
             Payment Method Configured
           </CardTitle>
           <CardDescription>
-            Your payment method is set up and ready for success fees
+            Your payment method is set up for future Set and Forget success fees
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="text-sm text-muted-foreground">
-            ✅ Payment method on file for $20 success fee
+            ✅ Payment method on file for future $20 Set and Forget success fee
           </div>
         </CardContent>
       </Card>
@@ -125,7 +125,7 @@ export function PaymentMethodSetup({ onPaymentMethodSaved, hasPaymentMethod }: P
           Save Payment Method
         </CardTitle>
         <CardDescription>
-          Add a payment method for the $20 success fee (charged only when registration succeeds)
+          Add a payment method for the future $20 Set and Forget success fee, charged only after fully automated registration succeeds
         </CardDescription>
       </CardHeader>
       <CardContent>

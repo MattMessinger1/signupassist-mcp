@@ -3,12 +3,15 @@ import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   CheckCircle2,
+  Clipboard,
+  ClipboardCheck,
   Clock3,
+  CreditCard,
   Loader2,
   PauseCircle,
-  Play,
   ShieldCheck,
   Sparkles,
+  Target,
   UserRound,
   Zap,
 } from "lucide-react";
@@ -16,8 +19,10 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -38,6 +43,15 @@ import {
   findPlaybookForUrl,
 } from "@/lib/autopilot/playbooks";
 import { buildAutopilotAuditEvent, detectProviderMismatch } from "@/lib/autopilot/classifier";
+import {
+  PREFLIGHT_CHECKS,
+  SUPERVISED_AUTOPILOT_BILLING_COPY,
+  buildAutopilotRunPacket,
+  buildPreflightState,
+  calculateReadinessScore,
+  type AutopilotRunPacket,
+  type PreflightCheckKey,
+} from "@/lib/autopilot/runPacket";
 import {
   AUTOPILOT_PRICE_LABEL,
   isAutopilotSubscriptionUsable,
@@ -68,7 +82,10 @@ export default function Autopilot() {
   const [providerKey, setProviderKey] = useState("active");
   const [childId, setChildId] = useState("none");
   const [targetProgram, setTargetProgram] = useState("");
+  const [registrationOpensAt, setRegistrationOpensAt] = useState("");
   const [priceCap, setPriceCap] = useState("250");
+  const [preflight, setPreflight] = useState(buildPreflightState());
+  const [createdPacket, setCreatedPacket] = useState<AutopilotRunPacket | null>(null);
   const [loadingData, setLoadingData] = useState(true);
   const [creatingRun, setCreatingRun] = useState(false);
 
@@ -81,6 +98,26 @@ export default function Autopilot() {
   const providerMismatch =
     targetUrl && selectedPlaybook ? detectProviderMismatch(targetUrl, selectedPlaybook) : false;
   const latestCompletedRun = runs.find((run) => run.status === "completed");
+  const selectedChild = children.find((child) => child.id === childId);
+  const readinessScore = calculateReadinessScore(preflight);
+  const runPacketPreview = useMemo(
+    () =>
+      buildAutopilotRunPacket({
+        playbook: selectedPlaybook,
+        targetUrl: targetUrl.trim(),
+        targetProgram: targetProgram.trim() || null,
+        registrationOpensAt: registrationOpensAt || null,
+        maxTotalCents: centsFromDollarInput(priceCap),
+        child: selectedChild
+          ? {
+              id: selectedChild.id,
+              name: `${selectedChild.first_name} ${selectedChild.last_name}`,
+            }
+          : null,
+        preflight,
+      }),
+    [preflight, priceCap, registrationOpensAt, selectedChild, selectedPlaybook, targetProgram, targetUrl],
+  );
 
   const loadAutopilotData = useCallback(async () => {
     if (!user) return;
@@ -130,6 +167,18 @@ export default function Autopilot() {
     setProviderKey(playbook.key);
   };
 
+  const togglePreflight = (key: PreflightCheckKey, checked: boolean) => {
+    setPreflight((current) => ({
+      ...current,
+      [key]: checked,
+    }));
+  };
+
+  const copyRunPacket = async (packet: AutopilotRunPacket) => {
+    await navigator.clipboard.writeText(JSON.stringify(packet, null, 2));
+    showSuccessToast("Run packet copied", "Paste it into the Chrome helper before registration opens.");
+  };
+
   const createRun = async () => {
     if (!user) return;
 
@@ -160,6 +209,20 @@ export default function Autopilot() {
       setCreatingRun(true);
 
       const playbook = findPlaybookByKey(providerKey);
+      const packet = buildAutopilotRunPacket({
+        playbook,
+        targetUrl: targetUrl.trim(),
+        targetProgram: targetProgram.trim() || null,
+        registrationOpensAt: registrationOpensAt || null,
+        maxTotalCents,
+        child: selectedChild
+          ? {
+              id: selectedChild.id,
+              name: `${selectedChild.first_name} ${selectedChild.last_name}`,
+            }
+          : null,
+        preflight,
+      });
       const runInsert = {
         user_id: user.id,
         provider_key: playbook.key,
@@ -169,15 +232,31 @@ export default function Autopilot() {
         child_id: childId === "none" ? null : childId,
         status: "ready",
         confidence: playbook.confidence,
-        caps: { max_total_cents: maxTotalCents } as Json,
-        allowed_actions: playbook.allowedActions as unknown as Json,
-        stop_conditions: playbook.stopConditions as unknown as Json,
+        caps: {
+          max_total_cents: maxTotalCents,
+          registration_opens_at: registrationOpensAt || null,
+          readiness_score: packet.readiness.score,
+          preflight: packet.readiness.checks,
+          payment: packet.payment,
+          run_packet_version: packet.version,
+        } as Json,
+        allowed_actions: packet.safety.allowedActions as unknown as Json,
+        stop_conditions: packet.safety.stopConditions as unknown as Json,
         audit_events: [
           buildAutopilotAuditEvent("run_created", {
             provider_key: playbook.key,
             target_url: targetUrl.trim(),
             target_program: targetProgram.trim() || null,
             max_total_cents: maxTotalCents,
+            registration_opens_at: registrationOpensAt || null,
+            readiness_score: packet.readiness.score,
+          }),
+          buildAutopilotAuditEvent("run_packet_created", {
+            mode: packet.mode,
+            billing: packet.billing,
+            payment: packet.payment,
+            readiness: packet.readiness,
+            set_and_forget_foundation: packet.setAndForgetFoundation,
           }),
         ] as unknown as Json,
       };
@@ -185,9 +264,8 @@ export default function Autopilot() {
       const { error } = await supabase.from("autopilot_runs").insert(runInsert);
       if (error) throw error;
 
-      showSuccessToast("Autopilot run ready", "Open the Chrome helper when registration opens.");
-      setTargetUrl("");
-      setTargetProgram("");
+      setCreatedPacket(packet);
+      showSuccessToast("Run packet ready", "Copy it into the Chrome helper before registration opens.");
       await loadAutopilotData();
     } catch (error) {
       showErrorToast(
@@ -217,7 +295,7 @@ export default function Autopilot() {
         <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <Badge variant="secondary" className="mb-3">
-              Chrome desktop first
+              V1 supervised autopilot
             </Badge>
             <h1 className="text-3xl font-bold">Supervised Autopilot</h1>
             <p className="mt-2 max-w-3xl text-muted-foreground">
@@ -230,16 +308,46 @@ export default function Autopilot() {
           </Button>
         </div>
 
+        <div className="mb-6 grid gap-4 md:grid-cols-3">
+          <div className="rounded-lg border bg-card p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+              <Zap className="h-4 w-4 text-primary" />
+              Faster under pressure
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Known family and child fields are prepared before the registration window opens.
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+              <CreditCard className="h-4 w-4 text-primary" />
+              Provider-direct payment
+            </div>
+            <p className="text-sm text-muted-foreground">
+              SignupAssist pauses at provider checkout. The parent approves and pays there.
+            </p>
+          </div>
+          <div className="rounded-lg border bg-card p-4">
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Set and Forget foundation
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Run packets capture playbook, readiness, price caps, and pause reasons for future automation.
+            </p>
+          </div>
+        </div>
+
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Zap className="h-5 w-5" />
-                  Run setup
+                  <Target className="h-5 w-5" />
+                  Run packet setup
                 </CardTitle>
                 <CardDescription>
-                  Verified providers get the speed path. Unknown providers run in conservative beta mode.
+                  Capture the provider, child, session, timing, caps, and stop rules before the rush.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
@@ -252,6 +360,16 @@ export default function Autopilot() {
                     </AlertDescription>
                   </Alert>
                 )}
+
+                <Alert>
+                  <CreditCard className="h-4 w-4" />
+                  <AlertTitle>Provider fees stay with the provider</AlertTitle>
+                  <AlertDescription>
+                    {SUPERVISED_AUTOPILOT_BILLING_COPY.noSuccessFee}{" "}
+                    {SUPERVISED_AUTOPILOT_BILLING_COPY.providerFee} The helper pauses at checkout,
+                    payment confirmation, and final submit.
+                  </AlertDescription>
+                </Alert>
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2 md:col-span-2">
@@ -313,7 +431,17 @@ export default function Autopilot() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="price-cap">Price cap</Label>
+                    <Label htmlFor="registration-opens-at">Registration opens</Label>
+                    <Input
+                      id="registration-opens-at"
+                      type="datetime-local"
+                      value={registrationOpensAt}
+                      onChange={(event) => setRegistrationOpensAt(event.target.value)}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="price-cap">Price cap in dollars</Label>
                     <Input
                       id="price-cap"
                       inputMode="decimal"
@@ -321,6 +449,41 @@ export default function Autopilot() {
                       onChange={(event) => setPriceCap(event.target.value)}
                       placeholder="250"
                     />
+                  </div>
+                </div>
+
+                <div className="rounded-lg border p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium">Readiness preflight</p>
+                      <p className="text-sm text-muted-foreground">
+                        These checks make V1 faster now and make future Set and Forget safer later.
+                      </p>
+                    </div>
+                    <Badge variant={readinessScore >= 80 ? "default" : "secondary"}>
+                      {readinessScore}% ready
+                    </Badge>
+                  </div>
+                  <Progress value={readinessScore} className="mb-4" />
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {PREFLIGHT_CHECKS.map((check) => (
+                      <div
+                        key={check.key}
+                        className="flex items-start gap-3 rounded-lg border bg-background p-3"
+                      >
+                        <Checkbox
+                          id={`preflight-${check.key}`}
+                          checked={preflight[check.key]}
+                          onCheckedChange={(checked) => togglePreflight(check.key, checked === true)}
+                        />
+                        <div>
+                          <Label htmlFor={`preflight-${check.key}`} className="text-sm font-medium">
+                            {check.label}
+                          </Label>
+                          <p className="mt-1 text-xs text-muted-foreground">{check.description}</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
 
@@ -347,14 +510,23 @@ export default function Autopilot() {
                     {creatingRun ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Creating run...
+                        Creating packet...
                       </>
                     ) : (
                       <>
-                        <Play className="h-4 w-4" />
-                        Create supervised run
+                        <ClipboardCheck className="h-4 w-4" />
+                        Create run packet
                       </>
                     )}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => copyRunPacket(createdPacket || runPacketPreview)}
+                    disabled={!targetUrl.trim()}
+                  >
+                    <Clipboard className="h-4 w-4" />
+                    Copy packet for helper
                   </Button>
                   <Button variant="outline" onClick={() => navigate("/credentials")}>
                     <UserRound className="h-4 w-4" />
@@ -363,6 +535,46 @@ export default function Autopilot() {
                 </div>
               </CardContent>
             </Card>
+
+            {createdPacket && (
+              <Card className="border-primary/30">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ClipboardCheck className="h-5 w-5" />
+                    Run packet ready
+                  </CardTitle>
+                  <CardDescription>
+                    Copy this packet into the Chrome helper, then open the provider page when registration opens.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div className="rounded-lg border bg-background p-3">
+                      <p className="text-xs text-muted-foreground">Provider</p>
+                      <p className="text-sm font-medium">{createdPacket.target.providerName}</p>
+                    </div>
+                    <div className="rounded-lg border bg-background p-3">
+                      <p className="text-xs text-muted-foreground">Target</p>
+                      <p className="line-clamp-1 text-sm font-medium">
+                        {createdPacket.target.program || createdPacket.target.url}
+                      </p>
+                    </div>
+                    <div className="rounded-lg border bg-background p-3">
+                      <p className="text-xs text-muted-foreground">Readiness</p>
+                      <p className="text-sm font-medium">{createdPacket.readiness.score}%</p>
+                    </div>
+                    <div className="rounded-lg border bg-background p-3">
+                      <p className="text-xs text-muted-foreground">Billing</p>
+                      <p className="text-sm font-medium">No supervised-autopilot success fee</p>
+                    </div>
+                  </div>
+                  <Button type="button" onClick={() => copyRunPacket(createdPacket)}>
+                    <Clipboard className="h-4 w-4" />
+                    Copy packet
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
 
             <div className="grid gap-4 md:grid-cols-2">
               {PROVIDER_PLAYBOOKS.filter((playbook) => playbook.key !== "generic").map((playbook) => (

@@ -4,15 +4,15 @@ export const COPY = {
     bullets: [
       "Nothing is booked or charged until you press Confirm.",
       "Every step is recorded in your Audit Trail.",
-      "Program fee refunds are handled by the provider. Success fee refunds are handled by SignupAssist (by Shipworx).",
+      "Program fee refunds are handled by the provider. Any future Set and Forget success-fee refunds are handled by SignupAssist (by Shipworx).",
     ],
-    payment: "Payments are processed by Stripe. The provider charges the program fee, and SignupAssist charges its $20 fee separately. SignupAssist never sees your full card number.",
+    payment: "Supervised autopilot is $9/month with no success fee. The provider charges the program fee directly. The $20 success fee is reserved for future fully automated Set and Forget registrations.",
     refundHelp: "Need help with a refund? Email support@shipworx.ai",
   },
   fees: {
     programFeeLabel: "Program fee (paid to provider)",
     serviceFeeLabel: "SignupAssist service fee",
-    serviceFeeNote: "Charged only after the booking succeeds.",
+    serviceFeeNote: "Not charged for supervised autopilot. Reserved for future fully automated Set and Forget registrations.",
   },
   audit: {
     title: "Audit Trail",

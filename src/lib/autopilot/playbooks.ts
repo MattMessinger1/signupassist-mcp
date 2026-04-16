@@ -22,7 +22,7 @@ export const DEFAULT_ALLOWED_ACTIONS = [
 export const DEFAULT_STOP_CONDITIONS = [
   "Login, 2FA, CAPTCHA, or password manager prompt",
   "Waiver, legal release, consent, or policy acceptance",
-  "Payment screen or payment confirmation",
+  "Provider checkout, payment screen, card field, or payment confirmation",
   "Final submit, register, checkout, or purchase button",
   "Unknown required field",
   "Medical, allergy, disability, insurance, or PHI-like field",

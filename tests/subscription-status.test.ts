@@ -9,13 +9,16 @@ const now = new Date("2026-04-15T12:00:00.000Z");
 
 describe("autopilot subscription status", () => {
   it("permits active subscriptions", () => {
-    expect(
-      isAutopilotSubscriptionUsable({
+    const subscription = {
         status: "active",
         cancel_at_period_end: false,
         current_period_end: "2026-05-15T12:00:00.000Z",
-      }, now),
-    ).toBe(true);
+    };
+
+    expect(isAutopilotSubscriptionUsable(subscription, now)).toBe(true);
+    expect(getSubscriptionDisplay(subscription as any).description).toContain(
+      "No success fee is charged for supervised autopilot",
+    );
   });
 
   it("keeps access through the paid period after renewal cancellation", () => {

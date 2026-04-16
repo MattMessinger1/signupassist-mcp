@@ -73,7 +73,7 @@ export default function MandateSummary({
     { key: 'bookeo:read_slots', label: 'Check availability and time slots via the provider API' },
     { key: 'bookeo:create_booking', label: 'Create holds and bookings within your authorization' },
     { key: 'bookeo:confirm_booking', label: `Pay the provider up to your cap (${fmtUSD(caps.max_provider_charge_cents)}) when confirming` },
-    { key: 'signupassist:fee', label: `Charge a ${fmtUSD(caps.service_fee_cents)} success fee only if we get the spot` },
+    { key: 'signupassist:fee', label: `Charge a ${fmtUSD(caps.service_fee_cents)} Set and Forget success fee only if fully automated registration gets the spot` },
   ]), [caps]);
 
   const mandateJSON = useMemo(() => ({

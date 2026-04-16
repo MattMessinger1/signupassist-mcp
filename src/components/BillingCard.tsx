@@ -17,6 +17,7 @@ import {
   startSubscriptionCheckout,
   type UserSubscription,
 } from "@/lib/subscription";
+import { SUPERVISED_AUTOPILOT_BILLING_COPY } from "@/lib/autopilot/runPacket";
 
 interface BillingCardProps {
   userId?: string | null;
@@ -197,6 +198,15 @@ export function BillingCard({
                 <p className="mt-1 text-sm text-muted-foreground">{display.nextChargeLabel}</p>
               </div>
             </div>
+
+            <Alert>
+              <CheckCircle2 className="h-4 w-4" />
+              <AlertDescription>
+                {SUPERVISED_AUTOPILOT_BILLING_COPY.noSuccessFee}{" "}
+                {SUPERVISED_AUTOPILOT_BILLING_COPY.providerFee}{" "}
+                {SUPERVISED_AUTOPILOT_BILLING_COPY.futureSuccessFee}
+              </AlertDescription>
+            </Alert>
 
             {errorMessage && (
               <Alert variant="destructive">

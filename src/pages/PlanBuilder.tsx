@@ -185,7 +185,7 @@ const PlanBuilder = () => {
   const [detectedPriceCents, setDetectedPriceCents] = useState<number | null>(null);
   const [caps, setCaps] = useState<{ max_provider_charge_cents: number | null; service_fee_cents: number | null }>({
     max_provider_charge_cents: null,
-    service_fee_cents: 2000 // $20 success fee
+    service_fee_cents: 2000 // Future Set and Forget $20 success fee
   });
   const [showMandateSummary, setShowMandateSummary] = useState(false);
   const [executionStatus, setExecutionStatus] = useState<{
@@ -1331,7 +1331,7 @@ const PlanBuilder = () => {
     if (!hasPaymentMethod) {
       toast({
         title: 'Payment Method Required',
-        description: 'Please add a payment method for the $20 success fee before creating the plan.',
+        description: 'Please add a payment method for the future Set and Forget success fee before creating this fully automated plan.',
         variant: 'destructive',
       });
       return;
@@ -2159,7 +2159,7 @@ const PlanBuilder = () => {
                 <LockedStepPreview
                   stepNumber={7}
                   title="Payment Method"
-                  description="Secure payment authorization for the $20 success fee"
+                  description="Secure payment authorization for the future $20 Set and Forget success fee"
                   prerequisite="providing contact information"
                   icon={<DollarSign className="h-4 w-4" />}
                 />

@@ -28,13 +28,28 @@
         font-weight: 600;
       }
 
-      input {
+      input,
+      textarea {
         box-sizing: border-box;
         width: 100%;
         border: 1px solid #cbd5e1;
         border-radius: 6px;
         padding: 8px;
         font: inherit;
+      }
+
+      textarea {
+        min-height: 86px;
+        resize: vertical;
+      }
+
+      .packet-summary {
+        margin: 10px 0;
+        border: 1px solid #bae6fd;
+        border-radius: 6px;
+        background: #f0f9ff;
+        padding: 8px;
+        color: #0c4a6e;
       }
 
       button {
@@ -69,6 +84,11 @@
   <body>
     <h1>SignupAssist Helper</h1>
     <p>Supervised mode. Final submit, payment, waivers, login, and sensitive fields always pause.</p>
+
+    <label for="runPacket">Run packet</label>
+    <textarea id="runPacket" autocomplete="off" placeholder="Paste the run packet from SignupAssist"></textarea>
+    <button id="savePacket" class="secondary">Save run packet</button>
+    <div id="packetSummary" class="packet-summary">No run packet loaded.</div>
 
     <label for="childFirstName">Child first name</label>
     <input id="childFirstName" autocomplete="off">

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle, XCircle, Clock, AlertTriangle, Eye, RefreshCw, Play, Loader2, Zap } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, AlertTriangle, Eye, RefreshCw, Play, Loader2, Zap, ClipboardCheck, CreditCard, ShieldCheck, UserRound } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -44,6 +44,16 @@ interface ExecutionStats {
   success_rate: number;
 }
 
+interface AutopilotDashboardRun {
+  id: string;
+  provider_name: string;
+  status: string;
+  target_program: string | null;
+  target_url: string;
+  created_at: string;
+  caps: unknown;
+}
+
 export default function RegistrationDashboard() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [stats, setStats] = useState<ExecutionStats>({
@@ -53,6 +63,8 @@ export default function RegistrationDashboard() {
     failed: 0,
     success_rate: 0
   });
+  const [autopilotRuns, setAutopilotRuns] = useState<AutopilotDashboardRun[]>([]);
+  const [childrenCount, setChildrenCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const navigate = useNavigate();
@@ -71,16 +83,33 @@ export default function RegistrationDashboard() {
       setLoading(true);
       
       // Get plans with child info and executions
-      const { data: plansData, error: plansError } = await supabase
-        .from('plans')
-        .select(`
-          *,
-          children:child_id (first_name, last_name),
-          plan_executions (*)
-        `)
-        .order('created_at', { ascending: false });
+      const [plansResult, autopilotResult, childrenResult] = await Promise.all([
+        supabase
+          .from('plans')
+          .select(`
+            *,
+            children:child_id (first_name, last_name),
+            plan_executions (*)
+          `)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('autopilot_runs')
+          .select('id, provider_name, status, target_program, target_url, created_at, caps')
+          .order('created_at', { ascending: false })
+          .limit(5),
+        supabase
+          .from('children')
+          .select('id', { count: 'exact', head: true }),
+      ]);
+
+      const { data: plansData, error: plansError } = plansResult;
 
       if (plansError) throw plansError;
+      if (autopilotResult.error) console.warn('Error loading supervised autopilot runs:', autopilotResult.error);
+      if (childrenResult.error) console.warn('Error loading children count:', childrenResult.error);
+
+      setAutopilotRuns((autopilotResult.data || []) as AutopilotDashboardRun[]);
+      setChildrenCount(childrenResult.count || 0);
 
       const formattedPlans = plansData?.map(plan => ({
         id: plan.id,
@@ -201,9 +230,9 @@ export default function RegistrationDashboard() {
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold mb-2">{prompts.dashboard.title}</h1>
+              <h1 className="text-3xl font-bold mb-2">SignupAssist dashboard</h1>
               <p className="text-muted-foreground">
-                {prompts.dashboard.description}
+                Prepare the next registration run, keep billing visible, and track the supervised autopilot path toward Set and Forget.
               </p>
             </div>
             <div className="flex items-center space-x-2">
@@ -215,12 +244,9 @@ export default function RegistrationDashboard() {
                 <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
                 {prompts.dashboard.refresh}
               </Button>
-              <Button onClick={() => navigate('/plan-builder')}>
-                {prompts.dashboard.createNew}
-              </Button>
               <Button variant="accent" onClick={() => navigate('/autopilot')}>
                 <Zap className="h-4 w-4 mr-2" />
-                Autopilot
+                Start autopilot
               </Button>
             </div>
           </div>
@@ -229,6 +255,102 @@ export default function RegistrationDashboard() {
         <div className="mb-8">
           <BillingCard userId={user?.id} returnPath="/dashboard" />
         </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <UserRound className="h-4 w-4" />
+                Family profiles
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{childrenCount}</div>
+              <p className="mt-1 text-xs text-muted-foreground">Ready to feed supervised run packets.</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <ClipboardCheck className="h-4 w-4" />
+                Supervised runs
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{autopilotRuns.length}</div>
+              <p className="mt-1 text-xs text-muted-foreground">Recent V1 run packets created.</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <CreditCard className="h-4 w-4" />
+                Provider payment
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-sm font-semibold">Parent approves</div>
+              <p className="mt-1 text-xs text-muted-foreground">SignupAssist pauses at checkout and final submit.</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <ShieldCheck className="h-4 w-4" />
+                Success fee
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-sm font-semibold">$0 in V1</div>
+              <p className="mt-1 text-xs text-muted-foreground">$20 stays dormant until fully automated Set and Forget.</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle>Recent supervised autopilot runs</CardTitle>
+            <CardDescription>
+              Run packets capture provider, child, target session, caps, and readiness for Chrome helper signup.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {autopilotRuns.length === 0 ? (
+              <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="font-medium">No supervised run packets yet.</p>
+                  <p className="text-sm text-muted-foreground">Create one before the next registration window.</p>
+                </div>
+                <Button variant="accent" onClick={() => navigate('/autopilot')}>
+                  <Zap className="h-4 w-4 mr-2" />
+                  Create run packet
+                </Button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {autopilotRuns.map((run) => (
+                  <div key={run.id} className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium">{run.provider_name}</p>
+                        <Badge variant={run.status === 'completed' ? 'default' : 'secondary'}>{run.status}</Badge>
+                      </div>
+                      <p className="mt-1 line-clamp-1 text-sm text-muted-foreground">
+                        {run.target_program || run.target_url}
+                      </p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => navigate('/autopilot')}>
+                      Open setup
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* Stats Overview */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
