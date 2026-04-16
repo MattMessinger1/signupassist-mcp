@@ -23,7 +23,7 @@ const tableChecks: Array<{ table: string; select: string }> = [
   { table: "audit_events", select: "id" },
   { table: "registrations", select: "id" },
   { table: "scheduled_registrations", select: "id,status" },
-  { table: "cached_provider_feed", select: "id,org_ref" },
+  { table: "cached_provider_feed", select: "org_ref,program_ref" },
   { table: "user_billing", select: "user_id" },
   { table: "user_subscriptions", select: "user_id,status" },
   { table: "autopilot_runs", select: "id,status" },
