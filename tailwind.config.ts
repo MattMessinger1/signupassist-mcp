@@ -62,6 +62,15 @@ export default {
         },
         // Brand colors for direct use
         brand: {
+          primary: "hsl(var(--brand-primary))",
+          "primary-dark": "hsl(var(--brand-primary-dark))",
+          "accent-warm": "hsl(var(--brand-accent-warm))",
+          "primary-soft": "hsl(var(--brand-primary-soft))",
+          "primary-soft-2": "hsl(var(--brand-primary-soft-2))",
+          success: "hsl(var(--brand-success))",
+          "success-soft": "hsl(var(--brand-success-soft))",
+          review: "hsl(var(--brand-review))",
+          "review-soft": "hsl(var(--brand-review-soft))",
           navy: "hsl(var(--brand-navy))",
           "navy-light": "hsl(var(--brand-navy-light))",
           gold: "hsl(var(--brand-gold))",

@@ -5,21 +5,39 @@
     <title>SignupAssist</title>
     <style>
       body {
-        width: 320px;
+        width: 340px;
         margin: 0;
         padding: 14px;
-        color: #0f172a;
+        color: #102133;
+        background: #fafbfc;
         font: 13px/1.45 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      .header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 10px;
+        border-bottom: 1px solid #e2e8f0;
+        padding-bottom: 12px;
+      }
+
+      .logo {
+        width: 32px;
+        height: 32px;
+        transform: scaleX(1.08);
+        transform-origin: center;
       }
 
       h1 {
         margin: 0 0 4px;
         font-size: 16px;
+        color: #0b2d45;
       }
 
       p {
         margin: 0 0 12px;
-        color: #475569;
+        color: #64748b;
       }
 
       label {
@@ -32,9 +50,11 @@
       textarea {
         box-sizing: border-box;
         width: 100%;
-        border: 1px solid #cbd5e1;
+        border: 1px solid #e2e8f0;
         border-radius: 6px;
         padding: 8px;
+        background: #ffffff;
+        color: #102133;
         font: inherit;
       }
 
@@ -45,11 +65,11 @@
 
       .packet-summary {
         margin: 10px 0;
-        border: 1px solid #bae6fd;
+        border: 1px solid #d9e8ef;
         border-radius: 6px;
-        background: #f0f9ff;
+        background: #e8f2f7;
         padding: 8px;
-        color: #0c4a6e;
+        color: #0b2d45;
       }
 
       button {
@@ -58,7 +78,7 @@
         border: 0;
         border-radius: 6px;
         padding: 9px 10px;
-        background: #0f172a;
+        background: #1f5a7a;
         color: #ffffff;
         font: inherit;
         font-weight: 700;
@@ -66,12 +86,15 @@
       }
 
       button.secondary {
-        background: #e2e8f0;
-        color: #0f172a;
+        background: #f2f7fa;
+        color: #0b2d45;
+        border: 1px solid #d9e8ef;
       }
 
       button.danger {
-        background: #dc2626;
+        background: #fff3e2;
+        color: #8a4b12;
+        border: 1px solid #f3d8b6;
       }
 
       #status {
@@ -82,8 +105,22 @@
     </style>
   </head>
   <body>
-    <h1>SignupAssist Helper</h1>
-    <p>Supervised mode. Final submit, payment, waivers, login, and sensitive fields always pause.</p>
+    <div class="header">
+      <svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="SignupAssist">
+        <defs>
+          <linearGradient id="shield" x1="18" y1="12" x2="46" y2="52">
+            <stop offset="0" stop-color="#1F5A7A"/>
+            <stop offset="1" stop-color="#0B2D45"/>
+          </linearGradient>
+        </defs>
+        <path d="M32 12 C27 15 23 16 20 16 V30 C20 41 26.5 48.5 32 52 C37.5 48.5 44 41 44 30 V16 C41 16 37 15 32 12 Z" fill="url(#shield)"/>
+        <path d="M32 40 C27.7 36.4 24 33.8 24 29.8 C24 27 26.2 25 28.9 25 C30.6 25 31.8 25.8 32 26.8 C32.2 25.8 33.4 25 35.1 25 C37.8 25 40 27 40 29.8 C40 33.8 36.3 36.4 32 40 Z" fill="#FFB454"/>
+      </svg>
+      <div>
+        <h1>SignupAssist Helper</h1>
+        <p>Supervised mode. You stay in control.</p>
+      </div>
+    </div>
 
     <label for="runPacket">Run packet</label>
     <textarea id="runPacket" autocomplete="off" placeholder="Paste the run packet from SignupAssist"></textarea>
