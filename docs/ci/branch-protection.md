@@ -36,7 +36,6 @@ Check the following boxes:
   - Add the following required checks (select from dropdown after they've run at least once):
     - `Deploy to Railway / deploy`
     - `OpenAI Smoke Test / smoke-test`
-    - `Vercel deployment`
     - `PR Gatekeeper / validate` (after implementing)
     - `CRED_SEAL_KEY tests` (optional, if applicable)
 
@@ -62,11 +61,6 @@ The following CI checks must pass before any PR can be merged:
 - **What it does**: Validates OpenAI API integration and parameter formatting
 - **When it runs**: On every push to PR branches
 - **Failure action**: PR blocked until API tests pass
-
-### Vercel Deployment
-- **What it does**: Validates frontend build and deployment
-- **When it runs**: On every push to PR branches
-- **Failure action**: PR blocked until frontend deploys successfully
 
 ### PR Gatekeeper (New)
 - **What it does**: Validates TypeScript compilation, unit tests, API payloads, AAP logic, and latency budgets
@@ -114,6 +108,7 @@ Review and update branch protection rules:
 - **Quarterly**: Review required checks and add new CI validations
 - **After incidents**: Add checks to prevent similar failures
 - **When adding new workflows**: Update required checks list
+- **Deploy policy**: Production deploy status checks should stay Railway/GitHub-only. Do not require Vercel status contexts for SignupAssist.
 
 ## Related Documentation
 
