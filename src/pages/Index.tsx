@@ -21,9 +21,9 @@ const steps = [
   },
   {
     number: "3",
-    title: "Get a reminder",
+    title: "Supervised Autopilot*",
     description:
-      "We text and email you 5-10 minutes before signup opens, and you stay in control of the final signup.",
+      "When signup opens, we help make the process as fast and painless as possible while you stay in control of sensitive fields and the final signup.",
   },
 ];
 
@@ -121,6 +121,9 @@ const Index = () => {
               </Card>
             ))}
           </div>
+          <p className="mx-auto mt-5 max-w-3xl text-center text-sm text-muted-foreground">
+            * We call this Supervised Autopilot because SignupAssist helps with the repetitive parts, but parents still approve the important moments. A fuller set-and-forget flow is coming soon.
+          </p>
         </section>
 
         <section className="border-y bg-[hsl(var(--secondary))]">
