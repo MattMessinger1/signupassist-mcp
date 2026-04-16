@@ -299,6 +299,14 @@ export const ENV_DEFINITIONS: EnvDefinition[] = [
     targets: { local: "optional", "railway-web": "optional" },
   },
   {
+    name: "OPENAI_MODEL_ACTIVITY_FINDER",
+    category: "AI",
+    description: "Model used to parse parent Activity Finder searches.",
+    example: "gpt-4o-mini",
+    defaultValue: "gpt-4o-mini",
+    targets: { local: "optional", "railway-web": "optional" },
+  },
+  {
     name: "OPENAI_VERIFICATION_TOKEN",
     category: "AI",
     description: "Token served for OpenAI ChatGPT App submission verification.",

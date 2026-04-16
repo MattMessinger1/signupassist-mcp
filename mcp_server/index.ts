@@ -676,6 +676,7 @@ import { getPlaceholderImage } from './lib/placeholderImages.js';
 import { buildChildScopeOutOfScopeResponse, evaluateChildRegistrationScope } from './lib/childScopeGuardrail.js';
 import { telemetry } from './lib/telemetry.js';
 import { formatCurrencyFromCents } from './utils/money.js';
+import { searchActivityFinder } from './lib/activityFinder.js';
 
 import { createServer } from 'http';
 import { URL, fileURLToPath } from 'url';
@@ -4531,6 +4532,68 @@ class SignupAssistMCPServer {
             console.error('[Override Prompt] Error:', err);
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: err.message || 'Unknown error' }));
+          }
+        });
+        return;
+      }
+
+      // --- Parent-facing Activity Finder
+      if (url.pathname === '/api/activity-finder/search') {
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Only POST supported' }));
+          return;
+        }
+
+        let body = '';
+        req.on('data', (chunk) => (body += chunk));
+        req.on('end', async () => {
+          try {
+            const parsedBody = JSON.parse(body || '{}');
+            const query = String(parsedBody.query || '').trim();
+
+            if (!query) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'query_required' }));
+              return;
+            }
+
+            let clientIp = req.headers['x-forwarded-for'] as string | undefined;
+            if (Array.isArray(clientIp)) clientIp = clientIp[0];
+            if (clientIp?.includes(',')) clientIp = clientIp.split(',')[0]?.trim();
+            if (!clientIp) clientIp = req.headers['x-real-ip'] as string | undefined;
+            if (!clientIp) clientIp = req.socket.remoteAddress || null as any;
+
+            let verifiedUserId: string | null = null;
+            const authHeader = req.headers.authorization || '';
+            const bearer = Array.isArray(authHeader) ? authHeader[0] : authHeader;
+            const token = bearer.startsWith('Bearer ') ? bearer.slice('Bearer '.length).trim() : '';
+            if (token) {
+              const { data: authData, error: authError } = await supabase.auth.getUser(token);
+              if (!authError && authData?.user?.id) {
+                verifiedUserId = authData.user.id;
+              }
+            }
+
+            const result = await searchActivityFinder(
+              {
+                query,
+                userId: verifiedUserId,
+                editedLocation: parsedBody.editedLocation || null,
+                clientIp,
+              },
+              { supabase },
+            );
+
+            res.writeHead(200, {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+            });
+            res.end(JSON.stringify(result));
+          } catch (err: any) {
+            console.error('[ActivityFinder] Error:', err?.message || err);
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'activity_finder_failed' }));
           }
         });
         return;
