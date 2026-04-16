@@ -25,7 +25,6 @@ pull_request:
 ci_required_checks:
   - deploy                # Railway deployment
   - smoke-test            # OpenAI smoke test
-  - vercel                # Vercel frontend deployment
   - cred-seal-key         # Credential encryption test
   - validate              # PR Gatekeeper validation
 

@@ -7,6 +7,7 @@ SignupAssist V1 stays on **Supabase + Railway**.
 - Supabase is the source of truth for auth, Postgres, RLS, realtime, Edge Functions, migrations, generated types, and billing state.
 - Railway is the production runtime for the MCP web service and the always-on scheduled registration worker.
 - Do not migrate to Vercel, Neon, Clerk, Convex, or another DB/auth/runtime stack unless the product direction is explicitly reopened.
+- Keep any historical Vercel project disconnected from GitHub auto-deploys; Vercel is not a SignupAssist deploy target.
 
 This runbook exists so Codex and humans have a fast path for safe changes inside the current stack.
 
