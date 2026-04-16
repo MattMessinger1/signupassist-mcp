@@ -1,7 +1,8 @@
-import { LogOut, Shield, Menu } from 'lucide-react';
+import { LogOut, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { BrandLogo } from '@/components/BrandLogo';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,9 +24,7 @@ export function Header() {
             className="flex items-center gap-2 cursor-pointer" 
             onClick={() => navigate('/')}
           >
-            <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center">
-              <Shield className="w-5 h-5 text-primary-foreground" />
-            </div>
+            <BrandLogo size="md" variant="light" />
             <span className="text-xl font-semibold text-primary">SignupAssist</span>
           </div>
           

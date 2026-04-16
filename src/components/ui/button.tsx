@@ -15,7 +15,7 @@ const buttonVariants = cva(
         secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost: "hover:bg-secondary hover:text-secondary-foreground",
         link: "text-primary underline-offset-4 hover:underline",
-        // Accent variant for primary CTAs (green)
+        // Accent variant for primary CTAs using the logo teal-blue, not success green.
         accent: "bg-accent text-accent-foreground hover:bg-accent/90 shadow-sm",
         // Warning variant for scheduling/timing CTAs (yellow/amber)
         warning: "bg-amber-500 text-white hover:bg-amber-600 shadow-sm",

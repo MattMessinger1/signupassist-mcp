@@ -5,6 +5,7 @@ import logoDark from '@/assets/signup-assist-logo-dark.svg';
 interface BrandLogoProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
+  widen?: number;
   /** Force a specific variant regardless of theme */
   variant?: 'light' | 'dark' | 'auto';
 }
@@ -20,7 +21,7 @@ const sizeMap = {
  * SignupAssist brand logo component
  * Auto-switches between light and dark variants based on system theme
  */
-export function BrandLogo({ size = 'md', className = '', variant = 'auto' }: BrandLogoProps) {
+export function BrandLogo({ size = 'md', className = '', widen = 1.08, variant = 'auto' }: BrandLogoProps) {
   const [isDark, setIsDark] = useState(false);
 
   useEffect(() => {
@@ -61,7 +62,12 @@ export function BrandLogo({ size = 'md', className = '', variant = 'auto' }: Bra
       width={pixelSize}
       height={pixelSize}
       className={className}
-      style={{ width: pixelSize, height: pixelSize }}
+      style={{
+        width: pixelSize,
+        height: pixelSize,
+        transform: `scaleX(${widen})`,
+        transformOrigin: 'center',
+      }}
     />
   );
 }

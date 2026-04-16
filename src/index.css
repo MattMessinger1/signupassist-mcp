@@ -4,71 +4,79 @@
 
 /* SignupAssist Design System
  * Brand Colors (from logo):
- * - Navy Dark: #0E3A57 (shield base, professional)
- * - Navy Light: #1F5A7A (shield gradient top)
- * - Blue Accent: #2C86B3 (dark mode highlight)
- * - Gold/Amber: #FFB454 (heart, warmth, accent)
- * - Success Green: #00A674 (CTAs, confirmations)
+ * - Primary Teal Blue: #1F5A7A (shield)
+ * - Primary Dark Navy: #0B2D45 (shield gradient)
+ * - Warm Amber: #FFB454 (heart, pause/review warmth)
+ * - Success Green: #2F855A (ready/check states only)
  * All colors in HSL format
  */
 
 @layer base {
   :root {
     /* Background & Surface */
-    --background: 0 0% 100%;
-    --foreground: 200 42% 20%;
+    --background: 210 25% 98%;
+    --foreground: 211 52% 13%;
 
     /* Cards & Containers */
     --card: 0 0% 100%;
-    --card-foreground: 200 42% 20%;
+    --card-foreground: 211 52% 13%;
 
     /* Popovers */
     --popover: 0 0% 100%;
-    --popover-foreground: 200 42% 20%;
+    --popover-foreground: 211 52% 13%;
 
-    /* Primary: Navy Blue */
-    --primary: 200 42% 20%;
+    /* Primary: logo teal-blue */
+    --primary: 201 59% 30%;
     --primary-foreground: 0 0% 100%;
 
-    /* Secondary: Light gray for less prominent elements */
-    --secondary: 210 20% 96%;
-    --secondary-foreground: 200 42% 20%;
+    /* Secondary: soft blue-white panel fill */
+    --secondary: 202 44% 96%;
+    --secondary-foreground: 211 52% 13%;
 
     /* Muted: Subtle backgrounds and text */
-    --muted: 210 20% 96%;
+    --muted: 200 48% 94%;
     --muted-foreground: 215 16% 47%;
 
-    /* Accent: Green for CTAs and success states */
-    --accent: 162 100% 33%;
+    /* Accent: brand teal, not success green */
+    --accent: 201 59% 30%;
     --accent-foreground: 0 0% 100%;
 
     /* Destructive: Error states */
-    --destructive: 0 84% 60%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
     /* Borders & Inputs */
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 200 42% 30%;
+    --ring: 201 59% 30%;
 
     /* Border Radius */
     --radius: 0.75rem;
 
     /* Brand Colors - direct values */
-    --brand-navy: 200 42% 20%;
-    --brand-navy-light: 200 35% 30%;
-    --brand-gold: 36 100% 66%;
-    --brand-green: 162 100% 33%;
+    --brand-primary: 201 59% 30%;
+    --brand-primary-dark: 205 72% 16%;
+    --brand-accent-warm: 34 100% 66%;
+    --brand-primary-soft: 200 48% 94%;
+    --brand-primary-soft-2: 202 44% 96%;
+    --brand-success: 150 48% 35%;
+    --brand-success-soft: 143 45% 94%;
+    --brand-review: 30 70% 51%;
+    --brand-review-soft: 35 100% 94%;
+    --brand-navy: 205 72% 16%;
+    --brand-navy-light: 201 59% 30%;
+    --brand-gold: 34 100% 66%;
+    --brand-green: 150 48% 35%;
 
     /* Sidebar (kept for compatibility) */
-    --sidebar-background: 0 0% 98%;
-    --sidebar-foreground: 200 42% 20%;
-    --sidebar-primary: 200 42% 20%;
+    --sidebar-background: 202 44% 96%;
+    --sidebar-foreground: 211 52% 13%;
+    --sidebar-primary: 201 59% 30%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 162 100% 33%;
+    --sidebar-accent: 200 48% 94%;
     --sidebar-accent-foreground: 0 0% 100%;
     --sidebar-border: 214 32% 91%;
-    --sidebar-ring: 162 100% 33%;
+    --sidebar-ring: 201 59% 30%;
   }
 
   .dark {

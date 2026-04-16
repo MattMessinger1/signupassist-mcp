@@ -18,6 +18,7 @@ import { DisambiguationDemo } from "./components/DisambiguationDemo";
 import ChatTestHarness from "./pages/ChatTestHarness";
 import MCPChatTest from "./pages/MCPChatTest";
 import AdminConsole from "./pages/admin/AdminConsole";
+import SignupAssistMockups from "./pages/SignupAssistMockups";
 
 const queryClient = new QueryClient();
 
@@ -42,6 +43,7 @@ const App = () => (
             <Route path="/disambiguation-demo" element={<DisambiguationDemo />} />
             <Route path="/chat-test" element={<ChatTestHarness />} />
             <Route path="/mcp-chat-test" element={<MCPChatTest />} />
+            <Route path="/mockups/signupassist" element={<SignupAssistMockups />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
