@@ -9,7 +9,11 @@ export interface ProviderPlaybook {
   allowedActions: string[];
   stopConditions: string[];
   fixturePath?: string;
+  fixturePaths?: string[];
 }
+
+export const KEVA_DAYSMART_LOGIN_URL =
+  "https://pps.daysmartrecreation.com/dash/index.php?action=Auth/login&company=keva";
 
 export const DEFAULT_ALLOWED_ACTIONS = [
   "Fill known family profile fields",
@@ -45,12 +49,23 @@ export const PROVIDER_PLAYBOOKS: ProviderPlaybook[] = [
   {
     key: "daysmart",
     name: "DaySmart / Dash",
-    domains: ["daysmartrecreation.com", "dashplatform.com", "dashregistration.com"],
+    domains: [
+      "daysmartrecreation.com",
+      "pps.daysmartrecreation.com",
+      "dashplatform.com",
+      "dashregistration.com",
+    ],
     confidence: "verified",
-    speedClaim: "Optimized for verified DaySmart and Dash registration screens.",
+    speedClaim: "Optimized first for Keva's DaySmart/Dash registration flow.",
     allowedActions: DEFAULT_ALLOWED_ACTIONS,
     stopConditions: DEFAULT_STOP_CONDITIONS,
     fixturePath: "chrome-helper/fixtures/daysmart.html",
+    fixturePaths: [
+      "chrome-helper/fixtures/daysmart-login.html",
+      "chrome-helper/fixtures/daysmart-participant.html",
+      "chrome-helper/fixtures/daysmart-waiver-payment.html",
+      "chrome-helper/fixtures/daysmart-soldout.html",
+    ],
   },
   {
     key: "amilia",

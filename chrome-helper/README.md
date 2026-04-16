@@ -11,6 +11,14 @@ This is the V1 desktop helper for supervised autopilot. It is intentionally isol
 - Pauses for provider mismatch, sold-out/waitlist language, and visible prices above the parent cap.
 - Never clicks final submit, payment confirmation, waiver acceptance, or unknown required fields.
 
+## First Provider Slice
+
+The first MVP provider focus is DaySmart / Dash, grounded in Keva Sports Center:
+
+`https://pps.daysmartrecreation.com/dash/index.php?action=Auth/login&company=keva`
+
+The helper detects the Keva/DaySmart login page but does not log in for the parent. Login, password managers, CAPTCHA, waivers, payment, and final submit remain parent-controlled steps.
+
 ## Local Install
 
 1. Open `chrome://extensions`.
