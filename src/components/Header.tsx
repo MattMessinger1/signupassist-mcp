@@ -33,6 +33,9 @@ export function Header() {
             <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard')}>
               Dashboard
             </Button>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/activity-finder')}>
+              Activity Finder
+            </Button>
             <Button variant="ghost" size="sm" onClick={() => navigate('/autopilot')}>
               Autopilot
             </Button>
@@ -78,6 +81,9 @@ export function Header() {
             <DropdownMenuContent align="end">
               <DropdownMenuItem onClick={() => navigate('/dashboard')}>
                 Dashboard
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate('/activity-finder')}>
+                Activity Finder
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => navigate('/autopilot')}>
                 Autopilot

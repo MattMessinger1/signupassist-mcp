@@ -239,7 +239,7 @@ export default function RegistrationDashboard() {
             </div>
             {[
               { label: 'Home', icon: Home, action: () => navigate('/dashboard') },
-              { label: 'Activity Finder', icon: Search, action: () => navigate('/plan-builder') },
+              { label: 'Activity Finder', icon: Search, action: () => navigate('/activity-finder') },
               { label: 'My Children', icon: Users, action: () => navigate('/credentials') },
               { label: 'Billing & Plan', icon: CreditCard, action: () => navigate('/dashboard') },
               { label: 'Chrome Helper', icon: Chrome, action: () => navigate('/autopilot') },
@@ -275,9 +275,9 @@ export default function RegistrationDashboard() {
                 <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
                 {prompts.dashboard.refresh}
               </Button>
-              <Button variant="accent" onClick={() => navigate('/autopilot')}>
-                <Zap className="h-4 w-4 mr-2" />
-                Start supervised autopilot
+              <Button variant="accent" onClick={() => navigate('/activity-finder')}>
+                <Search className="h-4 w-4 mr-2" />
+                Find your activity
               </Button>
             </div>
           </div>
@@ -346,7 +346,7 @@ export default function RegistrationDashboard() {
             <CardHeader>
               <CardTitle>Let SignupAssist do the watching.</CardTitle>
               <CardDescription>
-                Start supervised autopilot and we'll handle the timing and safe filling, so you don't have to stare at the registration page.
+                Find the right signup, set a reminder, and prepare safe fill help before the registration window opens.
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -354,9 +354,9 @@ export default function RegistrationDashboard() {
                 <ShieldCheck className="h-4 w-4 text-primary" />
                 Safe. Secure. Parent-controlled.
               </div>
-              <Button variant="accent" onClick={() => navigate('/autopilot')}>
-                <Zap className="h-4 w-4 mr-2" />
-                Start supervised autopilot
+              <Button variant="accent" onClick={() => navigate('/activity-finder')}>
+                <Search className="h-4 w-4 mr-2" />
+                Find your activity
               </Button>
             </CardContent>
           </Card>
@@ -375,11 +375,11 @@ export default function RegistrationDashboard() {
               <div className="flex flex-col gap-3 rounded-lg border bg-muted/30 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="font-medium">No supervised run packets yet.</p>
-                  <p className="text-sm text-muted-foreground">Create one before the next registration window.</p>
+                <p className="text-sm text-muted-foreground">Find the activity first, then create signup help before the next registration window.</p>
                 </div>
-                <Button variant="accent" onClick={() => navigate('/autopilot')}>
-                  <Zap className="h-4 w-4 mr-2" />
-                  Create run packet
+                <Button variant="accent" onClick={() => navigate('/activity-finder')}>
+                  <Search className="h-4 w-4 mr-2" />
+                  Find activity
                 </Button>
               </div>
             ) : (
