@@ -475,6 +475,19 @@ function resultFromCandidate(candidate: PlaceCandidate, parsed: ActivityFinderPa
   };
 }
 
+function fastPathCandidateFromParsed(parsed: ActivityFinderParsed): PlaceCandidate | null {
+  const candidate: PlaceCandidate = {
+    name: parsed.venue || parsed.activity || "Venue",
+    address: [parsed.city, parsed.state].filter(Boolean).join(", ") || null,
+    city: parsed.city,
+    state: parsed.state,
+    placeId: null,
+    website: null,
+  };
+
+  return getFastPathForCandidate(candidate, parsed) ? candidate : null;
+}
+
 function needMoreDetailResult(parsed: ActivityFinderParsed): ActivityFinderResult {
   const missing = parsed.missingFields.join(", ") || "one more detail";
   return {
@@ -531,8 +544,10 @@ export async function searchActivityFinder(
   const aiParsed = await (deps.parseQuery || parseQueryWithOpenAI)(query);
   const parsed = mergeParsed(query, aiParsed, input.editedLocation, ipLocation);
   const places = await (deps.searchPlaces || searchGooglePlaces)(parsed, ipLocation);
+  const parsedFastPath = places.length ? null : fastPathCandidateFromParsed(parsed);
 
-  const results = places.map((candidate) => resultFromCandidate(candidate, parsed));
+  const candidates = parsedFastPath ? [parsedFastPath] : places;
+  const results = candidates.map((candidate) => resultFromCandidate(candidate, parsed));
   const sortedResults = results.sort((a, b) => {
     const order: Record<ActivityFinderStatus, number> = {
       tested_fast_path: 0,
