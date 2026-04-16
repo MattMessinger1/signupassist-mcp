@@ -66,6 +66,19 @@ export interface AutopilotRunPacketInput {
   targetProgram?: string | null;
   registrationOpensAt?: string | null;
   maxTotalCents?: number | null;
+  participantAgeYears?: number | null;
+  finder?: {
+    query?: string | null;
+    status?: string | null;
+    venue?: string | null;
+    address?: string | null;
+    location?: string | null;
+  } | null;
+  reminder?: {
+    minutesBefore: number;
+    channels: string[];
+    phoneNumber?: string | null;
+  } | null;
   child?: {
     id: string;
     name: string;
@@ -95,8 +108,15 @@ export interface AutopilotRunPacket {
     program: string | null;
     registrationOpensAt: string | null;
     maxTotalCents: number | null;
+    participantAgeYears: number | null;
     child: AutopilotRunPacketInput["child"];
   };
+  reminder: {
+    minutesBefore: number;
+    channels: string[];
+    phoneNumber: string | null;
+  };
+  finder: NonNullable<AutopilotRunPacketInput["finder"]> | null;
   safety: {
     allowedActions: string[];
     stopConditions: string[];
@@ -148,6 +168,9 @@ export function buildAutopilotRunPacket({
   targetProgram = null,
   registrationOpensAt = null,
   maxTotalCents = null,
+  participantAgeYears = null,
+  finder = null,
+  reminder = null,
   child = null,
   preflight,
 }: AutopilotRunPacketInput): AutopilotRunPacket {
@@ -181,8 +204,15 @@ export function buildAutopilotRunPacket({
       program: targetProgram || null,
       registrationOpensAt: registrationOpensAt || null,
       maxTotalCents: typeof maxTotalCents === "number" ? maxTotalCents : null,
+      participantAgeYears: typeof participantAgeYears === "number" ? participantAgeYears : null,
       child,
     },
+    reminder: {
+      minutesBefore: reminder?.minutesBefore || 10,
+      channels: reminder?.channels?.length ? reminder.channels : ["email"],
+      phoneNumber: reminder?.phoneNumber || null,
+    },
+    finder: finder || null,
     safety: {
       allowedActions: playbook.allowedActions,
       stopConditions: playbook.stopConditions,

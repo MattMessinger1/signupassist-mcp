@@ -44,4 +44,34 @@ describe("autopilot run packets", () => {
 
     expect(calculateReadinessScore(preflight)).toBe(60);
   });
+
+  it("carries finder and reminder context into the helper packet", () => {
+    const packet = buildAutopilotRunPacket({
+      playbook: findPlaybookByKey("generic"),
+      targetUrl: "https://ymca.example/signup",
+      targetProgram: "Swim lessons at Lakeside YMCA",
+      participantAgeYears: 7,
+      registrationOpensAt: "2026-05-01T09:00",
+      maxTotalCents: 18000,
+      finder: {
+        query: "swim lessons at YMCA for age 7",
+        status: "guided_autopilot",
+        venue: "Lakeside YMCA",
+        address: "1 Pool Way, Madison, WI",
+        location: "Madison, WI",
+      },
+      reminder: {
+        minutesBefore: 10,
+        channels: ["email", "sms"],
+        phoneNumber: "(555) 010-1111",
+      },
+      child: null,
+      preflight: buildPreflightState(),
+    });
+
+    expect(packet.target.participantAgeYears).toBe(7);
+    expect(packet.finder?.status).toBe("guided_autopilot");
+    expect(packet.reminder.channels).toEqual(["email", "sms"]);
+    expect(packet.reminder.minutesBefore).toBe(10);
+  });
 });

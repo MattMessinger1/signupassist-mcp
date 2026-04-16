@@ -4,14 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Header } from "@/components/Header";
 
-const providerPath = "/autopilot";
+const providerPath = "/activity-finder";
 
 const steps = [
   {
     number: "1",
     title: "Find your activity",
     description:
-      "Browse a list of verified providers and choose the camp, class, or sport you want.",
+      "Type the activity, venue, and age in one line. SignupAssist finds the best path without making you think about providers.",
   },
   {
     number: "2",
@@ -30,15 +30,15 @@ const steps = [
 const trustItems = [
   {
     icon: CheckCircle2,
-    title: "Verified providers",
+    title: "Guided help for most pages",
     description:
-      "We work with supported registration systems so you know what to expect.",
+      "SignupAssist can help with safe fill on most normal activity signup pages.",
   },
   {
     icon: LockKeyhole,
-    title: "Encrypted information",
+    title: "Reusable family info",
     description:
-      "Your child and payment details are stored securely and can be reused.",
+      "Your child and contact details are saved securely so future signups are faster.",
   },
   {
     icon: ShieldCheck,
@@ -49,8 +49,8 @@ const trustItems = [
 ];
 
 const trustNotes = [
-  "Verified providers",
-  "Encrypted family and payment info",
+  "Tested fast paths when available",
+  "Reusable family info",
   "You always approve final signup",
 ];
 
@@ -68,13 +68,13 @@ const Index = () => {
               </h1>
 
               <p className="text-lg text-muted-foreground sm:text-xl">
-                Choose a verified provider, save your family info once, and get a reminder right before registration opens.
+                Type what you want, get reminded before signup opens, and let SignupAssist help fill the boring parts.
               </p>
 
               <div className="flex flex-col justify-center gap-3 sm:flex-row">
                 <Link to={providerPath}>
                   <Button size="lg" className="w-full sm:w-auto">
-                    See verified providers
+                    Find your activity
                   </Button>
                 </Link>
                 <a href="#how-it-works">
@@ -151,13 +151,13 @@ const Index = () => {
               Ready to make signup easier?
             </h2>
             <p className="mt-3 text-muted-foreground">
-              Find a verified provider and save your information before registration day.
+              Find your activity, save reusable family info, and get ready before registration day.
             </p>
 
             <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
               <Link to={providerPath}>
                 <Button size="lg" className="w-full sm:w-auto">
-                  See verified providers
+                  Find your activity
                 </Button>
               </Link>
               <a href="#how-it-works">

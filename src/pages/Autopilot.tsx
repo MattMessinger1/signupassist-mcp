@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -9,6 +9,7 @@ import {
   CreditCard,
   Loader2,
   PauseCircle,
+  Search,
   ShieldCheck,
   Sparkles,
   Target,
@@ -73,19 +74,48 @@ const centsFromDollarInput = (value: string) => {
   return Math.round(numericValue * 100);
 };
 
+const ageYearsFromInput = (value: string) => {
+  const numericValue = Number(value);
+  if (!Number.isInteger(numericValue) || numericValue < 0 || numericValue > 19) return null;
+  return numericValue;
+};
+
 export default function Autopilot() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { user, loading: authLoading } = useAuth();
+  const finderPrefill = searchParams.get("finder") === "1";
+  const finderActivity = searchParams.get("activity") || "";
+  const finderVenue = searchParams.get("venue") || "";
+  const finderAddress = searchParams.get("address") || "";
+  const finderLocation = searchParams.get("location") || "";
+  const finderStatus = searchParams.get("finderStatus") || "";
+  const finderQuery = searchParams.get("finderQuery") || "";
+  const finderAge = searchParams.get("age") || "";
+  const initialProviderKey = searchParams.get("providerKey") || "daysmart";
+  const initialTargetUrl = finderPrefill ? searchParams.get("targetUrl") || "" : KEVA_DAYSMART_LOGIN_URL;
+  const initialTargetProgram =
+    [finderActivity, finderVenue].filter(Boolean).join(" at ") ||
+    (finderPrefill ? finderVenue || "Guided signup help" : "Keva Sports Center registration");
   const [children, setChildren] = useState<ChildRow[]>([]);
   const [runs, setRuns] = useState<AutopilotRun[]>([]);
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
-  const [targetUrl, setTargetUrl] = useState(KEVA_DAYSMART_LOGIN_URL);
-  const [providerKey, setProviderKey] = useState("daysmart");
+  const [targetUrl, setTargetUrl] = useState(initialTargetUrl);
+  const [providerKey, setProviderKey] = useState(initialProviderKey);
   const [childId, setChildId] = useState("none");
-  const [targetProgram, setTargetProgram] = useState("Keva Sports Center registration");
+  const [targetProgram, setTargetProgram] = useState(initialTargetProgram);
   const [registrationOpensAt, setRegistrationOpensAt] = useState("");
+  const [participantAge, setParticipantAge] = useState(finderAge);
   const [priceCap, setPriceCap] = useState("250");
-  const [preflight, setPreflight] = useState(buildPreflightState());
+  const [reminderMinutes, setReminderMinutes] = useState("10");
+  const [reminderEmail, setReminderEmail] = useState(true);
+  const [reminderSms, setReminderSms] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [preflight, setPreflight] = useState(
+    buildPreflightState({
+      targetUrlConfirmed: finderPrefill && Boolean(initialTargetUrl) && initialProviderKey !== "generic",
+    }),
+  );
   const [createdPacket, setCreatedPacket] = useState<AutopilotRunPacket | null>(null);
   const [loadingData, setLoadingData] = useState(true);
   const [creatingRun, setCreatingRun] = useState(false);
@@ -101,6 +131,26 @@ export default function Autopilot() {
   const latestCompletedRun = runs.find((run) => run.status === "completed");
   const selectedChild = children.find((child) => child.id === childId);
   const readinessScore = calculateReadinessScore(preflight);
+  const reminderChannels = useMemo(
+    () => [
+      ...(reminderEmail ? ["email"] : []),
+      ...(reminderSms ? ["sms"] : []),
+    ],
+    [reminderEmail, reminderSms],
+  );
+  const reminderMinutesValue = Number.isFinite(Number(reminderMinutes))
+    ? Math.max(1, Math.round(Number(reminderMinutes)))
+    : 10;
+  const participantAgeYears = ageYearsFromInput(participantAge);
+  const finderMetadata = finderPrefill
+    ? {
+        query: finderQuery || null,
+        status: finderStatus || null,
+        venue: finderVenue || null,
+        address: finderAddress || null,
+        location: finderLocation || null,
+      }
+    : null;
   const runPacketPreview = useMemo(
     () =>
       buildAutopilotRunPacket({
@@ -109,6 +159,13 @@ export default function Autopilot() {
         targetProgram: targetProgram.trim() || null,
         registrationOpensAt: registrationOpensAt || null,
         maxTotalCents: centsFromDollarInput(priceCap),
+        participantAgeYears,
+        finder: finderMetadata,
+        reminder: {
+          minutesBefore: reminderMinutesValue,
+          channels: reminderChannels.length ? reminderChannels : ["email"],
+          phoneNumber: reminderSms ? phoneNumber.trim() || null : null,
+        },
         child: selectedChild
           ? {
               id: selectedChild.id,
@@ -117,7 +174,21 @@ export default function Autopilot() {
           : null,
         preflight,
       }),
-    [preflight, priceCap, registrationOpensAt, selectedChild, selectedPlaybook, targetProgram, targetUrl],
+    [
+      finderMetadata,
+      participantAgeYears,
+      phoneNumber,
+      preflight,
+      priceCap,
+      registrationOpensAt,
+      reminderChannels,
+      reminderMinutesValue,
+      reminderSms,
+      selectedChild,
+      selectedPlaybook,
+      targetProgram,
+      targetUrl,
+    ],
   );
 
   const loadAutopilotData = useCallback(async () => {
@@ -226,6 +297,13 @@ export default function Autopilot() {
         targetProgram: targetProgram.trim() || null,
         registrationOpensAt: registrationOpensAt || null,
         maxTotalCents,
+        participantAgeYears,
+        finder: finderMetadata,
+        reminder: {
+          minutesBefore: reminderMinutesValue,
+          channels: reminderChannels.length ? reminderChannels : ["email"],
+          phoneNumber: reminderSms ? phoneNumber.trim() || null : null,
+        },
         child: selectedChild
           ? {
               id: selectedChild.id,
@@ -249,6 +327,9 @@ export default function Autopilot() {
           readiness_score: packet.readiness.score,
           preflight: packet.readiness.checks,
           payment: packet.payment,
+          reminder: packet.reminder,
+          finder: packet.finder,
+          participant_age_years: participantAgeYears,
           run_packet_version: packet.version,
         } as Json,
         allowed_actions: packet.safety.allowedActions as unknown as Json,
@@ -261,6 +342,9 @@ export default function Autopilot() {
             max_total_cents: maxTotalCents,
             registration_opens_at: registrationOpensAt || null,
             readiness_score: packet.readiness.score,
+            reminder: packet.reminder,
+            finder: packet.finder,
+            participant_age_years: participantAgeYears,
           }),
           buildAutopilotAuditEvent("run_packet_created", {
             mode: packet.mode,
@@ -349,6 +433,19 @@ export default function Autopilot() {
           </div>
         </div>
 
+        {finderPrefill && (
+          <Alert className="mb-6 border-primary/20 bg-[hsl(var(--secondary))]">
+            <Search className="h-4 w-4" />
+            <AlertTitle>
+              {finderStatus === "tested_fast_path" ? "Tested Fast Path found" : "Guided Autopilot ready"}
+            </AlertTitle>
+            <AlertDescription>
+              We carried over {finderActivity || "your activity"} {finderVenue ? `at ${finderVenue}` : ""}
+              {finderLocation ? ` near ${finderLocation}` : ""}. Confirm the signup link, reminder, and reusable info before registration opens.
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Alert className="mb-6 border-primary/20 bg-[hsl(var(--secondary))]">
           <Target className="h-4 w-4" />
           <AlertTitle>First provider focus: DaySmart / Dash for Keva</AlertTitle>
@@ -366,12 +463,12 @@ export default function Autopilot() {
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
+                  <CardTitle className="flex items-center gap-2">
                   <Target className="h-5 w-5" />
-                  Run packet setup
+                  Signup help setup
                 </CardTitle>
                 <CardDescription>
-                  Capture the provider, child, session, timing, caps, and stop rules before the rush.
+                  Confirm the child, signup page, reminder, reusable info, and safety limits before the rush.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
@@ -397,13 +494,13 @@ export default function Autopilot() {
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="target-url">Provider signup URL</Label>
+                    <Label htmlFor="target-url">Signup page URL</Label>
                     <div className="flex flex-col gap-2 sm:flex-row">
                       <Input
                         id="target-url"
                         value={targetUrl}
                         onChange={(event) => setTargetUrl(event.target.value)}
-                        placeholder="https://..."
+                        placeholder="Paste the exact registration page, not just the venue homepage"
                       />
                       <Button type="button" variant="outline" onClick={detectProvider}>
                         Detect provider
@@ -445,6 +542,17 @@ export default function Autopilot() {
                   </div>
 
                   <div className="space-y-2">
+                    <Label htmlFor="participant-age">Age or grade</Label>
+                    <Input
+                      id="participant-age"
+                      inputMode="numeric"
+                      value={participantAge}
+                      onChange={(event) => setParticipantAge(event.target.value)}
+                      placeholder="9"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
                     <Label htmlFor="target-program">Program or session</Label>
                     <Input
                       id="target-program"
@@ -473,6 +581,52 @@ export default function Autopilot() {
                       onChange={(event) => setPriceCap(event.target.value)}
                       placeholder="250"
                     />
+                  </div>
+                </div>
+
+                <div className="rounded-lg border p-4">
+                  <div className="mb-3">
+                    <p className="font-medium">Reminder</p>
+                    <p className="text-sm text-muted-foreground">
+                      We’ll remind you before signup opens so registration day does not sneak up on you.
+                    </p>
+                  </div>
+                  <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)]">
+                    <div className="space-y-2">
+                      <Label htmlFor="reminder-minutes">Minutes before</Label>
+                      <Input
+                        id="reminder-minutes"
+                        inputMode="numeric"
+                        value={reminderMinutes}
+                        onChange={(event) => setReminderMinutes(event.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-3">
+                      <Label>Reminder channels</Label>
+                      <div className="flex flex-wrap gap-3">
+                        <label className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm">
+                          <Checkbox
+                            checked={reminderEmail}
+                            onCheckedChange={(checked) => setReminderEmail(checked === true)}
+                          />
+                          Email
+                        </label>
+                        <label className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm">
+                          <Checkbox
+                            checked={reminderSms}
+                            onCheckedChange={(checked) => setReminderSms(checked === true)}
+                          />
+                          Text message
+                        </label>
+                      </div>
+                      {reminderSms && (
+                        <Input
+                          value={phoneNumber}
+                          onChange={(event) => setPhoneNumber(event.target.value)}
+                          placeholder="Phone number for text reminder"
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
 

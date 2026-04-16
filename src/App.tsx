@@ -10,6 +10,7 @@ import Auth from "./pages/auth";
 import Credentials from "./pages/Credentials";
 import RegistrationDashboard from "./pages/RegistrationDashboard";
 import Autopilot from "./pages/Autopilot";
+import ActivityFinder from "./pages/ActivityFinder";
 import DiscoveryRuns from "./pages/DiscoveryRuns";
 import MandatesAudit from "./pages/MandatesAudit";
 import FlowTester from "./pages/FlowTester";
@@ -33,6 +34,7 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/dashboard" element={<RegistrationDashboard />} />
+            <Route path="/activity-finder" element={<ActivityFinder />} />
             <Route path="/autopilot" element={<Autopilot />} />
             <Route path="/plan-builder" element={<PlanBuilderWithStripe />} />
             <Route path="/credentials" element={<Credentials />} />
