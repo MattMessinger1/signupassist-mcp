@@ -1,46 +1,57 @@
 import { Link } from "react-router-dom";
-import {
-  ArrowRight,
-  CalendarClock,
-  CheckCircle2,
-  CreditCard,
-  MousePointerClick,
-  ShieldCheck,
-  Sparkles,
-  Zap,
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { BellRing, CheckCircle2, LockKeyhole, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Header } from "@/components/Header";
-import { AUTOPILOT_PRICE_LABEL } from "@/lib/subscription";
-import { SUPERVISED_AUTOPILOT_BILLING_COPY } from "@/lib/autopilot/runPacket";
 
-const parentWins = [
+const providerPath = "/autopilot";
+
+const steps = [
   {
-    icon: Zap,
-    title: "Move faster at open",
+    number: "1",
+    title: "Find your activity",
     description:
-      "Repeated family, child, contact, and emergency fields are ready before the rush starts.",
+      "Browse a list of verified providers and choose the camp, class, or sport you want.",
   },
   {
-    icon: ShieldCheck,
-    title: "Stay in control",
+    number: "2",
+    title: "Enter info once",
     description:
-      "Payment, waivers, sensitive fields, and final submit always stop for parent approval.",
+      "Add your child details, emergency contacts, and payment information once. Everything is encrypted and reusable.",
   },
   {
-    icon: CalendarClock,
-    title: "Prepare once",
+    number: "3",
+    title: "Get a reminder",
     description:
-      "Run packets, price caps, and provider playbooks set up the path toward Set and Forget.",
+      "We text and email you 5-10 minutes before signup opens, and you stay in control of the final signup.",
   },
 ];
 
-const paymentFacts = [
-  SUPERVISED_AUTOPILOT_BILLING_COPY.membership,
-  SUPERVISED_AUTOPILOT_BILLING_COPY.providerFee,
-  SUPERVISED_AUTOPILOT_BILLING_COPY.noSuccessFee,
+const trustItems = [
+  {
+    icon: CheckCircle2,
+    title: "Verified providers",
+    description:
+      "We work with supported registration systems so you know what to expect.",
+  },
+  {
+    icon: LockKeyhole,
+    title: "Encrypted information",
+    description:
+      "Your child and payment details are stored securely and can be reused.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Parent approval",
+    description:
+      "Sensitive fields and final signup always stay under your control.",
+  },
+];
+
+const trustNotes = [
+  "Verified providers",
+  "Encrypted family and payment info",
+  "You always approve final signup",
 ];
 
 const Index = () => {
@@ -50,123 +61,107 @@ const Index = () => {
 
       <main>
         <section className="border-b bg-[hsl(var(--secondary))]">
-          <div className="container mx-auto grid min-h-[calc(100vh-9rem)] max-w-6xl gap-10 px-4 py-12 lg:grid-cols-[minmax(0,1fr)_420px] lg:items-center">
-            <div className="space-y-7">
-              <Badge variant="secondary" className="border border-primary/10 bg-background">
-                Chrome desktop supervised autopilot
-              </Badge>
+          <div className="container mx-auto max-w-6xl px-4 py-20 sm:py-24">
+            <div className="mx-auto max-w-3xl space-y-6 text-center">
+              <h1 className="text-4xl font-bold tracking-normal text-primary sm:text-5xl lg:text-6xl">
+                Fast camp and class signup, without the chaos.
+              </h1>
 
-              <div className="space-y-4">
-                <h1 className="max-w-4xl text-4xl font-bold tracking-normal text-primary sm:text-5xl lg:text-6xl">
-                  Move fast when registration opens.
-                </h1>
-                <p className="max-w-2xl text-lg text-muted-foreground sm:text-xl">
-                  SignupAssist fills the tedious parts, you approve the important parts, and cancellation is always one click away.
-                </p>
-              </div>
+              <p className="text-lg text-muted-foreground sm:text-xl">
+                Choose a verified provider, save your family info once, and get a reminder right before registration opens.
+              </p>
 
-              <div className="flex flex-col gap-3 sm:flex-row">
-                <Link to="/autopilot">
+              <div className="flex flex-col justify-center gap-3 sm:flex-row">
+                <Link to={providerPath}>
                   <Button size="lg" className="w-full sm:w-auto">
-                    <Zap className="h-5 w-5" />
-                    Start supervised autopilot
+                    See verified providers
                   </Button>
                 </Link>
-                <Link to="/dashboard">
+                <a href="#how-it-works">
                   <Button size="lg" variant="outline" className="w-full sm:w-auto">
-                    Dashboard
-                    <ArrowRight className="h-5 w-5" />
+                    How it works
                   </Button>
-                </Link>
+                </a>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3">
-                {paymentFacts.map((fact) => (
-                  <div key={fact} className="rounded-lg border bg-background p-4 text-sm text-muted-foreground">
-                    <CheckCircle2 className="mb-2 h-4 w-4 text-primary" />
-                    {fact}
-                  </div>
+              <div className="flex flex-col items-center gap-2 pt-2 text-sm text-muted-foreground sm:flex-row sm:justify-center sm:gap-6">
+                {trustNotes.map((note) => (
+                  <span key={note} className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-primary" />
+                    {note}
+                  </span>
                 ))}
-              </div>
-            </div>
-
-            <div className="rounded-lg border bg-background p-5 shadow-sm">
-              <div className="mb-5 flex items-start justify-between gap-4">
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">SignupAssist run packet</p>
-                  <h2 className="mt-1 text-2xl font-bold text-primary">Saturday soccer registration</h2>
-                </div>
-                <Badge>{AUTOPILOT_PRICE_LABEL}</Badge>
-              </div>
-
-              <div className="space-y-3">
-                {[
-                  ["Provider", "ACTIVE / ActiveNet"],
-                  ["Child", "Ava M."],
-                  ["Target", "U8 soccer, 9am session"],
-                  ["Price cap", "$250"],
-                ].map(([label, value]) => (
-                  <div key={label} className="flex items-center justify-between rounded-lg border p-3">
-                    <span className="text-sm text-muted-foreground">{label}</span>
-                    <span className="text-sm font-medium">{value}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-5 rounded-lg bg-[hsl(var(--secondary))] p-4">
-                <div className="mb-3 flex items-center gap-2 text-sm font-medium">
-                  <MousePointerClick className="h-4 w-4 text-primary" />
-                  Helper status
-                </div>
-                <div className="space-y-2 text-sm text-muted-foreground">
-                  <p>Known fields filled.</p>
-                  <p>Provider checkout detected. Parent approval required.</p>
-                  <p>Final submit remains locked until you approve.</p>
-                </div>
               </div>
             </div>
           </div>
         </section>
 
-        <section className="container mx-auto max-w-6xl px-4 py-12">
-          <div className="mb-8 max-w-2xl">
-            <h2 className="text-3xl font-bold text-primary">Built for the registration-window scramble</h2>
-            <p className="mt-3 text-muted-foreground">
-              Version 1 is supervised on purpose: faster than manual signup, safer than pretending every provider page is ready for unattended automation.
+        <section id="how-it-works" className="container mx-auto max-w-6xl px-4 py-16">
+          <div className="mx-auto max-w-2xl space-y-3 text-center">
+            <h2 className="text-3xl font-bold text-primary sm:text-4xl">
+              How it works
+            </h2>
+            <p className="text-muted-foreground">
+              A simple 3-step flow for busy parents.
             </p>
           </div>
 
-          <div className="grid gap-5 md:grid-cols-3">
-            {parentWins.map((item) => (
-              <Card key={item.title}>
-                <CardHeader>
-                  <item.icon className="h-7 w-7 text-primary" />
-                  <CardTitle>{item.title}</CardTitle>
+          <div className="mt-10 grid gap-6 md:grid-cols-3">
+            {steps.map((step) => (
+              <Card key={step.number} className="h-full">
+                <CardHeader className="space-y-4">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary/10 text-lg font-semibold text-primary">
+                    {step.number}
+                  </div>
+                  <CardTitle>{step.title}</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <CardDescription>{item.description}</CardDescription>
+                  <p className="text-muted-foreground">{step.description}</p>
                 </CardContent>
               </Card>
             ))}
           </div>
+        </section>
 
-          <div className="mt-10 rounded-lg border bg-[hsl(var(--secondary))] p-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <div className="mb-2 flex items-center gap-2 text-sm font-medium text-primary">
-                  <Sparkles className="h-4 w-4" />
-                  Set and Forget foundation
-                </div>
-                <p className="max-w-3xl text-muted-foreground">
-                  Supervised runs capture the provider playbooks, pause reasons, price caps, and audit trail needed for future fully automated registration.
-                </p>
-              </div>
-              <Link to="/autopilot">
-                <Button variant="accent" className="w-full md:w-auto">
-                  Create a run packet
-                  <ArrowRight className="h-4 w-4" />
+        <section className="border-y bg-[hsl(var(--secondary))]">
+          <div className="container mx-auto max-w-6xl px-4 py-16">
+            <div className="grid gap-6 md:grid-cols-3">
+              {trustItems.map((item) => (
+                <Card key={item.title}>
+                  <CardHeader>
+                    <item.icon className="h-6 w-6 text-primary" />
+                    <CardTitle>{item.title}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-muted-foreground">{item.description}</p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="container mx-auto max-w-4xl px-4 py-20">
+          <div className="rounded-lg border bg-background p-8 text-center shadow-sm">
+            <BellRing className="mx-auto mb-4 h-8 w-8 text-primary" />
+            <h2 className="text-3xl font-bold text-primary">
+              Ready to make signup easier?
+            </h2>
+            <p className="mt-3 text-muted-foreground">
+              Find a verified provider and save your information before registration day.
+            </p>
+
+            <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+              <Link to={providerPath}>
+                <Button size="lg" className="w-full sm:w-auto">
+                  See verified providers
                 </Button>
               </Link>
+              <a href="#how-it-works">
+                <Button size="lg" variant="outline" className="w-full sm:w-auto">
+                  How it works
+                </Button>
+              </a>
             </div>
           </div>
         </section>
