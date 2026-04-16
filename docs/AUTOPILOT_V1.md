@@ -11,7 +11,35 @@ Move fast when registration opens. SignupAssist fills the tedious parts, you app
 - Plan: SignupAssist Autopilot
 - Price: $9/month
 - Real supervised autopilot runs require an active subscription.
-- Existing $20 success-fee logic remains separate for API-backed, scheduled, or premium completion flows.
+- Supervised autopilot does not charge a $20 success fee.
+- Existing $20 success-fee logic remains in the codebase for the future fully automated Set and Forget product only.
+- Program fees are paid directly to the activity provider on the provider site.
+
+V1 billing copy:
+
+- SignupAssist membership is $9/month.
+- Program fees are paid directly to the provider.
+- No success fee is charged for supervised autopilot.
+- Success fees may apply later for fully automated Set and Forget registrations.
+
+## Provider Payment
+
+SignupAssist does not use Stripe to pay activity providers in V1. Stripe is only used for the SignupAssist membership.
+
+The helper pauses at provider checkout, payment confirmation, and final submit. The parent uses the provider's saved payment method, browser autofill, wallet, or manual card entry directly on the provider site.
+
+## Run Packet
+
+The web app creates a supervised run packet for the Chrome helper. The packet includes:
+
+- Provider playbook and target URL.
+- Child/profile and target program/session.
+- Registration open time and price cap.
+- Preflight readiness checks.
+- Allowed actions and stop conditions.
+- Billing policy showing $0 supervised-autopilot success fee and the future Set and Forget success-fee amount.
+
+The run packet is intentionally useful for V1 and future Set and Forget. V1 uses it for supervised filling and pause decisions. Future automation can use the same structure for scheduled launch, audit trails, price caps, and parent escalation.
 
 ## Trust-First Cancellation
 

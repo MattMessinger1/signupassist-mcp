@@ -77,7 +77,7 @@ export function getSubscriptionDisplay(subscription?: UserSubscription | null) {
   if (subscription.status === "active" || subscription.status === "trialing") {
     return {
       label: "Active",
-      description: "Supervised autopilot is available for real signup runs.",
+      description: "Supervised autopilot is available for real signup runs. No success fee is charged for supervised autopilot.",
       nextChargeLabel: subscription.current_period_end
         ? `Next charge ${accessDate}`
         : "Monthly renewal active",

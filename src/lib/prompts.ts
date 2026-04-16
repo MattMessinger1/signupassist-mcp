@@ -205,7 +205,7 @@ export const prompts = {
       },
       'signupassist:fee': {
         label: 'Service Fee',
-        description: '$20 success fee upon completion',
+        description: '$20 success fee for future fully automated Set and Forget completion',
         icon: 'dollar-sign',
       },
     },
@@ -545,7 +545,7 @@ export const prompts = {
       },
       {
         title: 'Pay Only on Success',
-        description: '$20 service fee charged only when we successfully register your child. No hidden fees or subscriptions.',
+        description: '$20 service fee reserved for future fully automated Set and Forget registrations, charged only after success.',
       },
     ],
   },

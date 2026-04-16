@@ -44,11 +44,19 @@ const SENSITIVE_FIELD_WORDS = [
   "health",
   "social security",
   "ssn",
+  "credit card",
+  "card number",
+  "cardholder",
+  "expiration",
+  "expiry",
+  "security code",
+  "billing",
+  "cvv",
+  "cvc",
 ];
 
 const SOLD_OUT_WORDS = [
   "sold out",
-  "full",
   "waitlist",
   "waiting list",
   "unavailable",

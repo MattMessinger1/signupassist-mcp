@@ -42,9 +42,36 @@ const SENSITIVE_FIELD_WORDS = [
   "health",
   "social security",
   "ssn",
+  "credit card",
+  "card number",
+  "cardholder",
+  "expiration",
+  "expiry",
+  "security code",
+  "billing",
+  "cvv",
+  "cvc",
   "captcha",
   "password",
 ];
+
+const SOLD_OUT_WORDS = [
+  "sold out",
+  "waitlist",
+  "waiting list",
+  "unavailable",
+  "no seats",
+  "no spots",
+  "closed",
+];
+
+const PROVIDER_DOMAINS = {
+  active: ["active.com", "activecommunities.com", "activenetwork.com"],
+  daysmart: ["daysmartrecreation.com", "dashplatform.com", "dashregistration.com"],
+  amilia: ["amilia.com"],
+  "civicrec-recdesk": ["civicrec.com", "recdesk.com"],
+  campminder: ["campminder.com"],
+};
 
 const FIELD_MATCHERS = [
   { field: "childFirstName", words: ["child first", "participant first", "camper first", "student first"] },
@@ -84,6 +111,72 @@ function escapeHtml(value) {
     const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" };
     return map[char];
   });
+}
+
+async function getRunPacket() {
+  const { signupassistRunPacket = null } = await chrome.storage.local.get("signupassistRunPacket");
+  if (!signupassistRunPacket || typeof signupassistRunPacket !== "object") return null;
+  if (signupassistRunPacket.mode !== "supervised_autopilot") return null;
+  return signupassistRunPacket;
+}
+
+function summarizePacket(packet) {
+  if (!packet) return [];
+
+  const summary = [];
+  if (packet.target?.providerName) summary.push(`Provider: ${packet.target.providerName}`);
+  if (packet.target?.child?.name) summary.push(`Child: ${packet.target.child.name}`);
+  if (packet.target?.program) summary.push(`Target: ${packet.target.program}`);
+  if (typeof packet.target?.maxTotalCents === "number") {
+    summary.push(`Price cap: $${(packet.target.maxTotalCents / 100).toFixed(0)}`);
+  }
+  if (typeof packet.readiness?.score === "number") summary.push(`Readiness: ${packet.readiness.score}%`);
+  return summary;
+}
+
+function hostMatchesPacket(packet) {
+  if (!packet?.target?.providerKey || packet.target.providerKey === "generic") return true;
+  const domains = PROVIDER_DOMAINS[packet.target.providerKey] || [];
+  const host = window.location.hostname.toLowerCase();
+  return domains.some((domain) => host === domain || host.endsWith(`.${domain}`));
+}
+
+function detectSoldOutText() {
+  const text = normalize(document.body?.innerText || "");
+  return SOLD_OUT_WORDS.some((word) => text.includes(word));
+}
+
+function detectMaxVisiblePriceCents() {
+  const text = document.body?.innerText || "";
+  const matches = Array.from(text.matchAll(/\$\s?([0-9]{1,4})(?:\.([0-9]{2}))?/g));
+  if (!matches.length) return null;
+
+  return matches.reduce((max, match) => {
+    const dollars = Number(match[1]);
+    const cents = Number(match[2] || "0");
+    if (!Number.isFinite(dollars) || !Number.isFinite(cents)) return max;
+    return Math.max(max, dollars * 100 + cents);
+  }, 0);
+}
+
+function collectPacketPauses(packet) {
+  const pauses = [];
+
+  if (packet && !hostMatchesPacket(packet)) {
+    pauses.push("Provider mismatch: current page does not match the run packet provider");
+  }
+
+  if (detectSoldOutText()) {
+    pauses.push("Sold-out, closed, unavailable, or waitlist language detected");
+  }
+
+  const visiblePriceCents = detectMaxVisiblePriceCents();
+  const capCents = packet?.target?.maxTotalCents;
+  if (typeof visiblePriceCents === "number" && typeof capCents === "number" && visiblePriceCents > capCents) {
+    pauses.push(`Price above cap: $${(visiblePriceCents / 100).toFixed(2)} visible, cap is $${(capCents / 100).toFixed(2)}`);
+  }
+
+  return pauses;
 }
 
 function getFieldLabel(field) {
@@ -156,10 +249,11 @@ function classifyButton(button) {
   return { kind: "unknown", reason: "Unknown button meaning" };
 }
 
-function scanPage() {
+async function scanPage() {
+  const packet = await getRunPacket();
   const fields = Array.from(document.querySelectorAll("input, textarea, select"));
   const buttons = Array.from(document.querySelectorAll("button, input[type='button'], input[type='submit'], a[role='button']"));
-  const pauses = [];
+  const pauses = collectPacketPauses(packet);
   const safeButtons = [];
   const forbiddenButtons = [];
 
@@ -184,12 +278,16 @@ function scanPage() {
     }
   });
 
-  overlay("Page scanned. Green fields were filled, blue buttons are safe navigation, red items require parent approval.", [
-    `${fields.length} fields`,
-    `${safeButtons.length} safe navigation buttons`,
-    `${forbiddenButtons.length} final-action buttons`,
-    `${pauses.length} pause conditions`,
-  ]);
+  overlay(
+    "Page scanned. SignupAssist can fill known fields, but parent approval stays required for risky moments.",
+    [
+      ...summarizePacket(packet),
+      `${fields.length} fields`,
+      `${safeButtons.length} safe navigation buttons`,
+      `${forbiddenButtons.length} final-action buttons`,
+      `${pauses.length} pause conditions`,
+    ],
+  );
 
   return {
     fields: fields.length,
@@ -197,14 +295,18 @@ function scanPage() {
     pauses,
     safeButtons,
     forbiddenButtons,
+    runPacketLoaded: Boolean(packet),
   };
 }
 
 async function fillKnownFields() {
-  const { signupassistProfile = {} } = await chrome.storage.local.get("signupassistProfile");
+  const [{ signupassistProfile = {} }, packet] = await Promise.all([
+    chrome.storage.local.get("signupassistProfile"),
+    getRunPacket(),
+  ]);
   const fields = Array.from(document.querySelectorAll("input, textarea"));
   const filled = [];
-  const pauses = [];
+  const pauses = collectPacketPauses(packet);
 
   fields.forEach((field) => {
     if (field.disabled || field.readOnly || field.value) return;
@@ -226,17 +328,21 @@ async function fillKnownFields() {
     filled.push(label || match.field);
   });
 
-  overlay("Prepared fields filled. Parent approval is still required for final submit, waivers, payments, and unknown required fields.", [
-    `${filled.length} fields filled`,
-    `${pauses.length} pause conditions`,
-  ]);
+  overlay(
+    "Prepared fields filled. Parent approval is still required for final submit, waivers, payments, unknown fields, and price changes.",
+    [
+      ...summarizePacket(packet),
+      `${filled.length} fields filled`,
+      `${pauses.length} pause conditions`,
+    ],
+  );
 
-  return { filled, pauses };
+  return { filled, pauses, runPacketLoaded: Boolean(packet) };
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message?.type === "SIGNUPASSIST_SCAN") {
-    sendResponse(scanPage());
+    scanPage().then(sendResponse);
     return true;
   }
 

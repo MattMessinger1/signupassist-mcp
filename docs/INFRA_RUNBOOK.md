@@ -155,7 +155,7 @@ MCP_SERVER_URL=... MCP_ACCESS_TOKEN=... E2E_USER_ID=... E2E_EXECUTE=1 npm run te
 
 ## Billing Operating Rules
 
-- Preserve the existing `$20 success fee` path for API-backed/scheduled/premium completion.
+- Preserve the existing `$20 success fee` path for the future fully automated Set and Forget product. V1 supervised autopilot does not charge a success fee.
 - Keep the `$9/month` SignupAssist Autopilot subscription path separate.
 - Stripe webhooks must update Supabase subscription state.
 - Cancel-renewal must stay visible from dashboard, autopilot, and post-run screens.

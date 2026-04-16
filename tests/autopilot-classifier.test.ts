@@ -22,6 +22,8 @@ describe("autopilot safety classifier", () => {
     expect(isSensitiveField(["Known allergies"])).toBe(true);
     expect(isSensitiveField(["Medical notes"])).toBe(true);
     expect(isSensitiveField(["Insurance policy number"])).toBe(true);
+    expect(isSensitiveField(["Credit card number"])).toBe(true);
+    expect(isSensitiveField(["CVV"])).toBe(true);
     expect(isSensitiveField(["Participant first name"])).toBe(false);
   });
 
