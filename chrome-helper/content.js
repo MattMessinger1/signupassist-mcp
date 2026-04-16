@@ -55,6 +55,33 @@ const SENSITIVE_FIELD_WORDS = [
   "password",
 ];
 
+const AUTH_PAUSE_WORDS = [
+  "log in",
+  "login",
+  "sign in",
+  "signed in",
+  "stay signed in",
+  "forgot my password",
+  "create account",
+];
+
+const LEGAL_PAUSE_WORDS = [
+  "waiver",
+  "release",
+  "liability",
+  "consent",
+  "terms and conditions",
+  "terms of service",
+  "agree to",
+  "i agree",
+];
+
+const CAPTCHA_PAUSE_WORDS = [
+  "captcha",
+  "recaptcha",
+  "verify you are human",
+];
+
 const SOLD_OUT_WORDS = [
   "sold out",
   "waitlist",
@@ -146,6 +173,27 @@ function detectSoldOutText() {
   return SOLD_OUT_WORDS.some((word) => text.includes(word));
 }
 
+function detectTextPause(words) {
+  const text = normalize(document.body?.innerText || "");
+  return words.some((word) => text.includes(word));
+}
+
+function detectAuthPause() {
+  if (document.querySelector('input[type="password"]')) return true;
+  return detectTextPause(AUTH_PAUSE_WORDS);
+}
+
+function detectCaptchaPause() {
+  if (document.querySelector('[class*="captcha" i], [id*="captcha" i], iframe[src*="captcha" i]')) {
+    return true;
+  }
+  return detectTextPause(CAPTCHA_PAUSE_WORDS);
+}
+
+function detectLegalPause() {
+  return detectTextPause(LEGAL_PAUSE_WORDS);
+}
+
 function detectMaxVisiblePriceCents() {
   const text = document.body?.innerText || "";
   const matches = Array.from(text.matchAll(/\$\s?([0-9]{1,4})(?:\.([0-9]{2}))?/g));
@@ -168,6 +216,18 @@ function collectPacketPauses(packet) {
 
   if (detectSoldOutText()) {
     pauses.push("Sold-out, closed, unavailable, or waitlist language detected");
+  }
+
+  if (detectAuthPause()) {
+    pauses.push("Login or account step detected: parent signs in before the helper continues");
+  }
+
+  if (detectCaptchaPause()) {
+    pauses.push("CAPTCHA or human verification detected: parent action required");
+  }
+
+  if (detectLegalPause()) {
+    pauses.push("Waiver, release, or legal acceptance detected: parent review required");
   }
 
   const visiblePriceCents = detectMaxVisiblePriceCents();
@@ -262,6 +322,12 @@ async function scanPage() {
     if (isSensitive(label, field)) {
       field.classList.add("signupassist-paused");
       pauses.push(`Sensitive field: ${label || field.tagName.toLowerCase()}`);
+      return;
+    }
+
+    if (field.required && !matchProfileField(label)) {
+      field.classList.add("signupassist-paused");
+      pauses.push(`Unknown required field: ${label || field.getAttribute("name") || field.tagName.toLowerCase()}`);
     }
   });
 
@@ -319,7 +385,13 @@ async function fillKnownFields() {
     }
 
     const match = matchProfileField(label);
-    if (!match) return;
+    if (!match) {
+      if (field.required) {
+        field.classList.add("signupassist-paused");
+        pauses.push(`Unknown required field: ${label || field.getAttribute("name") || "Required field"}`);
+      }
+      return;
+    }
 
     const value = signupassistProfile[match.field];
     if (!value) return;

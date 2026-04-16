@@ -24,6 +24,18 @@ function summarizePacket(packet) {
   return parts.length ? parts.join(" / ") : "Run packet loaded.";
 }
 
+function setPacketDetails(packet) {
+  const provider = packet?.target?.providerName || "No packet loaded";
+  const child = packet?.target?.child?.name || "Choose in SignupAssist";
+  const cap = typeof packet?.target?.maxTotalCents === "number"
+    ? `$${(packet.target.maxTotalCents / 100).toFixed(2)}`
+    : "Not set";
+
+  document.getElementById("providerDetected").textContent = provider;
+  document.getElementById("childSelected").textContent = child;
+  document.getElementById("priceCap").textContent = cap;
+}
+
 async function getActiveTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   return tabs[0];
@@ -48,6 +60,7 @@ async function loadProfile() {
     document.getElementById("runPacket").value = JSON.stringify(signupassistRunPacket, null, 2);
   }
   document.getElementById("packetSummary").textContent = summarizePacket(signupassistRunPacket);
+  setPacketDetails(signupassistRunPacket);
 }
 
 async function saveProfile() {
@@ -64,6 +77,7 @@ async function saveRunPacket() {
   if (!rawPacket) {
     await chrome.storage.local.remove("signupassistRunPacket");
     document.getElementById("packetSummary").textContent = "No run packet loaded.";
+    setPacketDetails(null);
     setStatus("Run packet cleared.");
     return;
   }
@@ -83,6 +97,7 @@ async function saveRunPacket() {
 
   await chrome.storage.local.set({ signupassistRunPacket: packet });
   document.getElementById("packetSummary").textContent = summarizePacket(packet);
+  setPacketDetails(packet);
   setStatus("Run packet saved.");
 }
 

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CheckCircle, XCircle, Clock, AlertTriangle, Eye, RefreshCw, Play, Loader2, Zap, ClipboardCheck, CreditCard, ShieldCheck, UserRound } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, AlertTriangle, Eye, RefreshCw, Play, Loader2, Zap, ClipboardCheck, CreditCard, ShieldCheck, UserRound, Home, Search, Users, Chrome, Settings, CalendarClock } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -69,6 +69,8 @@ export default function RegistrationDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const navigate = useNavigate();
   const { user, loading: authLoading } = useAuth();
+  const firstName = user?.email?.split('@')[0]?.split(/[._-]/)[0] || 'there';
+  const greetingName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -91,15 +93,18 @@ export default function RegistrationDashboard() {
             children:child_id (first_name, last_name),
             plan_executions (*)
           `)
+          .eq('user_id', user!.id)
           .order('created_at', { ascending: false }),
         supabase
           .from('autopilot_runs')
           .select('id, provider_name, status, target_program, target_url, created_at, caps')
+          .eq('user_id', user!.id)
           .order('created_at', { ascending: false })
           .limit(5),
         supabase
           .from('children')
-          .select('id', { count: 'exact', head: true }),
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user!.id),
       ]);
 
       const { data: plansData, error: plansError } = plansResult;
@@ -227,12 +232,38 @@ export default function RegistrationDashboard() {
     <div className="min-h-screen bg-background">
       <Header />
       <div className="container mx-auto py-8 px-4 max-w-6xl">
+        <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
+          <aside className="hidden rounded-lg border bg-card p-3 lg:block">
+            <div className="mb-3 px-2 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              Parent workspace
+            </div>
+            {[
+              { label: 'Home', icon: Home, action: () => navigate('/dashboard') },
+              { label: 'Activity Finder', icon: Search, action: () => navigate('/plan-builder') },
+              { label: 'My Children', icon: Users, action: () => navigate('/credentials') },
+              { label: 'Billing & Plan', icon: CreditCard, action: () => navigate('/dashboard') },
+              { label: 'Chrome Helper', icon: Chrome, action: () => navigate('/autopilot') },
+              { label: 'Settings', icon: Settings, action: () => navigate('/credentials') },
+            ].map((item) => (
+              <button
+                key={item.label}
+                type="button"
+                onClick={item.action}
+                className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition hover:bg-secondary hover:text-primary"
+              >
+                <item.icon className="h-4 w-4" />
+                {item.label}
+              </button>
+            ))}
+          </aside>
+
+          <section>
         <div className="mb-8">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h1 className="text-3xl font-bold mb-2">SignupAssist dashboard</h1>
+              <h1 className="text-3xl font-bold mb-2">Good morning, {greetingName}!</h1>
               <p className="text-muted-foreground">
-                Prepare the next registration run, keep billing visible, and track the supervised autopilot path toward Set and Forget.
+                We've got things covered. Here's what you need to know today.
               </p>
             </div>
             <div className="flex items-center space-x-2">
@@ -246,26 +277,39 @@ export default function RegistrationDashboard() {
               </Button>
               <Button variant="accent" onClick={() => navigate('/autopilot')}>
                 <Zap className="h-4 w-4 mr-2" />
-                Start autopilot
+                Start supervised autopilot
               </Button>
             </div>
           </div>
         </div>
 
-        <div className="mb-8">
-          <BillingCard userId={user?.id} returnPath="/dashboard" />
-        </div>
+        <div className="grid grid-cols-1 gap-4 mb-8 md:grid-cols-2 xl:grid-cols-4">
+          <Card className="border-primary/20 bg-[hsl(var(--secondary))]">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+                <CalendarClock className="h-4 w-4" />
+                Upcoming registration
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-lg font-bold">
+                {autopilotRuns[0]?.target_program || 'Keva Sports Center'}
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Spots fill fast. Supervised autopilot can watch and help when it opens.
+              </p>
+            </CardContent>
+          </Card>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                 <UserRound className="h-4 w-4" />
-                Family profiles
+                Child profiles
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{childrenCount}</div>
+              <div className="text-2xl font-bold">{childrenCount} ready</div>
               <p className="mt-1 text-xs text-muted-foreground">Ready to feed supervised run packets.</p>
             </CardContent>
           </Card>
@@ -273,13 +317,13 @@ export default function RegistrationDashboard() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <ClipboardCheck className="h-4 w-4" />
-                Supervised runs
+                <Chrome className="h-4 w-4" />
+                Chrome Helper
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{autopilotRuns.length}</div>
-              <p className="mt-1 text-xs text-muted-foreground">Recent V1 run packets created.</p>
+              <div className="text-sm font-semibold">Helper is on</div>
+              <p className="mt-1 text-xs text-muted-foreground">Paste a run packet and keep the provider tab ready.</p>
             </CardContent>
           </Card>
 
@@ -287,27 +331,36 @@ export default function RegistrationDashboard() {
             <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                 <CreditCard className="h-4 w-4" />
-                Provider payment
+                Billing & Plan
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-sm font-semibold">Parent approves</div>
-              <p className="mt-1 text-xs text-muted-foreground">SignupAssist pauses at checkout and final submit.</p>
+              <div className="text-sm font-semibold">$9/month</div>
+              <p className="mt-1 text-xs text-muted-foreground">Cancel monthly renewal stays visible.</p>
             </CardContent>
           </Card>
+        </div>
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-                <ShieldCheck className="h-4 w-4" />
-                Success fee
-              </CardTitle>
+        <div className="mb-8 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <Card className="border-primary/20">
+            <CardHeader>
+              <CardTitle>Let SignupAssist do the watching.</CardTitle>
+              <CardDescription>
+                Start supervised autopilot and we'll handle the timing and safe filling, so you don't have to stare at the registration page.
+              </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="text-sm font-semibold">$0 in V1</div>
-              <p className="mt-1 text-xs text-muted-foreground">$20 stays dormant until fully automated Set and Forget.</p>
+            <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <ShieldCheck className="h-4 w-4 text-primary" />
+                Safe. Secure. Parent-controlled.
+              </div>
+              <Button variant="accent" onClick={() => navigate('/autopilot')}>
+                <Zap className="h-4 w-4 mr-2" />
+                Start supervised autopilot
+              </Button>
             </CardContent>
           </Card>
+          <BillingCard userId={user?.id} returnPath="/dashboard" />
         </div>
 
         <Card className="mb-8">
@@ -469,6 +522,8 @@ export default function RegistrationDashboard() {
             )}
           </CardContent>
         </Card>
+          </section>
+        </div>
       </div>
     </div>
   );

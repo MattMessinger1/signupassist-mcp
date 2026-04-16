@@ -38,6 +38,7 @@ import type { Database, Json } from "@/integrations/supabase/types";
 import {
   DEFAULT_ALLOWED_ACTIONS,
   DEFAULT_STOP_CONDITIONS,
+  KEVA_DAYSMART_LOGIN_URL,
   PROVIDER_PLAYBOOKS,
   findPlaybookByKey,
   findPlaybookForUrl,
@@ -78,10 +79,10 @@ export default function Autopilot() {
   const [children, setChildren] = useState<ChildRow[]>([]);
   const [runs, setRuns] = useState<AutopilotRun[]>([]);
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
-  const [targetUrl, setTargetUrl] = useState("");
-  const [providerKey, setProviderKey] = useState("active");
+  const [targetUrl, setTargetUrl] = useState(KEVA_DAYSMART_LOGIN_URL);
+  const [providerKey, setProviderKey] = useState("daysmart");
   const [childId, setChildId] = useState("none");
-  const [targetProgram, setTargetProgram] = useState("");
+  const [targetProgram, setTargetProgram] = useState("Keva Sports Center registration");
   const [registrationOpensAt, setRegistrationOpensAt] = useState("");
   const [priceCap, setPriceCap] = useState("250");
   const [preflight, setPreflight] = useState(buildPreflightState());
@@ -165,6 +166,16 @@ export default function Autopilot() {
     if (!targetUrl) return;
     const playbook = findPlaybookForUrl(targetUrl);
     setProviderKey(playbook.key);
+  };
+
+  const useKevaDaySmartStarter = () => {
+    setTargetUrl(KEVA_DAYSMART_LOGIN_URL);
+    setProviderKey("daysmart");
+    setTargetProgram("Keva Sports Center registration");
+    setPreflight((current) => ({
+      ...current,
+      targetUrlConfirmed: true,
+    }));
   };
 
   const togglePreflight = (key: PreflightCheckKey, checked: boolean) => {
@@ -338,6 +349,19 @@ export default function Autopilot() {
           </div>
         </div>
 
+        <Alert className="mb-6 border-primary/20 bg-[hsl(var(--secondary))]">
+          <Target className="h-4 w-4" />
+          <AlertTitle>First provider focus: DaySmart / Dash for Keva</AlertTitle>
+          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <span>
+              This MVP slice is grounded in Keva's DaySmart flow. Login remains a parent step; SignupAssist fills safe registration fields after you are in.
+            </span>
+            <Button type="button" variant="outline" onClick={useKevaDaySmartStarter}>
+              Use Keva DaySmart starter
+            </Button>
+          </AlertDescription>
+        </Alert>
+
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           <div className="space-y-6">
             <Card>
@@ -352,11 +376,11 @@ export default function Autopilot() {
               </CardHeader>
               <CardContent className="space-y-5">
                 {!subscriptionUsable && (
-                  <Alert>
+                  <Alert className="border-[#f3d8b6] bg-[#fff3e2]">
                     <ShieldCheck className="h-4 w-4" />
                     <AlertTitle>Membership gate</AlertTitle>
                     <AlertDescription>
-                      Real supervised autopilot runs require an active {AUTOPILOT_PRICE_LABEL} membership.
+                      Real supervised autopilot runs require an active {AUTOPILOT_PRICE_LABEL} membership. Subscribe in the billing card, then create and copy the helper packet.
                     </AlertDescription>
                   </Alert>
                 )}
@@ -523,7 +547,7 @@ export default function Autopilot() {
                     type="button"
                     variant="outline"
                     onClick={() => copyRunPacket(createdPacket || runPacketPreview)}
-                    disabled={!targetUrl.trim()}
+                    disabled={!targetUrl.trim() || !subscriptionUsable}
                   >
                     <Clipboard className="h-4 w-4" />
                     Copy packet for helper

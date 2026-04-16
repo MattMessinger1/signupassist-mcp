@@ -72,6 +72,66 @@
         color: #0b2d45;
       }
 
+      .meta-grid,
+      .pause-list {
+        display: grid;
+        gap: 8px;
+        margin: 10px 0;
+      }
+
+      .meta-card {
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+        background: #ffffff;
+        padding: 8px;
+      }
+
+      .meta-card span,
+      .pause-row span {
+        display: block;
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+      }
+
+      .meta-card strong,
+      .pause-row strong {
+        display: block;
+        margin-top: 2px;
+        color: #102133;
+      }
+
+      .working {
+        border: 1px solid #d9e8ef;
+        border-radius: 6px;
+        background: #e8f2f7;
+        padding: 9px;
+      }
+
+      .bar {
+        height: 7px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #d9e8ef;
+      }
+
+      .bar > span {
+        display: block;
+        width: 68%;
+        height: 100%;
+        border-radius: inherit;
+        background: #1f5a7a;
+      }
+
+      .pause-row {
+        border: 1px solid #f3d8b6;
+        border-radius: 6px;
+        background: #fff3e2;
+        padding: 8px;
+      }
+
       button {
         width: 100%;
         margin-top: 10px;
@@ -126,6 +186,31 @@
     <textarea id="runPacket" autocomplete="off" placeholder="Paste the run packet from SignupAssist"></textarea>
     <button id="savePacket" class="secondary">Save run packet</button>
     <div id="packetSummary" class="packet-summary">No run packet loaded.</div>
+    <div class="meta-grid">
+      <div class="meta-card">
+        <span>Provider detected</span>
+        <strong id="providerDetected">No packet loaded</strong>
+      </div>
+      <div class="meta-card">
+        <span>Child selected</span>
+        <strong id="childSelected">Choose in SignupAssist</strong>
+      </div>
+      <div class="meta-card">
+        <span>Price cap</span>
+        <strong id="priceCap">Not set</strong>
+      </div>
+    </div>
+    <div class="working">
+      <strong>Filling safe fields</strong>
+      <p>Working now when you ask. Sensitive steps pause for you.</p>
+      <div class="bar" aria-hidden="true"><span></span></div>
+    </div>
+    <div class="pause-list" aria-label="Pause conditions">
+      <div class="pause-row"><span>Payment</span><strong>Paused for you</strong></div>
+      <div class="pause-row"><span>Waiver</span><strong>Paused for you</strong></div>
+      <div class="pause-row"><span>Final submit</span><strong>Paused for you</strong></div>
+      <div class="pause-row"><span>Unknown fields</span><strong>Paused for you</strong></div>
+    </div>
 
     <label for="childFirstName">Child first name</label>
     <input id="childFirstName" autocomplete="off">
@@ -145,7 +230,8 @@
     <button id="save">Save profile</button>
     <button id="scan" class="secondary">Scan page</button>
     <button id="fill">Fill known fields</button>
-    <button id="stop" class="danger">Stop helper</button>
+    <button id="stop" class="danger">Pause Helper</button>
+    <p>Only fills low-risk info. You're always in control.</p>
     <div id="status"></div>
 
     <script src="popup.js"></script>
