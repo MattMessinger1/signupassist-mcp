@@ -23,6 +23,9 @@ CREATE INDEX IF NOT EXISTS idx_user_subscriptions_status
 
 ALTER TABLE public.user_subscriptions ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own subscription"
+  ON public.user_subscriptions;
+
 CREATE POLICY "Users can view their own subscription"
   ON public.user_subscriptions
   FOR SELECT
@@ -57,10 +60,16 @@ CREATE INDEX IF NOT EXISTS idx_autopilot_runs_provider_key
 
 ALTER TABLE public.autopilot_runs ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their own autopilot runs"
+  ON public.autopilot_runs;
+
 CREATE POLICY "Users can view their own autopilot runs"
   ON public.autopilot_runs
   FOR SELECT
   USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can create their own autopilot runs"
+  ON public.autopilot_runs;
 
 CREATE POLICY "Users can create their own autopilot runs"
   ON public.autopilot_runs
@@ -82,15 +91,24 @@ CREATE POLICY "Users can create their own autopilot runs"
     )
   );
 
+DROP POLICY IF EXISTS "Users can update their own autopilot runs"
+  ON public.autopilot_runs;
+
 CREATE POLICY "Users can update their own autopilot runs"
   ON public.autopilot_runs
   FOR UPDATE
   USING (auth.uid() = user_id);
 
+DROP TRIGGER IF EXISTS update_user_subscriptions_updated_at
+  ON public.user_subscriptions;
+
 CREATE TRIGGER update_user_subscriptions_updated_at
   BEFORE UPDATE ON public.user_subscriptions
   FOR EACH ROW
   EXECUTE FUNCTION public.update_updated_at_column();
+
+DROP TRIGGER IF EXISTS update_autopilot_runs_updated_at
+  ON public.autopilot_runs;
 
 CREATE TRIGGER update_autopilot_runs_updated_at
   BEFORE UPDATE ON public.autopilot_runs
