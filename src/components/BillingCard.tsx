@@ -24,6 +24,7 @@ interface BillingCardProps {
   returnPath?: string;
   onSubscriptionChange?: (subscription: UserSubscription | null) => void;
   showPostRunActions?: boolean;
+  compact?: boolean;
 }
 
 export function BillingCard({
@@ -31,6 +32,7 @@ export function BillingCard({
   returnPath = "/autopilot",
   onSubscriptionChange,
   showPostRunActions = false,
+  compact = false,
 }: BillingCardProps) {
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
   const [loading, setLoading] = useState(true);
@@ -155,6 +157,81 @@ export function BillingCard({
       setCancelLoading(false);
     }
   };
+
+  if (compact) {
+    return (
+      <Card className="border-primary/20">
+        <CardHeader>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <CreditCard className="h-5 w-5" />
+                Membership
+              </CardTitle>
+              <CardDescription>{priceLabel}. Cancel renewal anytime.</CardDescription>
+            </div>
+            <Badge variant={display.isUsable ? "default" : "secondary"}>
+              {verificationLoading ? "Verifying" : display.label}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {loading || verificationLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Checking billing status...
+            </div>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">{display.description}</p>
+              {display.nextChargeLabel && (
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">Renewal:</span> {display.nextChargeLabel}
+                </p>
+              )}
+              {errorMessage && (
+                <Alert variant="destructive">
+                  <XCircle className="h-4 w-4" />
+                  <AlertDescription>{errorMessage}</AlertDescription>
+                </Alert>
+              )}
+              <div className="flex flex-col gap-2">
+                {!display.isUsable && (
+                  <Button onClick={handleCheckout} disabled={checkoutLoading || !userId}>
+                    {checkoutLoading ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Opening Stripe...
+                      </>
+                    ) : (
+                      <>
+                        <CreditCard className="h-4 w-4" />
+                        Start {AUTOPILOT_PRICE_LABEL}
+                      </>
+                    )}
+                  </Button>
+                )}
+                {display.isUsable && (
+                  <Button variant="outline" onClick={loadSubscription}>
+                    <RefreshCcw className="h-4 w-4" />
+                    Refresh billing
+                  </Button>
+                )}
+                {display.canCancel && (
+                  <Button variant="destructive" onClick={handleCancel} disabled={cancelLoading}>
+                    {cancelLoading ? "Canceling renewal..." : "Cancel monthly renewal"}
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                No email-to-cancel, no forced survey, and canceling never deletes family profiles.
+              </p>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="border-primary/20">
