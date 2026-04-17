@@ -40,7 +40,11 @@
     "v1:preflight": "tsx scripts/v1_preflight.ts",
     "v1:watch-scheduled": "tsx scripts/v1_watch_scheduled.ts",
     "prestart": "npm run mcp:build",
-    "test:openai-smoke": "vitest run mcp_server/lib/openaiHelpers.test.ts --reporter=verbose"
+    "test:openai-smoke": "vitest run mcp_server/lib/openaiHelpers.test.ts --reporter=verbose",
+    "test:chatgpt-app": "tsx scripts/chatgptAppGuardrails.ts all",
+    "test:mcp-manifest": "tsx scripts/chatgptAppGuardrails.ts manifest",
+    "test:mcp-descriptors": "tsx scripts/chatgptAppGuardrails.ts descriptors",
+    "test:approval-snapshots": "tsx scripts/chatgptAppGuardrails.ts approval-snapshots"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",
