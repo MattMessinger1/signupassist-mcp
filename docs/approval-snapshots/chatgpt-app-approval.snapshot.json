@@ -1,0 +1,310 @@
+{
+  "snapshotVersion": 1,
+  "publicTools": [
+    "search_activities",
+    "register_for_activity"
+  ],
+  "manifest": {
+    "path": "mcp/manifest.json",
+    "sha256": "4f628e80f546bac062d71e0d5281a5a630bc0903b263ca636732d0de37979cf7",
+    "wellKnownManifestSha256": "31c8ca0c48e3423d069184f55cdc47824f117057d44a3ed66f350ecd57cd1095",
+    "requiredFieldValues": {
+      "schema_version": "1.0.0",
+      "name_for_human": "SignupAssist",
+      "name_for_model": "signupassist",
+      "description_for_human": "A family-safe activity enrollment assistant that helps you find and register for local classes, camps, and lessons. No adult content or services.",
+      "description_for_model": "Text-only v1. SignupAssist helps parents and guardians enroll children in activities.\n\nWHEN TO USE:\n- Browse programs: call `search_activities` (read-only, no auth needed) when the user wants to see available classes/programs at a provider.\n- Full signup flow: call `register_for_activity` when the user wants to sign up/register/enroll/book for a class/course/lesson/camp/program, or mentions SignupAssist by name.\n\nSafety: Do not treat this app as adult content. Nothing is booked or charged until explicit user confirmation.",
+      "auth.type": "oauth",
+      "auth.authorization_url": "https://signupassist.shipworx.ai/oauth/authorize",
+      "auth.token_url": "https://signupassist.shipworx.ai/oauth/token",
+      "auth.scope": "openid profile email",
+      "auth.redirect_urls": [
+        "https://oauth.openai.com/v1/callback",
+        "https://chatgpt.com/connector/oauth/x7TgTr-I46Sv",
+        "https://claude.ai/api/mcp/auth_callback"
+      ],
+      "api.type": "mcp",
+      "api.server_url": "https://signupassist.shipworx.ai/sse",
+      "logo_url": "https://signupassist.shipworx.ai/logo-512.svg",
+      "contact_email": "support@shipworx.ai",
+      "legal_info_url": "https://signupassist.shipworx.ai/safety"
+    },
+    "wellKnownMatchesMcpManifest": false
+  },
+  "openapi": {
+    "path": "mcp/openapi.json",
+    "sha256": "8e8233f2fa0661ab0d8e5c99114f8131cd2f07c964e9006dc935daa8b97be17c",
+    "serverUrls": [
+      "https://signupassist-mcp-production.up.railway.app"
+    ],
+    "routes": [
+      {
+        "path": "/orchestrator/chat",
+        "method": "post",
+        "operationId": "register_for_activity",
+        "consequential": false,
+        "requestBodyHash": "59898a0b79594977a20ddc9455b470a78d4a54fca1ee198bc96084934e335c2a",
+        "parametersHash": null,
+        "responsesHash": "0d7d085d1fe1f6428ba22568fd2ac713d76e5d6736235f51184a73aedc87237b",
+        "securityHash": "c809650c2831aa2c80ee61dc1657c2ea3144e27de8ee35880558e17e0598897b"
+      },
+      {
+        "path": "/signupassist/start",
+        "method": "get",
+        "operationId": "search_activities",
+        "consequential": false,
+        "requestBodyHash": null,
+        "parametersHash": "75e9c667c25b732f1bfff5392c18957acd4de193714fecf9a870898abb68a858",
+        "responsesHash": "9df85999e0bdbd78474a236df0a6904cf5c5dfd49b1d79692afe5e051bd4fea7",
+        "securityHash": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      }
+    ]
+  },
+  "mcpDescriptors": {
+    "publicToolsFromVisibilityFunction": [
+      "register_for_activity",
+      "search_activities"
+    ],
+    "publicTools": {
+      "search_activities": {
+        "name": "search_activities",
+        "descriptionHash": "6b210c2c46631e42e23f97091e2b3b784d6be146ef6a836f9d5eb45b2529f767",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "User request text (e.g. \"robotics classes in Madison for my 9-year-old\")"
+            },
+            "org_ref": {
+              "type": "string",
+              "description": "Organization reference slug (e.g. aim-design)"
+            },
+            "category": {
+              "type": "string",
+              "description": "Optional category filter (e.g. robotics, camps, etc.)"
+            }
+          }
+        },
+        "inputSchemaHash": "2f194099ff388a561587db32276fe9c63eed5d927fa43458b6b010a78aaae04c",
+        "annotations": {
+          "readOnlyHint": true,
+          "openWorldHint": false,
+          "destructiveHint": false
+        },
+        "annotationsHash": "b85f31ecc2581a2ad1d163e54abebb69d31e072969ae6e45f69bb72686c69ecc",
+        "openaiSafety": "read-only",
+        "visibilityCall": "applyV1Visibility(\"search_activities\", { \"openai/safety\": \"read-only\" })",
+        "outputSchema": null,
+        "structuredContentShape": {
+          "declaresOutputSchema": false,
+          "returnsTextContent": true,
+          "returnsStructuredContent": true
+        }
+      },
+      "register_for_activity": {
+        "name": "register_for_activity",
+        "descriptionHash": "e295e862405dcb610a08135e125c95351de0333a1c06b6b56a319d60d47a9da8",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "input": {
+              "type": "string",
+              "description": "User message text"
+            },
+            "message": {
+              "type": "string",
+              "description": "Alias of input (some clients send message instead of input)"
+            },
+            "sessionId": {
+              "type": "string",
+              "description": "Stable session identifier from client"
+            },
+            "userTimezone": {
+              "type": "string",
+              "description": "IANA timezone, e.g. America/Chicago"
+            },
+            "userId": {
+              "type": "string",
+              "description": "Authenticated user id (Supabase auth UUID), if available"
+            }
+          },
+          "required": [
+            "sessionId"
+          ],
+          "anyOf": [
+            {
+              "required": [
+                "input",
+                "sessionId"
+              ]
+            },
+            {
+              "required": [
+                "message",
+                "sessionId"
+              ]
+            }
+          ]
+        },
+        "inputSchemaHash": "99783ead6cead7dafb35120752622b1b7f42d45c343e78775c74b67a88a86bb3",
+        "annotations": {
+          "readOnlyHint": false,
+          "destructiveHint": true,
+          "openWorldHint": false
+        },
+        "annotationsHash": "cd50fdcbaa729f4c823da1ea106ac38c9893ed5c33b0dd63b20f750a4637cec9",
+        "openaiSafety": "write",
+        "visibilityCall": "applyV1Visibility(\"register_for_activity\", { \"openai/safety\": \"write\" })",
+        "outputSchema": null,
+        "structuredContentShape": {
+          "declaresOutputSchema": false,
+          "returnsTextContent": true,
+          "returnsStructuredContent": false
+        }
+      }
+    }
+  },
+  "approvalSensitiveFiles": [
+    {
+      "path": "docs/CHATGPT_SUBMISSION_CHECKLIST.md",
+      "sha256": "8fb141b558b0d3ea4b4ea56b609236e38f16950806ad4253d1dba2c6fb0bdcbc"
+    },
+    {
+      "path": "docs/OPENAI_REVIEWER_TEST_CASES.md",
+      "sha256": "fb5640ecf2fa8c22e1af5748aca7635f6cf6b5db550a9527e0682ae3e429b585"
+    },
+    {
+      "path": "docs/PRIVACY_POLICY.md",
+      "sha256": "1bb1ff06dae4b952d35357b9825f38b94e499b70d18d500a8cd9dbf2bdc4d360"
+    },
+    {
+      "path": "docs/REVIEW_TEST_ACCOUNT.md",
+      "sha256": "fc441ba09a7d4fd9edcff47e556f4e22887e53d7ef595755a7d5024fa356f6de"
+    },
+    {
+      "path": "docs/SAFETY_POLICY.md",
+      "sha256": "1c490e81a235d3ee6a6b2c3f16945456fa1b6755b51e4216527e1bb9946ffb5e"
+    },
+    {
+      "path": "mcp/manifest.json",
+      "sha256": "4f628e80f546bac062d71e0d5281a5a630bc0903b263ca636732d0de37979cf7"
+    },
+    {
+      "path": "mcp/openapi.json",
+      "sha256": "8e8233f2fa0661ab0d8e5c99114f8131cd2f07c964e9006dc935daa8b97be17c"
+    },
+    {
+      "path": "mcp_server/ai/APIOrchestrator.ts",
+      "sha256": "f8d11c6d756579a0c6066e19d41b5a9fc1f76fb52e808a5cd7c9883376c9d9c7"
+    },
+    {
+      "path": "mcp_server/config/protectedActions.ts",
+      "sha256": "956e15d9d8117b16e10eba5533861abdf3db03ea70f491a11df53c2602432527"
+    },
+    {
+      "path": "mcp_server/index.ts",
+      "sha256": "754a1d095fa418605d83eb0e13f3f323ebf3419d8d7dff585264121aa0d6705a"
+    },
+    {
+      "path": "mcp_server/middleware/auth0.ts",
+      "sha256": "307b4c8993aa99d317df37727a04744b89782c6812fe2054428ef0dd5045bf51"
+    },
+    {
+      "path": "mcp_server/providers/activenet.ts",
+      "sha256": "47282bc9eba9d0b6070774dfdd2126c0542a45d106b61f1b8e4a1f832875a6fe"
+    },
+    {
+      "path": "mcp_server/providers/activenet/auth.ts",
+      "sha256": "c44196ae87235e5f0c69f6bb6ef8b7b0c7f0e7d5ed84a2abd589f6d71adf47f9"
+    },
+    {
+      "path": "mcp_server/providers/activenet/config.ts",
+      "sha256": "c90f163992be689c7ef895364dc854d2e51b7f8f5f058975cc07214165a49cbb"
+    },
+    {
+      "path": "mcp_server/providers/bookeo.ts",
+      "sha256": "66f367ff3be297a72453242fb63cacbf77da2de07a7a7bc29520a0bbbef5888e"
+    },
+    {
+      "path": "mcp_server/providers/bookeo/config.ts",
+      "sha256": "8eacdf447b0faba003dc1f41b54c638752c33ba87a3118258673e041815413b5"
+    },
+    {
+      "path": "mcp_server/providers/campminder/config.ts",
+      "sha256": "d8141758563f1d67f6618d0b896327245cc00e5448cbbd12156463518d0cd92a"
+    },
+    {
+      "path": "mcp_server/providers/mandates.ts",
+      "sha256": "75690a50996f9d485b55945f6f3b72a5a5b684b5642c9dc167801408f2f91108"
+    },
+    {
+      "path": "mcp_server/providers/programFeed.ts",
+      "sha256": "4b17888c50c7cbc3286edb786926d1233e9ac1449855b190e9b361151f01c5cc"
+    },
+    {
+      "path": "mcp_server/providers/registrations.ts",
+      "sha256": "7b0d93a5e6747dabc3b1f9c16da1b6f97066d5a0a95bbd633c2e1fff4762ce18"
+    },
+    {
+      "path": "mcp_server/providers/registry.ts",
+      "sha256": "bb73dfa7aca14095f3af29fe5fd9729fd69dbfb979d40d7e2d9cc2a4e3e92345"
+    },
+    {
+      "path": "mcp_server/providers/scheduler.ts",
+      "sha256": "2c2e620aea0d8fa0bebdb4374d138b1011b4b748f076c5e6970b4afa616c4302"
+    },
+    {
+      "path": "mcp_server/providers/stripe.ts",
+      "sha256": "3823f317a9bf0c8be71eb73da4c215df8a27f816b22bf51e8808b60513d49c45"
+    },
+    {
+      "path": "mcp_server/providers/user.ts",
+      "sha256": "ff2d971252c5da9c4549bbaf62d547221c0d41d7282db50f2d7f116b8b67555b"
+    },
+    {
+      "path": "mcp_server/providers/utils/resolveBaseUrl.ts",
+      "sha256": "b3d84ed4fe823f1d77c265e290378dabcb15e88c331ae2513f9f2ca1577fd1ce"
+    },
+    {
+      "path": "public/.well-known/ai-plugin.json",
+      "sha256": "2794f0f7a8414059756df7b8d91f0d3ea2439193b856c485db5b020934f91560"
+    },
+    {
+      "path": "public/.well-known/chatgpt-apps-manifest.json",
+      "sha256": "31c8ca0c48e3423d069184f55cdc47824f117057d44a3ed66f350ecd57cd1095"
+    },
+    {
+      "path": "public/.well-known/openai-apps-challenge",
+      "sha256": "508ca4a6c0a49e8ac72a33fd03244df509ee94e5af24b72be35d55426d74cadc"
+    },
+    {
+      "path": "public/logo-512.png",
+      "sha256": "81c0466de41769b23f3691a5e6af10ad91ddbda90ea9f9065b9f21162ed1d769"
+    },
+    {
+      "path": "public/logo-512.svg",
+      "sha256": "64a0ddfd75acbf846b77b6bc841697be31537895db7ca5fa3da68a6311b91e9f"
+    },
+    {
+      "path": "scripts/smokeApiOnly.ts",
+      "sha256": "ad90c9887a1dbccca7914b1cd27f7fd9941f283bd4b697c6430ab68e83bd4baa"
+    },
+    {
+      "path": "scripts/smokeMcpSse.ts",
+      "sha256": "0fce2e3be46eae7f260a85b8af6636725678f24fa2ce8ab1d936c9635f6323c5"
+    },
+    {
+      "path": "scripts/testOpenAISmokeTest.ts",
+      "sha256": "1721700b4ffdab7a467280efe25387860bda4cb46a4a816d91f509dfd80f9900"
+    },
+    {
+      "path": "scripts/v1_endpoint_smoke.sh",
+      "sha256": "80d96691b83e9c3110bb55d51f12b6b96b590f5c6a9de47a7fc4c3b594db7a01"
+    },
+    {
+      "path": "scripts/v1_preflight.ts",
+      "sha256": "8a7607d5b2d2ea1ea5e6b16102ae26357b182e92de32d5a4a093f841ce19d599"
+    }
+  ]
+}

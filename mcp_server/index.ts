@@ -732,6 +732,7 @@ import { userTools } from './providers/user.js';
 // import { daysmartTools } from '../providers/daysmart/index';
 // import { campminderTools } from '../providers/campminder/index';
 import { truncateToolResponse } from './lib/truncateToolResponse.js';
+import { handleSignupIntentApi, type SignupIntentSupabaseClient } from './lib/signupIntentApi.js';
 import { createClient } from '@supabase/supabase-js';
 
 // Initialize Supabase client for database operations (service role)
@@ -4595,6 +4596,16 @@ class SignupAssistMCPServer {
             res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'activity_finder_failed' }));
           }
+        });
+        return;
+      }
+
+      if (url.pathname === '/api/signup-intents' || url.pathname.startsWith('/api/signup-intents/')) {
+        await handleSignupIntentApi({
+          req,
+          res,
+          url,
+          supabase: supabase as unknown as SignupIntentSupabaseClient,
         });
         return;
       }

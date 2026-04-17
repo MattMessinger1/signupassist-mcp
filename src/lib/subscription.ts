@@ -122,13 +122,34 @@ export async function fetchUserSubscription(userId: string) {
   return data;
 }
 
+function appendReturnParams(
+  origin: string,
+  returnPath: string,
+  params: Record<string, string>,
+) {
+  let url = new URL(returnPath, origin);
+  if (url.origin !== origin) {
+    url = new URL("/autopilot", origin);
+  }
+  Object.entries(params).forEach(([key, value]) => {
+    url.searchParams.set(key, value);
+  });
+
+  return `${url.origin}${url.pathname}${url.search}${url.hash}`;
+}
+
 export async function startSubscriptionCheckout(returnPath = "/autopilot") {
   const supabase = await getSupabaseClient();
   const origin = window.location.origin;
   const { data, error } = await supabase.functions.invoke("stripe-subscription-checkout", {
     body: {
-      success_url: `${origin}${returnPath}?subscription=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}${returnPath}?subscription=canceled`,
+      success_url: appendReturnParams(origin, returnPath, {
+        subscription: "success",
+        session_id: "{CHECKOUT_SESSION_ID}",
+      }),
+      cancel_url: appendReturnParams(origin, returnPath, {
+        subscription: "canceled",
+      }),
     },
   });
 

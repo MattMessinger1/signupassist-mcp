@@ -60,6 +60,12 @@ import {
   isAutopilotSubscriptionUsable,
   type UserSubscription,
 } from "@/lib/subscription";
+import {
+  buildAutopilotIntentPath,
+  getSignupIntent,
+  updateSignupIntent,
+  type SignupIntent,
+} from "@/lib/signupIntent";
 import { showErrorToast, showSuccessToast } from "@/lib/toastHelpers";
 
 type ChildRow = Pick<
@@ -80,6 +86,22 @@ const ageYearsFromInput = (value: string) => {
   if (!Number.isInteger(numericValue) || numericValue < 0 || numericValue > 19) return null;
   return numericValue;
 };
+
+function selectedResultString(intent: SignupIntent | null, key: string) {
+  const value = intent?.selectedResult[key];
+  return typeof value === "string" ? value : "";
+}
+
+function targetProgramFromIntent(intent: SignupIntent) {
+  const activity = selectedResultString(intent, "activityLabel") || intent.parsed.activity || "";
+  const venue = selectedResultString(intent, "venueName") || intent.parsed.venue || "";
+  return [activity, venue].filter(Boolean).join(" at ") || venue || activity || "Guided signup help";
+}
+
+function ageFromIntent(intent: SignupIntent) {
+  if (intent.parsed.ageYears === null || intent.parsed.ageYears === undefined) return "";
+  return String(intent.parsed.ageYears);
+}
 
 function SetupTrackerStep({
   number,
@@ -141,28 +163,22 @@ export default function Autopilot() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { user, loading: authLoading } = useAuth();
-  const finderPrefill = searchParams.get("finder") === "1";
-  const finderActivity = searchParams.get("activity") || "";
-  const finderVenue = searchParams.get("venue") || "";
-  const finderAddress = searchParams.get("address") || "";
-  const finderLocation = searchParams.get("location") || "";
-  const finderStatus = searchParams.get("finderStatus") || "";
-  const finderQuery = searchParams.get("finderQuery") || "";
-  const finderAge = searchParams.get("age") || "";
-  const initialProviderKey = searchParams.get("providerKey") || "daysmart";
-  const initialTargetUrl = finderPrefill ? searchParams.get("targetUrl") || "" : KEVA_DAYSMART_LOGIN_URL;
-  const initialTargetProgram =
-    [finderActivity, finderVenue].filter(Boolean).join(" at ") ||
-    (finderPrefill ? finderVenue || "Guided signup help" : "Keva Sports Center registration");
+  const intentId = searchParams.get("intent");
+  const finderPrefill = Boolean(intentId);
   const [children, setChildren] = useState<ChildRow[]>([]);
   const [runs, setRuns] = useState<AutopilotRun[]>([]);
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
-  const [targetUrl, setTargetUrl] = useState(initialTargetUrl);
-  const [providerKey, setProviderKey] = useState(initialProviderKey);
+  const [signupIntent, setSignupIntent] = useState<SignupIntent | null>(null);
+  const [loadingIntent, setLoadingIntent] = useState(Boolean(intentId));
+  const [intentError, setIntentError] = useState<string | null>(null);
+  const [targetUrl, setTargetUrl] = useState(intentId ? "" : KEVA_DAYSMART_LOGIN_URL);
+  const [providerKey, setProviderKey] = useState(intentId ? "generic" : "daysmart");
   const [childId, setChildId] = useState("none");
-  const [targetProgram, setTargetProgram] = useState(initialTargetProgram);
+  const [targetProgram, setTargetProgram] = useState(
+    intentId ? "Guided signup help" : "Keva Sports Center registration",
+  );
   const [registrationOpensAt, setRegistrationOpensAt] = useState("");
-  const [participantAge, setParticipantAge] = useState(finderAge);
+  const [participantAge, setParticipantAge] = useState("");
   const [priceCap, setPriceCap] = useState("250");
   const [reminderMinutes, setReminderMinutes] = useState("10");
   const [reminderEmail, setReminderEmail] = useState(true);
@@ -170,7 +186,7 @@ export default function Autopilot() {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [preflight, setPreflight] = useState(
     buildPreflightState({
-      targetUrlConfirmed: finderPrefill && Boolean(initialTargetUrl) && initialProviderKey !== "generic",
+      targetUrlConfirmed: false,
     }),
   );
   const [createdPacket, setCreatedPacket] = useState<AutopilotRunPacket | null>(null);
@@ -199,15 +215,36 @@ export default function Autopilot() {
     ? Math.max(1, Math.round(Number(reminderMinutes)))
     : 10;
   const participantAgeYears = ageYearsFromInput(participantAge);
-  const finderMetadata = finderPrefill
-    ? {
-        query: finderQuery || null,
-        status: finderStatus || null,
-        venue: finderVenue || null,
-        address: finderAddress || null,
-        location: finderLocation || null,
-      }
+  const intentLocation = signupIntent?.parsed.city
+    ? [signupIntent.parsed.city, signupIntent.parsed.state].filter(Boolean).join(", ")
     : null;
+  const selectedResultAddress =
+    typeof signupIntent?.selectedResult.address === "string"
+      ? signupIntent.selectedResult.address
+      : null;
+  const finderActivity =
+    selectedResultString(signupIntent, "activityLabel") || signupIntent?.parsed.activity || "";
+  const finderVenue =
+    selectedResultString(signupIntent, "venueName") ||
+    signupIntent?.parsed.venue ||
+    signupIntent?.providerName ||
+    "";
+  const finderLocation = intentLocation || "";
+  const finderStatus = signupIntent?.finderStatus || signupIntent?.status || "";
+  const autopilotReturnPath = intentId ? buildAutopilotIntentPath(intentId) : "/autopilot";
+  const finderMetadata = useMemo(
+    () =>
+      signupIntent
+        ? {
+            query: signupIntent.originalQuery || null,
+            status: signupIntent.finderStatus || null,
+            venue: signupIntent.parsed.venue || signupIntent.providerName || null,
+            address: selectedResultAddress,
+            location: intentLocation,
+          }
+        : null,
+    [intentLocation, selectedResultAddress, signupIntent],
+  );
   const runPacketPreview = useMemo(
     () =>
       buildAutopilotRunPacket({
@@ -284,11 +321,64 @@ export default function Autopilot() {
 
   useEffect(() => {
     if (!authLoading && !user) {
-      navigate("/auth");
+      navigate(`/auth?returnTo=${encodeURIComponent(autopilotReturnPath)}`);
     } else if (user) {
       loadAutopilotData();
     }
-  }, [authLoading, loadAutopilotData, navigate, user]);
+  }, [authLoading, autopilotReturnPath, loadAutopilotData, navigate, user]);
+
+  useEffect(() => {
+    if (!intentId) {
+      setSignupIntent(null);
+      setIntentError(null);
+      setLoadingIntent(false);
+      return;
+    }
+
+    if (authLoading || !user) return;
+
+    let isMounted = true;
+
+    async function loadSignupIntent() {
+      try {
+        setLoadingIntent(true);
+        setIntentError(null);
+        const intent = await getSignupIntent(intentId);
+        if (!isMounted) return;
+
+        const nextUrl = intent.targetUrl || "";
+        const nextPlaybook =
+          intent.providerKey ||
+          (nextUrl ? findPlaybookForUrl(nextUrl).key : "generic");
+
+        setSignupIntent(intent);
+        setTargetUrl(nextUrl);
+        setProviderKey(nextPlaybook);
+        setTargetProgram(targetProgramFromIntent(intent));
+        setParticipantAge(ageFromIntent(intent));
+        setChildId(intent.selectedChildId || "none");
+        setPreflight((current) => ({
+          ...current,
+          targetUrlConfirmed: Boolean(nextUrl),
+        }));
+      } catch (error) {
+        if (!isMounted) return;
+        setIntentError(
+          error instanceof Error
+            ? error.message
+            : "This signup intent could not be loaded.",
+        );
+      } finally {
+        if (isMounted) setLoadingIntent(false);
+      }
+    }
+
+    void loadSignupIntent();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [authLoading, intentId, user]);
 
   const detectProvider = () => {
     if (!targetUrl) return;
@@ -413,8 +503,28 @@ export default function Autopilot() {
         ] as unknown as Json,
       };
 
-      const { error } = await supabase.from("autopilot_runs").insert(runInsert);
+      const { data: createdRun, error } = await supabase
+        .from("autopilot_runs")
+        .insert(runInsert)
+        .select("id")
+        .single();
       if (error) throw error;
+
+      if (signupIntent && createdRun?.id) {
+        try {
+          const updatedIntent = await updateSignupIntent(signupIntent.id, {
+            status: "scheduled",
+            autopilot_run_id: createdRun.id,
+            selected_child_id: childId === "none" ? null : childId,
+          });
+          setSignupIntent(updatedIntent);
+        } catch (intentUpdateError) {
+          console.warn(
+            "[Autopilot] Signup intent was not linked to run",
+            intentUpdateError instanceof Error ? intentUpdateError.message : intentUpdateError,
+          );
+        }
+      }
 
       setCreatedPacket(packet);
       showSuccessToast("Signup helper setup saved", "Copy it into the Chrome helper before registration opens.");
@@ -429,13 +539,41 @@ export default function Autopilot() {
     }
   };
 
-  if (authLoading || loadingData) {
+  if (authLoading || loadingData || loadingIntent) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
         <div className="text-center">
           <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
           <p className="mt-4 text-muted-foreground">Loading supervised autopilot...</p>
         </div>
+      </div>
+    );
+  }
+
+  if (intentError) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <main className="container mx-auto max-w-3xl px-4 py-10">
+          <Button
+            type="button"
+            variant="ghost"
+            className="mb-4 -ml-3 text-muted-foreground"
+            onClick={() => navigate("/activity-finder")}
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Activity Finder
+          </Button>
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Signup setup unavailable</AlertTitle>
+            <AlertDescription>
+              {intentError === "signup_intent_not_found"
+                ? "This signup setup was not found or does not belong to your account."
+                : intentError}
+            </AlertDescription>
+          </Alert>
+        </main>
       </div>
     );
   }
@@ -794,7 +932,7 @@ export default function Autopilot() {
               <BillingCard
                 compact
                 userId={user?.id}
-                returnPath={`/autopilot?${searchParams.toString()}`}
+                returnPath={autopilotReturnPath}
                 onSubscriptionChange={setSubscription}
               />
             </aside>

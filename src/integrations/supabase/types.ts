@@ -1080,6 +1080,131 @@ export type Database = {
           },
         ]
       }
+      signup_intent_events: {
+        Row: {
+          created_at: string
+          event: Json
+          event_type: string
+          id: string
+          signup_intent_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          event?: Json
+          event_type: string
+          id?: string
+          signup_intent_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          event?: Json
+          event_type?: string
+          id?: string
+          signup_intent_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signup_intent_events_signup_intent_id_fkey"
+            columns: ["signup_intent_id"]
+            isOneToOne: false
+            referencedRelation: "signup_intents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      signup_intents: {
+        Row: {
+          autopilot_run_id: string | null
+          confidence: number | null
+          created_at: string
+          finder_status: string | null
+          id: string
+          original_query: string | null
+          parsed_activity: string | null
+          parsed_age_years: number | null
+          parsed_city: string | null
+          parsed_grade: string | null
+          parsed_state: string | null
+          parsed_venue: string | null
+          provider_key: string | null
+          provider_name: string | null
+          selected_child_id: string | null
+          selected_result: Json
+          source: string
+          source_freshness: string | null
+          status: string
+          target_url: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          autopilot_run_id?: string | null
+          confidence?: number | null
+          created_at?: string
+          finder_status?: string | null
+          id?: string
+          original_query?: string | null
+          parsed_activity?: string | null
+          parsed_age_years?: number | null
+          parsed_city?: string | null
+          parsed_grade?: string | null
+          parsed_state?: string | null
+          parsed_venue?: string | null
+          provider_key?: string | null
+          provider_name?: string | null
+          selected_child_id?: string | null
+          selected_result?: Json
+          source?: string
+          source_freshness?: string | null
+          status?: string
+          target_url?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          autopilot_run_id?: string | null
+          confidence?: number | null
+          created_at?: string
+          finder_status?: string | null
+          id?: string
+          original_query?: string | null
+          parsed_activity?: string | null
+          parsed_age_years?: number | null
+          parsed_city?: string | null
+          parsed_grade?: string | null
+          parsed_state?: string | null
+          parsed_venue?: string | null
+          provider_key?: string | null
+          provider_name?: string | null
+          selected_child_id?: string | null
+          selected_result?: Json
+          source?: string
+          source_freshness?: string | null
+          status?: string
+          target_url?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signup_intents_autopilot_run_id_fkey"
+            columns: ["autopilot_run_id"]
+            isOneToOne: false
+            referencedRelation: "autopilot_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "signup_intents_selected_child_id_fkey"
+            columns: ["selected_child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stored_credentials: {
         Row: {
           alias: string
