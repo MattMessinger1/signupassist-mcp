@@ -29,6 +29,11 @@ import {
   type ActivityFinderResponse,
   type ActivityFinderResult,
 } from "@/lib/activityFinder";
+import {
+  buildAutopilotIntentPath,
+  buildSignupIntentFromFinderResult,
+  createSignupIntent,
+} from "@/lib/signupIntent";
 import { showErrorToast } from "@/lib/toastHelpers";
 
 const examples = [
@@ -63,10 +68,12 @@ function ResultCard({
   result,
   primary = false,
   onContinue,
+  disabled = false,
 }: {
   result: ActivityFinderResult;
   primary?: boolean;
-  onContinue: (result: ActivityFinderResult) => void;
+  onContinue: (result: ActivityFinderResult) => void | Promise<void>;
+  disabled?: boolean;
 }) {
   const statusLabel = activityFinderStatusLabel(result.status);
   const statusTone = activityFinderStatusTone(result.status);
@@ -112,7 +119,7 @@ function ResultCard({
         <Button
           className="w-full sm:w-auto"
           onClick={() => onContinue(result)}
-          disabled={result.status === "need_more_detail"}
+          disabled={disabled || result.status === "need_more_detail"}
         >
           {result.ctaLabel}
           <ArrowRight className="h-4 w-4" />
@@ -127,6 +134,7 @@ export default function ActivityFinder() {
   const { user } = useAuth();
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
+  const [creatingIntent, setCreatingIntent] = useState(false);
   const [response, setResponse] = useState<ActivityFinderResponse | null>(null);
 
   const parsedLocation = locationLabel(response?.parsed);
@@ -147,7 +155,7 @@ export default function ActivityFinder() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
-      const result = await searchActivityFinder(trimmed, user?.id, session?.access_token);
+      const result = await searchActivityFinder(trimmed, session?.access_token);
       setResponse(result);
     } catch (error) {
       showErrorToast(
@@ -164,20 +172,35 @@ export default function ActivityFinder() {
     void runSearch();
   };
 
-  const continueToSetup = (result: ActivityFinderResult) => {
-    const params = new URLSearchParams();
-    params.set("finder", "1");
-    params.set("finderQuery", query);
-    params.set("finderStatus", result.status);
-    params.set("providerKey", result.providerKey || "generic");
-    params.set("providerName", result.providerName || "Guided Autopilot");
-    params.set("targetUrl", result.targetUrl || "");
-    params.set("activity", result.activityLabel || response?.parsed.activity || "");
-    params.set("venue", result.venueName || response?.parsed.venue || "");
-    params.set("address", result.address || "");
-    params.set("age", response?.parsed.ageYears !== null && response?.parsed.ageYears !== undefined ? String(response.parsed.ageYears) : "");
-    params.set("location", parsedLocation || "");
-    navigate(`/autopilot?${params.toString()}`);
+  const continueToSetup = async (result: ActivityFinderResult) => {
+    if (result.status === "need_more_detail" || !response) return;
+
+    if (!user) {
+      sessionStorage.setItem("signupassist:returnTo", "/activity-finder");
+      navigate("/auth?returnTo=%2Factivity-finder");
+      return;
+    }
+
+    const payload = buildSignupIntentFromFinderResult({
+      query,
+      parsed: response.parsed,
+      result,
+    });
+
+    if (!payload) return;
+
+    try {
+      setCreatingIntent(true);
+      const intent = await createSignupIntent(payload);
+      navigate(buildAutopilotIntentPath(intent.id));
+    } catch (error) {
+      showErrorToast(
+        "Could not start signup setup",
+        error instanceof Error ? error.message : "Please try again.",
+      );
+    } finally {
+      setCreatingIntent(false);
+    }
   };
 
   return (
@@ -247,7 +270,12 @@ export default function ActivityFinder() {
               </div>
 
               {response.bestMatch && (
-                <ResultCard result={response.bestMatch} primary onContinue={continueToSetup} />
+                <ResultCard
+                  result={response.bestMatch}
+                  primary
+                  onContinue={continueToSetup}
+                  disabled={creatingIntent}
+                />
               )}
 
               {response.otherMatches.length > 0 && (
@@ -258,6 +286,7 @@ export default function ActivityFinder() {
                       key={`${result.venueName}-${index}`}
                       result={result}
                       onContinue={continueToSetup}
+                      disabled={creatingIntent}
                     />
                   ))}
                 </div>

@@ -44,7 +44,6 @@ const ACTIVITY_FINDER_BASE =
 
 export async function searchActivityFinder(
   query: string,
-  userId?: string | null,
   accessToken?: string | null,
 ) {
   const base = ACTIVITY_FINDER_BASE || window.location.origin;
@@ -58,7 +57,7 @@ export async function searchActivityFinder(
   const response = await fetch(`${base}/api/activity-finder/search`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ query, userId }),
+    body: JSON.stringify({ query }),
   });
 
   if (!response.ok) {
