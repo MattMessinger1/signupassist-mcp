@@ -703,3 +703,46 @@ Reviewer-readiness caveats:
 - Deployed `https://signupassist.shipworx.ai/privacy`, `/terms`, and `/safety` are reachable but still serve the older deployed policy text until the current docs are deployed.
 - `https://shipworx.ai/privacy` and `https://shipworx.ai/terms` should not be used for the OpenAI resubmission because the Shipworx SPA shell still contains stale "set it and forget it" marketing metadata.
 - Full signed-in ChatGPT web/mobile wizard testing, Stripe-hosted setup, and final Bookeo booking confirmation still require the reviewer/test account credentials and a valid MCP access token or an interactive ChatGPT login session.
+
+## 2026-04-18 - ChatGPT Step 2 Reviewer Flow Parser Fix
+
+Files changed in this phase:
+
+- `mcp_server/ai/APIOrchestrator.ts`
+- `tests/register-activity-step2-parser.test.ts`
+- `docs/approval-snapshots/chatgpt-app-approval.snapshot.json`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: Yes, `mcp_server/ai/APIOrchestrator.ts` changed to fix Step 2 account-holder/participant free-text parsing for the existing `register_for_activity` flow.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Reviewer-flow remediation:
+
+- Step 2 now accepts reviewer-style labels such as `Account holder First name: OpenAI`, `Account holder Last name: Reviewer`, `Participant: Review Child`, and `Participant DOB: 11/26/2014`.
+- Step 2 now maps bare follow-ups like `First name: OpenAI` / `Last name: Reviewer` to the account holder when those account-holder fields are the missing fields.
+- Step 2 now accepts natural-language follow-ups like `My first name is OpenAI and my last name is Reviewer`.
+- Added regression coverage for the exact account-holder parsing shapes seen during the live ChatGPT reviewer test.
+- Updated the approval snapshot only after confirming the diff was limited to the `mcp_server/ai/APIOrchestrator.ts` hash.
+
+Verification results for this phase:
+
+- `npx vitest run tests/register-activity-step2-parser.test.ts --reporter=verbose`: Passed.
+- `npm run typecheck`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `npm run test:approval-snapshots`: Passed.
+- `npm run test:chatgpt-app`: Passed.
+- `npx eslint tests/register-activity-step2-parser.test.ts --max-warnings=0`: Passed.
+- `git diff --check`: Passed.

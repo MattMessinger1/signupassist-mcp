@@ -676,6 +676,150 @@ export default class APIOrchestrator implements IOrchestrator {
     return { firstName: m[1], lastName: m[2] };
   }
 
+  private splitPersonName(raw: string): { firstName?: string; lastName?: string; name?: string } | null {
+    const cleaned = String(raw || "")
+      .replace(/\b(?:dob|date of birth|birthdate|age|relationship|email|phone)\b\s*[:=].*$/i, "")
+      .replace(/[.;,]+$/g, "")
+      .trim();
+    if (!cleaned || /@/.test(cleaned)) return null;
+
+    const parts = cleaned.split(/\s+/).filter(Boolean);
+    if (parts.length === 0 || parts.length > 5) return null;
+    if (parts.some((part) => /\d/.test(part))) return null;
+
+    const firstName = parts[0];
+    const lastName = parts.slice(1).join(" ");
+    const name = [firstName, lastName].filter(Boolean).join(" ");
+    return { firstName, lastName, name };
+  }
+
+  private parseLabeledRegistrationDetails(
+    input: string,
+    needs: {
+      delegateName: boolean;
+      delegateDob: boolean;
+      participantName: boolean;
+      participantDob: boolean;
+    }
+  ): {
+    delegate: { email?: string; phone?: string; firstName?: string; lastName?: string; dob?: string; relationship?: string };
+    participant: { name?: string; firstName?: string; lastName?: string; dob?: string; age?: number };
+  } {
+    const delegate: { email?: string; phone?: string; firstName?: string; lastName?: string; dob?: string; relationship?: string } = {};
+    const participant: { name?: string; firstName?: string; lastName?: string; dob?: string; age?: number } = {};
+    const raw = String(input || "").trim();
+    if (!raw) return { delegate, participant };
+
+    const assignName = (
+      target: "delegate" | "participant",
+      value: string,
+      mode: "first" | "last" | "full"
+    ) => {
+      const bucket = target === "delegate" ? delegate : participant;
+      if (mode === "first") {
+        const first = this.splitPersonName(value)?.firstName || String(value || "").replace(/[.;,]+$/g, "").trim();
+        if (first) bucket.firstName = bucket.firstName || first;
+        return;
+      }
+      if (mode === "last") {
+        const last = String(value || "").replace(/[.;,]+$/g, "").trim();
+        if (last) bucket.lastName = bucket.lastName || last;
+        return;
+      }
+
+      const parsed = this.splitPersonName(value);
+      if (!parsed) return;
+      bucket.firstName = bucket.firstName || parsed.firstName;
+      bucket.lastName = bucket.lastName || parsed.lastName;
+      if (target === "participant") participant.name = participant.name || parsed.name;
+    };
+
+    const chooseTarget = (group: string | undefined, field: string): "delegate" | "participant" => {
+      const g = String(group || "").toLowerCase().trim();
+      const f = String(field || "").toLowerCase();
+      if (/\b(participant|child|kid)\b/.test(g)) return "participant";
+      if (/\b(account holder|parent|guardian|delegate|your|my)\b/.test(g)) return "delegate";
+      if (f.includes("relationship") || f.includes("email") || f.includes("phone")) return "delegate";
+      if (f.includes("dob") || f.includes("birth")) {
+        if (needs.delegateDob) return "delegate";
+        if (needs.participantDob) return "participant";
+        return "delegate";
+      }
+      if (needs.delegateName) return "delegate";
+      if (needs.participantName) return "participant";
+      return "delegate";
+    };
+
+    const sentenceNameMatch = raw.match(/\b(?:my\s+)?first\s+name\s+is\s+([^,.;\n]+?)\s+(?:and\s+)?(?:my\s+)?last\s+name\s+is\s+([^,.;\n]+)/i);
+    if (sentenceNameMatch) {
+      const target = needs.delegateName ? "delegate" : needs.participantName ? "participant" : "delegate";
+      assignName(target, sentenceNameMatch[1], "first");
+      assignName(target, sentenceNameMatch[2], "last");
+    }
+
+    const myNameMatch = raw.match(/\b(?:my\s+)?name\s+is\s+([^,.;\n]+)/i);
+    if (myNameMatch) {
+      const target = needs.delegateName ? "delegate" : needs.participantName ? "participant" : "delegate";
+      assignName(target, myNameMatch[1], "full");
+    }
+
+    const segments = raw
+      .replace(/\r/g, "\n")
+      .split(/[;\n]+|,\s+(?=(?:account holder|parent|guardian|delegate|your|my|participant|child|kid|email|name|first|last|dob|date|relationship|phone|mobile|cell)\b)/i)
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+
+    for (const segment of segments) {
+      const participantOnly = segment.match(/^(participant|child|kid)\s*(?::|=|-)\s*(.+)$/i);
+      if (participantOnly) {
+        assignName("participant", participantOnly[2], "full");
+        const dob = this.parseDateFromText(participantOnly[2]);
+        if (dob) participant.dob = participant.dob || dob;
+        const age = participantOnly[2].match(/\b(?:age\s*)?(\d{1,2})(?:\s*(?:years?\s*old|yo))?\b/i);
+        if (age && !dob) {
+          const ageNum = Number(age[1]);
+          if (Number.isFinite(ageNum) && ageNum >= 0 && ageNum <= 18) participant.age = participant.age ?? ageNum;
+        }
+        continue;
+      }
+
+      const labeled = segment.match(
+        /^(?:(account holder|parent|guardian|delegate|your|my|participant|child|kid)\s+)?(first(?:\s*name)?|last(?:\s*name)?|full\s*name|name|email|dob|date\s+of\s+birth|birth\s*date|relationship|phone(?:\s*number)?|mobile|cell)\s*(?::|=|\bis\b|-)\s*(.+)$/i
+      );
+      if (!labeled) continue;
+
+      const [, group, rawField, valueRaw] = labeled;
+      const field = rawField.toLowerCase().replace(/\s+/g, " ").trim();
+      const value = String(valueRaw || "").trim();
+      const target = chooseTarget(group, field);
+
+      if (field.includes("email")) {
+        const email = this.parseDelegateEmail(value);
+        if (email) delegate.email = delegate.email || email;
+      } else if (field.includes("phone") || field === "mobile" || field === "cell") {
+        const phone = this.parsePhoneNumber(value) || value.replace(/[.;,]+$/g, "").trim();
+        if (phone) delegate.phone = delegate.phone || phone;
+      } else if (field.includes("relationship")) {
+        const relationship = this.parseRelationshipFromText(value);
+        if (relationship) delegate.relationship = delegate.relationship || relationship;
+      } else if (field.includes("dob") || field.includes("birth")) {
+        const dob = this.parseDateFromText(value);
+        if (dob) {
+          if (target === "participant") participant.dob = participant.dob || dob;
+          else delegate.dob = delegate.dob || dob;
+        }
+      } else if (field.startsWith("first")) {
+        assignName(target, value, "first");
+      } else if (field.startsWith("last")) {
+        assignName(target, value, "last");
+      } else if (field.includes("name")) {
+        assignName(target, value, "full");
+      }
+    }
+
+    return { delegate, participant };
+  }
+
   private computeAgeYearsFromISODate(isoDate: string): number | null {
     const m = String(isoDate || "").trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!m) return null;
@@ -1316,6 +1460,47 @@ export default class APIOrchestrator implements IOrchestrator {
       const lk = String(f.key || "").toLowerCase();
       return (lk.includes("dob") || lk.includes("birth")) && isEmpty(formData[f.key]);
     });
+
+    const labeled = this.parseLabeledRegistrationDetails(input, {
+      delegateName: needsDelegateName,
+      delegateDob: needsDelegateDob,
+      participantName: needsParticipantName,
+      participantDob: needsParticipantDob,
+    });
+    if (
+      labeled.delegate.email ||
+      labeled.delegate.phone ||
+      labeled.delegate.firstName ||
+      labeled.delegate.lastName ||
+      labeled.delegate.dob ||
+      labeled.delegate.relationship
+    ) {
+      context.pendingDelegateInfo = {
+        ...(context.pendingDelegateInfo || {}),
+        ...(labeled.delegate.email ? { email: labeled.delegate.email } : {}),
+        ...(labeled.delegate.phone ? { phone: labeled.delegate.phone } : {}),
+        ...(labeled.delegate.firstName ? { firstName: labeled.delegate.firstName } : {}),
+        ...(labeled.delegate.lastName ? { lastName: labeled.delegate.lastName } : {}),
+        ...(labeled.delegate.dob ? { dob: labeled.delegate.dob } : {}),
+        ...(labeled.delegate.relationship ? { relationship: labeled.delegate.relationship } : {}),
+      };
+    }
+    if (
+      labeled.participant.name ||
+      labeled.participant.firstName ||
+      labeled.participant.lastName ||
+      labeled.participant.dob ||
+      typeof labeled.participant.age === "number"
+    ) {
+      context.childInfo = {
+        ...(context.childInfo || { name: "" }),
+        ...(labeled.participant.name ? { name: labeled.participant.name } : {}),
+        ...(labeled.participant.firstName ? { firstName: labeled.participant.firstName } : {}),
+        ...(labeled.participant.lastName ? { lastName: labeled.participant.lastName } : {}),
+        ...(labeled.participant.dob ? { dob: labeled.participant.dob } : {}),
+        ...(typeof labeled.participant.age === "number" ? { age: labeled.participant.age } : {}),
+      };
+    }
 
     // 1) Email
     const email = this.parseDelegateEmail(input);
