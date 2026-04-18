@@ -15,12 +15,31 @@ describe("Activity Finder UI contract", () => {
     expect(page).toContain("Best match");
     expect(page).toContain("Other possible matches");
     expect(page).toContain("Find signup");
+    expect(page).toContain("Prepare signup");
+    expect(page).toContain("Prepare guided signup");
     expect(page).not.toMatch(/\bunsupported\b/i);
   });
 
-  it("surfaces reminder, reuse, and parent-control aha copy", () => {
-    expect(page).toContain("We won’t let you forget");
-    expect(page).toContain("Reuse family info");
-    expect(page).toContain("Parent-controlled");
+  it("surfaces structured search fields and readiness trust copy", () => {
+    expect(page).toContain("Provider or venue");
+    expect(page).toContain("City or location");
+    expect(page).toContain("Age or grade");
+    expect(page).toContain("Season or date");
+    expect(page).toContain("Price cap");
+    expect(page).toContain("Registration status");
+    expect(page).toContain("Parent controlled");
+    expect(page).toContain("Sensitive steps pause");
+    expect(page).toContain("No card numbers stored");
+    expect(page).toContain("All actions logged");
+    expect(page).toContain("Provider learning improves future automation");
+  });
+
+  it("documents the modern page states", () => {
+    expect(page).toContain("Start with one search");
+    expect(page).toContain("Loading activity results");
+    expect(page).toContain("No results yet");
+    expect(page).toContain("Missing detail");
+    expect(page).toContain("Sign in to prepare a signup");
+    expect(page).toContain("Backend error");
   });
 });

@@ -155,6 +155,26 @@ Search and explanation flows are read-only. Preparation flows may create safe in
 - Internal tools remain hidden from public ChatGPT listing.
 - Consequential actions require confirmation.
 - Audit trail behavior is documented.
+- URL safety tests reject localhost, private networks, metadata IPs, unsafe protocols, internal hostnames, and unsafe redirect chains for web target URLs.
+- Prompt-injection fixtures prove provider page content cannot authorize registration, payment, waiver acceptance, provider login, final submit, hidden URLs, price-cap changes, data exfiltration, or provider readiness promotion.
+- PII redaction tests cover child DOB, address, phone, medical/allergy notes, credentials, tokens, provider password fields, and payment data.
+- Route-query tests prove Activity Finder -> Autopilot handoff uses only the server-side `intent` id.
+- Auth/object regression tests cover cross-user signup intent, child, autopilot run, mandate, and parent confirmation access.
+
+## Security Regression Suite
+
+Run the web/security regression suite before app-review packaging and before any approval-sensitive release:
+
+- `npm run test:security-mvp`
+- `npm run test:authz-audit`
+- `npm run test:chatgpt-app`
+- `npm run test:approval-snapshots`
+- `npm run test:mcp-manifest`
+- `npm run test:mcp-descriptors`
+
+The suite must stay additive to the ChatGPT approval surface. It may add web-only API validation, logging redaction, URL safety, prompt-injection fixtures, and authz checks, but it must not expose private MCP tools or alter public tool names/schemas/descriptors without explicit approval and updated reviewer evidence.
+
+DNS/IP limitation: SignupAssist stores parent-reviewed target URLs for web handoff and does not fetch unknown provider URLs server-side in the MVP. Any future server-side fetch or redirect-following code must use the resolved-IP URL validator and reject redirects into private or metadata networks.
 
 ## Screenshots And Test Prompts Checklist
 

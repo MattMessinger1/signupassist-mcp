@@ -168,23 +168,23 @@
   "approvalSensitiveFiles": [
     {
       "path": "docs/CHATGPT_SUBMISSION_CHECKLIST.md",
-      "sha256": "8fb141b558b0d3ea4b4ea56b609236e38f16950806ad4253d1dba2c6fb0bdcbc"
+      "sha256": "768940dbce052945a639c130ca5e4cfb0ff54ae23fbc714884db3e9b34f76650"
     },
     {
       "path": "docs/OPENAI_REVIEWER_TEST_CASES.md",
-      "sha256": "fb5640ecf2fa8c22e1af5748aca7635f6cf6b5db550a9527e0682ae3e429b585"
+      "sha256": "bf38cd191b5d5a6be851a241afe0ada6907140db201319f2eefcbb78223e00dd"
     },
     {
       "path": "docs/PRIVACY_POLICY.md",
-      "sha256": "1bb1ff06dae4b952d35357b9825f38b94e499b70d18d500a8cd9dbf2bdc4d360"
+      "sha256": "313eda1ca0baa7b94a7a2c7eeb8f4434f55b6518b43981cc9bc38680f210ad2d"
     },
     {
       "path": "docs/REVIEW_TEST_ACCOUNT.md",
-      "sha256": "fc441ba09a7d4fd9edcff47e556f4e22887e53d7ef595755a7d5024fa356f6de"
+      "sha256": "4a88e1f8f0861f02db2197c962ddfad4b5a1fb93853d550203a7f961a25156fd"
     },
     {
       "path": "docs/SAFETY_POLICY.md",
-      "sha256": "1c490e81a235d3ee6a6b2c3f16945456fa1b6755b51e4216527e1bb9946ffb5e"
+      "sha256": "76377dd974210932089bcdc7552fd0425a6b75928df0d87052abbbab670d9255"
     },
     {
       "path": "mcp/manifest.json",

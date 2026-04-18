@@ -2,16 +2,14 @@
  * Always-on scheduled registration worker (V1 API-only)
  *
  * Requirements:
- * - Executes scheduled registrations at (or extremely close to) scheduled_time (second-level)
+ * - V1 safety posture: scheduled jobs pause before provider submit/payment.
  * - Provider is merchant-of-record (Bookeo/provider charges program fee per their checkout)
- * - SignupAssist charges $20 success fee via Stripe only upon successful booking
+ * - SignupAssist does not charge a success fee until payment gates are proven safe.
  *
  * This worker polls `scheduled_registrations` and:
  * 1) claims the next due job (status pending -> executing)
- * 2) calls Bookeo booking API (bookeo.confirm_booking)
- * 3) charges success fee (stripe.charge_success_fee)
- * 4) writes receipt row (registrations.create)
- * 5) marks scheduled job completed/failed
+ * 2) pauses before Bookeo submit/payment/final confirmation
+ * 3) marks scheduled job failed with safe parent-review copy
  *
  * Run:
  *   npm run worker:scheduled
@@ -282,95 +280,11 @@ async function computeProgramFeeCentsFallback(row: ScheduledRow, participantCoun
 async function executeJob(row: ScheduledRow) {
   console.log(`[worker] Executing scheduled_registrations=${row.id} program=${row.program_ref} at=${row.scheduled_time}`);
 
-  const participants = normalizeParticipants(row.participant_data);
-  const delegate = normalizeDelegate(row.delegate_data);
-
-  // 1) Book with provider (Bookeo)
-  const bookingResp = await attemptBookingWithRetries(row);
-  const bookingNumber = bookingResp.data.booking_number as string;
-  const startTime = bookingResp.data.start_time as string | undefined;
-
-  // 2) Charge $20 success fee (SignupAssist MoR for fee only)
-  let chargeId: string | undefined;
-  try {
-    const feeResp = await stripeChargeSuccessFee({
-      _audit: { user_id: row.user_id, mandate_id: row.mandate_id, plan_execution_id: null },
-      booking_number: bookingNumber,
-      mandate_id: row.mandate_id,
-      amount_cents: 2000,
-      user_id: row.user_id,
-    });
-    if (feeResp?.success) {
-      chargeId = feeResp?.data?.charge_id;
-    } else {
-      console.warn("[worker] Success fee charge failed (non-fatal):", feeResp?.error || feeResp);
-    }
-  } catch (e) {
-    console.warn("[worker] Success fee charge exception (non-fatal):", e);
-  }
-
-  // 3) Write receipt row (registrations)
-  const participantNames = participants
-    .map((p) => `${p.firstName || ""} ${p.lastName || ""}`.trim())
-    .filter(Boolean);
-
-  const delegateName = `${delegate.delegate_firstName || ""} ${delegate.delegate_lastName || ""}`.trim() || "Parent/Guardian";
-
-  const programFeeCents =
-    delegate._pricing?.program_fee_cents ??
-    (await computeProgramFeeCentsFallback(row, Math.max(1, participants.length)));
-
-  // Prefer provider checkout URL and payment state from Bookeo response when available.
-  // IMPORTANT: Do not fabricate Bookeo deep links (bookeo.com/book/...) — they 404.
-  const providerCheckoutUrl =
-    (bookingResp?.data?.provider_checkout_url as string | undefined) || null;
-
-  const providerPaymentStatus =
-    (bookingResp?.data?.provider_payment_status as string | undefined) ||
-    (programFeeCents > 0 ? "unpaid" : "unknown");
-  const providerAmountDueCents =
-    (bookingResp?.data?.provider_amount_due_cents as number | undefined | null) ??
-    (programFeeCents > 0 ? programFeeCents : null);
-  const providerAmountPaidCents =
-    (bookingResp?.data?.provider_amount_paid_cents as number | undefined | null) ?? null;
-  const providerCurrency =
-    (bookingResp?.data?.provider_currency as string | undefined | null) ?? "USD";
-
-  try {
-    const receiptResp = await registrationsCreate({
-      _audit: { user_id: row.user_id, mandate_id: row.mandate_id, plan_execution_id: null },
-      user_id: row.user_id,
-      mandate_id: row.mandate_id,
-      charge_id: chargeId,
-      program_name: row.program_name,
-      program_ref: row.program_ref,
-      provider: "bookeo",
-      org_ref: row.org_ref,
-      start_date: startTime || null,
-      booking_number: bookingNumber,
-      amount_cents: programFeeCents,
-      success_fee_cents: 2000,
-      delegate_name: delegateName,
-      delegate_email: delegate.delegate_email || null, // may be null for VGS posture
-      participant_names: participantNames,
-      provider_checkout_url: providerCheckoutUrl,
-      provider_payment_status: providerPaymentStatus,
-      provider_amount_due_cents: providerAmountDueCents,
-      provider_amount_paid_cents: providerAmountPaidCents,
-      provider_currency: providerCurrency,
-      provider_payment_last_checked_at: new Date().toISOString()
-    });
-    if (!receiptResp?.success) {
-      console.warn("[worker] registrations.create failed (non-fatal):", receiptResp?.error || receiptResp);
-    }
-  } catch (e) {
-    console.warn("[worker] registrations.create exception (non-fatal):", e);
-  }
-
-  // 4) Mark scheduled row completed
-  await markCompleted(row.id, bookingNumber);
-
-  console.log(`[worker] ✅ Completed scheduled job ${row.id} booking=${bookingNumber}`);
+  await markFailed(
+    row.id,
+    "Paused for parent review: scheduled provider submit/payment requires the new sensitive-action confirmation or future verified delegation mandate gate.",
+  );
+  console.warn("[worker] scheduled_registration_paused_for_parent_review");
 }
 
 async function tick() {
@@ -426,5 +340,3 @@ async function main() {
 }
 
 void main();
-
-

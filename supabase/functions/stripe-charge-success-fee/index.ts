@@ -1,14 +1,12 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@18.5.0";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const logStep = (step: string, details?: any) => {
-  const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
+const logStep = (step: string, details?: Record<string, unknown>) => {
+  const detailsStr = details ? ` - ${JSON.stringify(details)}` : "";
   console.log(`[STRIPE-SUCCESS-FEE] ${step}${detailsStr}`);
 };
 
@@ -18,114 +16,57 @@ serve(async (req) => {
   }
 
   try {
-    logStep("Function started");
+    const {
+      booking_number,
+      mandate_id,
+      amount_cents = 2000,
+      user_id,
+      parent_action_confirmation_id,
+      idempotency_key,
+    } = await req.json();
 
-    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
-    if (!stripeKey || !stripeKey.startsWith('sk_')) {
-      throw new Error("Invalid STRIPE_SECRET_KEY");
-    }
-    logStep("Stripe key verified");
-
-    // Initialize Supabase with service role (server-to-server call)
-    const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
-
-    // Parse request (user_id required in body for server-to-server calls)
-    const { booking_number, mandate_id, amount_cents = 2000, user_id } = await req.json();
-    
     if (!booking_number) throw new Error("booking_number is required");
     if (!mandate_id) throw new Error("mandate_id is required");
     if (!user_id) throw new Error("user_id is required");
-    
-    logStep("Request parsed", { booking_number, mandate_id, amount_cents, user_id });
 
-    // Get user's payment method from user_billing (using provided user_id)
-    const { data: billing, error: billingError } = await supabaseClient
-      .from('user_billing')
-      .select('stripe_customer_id, default_payment_method_id')
-      .eq('user_id', user_id)
-      .single();
-
-    if (billingError || !billing) {
-      throw new Error("User billing not found");
+    if (!parent_action_confirmation_id || !idempotency_key) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          status: "payment_review_required",
+          error: "payment_confirmation_and_idempotency_key_required",
+        }),
+        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
     }
 
-    if (!billing.default_payment_method_id) {
-      throw new Error("No default payment method configured");
-    }
-
-    logStep("Billing retrieved", { 
-      customer_id: billing.stripe_customer_id,
-      has_payment_method: !!billing.default_payment_method_id 
+    logStep("Payment gate paused success-fee charge", {
+      booking_number,
+      mandate_id,
+      amount_cents,
+      user_id,
+      parent_action_confirmation_id,
+      idempotency_key_present: true,
     });
 
-    // Initialize Stripe
-    const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
-
-    // Create and confirm PaymentIntent for $20 success fee
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: amount_cents,
-      currency: 'usd',
-      customer: billing.stripe_customer_id,
-      payment_method: billing.default_payment_method_id,
-      off_session: true,
-      confirm: true,
-      description: `SignupAssist Success Fee - Booking ${booking_number}`,
-      metadata: {
-        booking_number,
-        mandate_id,
-        user_id,
-        type: 'platform_success_fee'
-      }
-    });
-
-    logStep("PaymentIntent created", { 
-      payment_intent_id: paymentIntent.id,
-      status: paymentIntent.status 
-    });
-
-    // Record charge in charges table and get the database UUID
-    const { data: chargeData, error: chargeError } = await supabaseClient
-      .from('charges')
-      .insert({
-        mandate_id,
-        stripe_payment_intent: paymentIntent.id,
-        amount_cents,
-        status: paymentIntent.status,
-        charged_at: new Date().toISOString()
-      })
-      .select('id')
-      .single();
-
-    let databaseChargeId: string | null = null;
-    if (chargeError) {
-      logStep("Warning: Failed to record charge in database", { error: chargeError.message });
-      // Don't fail the request - payment succeeded
-    } else {
-      databaseChargeId = chargeData?.id || null;
-      logStep("Charge recorded in database", { charge_id: databaseChargeId });
-    }
-
-    return new Response(JSON.stringify({ 
-      success: true,
-      charge_id: databaseChargeId, // Return database UUID, not Stripe ID
-      stripe_payment_intent: paymentIntent.id,
-      status: paymentIntent.status,
-      amount_cents
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200,
-    });
-
+    return new Response(
+      JSON.stringify({
+        success: false,
+        status: "payment_review_required",
+        error: "automated_payment_disabled_until_verified_provider_payment_gate",
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 409,
+      },
+    );
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message: errorMessage });
-    
-    return new Response(JSON.stringify({ 
+
+    return new Response(JSON.stringify({
       success: false,
-      error: errorMessage 
+      error: errorMessage,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,

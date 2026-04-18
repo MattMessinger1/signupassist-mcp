@@ -1,9 +1,12 @@
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
+  AlertCircle,
   ArrowRight,
-  BellRing,
+  CalendarDays,
   CheckCircle2,
+  CircleDollarSign,
+  ClipboardCheck,
   Clock3,
   Link as LinkIcon,
   Loader2,
@@ -11,14 +14,17 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Target,
   UserRound,
   Zap,
 } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Header } from "@/components/Header";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -28,6 +34,7 @@ import {
   type ActivityFinderParsed,
   type ActivityFinderResponse,
   type ActivityFinderResult,
+  type ActivityFinderStatus,
 } from "@/lib/activityFinder";
 import {
   buildAutopilotIntentPath,
@@ -36,27 +43,51 @@ import {
 } from "@/lib/signupIntent";
 import { showErrorToast } from "@/lib/toastHelpers";
 
+type SearchFieldKey =
+  | "activity"
+  | "provider"
+  | "location"
+  | "ageGrade"
+  | "season"
+  | "priceCap"
+  | "registrationStatus";
+
+type SearchFields = Record<SearchFieldKey, string>;
+
+const emptyFields: SearchFields = {
+  activity: "",
+  provider: "",
+  location: "",
+  ageGrade: "",
+  season: "",
+  priceCap: "",
+  registrationStatus: "",
+};
+
 const examples = [
   "soccer at Keva in Madison for age 9",
   "swim lessons at the YMCA for my 7 year old",
   "summer camp near me for age 8",
 ];
 
-function Chip({ label, value }: { label: string; value?: string | number | null }) {
-  if (value === null || value === undefined || value === "") {
-    return (
-      <span className="rounded-full border border-dashed px-3 py-1 text-sm text-muted-foreground">
-        Add {label.toLowerCase()}
-      </span>
-    );
-  }
+const registrationStatusOptions = [
+  "Open now",
+  "Opens soon",
+  "Waitlist ok",
+];
 
-  return (
-    <span className="rounded-full border bg-card px-3 py-1 text-sm text-foreground shadow-sm">
-      <span className="text-muted-foreground">{label}: </span>
-      <span className="font-medium">{value}</span>
-    </span>
-  );
+function composeStructuredQuery(fields: SearchFields) {
+  const pieces = [
+    fields.activity,
+    fields.provider ? `at ${fields.provider}` : "",
+    fields.location ? `near ${fields.location}` : "",
+    fields.ageGrade ? `for ${fields.ageGrade}` : "",
+    fields.season ? `during ${fields.season}` : "",
+    fields.priceCap ? `under ${fields.priceCap}` : "",
+    fields.registrationStatus ? `registration ${fields.registrationStatus.toLowerCase()}` : "",
+  ].filter(Boolean);
+
+  return pieces.join(" ");
 }
 
 function locationLabel(parsed?: ActivityFinderParsed | null) {
@@ -64,68 +95,355 @@ function locationLabel(parsed?: ActivityFinderParsed | null) {
   return [parsed.city, parsed.state].filter(Boolean).join(", ");
 }
 
+function ageLabel(parsed?: ActivityFinderParsed | null) {
+  if (!parsed) return null;
+  if (parsed.ageYears !== null) return `Age ${parsed.ageYears}`;
+  return parsed.grade;
+}
+
+function isHttpsUrl(value: string) {
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function optionalString(result: ActivityFinderResult, key: string) {
+  const value = (result as unknown as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function optionalNumber(result: ActivityFinderResult, key: string) {
+  const value = (result as unknown as Record<string, unknown>)[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function optionalStringArray(result: ActivityFinderResult, key: string) {
+  const value = (result as unknown as Record<string, unknown>)[key];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+    : [];
+}
+
+function ctaLabelForStatus(status: ActivityFinderStatus, linkReady: boolean) {
+  switch (status) {
+    case "tested_fast_path":
+      return "Prepare signup";
+    case "guided_autopilot":
+      return "Prepare guided signup";
+    case "needs_signup_link":
+      return linkReady ? "Prepare with this link" : "Paste signup link";
+    case "need_more_detail":
+      return "Add missing details";
+  }
+}
+
+function statusIcon(status: ActivityFinderStatus) {
+  switch (status) {
+    case "tested_fast_path":
+      return <Zap className="h-5 w-5 text-primary" />;
+    case "guided_autopilot":
+      return <Sparkles className="h-5 w-5 text-primary" />;
+    case "needs_signup_link":
+      return <LinkIcon className="h-5 w-5 text-[#d9822b]" />;
+    case "need_more_detail":
+      return <AlertCircle className="h-5 w-5 text-muted-foreground" />;
+  }
+}
+
+function SearchPill({
+  children,
+  active = false,
+  onClick,
+}: {
+  children: ReactNode;
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "rounded-full border px-3 py-1.5 text-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+        active
+          ? "border-primary bg-primary text-primary-foreground"
+          : "bg-card text-muted-foreground hover:border-primary/50 hover:text-primary",
+      ].join(" ")}
+    >
+      {children}
+    </button>
+  );
+}
+
+function StructuredField({
+  id,
+  label,
+  value,
+  placeholder,
+  icon,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  placeholder: string;
+  icon: ReactNode;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id} className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {icon}
+        {label}
+      </Label>
+      <Input
+        id={id}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="h-11 rounded-lg bg-background"
+      />
+    </div>
+  );
+}
+
+function ParsedChip({ label, value }: { label: string; value?: string | number | null }) {
+  return (
+    <span
+      className={[
+        "rounded-full border px-3 py-1 text-sm",
+        value === null || value === undefined || value === ""
+          ? "border-dashed text-muted-foreground"
+          : "bg-card text-foreground shadow-sm",
+      ].join(" ")}
+    >
+      <span className="text-muted-foreground">{label}: </span>
+      <span className="font-medium">{value || "Needed"}</span>
+    </span>
+  );
+}
+
+function LoadingResults() {
+  return (
+    <div className="space-y-4" aria-label="Loading activity results">
+      {[0, 1].map((item) => (
+        <Card key={item} className="overflow-hidden">
+          <CardContent className="space-y-4 p-5">
+            <div className="h-4 w-28 rounded bg-muted" />
+            <div className="h-6 w-3/4 rounded bg-muted" />
+            <div className="h-4 w-full rounded bg-muted" />
+            <div className="h-4 w-2/3 rounded bg-muted" />
+            <div className="h-10 w-40 rounded bg-muted" />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 function ResultCard({
   result,
+  resultId,
+  parsed,
   primary = false,
   onContinue,
   disabled = false,
+  signupLink,
+  onSignupLinkChange,
 }: {
   result: ActivityFinderResult;
+  resultId: string;
+  parsed: ActivityFinderParsed;
   primary?: boolean;
-  onContinue: (result: ActivityFinderResult) => void | Promise<void>;
+  onContinue: (result: ActivityFinderResult, confirmedUrl?: string) => void | Promise<void>;
   disabled?: boolean;
+  signupLink: string;
+  onSignupLinkChange: (value: string) => void;
 }) {
   const statusLabel = activityFinderStatusLabel(result.status);
   const statusTone = activityFinderStatusTone(result.status);
+  const parsedLocation = locationLabel(parsed);
+  const parsedAge = ageLabel(parsed);
+  const confidence = optionalNumber(result, "confidence");
+  const sourceFreshness = optionalString(result, "sourceFreshness");
+  const providerReadiness = optionalString(result, "providerReadiness");
+  const ageGradeFit = optionalString(result, "ageGradeFit") || parsedAge;
+  const missingDetails = [
+    ...optionalStringArray(result, "missingDetails"),
+    ...(result.status === "need_more_detail" ? parsed.missingFields : []),
+  ].filter((item, index, items) => item && items.indexOf(item) === index);
+  const linkReady = result.status === "needs_signup_link" ? isHttpsUrl(signupLink) : true;
+  const canContinue = !disabled && result.status !== "need_more_detail" && linkReady;
+  const title = result.activityLabel || result.venueName || "Activity signup match";
+  const venue = result.venueName || result.providerName || parsed.venue;
+  const location = result.address || parsedLocation;
 
   return (
-    <Card className={primary ? "border-primary/30 shadow-sm" : ""}>
-      <CardHeader className="pb-3">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <div className="mb-2 flex items-center gap-2">
+    <Card className={primary ? "border-primary/30 shadow-sm" : "shadow-sm"}>
+      <CardHeader className="pb-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
               {primary && <Badge variant="secondary">Best match</Badge>}
               <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${statusTone}`}>
                 {statusLabel}
               </span>
+              {providerReadiness && (
+                <span className="rounded-full border border-[#b9e5c7] bg-[#eaf7ef] px-2.5 py-1 text-xs font-semibold text-[#2f855a]">
+                  {providerReadiness}
+                </span>
+              )}
             </div>
-            <CardTitle className="text-xl">
-              {result.venueName || result.activityLabel || "Add a little more detail"}
-            </CardTitle>
-            {result.address && (
-              <CardDescription className="mt-2 flex items-center gap-1.5">
-                <MapPin className="h-4 w-4" />
-                {result.address}
-              </CardDescription>
-            )}
+            <CardTitle className="text-2xl tracking-normal">{title}</CardTitle>
+            <CardDescription className="mt-2 flex flex-col gap-1 text-sm sm:flex-row sm:flex-wrap sm:items-center">
+              {result.providerName && <span>{result.providerName}</span>}
+              {venue && <span>{venue}</span>}
+              {location && (
+                <span className="inline-flex items-center gap-1">
+                  <MapPin className="h-3.5 w-3.5" />
+                  {location}
+                </span>
+              )}
+            </CardDescription>
           </div>
-          {result.status === "tested_fast_path" ? (
-            <Zap className="h-6 w-6 text-primary" />
-          ) : result.status === "guided_autopilot" ? (
-            <Sparkles className="h-6 w-6 text-primary" />
-          ) : (
-            <LinkIcon className="h-6 w-6 text-muted-foreground" />
-          )}
+          <div className="rounded-full border bg-background p-2">
+            {statusIcon(result.status)}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className="text-sm text-muted-foreground">{result.explanation}</p>
-        {result.activityLabel && (
-          <div className="rounded-lg border bg-secondary/60 p-3 text-sm">
-            <span className="text-muted-foreground">Activity: </span>
-            <span className="font-medium">{result.activityLabel}</span>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <div className="rounded-lg border bg-[hsl(var(--secondary))] p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Age fit</p>
+            <p className="mt-1 text-sm font-semibold">{ageGradeFit || "Confirm fit"}</p>
+          </div>
+          <div className="rounded-lg border bg-[hsl(var(--secondary))] p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Confidence</p>
+            <p className="mt-1 text-sm font-semibold">
+              {confidence !== null ? `${Math.round(confidence * 100)}%` : primary ? "Best available" : "Review"}
+            </p>
+          </div>
+          <div className="rounded-lg border bg-[hsl(var(--secondary))] p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Freshness</p>
+            <p className="mt-1 text-sm font-semibold">{sourceFreshness || "Live check"}</p>
+          </div>
+        </div>
+
+        <div className="rounded-lg border bg-background p-4">
+          <p className="text-sm font-semibold">Why this match</p>
+          <p className="mt-1 text-sm text-muted-foreground">{result.explanation}</p>
+        </div>
+
+        {missingDetails.length > 0 && (
+          <Alert className="border-[#f3d8b6] bg-[#fff3e2]">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Missing detail</AlertTitle>
+            <AlertDescription>
+              Add {missingDetails.join(", ")} above, then search again for a safer match.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {result.status === "needs_signup_link" && (
+          <div className="space-y-2">
+            <Label htmlFor={`signup-link-${resultId}`}>Confirm signup link</Label>
+            <Input
+              id={`signup-link-${resultId}`}
+              value={signupLink}
+              onChange={(event) => onSignupLinkChange(event.target.value)}
+              placeholder="https://provider.example.com/signup"
+              inputMode="url"
+            />
+            <p className="text-xs text-muted-foreground">
+              Paste the provider signup page. SignupAssist still creates a server-side intent and keeps it out of the browser URL.
+            </p>
           </div>
         )}
-        <Button
-          className="w-full sm:w-auto"
-          onClick={() => onContinue(result)}
-          disabled={disabled || result.status === "need_more_detail"}
-        >
-          {result.ctaLabel}
-          <ArrowRight className="h-4 w-4" />
-        </Button>
+
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Button
+            className="w-full sm:w-auto"
+            onClick={() => onContinue(result, result.status === "needs_signup_link" ? signupLink : undefined)}
+            disabled={!canContinue}
+          >
+            {disabled ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ClipboardCheck className="h-4 w-4" />
+            )}
+            {ctaLabelForStatus(result.status, linkReady)}
+            {canContinue && <ArrowRight className="h-4 w-4" />}
+          </Button>
+          {result.status === "need_more_detail" && (
+            <p className="text-sm text-muted-foreground">Search again after adding the missing details.</p>
+          )}
+        </div>
       </CardContent>
     </Card>
+  );
+}
+
+function TrustPanel({ authenticated }: { authenticated: boolean }) {
+  const trustItems = [
+    { icon: <ShieldCheck className="h-4 w-4" />, title: "Parent controlled", copy: "You approve sensitive steps." },
+    { icon: <Clock3 className="h-4 w-4" />, title: "Sensitive steps pause", copy: "Login, waivers, payment, and final submit stop for review." },
+    { icon: <CircleDollarSign className="h-4 w-4" />, title: "No card numbers stored", copy: "Provider checkout stays with the provider." },
+    { icon: <ClipboardCheck className="h-4 w-4" />, title: "All actions logged", copy: "Prepared runs keep an audit trail." },
+    { icon: <Sparkles className="h-4 w-4" />, title: "Provider learning", copy: "Future set-and-forget depends on verified provider playbooks." },
+  ];
+
+  return (
+    <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
+      {!authenticated && (
+        <Alert className="border-[#f3d8b6] bg-[#fff3e2]">
+          <UserRound className="h-4 w-4" />
+          <AlertTitle>Sign in to prepare a signup</AlertTitle>
+          <AlertDescription>
+            Searching works now. Creating the secure signup intent requires your account.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <Card className="border-primary/20">
+        <CardHeader>
+          <CardTitle className="text-base">Signup readiness</CardTitle>
+          <CardDescription>SignupAssist prepares the path. You stay in control.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {trustItems.map((item) => (
+            <div key={item.title} className="flex gap-3 rounded-lg border bg-background p-3">
+              <div className="mt-0.5 text-primary">{item.icon}</div>
+              <div>
+                <p className="text-sm font-semibold">{item.title}</p>
+                <p className="mt-1 text-sm text-muted-foreground">{item.copy}</p>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card className="border-primary/20 bg-[hsl(var(--secondary))]">
+        <CardContent className="space-y-3 p-5">
+          <p className="text-sm font-semibold">What happens next</p>
+          <ol className="space-y-3 text-sm text-muted-foreground">
+            <li className="flex gap-2">
+              <span className="font-semibold text-foreground">1.</span>
+              Search for the signup path.
+            </li>
+            <li className="flex gap-2">
+              <span className="font-semibold text-foreground">2.</span>
+              Prepare a secure signup intent.
+            </li>
+            <li className="flex gap-2">
+              <span className="font-semibold text-foreground">3.</span>
+              Confirm details in supervised Autopilot.
+            </li>
+          </ol>
+        </CardContent>
+      </Card>
+    </aside>
   );
 }
 
@@ -133,24 +451,47 @@ export default function ActivityFinder() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [query, setQuery] = useState("");
+  const [fields, setFields] = useState<SearchFields>(emptyFields);
   const [loading, setLoading] = useState(false);
   const [creatingIntent, setCreatingIntent] = useState(false);
   const [response, setResponse] = useState<ActivityFinderResponse | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [signupLinks, setSignupLinks] = useState<Record<string, string>>({});
 
   const parsedLocation = locationLabel(response?.parsed);
-  const ageLabel = useMemo(() => {
-    if (!response?.parsed) return null;
-    return response.parsed.ageYears !== null
-      ? `Age ${response.parsed.ageYears}`
-      : response.parsed.grade;
-  }, [response?.parsed]);
+  const parsedAge = ageLabel(response?.parsed);
+  const structuredQuery = useMemo(() => composeStructuredQuery(fields), [fields]);
+  const results = useMemo(
+    () => [
+      ...(response?.bestMatch ? [response.bestMatch] : []),
+      ...(response?.otherMatches || []),
+    ],
+    [response],
+  );
+  const hasNoResults = Boolean(response && results.length === 0);
+  const hasMissingDetail = Boolean(
+    response?.parsed.missingFields.length || results.some((result) => result.status === "need_more_detail"),
+  );
+
+  const updateField = (key: SearchFieldKey, value: string) => {
+    const nextFields = { ...fields, [key]: value };
+    setFields(nextFields);
+    const nextQuery = composeStructuredQuery(nextFields);
+    if (nextQuery) setQuery(nextQuery);
+  };
+
+  const applyExample = (example: string) => {
+    setQuery(example);
+    void runSearch(example);
+  };
 
   const runSearch = async (nextQuery = query) => {
-    const trimmed = nextQuery.trim();
+    const trimmed = nextQuery.trim() || structuredQuery.trim();
     if (!trimmed) return;
 
     setQuery(trimmed);
     setLoading(true);
+    setErrorMessage(null);
     try {
       const {
         data: { session },
@@ -158,10 +499,9 @@ export default function ActivityFinder() {
       const result = await searchActivityFinder(trimmed, session?.access_token);
       setResponse(result);
     } catch (error) {
-      showErrorToast(
-        "Activity search failed",
-        error instanceof Error ? error.message : "Please try again.",
-      );
+      const message = error instanceof Error ? error.message : "Please try again.";
+      setErrorMessage(message);
+      showErrorToast("Activity search failed", message);
     } finally {
       setLoading(false);
     }
@@ -172,7 +512,7 @@ export default function ActivityFinder() {
     void runSearch();
   };
 
-  const continueToSetup = async (result: ActivityFinderResult) => {
+  const continueToSetup = async (result: ActivityFinderResult, confirmedUrl?: string) => {
     if (result.status === "need_more_detail" || !response) return;
 
     if (!user) {
@@ -181,10 +521,15 @@ export default function ActivityFinder() {
       return;
     }
 
+    const resultForIntent =
+      result.status === "needs_signup_link" && confirmedUrl
+        ? { ...result, targetUrl: confirmedUrl }
+        : result;
+
     const payload = buildSignupIntentFromFinderResult({
       query,
       parsed: response.parsed,
-      result,
+      result: resultForIntent,
     });
 
     if (!payload) return;
@@ -206,141 +551,252 @@ export default function ActivityFinder() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="container mx-auto max-w-6xl px-4 py-10">
-        <section className="mx-auto max-w-4xl text-center">
-          <Badge variant="secondary" className="mb-4">
-            Activity Finder
-          </Badge>
-          <h1 className="text-4xl font-bold tracking-normal text-primary sm:text-5xl">
-            Find the signup. Get ready fast.
-          </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-            Type the activity, venue, and age in one line. We’ll find the best signup path,
-            remind you before it opens, and help fill the boring parts.
-          </p>
-
-          <form onSubmit={handleSubmit} className="mx-auto mt-8 flex max-w-3xl flex-col gap-3 sm:flex-row">
-            <div className="relative flex-1">
-              <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="soccer at Keva in Madison for age 9"
-                className="h-14 rounded-lg pl-11 text-base"
-              />
-            </div>
-            <Button type="submit" size="lg" className="h-14" disabled={loading || !query.trim()}>
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-              Find signup
-            </Button>
-          </form>
-
-          <div className="mt-4 flex flex-wrap justify-center gap-2">
-            {examples.map((example) => (
-              <button
-                key={example}
-                type="button"
-                onClick={() => void runSearch(example)}
-                className="rounded-full border bg-card px-3 py-1 text-sm text-muted-foreground transition hover:border-primary/40 hover:text-primary"
-              >
-                {example}
-              </button>
-            ))}
+      <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <Badge variant="secondary" className="mb-3">Activity Finder</Badge>
+            <h1 className="text-3xl font-bold tracking-normal text-primary sm:text-4xl">
+              Find the signup. Get ready fast.
+            </h1>
+            <p className="mt-2 max-w-2xl text-muted-foreground">
+              SignupAssist prepares the path. You stay in control.
+            </p>
           </div>
-        </section>
+          <div className="rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground">
+            Future set-and-forget depends on verified provider playbooks.
+          </div>
+        </div>
 
-        {response && (
-          <section className="mt-10 grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <div className="space-y-5">
-              <div className="rounded-lg border bg-card p-4">
-                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="font-medium">We found the important pieces</p>
-                  {parsedLocation && (
-                    <p className="text-sm text-muted-foreground">
-                      Searching near <span className="font-medium text-foreground">{parsedLocation}</span>
-                    </p>
-                  )}
+        <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="space-y-6">
+            <Card className="border-primary/20 shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-xl">
+                  <Search className="h-5 w-5 text-primary" />
+                  Search by phrase or details
+                </CardTitle>
+                <CardDescription>
+                  Type naturally, or fill the fields below and we will build the search phrase.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <form onSubmit={handleSubmit} className="flex flex-col gap-3 lg:flex-row">
+                  <div className="relative flex-1">
+                    <Label htmlFor="activity-finder-query" className="sr-only">Activity search query</Label>
+                    <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      id="activity-finder-query"
+                      value={query}
+                      onChange={(event) => setQuery(event.target.value)}
+                      placeholder="soccer at Keva in Madison for age 9"
+                      className="h-14 rounded-lg pl-11 text-base"
+                    />
+                  </div>
+                  <Button type="submit" size="lg" className="h-14" disabled={loading || !query.trim()}>
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                    Find signup
+                  </Button>
+                </form>
+
+                <div className="flex flex-wrap gap-2" aria-label="Example searches">
+                  {examples.map((example) => (
+                    <SearchPill key={example} onClick={() => applyExample(example)}>
+                      {example}
+                    </SearchPill>
+                  ))}
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Chip label="Activity" value={response.parsed.activity} />
-                  <Chip label="Venue" value={response.parsed.venue || response.bestMatch?.venueName} />
-                  <Chip label="Location" value={parsedLocation} />
-                  <Chip label="Age" value={ageLabel} />
+
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  <StructuredField
+                    id="activity-field"
+                    label="Activity"
+                    value={fields.activity}
+                    placeholder="Soccer, swim, camp"
+                    icon={<Target className="h-3.5 w-3.5" />}
+                    onChange={(value) => updateField("activity", value)}
+                  />
+                  <StructuredField
+                    id="provider-field"
+                    label="Provider or venue"
+                    value={fields.provider}
+                    placeholder="Keva, YMCA, parks"
+                    icon={<Sparkles className="h-3.5 w-3.5" />}
+                    onChange={(value) => updateField("provider", value)}
+                  />
+                  <StructuredField
+                    id="location-field"
+                    label="City or location"
+                    value={fields.location}
+                    placeholder="Madison, Middleton"
+                    icon={<MapPin className="h-3.5 w-3.5" />}
+                    onChange={(value) => updateField("location", value)}
+                  />
+                  <StructuredField
+                    id="age-grade-field"
+                    label="Age or grade"
+                    value={fields.ageGrade}
+                    placeholder="age 9, grade 3"
+                    icon={<UserRound className="h-3.5 w-3.5" />}
+                    onChange={(value) => updateField("ageGrade", value)}
+                  />
+                  <StructuredField
+                    id="season-field"
+                    label="Season or date"
+                    value={fields.season}
+                    placeholder="summer, July, weekends"
+                    icon={<CalendarDays className="h-3.5 w-3.5" />}
+                    onChange={(value) => updateField("season", value)}
+                  />
+                  <StructuredField
+                    id="price-cap-field"
+                    label="Price cap"
+                    value={fields.priceCap}
+                    placeholder="$250"
+                    icon={<CircleDollarSign className="h-3.5 w-3.5" />}
+                    onChange={(value) => updateField("priceCap", value)}
+                  />
                 </div>
+
+                <div>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Registration status
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {registrationStatusOptions.map((option) => (
+                      <SearchPill
+                        key={option}
+                        active={fields.registrationStatus === option}
+                        onClick={() =>
+                          updateField(
+                            "registrationStatus",
+                            fields.registrationStatus === option ? "" : option,
+                          )
+                        }
+                      >
+                        {option}
+                      </SearchPill>
+                    ))}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" aria-label="SignupAssist trust commitments">
+              {["Parent controlled", "Sensitive steps pause", "No card numbers stored", "All actions logged", "Provider learning improves future automation"].map((item) => (
+                <div key={item} className="rounded-lg border bg-card p-3 text-sm font-medium">
+                  <CheckCircle2 className="mb-2 h-4 w-4 text-[#2f855a]" />
+                  {item}
+                </div>
+              ))}
+            </div>
+
+            <section aria-labelledby="activity-results-heading" className="space-y-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <h2 id="activity-results-heading" className="text-2xl font-semibold tracking-normal">
+                    Results
+                  </h2>
+                  <p className="text-sm text-muted-foreground">
+                    Matches become secure signup intents before Autopilot opens.
+                  </p>
+                </div>
+                {response && (
+                  <div className="flex flex-wrap gap-2">
+                    <ParsedChip label="Activity" value={response.parsed.activity} />
+                    <ParsedChip label="Venue" value={response.parsed.venue || response.bestMatch?.venueName} />
+                    <ParsedChip label="Location" value={parsedLocation} />
+                    <ParsedChip label="Age" value={parsedAge} />
+                  </div>
+                )}
               </div>
 
-              {response.bestMatch && (
+              {errorMessage && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Backend error</AlertTitle>
+                  <AlertDescription>{errorMessage}</AlertDescription>
+                </Alert>
+              )}
+
+              {!response && !loading && !errorMessage && (
+                <Card>
+                  <CardContent className="grid gap-5 p-6 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-center">
+                    <div className="rounded-full border bg-[hsl(var(--secondary))] p-4 text-primary">
+                      <Search className="h-7 w-7" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold">Start with one search</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Try an example or fill the fields above. We will look for a signup path without sending sensitive family details.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {loading && <LoadingResults />}
+
+              {hasNoResults && !loading && (
+                <Card>
+                  <CardContent className="p-6">
+                    <h3 className="text-lg font-semibold">No results yet</h3>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Add a venue, city, or age and search again. If you already have a provider link, paste it into the provider field.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {hasMissingDetail && !loading && (
+                <Alert className="border-[#f3d8b6] bg-[#fff3e2]">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Missing detail</AlertTitle>
+                  <AlertDescription>
+                    Add the missing activity, provider, location, or age detail above, then search again before preparing a signup.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {response?.bestMatch && !loading && (
                 <ResultCard
                   result={response.bestMatch}
+                  resultId="best-match"
+                  parsed={response.parsed}
                   primary
                   onContinue={continueToSetup}
                   disabled={creatingIntent}
+                  signupLink={signupLinks.bestMatch || ""}
+                  onSignupLinkChange={(value) => setSignupLinks((current) => ({ ...current, bestMatch: value }))}
                 />
               )}
 
-              {response.otherMatches.length > 0 && (
+              {response && response.otherMatches.length > 0 && !loading && (
                 <div className="space-y-3">
                   <p className="text-sm font-medium text-muted-foreground">Other possible matches</p>
-                  {response.otherMatches.map((result, index) => (
-                    <ResultCard
-                      key={`${result.venueName}-${index}`}
-                      result={result}
-                      onContinue={continueToSetup}
-                      disabled={creatingIntent}
-                    />
-                  ))}
+                  {response.otherMatches.map((result, index) => {
+                    const key = `${result.venueName || result.activityLabel || "match"}-${index}`;
+                    return (
+                      <ResultCard
+                        key={key}
+                        result={result}
+                        resultId={`other-match-${index}`}
+                        parsed={response.parsed}
+                        onContinue={continueToSetup}
+                        disabled={creatingIntent}
+                        signupLink={signupLinks[key] || ""}
+                        onSignupLinkChange={(value) =>
+                          setSignupLinks((current) => ({ ...current, [key]: value }))
+                        }
+                      />
+                    );
+                  })}
                 </div>
               )}
-            </div>
+            </section>
+          </div>
 
-            <aside className="space-y-4">
-              <Card className="border-primary/20 bg-[hsl(var(--secondary))]">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <BellRing className="h-5 w-5 text-primary" />
-                    We won’t let you forget
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm text-muted-foreground">
-                  <p>Set a 10-minute reminder before registration opens.</p>
-                  <p>Open the reminder and jump straight back into your prepared signup flow.</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <UserRound className="h-5 w-5 text-primary" />
-                    Reuse family info
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm text-muted-foreground">
-                  <p>Your child and contact details can be reused across future signups.</p>
-                  <p>Payment, waivers, medical questions, and final submit still pause for you.</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <ShieldCheck className="h-5 w-5 text-primary" />
-                    Parent-controlled
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-[#2f855a]" />
-                    Safe fields can be filled quickly.
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Clock3 className="h-4 w-4 text-[#d9822b]" />
-                    Sensitive steps pause for review.
-                  </div>
-                </CardContent>
-              </Card>
-            </aside>
-          </section>
-        )}
+          <TrustPanel authenticated={Boolean(user)} />
+        </section>
       </main>
     </div>
   );

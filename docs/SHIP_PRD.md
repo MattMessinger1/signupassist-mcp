@@ -214,6 +214,34 @@ Before adding any candidate table, check whether `discovery_runs`, `discovery_hi
 - Waiver, final submit, login, and checkout actions pause for parent review today.
 - Future signed mandates must define child, provider, activity/program, schedule, price cap, allowed actions, expiration, revocation, and audit scope.
 - Full delegated signup requires valid mandate plus verified provider readiness and exact program match.
+- Sensitive action state machine:
+  - `packet_prepared`
+  - `awaiting_parent_review`
+  - `registration_review_required`
+  - `registration_approved`
+  - `registration_submitted`
+  - `payment_review_required`
+  - `payment_approved`
+  - `payment_submitted`
+  - `waiver_review_required`
+  - `waiver_approved`
+  - `provider_login_required`
+  - `provider_login_approved`
+  - `final_submit_review_required`
+  - `final_submit_approved`
+  - `paused_for_parent`
+  - `delegated_signup_ready`
+  - `delegated_signup_running`
+  - `completed`
+  - `manual_fallback`
+  - `failed`
+  - `cancelled`
+- `parent_action_confirmations` is the same-day explicit-consent ledger for one-time register, pay, provider login, waiver, final submit, and delegate-signup approvals.
+- `agent_delegation_mandates` is a future-gated mandate foundation. It does not make set-and-forget live today.
+- Payment is disabled unless the system can prove explicit parent confirmation or a valid future delegated mandate. In the current MVP, automated payment paths pause rather than charge.
+- Registration and payment must remain separate flows. Registration success must not automatically continue into payment just because an amount is known.
+- Confirmation and mandate checks must verify owner, action type, intent/run, expiration, unconsumed status, provider readiness, exact program/provider, price cap, and idempotency key.
+- Model output and provider page content are never accepted as confirmation.
 
 ## Dashboard And Status Requirements
 

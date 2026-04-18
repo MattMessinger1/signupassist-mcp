@@ -1,126 +1,149 @@
-# Signup Assist — Review Team Test Account Guide
+# SignupAssist - Review Team Test Account Guide
 
-This document provides everything needed for external review teams (ChatGPT App Store, Claude MCP Directory) to test Signup Assist.
-
----
+This document provides the review-team orientation for the ChatGPT App Store submission.
 
 ## Quick Start
 
-### 1. Server URL
+### Public Submission URLs
 
-- **Production SSE endpoint:** `https://signupassist-mcp-production.up.railway.app/sse`
-- **Health check:** `https://signupassist-mcp-production.up.railway.app/health`
-- **Manifest:** `https://signupassist-mcp-production.up.railway.app/mcp/manifest.json`
+- **Website:** `https://shipworx.ai`
+- **Privacy policy:** `https://signupassist.shipworx.ai/privacy`
+- **Terms:** `https://signupassist.shipworx.ai/terms`
+- **Support email:** `support@shipworx.ai`
+- **Production SSE endpoint:** `https://signupassist.shipworx.ai/sse`
+- **Health check:** `https://signupassist.shipworx.ai/health`
+- **Manifest:** `https://signupassist.shipworx.ai/mcp/manifest.json`
+- **Safety/security page:** `https://signupassist.shipworx.ai/safety`
 
-### 2. OAuth Authentication
+### OAuth Authentication
 
-- **Authorization URL:** `https://signupassist-mcp-production.up.railway.app/oauth/authorize`
-- **Token URL:** `https://signupassist-mcp-production.up.railway.app/oauth/token`
+- **Authorization URL:** `https://signupassist.shipworx.ai/oauth/authorize`
+- **Token URL:** `https://signupassist.shipworx.ai/oauth/token`
 - **Scopes:** `openid profile email`
 
-### 3. Test Credentials
+### Test Credentials
 
-Contact support@shipworx.ai to request review team test credentials. We will provision:
-- A dedicated Auth0 test account
-- Pre-populated sample data (child profiles, past registrations)
-- A test-mode Stripe configuration that does not process real charges
+Reviewer credentials are provided directly in the OpenAI Platform submission form.
 
----
-
-## What to Test
-
-### Read-Only Browsing (No Auth Required)
-
-The `search_activities` tool works without authentication:
-
-```
-"What programs are available at AIM Design?" → triggers search_activities
-"Show me robotics classes for my 9 year old" → triggers search_activities
+```text
+Email: [paste reviewer test email in platform.openai.com]
+Password: [paste reviewer test password in platform.openai.com]
 ```
 
-Expected: Returns a plain-text bullet list of real programs from the AIM Design provider in Madison, WI.
+The reviewer account should not require MFA, SMS verification, email verification loops, or access from a private network. Do not commit reviewer passwords or live credentials to git.
 
-### Full Registration Flow (Auth Required)
+## What To Test
 
-The `register_for_activity` tool requires OAuth:
+### Read-Only Browsing
 
+The `search_activities` tool is read-only:
+
+```text
+Use SignupAssist to show me programs at AIM Design.
 ```
-"Sign up my child for a class at AIM Design" → triggers register_for_activity
+
+Expected:
+
+- Returns available AIM Design programs from the Bookeo-connected catalog.
+- Does not require booking details.
+- Does not create a booking, collect payment, or charge anything.
+
+Age-filtered browse should also use `search_activities`:
+
+```text
+Use SignupAssist to find robotics classes for my 9 year old at AIM Design.
+```
+
+Expected:
+
+- Returns AIM Design robotics or youth-program results appropriate for the requested age when available.
+- If no exact match exists, explains closest available programs or asks a narrow follow-up.
+- Does not start the signup wizard unless the reviewer asks to sign up.
+- Does not create a booking, collect payment, or charge anything.
+
+### Connected Bookeo Signup
+
+The `register_for_activity` tool requires OAuth for the signup flow:
+
+```text
+Use SignupAssist to sign my child up for a class at AIM Design.
 ```
 
 Expected flow:
-1. Step 1/5: Shows available programs, asks user to select one
-2. Step 2/5: Collects account holder and participant info (email, name, DOB, participant details)
-3. Step 3/5: Directs to Stripe-hosted Checkout for payment method setup
-4. Step 4/5: Shows review summary, asks for explicit confirmation
-5. Step 5/5: Creates the booking (in test mode, no real charges)
 
-### Scheduled Registration ("Set and Forget")
+1. Step 1/5: Shows available programs and asks the reviewer to select one.
+2. Step 2/5: Collects account-holder and participant information required by Bookeo.
+3. Payment setup: Directs to Stripe-hosted checkout for payment method setup when required.
+4. Review: Shows a final summary with program, participant, schedule, program fee, SignupAssist fee, and payment context.
+5. Confirmation: Creates the supported Bookeo booking only after the reviewer explicitly types `book now`.
 
+No booking or charge occurs before the explicit final confirmation.
+
+### Cancel Flow
+
+```text
+Actually, cancel this signup.
 ```
-"Sign up Alex for Summer Camp when registration opens next Monday at 9am"
+
+Expected:
+
+- Stops the active signup flow.
+- Does not create a booking or charge if final confirmation has not happened.
+
+### Future Set-And-Forget Boundary
+
+```text
+Set it and forget it. Register automatically later without asking me again.
 ```
 
-Expected: Follows the same wizard steps, then schedules the registration for future execution rather than booking immediately.
+Expected:
 
----
+- Explains that unattended delegated signup is not live for arbitrary provider flows.
+- Keeps parent confirmation requirements in place.
 
 ## Sample Data
 
-When using the test account, the following data is pre-populated:
+### Available Programs
 
-### Available Programs (AIM Design, Madison WI)
+Programs are fetched live from the AIM Design Bookeo API. Typical program categories may include:
 
-Programs are fetched live from the Bookeo API. Typical programs include:
-- Robotics classes (various levels, ages 6-14)
-- STEM camps (seasonal)
+- Robotics classes
+- STEM camps
 - Coding workshops
 
-### Test Payment
+Actual titles, prices, schedules, and availability may change because they come from the live provider catalog.
 
-Stripe is in test mode. Use Stripe's test card numbers:
-- **Success:** `4242 4242 4242 4242` (any future expiry, any CVC)
-- **Decline:** `4000 0000 0000 0002`
+### Payment Method Setup
 
-The $20 success fee charge will appear in Stripe's test dashboard but is not a real charge.
+Payment method setup is handled by Stripe-hosted checkout. SignupAssist does not see raw card numbers.
 
----
+For review/testing, use the dedicated reviewer account and payment instructions supplied in the OpenAI Platform submission. Do not use real family data, production payment cards, or production credentials in review tests.
+
+Prefer a synthetic participant age 13 or older for review tests when the selected program supports it. If the provider-selected program requires a different age range, use synthetic data that matches the provider rules and do not use real child data.
+
+If the reviewer completes a final booking, record the booking number, cancellation/refund evidence, and Stripe/test-payment evidence in the submission notes.
 
 ## Safety Annotations
 
-All tools include MCP safety annotations:
+| Tool | readOnlyHint | destructiveHint | Expected posture |
+|---|---:|---:|---|
+| `search_activities` | true | false | Read-only browse; no booking, payment, or writes. |
+| `register_for_activity` | false | true | OAuth-gated signup wizard; can create supported Bookeo bookings only after explicit final confirmation. |
 
-| Tool | readOnlyHint | destructiveHint |
-|------|-------------|----------------|
-| `search_activities` | true | false |
-| `register_for_activity` | false | true |
+Hidden/private/internal tools remain private and should not appear in public `ListTools` responses.
 
-The `register_for_activity` tool is marked destructive because it can create bookings and charge the success fee — but only after explicit user confirmation at Step 4/5.
+## Privacy And Child Safety
 
----
-
-## Privacy and COPPA
-
-- The service is operated by adults (account holders must be 18+)
-- Children never interact with the service directly
-- Participant data (name, DOB only) is entered by the authenticated adult
-- Full privacy policy: `/privacy` endpoint or `docs/PRIVACY_POLICY.md`
-- Full safety policy: `/safety` endpoint or `docs/SAFETY_POLICY.md`
-
----
-
-## Test Harness UI
-
-For interactive testing outside of ChatGPT/Claude, we provide a web-based test harness:
-
-- **URL:** `https://signupassist-mcp-production.up.railway.app/` (React SPA)
-- **Pages:** Chat test harness, flow tester, admin console
-- **Docs:** See `docs/CHAT_TEST_HARNESS_USER_GUIDE.md` for detailed instructions
-
----
+- Account holders must be adults.
+- Children do not interact with the service directly.
+- Participant information is provided by the authenticated adult.
+- SignupAssist does not see raw card numbers.
+- Privacy policy: `https://signupassist.shipworx.ai/privacy`
+- Terms: `https://signupassist.shipworx.ai/terms`
+- Safety/security page: `https://signupassist.shipworx.ai/safety`
 
 ## Support
 
-- **Email:** support@shipworx.ai
-- **Privacy questions:** privacy@shipworx.ai
-- **Response time:** Within 1 business day for review team requests
+- **Email:** `support@shipworx.ai`
+- **Privacy questions:** `privacy@shipworx.ai`
+- **Response time:** Within 1 business day for review team requests.

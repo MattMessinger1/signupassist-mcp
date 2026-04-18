@@ -1,5 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { ZodError } from "zod";
+import { corsHeadersForRequest, writeJson } from "./httpSecurity.js";
+import { consumeRateLimit, getStableRateLimitKey } from "./rateLimit.js";
 import {
   createSignupIntent,
   getSignupIntent,
@@ -121,27 +123,17 @@ class SupabaseSignupIntentStorage implements SignupIntentStorage {
   }
 }
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
-  "Access-Control-Allow-Headers": "Authorization,Content-Type",
-  "Cache-Control": "no-store",
-};
-
 function jsonResponse(
+  req: IncomingMessage,
   res: ServerResponse,
   statusCode: number,
   payload: unknown,
 ): void {
-  res.writeHead(statusCode, {
-    ...corsHeaders,
-    "Content-Type": "application/json",
-  });
-  res.end(JSON.stringify(payload));
+  writeJson(req, res, statusCode, payload);
 }
 
-function authRequired(res: ServerResponse): void {
-  jsonResponse(res, 401, {
+function authRequired(req: IncomingMessage, res: ServerResponse): void {
+  jsonResponse(req, res, 401, {
     error: "authentication_required",
     message: "Sign in required",
   });
@@ -185,9 +177,9 @@ async function authenticate(
   return data.user.id;
 }
 
-function handleError(res: ServerResponse, error: unknown): void {
+function handleError(req: IncomingMessage, res: ServerResponse, error: unknown): void {
   if (error instanceof SignupIntentError) {
-    jsonResponse(res, error.statusCode, {
+    jsonResponse(req, res, error.statusCode, {
       error: error.code,
       message: error.message,
     });
@@ -195,7 +187,7 @@ function handleError(res: ServerResponse, error: unknown): void {
   }
 
   if (error instanceof ZodError) {
-    jsonResponse(res, 400, {
+    jsonResponse(req, res, 400, {
       error: "validation_failed",
       issues: error.issues.map((issue) => ({
         path: issue.path.join("."),
@@ -206,12 +198,43 @@ function handleError(res: ServerResponse, error: unknown): void {
   }
 
   console.error("[SignupIntent] Unexpected error", error instanceof Error ? error.message : error);
-  jsonResponse(res, 500, { error: "signup_intent_failed" });
+  jsonResponse(req, res, 500, { error: "signup_intent_failed" });
 }
 
 function extractIntentId(pathname: string): string | null {
   const match = pathname.match(/^\/api\/signup-intents\/([^/]+)$/);
   return match?.[1] ?? null;
+}
+
+function isRateLimitEnabled() {
+  const raw = String(process.env.RATE_LIMIT_ENABLED || "").trim().toLowerCase();
+  if (raw === "false" || raw === "0" || raw === "off" || raw === "no") return false;
+  if (!raw) return String(process.env.NODE_ENV || "").toLowerCase() === "production";
+  return raw === "true" || raw === "1" || raw === "on" || raw === "yes";
+}
+
+function enforceRateLimit(req: IncomingMessage, res: ServerResponse): boolean {
+  if (!isRateLimitEnabled()) return true;
+
+  const windowMs = Number(process.env.RATE_LIMIT_WINDOW_MS || 60_000);
+  const window = Number.isFinite(windowMs) && windowMs > 0 ? windowMs : 60_000;
+  const max = Number(process.env.RATE_LIMIT_SIGNUP_INTENTS_MAX || 120);
+  const key = getStableRateLimitKey(req);
+  const { allowed, retryAfterSec } = consumeRateLimit(
+    `${key}:signup_intents`,
+    Number.isFinite(max) ? max : 120,
+    window,
+  );
+
+  if (allowed) return true;
+
+  writeJson(req, res, 429, {
+    error: "rate_limited",
+    message: "Too many signup intent requests. Please retry shortly.",
+  }, {
+    "Retry-After": String(retryAfterSec || 1),
+  });
+  return false;
 }
 
 export async function handleSignupIntentApi(params: {
@@ -226,45 +249,47 @@ export async function handleSignupIntentApi(params: {
 
   try {
     if (method === "OPTIONS") {
-      res.writeHead(204, corsHeaders);
+      res.writeHead(204, corsHeadersForRequest(req));
       res.end();
       return;
     }
 
+    if (!enforceRateLimit(req, res)) return;
+
     const userId = await authenticate(req, supabase);
     if (!userId) {
-      authRequired(res);
+      authRequired(req, res);
       return;
     }
 
     if (url.pathname === "/api/signup-intents" && method === "POST") {
       const payload = await readBody(req);
       const result = await createSignupIntent(storage, userId, payload);
-      jsonResponse(res, 201, result);
+      jsonResponse(req, res, 201, result);
       return;
     }
 
     const intentId = extractIntentId(url.pathname);
     if (!intentId) {
-      jsonResponse(res, 404, { error: "not_found" });
+      jsonResponse(req, res, 404, { error: "not_found" });
       return;
     }
 
     if (method === "GET") {
       const result = await getSignupIntent(storage, userId, intentId);
-      jsonResponse(res, 200, result);
+      jsonResponse(req, res, 200, result);
       return;
     }
 
     if (method === "PATCH") {
       const payload = await readBody(req);
       const result = await patchSignupIntent(storage, userId, intentId, payload);
-      jsonResponse(res, 200, result);
+      jsonResponse(req, res, 200, result);
       return;
     }
 
-    jsonResponse(res, 405, { error: "method_not_allowed" });
+    jsonResponse(req, res, 405, { error: "method_not_allowed" });
   } catch (error) {
-    handleError(res, error);
+    handleError(req, res, error);
   }
 }

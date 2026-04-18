@@ -4,13 +4,17 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
-import { mapFormDataToBackend, validateFieldMapping, createRegistrationPayload, MappedFieldData } from './fieldMapping';
+import { mapFormDataToBackend, validateFieldMapping, createRegistrationPayload } from './fieldMapping';
+import type { BackendFieldSchema, MappedFieldData } from './fieldMapping';
 import { useToast } from '@/hooks/use-toast';
-import { showPromptToast, showSuccessToast, showErrorToast } from './toastHelpers';
+import { showSuccessToast, showErrorToast } from './toastHelpers';
 import { prompts } from './prompts';
+import type { ProviderReadinessLevel } from './providerLearning';
+import type { SensitiveActionResultStatus } from './sensitiveActionGates';
 
 export interface RegistrationFlowResult {
   success: boolean;
+  status: SensitiveActionResultStatus;
   registrationRef?: string;
   confirmationRef?: string;
   errors: string[];
@@ -24,12 +28,42 @@ export interface RegistrationFlowOptions {
   programRef: string;
   childId: string;
   selectedBranch: string;
-  answers: Record<string, any>;
-  discoveredSchema: any;
+  answers: Record<string, unknown>;
+  discoveredSchema: BackendFieldSchema;
   childData: { name: string; dob: string };
   paymentRequired?: boolean;
   amountCents?: number;
+  registrationConfirmationId?: string;
+  paymentConfirmationId?: string;
+  idempotencyKey?: string;
+  providerKey?: string;
+  providerReadinessLevel?: ProviderReadinessLevel;
+  targetUrl?: string;
+  maxTotalCents?: number;
   strictValidation?: boolean;
+}
+
+export interface PaymentFlowOptions {
+  registrationRef: string;
+  amountCents: number;
+  mandateId: string;
+  planExecutionId: string;
+  paymentConfirmationId?: string;
+  idempotencyKey?: string;
+  providerKey?: string;
+  providerReadinessLevel?: ProviderReadinessLevel;
+  targetUrl?: string;
+  exactProgram?: string;
+  maxTotalCents?: number;
+}
+
+interface RegistrationPayload extends Record<string, unknown> {
+  plan_execution_id: string;
+  mandate_id: string;
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 /**
@@ -61,6 +95,7 @@ export async function executeRegistrationFlow(
     if (!validation.isValid && options.strictValidation) {
       return {
         success: false,
+        status: 'failed',
         errors: validation.errors,
         warnings: validation.warnings,
         coverageReport: mappedData.coverage_report
@@ -80,45 +115,58 @@ export async function executeRegistrationFlow(
         programRef: options.programRef,
         childId: options.childId
       }
-    );
+    ) as RegistrationPayload;
+
+    if (!options.registrationConfirmationId) {
+      return {
+        success: false,
+        status: 'requires_parent_confirmation',
+        errors: ['Parent confirmation is required before SignupAssist can submit registration.'],
+        warnings,
+        coverageReport: mappedData.coverage_report
+      };
+    }
 
     // Step 4: Execute registration via MCP
     console.log('Step 4: Executing registration...');
-    const registrationResult = await executeRegistration(registrationPayload);
+    const registrationResult = await executeRegistration(registrationPayload, {
+      confirmationId: options.registrationConfirmationId,
+      idempotencyKey: options.idempotencyKey,
+      providerKey: options.providerKey,
+      providerReadinessLevel: options.providerReadinessLevel,
+      targetUrl: options.targetUrl,
+      exactProgram: options.programRef,
+      maxTotalCents: options.maxTotalCents,
+      amountCents: options.amountCents,
+    });
     
     if (!registrationResult.success) {
       return {
         success: false,
+        status: registrationResult.status || 'failed',
         errors: [...errors, ...(registrationResult.errors || [])],
         warnings,
         coverageReport: mappedData.coverage_report
       };
     }
 
-    let confirmationRef: string | undefined;
+    if (options.paymentRequired && options.amountCents) {
+      warnings.push('Registration submitted; payment is paused for separate parent review.');
 
-    // Step 5: Execute payment if required
-    if (options.paymentRequired && options.amountCents && registrationResult.registrationRef) {
-      console.log('Step 5: Executing payment...');
-      const paymentResult = await executePayment({
+      return {
+        success: true,
+        status: 'payment_review_required',
         registrationRef: registrationResult.registrationRef,
-        amountCents: options.amountCents,
-        mandateId: options.mandateId,
-        planExecutionId: options.planId
-      });
-
-      if (!paymentResult.success) {
-        warnings.push('Registration succeeded but payment failed');
-        warnings.push(...(paymentResult.errors || []));
-      } else {
-        confirmationRef = paymentResult.confirmationRef;
-      }
+        errors,
+        warnings,
+        coverageReport: mappedData.coverage_report
+      };
     }
 
     return {
       success: true,
+      status: 'registration_submitted',
       registrationRef: registrationResult.registrationRef,
-      confirmationRef,
       errors,
       warnings,
       coverageReport: mappedData.coverage_report
@@ -128,7 +176,8 @@ export async function executeRegistrationFlow(
     console.error('Registration flow error:', error);
     return {
       success: false,
-      errors: [...errors, `Registration flow failed: ${error.message}`],
+      status: 'failed',
+      errors: [...errors, `Registration flow failed: ${errorMessage(error)}`],
       warnings
     };
   }
@@ -137,8 +186,21 @@ export async function executeRegistrationFlow(
 /**
  * Executes the registration step via Supabase function
  */
-async function executeRegistration(payload: any): Promise<{
+async function executeRegistration(
+  payload: RegistrationPayload,
+  gate: {
+    confirmationId: string;
+    idempotencyKey?: string;
+    providerKey?: string;
+    providerReadinessLevel?: ProviderReadinessLevel;
+    targetUrl?: string;
+    exactProgram?: string;
+    amountCents?: number;
+    maxTotalCents?: number;
+  }
+): Promise<{
   success: boolean;
+  status?: SensitiveActionResultStatus;
   registrationRef?: string;
   errors?: string[];
 }> {
@@ -147,7 +209,17 @@ async function executeRegistration(payload: any): Promise<{
       body: {
         plan_id: payload.plan_execution_id,
         action: 'register',
-        parameters: payload
+        parameters: {
+          ...payload,
+          parent_action_confirmation_id: gate.confirmationId,
+          idempotency_key: gate.idempotencyKey,
+          provider_key: gate.providerKey,
+          provider_readiness_level: gate.providerReadinessLevel,
+          target_url: gate.targetUrl,
+          exact_program: gate.exactProgram,
+          amount_cents: gate.amountCents,
+          max_total_cents: gate.maxTotalCents,
+        }
       }
     });
 
@@ -158,6 +230,7 @@ async function executeRegistration(payload: any): Promise<{
         || prompts.backend.errors.UNKNOWN_ERROR;
       return {
         success: false,
+        status: 'failed',
         errors: [mappedError]
       };
     }
@@ -168,12 +241,14 @@ async function executeRegistration(payload: any): Promise<{
         || prompts.backend.errors.UNKNOWN_ERROR;
       return {
         success: false,
+        status: data?.status || 'failed',
         errors: [mappedError]
       };
     }
 
     return {
       success: true,
+      status: data?.status || 'registration_submitted',
       registrationRef: data?.registration_ref || data?.result?.registration_ref
     };
 
@@ -181,24 +256,29 @@ async function executeRegistration(payload: any): Promise<{
     console.error('Registration execution error:', error);
     return {
       success: false,
-      errors: [`Registration execution failed: ${error.message}`]
+      status: 'failed',
+      errors: [`Registration execution failed: ${errorMessage(error)}`]
     };
   }
 }
 
 /**
- * Executes the payment step via Supabase function
+ * Executes the payment step via Supabase function after separate parent review.
  */
-async function executePayment(options: {
-  registrationRef: string;
-  amountCents: number;
-  mandateId: string;
-  planExecutionId: string;
-}): Promise<{
+export async function executePaymentFlow(options: PaymentFlowOptions): Promise<{
   success: boolean;
+  status: SensitiveActionResultStatus;
   confirmationRef?: string;
   errors?: string[];
 }> {
+  if (!options.paymentConfirmationId || !options.idempotencyKey) {
+    return {
+      success: false,
+      status: 'payment_review_required',
+      errors: ['Payment requires separate parent confirmation before SignupAssist can continue.'],
+    };
+  }
+
   try {
     const { data, error } = await supabase.functions.invoke('run-plan', {
       body: {
@@ -208,7 +288,14 @@ async function executePayment(options: {
           registration_ref: options.registrationRef,
           amount_cents: options.amountCents,
           mandate_id: options.mandateId,
-          plan_execution_id: options.planExecutionId
+          plan_execution_id: options.planExecutionId,
+          parent_action_confirmation_id: options.paymentConfirmationId,
+          idempotency_key: options.idempotencyKey,
+          provider_key: options.providerKey,
+          provider_readiness_level: options.providerReadinessLevel,
+          target_url: options.targetUrl,
+          exact_program: options.exactProgram,
+          max_total_cents: options.maxTotalCents,
         }
       }
     });
@@ -220,6 +307,7 @@ async function executePayment(options: {
         || prompts.backend.errors.UNKNOWN_ERROR;
       return {
         success: false,
+        status: 'failed',
         errors: [mappedError]
       };
     }
@@ -230,12 +318,14 @@ async function executePayment(options: {
         || prompts.backend.errors.UNKNOWN_ERROR;
       return {
         success: false,
+        status: data?.status || 'payment_review_required',
         errors: [mappedError]
       };
     }
 
     return {
       success: true,
+      status: data?.status || 'payment_submitted',
       confirmationRef: data?.confirmation_ref || data?.result?.confirmation_ref
     };
 
@@ -243,7 +333,8 @@ async function executePayment(options: {
     console.error('Payment execution error:', error);
     return {
       success: false,
-      errors: [`Payment execution failed: ${error.message}`]
+      status: 'failed',
+      errors: [`Payment execution failed: ${errorMessage(error)}`]
     };
   }
 }
@@ -259,10 +350,18 @@ export function useRegistrationFlow() {
 
     // Show appropriate toast messages
     if (result.success) {
-      showSuccessToast(
-        'Registration Successful',
-        `Registration completed${result.confirmationRef ? ' with payment' : ''}. Reference: ${result.registrationRef}`
-      );
+      if (result.status === 'payment_review_required') {
+        toast({
+          title: 'Payment Review Required',
+          description: 'Registration was submitted. SignupAssist paused before payment for separate parent review.',
+          variant: 'default',
+        });
+      } else {
+        showSuccessToast(
+          'Registration Successful',
+          `Registration submitted. Reference: ${result.registrationRef}`
+        );
+      }
     } else {
       showErrorToast('Registration Failed', result.errors[0] || prompts.backend.errors.UNKNOWN_ERROR);
     }

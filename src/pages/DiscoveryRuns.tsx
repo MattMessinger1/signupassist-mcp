@@ -1,13 +1,14 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { AlertCircle, Calendar, Database, FileJson, TrendingUp } from "lucide-react";
+import { AlertCircle, Calendar, Database, FileJson, ShieldCheck, Sparkles, TrendingUp } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { PROVIDER_REGISTRY, getProviderReadinessSummary } from "@/lib/providerLearning";
 
 interface DiscoveryRun {
   id: string;
@@ -25,12 +26,12 @@ export default function DiscoveryRuns() {
   const [loading, setLoading] = useState(true);
   const [selectedRun, setSelectedRun] = useState<DiscoveryRun | null>(null);
   const { toast } = useToast();
+  const latestRunsByProvider = runs.reduce<Record<string, DiscoveryRun | undefined>>((acc, run) => {
+    if (!acc[run.provider_slug]) acc[run.provider_slug] = run;
+    return acc;
+  }, {});
 
-  useEffect(() => {
-    fetchRuns();
-  }, []);
-
-  const fetchRuns = async () => {
+  const fetchRuns = useCallback(async () => {
     try {
       const { data, error } = await supabase
         .from("discovery_runs")
@@ -51,7 +52,11 @@ export default function DiscoveryRuns() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [toast]);
+
+  useEffect(() => {
+    void fetchRuns();
+  }, [fetchRuns]);
 
   const getFieldCount = (errors: unknown): number => {
     if (!errors || !Array.isArray(errors)) return 0;
@@ -66,6 +71,12 @@ export default function DiscoveryRuns() {
 
   const getStageBadgeVariant = (stage: string) => {
     return stage === "prerequisites" ? "outline" : "default";
+  };
+
+  const getReadinessBadgeVariant = (level: string) => {
+    if (level === "navigation_verified") return "default";
+    if (level === "fill_safe" || level === "recognized") return "secondary";
+    return "outline";
   };
 
   if (loading) {
@@ -83,9 +94,73 @@ export default function DiscoveryRuns() {
       <div className="mb-8">
         <h1 className="text-4xl font-bold mb-2">Discovery Runs</h1>
         <p className="text-muted-foreground">
-          View the last 50 field discovery runs with confidence scores and error details
+          View provider readiness, mapped fixtures, and the last 50 redacted field discovery runs.
         </p>
       </div>
+
+      <section className="mb-8">
+        <div className="mb-4 flex items-center gap-2">
+          <ShieldCheck className="h-5 w-5 text-primary" />
+          <h2 className="text-2xl font-semibold">Provider readiness</h2>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {PROVIDER_REGISTRY.map((provider) => {
+            const summary = getProviderReadinessSummary(provider.key);
+            const latestRun = latestRunsByProvider[provider.key];
+            return (
+              <Card key={provider.key} className="hover:shadow-md transition-shadow">
+                <CardHeader>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <CardTitle className="text-lg">{provider.name}</CardTitle>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {provider.domains.length ? provider.domains.join(", ") : "Generic fallback"}
+                      </p>
+                    </div>
+                    <Badge variant={getReadinessBadgeVariant(summary.readinessLevel)}>
+                      {summary.readinessLevel}
+                    </Badge>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-3 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Confidence</span>
+                    <span className="font-medium">{Math.round(summary.confidenceScore * 100)}%</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Playbook</span>
+                    <span className="max-w-[14rem] truncate font-mono text-xs">
+                      {summary.activePlaybookVersion}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Fixtures</span>
+                    <span className="font-medium">{summary.fixtureCoverage.coverageLabel}</span>
+                  </div>
+                  <div className="rounded-md border bg-muted/30 p-3">
+                    <div className="mb-1 flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Latest redacted observation
+                    </div>
+                    {latestRun ? (
+                      <p className="text-xs text-muted-foreground">
+                        {latestRun.stage} run {formatDistanceToNow(new Date(latestRun.created_at), { addSuffix: true })}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        No redacted discovery observation recorded yet.
+                      </p>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Promotion requires fixtures, provider-specific tests, and admin review. Model output cannot promote readiness.
+                  </p>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      </section>
 
       {runs.length === 0 ? (
         <Card>

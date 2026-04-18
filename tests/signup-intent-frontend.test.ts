@@ -89,11 +89,30 @@ describe("signup intent frontend bridge", () => {
   it("keeps Activity Finder navigation on the signup intent bridge", () => {
     const page = readFileSync("src/pages/ActivityFinder.tsx", "utf8");
     const activityFinderHelper = readFileSync("src/lib/activityFinder.ts", "utf8");
+    const navigateCalls = page
+      .split("\n")
+      .filter((line) => line.includes("navigate("))
+      .join("\n");
 
     expect(page).toContain("createSignupIntent");
     expect(page).toContain("buildAutopilotIntentPath(intent.id)");
-    expect(page).not.toContain("finderQuery");
-    expect(page).not.toContain("targetUrl:");
+    expect(navigateCalls).toContain("navigate(buildAutopilotIntentPath(intent.id))");
+    [
+      "finderQuery",
+      "activity=",
+      "venue=",
+      "address=",
+      "age=",
+      "grade=",
+      "location=",
+      "targetUrl=",
+      "providerName=",
+      "providerKey=",
+      "child=",
+      "profile=",
+    ].forEach((forbiddenParam) => {
+      expect(navigateCalls).not.toContain(forbiddenParam);
+    });
     expect(activityFinderHelper).not.toContain("userId");
   });
 

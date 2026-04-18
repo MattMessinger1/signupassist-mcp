@@ -49,6 +49,8 @@
 - [ ] `/activity-finder` supports parent-supervised search and signup path review.
 - [ ] `/autopilot` creates supervised run packets and shows pause boundaries.
 - [ ] `/dashboard` shows current status and pending parent actions.
+- [ ] `/dashboard` groups runs by ready, opening soon, scheduled, paused, completed, and fallback states.
+- [ ] `/dashboard` shows provider readiness, readiness score, price cap, reminder state, and last redacted audit event per run.
 - [ ] `/credentials` remains parent-controlled.
 - [ ] `/mandates` does not imply full delegation is active today.
 - [ ] `/discovery-runs` shows redacted provider learning status only.
@@ -71,6 +73,9 @@
 
 - [ ] Backend derives user identity from auth/session/JWT.
 - [ ] Client-sent `userId` is ignored or overwritten for user-specific data.
+- [ ] User A cannot read or patch User B's signup intent.
+- [ ] User A cannot attach User B's child profile or autopilot run to a signup intent.
+- [ ] User A cannot use User B's mandate or parent action confirmation.
 - [ ] RLS protects child and family data.
 - [ ] RLS protects credentials and tokens.
 - [ ] RLS protects mandates and audit logs.
@@ -82,6 +87,8 @@
 
 - [ ] Parent can identify provider, activity, schedule, price, and next step.
 - [ ] Unsafe actions are clearly marked as parent review required.
+- [ ] Run cards provide Review, Resume, View audit, Open provider, and supported cancel affordances.
+- [ ] Reminder copy is honest when automation is only prepared and manual reminder is recommended.
 - [ ] Loading, empty, error, and unavailable-provider states are handled.
 - [ ] Mobile and desktop layouts do not overlap text or controls.
 - [ ] Buttons and confirmations use clear action labels.
@@ -91,10 +98,19 @@
 
 - [ ] Provider pages are treated as untrusted data.
 - [ ] Signup URLs are treated as untrusted data.
+- [ ] Target URL validator rejects invalid protocols, localhost, private IP ranges, metadata IPs, internal hostnames, and unsafe redirect chains.
+- [ ] Server-side code does not fetch unknown target URLs unless resolved IPs are validated.
 - [ ] Model output is treated as advisory only.
 - [ ] Prompt-injection attempts cannot override policy.
+- [ ] Provider prompt-injection fixtures cannot authorize pay, submit, accept waiver, exfiltrate child data, change price cap, use hidden URLs, or promote readiness.
 - [ ] Sensitive actions require deterministic policy checks.
 - [ ] Audit logs capture parent confirmations and policy pauses.
+- [ ] Visible audit summaries redact DOB, phone, address, medical/allergy notes, credentials, tokens, and payment data.
+- [ ] Provider learning observations redact child PII, credentials, tokens, provider password fields, payment data, medical/allergy notes, and raw provider page content.
+- [ ] Route-query tests confirm `/autopilot` handoff includes only `intent=<id>`.
+- [ ] Basic security headers are present on API responses.
+- [ ] Production CORS allowlist is configured for web-only APIs when `CORS_ALLOW_ORIGINS` or equivalent env is set.
+- [ ] Lightweight rate limits cover auth-sensitive web APIs when rate limiting is enabled.
 - [ ] Secrets stay server-side.
 - [ ] Error messages do not leak sensitive data.
 
@@ -141,6 +157,7 @@
 - [ ] `npm run build` passes before production release.
 - [ ] `npm run mcp:build` passes before production release.
 - [ ] `npm test` passes or documented targeted substitute is approved.
+- [ ] `npm run test:security-mvp` passes before launch.
 - [ ] `npm run test:sse` passes before ChatGPT-impacting release.
 - [ ] `npm run test:openai-smoke` passes before ChatGPT-impacting release.
 - [ ] Activity Finder smoke passes.

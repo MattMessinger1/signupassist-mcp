@@ -1,400 +1,204 @@
-# SHIPWORX LLC PRIVACY POLICY (SIGNUP ASSIST)
+# SHIPWORX LLC PRIVACY POLICY FOR SIGNUPASSIST
 
 **Effective Date:** December 19, 2025  
-**Last Updated:** March 23, 2026
+**Last Updated:** April 18, 2026
 
-This Privacy Policy explains how Shipworx LLC ("Shipworx," "we," "us," or "our") collects, uses, discloses, and protects information when you use Signup Assist (the "App"), including when the App is accessed through ChatGPT or similar interfaces, and when you visit our website at shipworx.ai (collectively, the "Services").
+This Privacy Policy explains how Shipworx LLC ("Shipworx," "we," "us," or "our") collects, uses, discloses, and protects information when you use SignupAssist, including the SignupAssist ChatGPT app, the SignupAssist MCP server, and related web services (collectively, the "Services").
 
-**IMPORTANT:** When you use Signup Assist inside ChatGPT, OpenAI may also process your information under OpenAI's own terms and privacy policy. This Privacy Policy covers what Shipworx does with information we receive and process.
+When SignupAssist is used inside ChatGPT, OpenAI may also process your messages and app responses under OpenAI's own terms and privacy policy. This Privacy Policy covers what Shipworx receives and processes.
 
----
+## 1. Who We Are
 
-## 1. WHO WE ARE
+SignupAssist is an independent service operated by Shipworx LLC. We are not affiliated with, endorsed by, or sponsored by OpenAI.
 
-Signup Assist is an independent service operated by Shipworx LLC. We are not affiliated with, endorsed by, or sponsored by OpenAI.
+Contact:
 
-**Contact Information:**
-- **Company:** Shipworx LLC
-- **Privacy Questions:** privacy@shipworx.ai
-- **Support:** support@shipworx.ai
+- Privacy requests: `privacy@shipworx.ai`
+- Support: `support@shipworx.ai`
+- Legal: `legal@shipworx.ai`
 
----
+## 2. Scope And Eligibility
 
-## 2. SCOPE / UNITED STATES ONLY
+The Services are intended for users located in the United States. SignupAssist is used by adults, such as parents and guardians, to browse and prepare youth activity registrations. Account holders must be at least 18 years old.
 
-Our Services are intended for users located in the United States. We do not market the Services outside the United States at this time.
+SignupAssist is not directed to children. Children must not use the Services directly.
 
----
+For the ChatGPT app, do not submit personal information about children under 13. You may use general age, grade, activity, and location information to search for programs, but do not provide a child under 13's name, date of birth, address, contact information, medical information, or other personal information in ChatGPT. If a provider requires information about a child under 13, complete that step directly with the provider or through a non-ChatGPT flow that is appropriate for that information.
 
-## 3. INFORMATION WE COLLECT
+## 3. Information We Collect
 
-We follow a data-minimization approach: we aim to collect only what is reasonably necessary to provide the Services.
+We aim to collect only what is reasonably necessary to provide the Services.
 
-### A. Account Information
+### Account And Authentication Information
 
-If you create an account or authenticate through ChatGPT, we collect:
-- Name and email address
-- Authentication identifiers (Auth0 user ID)
-- Account preferences and settings
+If you authenticate or create an account, we may collect:
 
-### B. Account Holder Information
+- Name and email address.
+- Authentication identifiers, such as Auth0 user ID or related login metadata.
+- Account preferences and settings.
 
-When you use Signup Assist, you may provide:
-- First and last name
-- Email address and phone number
-- Date of birth (for age verification)
-- City and state of residence
+### ChatGPT App Requests And Responses
 
-### C. Participant Information
+When you use SignupAssist inside ChatGPT:
 
-When you register participants for activities, you provide:
-- First and last name
-- Date of birth (required for age-appropriate program matching by providers)
+- ChatGPT sends app requests to our MCP server, including your prompt, selected tool, tool arguments, and conversation/session context needed to respond.
+- We return app responses, such as program search results, signup wizard instructions, review summaries, confirmation status, and safe error messages.
+- We may process prompt text to understand activity, provider, age/grade, location, signup intent, and safety boundaries.
 
-This information is stored to:
-- Pre-fill future registration forms
-- Verify age requirements set by activity providers
-- Enable you to manage multiple registrations
+We do not intentionally return unnecessary internal identifiers, debug logs, auth secrets, tokens, provider API keys, passwords, raw payment data, or raw medical/allergy information in ChatGPT app responses.
 
-### D. Information from ChatGPT (App Requests)
+### Activity Search And Program Information
 
-If you use Signup Assist through ChatGPT:
-- ChatGPT sends requests to our API that include your messages and intent
-- OpenAI's language models process your messages to understand registration requests
-- We receive the processed request and respond with program information or registration confirmations
+For read-only browsing, we may process:
 
-We process these requests to return responses that help fulfill your registration needs.
+- Activity type or search text.
+- Age or grade range.
+- City/state or provider name.
+- Program titles, schedules, prices, availability, provider metadata, and signup path information returned by provider catalogs.
 
-### E. Registration and Transaction Information
+### Signup And Registration Information
 
-When you complete registrations, we collect:
-- Program selections and preferences
-- Registration confirmation numbers
-- Transaction amounts and success fees
-- Scheduled registration times
+For authenticated signup flows, we may collect and process:
 
-### F. Automatically Collected Information
+- Account-holder name, email, and phone number if required by the provider.
+- Participant name and date of birth only when appropriate for the provider flow and permitted for the channel being used.
+- Program selection, session time, provider, price, confirmation number, receipt summary, and registration status.
+- Review/confirmation decisions, cancellation requests, and support requests.
 
-When you use our website or API, we may automatically collect:
-- **Log and Device Data:** IP address, device and browser type, approximate region (derived from IP), timestamps, pages or endpoints accessed, and error logs
-- **Security Signals:** Information used to help prevent abuse and secure the Services (e.g., rate-limit events and suspicious traffic patterns)
+### Payment Information
 
-### G. Information from Third Parties
+SignupAssist uses Stripe-hosted payment setup and payment processing. We do not collect, receive, maintain, or store raw payment card numbers, CVV, or other PCI-regulated card data.
 
-We may receive information from service providers that help us operate the Services (e.g., hosting, logging, and email delivery providers). We do not purchase consumer data lists.
+We may store limited payment metadata returned by Stripe, such as:
 
----
+- Stripe customer or payment method identifiers.
+- Card brand and last four digits.
+- Payment status, amount, currency, timestamp, and success-fee receipt information.
 
-## 4. INFORMATION WE DO NOT COLLECT ("RESTRICTED DATA")
+### Audit, Mandate, And Safety Information
 
-Do NOT submit the following to Signup Assist, and we do not intentionally collect it:
+We may collect:
 
-- **Payment card numbers** or other data regulated under PCI DSS (we use Stripe for payment processing; card details go directly to Stripe)
-- **Protected health information (PHI)** including medical conditions, allergies, or health records
-- **Government identifiers** (e.g., Social Security numbers, passport numbers)
-- **Provider login credentials** (our API-first architecture does not require your activity provider passwords)
+- Audit events showing what action was requested, when it happened, the policy decision, and the result.
+- Time-limited authorization or mandate metadata, including allowed action, provider, program, price cap, expiration time, and confirmation status.
+- Security, rate-limit, abuse-prevention, and operational logs.
 
-If we become aware that we received Restricted Data, we will take reasonable steps to delete it or de-identify it, unless we must keep it to comply with law or to resolve security incidents.
+### Automatically Collected Information
 
----
+When you use our website, MCP server, or API, we may collect:
 
-## 5. PARTICIPANT DATA PRIVACY (INCLUDING CHILDREN) AND COPPA COMPLIANCE
+- IP address, approximate region, browser/device data, timestamps, requested endpoint, response status, and error events.
+- Security signals used to protect the Services.
 
-Signup Assist allows account holders to register participants — including children — for activities. This section explains how we handle participant information and our compliance with the Children's Online Privacy Protection Act (COPPA).
+## 4. Restricted Data We Do Not Want You To Submit
 
-### COPPA Compliance
+Do not submit the following through SignupAssist:
 
-Signup Assist is not directed at children under 13. Children do not use the service directly. Instead, a parent, legal guardian, or other authorized adult (the "Responsible Delegate") operates the service and provides participant information on behalf of children. This parent/delegate model means:
+- Raw payment card numbers, CVV, or other PCI-regulated payment card data.
+- Protected health information (PHI), medical records, diagnoses, allergy notes, or medical accommodations.
+- Government identifiers such as Social Security numbers or passport numbers.
+- Provider passwords, MFA codes, one-time passcodes, API keys, auth tokens, or secrets.
+- Personal information about children under 13 in the ChatGPT app.
 
-- **Only adults operate the service.** All account holders must be at least 18 years old. The account holder authenticates, provides information, authorizes actions, and controls all data.
-- **Verifiable parental involvement.** The adult account holder must authenticate via OAuth (Auth0) before any participant data can be submitted. Every registration action requires an explicit authorization mandate from the authenticated adult.
-- **Minimal data collection.** We collect only the participant's first name, last name, and date of birth — the minimum required by activity providers to complete a registration. We do not collect contact information, photos, location data, or any other personal information directly from children.
-- **No direct interaction with children.** Children never interact with the service, provide their own information, or create accounts. All data is entered and managed by the authenticated adult.
+If we become aware that Restricted Data was submitted, we may delete, redact, or de-identify it unless retention is required for legal, security, or dispute-resolution reasons.
 
-If you believe we have inadvertently collected personal information from a child under 13 without proper parental involvement, contact us immediately at privacy@shipworx.ai and we will promptly delete that information.
+## 5. How We Use Information
 
-### What We Collect
+We use information to:
 
-When the account holder registers a participant, they provide:
-- First and last name
-- Date of birth (for age verification by activity providers)
+- Search provider catalogs and return relevant activity options.
+- Run the authenticated signup wizard for supported providers.
+- Prepare registration details and final review summaries.
+- Complete a supported Bookeo/API-connected booking only after explicit user confirmation.
+- Set up and process payments through Stripe-hosted flows.
+- Maintain receipts, registration history, and audit trails.
+- Authenticate users and protect accounts.
+- Provide customer support.
+- Monitor reliability, prevent abuse, and enforce safety boundaries.
+- Improve the Services using aggregated, redacted, or de-identified data where practical.
+- Comply with law and enforce our terms.
 
-### How We Protect Participant Data
+SignupAssist does not sell personal information and does not use personal information for third-party targeted advertising.
 
-- **Account Holder Control:** Only authenticated account holders can access and manage participant records
-- **Limited Purpose:** Participant data is used solely to complete registrations you authorize
-- **Deletion Rights:** You may request deletion of participant data at any time; we will delete all associated records promptly
-- **No Profiling:** We do not build behavioral profiles of participants or use participant data for any purpose beyond fulfilling authorized registrations
+## 6. How We Share Information
 
-### What We Do NOT Do
-
-- Allow anyone under 13 to use the service directly
-- Collect personal information from children without an authenticated adult account holder
-- Share participant information for marketing or advertising
-- Retain participant data after you request deletion
-- Sell or share participant information with third parties for their marketing
-- Use participant data for behavioral advertising or profiling
-
-### Age Requirements
-
-All account holders must be at least 18 years old. All users of SignupAssist must be at least 13 years old. The service is designed for adults managing activity registrations on behalf of participants. If you believe information was collected from someone under 13 without proper parental involvement, contact us at privacy@shipworx.ai.
-
----
-
-## 6. HOW WE USE INFORMATION
-
-We use information for the following purposes:
-
-### Provide Registration Services
-- Process registration requests through activity provider APIs
-- Match participants to age-appropriate programs
-- Execute scheduled registrations at specified times
-- Generate confirmation records for your reference
-
-### Responsible Delegate Operations
-- Issue and manage authorization mandates (scoped permissions)
-- Maintain audit trails of all actions taken on your behalf
-- Enforce spending limits and scope restrictions you authorize
-
-### Account Management
-- Create and manage your account
-- Authenticate users through Auth0
-- Provide customer support
-
-### AI-Assisted Processing
-- Use OpenAI to understand your natural language registration requests
-- Match your intent to available programs and time slots
-- Generate helpful responses and recommendations
-
-### Safety and Security
-- Protect the Services and detect/prevent abuse
-- Troubleshoot issues and maintain reliability
-- Monitor for suspicious activity
-
-### Improve the Services
-- Understand feature usage and performance
-- Improve user experience using aggregated or de-identified data
-
-### Legal Compliance
-- Comply with applicable laws
-- Enforce our terms of service
-- Protect our rights and the rights of others
-
-**We do not sell personal information. We do not use your personal information to deliver third-party targeted advertising.**
-
----
-
-## 7. HOW WE SHARE INFORMATION
-
-We may share information in the following situations:
-
-### Service Providers
-
-We work with the following service providers who process data on our behalf:
+We share information only as needed to operate the Services, follow your instructions, or comply with law.
 
 | Category | Provider | Purpose | Data Shared |
-|----------|----------|---------|-------------|
-| Activity Registration | Bookeo API | Submit registrations | Delegate info, participant names, program selections |
-| Payment Processing | Stripe | Process success fees | Payment method tokens (not card numbers) |
-| Authentication | Auth0 | Secure ChatGPT login | Email, user identifier |
-| AI Processing | OpenAI | Understand requests | Chat messages, registration intent |
-| Database | Supabase | Secure data storage | All user data (encrypted at rest) |
+|---|---|---|---|
+| ChatGPT platform | OpenAI | App requests, app responses, and ChatGPT app operation | Prompt text, tool arguments, app responses |
+| Activity registration | Bookeo/API-connected providers | Program search and supported bookings | Account-holder details, participant details when permitted, program selection |
+| Payment processing | Stripe | Hosted payment setup and success-fee processing | Payment tokens/metadata, amount, status; not raw card numbers |
+| Authentication | Auth0 | OAuth login and account security | Email, user identifier, auth metadata |
+| Database/storage | Supabase | Store account, registration, audit, and operational records | Service data stored for your account |
+| Hosting/operations | Railway and other infrastructure providers | Operate the server and monitor reliability | Logs and operational metadata |
 
-**Important:** We use server-side API keys for provider integrations. We do not store your personal login credentials for activity providers like Bookeo.
+We do not authorize service providers to use your information for their own marketing.
 
-### Legal and Safety
+## 7. Provider Learning And Redaction
 
-We may disclose information if required by law, subpoena, or legal process; to protect rights, safety, and security; or to investigate fraud or misuse.
+SignupAssist may use redacted learning signals to improve provider readiness, such as provider key, flow step names, non-PII field signatures, stop condition, outcome, and fixture coverage.
 
-### Business Transfers
+Provider learning must not store child names, dates of birth, addresses, phone numbers, medical/allergy details, credentials, tokens, raw payment data, or raw provider page content. Provider readiness cannot be promoted by model output or provider page text alone.
 
-If we are involved in a merger, acquisition, financing, reorganization, or sale of assets, information may be transferred as part of that transaction. We will provide notice before your information becomes subject to a different privacy policy.
+## 8. External Actions, Confirmation, And Future Delegation
 
-### With Your Instructions
+SignupAssist is parent-controlled. The ChatGPT app can complete a supported Bookeo/API-connected booking only after OAuth, required registration details, Stripe-hosted payment setup when needed, final review, and explicit confirmation such as `book now`.
 
-We may share information when you explicitly direct us to (for example, when you authorize a registration that requires sharing your information with an activity provider).
+Unattended set-and-forget delegation across arbitrary providers is not live. Future delegated signup would require verified provider readiness, exact program match, price cap, audit logs, deterministic policy checks, and a valid signed mandate.
 
-**We do not authorize service providers to use your information for their own marketing purposes.**
+## 9. Data Retention
 
----
+We retain information only as long as reasonably necessary:
 
-## 8. THE RESPONSIBLE DELEGATE MODEL
+| Data Type | Typical Retention |
+|---|---|
+| Account profile | Until deletion is requested or account is closed |
+| Participant records | Until deleted or no longer needed for authorized registrations |
+| Mandate/confirmation records | At least while active; historical records typically up to 90 days |
+| Audit logs | Typically 90 days, longer if needed for disputes, compliance, or security |
+| Registration confirmations | Typically up to 2 years |
+| API/security logs | Typically 30 days, longer for security investigations |
+| Stripe metadata | As needed for billing, receipts, refunds, disputes, and tax/accounting records |
 
-Signup Assist operates on a "Responsible Delegate" model where you authorize us to perform specific actions on your behalf. This section explains how that works.
+## 10. Security
 
-### Mandates (Authorization Tokens)
+We use reasonable administrative, technical, and organizational safeguards, including TLS/HTTPS, encrypted storage, access controls, row-level security where applicable, audit logging, rate limits, and restricted internal access.
 
-When you request a registration, you grant a **mandate** - a scoped, time-limited authorization:
+No method of transmission or storage is completely secure. If you believe your account or data is at risk, contact `support@shipworx.ai`.
 
-- **Scoped Permissions:** Each mandate specifies exactly what actions are authorized (e.g., "register [Participant Name] for [Program Name]")
-- **Spending Limits:** Mandates include maximum amounts when applicable
-- **Time-Limited:** Mandates expire automatically (typically within 24 hours)
-- **Revocable:** You can revoke mandates at any time
+## 11. Your Privacy Choices
 
-### Audit Trail
+You may request to:
 
-Every action taken on your behalf is logged in a comprehensive audit trail:
+- Access personal information associated with your account.
+- Correct inaccurate information.
+- Delete your account or participant records.
+- Export audit or registration records where available.
+- Ask questions about processing or retention.
 
-- **What We Log:** Tool name, timestamps, arguments, results, and cryptographic hashes
-- **Integrity Verification:** Results are hashed (SHA-256) to ensure records cannot be altered
-- **Your Access:** You can view your complete audit history through the app
-- **Export Rights:** You may request a full export of your audit trail
+Contact `privacy@shipworx.ai`. We may need to verify your identity before fulfilling requests.
 
-### Scope Limitations
+## 12. State Privacy Rights
 
-Our system enforces strict boundaries:
+Depending on your state of residence, you may have additional rights to know, access, correct, delete, or opt out of certain processing. We do not sell personal information and do not share personal information for cross-context behavioral advertising.
 
-- Actions are limited to permissions you explicitly authorize
-- We cannot exceed spending limits you set
-- Registration actions are specific to named participants and programs
-- Expired mandates cannot be used
+## 13. Changes To This Policy
 
----
+We may update this Privacy Policy from time to time. If we make material changes, we will update the "Last Updated" date and may provide additional notice.
 
-## 9. DATA RETENTION
+## 14. Contact
 
-We retain information only as long as reasonably necessary for the purposes described above:
+Privacy requests: `privacy@shipworx.ai`
+Support: `support@shipworx.ai`
+Legal: `legal@shipworx.ai`
 
-| Data Type | Retention Period |
-|-----------|------------------|
-| Account profile | Until account deletion requested |
-| Participant records | Until you delete them |
-| Mandates (authorizations) | 24 hours (auto-expire), records kept 90 days |
-| Audit logs | 90 days |
-| Payment method info (last4/brand only) | Until you remove payment method |
-| Registration confirmations | 2 years |
-| API/security logs | 30 days (unless needed for security investigation) |
+Mailing address:
 
-You may request deletion of your data at any time (see Section 11).
-
----
-
-## 10. SECURITY
-
-We maintain reasonable administrative, technical, and organizational safeguards designed to protect information:
-
-### Technical Safeguards
-- **Encryption at Rest:** All data stored in Supabase is encrypted
-- **Encryption in Transit:** All API communications use TLS/HTTPS
-- **Row Level Security (RLS):** Database policies ensure users can only access their own data
-- **Secure Authentication:** Auth0 provides enterprise-grade identity management
-
-### API-First Security Benefits
-- **No Credential Storage:** Our API-first architecture means we never store your activity provider passwords
-- **Server-Side Keys:** Provider API keys are stored securely on our servers, not exposed to clients
-- **Audit Integrity:** Cryptographic hashes ensure audit records cannot be tampered with
-
-### Access Controls
-- Role-based access for internal systems
-- Regular security reviews
-- Monitoring for suspicious activity
-
-No method of transmission or storage is 100% secure, but we work to protect your data using industry-standard measures.
-
----
-
-## 11. YOUR PRIVACY CHOICES AND CONTROLS
-
-### A. Access, Correction, Deletion
-
-You may:
-- **Access:** Request a copy of your personal information
-- **Correct:** Update inaccurate information through the app or by contacting us
-- **Delete:** Request deletion of your account and associated data
-
-To make a request, contact privacy@shipworx.ai. We may need to verify your identity.
-
-### B. Manage Participant Data
-
-You can:
-- View all participant profiles in your account
-- Edit participant information at any time
-- Delete individual participant records
-- Request complete deletion of all participant data
-
-### C. Audit Trail Access
-
-You can:
-- View your complete audit history in the app
-- Request an export of all audit logs
-- Receive explanations of any logged actions
-
-### D. Marketing Communications
-
-If we send marketing emails, you can opt out using the unsubscribe link. We may still send service-related or transactional messages (e.g., registration confirmations).
-
-### E. Cookies (Website)
-
-If we use cookies on shipworx.ai, they are primarily for basic site functionality and security. You can control cookies through browser settings.
-
----
-
-## 12. STATE PRIVACY RIGHTS (UNITED STATES)
-
-Depending on your state of residence (including California, Virginia, Colorado, Connecticut, and Utah), you may have additional rights:
-
-- **Right to Know/Access:** What personal information we collect and how we use it
-- **Right to Delete:** Request deletion of personal information (subject to exceptions)
-- **Right to Correct:** Request correction of inaccurate personal information
-- **Right to Opt Out:** Of "sale" or "sharing" of personal information
-  - **Note:** We do not sell personal information
-  - **Note:** We do not share for cross-context behavioral advertising
-- **Right to Non-Discrimination:** For exercising privacy rights
-
-### Exercising Your Rights
-
-To exercise these rights:
-1. Email privacy@shipworx.ai with your request
-2. We will verify your identity
-3. We will respond within the timeframe required by applicable law (typically 45 days)
-
-You may designate an authorized agent to make requests on your behalf.
-
----
-
-## 13. CHANGES TO THIS PRIVACY POLICY
-
-We may update this Privacy Policy from time to time. If we make material changes:
-- We will update the "Last Updated" date at the top
-- We may notify you via email or in-app notification
-- Material changes will be highlighted for easy review
-
-Continued use of the Services after changes constitutes acceptance of the updated policy.
-
----
-
-## 14. CONTACT US
-
-**Privacy Questions or Requests:**
-- Email: privacy@shipworx.ai
-
-**General Support:**
-- Email: support@shipworx.ai
-
-**Mailing Address:**
-```
+```text
 Shipworx LLC
 Attn: Privacy
 2800 E Enterprise Ave, Suite 333
 Appleton, WI 54913
 United States
 ```
-
----
-
-## SUMMARY OF KEY POINTS
-
-| Topic | Key Point |
-|-------|-----------|
-| **What We Collect** | Account info, participant names/DOB, registration details |
-| **Participant Data** | Collected only for registrations you authorize; you control deletion |
-| **Credentials** | We do NOT store your provider login passwords |
-| **AI Processing** | OpenAI helps understand your requests |
-| **Sharing** | Only with service providers listed above; never sold |
-| **Mandates** | Time-limited, scoped authorizations you control |
-| **Audit Trail** | Complete log of all actions, exportable on request |
-| **Your Rights** | Access, correct, delete, export your data anytime |
-
----
-
-*This Privacy Policy is effective as of December 19, 2025.*

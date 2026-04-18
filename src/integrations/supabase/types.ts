@@ -666,6 +666,82 @@ export type Database = {
           },
         ]
       }
+      agent_delegation_mandates: {
+        Row: {
+          allowed_actions: Json
+          autopilot_run_id: string | null
+          child_id: string | null
+          created_at: string
+          expires_at: string
+          id: string
+          max_total_cents: number
+          provider_key: string
+          provider_readiness_required: string
+          revoked_at: string | null
+          signup_intent_id: string | null
+          status: string
+          stop_conditions: Json
+          target_program: string
+          user_id: string
+        }
+        Insert: {
+          allowed_actions?: Json
+          autopilot_run_id?: string | null
+          child_id?: string | null
+          created_at?: string
+          expires_at: string
+          id?: string
+          max_total_cents: number
+          provider_key: string
+          provider_readiness_required: string
+          revoked_at?: string | null
+          signup_intent_id?: string | null
+          status?: string
+          stop_conditions?: Json
+          target_program: string
+          user_id: string
+        }
+        Update: {
+          allowed_actions?: Json
+          autopilot_run_id?: string | null
+          child_id?: string | null
+          created_at?: string
+          expires_at?: string
+          id?: string
+          max_total_cents?: number
+          provider_key?: string
+          provider_readiness_required?: string
+          revoked_at?: string | null
+          signup_intent_id?: string | null
+          status?: string
+          stop_conditions?: Json
+          target_program?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_delegation_mandates_autopilot_run_id_fkey"
+            columns: ["autopilot_run_id"]
+            isOneToOne: false
+            referencedRelation: "autopilot_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_delegation_mandates_child_id_fkey"
+            columns: ["child_id"]
+            isOneToOne: false
+            referencedRelation: "children"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agent_delegation_mandates_signup_intent_id_fkey"
+            columns: ["signup_intent_id"]
+            isOneToOne: false
+            referencedRelation: "signup_intents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       mandate_audit: {
         Row: {
           action: string
@@ -701,6 +777,88 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      parent_action_confirmations: {
+        Row: {
+          action_summary: Json
+          action_type: string
+          amount_cents: number | null
+          autopilot_run_id: string | null
+          confirmed_at: string | null
+          consumed_at: string | null
+          created_at: string
+          exact_program: string | null
+          expires_at: string
+          id: string
+          idempotency_key: string
+          mandate_id: string | null
+          provider_key: string | null
+          provider_readiness_level: string | null
+          signup_intent_id: string | null
+          target_url: string | null
+          user_id: string
+        }
+        Insert: {
+          action_summary?: Json
+          action_type: string
+          amount_cents?: number | null
+          autopilot_run_id?: string | null
+          confirmed_at?: string | null
+          consumed_at?: string | null
+          created_at?: string
+          exact_program?: string | null
+          expires_at: string
+          id?: string
+          idempotency_key: string
+          mandate_id?: string | null
+          provider_key?: string | null
+          provider_readiness_level?: string | null
+          signup_intent_id?: string | null
+          target_url?: string | null
+          user_id: string
+        }
+        Update: {
+          action_summary?: Json
+          action_type?: string
+          amount_cents?: number | null
+          autopilot_run_id?: string | null
+          confirmed_at?: string | null
+          consumed_at?: string | null
+          created_at?: string
+          exact_program?: string | null
+          expires_at?: string
+          id?: string
+          idempotency_key?: string
+          mandate_id?: string | null
+          provider_key?: string | null
+          provider_readiness_level?: string | null
+          signup_intent_id?: string | null
+          target_url?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parent_action_confirmations_autopilot_run_id_fkey"
+            columns: ["autopilot_run_id"]
+            isOneToOne: false
+            referencedRelation: "autopilot_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parent_action_confirmations_mandate_id_fkey"
+            columns: ["mandate_id"]
+            isOneToOne: false
+            referencedRelation: "mandates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parent_action_confirmations_signup_intent_id_fkey"
+            columns: ["signup_intent_id"]
+            isOneToOne: false
+            referencedRelation: "signup_intents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       mandates: {
         Row: {

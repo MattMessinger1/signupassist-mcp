@@ -198,7 +198,7 @@ Deno.serve(async (req) => {
 
     let finalResult = 'success';
     let totalAmount = 0;
-    let confirmationRef = null;
+    const confirmationRef = null;
     let sessionRef = null;
 
     try {
@@ -220,31 +220,19 @@ Deno.serve(async (req) => {
 
       sessionRef = planExecutionId;
 
-      // Step 3: Charge success fee (placeholder amounts — real flow uses confirm_booking results)
-      console.log('Step 3: Charging success fee');
-      const chargeResponse = await serviceSupabase.functions.invoke('stripe-charge-success', {
-        body: {
-          plan_execution_id: planExecutionId,
-          user_id: plan.user_id,
-        },
-      });
+      // Step 3: Paid/provider-submitting actions are intentionally paused until
+      // parent-action confirmations or verified delegated mandates are enforced.
+      console.log('Step 3: Sensitive action paused before payment, waiver, checkout, or final submit');
+      finalResult = 'paused_for_parent';
+      totalAmount = 0;
 
-      if (chargeResponse.error) {
-        console.error('Success fee charge failed:', chargeResponse.error);
-        // Don't fail the whole process if just the fee charge fails
-      } else {
-        console.log('Success fee charged successfully');
-      }
-
-      totalAmount = 15000;
-
-      // Update plan status to completed
+      // Update plan status to paused rather than completed.
       await serviceSupabase
         .from('plans')
-        .update({ status: 'completed' })
+        .update({ status: 'paused_for_parent' })
         .eq('id', plan.id);
 
-      console.log(`MCP plan execution completed successfully: ${planExecution.id}`);
+      console.log(`MCP plan execution paused safely: ${planExecution.id}`);
     } catch (error) {
       console.error('MCP plan execution failed:', error);
       finalResult = 'failed';

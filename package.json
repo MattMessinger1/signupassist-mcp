@@ -44,7 +44,8 @@
     "test:chatgpt-app": "tsx scripts/chatgptAppGuardrails.ts all",
     "test:mcp-manifest": "tsx scripts/chatgptAppGuardrails.ts manifest",
     "test:mcp-descriptors": "tsx scripts/chatgptAppGuardrails.ts descriptors",
-    "test:approval-snapshots": "tsx scripts/chatgptAppGuardrails.ts approval-snapshots"
+    "test:approval-snapshots": "tsx scripts/chatgptAppGuardrails.ts approval-snapshots",
+    "test:security-mvp": "vitest run tests/security-mvp.test.ts tests/sensitive-action-gates.test.ts tests/sensitive-action-contract.test.ts tests/signup-intent-service.test.ts tests/signup-intent-api.test.ts tests/signup-intent-frontend.test.ts tests/provider-learning.test.ts --reporter=verbose"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",

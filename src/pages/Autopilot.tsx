@@ -3,11 +3,13 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowLeft,
+  ArrowRight,
+  CalendarDays,
   CheckCircle2,
+  CircleDollarSign,
   Clipboard,
   ClipboardCheck,
   Clock3,
-  CreditCard,
   Loader2,
   PauseCircle,
   Search,
@@ -15,7 +17,6 @@ import {
   Sparkles,
   Target,
   UserRound,
-  Zap,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -66,6 +67,12 @@ import {
   updateSignupIntent,
   type SignupIntent,
 } from "@/lib/signupIntent";
+import {
+  SET_AND_FORGET_LADDER,
+  buildRedactedProviderObservation,
+  getProviderReadinessSummary,
+  type ProviderReadinessLevel,
+} from "@/lib/providerLearning";
 import { showErrorToast, showSuccessToast } from "@/lib/toastHelpers";
 
 type ChildRow = Pick<
@@ -74,6 +81,57 @@ type ChildRow = Pick<
 >;
 
 type AutopilotRun = Database["public"]["Tables"]["autopilot_runs"]["Row"];
+
+type WizardStepId =
+  | "activity"
+  | "provider"
+  | "child"
+  | "timing"
+  | "safety"
+  | "learning"
+  | "review";
+
+const WIZARD_STEPS: Array<{
+  id: WizardStepId;
+  title: string;
+  description: string;
+}> = [
+  {
+    id: "activity",
+    title: "Activity",
+    description: "Confirm the carried-over program or session.",
+  },
+  {
+    id: "provider",
+    title: "Provider",
+    description: "Confirm the signup URL and provider playbook.",
+  },
+  {
+    id: "child",
+    title: "Child/Profile",
+    description: "Choose an existing profile or decide during the run.",
+  },
+  {
+    id: "timing",
+    title: "Timing and reminder",
+    description: "Set the registration window and reminder.",
+  },
+  {
+    id: "safety",
+    title: "Safety limits",
+    description: "Set price caps, allowed actions, and pause rules.",
+  },
+  {
+    id: "learning",
+    title: "Provider learning",
+    description: "Choose redacted learning signals for future readiness.",
+  },
+  {
+    id: "review",
+    title: "Review and create",
+    description: "Create the supervised run packet.",
+  },
+];
 
 const centsFromDollarInput = (value: string) => {
   const numericValue = Number(value);
@@ -103,43 +161,82 @@ function ageFromIntent(intent: SignupIntent) {
   return String(intent.parsed.ageYears);
 }
 
-function SetupTrackerStep({
-  number,
-  title,
-  description,
-  state = "upcoming",
-}: {
-  number: number;
-  title: string;
-  description: string;
-  state?: "done" | "active" | "upcoming";
-}) {
-  const isDone = state === "done";
-  const isActive = state === "active";
+function childLabel(child?: ChildRow | null) {
+  if (!child) return "Choose during run";
+  return `${child.first_name} ${child.last_name}`.trim();
+}
 
+function providerReadinessClass(readiness: ProviderReadinessLevel) {
+  if (readiness === "navigation_verified") return "border-[#b9e5c7] bg-[#eaf7ef] text-[#2f855a]";
+  if (readiness === "fill_safe" || readiness === "recognized") return "border-[#b8d7e6] bg-[#e8f2f7] text-[#1f5a7a]";
+  return "border-[#f3d8b6] bg-[#fff3e2] text-[#d9822b]";
+}
+
+function safeExternalUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return ["http:", "https:"].includes(url.protocol) ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
+function WizardRail({
+  activeStep,
+  completed,
+  onStepChange,
+}: {
+  activeStep: number;
+  completed: boolean;
+  onStepChange: (index: number) => void;
+}) {
   return (
-    <div className="flex gap-3">
-      <div
-        className={[
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-sm font-semibold",
-          isDone
-            ? "border-[#2f855a] bg-[#eaf7ef] text-[#2f855a]"
-            : isActive
-              ? "border-primary bg-primary text-primary-foreground"
-              : "border-border bg-card text-muted-foreground",
-        ].join(" ")}
-      >
-        {isDone ? <CheckCircle2 className="h-4 w-4" /> : number}
-      </div>
-      <div className="min-w-0 pb-4">
-        <p className="text-sm font-semibold">{title}</p>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-      </div>
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Setup steps</CardTitle>
+        <CardDescription>Move through the pieces parents naturally check.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {WIZARD_STEPS.map((step, index) => {
+          const isActive = activeStep === index;
+          const isDone = completed || index < activeStep;
+          return (
+            <button
+              key={step.id}
+              type="button"
+              onClick={() => onStepChange(index)}
+              className={[
+                "flex w-full gap-3 rounded-lg border p-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                isActive
+                  ? "border-primary bg-[hsl(var(--secondary))]"
+                  : "bg-background hover:border-primary/40",
+              ].join(" ")}
+            >
+              <span
+                className={[
+                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
+                  isDone
+                    ? "border-[#2f855a] bg-[#eaf7ef] text-[#2f855a]"
+                    : isActive
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border text-muted-foreground",
+                ].join(" ")}
+              >
+                {isDone ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
+              </span>
+              <span>
+                <span className="block text-sm font-semibold">{step.title}</span>
+                <span className="mt-1 block text-xs text-muted-foreground">{step.description}</span>
+              </span>
+            </button>
+          );
+        })}
+      </CardContent>
+    </Card>
   );
 }
 
-function FinderSummaryItem({
+function SummaryTile({
   icon,
   label,
   value,
@@ -150,11 +247,24 @@ function FinderSummaryItem({
 }) {
   return (
     <div className="rounded-lg border bg-background p-3">
-      <div className="mb-1 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+      <div className="mb-1 flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
         {icon}
         {label}
       </div>
       <p className="line-clamp-2 text-sm font-semibold">{value || "Add this detail"}</p>
+    </div>
+  );
+}
+
+function SafetyList({ title, items }: { title: string; items: string[] }) {
+  return (
+    <div className="rounded-lg border bg-background p-4">
+      <p className="font-medium">{title}</p>
+      <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -164,7 +274,7 @@ export default function Autopilot() {
   const [searchParams] = useSearchParams();
   const { user, loading: authLoading } = useAuth();
   const intentId = searchParams.get("intent");
-  const finderPrefill = Boolean(intentId);
+  const [activeStep, setActiveStep] = useState(0);
   const [children, setChildren] = useState<ChildRow[]>([]);
   const [runs, setRuns] = useState<AutopilotRun[]>([]);
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
@@ -182,14 +292,19 @@ export default function Autopilot() {
   const [priceCap, setPriceCap] = useState("250");
   const [reminderMinutes, setReminderMinutes] = useState("10");
   const [reminderEmail, setReminderEmail] = useState(true);
-  const [reminderSms, setReminderSms] = useState(false);
-  const [phoneNumber, setPhoneNumber] = useState("");
+  const [phoneNumber] = useState("");
+  const [learningOptIn, setLearningOptIn] = useState(false);
+  const [newChildFirstName, setNewChildFirstName] = useState("");
+  const [newChildLastName, setNewChildLastName] = useState("");
+  const [newChildDob, setNewChildDob] = useState("");
+  const [creatingChild, setCreatingChild] = useState(false);
   const [preflight, setPreflight] = useState(
     buildPreflightState({
       targetUrlConfirmed: false,
     }),
   );
   const [createdPacket, setCreatedPacket] = useState<AutopilotRunPacket | null>(null);
+  const [createdRunId, setCreatedRunId] = useState<string | null>(null);
   const [loadingData, setLoadingData] = useState(true);
   const [creatingRun, setCreatingRun] = useState(false);
 
@@ -201,15 +316,11 @@ export default function Autopilot() {
   const subscriptionUsable = isAutopilotSubscriptionUsable(subscription);
   const providerMismatch =
     targetUrl && selectedPlaybook ? detectProviderMismatch(targetUrl, selectedPlaybook) : false;
-  const latestCompletedRun = runs.find((run) => run.status === "completed");
   const selectedChild = children.find((child) => child.id === childId);
   const readinessScore = calculateReadinessScore(preflight);
   const reminderChannels = useMemo(
-    () => [
-      ...(reminderEmail ? ["email"] : []),
-      ...(reminderSms ? ["sms"] : []),
-    ],
-    [reminderEmail, reminderSms],
+    () => (reminderEmail ? ["email"] : []),
+    [reminderEmail],
   );
   const reminderMinutesValue = Number.isFinite(Number(reminderMinutes))
     ? Math.max(1, Math.round(Number(reminderMinutes)))
@@ -229,9 +340,16 @@ export default function Autopilot() {
     signupIntent?.parsed.venue ||
     signupIntent?.providerName ||
     "";
-  const finderLocation = intentLocation || "";
   const finderStatus = signupIntent?.finderStatus || signupIntent?.status || "";
   const autopilotReturnPath = intentId ? buildAutopilotIntentPath(intentId) : "/autopilot";
+  const providerLearningSummary = useMemo(
+    () => getProviderReadinessSummary(selectedPlaybook.key),
+    [selectedPlaybook.key],
+  );
+  const readiness = providerLearningSummary.readinessLevel;
+  const safeTargetUrl = safeExternalUrl(targetUrl.trim());
+  const detailsReady = Boolean(safeTargetUrl && targetProgram.trim());
+  const maxTotalCents = centsFromDollarInput(priceCap);
   const finderMetadata = useMemo(
     () =>
       signupIntent
@@ -249,39 +367,38 @@ export default function Autopilot() {
     () =>
       buildAutopilotRunPacket({
         playbook: selectedPlaybook,
-        targetUrl: targetUrl.trim(),
+        targetUrl: safeTargetUrl || targetUrl.trim(),
         targetProgram: targetProgram.trim() || null,
         registrationOpensAt: registrationOpensAt || null,
-        maxTotalCents: centsFromDollarInput(priceCap),
+        maxTotalCents,
         participantAgeYears,
         finder: finderMetadata,
         reminder: {
           minutesBefore: reminderMinutesValue,
           channels: reminderChannels.length ? reminderChannels : ["email"],
-          phoneNumber: reminderSms ? phoneNumber.trim() || null : null,
+          phoneNumber: null,
         },
         child: selectedChild
           ? {
               id: selectedChild.id,
-              name: `${selectedChild.first_name} ${selectedChild.last_name}`,
+              name: childLabel(selectedChild),
             }
           : null,
         preflight,
       }),
     [
       finderMetadata,
+      maxTotalCents,
       participantAgeYears,
-      phoneNumber,
       preflight,
-      priceCap,
       registrationOpensAt,
       reminderChannels,
       reminderMinutesValue,
-      reminderSms,
       selectedChild,
       selectedPlaybook,
       targetProgram,
       targetUrl,
+      safeTargetUrl,
     ],
   );
 
@@ -359,7 +476,8 @@ export default function Autopilot() {
         setChildId(intent.selectedChildId || "none");
         setPreflight((current) => ({
           ...current,
-          targetUrlConfirmed: Boolean(nextUrl),
+          childProfileReady: Boolean(intent.selectedChildId),
+          targetUrlConfirmed: Boolean(safeExternalUrl(nextUrl)),
         }));
       } catch (error) {
         if (!isMounted) return;
@@ -386,6 +504,22 @@ export default function Autopilot() {
     setProviderKey(playbook.key);
   };
 
+  const updateTargetUrl = (value: string) => {
+    setTargetUrl(value);
+    setPreflight((current) => ({
+      ...current,
+      targetUrlConfirmed: false,
+    }));
+  };
+
+  const updateSelectedChild = (value: string) => {
+    setChildId(value);
+    setPreflight((current) => ({
+      ...current,
+      childProfileReady: value !== "none",
+    }));
+  };
+
   const useKevaDaySmartStarter = () => {
     setTargetUrl(KEVA_DAYSMART_LOGIN_URL);
     setProviderKey("daysmart");
@@ -401,6 +535,48 @@ export default function Autopilot() {
       ...current,
       [key]: checked,
     }));
+  };
+
+  const createChildProfile = async () => {
+    if (!user) return;
+    const firstName = newChildFirstName.trim();
+    if (!firstName) {
+      showErrorToast("First name required", "Add a first name or choose during run.");
+      return;
+    }
+
+    try {
+      setCreatingChild(true);
+      const { data, error } = await supabase
+        .from("children")
+        .insert({
+          user_id: user.id,
+          first_name: firstName,
+          last_name: newChildLastName.trim(),
+          dob: newChildDob || null,
+        })
+        .select("id, first_name, last_name, dob")
+        .single();
+
+      if (error) throw error;
+      setChildren((current) => [data, ...current]);
+      setChildId(data.id);
+      setNewChildFirstName("");
+      setNewChildLastName("");
+      setNewChildDob("");
+      setPreflight((current) => ({
+        ...current,
+        childProfileReady: true,
+      }));
+      showSuccessToast("Child profile added", "This profile is selected for the supervised run packet.");
+    } catch (error) {
+      showErrorToast(
+        "Could not add child profile",
+        error instanceof Error ? error.message : "Please try again.",
+      );
+    } finally {
+      setCreatingChild(false);
+    }
   };
 
   const copyRunPacket = async (packet: AutopilotRunPacket) => {
@@ -419,8 +595,9 @@ export default function Autopilot() {
       return;
     }
 
-    if (!targetUrl.trim()) {
-      showErrorToast("Provider URL required", "Add the signup page URL before starting.");
+    if (!safeTargetUrl) {
+      showErrorToast("Valid provider URL required", "Add an http or https signup page URL before starting.");
+      setActiveStep(1);
       return;
     }
 
@@ -429,10 +606,9 @@ export default function Autopilot() {
         "Provider mismatch",
         "The selected provider does not match the signup URL. Detect the provider or choose generic beta.",
       );
+      setActiveStep(1);
       return;
     }
-
-    const maxTotalCents = centsFromDollarInput(priceCap);
 
     try {
       setCreatingRun(true);
@@ -440,7 +616,7 @@ export default function Autopilot() {
       const playbook = findPlaybookByKey(providerKey);
       const packet = buildAutopilotRunPacket({
         playbook,
-        targetUrl: targetUrl.trim(),
+        targetUrl: safeTargetUrl,
         targetProgram: targetProgram.trim() || null,
         registrationOpensAt: registrationOpensAt || null,
         maxTotalCents,
@@ -449,21 +625,34 @@ export default function Autopilot() {
         reminder: {
           minutesBefore: reminderMinutesValue,
           channels: reminderChannels.length ? reminderChannels : ["email"],
-          phoneNumber: reminderSms ? phoneNumber.trim() || null : null,
+          phoneNumber: null,
         },
         child: selectedChild
           ? {
               id: selectedChild.id,
-              name: `${selectedChild.first_name} ${selectedChild.last_name}`,
+              name: childLabel(selectedChild),
             }
           : null,
         preflight,
       });
+      const providerLearning = {
+        provider_readiness: providerLearningSummary.readinessLevel,
+        confidence: providerLearningSummary.confidenceScore,
+        active_playbook_version: providerLearningSummary.activePlaybookVersion,
+        fixture_coverage: providerLearningSummary.fixtureCoverage,
+        supported_actions: providerLearningSummary.supportedActions,
+        stop_conditions: providerLearningSummary.stopConditions,
+        promotion: providerLearningSummary.promotionPolicy,
+        opt_in_redacted_learning: learningOptIn,
+        no_child_pii_in_learning: true,
+        signup_intent_id: signupIntent?.id || null,
+        ladder: SET_AND_FORGET_LADDER,
+      };
       const runInsert = {
         user_id: user.id,
         provider_key: playbook.key,
         provider_name: playbook.name,
-        target_url: targetUrl.trim(),
+        target_url: safeTargetUrl,
         target_program: targetProgram.trim() || null,
         child_id: childId === "none" ? null : childId,
         status: "ready",
@@ -476,21 +665,23 @@ export default function Autopilot() {
           payment: packet.payment,
           reminder: packet.reminder,
           finder: packet.finder,
+          provider_learning: providerLearning,
           participant_age_years: participantAgeYears,
           run_packet_version: packet.version,
-        } as Json,
+        } as unknown as Json,
         allowed_actions: packet.safety.allowedActions as unknown as Json,
         stop_conditions: packet.safety.stopConditions as unknown as Json,
         audit_events: [
           buildAutopilotAuditEvent("run_created", {
             provider_key: playbook.key,
-            target_url: targetUrl.trim(),
+            target_url: safeTargetUrl,
             target_program: targetProgram.trim() || null,
             max_total_cents: maxTotalCents,
             registration_opens_at: registrationOpensAt || null,
             readiness_score: packet.readiness.score,
             reminder: packet.reminder,
             finder: packet.finder,
+            provider_learning: providerLearning,
             participant_age_years: participantAgeYears,
           }),
           buildAutopilotAuditEvent("run_packet_created", {
@@ -502,6 +693,15 @@ export default function Autopilot() {
           }),
         ] as unknown as Json,
       };
+      const redactedObservation = buildRedactedProviderObservation(runInsert);
+      runInsert.caps = {
+        ...(runInsert.caps as unknown as Record<string, unknown>),
+        provider_learning: {
+          ...providerLearning,
+          redacted_observation_available: true,
+          redacted_observation: learningOptIn ? redactedObservation : null,
+        },
+      } as unknown as Json;
 
       const { data: createdRun, error } = await supabase
         .from("autopilot_runs")
@@ -526,8 +726,10 @@ export default function Autopilot() {
         }
       }
 
+      setCreatedRunId(createdRun?.id || null);
       setCreatedPacket(packet);
-      showSuccessToast("Signup helper setup saved", "Copy it into the Chrome helper before registration opens.");
+      setActiveStep(6);
+      showSuccessToast("Supervised run packet created", "SignupAssist will still pause for sensitive actions.");
       await loadAutopilotData();
     } catch (error) {
       showErrorToast(
@@ -536,6 +738,518 @@ export default function Autopilot() {
       );
     } finally {
       setCreatingRun(false);
+    }
+  };
+
+  const renderStep = () => {
+    const step = WIZARD_STEPS[activeStep]?.id || "activity";
+
+    switch (step) {
+      case "activity":
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Target className="h-5 w-5 text-primary" />
+                Activity
+              </CardTitle>
+              <CardDescription>
+                Confirm the activity or session before SignupAssist creates the supervised packet.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {signupIntent?.originalQuery && (
+                <Alert className="border-primary/20 bg-[hsl(var(--secondary))]">
+                  <Search className="h-4 w-4" />
+                  <AlertTitle>Carried from Activity Finder</AlertTitle>
+                  <AlertDescription>{signupIntent.originalQuery}</AlertDescription>
+                </Alert>
+              )}
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="target-program">Activity or session display</Label>
+                  <Input
+                    id="target-program"
+                    value={targetProgram}
+                    onChange={(event) => setTargetProgram(event.target.value)}
+                    placeholder="Summer soccer camp, U9 soccer, 9am swim..."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="participant-age">Age or grade</Label>
+                  <Input
+                    id="participant-age"
+                    inputMode="numeric"
+                    value={participantAge}
+                    onChange={(event) => setParticipantAge(event.target.value)}
+                    placeholder="9"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Used only for matching and the supervised run packet.
+                  </p>
+                </div>
+                <SummaryTile
+                  icon={<Search className="h-3.5 w-3.5" />}
+                  label="Finder status"
+                  value={finderStatus || "Manual setup"}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        );
+      case "provider":
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-primary" />
+                Provider
+              </CardTitle>
+              <CardDescription>
+                Confirm the signup URL and selected provider playbook. Provider uncertainty pauses the run.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="target-url">Signup URL</Label>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      id="target-url"
+                      value={targetUrl}
+                      onChange={(event) => updateTargetUrl(event.target.value)}
+                      placeholder="Paste the exact registration page"
+                    />
+                    <Button type="button" variant="outline" onClick={detectProvider}>
+                      Detect provider
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>Provider playbook</Label>
+                  <Select value={providerKey} onValueChange={setProviderKey}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PROVIDER_PLAYBOOKS.map((playbook) => (
+                        <SelectItem key={playbook.key} value={playbook.key}>
+                          {playbook.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="rounded-lg border bg-background p-3">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">Provider readiness level</p>
+                  <span className={`mt-2 inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${providerReadinessClass(readiness)}`}>
+                    {readiness}
+                  </span>
+                </div>
+                <SummaryTile
+                  icon={<Sparkles className="h-3.5 w-3.5" />}
+                  label="Provider key"
+                  value={selectedPlaybook.key}
+                />
+              </div>
+
+              <label className="flex items-start gap-3 rounded-lg border bg-background p-4 text-sm">
+                <Checkbox
+                  checked={preflight.targetUrlConfirmed}
+                  onCheckedChange={(checked) => togglePreflight("targetUrlConfirmed", checked === true)}
+                />
+                <span>
+                  <span className="block font-medium">I confirmed this is the intended signup URL</span>
+                  <span className="mt-1 block text-muted-foreground">
+                    Editing the URL clears this check so the run packet records parent review.
+                  </span>
+                </span>
+              </label>
+
+              {safeTargetUrl && (
+                <Button type="button" variant="outline" asChild>
+                  <a href={safeTargetUrl} target="_blank" rel="noreferrer">
+                    Open signup page
+                  </a>
+                </Button>
+              )}
+
+              {targetUrl.trim() && !safeTargetUrl && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    Use a valid http or https signup URL before opening or saving the supervised packet.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {detectedPlaybook && detectedPlaybook.key !== "generic" && (
+                <Alert>
+                  <CheckCircle2 className="h-4 w-4" />
+                  <AlertDescription>
+                    Detected {detectedPlaybook.name}. Speed claims apply only when the selected provider is verified.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {providerMismatch && (
+                <Alert variant="destructive">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>
+                    The URL appears to be {detectedPlaybook?.name}, but the selected playbook is {selectedPlaybook.name}.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {selectedPlaybook.key === "generic" && (
+                <Alert className="border-[#f3d8b6] bg-[#fff3e2]">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>Generic provider safety mode</AlertTitle>
+                  <AlertDescription>
+                    Generic mode is conservative. SignupAssist fills only high-confidence fields and pauses for provider uncertainty.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              {!intentId && (
+                <Button type="button" variant="outline" onClick={useKevaDaySmartStarter}>
+                  Use Keva DaySmart starter
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        );
+      case "child":
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <UserRound className="h-5 w-5 text-primary" />
+                Child/Profile
+              </CardTitle>
+              <CardDescription>
+                Choose a profile for reusable safe fields, or choose during run. Medical and allergy fields are not collected here.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="space-y-2">
+                <Label>Child profile</Label>
+                <Select value={childId} onValueChange={updateSelectedChild}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Choose during run</SelectItem>
+                    {children.map((child) => (
+                      <SelectItem key={child.id} value={child.id}>
+                        {childLabel(child)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="rounded-lg border bg-[hsl(var(--secondary))] p-4">
+                <p className="font-medium">Add a minimal child profile</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Only basic identity fields are stored here. Do not add medical, allergy, insurance, or payment details.
+                </p>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="new-child-first-name">First name</Label>
+                    <Input
+                      id="new-child-first-name"
+                      value={newChildFirstName}
+                      onChange={(event) => setNewChildFirstName(event.target.value)}
+                      placeholder="Ava"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-child-last-name">Last name optional</Label>
+                    <Input
+                      id="new-child-last-name"
+                      value={newChildLastName}
+                      onChange={(event) => setNewChildLastName(event.target.value)}
+                      placeholder="Messinger"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="new-child-dob">DOB optional</Label>
+                    <Input
+                      id="new-child-dob"
+                      type="date"
+                      value={newChildDob}
+                      onChange={(event) => setNewChildDob(event.target.value)}
+                    />
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  className="mt-4"
+                  onClick={createChildProfile}
+                  disabled={creatingChild || !newChildFirstName.trim()}
+                >
+                  {creatingChild ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserRound className="h-4 w-4" />}
+                  Add and select child
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      case "timing":
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CalendarDays className="h-5 w-5 text-primary" />
+                Timing and reminder
+              </CardTitle>
+              <CardDescription>
+                Tell SignupAssist when the signup window matters. Email is available now; SMS remains disabled until configured.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="registration-opens-at">Registration opens at</Label>
+                  <Input
+                    id="registration-opens-at"
+                    type="datetime-local"
+                    value={registrationOpensAt}
+                    onChange={(event) => setRegistrationOpensAt(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reminder-minutes">Reminder minutes before</Label>
+                  <Input
+                    id="reminder-minutes"
+                    inputMode="numeric"
+                    value={reminderMinutes}
+                    onChange={(event) => setReminderMinutes(event.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <label className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm">
+                  <Checkbox
+                    checked={reminderEmail}
+                    onCheckedChange={(checked) => setReminderEmail(checked === true)}
+                  />
+                  Email reminder
+                </label>
+                <label className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm text-muted-foreground">
+                  <Checkbox checked={false} disabled />
+                  SMS disabled until supported
+                </label>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      case "safety":
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShieldCheck className="h-5 w-5 text-primary" />
+                Safety limits
+              </CardTitle>
+              <CardDescription>
+                SignupAssist pauses for login, payment, waivers, medical questions, provider uncertainty, price changes, and final submit.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="price-cap">Max total price cap</Label>
+                  <Input
+                    id="price-cap"
+                    inputMode="decimal"
+                    value={priceCap}
+                    onChange={(event) => setPriceCap(event.target.value)}
+                    placeholder="250"
+                  />
+                </div>
+                <div className="rounded-lg border bg-background p-3">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">Provider readiness level</p>
+                  <span className={`mt-2 inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${providerReadinessClass(readiness)}`}>
+                    {readiness}
+                  </span>
+                </div>
+              </div>
+
+              <div className="rounded-lg border p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-medium">Readiness preflight</p>
+                    <p className="text-sm text-muted-foreground">
+                      These checks create today's supervised packet and prepare future set-and-forget safely.
+                    </p>
+                  </div>
+                  <Badge variant={readinessScore >= 80 ? "default" : "secondary"}>
+                    {readinessScore}% ready
+                  </Badge>
+                </div>
+                <Progress value={readinessScore} className="mb-4" />
+                <div className="grid gap-3 md:grid-cols-2">
+                  {PREFLIGHT_CHECKS.map((check) => (
+                    <div
+                      key={check.key}
+                      className="flex items-start gap-3 rounded-lg border bg-background p-3"
+                    >
+                      <Checkbox
+                        id={`preflight-${check.key}`}
+                        checked={preflight[check.key]}
+                        onCheckedChange={(checked) => togglePreflight(check.key, checked === true)}
+                      />
+                      <div>
+                        <Label htmlFor={`preflight-${check.key}`} className="text-sm font-medium">
+                          {check.label}
+                        </Label>
+                        <p className="mt-1 text-xs text-muted-foreground">{check.description}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <SafetyList title="Allowed actions" items={selectedPlaybook.allowedActions || DEFAULT_ALLOWED_ACTIONS} />
+                <SafetyList title="Stop conditions" items={selectedPlaybook.stopConditions || DEFAULT_STOP_CONDITIONS} />
+              </div>
+            </CardContent>
+          </Card>
+        );
+      case "learning":
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-primary" />
+                Provider learning
+              </CardTitle>
+              <CardDescription>
+                This run can improve future provider playbooks without sending child PII into learning by default.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid gap-3 md:grid-cols-3">
+                {SET_AND_FORGET_LADDER.map((item) => (
+                  <div key={item} className="rounded-lg border bg-background p-4">
+                    <p className="text-sm font-semibold">{item}</p>
+                  </div>
+                ))}
+              </div>
+
+              <Alert className="border-primary/20 bg-[hsl(var(--secondary))]">
+                <Sparkles className="h-4 w-4" />
+                <AlertTitle>Provider status: {readiness}</AlertTitle>
+                <AlertDescription>
+                  SignupAssist can learn redacted provider signals such as pause reasons, matched fields, and fixture gaps. It does not learn child PII, credentials, tokens, payment data, or medical/allergy details by default.
+                </AlertDescription>
+              </Alert>
+
+              <SafetyList
+                title="What this run can help learn"
+                items={[
+                  "Which provider playbook recognized the signup path.",
+                  "Where the helper paused and why.",
+                  "Which field mappings or fixture gaps need provider review.",
+                ]}
+              />
+
+              <label className="flex items-start gap-3 rounded-lg border bg-background p-4 text-sm">
+                <Checkbox
+                  checked={learningOptIn}
+                  onCheckedChange={(checked) => setLearningOptIn(checked === true)}
+                />
+                <span>
+                  <span className="block font-medium">Opt in to redacted learning signals for this provider</span>
+                  <span className="mt-1 block text-muted-foreground">
+                    Useful for provider readiness scoring. Full set-and-forget remains future-gated by verified providers and signed mandates.
+                  </span>
+                </span>
+              </label>
+            </CardContent>
+          </Card>
+        );
+      case "review":
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ClipboardCheck className="h-5 w-5 text-primary" />
+                Review and create
+              </CardTitle>
+              <CardDescription>
+                Create today's supervised run packet. Copy packet remains secondary after the run is saved.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {!subscriptionUsable && (
+                <Alert className="border-[#f3d8b6] bg-[#fff3e2]">
+                  <ShieldCheck className="h-4 w-4" />
+                  <AlertTitle>Membership required</AlertTitle>
+                  <AlertDescription>
+                    Real supervised autopilot runs require an active {AUTOPILOT_PRICE_LABEL} membership.
+                  </AlertDescription>
+                </Alert>
+              )}
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <SummaryTile icon={<Target className="h-3.5 w-3.5" />} label="Activity" value={targetProgram} />
+                <SummaryTile icon={<Sparkles className="h-3.5 w-3.5" />} label="Provider" value={selectedPlaybook.name} />
+                <SummaryTile icon={<UserRound className="h-3.5 w-3.5" />} label="Child" value={childLabel(selectedChild)} />
+                <SummaryTile icon={<Clock3 className="h-3.5 w-3.5" />} label="Reminder" value={`${reminderMinutesValue} minutes before`} />
+                <SummaryTile icon={<CircleDollarSign className="h-3.5 w-3.5" />} label="Price cap" value={maxTotalCents ? `$${maxTotalCents / 100}` : "No cap"} />
+                <SummaryTile icon={<ShieldCheck className="h-3.5 w-3.5" />} label="Readiness" value={`${readinessScore}% ready`} />
+              </div>
+
+              <Alert>
+                <PauseCircle className="h-4 w-4" />
+                <AlertTitle>Parent approval gates stay active</AlertTitle>
+                <AlertDescription>
+                  Login, payment, waivers, medical questions, provider uncertainty, price changes, and final submit all pause for parent review.
+                </AlertDescription>
+              </Alert>
+
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Button
+                  onClick={createRun}
+                  disabled={creatingRun || !subscriptionUsable || !detailsReady}
+                >
+                  {creatingRun ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ClipboardCheck className="h-4 w-4" />
+                  )}
+                  Create supervised run
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => copyRunPacket(createdPacket || runPacketPreview)}
+                  disabled={!safeTargetUrl || !subscriptionUsable}
+                >
+                  <Clipboard className="h-4 w-4" />
+                  Copy packet
+                </Button>
+                <Button type="button" variant="outline" onClick={() => navigate("/dashboard")}>
+                  Dashboard
+                </Button>
+              </div>
+
+              {createdPacket && (
+                <Alert className="border-[#b9e5c7] bg-[#eaf7ef]">
+                  <CheckCircle2 className="h-4 w-4 text-[#2f855a]" />
+                  <AlertTitle>Supervised run packet created</AlertTitle>
+                  <AlertDescription>
+                    Run {createdRunId ? createdRunId : "saved"} is ready for your dashboard/history where supported.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
+        );
     }
   };
 
@@ -578,382 +1292,20 @@ export default function Autopilot() {
     );
   }
 
-  if (finderPrefill) {
-    const finderTitle =
-      [finderActivity, finderVenue].filter(Boolean).join(" at ") ||
-      targetProgram ||
-      "your signup";
-    const statusLabel =
-      finderStatus === "tested_fast_path" ? "Tested Fast Path" : "Guided Autopilot";
-    const statusClass =
-      finderStatus === "tested_fast_path"
-        ? "border-[#b9e5c7] bg-[#eaf7ef] text-[#2f855a]"
-        : "border-[#b8d7e6] bg-[#e8f2f7] text-[#1f5a7a]";
-    const childOrAge =
-      selectedChild
-        ? `${selectedChild.first_name} ${selectedChild.last_name}`
-        : participantAge
-          ? `Age ${participantAge}`
-          : null;
-    const detailsReady = Boolean(targetUrl.trim() && targetProgram.trim());
-
-    return (
-      <div className="min-h-screen bg-background">
-        <Header />
-        <main className="container mx-auto max-w-6xl px-4 py-6 sm:py-8">
-          <Button
-            type="button"
-            variant="ghost"
-            className="mb-4 -ml-3 text-muted-foreground"
-            onClick={() => navigate("/activity-finder")}
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to Activity Finder
-          </Button>
-
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <div className="space-y-6">
-              <section className="rounded-lg border bg-card p-5 shadow-sm sm:p-6">
-                <div className="mb-4 flex flex-wrap items-center gap-2">
-                  <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusClass}`}>
-                    {statusLabel}
-                  </span>
-                  <Badge variant="secondary">Step 2 of 4</Badge>
-                </div>
-                <h1 className="max-w-3xl text-3xl font-bold tracking-normal text-primary sm:text-4xl">
-                  Set up signup help for {finderTitle}.
-                </h1>
-                <p className="mt-3 max-w-3xl text-muted-foreground">
-                  We found the signup path. Now confirm the basics, choose your reminder, and save a
-                  Chrome Helper setup so registration day feels boring in the best possible way.
-                </p>
-
-                <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <FinderSummaryItem
-                    icon={<Search className="h-3.5 w-3.5" />}
-                    label="Signup"
-                    value={finderVenue || targetProgram}
-                  />
-                  <FinderSummaryItem
-                    icon={<Target className="h-3.5 w-3.5" />}
-                    label="Activity"
-                    value={finderActivity || targetProgram}
-                  />
-                  <FinderSummaryItem
-                    icon={<UserRound className="h-3.5 w-3.5" />}
-                    label="Child"
-                    value={childOrAge}
-                  />
-                  <FinderSummaryItem
-                    icon={<Clock3 className="h-3.5 w-3.5" />}
-                    label="Reminder"
-                    value={`${reminderMinutesValue} minutes before`}
-                  />
-                </div>
-              </section>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Confirm the essentials</CardTitle>
-                  <CardDescription>
-                    Keep this to the few things SignupAssist needs before registration opens.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-5">
-                  {!subscriptionUsable && (
-                    <Alert className="border-[#f3d8b6] bg-[#fff3e2]">
-                      <ShieldCheck className="h-4 w-4" />
-                      <AlertTitle>Membership needed before saving</AlertTitle>
-                      <AlertDescription>
-                        Real signup helper setups require an active {AUTOPILOT_PRICE_LABEL} membership.
-                        You can cancel monthly renewal any time, and your family profiles stay intact.
-                      </AlertDescription>
-                    </Alert>
-                  )}
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="finder-target-url">Signup page</Label>
-                      <div className="flex flex-col gap-2 sm:flex-row">
-                        <Input
-                          id="finder-target-url"
-                          value={targetUrl}
-                          onChange={(event) => setTargetUrl(event.target.value)}
-                          placeholder="Paste the exact registration page"
-                        />
-                        <Button type="button" variant="outline" onClick={detectProvider}>
-                          Check page
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        For Keva, this is the DaySmart login/signup page. Login remains your step.
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Child</Label>
-                      <Select value={childId} onValueChange={setChildId}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">Choose during signup</SelectItem>
-                          {children.map((child) => (
-                            <SelectItem key={child.id} value={child.id}>
-                              {child.first_name} {child.last_name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="finder-age">Age</Label>
-                      <Input
-                        id="finder-age"
-                        inputMode="numeric"
-                        value={participantAge}
-                        onChange={(event) => setParticipantAge(event.target.value)}
-                        placeholder="9"
-                      />
-                    </div>
-
-                    <div className="space-y-2 md:col-span-2">
-                      <Label htmlFor="finder-program">Activity or session</Label>
-                      <Input
-                        id="finder-program"
-                        value={targetProgram}
-                        onChange={(event) => setTargetProgram(event.target.value)}
-                        placeholder="Summer soccer camp, U9 soccer, 9am swim..."
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="finder-opens-at">Registration opens</Label>
-                      <Input
-                        id="finder-opens-at"
-                        type="datetime-local"
-                        value={registrationOpensAt}
-                        onChange={(event) => setRegistrationOpensAt(event.target.value)}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="finder-price-cap">Price cap</Label>
-                      <Input
-                        id="finder-price-cap"
-                        inputMode="decimal"
-                        value={priceCap}
-                        onChange={(event) => setPriceCap(event.target.value)}
-                        placeholder="250"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border bg-[hsl(var(--secondary))] p-4">
-                    <div className="flex flex-col gap-4 md:flex-row md:items-end">
-                      <div className="space-y-2 md:w-44">
-                        <Label htmlFor="finder-reminder-minutes">Reminder</Label>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            id="finder-reminder-minutes"
-                            inputMode="numeric"
-                            value={reminderMinutes}
-                            onChange={(event) => setReminderMinutes(event.target.value)}
-                          />
-                          <span className="whitespace-nowrap text-sm text-muted-foreground">min before</span>
-                        </div>
-                      </div>
-                      <div className="flex flex-1 flex-wrap gap-3">
-                        <label className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
-                          <Checkbox
-                            checked={reminderEmail}
-                            onCheckedChange={(checked) => setReminderEmail(checked === true)}
-                          />
-                          Email
-                        </label>
-                        <label className="flex items-center gap-2 rounded-lg border bg-card px-3 py-2 text-sm">
-                          <Checkbox
-                            checked={reminderSms}
-                            onCheckedChange={(checked) => setReminderSms(checked === true)}
-                          />
-                          Text message
-                        </label>
-                      </div>
-                    </div>
-                    {reminderSms && (
-                      <Input
-                        className="mt-3"
-                        value={phoneNumber}
-                        onChange={(event) => setPhoneNumber(event.target.value)}
-                        placeholder="Phone number for text reminder"
-                      />
-                    )}
-                  </div>
-
-                  <div className="rounded-lg border p-4">
-                    <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <p className="font-medium">Ready to reuse</p>
-                        <p className="text-sm text-muted-foreground">
-                          Check off what is already prepared. Anything sensitive still pauses for you.
-                        </p>
-                      </div>
-                      <Badge variant={readinessScore >= 80 ? "default" : "secondary"}>
-                        {readinessScore}% ready
-                      </Badge>
-                    </div>
-                    <Progress value={readinessScore} className="mb-4" />
-                    <div className="grid gap-3 md:grid-cols-2">
-                      {PREFLIGHT_CHECKS.map((check) => (
-                        <label
-                          key={check.key}
-                          className="flex items-start gap-3 rounded-lg border bg-background p-3"
-                        >
-                          <Checkbox
-                            checked={preflight[check.key]}
-                            onCheckedChange={(checked) => togglePreflight(check.key, checked === true)}
-                          />
-                          <span>
-                            <span className="block text-sm font-medium">{check.label}</span>
-                            <span className="mt-1 block text-xs text-muted-foreground">{check.description}</span>
-                          </span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  {providerMismatch && (
-                    <Alert variant="destructive">
-                      <AlertTriangle className="h-4 w-4" />
-                      <AlertDescription>
-                        The page looks like {detectedPlaybook?.name}, but the selected provider is {selectedPlaybook.name}.
-                      </AlertDescription>
-                    </Alert>
-                  )}
-
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <Button
-                      onClick={createRun}
-                      disabled={creatingRun || !subscriptionUsable || !detailsReady}
-                    >
-                      {creatingRun ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Saving setup...
-                        </>
-                      ) : (
-                        <>
-                          <ClipboardCheck className="h-4 w-4" />
-                          Save signup setup
-                        </>
-                      )}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => copyRunPacket(createdPacket || runPacketPreview)}
-                      disabled={!targetUrl.trim() || !subscriptionUsable}
-                    >
-                      <Clipboard className="h-4 w-4" />
-                      Copy to Chrome Helper
-                    </Button>
-                    {targetUrl.trim() && (
-                      <Button type="button" variant="ghost" asChild>
-                        <a href={targetUrl.trim()} target="_blank" rel="noreferrer">
-                          Open signup page
-                        </a>
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {createdPacket && (
-                <Alert className="border-[#b9e5c7] bg-[#eaf7ef]">
-                  <CheckCircle2 className="h-4 w-4 text-[#2f855a]" />
-                  <AlertTitle>Setup saved</AlertTitle>
-                  <AlertDescription>
-                    Copy it to the Chrome Helper before registration opens. We’ll still pause for login,
-                    payment, waivers, medical details, and final submit.
-                  </AlertDescription>
-                </Alert>
-              )}
-            </div>
-
-            <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Where you are</CardTitle>
-                  <CardDescription>Four simple steps from search to signup day.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <SetupTrackerStep
-                    number={1}
-                    title="Found the signup"
-                    description={finderVenue || finderActivity || "We carried over your search result."}
-                    state="done"
-                  />
-                  <SetupTrackerStep
-                    number={2}
-                    title="Confirm details"
-                    description="Signup page, child, reminder, and price cap."
-                    state={createdPacket ? "done" : "active"}
-                  />
-                  <SetupTrackerStep
-                    number={3}
-                    title="Save reusable info"
-                    description="Family details are ready for the helper to reuse."
-                    state={createdPacket ? "done" : "upcoming"}
-                  />
-                  <SetupTrackerStep
-                    number={4}
-                    title="Use the helper"
-                    description="Open the reminder, let SignupAssist fill, and approve sensitive steps."
-                    state="upcoming"
-                  />
-                </CardContent>
-              </Card>
-
-              <Card className="border-primary/20 bg-[hsl(var(--secondary))]">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <ShieldCheck className="h-5 w-5 text-primary" />
-                    What SignupAssist will do
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm text-muted-foreground">
-                  <p>Fill low-risk family and child fields quickly.</p>
-                  <p>Remind you {reminderMinutesValue} minutes before registration opens.</p>
-                  <p>Pause for login, payment, waivers, medical questions, and final submit.</p>
-                </CardContent>
-              </Card>
-
-              <BillingCard
-                compact
-                userId={user?.id}
-                returnPath={autopilotReturnPath}
-                onSubscriptionChange={setSubscription}
-              />
-            </aside>
-          </div>
-        </main>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="container mx-auto max-w-6xl px-4 py-8">
-        <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+        <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <Badge variant="secondary" className="mb-3">
               V1 supervised autopilot
             </Badge>
-            <h1 className="text-3xl font-bold">Supervised Autopilot</h1>
+            <h1 className="text-3xl font-bold tracking-normal text-primary sm:text-4xl">
+              Supervised Autopilot setup
+            </h1>
             <p className="mt-2 max-w-3xl text-muted-foreground">
-              Move fast when registration opens. SignupAssist fills the tedious parts, you approve the important parts, and cancellation is always one click away.
+              Create a parent-controlled run packet from your signup intent. Full set-and-forget is a future verified-provider and signed-mandate mode, not live today.
             </p>
           </div>
           <Button variant="outline" onClick={() => navigate("/dashboard")}>
@@ -962,414 +1314,101 @@ export default function Autopilot() {
           </Button>
         </div>
 
-        <div className="mb-6 grid gap-4 md:grid-cols-3">
-          <div className="rounded-lg border bg-card p-4">
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-              <Zap className="h-4 w-4 text-primary" />
-              Faster under pressure
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Known family and child fields are prepared before the registration window opens.
-            </p>
-          </div>
-          <div className="rounded-lg border bg-card p-4">
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-              <CreditCard className="h-4 w-4 text-primary" />
-              Provider-direct payment
-            </div>
-            <p className="text-sm text-muted-foreground">
-              SignupAssist pauses at provider checkout. The parent approves and pays there.
-            </p>
-          </div>
-          <div className="rounded-lg border bg-card p-4">
-            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
-              <Sparkles className="h-4 w-4 text-primary" />
-              Set and Forget foundation
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Run packets capture playbook, readiness, price caps, and pause reasons for future automation.
-            </p>
-          </div>
-        </div>
-
-        {finderPrefill && (
-          <Alert className="mb-6 border-primary/20 bg-[hsl(var(--secondary))]">
-            <Search className="h-4 w-4" />
-            <AlertTitle>
-              {finderStatus === "tested_fast_path" ? "Tested Fast Path found" : "Guided Autopilot ready"}
-            </AlertTitle>
-            <AlertDescription>
-              We carried over {finderActivity || "your activity"} {finderVenue ? `at ${finderVenue}` : ""}
-              {finderLocation ? ` near ${finderLocation}` : ""}. Confirm the signup link, reminder, and reusable info before registration opens.
-            </AlertDescription>
-          </Alert>
-        )}
-
-        <Alert className="mb-6 border-primary/20 bg-[hsl(var(--secondary))]">
-          <Target className="h-4 w-4" />
-          <AlertTitle>First provider focus: DaySmart / Dash for Keva</AlertTitle>
-          <AlertDescription className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <span>
-              This MVP slice is grounded in Keva's DaySmart flow. Login remains a parent step; SignupAssist fills safe registration fields after you are in.
+        <section className="mb-6 rounded-lg border bg-card p-5 shadow-sm">
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${providerReadinessClass(readiness)}`}>
+              Provider status: {readiness}
             </span>
-            <Button type="button" variant="outline" onClick={useKevaDaySmartStarter}>
-              Use Keva DaySmart starter
-            </Button>
-          </AlertDescription>
-        </Alert>
+            {intentId && <Badge variant="secondary">Loaded from signup intent</Badge>}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <SummaryTile icon={<Search className="h-3.5 w-3.5" />} label="Finder" value={finderVenue || finderActivity || "Manual setup"} />
+            <SummaryTile icon={<Target className="h-3.5 w-3.5" />} label="Activity" value={targetProgram} />
+            <SummaryTile icon={<Sparkles className="h-3.5 w-3.5" />} label="Provider" value={selectedPlaybook.name} />
+            <SummaryTile icon={<ShieldCheck className="h-3.5 w-3.5" />} label="Readiness" value={`${readinessScore}% ready`} />
+          </div>
+        </section>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="space-y-6">
-            <Card>
-              <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                  <Target className="h-5 w-5" />
-                  Signup help setup
-                </CardTitle>
-                <CardDescription>
-                  Confirm the child, signup page, reminder, reusable info, and safety limits before the rush.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-5">
-                {!subscriptionUsable && (
-                  <Alert className="border-[#f3d8b6] bg-[#fff3e2]">
-                    <ShieldCheck className="h-4 w-4" />
-                    <AlertTitle>Membership gate</AlertTitle>
-                    <AlertDescription>
-                      Real supervised autopilot runs require an active {AUTOPILOT_PRICE_LABEL} membership. Subscribe in the billing card, then create and copy the helper packet.
-                    </AlertDescription>
-                  </Alert>
-                )}
+        <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)_340px]">
+          <WizardRail
+            activeStep={activeStep}
+            completed={Boolean(createdPacket)}
+            onStepChange={setActiveStep}
+          />
 
-                <Alert>
-                  <CreditCard className="h-4 w-4" />
-                  <AlertTitle>Provider fees stay with the provider</AlertTitle>
-                  <AlertDescription>
-                    {SUPERVISED_AUTOPILOT_BILLING_COPY.noSuccessFee}{" "}
-                    {SUPERVISED_AUTOPILOT_BILLING_COPY.providerFee} The helper pauses at checkout,
-                    payment confirmation, and final submit.
-                  </AlertDescription>
-                </Alert>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-2 md:col-span-2">
-                    <Label htmlFor="target-url">Signup page URL</Label>
-                    <div className="flex flex-col gap-2 sm:flex-row">
-                      <Input
-                        id="target-url"
-                        value={targetUrl}
-                        onChange={(event) => setTargetUrl(event.target.value)}
-                        placeholder="Paste the exact registration page, not just the venue homepage"
-                      />
-                      <Button type="button" variant="outline" onClick={detectProvider}>
-                        Detect provider
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Provider playbook</Label>
-                    <Select value={providerKey} onValueChange={setProviderKey}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {PROVIDER_PLAYBOOKS.map((playbook) => (
-                          <SelectItem key={playbook.key} value={playbook.key}>
-                            {playbook.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Child profile</Label>
-                    <Select value={childId} onValueChange={setChildId}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">Choose during run</SelectItem>
-                        {children.map((child) => (
-                          <SelectItem key={child.id} value={child.id}>
-                            {child.first_name} {child.last_name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="participant-age">Age or grade</Label>
-                    <Input
-                      id="participant-age"
-                      inputMode="numeric"
-                      value={participantAge}
-                      onChange={(event) => setParticipantAge(event.target.value)}
-                      placeholder="9"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="target-program">Program or session</Label>
-                    <Input
-                      id="target-program"
-                      value={targetProgram}
-                      onChange={(event) => setTargetProgram(event.target.value)}
-                      placeholder="U8 soccer, July camp, 9am swim..."
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="registration-opens-at">Registration opens</Label>
-                    <Input
-                      id="registration-opens-at"
-                      type="datetime-local"
-                      value={registrationOpensAt}
-                      onChange={(event) => setRegistrationOpensAt(event.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="price-cap">Price cap in dollars</Label>
-                    <Input
-                      id="price-cap"
-                      inputMode="decimal"
-                      value={priceCap}
-                      onChange={(event) => setPriceCap(event.target.value)}
-                      placeholder="250"
-                    />
-                  </div>
-                </div>
-
-                <div className="rounded-lg border p-4">
-                  <div className="mb-3">
-                    <p className="font-medium">Reminder</p>
-                    <p className="text-sm text-muted-foreground">
-                      We’ll remind you before signup opens so registration day does not sneak up on you.
-                    </p>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-[180px_minmax(0,1fr)]">
-                    <div className="space-y-2">
-                      <Label htmlFor="reminder-minutes">Minutes before</Label>
-                      <Input
-                        id="reminder-minutes"
-                        inputMode="numeric"
-                        value={reminderMinutes}
-                        onChange={(event) => setReminderMinutes(event.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-3">
-                      <Label>Reminder channels</Label>
-                      <div className="flex flex-wrap gap-3">
-                        <label className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm">
-                          <Checkbox
-                            checked={reminderEmail}
-                            onCheckedChange={(checked) => setReminderEmail(checked === true)}
-                          />
-                          Email
-                        </label>
-                        <label className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm">
-                          <Checkbox
-                            checked={reminderSms}
-                            onCheckedChange={(checked) => setReminderSms(checked === true)}
-                          />
-                          Text message
-                        </label>
-                      </div>
-                      {reminderSms && (
-                        <Input
-                          value={phoneNumber}
-                          onChange={(event) => setPhoneNumber(event.target.value)}
-                          placeholder="Phone number for text reminder"
-                        />
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-lg border p-4">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-medium">Readiness preflight</p>
-                      <p className="text-sm text-muted-foreground">
-                        These checks make V1 faster now and make future Set and Forget safer later.
-                      </p>
-                    </div>
-                    <Badge variant={readinessScore >= 80 ? "default" : "secondary"}>
-                      {readinessScore}% ready
-                    </Badge>
-                  </div>
-                  <Progress value={readinessScore} className="mb-4" />
-                  <div className="grid gap-3 md:grid-cols-2">
-                    {PREFLIGHT_CHECKS.map((check) => (
-                      <div
-                        key={check.key}
-                        className="flex items-start gap-3 rounded-lg border bg-background p-3"
-                      >
-                        <Checkbox
-                          id={`preflight-${check.key}`}
-                          checked={preflight[check.key]}
-                          onCheckedChange={(checked) => togglePreflight(check.key, checked === true)}
-                        />
-                        <div>
-                          <Label htmlFor={`preflight-${check.key}`} className="text-sm font-medium">
-                            {check.label}
-                          </Label>
-                          <p className="mt-1 text-xs text-muted-foreground">{check.description}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {detectedPlaybook && detectedPlaybook.key !== "generic" && (
-                  <Alert>
-                    <CheckCircle2 className="h-4 w-4" />
-                    <AlertDescription>
-                      Detected {detectedPlaybook.name}. Speed claims apply only when the selected provider is verified.
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                {providerMismatch && (
-                  <Alert variant="destructive">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertDescription>
-                      The URL appears to be {detectedPlaybook?.name}, but the selected playbook is {selectedPlaybook.name}.
-                    </AlertDescription>
-                  </Alert>
-                )}
-
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button onClick={createRun} disabled={creatingRun || !subscriptionUsable}>
-                    {creatingRun ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Creating packet...
-                      </>
-                    ) : (
-                      <>
-                        <ClipboardCheck className="h-4 w-4" />
-                        Create run packet
-                      </>
-                    )}
-                  </Button>
+          <div className="space-y-4">
+            {renderStep()}
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setActiveStep((current) => Math.max(0, current - 1))}
+                disabled={activeStep === 0}
+              >
+                Back
+              </Button>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                {activeStep < WIZARD_STEPS.length - 1 ? (
                   <Button
                     type="button"
-                    variant="outline"
-                    onClick={() => copyRunPacket(createdPacket || runPacketPreview)}
-                    disabled={!targetUrl.trim() || !subscriptionUsable}
+                    onClick={() => setActiveStep((current) => Math.min(WIZARD_STEPS.length - 1, current + 1))}
                   >
-                    <Clipboard className="h-4 w-4" />
-                    Copy packet for helper
+                    Continue
+                    <ArrowRight className="h-4 w-4" />
                   </Button>
-                  <Button variant="outline" onClick={() => navigate("/credentials")}>
-                    <UserRound className="h-4 w-4" />
-                    Family profiles
+                ) : (
+                  <Button
+                    type="button"
+                    onClick={createRun}
+                    disabled={creatingRun || !subscriptionUsable || !detailsReady}
+                  >
+                    {creatingRun ? <Loader2 className="h-4 w-4 animate-spin" /> : <ClipboardCheck className="h-4 w-4" />}
+                    Create supervised run
                   </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            {createdPacket && (
-              <Card className="border-primary/30">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <ClipboardCheck className="h-5 w-5" />
-                    Run packet ready
-                  </CardTitle>
-                  <CardDescription>
-                    Copy this packet into the Chrome helper, then open the provider page when registration opens.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <div className="rounded-lg border bg-background p-3">
-                      <p className="text-xs text-muted-foreground">Provider</p>
-                      <p className="text-sm font-medium">{createdPacket.target.providerName}</p>
-                    </div>
-                    <div className="rounded-lg border bg-background p-3">
-                      <p className="text-xs text-muted-foreground">Target</p>
-                      <p className="line-clamp-1 text-sm font-medium">
-                        {createdPacket.target.program || createdPacket.target.url}
-                      </p>
-                    </div>
-                    <div className="rounded-lg border bg-background p-3">
-                      <p className="text-xs text-muted-foreground">Readiness</p>
-                      <p className="text-sm font-medium">{createdPacket.readiness.score}%</p>
-                    </div>
-                    <div className="rounded-lg border bg-background p-3">
-                      <p className="text-xs text-muted-foreground">Billing</p>
-                      <p className="text-sm font-medium">No supervised-autopilot success fee</p>
-                    </div>
-                  </div>
-                  <Button type="button" onClick={() => copyRunPacket(createdPacket)}>
-                    <Clipboard className="h-4 w-4" />
-                    Copy packet
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-
-            <div className="grid gap-4 md:grid-cols-2">
-              {PROVIDER_PLAYBOOKS.filter((playbook) => playbook.key !== "generic").map((playbook) => (
-                <Card key={playbook.key}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <CardTitle className="text-base">{playbook.name}</CardTitle>
-                      <Badge variant="default">Verified</Badge>
-                    </div>
-                    <CardDescription>{playbook.speedClaim}</CardDescription>
-                  </CardHeader>
-                </Card>
-              ))}
+                )}
+              </div>
             </div>
           </div>
 
-          <aside className="space-y-6">
+          <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
             <BillingCard
+              compact
               userId={user?.id}
-              returnPath="/autopilot"
+              returnPath={autopilotReturnPath}
               onSubscriptionChange={setSubscription}
-              showPostRunActions={Boolean(latestCompletedRun)}
             />
 
-            <Card>
+            <Card className="border-primary/20 bg-[hsl(var(--secondary))]">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <PauseCircle className="h-5 w-5" />
-                  Pause rules
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <PauseCircle className="h-5 w-5 text-primary" />
+                  Parent approval gates
                 </CardTitle>
-                <CardDescription>Parent approval stays in front of high-risk actions.</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3 text-sm">
-                  <div>
-                    <p className="font-medium">Allowed</p>
-                    <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
-                      {DEFAULT_ALLOWED_ACTIONS.slice(0, 4).map((action) => (
-                        <li key={action}>{action}</li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div>
-                    <p className="font-medium">Always pauses</p>
-                    <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
-                      {DEFAULT_STOP_CONDITIONS.slice(0, 7).map((condition) => (
-                        <li key={condition}>{condition}</li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
+              <CardContent className="space-y-3 text-sm text-muted-foreground">
+                <p>SignupAssist pauses for login, payment, waivers, medical questions, provider uncertainty, price changes, and final submit.</p>
+                <p>{SUPERVISED_AUTOPILOT_BILLING_COPY.noSuccessFee} {SUPERVISED_AUTOPILOT_BILLING_COPY.providerFee}</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Run history</CardTitle>
-                <CardDescription>Recent supervised autopilot setup records.</CardDescription>
+                <CardTitle className="text-base">Set-and-forget ladder</CardTitle>
+                <CardDescription>Future automation is gated by provider readiness and signed mandates.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm text-muted-foreground">
+                {SET_AND_FORGET_LADDER.map((item) => (
+                  <div key={item} className="rounded-lg border bg-background p-3">
+                    {item}
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Run history</CardTitle>
+                <CardDescription>Recent supervised setup records.</CardDescription>
               </CardHeader>
               <CardContent>
                 {runs.length === 0 ? (

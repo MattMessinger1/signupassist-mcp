@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { safeTargetUrlHost, validateTargetUrl } from "./targetUrlSafety.js";
 
 export const SIGNUP_INTENT_STATUSES = [
   "draft",
@@ -108,20 +109,23 @@ const nullableShortString = z
     return value;
   });
 
-const httpsUrl = z
+const targetUrl = z
   .string()
   .trim()
-  .url()
   .max(2048)
-  .refine((value) => {
-    try {
-      return new URL(value).protocol === "https:";
-    } catch {
-      return false;
+  .transform((value, context) => {
+    const result = validateTargetUrl(value);
+    if (!result.ok || !result.normalizedUrl) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: result.reason ?? "Unsafe target URL",
+      });
+      return z.NEVER;
     }
-  }, "Only https URLs are allowed");
+    return result.normalizedUrl;
+  });
 
-const nullableHttpsUrl = httpsUrl
+const nullableTargetUrl = targetUrl
   .optional()
   .nullable()
   .transform((value) => {
@@ -149,7 +153,7 @@ export const createSignupIntentSchema = z
     originalQuery: nullableTrimmedString,
     parsed: parsedSchema,
     selectedResult: jsonObjectSchema.default({}),
-    targetUrl: nullableHttpsUrl,
+    targetUrl: nullableTargetUrl,
     providerKey: nullableShortString,
     providerName: nullableShortString,
     finderStatus: nullableShortString,
@@ -165,7 +169,7 @@ export const patchSignupIntentSchema = z
     selected_child_id: z.string().uuid().optional().nullable(),
     status: z.enum(SIGNUP_INTENT_STATUSES).optional(),
     autopilot_run_id: z.string().uuid().optional().nullable(),
-    target_url: nullableHttpsUrl.optional(),
+    target_url: nullableTargetUrl.optional(),
     provider_key: nullableShortString.optional(),
     provider_name: nullableShortString.optional(),
   })
@@ -245,12 +249,7 @@ export function createSignupIntentPatch(
 }
 
 function targetUrlHost(targetUrl: string | null): string | null {
-  if (!targetUrl) return null;
-  try {
-    return new URL(targetUrl).host;
-  } catch {
-    return null;
-  }
+  return safeTargetUrlHost(targetUrl);
 }
 
 function selectedResultAuditSummary(selectedResult: JsonObject): JsonObject {

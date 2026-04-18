@@ -184,13 +184,20 @@ describe("signup intent service", () => {
     expect(JSON.stringify(events[0].event)).not.toContain("company=keva");
   });
 
-  it("surfaces validation errors for invalid URLs", async () => {
+  it("surfaces validation errors for invalid or unsafe target URLs", async () => {
     const { storage } = makeStorage();
 
     await expect(
       createSignupIntent(storage, userA, {
         ...createBody,
-        targetUrl: "http://example.com/signup",
+        targetUrl: "file:///etc/passwd",
+      }),
+    ).rejects.toBeInstanceOf(ZodError);
+
+    await expect(
+      createSignupIntent(storage, userA, {
+        ...createBody,
+        targetUrl: "https://127.0.0.1/signup",
       }),
     ).rejects.toBeInstanceOf(ZodError);
   });

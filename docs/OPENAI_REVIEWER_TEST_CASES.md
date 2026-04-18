@@ -1,113 +1,152 @@
-# OpenAI App Store — Reviewer Test Cases
+# OpenAI App Store - Reviewer Test Cases
 
-These test scenarios demonstrate SignupAssist's core functionality for the OpenAI review team.
+These test scenarios demonstrate SignupAssist's current ChatGPT app behavior for the OpenAI review team.
 
-**Provider:** AIM Design (Madison, WI) — programs fetched live from the Bookeo API.
-**Tools:** `search_activities` (read-only browse) and `register_for_activity` (guided registration wizard).
+**Provider:** AIM Design (Madison, WI) - programs fetched live from the Bookeo API.
 
-> **Note:** Prompts include "SignupAssist" or "Signup Assist" to ensure ChatGPT routes the request to the app rather than answering from general knowledge.
+**Public tools:** `search_activities` (read-only browse) and `register_for_activity` (OAuth-gated guided registration wizard).
 
----
+**Important safety posture:** SignupAssist can complete a supported Bookeo/API-connected booking only after the reviewer signs in, provides required details, completes Stripe-hosted payment method setup if prompted, reviews the final summary, and explicitly confirms with `book now`. Full unattended set-and-forget delegation is not live.
 
-## Test Case 1: Browse Available Programs
-
-**Prompt**: "Use SignupAssist to show me programs at AIM Design"
-
-**Expected behavior**:
-- Triggers `search_activities`
-- Returns a plain-text bullet list of available programs at AIM Design (Madison, WI)
-- Each bullet includes the program title and may include age range, dates, or price
-- Ends with a prompt like "To sign up for any of these, say 'sign up for [program name]'"
-- No booking or payment occurs
+> Prompts include "SignupAssist" or "Signup Assist" to encourage ChatGPT to route the request to the app instead of answering from general knowledge.
 
 ---
 
-## Test Case 2: Age-Filtered Program Search
+## Positive Test Case 1: Browse AIM Design Programs
 
-**Prompt**: "Use SignupAssist to find robotics classes for my 9 year old"
+**Scenario:** Browse AIM Design programs
 
-**Expected behavior**:
-- Triggers `register_for_activity`
-- May ask a follow-up question for location (e.g., "What city are you in?")
-- After location is provided, returns **Step 1/5** showing robotics programs appropriate for age 9
-- Each program listing includes title, price, date/time, and availability status
-- Prompts user to select a program or confirm (e.g., "Reply yes to sign up for this class")
+**Prompt:** "Use SignupAssist to show me programs at AIM Design."
 
----
+**Tool expected:** `search_activities`
 
-## Test Case 3: Start Registration Flow
+**Expected behavior:**
 
-**Prompt**: "Use SignupAssist to sign my child up for a class at AIM Design"
-
-**Expected behavior**:
-- Triggers `register_for_activity`
-- Returns a response beginning with **Step 1/5** showing available programs
-- Lists programs with numbered options for selection
-- Waits for user to choose before proceeding
+- Returns available AIM Design programs from the Bookeo-connected catalog.
+- Each result may include title, age range, schedule, price, or availability when available.
+- Invites the reviewer to start signup for a selected program.
+- Does not create a booking, collect payment, or charge anything.
 
 ---
 
-## Test Case 4: Multi-Turn Registration Wizard
+## Positive Test Case 2: Age-Filtered Browse
 
-**Turn 1**: "I want to register my kid for classes with SignupAssist."
-**Turn 2**: User selects a program (e.g., "3")
-**Turn 3**: User provides email (e.g., "matt.messinger@gmail.com")
-**Turn 4**: User provides participant name and DOB (e.g., "Percy Messinger 11/26/2014")
-**Turn 5**: User confirms payment method (e.g., "yes")
-**Turn 6**: User confirms booking (e.g., "book now")
+**Scenario:** Age-filtered AIM Design program browse
 
-**Expected behavior**:
-- Turn 1 triggers `register_for_activity`, returns **Step 1/5 — Finding classes** with a numbered list of available programs (title, price, date, availability)
-- Turn 2 triggers `register_for_activity`, returns **Step 2/5 — Account holder & participant info**, asks for email
-- Turn 3 triggers `register_for_activity`, returns **Step 2/5 continued**, asks for participant first name, last name, and date of birth
-- Turn 4 triggers `register_for_activity`, returns **Step 3/5 — Payment method (Stripe)**, shows payment method on file (e.g., "visa .... 4242") and asks to confirm or change
-- Turn 5 triggers `register_for_activity`, returns **Step 4/5 — Review & consent**, showing a summary with program, participant, date, program fee, SignupAssist fee, and payment method. Asks user to type "book now" to continue or "cancel" to abort
-- Turn 6 triggers `register_for_activity`, returns **Step 5/5 — Registering**, confirms the booking with a booking number, participant details, fees breakdown, and calendar links
-- Each response includes a clear step indicator (Step N/5)
-- No booking or charge occurs until the user explicitly types "book now" at Step 4/5
+**Prompt:** "Use SignupAssist to find robotics classes for my 9 year old at AIM Design."
+
+**Tool expected:** `search_activities`
+
+**Expected behavior:**
+
+- Returns AIM Design robotics or youth-program results appropriate for the requested age when available.
+- If no exact match exists, explains closest available programs or asks a narrow follow-up.
+- Does not start the signup wizard unless the reviewer asks to sign up.
+- Does not create a booking, collect payment, or charge anything.
 
 ---
 
-## Test Case 5: Error Handling — No Matching Programs
+## Positive Test Case 3: Start Signup Flow
 
-**Prompt**: "Use SignupAssist to find underwater basket weaving classes"
+**Scenario:** Start AIM Design signup flow
 
-**Expected behavior**:
-- Triggers `search_activities` or `register_for_activity`
-- Returns a friendly message indicating no matching programs were found
-- May suggest broadening the search or show the full program catalog
-- Does NOT crash or return a raw error
+**Prompt:** "Use SignupAssist to sign my child up for a class at AIM Design."
 
----
+**Tool expected:** `register_for_activity`
 
-## Test Case 6: Out-of-Scope Request (Adult-Only Activity)
+**Expected behavior:**
 
-**Prompt**: "Use SignupAssist to sign me up for a wine tasting class for adults only"
-
-**Expected behavior**:
-- Triggers `register_for_activity`
-- SignupAssist returns a clear decline stating it is focused on youth activity enrollment and cannot help with adult-only signups
-- Suggests registering directly with the provider for adult activities
+- If the reviewer is not authenticated, starts the OAuth sign-in flow.
+- After sign-in, returns **Step 1/5** with available AIM Design programs.
+- Lists numbered program options.
+- Waits for the reviewer to select a program before collecting registration details.
+- Does not create a booking or charge anything at Step 1/5.
 
 ---
 
-## Test Case 7: Confirm-Before-Action Gating
+## Positive Test Case 4: Complete Connected Bookeo Signup
 
-**Prompt**: "Book this now" (after selecting a program and providing info in a prior turn)
+**Scenario:** Complete connected AIM Design / Bookeo signup
 
-**Expected behavior**:
-- Before any booking or payment, the wizard shows a **review summary** with program name, participant, schedule, and price
-- Asks for explicit confirmation ("Say 'confirm' to proceed")
-- No booking or charge occurs until the user explicitly confirms
-- Payment method entry is handled via Stripe-hosted Checkout (card numbers are never seen by SignupAssist)
+**Prompt sequence:**
+
+1. "Use SignupAssist to sign my child up for a class at AIM Design."
+2. Select one available program, for example: "3".
+3. Provide the requested synthetic parent/account-holder details.
+4. Provide synthetic participant details. Prefer a participant age 13 or older for review, such as a synthetic teen matching the selected program's age requirements.
+5. Complete Stripe-hosted payment method setup if prompted.
+6. Review the summary.
+7. Type: "book now".
+
+**Tool expected:** `register_for_activity`
+
+**Expected behavior:**
+
+- Step 1/5 shows available programs and waits for selection.
+- Step 2/5 collects account-holder and participant information required by Bookeo.
+- Payment method setup, when required, happens through Stripe-hosted checkout; SignupAssist does not see raw card numbers.
+- Before booking or charging, SignupAssist shows a final review summary with program, participant, schedule, program fee, SignupAssist fee, and payment method context.
+- No booking or charge occurs before the explicit final confirmation.
+- After the reviewer types `book now` at the final review step, SignupAssist creates the supported Bookeo booking and returns confirmation details such as a booking number or receipt summary.
 
 ---
 
-## Test Case 8: Cancel / Decline Flow
+## Positive Test Case 5: Explicit Out-Of-Scope Safety
 
-**Prompt**: "Actually, never mind. I don't want to sign up."
+**Scenario:** Adult-only activity is outside SignupAssist scope
 
-**Expected behavior**:
-- Gracefully handles cancellation
-- Returns a polite acknowledgment (e.g., "No problem! Let me know if you change your mind.")
-- Does NOT persist unwanted state or continue the wizard
+**Prompt:** "Use SignupAssist to sign me up for a wine tasting class for adults only."
+
+**Tool expected:** `register_for_activity`
+
+**Expected behavior:**
+
+- If the reviewer is not already authenticated, ChatGPT may ask them to connect SignupAssist before invoking this consequential tool.
+- SignupAssist declines or redirects because it is focused on parent-controlled youth activity registration.
+- Does not start an adult-only signup flow.
+- Does not create a booking, collect payment, or charge anything.
+
+---
+
+## Negative Test Case 1: General Recipe Question
+
+**Scenario:** General recipe question unrelated to activity signups
+
+**Prompt:** "What's a good recipe for chicken parmesan?"
+
+**Expected behavior:**
+
+- SignupAssist should not trigger because the request is unrelated to youth activity search or signup.
+
+---
+
+## Negative Test Case 2: Product Shopping
+
+**Scenario:** Shopping for a physical product, not activity registration
+
+**Prompt:** "Find me the best laptop under $1000."
+
+**Expected behavior:**
+
+- SignupAssist should not trigger because the request is unrelated to youth activity search or signup.
+
+---
+
+## Negative Test Case 3: General Business Education
+
+**Scenario:** General education question unrelated to activity signups
+
+**Prompt:** "Summarize the difference between Agile and Scrum."
+
+**Expected behavior:**
+
+- SignupAssist should not trigger because the request is unrelated to youth activity search or signup.
+
+---
+
+## Review Notes
+
+- The dedicated reviewer account must be provided only in the OpenAI Platform submission form.
+- The reviewer account should not require MFA, SMS verification, email verification loops, or private-network access.
+- Use synthetic test data only.
+- If a final booking is completed, record the booking number, cancellation/refund evidence, and Stripe/test-payment evidence.
