@@ -40,6 +40,12 @@ function getPublicBaseUrl(): string {
   return 'https://signupassist.shipworx.ai';
 }
 
+function buildSignupAssistCheckoutUrl(sessionId: string): string {
+  const url = new URL('/stripe_checkout', getPublicBaseUrl());
+  url.searchParams.set('session_id', sessionId);
+  return url.toString();
+}
+
 export function normalizeStripeRedirectUrl(value: string | undefined, fallback: string): string {
   const candidate = String(value || fallback).trim();
   try {
@@ -138,10 +144,25 @@ export async function createHostedPaymentSetupSession(args: {
   }
 
   return {
-    url: session.url,
+    url: buildSignupAssistCheckoutUrl(session.id),
     session_id: session.id,
     customer_id: customerId,
   };
+}
+
+export async function getHostedPaymentSetupCheckoutUrl(sessionId: string): Promise<string> {
+  if (!/^cs_(test|live)_[A-Za-z0-9]+$/.test(sessionId)) {
+    throw new Error('Invalid Stripe Checkout session ID');
+  }
+
+  const stripe = getStripeClient();
+  const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+  if (session.mode !== 'setup' || !session.url) {
+    throw new Error('Stripe Checkout setup session is not available');
+  }
+
+  return session.url;
 }
 
 export async function finalizeHostedPaymentSetupSession(args: {

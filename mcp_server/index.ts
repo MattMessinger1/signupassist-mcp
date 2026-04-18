@@ -733,7 +733,7 @@ import { userTools } from './providers/user.js';
 // import { campminderTools } from '../providers/campminder/index';
 import { truncateToolResponse } from './lib/truncateToolResponse.js';
 import { handleSignupIntentApi, type SignupIntentSupabaseClient } from './lib/signupIntentApi.js';
-import { finalizeHostedPaymentSetupSession } from './lib/stripeCheckout.js';
+import { finalizeHostedPaymentSetupSession, getHostedPaymentSetupCheckoutUrl } from './lib/stripeCheckout.js';
 import { createClient } from '@supabase/supabase-js';
 
 // Initialize Supabase client for database operations (service role)
@@ -5246,6 +5246,30 @@ class SignupAssistMCPServer {
             'Access-Control-Allow-Origin': '*'
           });
           res.end('Failed to load safety policy.');
+          return;
+        }
+      }
+
+      // --- Stripe checkout redirect (short first-party URL for ChatGPT review UX)
+      if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/stripe_checkout') {
+        const sessionId = url.searchParams.get('session_id') || '';
+        try {
+          const checkoutUrl = await getHostedPaymentSetupCheckoutUrl(sessionId);
+          res.writeHead(303, {
+            Location: checkoutUrl,
+            'Cache-Control': 'no-store',
+            'Access-Control-Allow-Origin': '*'
+          });
+          res.end();
+          return;
+        } catch (e: any) {
+          console.warn('[stripe_checkout] Unable to resolve checkout session:', e?.message || String(e));
+          res.writeHead(400, {
+            'Content-Type': 'text/plain; charset=utf-8',
+            'Access-Control-Allow-Origin': '*',
+            'Cache-Control': 'no-store'
+          });
+          res.end('Stripe checkout link is unavailable or expired. Return to ChatGPT and ask SignupAssist to send a new payment setup link.');
           return;
         }
       }

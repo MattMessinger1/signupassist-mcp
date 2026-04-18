@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeStripeRedirectUrl } from '../mcp_server/lib/stripeCheckout.js';
+import { getHostedPaymentSetupCheckoutUrl, normalizeStripeRedirectUrl } from '../mcp_server/lib/stripeCheckout.js';
 
 describe('normalizeStripeRedirectUrl', () => {
   const fallback = 'https://signupassist.shipworx.ai/stripe_return?payment_setup=success&session_id={CHECKOUT_SESSION_ID}';
@@ -27,5 +27,9 @@ describe('normalizeStripeRedirectUrl', () => {
   it('rejects invalid URLs', () => {
     expect(normalizeStripeRedirectUrl('not a url', fallback)).toBe(fallback);
     expect(normalizeStripeRedirectUrl(undefined, fallback)).toBe(fallback);
+  });
+
+  it('rejects malformed checkout session IDs before contacting Stripe', async () => {
+    await expect(getHostedPaymentSetupCheckoutUrl('javascript:alert(1)')).rejects.toThrow('Invalid Stripe Checkout session ID');
   });
 });

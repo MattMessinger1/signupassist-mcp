@@ -280,6 +280,7 @@ Reviewer-flow remediation:
 - Replaced the Stripe setup and return finalization dependency on Supabase Edge Function calls from the MCP server with server-side Stripe SDK calls in the existing MCP server process.
 - Preserved Stripe-hosted Checkout for card entry; SignupAssist still does not collect or store raw card numbers.
 - Preserved the ChatGPT flow: generate Stripe Checkout link, user completes setup on Stripe, `/stripe_return` finalizes `user_billing`, then user returns to ChatGPT and types `done`.
+- Added a short first-party `/stripe_checkout?session_id=...` redirect so ChatGPT reviewers see a clean SignupAssist link in chat while the actual card-entry page remains Stripe-hosted.
 - Added redirect URL validation coverage for Stripe return URLs, including rejection of unsafe protocols.
 
 Verification results for this phase:
@@ -289,7 +290,7 @@ Verification results for this phase:
 - `npx tsc -p tsconfig.app.json --noEmit`: Passed.
 - `npm run test:mcp-manifest`: Passed.
 - `npm run test:mcp-descriptors`: Passed.
-- `npm run test:approval-snapshots`: Passed after intentional approval snapshot update for `mcp_server/index.ts` and `mcp_server/providers/stripe.ts`.
+- `npm run test:approval-snapshots`: Passed after intentional approval snapshot updates for `mcp_server/index.ts` and `mcp_server/providers/stripe.ts`.
 - `npm run test:chatgpt-app`: Passed.
 - `npx eslint tests/stripe-checkout-url.test.ts mcp_server/lib/stripeCheckout.ts --max-warnings=0`: Passed.
 - `git diff --check`: Passed.
