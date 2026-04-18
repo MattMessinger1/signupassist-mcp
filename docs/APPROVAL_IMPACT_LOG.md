@@ -873,3 +873,18 @@ Verification results for this phase:
 - `npm run test:chatgpt-app`: Failed as expected for the same snapshot mismatch before snapshot update.
 - `npm run test:chatgpt-app`: Passed after intentional snapshot update.
 - `npx eslint mcp_server/providers/stripe.ts --max-warnings=0`: Failed on pre-existing `no-explicit-any` violations in this file.
+
+Production reviewer verification:
+
+- Deployed commit: `08ea4c6535b41465380ae43bdc5c115c3dec1dc0`.
+- ChatGPT signed-in reviewer flow reached Step 3 and produced a test-mode Stripe Checkout link after stale-customer recovery: `cs_test_...`.
+- Stripe-hosted Checkout accepted the 4242 test card and returned to `/stripe_return?payment_setup=success`.
+- ChatGPT Step 4 showed the saved payment method and required explicit `book now` final confirmation.
+- ChatGPT Step 5 created a Bookeo booking: `1567604181385814`.
+- After the direct success-fee charge fix deployed, a fresh signed-in ChatGPT flow created another Bookeo booking: `1567604186680818`.
+- Production logs confirmed the success-fee charge succeeded through `stripe.charge_success_fee` and recorded charge id `9c1c467b-7c2d-42ee-9dbc-ad4d9f1af8b3`.
+
+Remaining non-blocking observations:
+
+- `user.list_children` still logs a missing `children.first_name_encrypted` column and falls back to manual detail collection.
+- `registrations.create` still logs a missing `provider_amount_due_cents` column and retries without provider-specific fields; the registration record is created successfully.
