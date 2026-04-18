@@ -7,7 +7,7 @@ This package is the copy/paste source of truth for the OpenAI Platform app submi
 | Field | Value |
 |---|---|
 | App name | `SignupAssist` |
-| Website URL | `https://shipworx.ai` |
+| Website URL | `https://signupassist.shipworx.ai/` |
 | Privacy Policy URL | `https://signupassist.shipworx.ai/privacy` |
 | Terms URL | `https://signupassist.shipworx.ai/terms` |
 | Support contact email | `support@shipworx.ai` |

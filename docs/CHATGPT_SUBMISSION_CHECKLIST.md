@@ -7,7 +7,7 @@
 | App Name | SignupAssist |
 | Short Description | Parent-controlled youth activity signup assistant |
 | Category | Productivity / Family |
-| Website URL | https://shipworx.ai |
+| Website URL | https://signupassist.shipworx.ai/ |
 | Privacy Policy URL | https://signupassist.shipworx.ai/privacy |
 | Terms URL | https://signupassist.shipworx.ai/terms |
 | Support Email | support@shipworx.ai |
@@ -32,7 +32,7 @@
 ## Technical Requirements
 
 - [x] MCP server over HTTPS: `https://signupassist.shipworx.ai/sse`
-- [x] Website URL is valid: `https://shipworx.ai`
+- [x] Website URL is valid: `https://signupassist.shipworx.ai/`
 - [x] Privacy Policy URL is public: `https://signupassist.shipworx.ai/privacy`
 - [x] Terms URL is public: `https://signupassist.shipworx.ai/terms`
 - [x] Safety/security URL is public: `https://signupassist.shipworx.ai/safety`

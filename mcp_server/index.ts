@@ -5470,7 +5470,7 @@ class SignupAssistMCPServer {
         return;
       }
 
-      if (req.method === 'GET') {
+      if (req.method === 'GET' || req.method === 'HEAD') {
         const servePath = url.pathname === '/' ? '/index.html' : url.pathname;
         const filePath = path.resolve(process.cwd(), 'dist', 'client', `.${servePath}`);
         
@@ -5497,6 +5497,11 @@ class SignupAssistMCPServer {
           try {
             const content = readFileSync(filePath);
             res.writeHead(200, { 'Content-Type': contentType });
+            if (req.method === 'HEAD') {
+              res.end();
+              console.log('[STATIC] Served HEAD:', servePath);
+              return;
+            }
             res.end(content);
             console.log('[STATIC] Served:', servePath);
             return;
@@ -5514,6 +5519,11 @@ class SignupAssistMCPServer {
             const indexPath = path.resolve(process.cwd(), 'dist', 'client', 'index.html');
             const content = readFileSync(indexPath);
             res.writeHead(200, { 'Content-Type': 'text/html' });
+            if (req.method === 'HEAD') {
+              res.end();
+              console.log('[SPA] Served HEAD index.html for:', url.pathname);
+              return;
+            }
             res.end(content);
             console.log('[SPA] Served index.html for:', url.pathname);
             return;

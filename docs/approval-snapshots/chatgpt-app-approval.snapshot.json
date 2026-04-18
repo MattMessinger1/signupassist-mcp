@@ -168,7 +168,7 @@
   "approvalSensitiveFiles": [
     {
       "path": "docs/CHATGPT_SUBMISSION_CHECKLIST.md",
-      "sha256": "768940dbce052945a639c130ca5e4cfb0ff54ae23fbc714884db3e9b34f76650"
+      "sha256": "9977f9090d627270891fdf24ad750665e3d29a9dd34b9ca2220d741b61df5b23"
     },
     {
       "path": "docs/OPENAI_REVIEWER_TEST_CASES.md",
@@ -204,7 +204,7 @@
     },
     {
       "path": "mcp_server/index.ts",
-      "sha256": "b0f6e755cb32f726e666b05c955a3ca29a1ee47836dc2db46943fbdb62de91e1"
+      "sha256": "13a11004f26136cd26d183277bb7e58a4f3a6c905f5bbeffebf60495eae1b617"
     },
     {
       "path": "mcp_server/middleware/auth0.ts",

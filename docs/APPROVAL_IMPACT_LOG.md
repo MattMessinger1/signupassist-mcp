@@ -888,3 +888,34 @@ Remaining non-blocking observations:
 
 - `user.list_children` still logs a missing `children.first_name_encrypted` column and falls back to manual detail collection.
 - `registrations.create` still logs a missing `provider_amount_due_cents` column and retries without provider-specific fields; the registration record is created successfully.
+
+## 2026-04-18 - SignupAssist Website URL Readiness Polish
+
+Files changed in this phase:
+
+- `index.html`
+- `mcp_server/index.ts`
+- `docs/CHATGPT_APP_REVIEW_PACKAGE.md`
+- `docs/CHATGPT_SUBMISSION_CHECKLIST.md`
+- `docs/approval-snapshots/chatgpt-app-approval.snapshot.json`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: Yes, `mcp_server/index.ts` changed only to make static frontend and SPA fallback routes return `200` to `HEAD` probes without serving a response body.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Submission metadata impact:
+
+- Submission docs now use `https://signupassist.shipworx.ai/` as the Website URL so reviewers see SignupAssist-specific supervised-signup copy instead of broader Shipworx marketing metadata.
+- The approval snapshot was updated after review; the only approval-sensitive hash changes are `mcp_server/index.ts` and `docs/CHATGPT_SUBMISSION_CHECKLIST.md`.
+- Homepage metadata now states that supported signups happen only after review and explicit confirmation.
