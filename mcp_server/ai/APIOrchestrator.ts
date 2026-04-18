@@ -4475,12 +4475,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
 
         // If user wants to change the payment method, always (re)send Stripe link.
         if (/\b(change|update|different)\s+(card|payment)\b/i.test(input.trim())) {
-          // If we already generated a link, re-send it.
-          if (context.stripeCheckoutUrl) {
-            return this.formatResponse(this.formatStripeCheckoutLinkMessage(context.stripeCheckoutUrl));
-          }
-
-          // Otherwise, generate a new Stripe Checkout session (even if a card is already on file).
+          // Always generate a fresh Stripe Checkout session. Reviewers and parents can otherwise
+          // get stuck on an expired, declined, or environment-stale Checkout link.
           const userId = context.user_id;
           const userEmail = this.resolveDelegateEmailFromContext(context);
           if (!userId) return this.formatError("Missing user identity for payment setup. Please sign in again.");
@@ -5357,6 +5353,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
       declinedSingleSavedChild: false,
       savedChildren: undefined,
       reviewSummaryShown: false,
+      paymentAuthorized: false,
+      hasPaymentMethod: false,
+      cardLast4: undefined,
+      cardBrand: undefined,
+      stripeCheckoutUrl: undefined,
+      stripeCheckoutSessionId: undefined,
+      stripeCheckoutCreatedAt: undefined,
     });
 
     return this.formatResponse(

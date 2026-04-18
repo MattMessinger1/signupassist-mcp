@@ -295,6 +295,44 @@ Verification results for this phase:
 - `npx eslint tests/stripe-checkout-url.test.ts mcp_server/lib/stripeCheckout.ts --max-warnings=0`: Passed.
 - `git diff --check`: Passed.
 
+## 2026-04-18 - ChatGPT Reviewer Payment Retry Polish
+
+Files changed in this phase:
+
+- `mcp_server/ai/APIOrchestrator.ts`
+- `docs/approval-snapshots/chatgpt-app-approval.snapshot.json`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: Yes, `mcp_server/ai/APIOrchestrator.ts` changed to prevent stale Stripe Checkout links from being re-sent during reviewer/payment retry flows.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Reviewer-flow remediation:
+
+- `change card` now creates a fresh Stripe Checkout setup session instead of re-sending an expired, declined, or environment-stale link.
+- `clear_context`/start-over behavior now clears payment state and saved Stripe Checkout link/session metadata.
+- Railway `STRIPE_SECRET_KEY` was updated outside git to test mode for reviewer-safe Stripe-hosted setup with test card `4242`; no secret value was committed or printed intentionally.
+
+Verification results for this phase:
+
+- `npm run typecheck`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npx vitest run tests/register-activity-step2-parser.test.ts tests/stripe-checkout-url.test.ts --reporter=verbose`: Passed.
+- `npx eslint tests/register-activity-step2-parser.test.ts tests/stripe-checkout-url.test.ts mcp_server/lib/stripeCheckout.ts --max-warnings=0`: Passed.
+- `git diff --check`: Passed.
+- `npm run test:approval-snapshots`: Passed after intentional approval snapshot update for `mcp_server/ai/APIOrchestrator.ts`.
+- `npm run test:chatgpt-app`: Passed.
+
 Known pre-existing blockers:
 
 - Targeted lint including `mcp_server/index.ts` failed on existing broad `@typescript-eslint/no-explicit-any` debt in that file: `172 problems (172 errors, 0 warnings)`, for example `/Users/mattmessinger/Desktop/signupassist-mcp/mcp_server/index.ts:71:52 Unexpected any. Specify a different type`.
