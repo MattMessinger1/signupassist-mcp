@@ -829,3 +829,41 @@ Verification results for this phase:
 - `npm run test:chatgpt-app`: Passed.
 - `npx eslint tests/register-activity-step2-parser.test.ts --max-warnings=0`: Passed.
 - `git diff --check`: Passed.
+
+## 2026-04-18 - Stripe Setup Customer Recovery Fix
+
+Files changed in this phase:
+
+- `mcp_server/lib/stripeCheckout.ts`
+- `tests/stripe-checkout-customer.test.ts`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: Yes, `mcp_server/lib/stripeCheckout.ts` changed to fix Stripe-hosted payment setup for the existing `register_for_activity` reviewer flow.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Reviewer-flow remediation:
+
+- Production reviewer testing found Step 3 failing with `Failed to start payment setup` because the reviewer user's stored `user_billing.stripe_customer_id` pointed to a customer that does not exist in the active Stripe account/mode.
+- Stripe setup now validates the stored customer before creating Checkout. If the customer is missing or deleted, SignupAssist creates or reuses a valid customer in the active Stripe account and clears stale saved-card metadata.
+- Added regression coverage for stale customer recovery before creating a Stripe Checkout setup session.
+
+Verification results for this phase:
+
+- `npm run typecheck`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npx vitest run tests/stripe-checkout-url.test.ts tests/stripe-checkout-customer.test.ts --reporter=verbose`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `npm run test:approval-snapshots`: Passed.
+- `npm run test:chatgpt-app`: Passed.

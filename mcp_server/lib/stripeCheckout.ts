@@ -40,6 +40,29 @@ function getPublicBaseUrl(): string {
   return 'https://signupassist.shipworx.ai';
 }
 
+function isMissingStripeCustomer(error: unknown): boolean {
+  const stripeError = error as { code?: string; param?: string; raw?: { code?: string; param?: string } };
+  return (
+    (stripeError.code === 'resource_missing' || stripeError.raw?.code === 'resource_missing') &&
+    (stripeError.param === 'customer' || stripeError.raw?.param === 'customer')
+  );
+}
+
+async function retrieveUsableStripeCustomer(stripe: Stripe, customerId: string): Promise<string | null> {
+  try {
+    const customer = await stripe.customers.retrieve(customerId);
+    if ('deleted' in customer && customer.deleted) {
+      return null;
+    }
+    return customer.id;
+  } catch (error) {
+    if (isMissingStripeCustomer(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 function buildSignupAssistCheckoutUrl(sessionId: string): string {
   const url = new URL('/stripe_checkout', getPublicBaseUrl());
   url.searchParams.set('session_id', sessionId);
@@ -79,7 +102,12 @@ async function getOrCreateStripeCustomer(args: {
   }
 
   if (billing?.stripe_customer_id) {
-    return billing.stripe_customer_id;
+    const usableCustomerId = await retrieveUsableStripeCustomer(stripe, billing.stripe_customer_id);
+    if (usableCustomerId) {
+      return usableCustomerId;
+    }
+
+    console.warn('[Stripe] Stored customer is unavailable in the active Stripe account; creating a replacement customer.');
   }
 
   const existing = await stripe.customers.list({ email: userEmail, limit: 1 });
@@ -93,6 +121,9 @@ async function getOrCreateStripeCustomer(args: {
     .upsert({
       user_id: userId,
       stripe_customer_id: customerId,
+      default_payment_method_id: null,
+      payment_method_brand: null,
+      payment_method_last4: null,
       updated_at: new Date().toISOString(),
     });
 
