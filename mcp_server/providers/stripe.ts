@@ -11,6 +11,7 @@ import {
   type SuccessFeeRefundData,
   type SupabaseRefundClient,
 } from '../lib/refundGuard.js';
+import { createHostedPaymentSetupSession } from '../lib/stripeCheckout.js';
 import type { ProviderResponse, ParentFriendlyError } from '../types.js';
 import { formatCurrencyFromCents } from '../utils/money.js';
 
@@ -306,46 +307,13 @@ async function createCheckoutSession(args: {
   console.log(`[Stripe] Creating checkout session (user_id=${user_id.slice(0, 8)}...)`);
   
   try {
-    // Call the stripe-checkout-setup edge function via Supabase
-    const { data, error } = await supabase.functions.invoke(
-      'stripe-checkout-setup',
-      {
-        body: {
-          user_id,
-          user_email,
-          success_url,
-          cancel_url
-        }
-      }
-    );
-    
-    if (error) {
-      console.error('[Stripe] Edge function error:', error);
-      const friendlyError: ParentFriendlyError = {
-        display: 'Unable to start payment setup',
-        recovery: 'Please try again or contact support.',
-        severity: 'medium',
-        code: 'STRIPE_CHECKOUT_FAILED'
-      };
-      return {
-        success: false,
-        error: friendlyError
-      };
-    }
-    
-    if (!data?.url) {
-      console.error('[Stripe] No checkout URL returned');
-      const friendlyError: ParentFriendlyError = {
-        display: 'Payment setup unavailable',
-        recovery: 'Please try again or contact support.',
-        severity: 'medium',
-        code: 'STRIPE_NO_CHECKOUT_URL'
-      };
-      return {
-        success: false,
-        error: friendlyError
-      };
-    }
+    const data = await createHostedPaymentSetupSession({
+      supabase,
+      userId: user_id,
+      userEmail: user_email,
+      successUrl: success_url,
+      cancelUrl: cancel_url,
+    });
     
     console.log(`[Stripe] ✅ Checkout session created: ${data.session_id}`);
     

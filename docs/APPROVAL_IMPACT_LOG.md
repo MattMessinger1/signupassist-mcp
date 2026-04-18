@@ -250,6 +250,50 @@ Verification results:
 - `npx eslint mcp_server/lib/signupIntent.ts mcp_server/lib/signupIntentApi.ts src/lib/activityFinder.ts src/lib/signupIntent.ts src/lib/subscription.ts src/pages/ActivityFinder.tsx src/pages/Autopilot.tsx tests/signup-intent-api.test.ts tests/signup-intent-service.test.ts tests/signup-intent-frontend.test.ts --max-warnings=0`: Passed.
 - `git diff --check`: Passed.
 
+## 2026-04-18 - ChatGPT Stripe Checkout Setup Reviewer Flow Fix
+
+Files changed in this phase:
+
+- `mcp_server/lib/stripeCheckout.ts`
+- `mcp_server/providers/stripe.ts`
+- `mcp_server/index.ts`
+- `tests/stripe-checkout-url.test.ts`
+- `docs/approval-snapshots/chatgpt-app-approval.snapshot.json`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: Yes, `mcp_server/index.ts` and `mcp_server/providers/stripe.ts` changed to fix the existing Stripe-hosted payment setup/return path for the current `register_for_activity` reviewer flow.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Reviewer-flow remediation:
+
+- Replaced the Stripe setup and return finalization dependency on Supabase Edge Function calls from the MCP server with server-side Stripe SDK calls in the existing MCP server process.
+- Preserved Stripe-hosted Checkout for card entry; SignupAssist still does not collect or store raw card numbers.
+- Preserved the ChatGPT flow: generate Stripe Checkout link, user completes setup on Stripe, `/stripe_return` finalizes `user_billing`, then user returns to ChatGPT and types `done`.
+- Added redirect URL validation coverage for Stripe return URLs, including rejection of unsafe protocols.
+
+Verification results for this phase:
+
+- `npx vitest run tests/stripe-checkout-url.test.ts --reporter=verbose`: Passed.
+- `npm run typecheck`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `npm run test:approval-snapshots`: Passed after intentional approval snapshot update for `mcp_server/index.ts` and `mcp_server/providers/stripe.ts`.
+- `npm run test:chatgpt-app`: Passed.
+- `npx eslint tests/stripe-checkout-url.test.ts mcp_server/lib/stripeCheckout.ts --max-warnings=0`: Passed.
+- `git diff --check`: Passed.
+
 Known pre-existing blockers:
 
 - Targeted lint including `mcp_server/index.ts` failed on existing broad `@typescript-eslint/no-explicit-any` debt in that file: `172 problems (172 errors, 0 warnings)`, for example `/Users/mattmessinger/Desktop/signupassist-mcp/mcp_server/index.ts:71:52 Unexpected any. Specify a different type`.

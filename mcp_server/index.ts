@@ -733,6 +733,7 @@ import { userTools } from './providers/user.js';
 // import { campminderTools } from '../providers/campminder/index';
 import { truncateToolResponse } from './lib/truncateToolResponse.js';
 import { handleSignupIntentApi, type SignupIntentSupabaseClient } from './lib/signupIntentApi.js';
+import { finalizeHostedPaymentSetupSession } from './lib/stripeCheckout.js';
 import { createClient } from '@supabase/supabase-js';
 
 // Initialize Supabase client for database operations (service role)
@@ -5252,9 +5253,9 @@ class SignupAssistMCPServer {
       // --- Stripe return (success/cancel landing page)
       // Stripe Checkout needs a success_url/cancel_url.
       // IMPORTANT: In the ChatGPT Apps flow, users won't return through our web frontend,
-      // so we finalize the setup-mode checkout here by calling the `stripe-checkout-success`
-      // Supabase Edge Function. That updates `user_billing.default_payment_method_id` so
-      // the MCP orchestrator can detect a saved payment method when the user types "done".
+      // so we finalize the setup-mode checkout here. That updates
+      // `user_billing.default_payment_method_id` so the MCP orchestrator can detect a saved
+      // payment method when the user types "done".
       if ((req.method === 'GET' || req.method === 'HEAD') && url.pathname === '/stripe_return') {
         const status = url.searchParams.get('payment_setup') || 'unknown';
         const sessionId = url.searchParams.get('session_id') || '';
@@ -5268,27 +5269,23 @@ class SignupAssistMCPServer {
         let finalized: { ok: boolean; brand?: string; last4?: string; error?: string } | null = null;
         if (req.method === 'GET' && status === 'success' && sessionId) {
           try {
-            const { data, error } = await supabase.functions.invoke('stripe-checkout-success', {
-              body: { session_id: sessionId }
+            const paymentSetup = await finalizeHostedPaymentSetupSession({
+              supabase,
+              sessionId,
             });
-            if (error) {
-              finalized = { ok: false, error: error.message || String(error) };
-              console.warn('[stripe_return] stripe-checkout-success error:', finalized.error);
-            } else {
-              finalized = {
-                ok: true,
-                brand: (data as any)?.brand,
-                last4: (data as any)?.last4
-              };
-              console.log('[stripe_return] ✅ stripe-checkout-success finalized', {
-                session_id: sessionId,
-                brand: finalized.brand,
-                last4: finalized.last4
-              });
-            }
+            finalized = {
+              ok: true,
+              brand: paymentSetup.brand,
+              last4: paymentSetup.last4
+            };
+            console.log('[stripe_return] ✅ Stripe checkout finalized', {
+              session_id: sessionId,
+              brand: finalized.brand,
+              last4: finalized.last4
+            });
           } catch (e: any) {
             finalized = { ok: false, error: e?.message || String(e) };
-            console.warn('[stripe_return] stripe-checkout-success exception:', finalized.error);
+            console.warn('[stripe_return] Stripe checkout finalization exception:', finalized.error);
           }
         }
 
