@@ -835,7 +835,9 @@ Verification results for this phase:
 Files changed in this phase:
 
 - `mcp_server/lib/stripeCheckout.ts`
+- `mcp_server/providers/stripe.ts`
 - `tests/stripe-checkout-customer.test.ts`
+- `docs/approval-snapshots/chatgpt-app-approval.snapshot.json`
 - `docs/APPROVAL_IMPACT_LOG.md`
 
 Approval impact:
@@ -857,6 +859,7 @@ Reviewer-flow remediation:
 - Production reviewer testing found Step 3 failing with `Failed to start payment setup` because the reviewer user's stored `user_billing.stripe_customer_id` pointed to a customer that does not exist in the active Stripe account/mode.
 - Stripe setup now validates the stored customer before creating Checkout. If Stripe returns `resource_missing` for the stored customer, SignupAssist creates or reuses a valid customer in the active Stripe account and clears stale saved-card metadata.
 - Added regression coverage for stale customer recovery before creating a Stripe Checkout setup session, including Stripe's `param: id` missing-customer response shape.
+- Production reviewer testing then confirmed Stripe-hosted setup, final review, and Bookeo booking succeeded. Logs also showed the old success-fee Edge Function path still failed with `UNAUTHORIZED_INVALID_JWT_FORMAT`, so `stripe.charge_success_fee` now charges the saved Stripe payment method directly from the MCP server using Stripe idempotency and records the result in `charges`.
 
 Verification results for this phase:
 
@@ -865,5 +868,8 @@ Verification results for this phase:
 - `npx vitest run tests/stripe-checkout-url.test.ts tests/stripe-checkout-customer.test.ts --reporter=verbose`: Passed.
 - `npm run test:mcp-manifest`: Passed.
 - `npm run test:mcp-descriptors`: Passed.
-- `npm run test:approval-snapshots`: Passed.
-- `npm run test:chatgpt-app`: Passed.
+- `npm run test:approval-snapshots`: Failed as expected after changing `mcp_server/providers/stripe.ts`; snapshot was updated intentionally.
+- `npm run test:approval-snapshots`: Passed after intentional snapshot update.
+- `npm run test:chatgpt-app`: Failed as expected for the same snapshot mismatch before snapshot update.
+- `npm run test:chatgpt-app`: Passed after intentional snapshot update.
+- `npx eslint mcp_server/providers/stripe.ts --max-warnings=0`: Failed on pre-existing `no-explicit-any` violations in this file.

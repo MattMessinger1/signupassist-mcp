@@ -5,6 +5,7 @@
 
 import { auditToolCall } from '../middleware/audit.js';
 import { createClient } from '@supabase/supabase-js';
+import Stripe from 'stripe';
 import {
   refundSuccessFeeWithGuard,
   SUCCESS_FEE_REFUND_INPUT_REASONS,
@@ -18,6 +19,20 @@ import { formatCurrencyFromCents } from '../utils/money.js';
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
+let stripeClient: Stripe | null = null;
+
+function getStripeClient(): Stripe {
+  const stripeKey = process.env.STRIPE_SECRET_KEY;
+  if (!stripeKey) {
+    throw new Error('STRIPE_SECRET_KEY is not set');
+  }
+
+  if (!stripeClient) {
+    stripeClient = new Stripe(stripeKey, { apiVersion: '2024-04-10' });
+  }
+
+  return stripeClient;
+}
 
 export interface StripeTool {
   name: string;
@@ -66,40 +81,95 @@ async function chargeSuccessFee(args: {
   }
   
   try {
-    // Call the stripe-charge-success-fee edge function via Supabase (service-to-service)
-    const { data, error } = await supabase.functions.invoke(
-      'stripe-charge-success-fee',
-      {
-        body: {
+    const { data: existingCharge, error: existingError } = await supabase
+      .from('charges')
+      .select('id, status, stripe_payment_intent')
+      .eq('mandate_id', mandate_id)
+      .eq('amount_cents', amount_cents)
+      .maybeSingle();
+
+    if (existingError) {
+      throw new Error(`Unable to check existing success fee charge: ${existingError.message}`);
+    }
+
+    if (existingCharge?.status === 'succeeded') {
+      console.log(`[Stripe] Success fee already charged: ${existingCharge.id}`);
+      return {
+        success: true,
+        data: {
+          charge_id: existingCharge.id,
+          amount_cents,
           booking_number,
           mandate_id,
-          amount_cents,
-          user_id  // Required for server-to-server call
-        }
-      }
-    );
-    
-    if (error) {
-      console.error('[Stripe] Edge function error:', error);
+          stripe_payment_intent: existingCharge.stripe_payment_intent,
+        },
+      };
+    }
+
+    const { data: billing, error: billingError } = await supabase
+      .from('user_billing')
+      .select('stripe_customer_id, default_payment_method_id')
+      .eq('user_id', user_id)
+      .maybeSingle();
+
+    if (billingError) {
+      throw new Error(`Unable to read billing profile: ${billingError.message}`);
+    }
+
+    if (!billing?.stripe_customer_id || !billing.default_payment_method_id) {
       const friendlyError: ParentFriendlyError = {
-        display: 'Unable to process success fee',
-        recovery: 'Your booking was successful, but the success fee charge failed. Support has been notified.',
+        display: 'No saved payment method',
+        recovery: 'Your booking was successful, but SignupAssist could not charge the success fee because no saved card was available.',
         severity: 'medium',
-        code: 'STRIPE_CHARGE_FAILED'
+        code: 'STRIPE_PAYMENT_METHOD_MISSING'
       };
       return {
         success: false,
         error: friendlyError
       };
     }
+
+    const stripe = getStripeClient();
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amount_cents,
+      currency: 'usd',
+      customer: billing.stripe_customer_id,
+      payment_method: billing.default_payment_method_id,
+      confirm: true,
+      off_session: true,
+      description: `SignupAssist success fee for booking ${booking_number}`,
+      metadata: {
+        booking_number,
+        mandate_id,
+        user_id,
+        fee_type: 'signupassist_success_fee',
+      },
+    }, {
+      idempotencyKey: `signupassist-success-fee:${mandate_id}:${booking_number}:${amount_cents}`,
+    });
+
+    const { data: charge, error: chargeError } = await supabase
+      .from('charges')
+      .insert({
+        mandate_id,
+        stripe_payment_intent: paymentIntent.id,
+        amount_cents,
+        status: paymentIntent.status === 'succeeded' ? 'succeeded' : paymentIntent.status,
+      })
+      .select('id')
+      .single();
+
+    if (chargeError) {
+      throw new Error(`Failed to create charge record: ${chargeError.message}`);
+    }
     
-    const charge_id = (data?.charge_id ?? null) as string | null;
-    console.log(`[Stripe] ✅ Success fee charged: ${charge_id || '(no db charge_id returned)'}`);
+    console.log(`[Stripe] ✅ Success fee charged: ${charge.id}`);
     
     return {
       success: true,
       data: {
-        charge_id,
+        charge_id: charge.id,
+        stripe_payment_intent: paymentIntent.id,
         amount_cents,
         booking_number,
         mandate_id

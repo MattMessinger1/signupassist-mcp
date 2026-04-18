@@ -256,7 +256,7 @@
     },
     {
       "path": "mcp_server/providers/stripe.ts",
-      "sha256": "c27b5bc8216974c1e39e50199b9d1b7a49df9daa5b6d0a84a555619bff9c9fab"
+      "sha256": "9a76845ef38d88ab6dde0d5dd3f60666d37f7b26ad7d525790b8e2be4f908ba4"
     },
     {
       "path": "mcp_server/providers/user.ts",
