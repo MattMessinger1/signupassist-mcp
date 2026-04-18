@@ -1039,7 +1039,7 @@ class SignupAssistMCPServer {
     this.tools.set("search_activities", {
       name: "search_activities",
       description:
-        "Search for available youth activities, classes, camps, and lessons. Use when the user wants to browse or see what programs are available — NOT for signup/registration/enrollment.\n\nFor signup intent, call register_for_activity instead.\n\nOptionally pass `query` so results can be prioritized for activity/age/location.\n\nNo booking, no payment, no writes.",
+        "Search for child-safe youth activities, classes, camps, and lessons for a parent or guardian. Use when the adult user wants to browse or see what youth programs are available — NOT for signup/registration/enrollment.\n\nDo not use for adult-only activities or when the participant is an adult. For parent/guardian signup intent, call register_for_activity instead.\n\nOptionally pass `query` so results can be prioritized for activity/age/location. General age/grade is allowed for search; do not request personal information about children under 13 in ChatGPT.\n\nNo booking, no payment, no writes.",
       inputSchema: {
         type: "object",
         properties: {
@@ -1240,7 +1240,7 @@ class SignupAssistMCPServer {
     this.tools.set("signupassist.find", {
       name: "signupassist.find",
       description:
-        "Find classes and programs in Madison, WI (AIM Design). Read-only.\n\nUse this for prompts like \"robotics classes in Madison\". Pass the full user request as `query` when possible.\n\nNo booking, no payment, no writes.",
+        "Find child-safe youth classes and programs in Madison, WI (AIM Design). Read-only.\n\nUse this for parent/guardian browse prompts like \"robotics classes in Madison for my child\". Do not use for adult-only activities or when the participant is an adult. Pass the full user request as `query` when possible.\n\nNo booking, no payment, no writes.",
       inputSchema: {
         type: "object",
         properties: {
@@ -1301,7 +1301,7 @@ class SignupAssistMCPServer {
     this.tools.set("register_for_activity", {
       name: "register_for_activity",
       description:
-        "Register a child for an activity, class, camp, or lesson through a guided step-by-step wizard.\n\nUse this when the user wants to sign up/register/enroll/book for a class/course/lesson/camp/program — OR when they mention SignupAssist by name (\"SignupAssist\", \"Signup Assist\", \"signup assist\").\n\nExample triggers:\n- \"I'd like to signup for a course with signup assist\"\n- \"Use SignupAssist to sign up for a class\"\n\nIMPORTANT: If the user expresses signup intent but provides insufficient details (e.g., only an activity, provider name, or location), CALL THIS TOOL IMMEDIATELY. Do not ask long pre-questions outside the tool; this tool will ask the minimum follow-ups and confirm whether the requested signup is supported.\n\nThis tool checks supported providers/coverage, shows relevant available options from our internal program cache, and guides the user step-by-step.\n\nCRITICAL: After calling this tool, respond to the user with EXACTLY the returned text (verbatim). Do not paraphrase. If the returned text includes a leading \"Step N/5 — ...\" header, keep it.\n\nIMPORTANT: This tool may perform consequential actions ONLY after explicit user confirmation (e.g., booking with the provider and charging the $20.00 success fee). Payment method entry always happens on Stripe-hosted Checkout (we never see card numbers).",
+        "Register a child, teen, or minor for a child-safe youth activity, class, camp, or lesson through a parent/guardian-controlled step-by-step wizard.\n\nUse this when the adult user wants to sign up/register/enroll/book their child for a youth class/course/lesson/camp/program — OR when they mention SignupAssist by name (\"SignupAssist\", \"Signup Assist\", \"signup assist\") in a youth-activity signup context.\n\nDo not use for adult-only activities, dating, gambling, adult content, financial/investment services, or requests where the participant is an adult.\n\nExample triggers:\n- \"I'd like to sign my child up for a course with Signup Assist\"\n- \"Use SignupAssist to sign my daughter up for a class\"\n\nIMPORTANT: If the user expresses parent/guardian signup intent but provides insufficient details (e.g., only an activity, provider name, or location), CALL THIS TOOL IMMEDIATELY. Do not ask long pre-questions outside the tool; this tool will ask the minimum follow-ups and confirm whether the requested youth signup is supported.\n\nPrivacy/COPPA boundary: children do not use this app directly. General age/grade can be used for search. Do not request personal information about children under 13 in ChatGPT; if a provider requires under-13 personal details, pause and direct the parent/guardian to an appropriate provider or non-ChatGPT flow.\n\nThis tool checks supported providers/coverage, shows relevant available youth options from our internal program cache, and guides the adult parent/guardian step-by-step.\n\nCRITICAL: After calling this tool, respond to the user with EXACTLY the returned text (verbatim). Do not paraphrase. If the returned text includes a leading \"Step N/5 — ...\" header, keep it.\n\nIMPORTANT: This tool may perform consequential actions ONLY after explicit adult user confirmation (e.g., booking with the provider and charging the $20.00 success fee). Payment method entry always happens on Stripe-hosted Checkout (we never see card numbers).",
       inputSchema: {
         type: "object",
         properties: {
@@ -3694,7 +3694,7 @@ class SignupAssistMCPServer {
                   schema_version: "1.0.0",
                   name_for_human: "SignupAssist",
                   name_for_model: "signupassist",
-                  description_for_human: "SignupAssist helps you discover, schedule, and complete class signups for local activities."
+                  description_for_human: "SignupAssist helps adult parents and guardians discover and complete child-safe youth activity signups."
                 },
                 null,
                 2
@@ -3975,7 +3975,7 @@ class SignupAssistMCPServer {
                   schema_version: "1.0.0",
                   name_for_human: "SignupAssist",
                   name_for_model: "signupassist",
-                  description_for_human: "SignupAssist helps you discover, schedule, and complete class signups for local activities."
+                  description_for_human: "SignupAssist helps adult parents and guardians discover and complete child-safe youth activity signups."
                 },
                 null,
                 2
@@ -5128,7 +5128,7 @@ class SignupAssistMCPServer {
           schema_version: "1.0.0",
           name_for_human: "SignupAssist",
           name_for_model: "signupassist",
-          description_for_human: "SignupAssist helps you discover, schedule, and complete class signups for local activities."
+          description_for_human: "SignupAssist helps adult parents and guardians discover and complete child-safe youth activity signups."
         };
         res.writeHead(200, { 
           'Content-Type': 'application/json',

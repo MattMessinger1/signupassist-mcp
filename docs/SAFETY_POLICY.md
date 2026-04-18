@@ -3,14 +3,14 @@
 **Effective Date:** January 3, 2026  
 **Last Updated:** April 18, 2026
 
-SignupAssist is a family-safe activity enrollment assistant for adults who are managing youth activity signups. It helps users browse programs, prepare registration details, and complete supported connected provider flows only after explicit review and confirmation.
+SignupAssist is a family-safe activity enrollment assistant for adults who are managing child-safe youth activity signups. It helps parents and guardians browse programs, prepare registration details, and complete supported connected provider flows only after explicit review and confirmation.
 
 ## Service Classification
 
-- SignupAssist is for youth activity enrollment workflows such as classes, camps, lessons, and programs.
-- Account holders must be adults.
+- SignupAssist is for child-safe youth activity enrollment workflows such as classes, camps, lessons, and programs.
+- Account holders must be adults, such as parents or guardians.
 - Children do not use SignupAssist directly.
-- SignupAssist is not an adult-content, dating, gambling, financial-investment, or NSFW service.
+- SignupAssist is not an adult-only activity, adult-content, dating, gambling, financial-investment, or NSFW service.
 - The ChatGPT app must not be used to submit personal information about children under 13.
 
 ## Public ChatGPT Tool Surface

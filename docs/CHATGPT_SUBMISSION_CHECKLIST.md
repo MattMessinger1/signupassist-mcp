@@ -5,7 +5,7 @@
 | Field | Value |
 |---|---|
 | App Name | SignupAssist |
-| Short Description | Parent-controlled youth activity signup assistant |
+| Short Description | Parent-controlled child-safe youth activity signup assistant |
 | Category | Productivity / Family |
 | Website URL | https://signupassist.shipworx.ai/ |
 | Privacy Policy URL | https://signupassist.shipworx.ai/privacy |
@@ -49,8 +49,8 @@ The public MCP tool surface must remain exactly:
 
 | Tool | Description | Expected posture |
 |---|---|---|
-| `search_activities` | Read-only program discovery for youth activities and configured provider catalogs. | `readOnlyHint: true`; no booking, payment, or writes. |
-| `register_for_activity` | OAuth-gated guided signup wizard that may complete a supported Bookeo/API-connected booking only after explicit final confirmation. | Consequential/write posture; no booking or charge before review and explicit confirmation. |
+| `search_activities` | Read-only program discovery for child-safe youth activities and configured provider catalogs. | `readOnlyHint: true`; no booking, payment, or writes. |
+| `register_for_activity` | OAuth-gated parent/guardian signup wizard that may complete a supported Bookeo/API-connected youth activity booking only after explicit final confirmation. | Consequential/write posture; no booking or charge before review and explicit confirmation. |
 
 Hidden/private/internal provider, payment, registration, and admin tools remain private and must not appear in public `ListTools` responses.
 
@@ -68,10 +68,11 @@ Hidden/private/internal provider, payment, registration, and admin tools remain 
 
 ## Reviewer Notes To Include
 
-- SignupAssist can complete the connected AIM Design / Bookeo signup flow after OAuth, registration details, Stripe-hosted payment method setup when required, final review, and explicit `book now` confirmation.
+- SignupAssist can complete the connected AIM Design / Bookeo youth activity signup flow for an adult parent/guardian after OAuth, registration details, Stripe-hosted payment method setup when required, final review, and explicit `book now` confirmation.
 - SignupAssist does not book or charge before explicit final confirmation.
 - Raw card numbers are handled by Stripe-hosted checkout and are not seen by SignupAssist.
 - Use synthetic reviewer data only. Prefer a synthetic participant age 13 or older for review tests.
+- SignupAssist is not child-directed, and the ChatGPT app must not be used to submit personal information about children under 13.
 - Full unattended set-and-forget delegation across arbitrary providers is not live yet.
 - Unsupported provider flows may require parent review or direct provider completion.
 
@@ -89,7 +90,7 @@ Hidden/private/internal provider, payment, registration, and admin tools remain 
 2. `Find me the best laptop under $1000.`
 3. `Summarize the difference between Agile and Scrum.`
 
-SignupAssist should not trigger for these negative tests because they are unrelated to youth activity search or signup.
+SignupAssist should not trigger for these negative tests because they are unrelated to parent/guardian youth activity search or signup.
 
 ## Verification Before Resubmission
 

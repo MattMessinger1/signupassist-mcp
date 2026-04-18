@@ -19,9 +19,9 @@ Contact:
 
 ## 2. Scope And Eligibility
 
-The Services are intended for users located in the United States. SignupAssist is used by adults, such as parents and guardians, to browse and prepare youth activity registrations. Account holders must be at least 18 years old.
+The Services are intended for users located in the United States. SignupAssist is used by adults, such as parents and guardians, to browse and prepare child-safe youth activity registrations. Account holders must be at least 18 years old.
 
-SignupAssist is not directed to children. Children must not use the Services directly.
+SignupAssist is not directed to children. Children must not use the Services directly. SignupAssist is not for adult-only activities, dating, gambling, adult content, financial/investment services, or other non-youth registration services.
 
 For the ChatGPT app, do not submit personal information about children under 13. You may use general age, grade, activity, and location information to search for programs, but do not provide a child under 13's name, date of birth, address, contact information, medical information, or other personal information in ChatGPT. If a provider requires information about a child under 13, complete that step directly with the provider or through a non-ChatGPT flow that is appropriate for that information.
 

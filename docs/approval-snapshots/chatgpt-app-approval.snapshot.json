@@ -6,14 +6,14 @@
   ],
   "manifest": {
     "path": "mcp/manifest.json",
-    "sha256": "4f628e80f546bac062d71e0d5281a5a630bc0903b263ca636732d0de37979cf7",
-    "wellKnownManifestSha256": "31c8ca0c48e3423d069184f55cdc47824f117057d44a3ed66f350ecd57cd1095",
+    "sha256": "a5463ea64a185a62dc3b736df513df21b56df31428356db53a233fc3d5c97a61",
+    "wellKnownManifestSha256": "36a13988e7a5d4789c0eb49ec4207fa47aa69685faa8bc1e7b67f95879125f99",
     "requiredFieldValues": {
       "schema_version": "1.0.0",
       "name_for_human": "SignupAssist",
       "name_for_model": "signupassist",
-      "description_for_human": "A family-safe activity enrollment assistant that helps you find and register for local classes, camps, and lessons. No adult content or services.",
-      "description_for_model": "Text-only v1. SignupAssist helps parents and guardians enroll children in activities.\n\nWHEN TO USE:\n- Browse programs: call `search_activities` (read-only, no auth needed) when the user wants to see available classes/programs at a provider.\n- Full signup flow: call `register_for_activity` when the user wants to sign up/register/enroll/book for a class/course/lesson/camp/program, or mentions SignupAssist by name.\n\nSafety: Do not treat this app as adult content. Nothing is booked or charged until explicit user confirmation.",
+      "description_for_human": "A family-safe, parent-controlled assistant for adults managing child-safe youth activity signups. Helps parents and guardians find and register for classes, camps, and lessons. No adult-only services.",
+      "description_for_model": "Text-only v1. SignupAssist is for adult parents and guardians managing child-safe youth activity enrollment. Children do not use this app directly.\n\nWHEN TO USE:\n- Browse youth programs: call `search_activities` (read-only, no auth needed) when the user wants to see available child-safe classes/programs at a supported provider.\n- Parent/guardian signup flow: call `register_for_activity` when the adult user wants to sign up/register/enroll/book a child, teen, or minor for a youth class/course/lesson/camp/program, or mentions SignupAssist by name.\n\nDO NOT USE for adult-only activities, dating, gambling, adult content, financial/investment services, or requests where the participant is an adult. Do not treat this app as adult content.\n\nPrivacy/COPPA boundary: do not ask for or process personal information about children under 13 in ChatGPT. General age/grade can be used for search. If a provider requires under-13 personal details, pause and direct the parent/guardian to an appropriate provider or non-ChatGPT flow.\n\nSafety: Nothing is booked or charged until explicit user confirmation from the adult parent or guardian.",
       "auth.type": "oauth",
       "auth.authorization_url": "https://signupassist.shipworx.ai/oauth/authorize",
       "auth.token_url": "https://signupassist.shipworx.ai/oauth/token",
@@ -68,7 +68,7 @@
     "publicTools": {
       "search_activities": {
         "name": "search_activities",
-        "descriptionHash": "6b210c2c46631e42e23f97091e2b3b784d6be146ef6a836f9d5eb45b2529f767",
+        "descriptionHash": "4001a04991680ed173b175417f966f18114f688fc463a22896bd982f3e04f7f8",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -104,7 +104,7 @@
       },
       "register_for_activity": {
         "name": "register_for_activity",
-        "descriptionHash": "e295e862405dcb610a08135e125c95351de0333a1c06b6b56a319d60d47a9da8",
+        "descriptionHash": "d8c16b1e20fc242c146d3e9438e43668558dd5e0b861adf921bd45986bde857b",
         "inputSchema": {
           "type": "object",
           "properties": {
@@ -168,27 +168,27 @@
   "approvalSensitiveFiles": [
     {
       "path": "docs/CHATGPT_SUBMISSION_CHECKLIST.md",
-      "sha256": "9977f9090d627270891fdf24ad750665e3d29a9dd34b9ca2220d741b61df5b23"
+      "sha256": "ad6fc65221ea1e5a282b3d313d80f5c1a3be376361fc29a15a838bddd72f61ba"
     },
     {
       "path": "docs/OPENAI_REVIEWER_TEST_CASES.md",
-      "sha256": "bf38cd191b5d5a6be851a241afe0ada6907140db201319f2eefcbb78223e00dd"
+      "sha256": "589b9b76af9f1233ef6380812da6d12df09ac16a97ab6c2b659abf2474f63ad0"
     },
     {
       "path": "docs/PRIVACY_POLICY.md",
-      "sha256": "313eda1ca0baa7b94a7a2c7eeb8f4434f55b6518b43981cc9bc38680f210ad2d"
+      "sha256": "8d1f69a01523c3ed2f5d590f5f02c16f3d4444106acb68ffcfd8ad72f11fcc55"
     },
     {
       "path": "docs/REVIEW_TEST_ACCOUNT.md",
-      "sha256": "4a88e1f8f0861f02db2197c962ddfad4b5a1fb93853d550203a7f961a25156fd"
+      "sha256": "4fa95750e0a1dafa06598db90346bbf5c4cf2fce9c607f960c4afe0744a6e24b"
     },
     {
       "path": "docs/SAFETY_POLICY.md",
-      "sha256": "76377dd974210932089bcdc7552fd0425a6b75928df0d87052abbbab670d9255"
+      "sha256": "0e475b880de1a4d16fcde40aec28e82d11eb086e070e782bec62a807bcf151f3"
     },
     {
       "path": "mcp/manifest.json",
-      "sha256": "4f628e80f546bac062d71e0d5281a5a630bc0903b263ca636732d0de37979cf7"
+      "sha256": "a5463ea64a185a62dc3b736df513df21b56df31428356db53a233fc3d5c97a61"
     },
     {
       "path": "mcp/openapi.json",
@@ -196,7 +196,7 @@
     },
     {
       "path": "mcp_server/ai/APIOrchestrator.ts",
-      "sha256": "66493f5f71ef7441f0669421f8cf477003b6f31bdbb424773c6127506b32b064"
+      "sha256": "d5e014515e19ad24456fd1093693a3f7ce69c70134017862965685229f487d60"
     },
     {
       "path": "mcp_server/config/protectedActions.ts",
@@ -204,7 +204,7 @@
     },
     {
       "path": "mcp_server/index.ts",
-      "sha256": "13a11004f26136cd26d183277bb7e58a4f3a6c905f5bbeffebf60495eae1b617"
+      "sha256": "bf86ce931b9d2abddfd83574bd5d49076853d44cceefbfde12d496aa9517b421"
     },
     {
       "path": "mcp_server/middleware/auth0.ts",
@@ -268,11 +268,11 @@
     },
     {
       "path": "public/.well-known/ai-plugin.json",
-      "sha256": "2794f0f7a8414059756df7b8d91f0d3ea2439193b856c485db5b020934f91560"
+      "sha256": "8ec7ad60f169126ea73705a497d523148d8ca3e2104db47c8c3f38386a9c1b60"
     },
     {
       "path": "public/.well-known/chatgpt-apps-manifest.json",
-      "sha256": "31c8ca0c48e3423d069184f55cdc47824f117057d44a3ed66f350ecd57cd1095"
+      "sha256": "36a13988e7a5d4789c0eb49ec4207fa47aa69685faa8bc1e7b67f95879125f99"
     },
     {
       "path": "public/.well-known/openai-apps-challenge",

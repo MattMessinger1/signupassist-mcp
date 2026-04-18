@@ -362,7 +362,7 @@ export function getScheduledRegistrationSuccessMessage(vars: APIMessageVariables
 **${programName}**
 Registration opens: ${scheduledDate}
 
-✅ We'll attempt to register you **the moment it opens**.
+✅ We'll attempt the supported youth registration **when it opens**, following the parent-controlled safety gates.
 💳 **No charge now** — the ${formatCurrencyFromCents(2000)} SignupAssist fee is charged **only if registration succeeds**.
 🏫 Program fees (if any) are handled by the provider — and only apply if registration succeeds.
 
@@ -388,7 +388,7 @@ export function getScheduledPaymentAuthorizationMessage(vars: APIMessageVariable
 **${programName}**
 Opens: ${scheduledDate}
 
-Review the charges below. By confirming, you authorize SignupAssist to register you when booking opens and charge your card only if successful.
+Review the charges below. By confirming, you authorize SignupAssist to attempt the supported youth registration when booking opens and charge your card only if successful.
 
 All actions are logged. Cancel anytime before execution at no charge.
 
@@ -407,7 +407,7 @@ export function getInitialActivationMessage(vars: { provider_name: string }): st
   
   return `I can help you sign up for programs at **${providerName}**.
 
-If registration isn't open yet, I'll set up auto-registration so you're first in line when signups open.
+If registration isn't open yet, I can prepare a supervised scheduled registration attempt for the selected youth program.
 
 What would you like to do?`;
 }

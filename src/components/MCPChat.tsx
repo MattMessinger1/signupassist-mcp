@@ -1257,7 +1257,7 @@ export function MCPChat({
       <div className="p-4 border-t bg-card/50 backdrop-blur-sm">
         <div className="flex gap-3 max-w-3xl mx-auto">
           <Input
-            placeholder="What would you like me to register you for?"
+            placeholder="What child-safe youth activity should we prepare?"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => {

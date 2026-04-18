@@ -18,15 +18,15 @@ Reviewer credentials must be entered directly in the OpenAI Platform submission 
 
 ## App Description
 
-SignupAssist helps parents and guardians find youth activity programs and complete supervised signups through connected provider flows. The app can browse available programs, collect required registration details, guide payment-method setup through Stripe-hosted checkout, show a final review summary, and complete supported Bookeo/API-connected bookings only after explicit user confirmation.
+SignupAssist helps adult parents and guardians find child-safe youth activity programs and complete supervised signups through connected provider flows. The app can browse available youth programs, collect required parent/account-holder registration details, guide payment-method setup through Stripe-hosted checkout, show a final review summary, and complete supported Bookeo/API-connected bookings only after explicit adult user confirmation.
 
-SignupAssist is parent-controlled. It does not book or charge until the user reviews the details and gives explicit final confirmation such as `book now`. Unattended set-and-forget delegation is not live yet.
+SignupAssist is parent-controlled and is not directed to children. It does not book or charge until the adult parent/guardian reviews the details and gives explicit final confirmation such as `book now`. Unattended set-and-forget delegation is not live yet.
 
 ## App Purpose
 
-SignupAssist helps parents:
+SignupAssist helps adult parents and guardians:
 
-- Search for youth activity options.
+- Search for child-safe youth activity options.
 - Browse configured provider catalogs, including AIM Design via Bookeo.
 - Start an OAuth-gated signup wizard for supported providers.
 - Provide account-holder and participant details needed by the provider.
@@ -35,12 +35,14 @@ SignupAssist helps parents:
 - Complete a supported Bookeo/API-connected booking only after explicit final confirmation.
 - Keep a clear audit trail for consequential actions.
 
+It is not a general adult-service booking app, not an adult-only activity app, not a child-directed app, and not an unattended autonomous registration agent. For ChatGPT review, use synthetic data and do not submit personal information about children under 13.
+
 ## Public MCP Tools
 
 The public ChatGPT MCP surface is intentionally small:
 
-- `search_activities`: read-only activity/program discovery. It must not register, hold, charge, submit, accept waivers, or log in.
-- `register_for_activity`: OAuth-gated guided signup wizard. It may complete a supported Bookeo/API-connected booking only after registration details are collected, payment method setup is handled through Stripe-hosted checkout when required, the review summary is shown, and the user gives explicit final confirmation such as `book now`.
+- `search_activities`: read-only child-safe youth activity/program discovery for adult parents/guardians. It must not register, hold, charge, submit, accept waivers, or log in.
+- `register_for_activity`: OAuth-gated parent/guardian guided signup wizard for supported youth activities. It may complete a supported Bookeo/API-connected booking only after registration details are collected, payment method setup is handled through Stripe-hosted checkout when required, the review summary is shown, and the adult user gives explicit final confirmation such as `book now`.
 
 Hidden/private/internal tools remain registered for orchestrator use but must not be exposed in public `ListTools` responses.
 
@@ -207,7 +209,7 @@ register_for_activity
 Expected output:
 
 ```text
-If the reviewer is not already authenticated, ChatGPT may ask them to connect SignupAssist before invoking this consequential tool. After authentication if needed, SignupAssist declines or redirects because it is focused on parent-controlled youth activity registration. It must not start an adult-only signup, create a booking, collect payment, or charge anything.
+If the reviewer is not already authenticated, ChatGPT may ask them to connect SignupAssist before invoking this consequential tool. After authentication if needed, SignupAssist declines or redirects because it is focused on adult parent/guardian-controlled child-safe youth activity registration. It must not start an adult-only signup, create a booking, collect payment, or charge anything.
 ```
 
 ### Negative Test 1: General Recipe Question
@@ -227,7 +229,7 @@ What's a good recipe for chicken parmesan?
 Expected output:
 
 ```text
-SignupAssist should not trigger because the request is unrelated to youth activity search or signup.
+SignupAssist should not trigger because the request is unrelated to parent/guardian youth activity search or signup.
 ```
 
 ### Negative Test 2: Product Shopping
@@ -247,7 +249,7 @@ Find me the best laptop under $1000.
 Expected output:
 
 ```text
-SignupAssist should not trigger because the request is unrelated to youth activity search or signup.
+SignupAssist should not trigger because the request is unrelated to parent/guardian youth activity search or signup.
 ```
 
 ### Negative Test 3: General Business Education
@@ -267,7 +269,7 @@ Summarize the difference between Agile and Scrum.
 Expected output:
 
 ```text
-SignupAssist should not trigger because the request is unrelated to youth activity search or signup.
+SignupAssist should not trigger because the request is unrelated to parent/guardian youth activity search or signup.
 ```
 
 ## Reviewer Test Account

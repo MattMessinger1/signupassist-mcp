@@ -1,12 +1,14 @@
 # OpenAI App Store - Reviewer Test Cases
 
-These test scenarios demonstrate SignupAssist's current ChatGPT app behavior for the OpenAI review team.
+These test scenarios demonstrate SignupAssist's current ChatGPT app behavior for the OpenAI review team. SignupAssist is for adult parents and guardians managing child-safe youth activity signups; it is not child-directed and is not for adult-only activities.
 
 **Provider:** AIM Design (Madison, WI) - programs fetched live from the Bookeo API.
 
 **Public tools:** `search_activities` (read-only browse) and `register_for_activity` (OAuth-gated guided registration wizard).
 
-**Important safety posture:** SignupAssist can complete a supported Bookeo/API-connected booking only after the reviewer signs in, provides required details, completes Stripe-hosted payment method setup if prompted, reviews the final summary, and explicitly confirms with `book now`. Full unattended set-and-forget delegation is not live.
+**Important safety posture:** SignupAssist can complete a supported Bookeo/API-connected youth activity booking only after the adult reviewer signs in, provides required details, completes Stripe-hosted payment method setup if prompted, reviews the final summary, and explicitly confirms with `book now`. Full unattended set-and-forget delegation is not live.
+
+**COPPA/privacy posture:** Use synthetic test data. General age or grade is acceptable for search. Do not use real child data, and do not submit personal information about children under 13 in ChatGPT.
 
 > Prompts include "SignupAssist" or "Signup Assist" to encourage ChatGPT to route the request to the app instead of answering from general knowledge.
 
@@ -102,7 +104,7 @@ These test scenarios demonstrate SignupAssist's current ChatGPT app behavior for
 **Expected behavior:**
 
 - If the reviewer is not already authenticated, ChatGPT may ask them to connect SignupAssist before invoking this consequential tool.
-- SignupAssist declines or redirects because it is focused on parent-controlled youth activity registration.
+- SignupAssist declines or redirects because it is focused on parent-controlled child-safe youth activity registration.
 - Does not start an adult-only signup flow.
 - Does not create a booking, collect payment, or charge anything.
 
@@ -116,7 +118,7 @@ These test scenarios demonstrate SignupAssist's current ChatGPT app behavior for
 
 **Expected behavior:**
 
-- SignupAssist should not trigger because the request is unrelated to youth activity search or signup.
+- SignupAssist should not trigger because the request is unrelated to parent/guardian youth activity search or signup.
 
 ---
 
@@ -128,7 +130,7 @@ These test scenarios demonstrate SignupAssist's current ChatGPT app behavior for
 
 **Expected behavior:**
 
-- SignupAssist should not trigger because the request is unrelated to youth activity search or signup.
+- SignupAssist should not trigger because the request is unrelated to parent/guardian youth activity search or signup.
 
 ---
 
@@ -140,7 +142,7 @@ These test scenarios demonstrate SignupAssist's current ChatGPT app behavior for
 
 **Expected behavior:**
 
-- SignupAssist should not trigger because the request is unrelated to youth activity search or signup.
+- SignupAssist should not trigger because the request is unrelated to parent/guardian youth activity search or signup.
 
 ---
 

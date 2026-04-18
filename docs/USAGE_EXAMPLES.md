@@ -179,7 +179,7 @@ The wizard follows the same Steps 1-5, collecting participant info, payment meth
     "content": [
       {
         "type": "text",
-        "text": "Step 5/5 — Registration scheduled\n\nYour registration for Summer STEM Camp is scheduled for March 15, 2026 at 9:00 AM CT.\n\nWhat will happen:\n- At 9:00 AM CT, we'll automatically register Alex Johnson\n- The $20 SignupAssist fee will be charged to your saved card\n- You'll receive a confirmation once complete\n\nYou can cancel this scheduled registration anytime before it executes by saying \"cancel my scheduled registration.\""
+        "text": "Step 5/5 — Supervised registration attempt scheduled\n\nYour registration attempt for Summer STEM Camp is scheduled for March 15, 2026 at 9:00 AM CT.\n\nWhat will happen:\n- At 9:00 AM CT, SignupAssist will attempt the supported youth registration for the selected participant\n- The $20 SignupAssist fee will be charged to your saved card only if registration succeeds\n- You'll receive a confirmation once complete\n\nYou can cancel this scheduled registration anytime before it executes by saying \"cancel my scheduled registration.\""
       }
     ]
   }

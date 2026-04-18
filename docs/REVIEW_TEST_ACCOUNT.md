@@ -6,7 +6,7 @@ This document provides the review-team orientation for the ChatGPT App Store sub
 
 ### Public Submission URLs
 
-- **Website:** `https://shipworx.ai`
+- **Website:** `https://signupassist.shipworx.ai/`
 - **Privacy policy:** `https://signupassist.shipworx.ai/privacy`
 - **Terms:** `https://signupassist.shipworx.ai/terms`
 - **Support email:** `support@shipworx.ai`
@@ -33,6 +33,8 @@ Password: [paste reviewer test password in platform.openai.com]
 The reviewer account should not require MFA, SMS verification, email verification loops, or access from a private network. Do not commit reviewer passwords or live credentials to git.
 
 ## What To Test
+
+SignupAssist is for adult parents and guardians managing child-safe youth activity signups. It is not child-directed and is not for adult-only activities.
 
 ### Read-Only Browsing
 
@@ -119,7 +121,7 @@ Payment method setup is handled by Stripe-hosted checkout. SignupAssist does not
 
 For review/testing, use the dedicated reviewer account and payment instructions supplied in the OpenAI Platform submission. Do not use real family data, production payment cards, or production credentials in review tests.
 
-Prefer a synthetic participant age 13 or older for review tests when the selected program supports it. If the provider-selected program requires a different age range, use synthetic data that matches the provider rules and do not use real child data.
+Prefer a synthetic participant age 13 or older for review tests when the selected program supports it. If the provider-selected program requires a different age range, use synthetic data that matches the provider rules and do not use real child data. Do not submit personal information about children under 13 in ChatGPT.
 
 If the reviewer completes a final booking, record the booking number, cancellation/refund evidence, and Stripe/test-payment evidence in the submission notes.
 

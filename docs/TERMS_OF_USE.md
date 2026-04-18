@@ -17,7 +17,7 @@ If you use SignupAssist inside ChatGPT, your use of ChatGPT is also subject to O
 
 The Services are intended for users located in the United States. Account holders must be at least 18 years old.
 
-SignupAssist is used by adults, such as parents and guardians, to browse and prepare youth activity registrations. SignupAssist is not directed to children. Children must not use the Services directly.
+SignupAssist is used by adults, such as parents and guardians, to browse and prepare child-safe youth activity registrations. SignupAssist is not directed to children. Children must not use the Services directly. SignupAssist is not for adult-only activities, dating, gambling, adult content, financial/investment services, or other non-youth registration services.
 
 For the ChatGPT app, do not submit personal information about children under 13. General age or grade information may be used for searching, but do not enter a child under 13's name, date of birth, address, contact information, medical information, or other personal information in ChatGPT.
 

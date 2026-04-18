@@ -919,3 +919,49 @@ Submission metadata impact:
 - Submission docs now use `https://signupassist.shipworx.ai/` as the Website URL so reviewers see SignupAssist-specific supervised-signup copy instead of broader Shipworx marketing metadata.
 - The approval snapshot was updated after review; the only approval-sensitive hash changes are `mcp_server/index.ts` and `docs/CHATGPT_SUBMISSION_CHECKLIST.md`.
 - Homepage metadata now states that supported signups happen only after review and explicit confirmation.
+
+## 2026-04-18 - Parent/Guardian Child-Safe Language Hardening
+
+Files changed in this phase:
+
+- `index.html`
+- `mcp/manifest.json`
+- `public/.well-known/ai-plugin.json`
+- `public/.well-known/chatgpt-apps-manifest.json`
+- `mcp_server/index.ts`
+- `mcp_server/ai/APIOrchestrator.ts`
+- `mcp_server/ai/apiMessageTemplates.ts`
+- `mcp_server/lib/childScopeGuardrail.ts`
+- `src/components/MCPChat.tsx`
+- `docs/CHATGPT_APP_REVIEW_PACKAGE.md`
+- `docs/CHATGPT_SUBMISSION_CHECKLIST.md`
+- `docs/OPENAI_REVIEWER_TEST_CASES.md`
+- `docs/PRIVACY_POLICY.md`
+- `docs/REVIEW_TEST_ACCOUNT.md`
+- `docs/SAFETY_POLICY.md`
+- `docs/TERMS_OF_USE.md`
+- `docs/USAGE_EXAMPLES.md`
+- `docs/approval-snapshots/chatgpt-app-approval.snapshot.json`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: Yes, language-only changes in manifest files, tool descriptions, ChatGPT review docs, `mcp_server/index.ts`, and `mcp_server/ai/APIOrchestrator.ts`.
+- Public MCP tool names changed: No.
+- Public MCP schemas changed: No.
+- Public MCP descriptors/annotations changed: Yes, descriptor descriptions changed to make the parent/guardian, child-safe youth activity, adult-only exclusion, and COPPA/privacy boundaries explicit.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: Yes, language-only clarification.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: Yes, language-only manifest clarification.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Submission metadata impact:
+
+- Copy now consistently says SignupAssist is for adult parents/guardians managing child-safe youth activity signups.
+- Copy now consistently says SignupAssist is not child-directed, not for adult-only services, and not for adult-only activity registration.
+- COPPA posture is explicit: general age/grade can be used for search, but personal information about children under 13 must not be submitted in ChatGPT.
+- Scheduled-registration copy now says supervised registration attempt instead of implying unattended set-and-forget autonomy.

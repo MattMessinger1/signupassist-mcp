@@ -160,9 +160,10 @@ export function evaluateChildRegistrationScope(input: ChildScopeGuardInput): Chi
 export function getChildScopeBlockedMessage(): string {
   return [
     "SignupAssist is focused on youth activity enrollment.",
+    "It is for adult parents and guardians managing child-safe activities.",
     "I can’t help with adult-only signup requests here.",
     "If you need an adult registration, please register directly with the provider.",
-    "I can still help you find and register for activities anytime."
+    "I can still help a parent or guardian find and register a child for supported youth activities."
   ].join(' ');
 }
 

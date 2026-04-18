@@ -1257,7 +1257,7 @@ export default class APIOrchestrator implements IOrchestrator {
     if (sessionDate) msg += `- **Date:** ${sessionDate}\n`;
     if (opensAtDisplay) {
       msg += `- **Registration opens:** ${opensAtDisplay}\n`;
-      msg += `- **Set & forget:** We’ll register you the moment it opens.\n`;
+      msg += `- **Supervised scheduling:** If you confirm, SignupAssist will attempt the supported youth registration when it opens and will still follow the parent-controlled safety gates.\n`;
       msg += `- **Charges now:** $0.00 (no charges unless registration succeeds)\n`;
     }
     // For multiple children, show a clear unit-price equation without double-counting.
@@ -1282,7 +1282,7 @@ export default class APIOrchestrator implements IOrchestrator {
       }
     }
     msg += opensAtDisplay
-      ? `- **Program Fee:** ${programFeeDisplay} (paid to provider only if we successfully register you when it opens)\n`
+      ? `- **Program Fee:** ${programFeeDisplay} (paid to provider only if the supported youth registration succeeds when it opens)\n`
       : `- **Program Fee:** ${programFeeDisplay} (paid to provider only if booking succeeds)\n`;
     
     // Success fee note: only describe a multi-child flat fee when the provider allows >1 per booking.
@@ -1300,7 +1300,7 @@ export default class APIOrchestrator implements IOrchestrator {
         ? ` (flat fee for 1-${maxParticipantsAllowed} children)`
         : "";
     msg += opensAtDisplay
-      ? `- **SignupAssist Fee:** ${successFee}${successFeeNote} (charged only if we successfully register you when it opens)\n`
+      ? `- **SignupAssist Fee:** ${successFee}${successFeeNote} (charged only if the supported youth registration succeeds when it opens)\n`
       : `- **SignupAssist Fee:** ${successFee}${successFeeNote} (charged only upon successful registration)\n`;
 
     if (context.hasPaymentMethod || context.cardLast4) {
@@ -1313,7 +1313,7 @@ export default class APIOrchestrator implements IOrchestrator {
 
     msg +=
       "\nIf everything is correct, type **book now** to continue" +
-      (opensAtDisplay ? " (I’ll schedule the auto‑registration)" : "") +
+      (opensAtDisplay ? " (I’ll schedule the supervised registration attempt)" : "") +
       " or **cancel** to abort.";
     return msg;
   }
@@ -5701,7 +5701,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         // Add helpful message for opens_later programs
         let cardDescription = stripHtml(prog.description || "");
         if (bookingStatus === 'opens_later') {
-          cardDescription += '\n\n💡 Set up your signup now — we\'ll register you the moment registration opens!';
+          cardDescription += '\n\n💡 A parent or guardian can prepare this signup now; SignupAssist will attempt the supported youth registration when registration opens.';
         }
         
         return {
@@ -6521,7 +6521,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           return this.formatResponse(
             `I found a payment method on file: **${display}**.\n\n` +
               `⏰ **Registration opens:** ${opensAtDisplay}\n` +
-              `🕒 If you confirm this card, I’ll schedule an auto‑registration to run **the moment it opens**.\n` +
+              `🕒 If you confirm this card, I’ll schedule a supervised registration attempt for the supported youth program when registration opens.\n` +
               `💳 **No charge now** — the ${formatCurrencyFromCents(2000)} SignupAssist fee is charged **only if registration succeeds**.\n\n` +
               `Reply **yes** to use it, or reply **change card** to add a new one in Stripe.`,
             undefined,
@@ -7390,7 +7390,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
     // Trigger payment method setup
     const scheduledDisplay = this.formatTimeForUser(scheduledDate, context);
     return {
-      message: `We'll automatically register you on ${scheduledDisplay}.\n\n` +
+      message: `SignupAssist will attempt the supported youth registration on ${scheduledDisplay}, following the parent-controlled safety gates.\n\n` +
                `First, let's save your payment method securely. You'll only be charged if registration succeeds!`,
       metadata: {
         componentType: "payment_setup",
@@ -7594,8 +7594,8 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
           title: '🎉 You\'re All Set!',
           subtitle: programName,
           description:
-            `📅 **Auto-Registration Scheduled**\n` +
-            `We'll register you at: ${scheduledDisplay}\n\n` +
+            `📅 **Supervised Registration Attempt Scheduled**\n` +
+            `SignupAssist will attempt the supported youth registration at: ${scheduledDisplay}\n\n` +
             `💰 **Total (if successful):** ${total_amount}\n` +
             `📌 **Reference:** ${code}\n\n` +
             `🔐 **Mandate ID:** ${mandateId.substring(0, 8)}...`
