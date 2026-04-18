@@ -15,7 +15,7 @@ describe('createHostedPaymentSetupSession customer recovery', () => {
           const error = new Error('No such customer');
           Object.assign(error, {
             code: 'resource_missing',
-            param: 'customer',
+            param: 'id',
           });
           throw error;
         }),

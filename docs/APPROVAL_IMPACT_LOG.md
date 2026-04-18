@@ -855,8 +855,8 @@ Approval impact:
 Reviewer-flow remediation:
 
 - Production reviewer testing found Step 3 failing with `Failed to start payment setup` because the reviewer user's stored `user_billing.stripe_customer_id` pointed to a customer that does not exist in the active Stripe account/mode.
-- Stripe setup now validates the stored customer before creating Checkout. If the customer is missing or deleted, SignupAssist creates or reuses a valid customer in the active Stripe account and clears stale saved-card metadata.
-- Added regression coverage for stale customer recovery before creating a Stripe Checkout setup session.
+- Stripe setup now validates the stored customer before creating Checkout. If Stripe returns `resource_missing` for the stored customer, SignupAssist creates or reuses a valid customer in the active Stripe account and clears stale saved-card metadata.
+- Added regression coverage for stale customer recovery before creating a Stripe Checkout setup session, including Stripe's `param: id` missing-customer response shape.
 
 Verification results for this phase:
 

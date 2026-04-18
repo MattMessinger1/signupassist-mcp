@@ -41,11 +41,8 @@ function getPublicBaseUrl(): string {
 }
 
 function isMissingStripeCustomer(error: unknown): boolean {
-  const stripeError = error as { code?: string; param?: string; raw?: { code?: string; param?: string } };
-  return (
-    (stripeError.code === 'resource_missing' || stripeError.raw?.code === 'resource_missing') &&
-    (stripeError.param === 'customer' || stripeError.raw?.param === 'customer')
-  );
+  const stripeError = error as { code?: string; raw?: { code?: string } };
+  return stripeError.code === 'resource_missing' || stripeError.raw?.code === 'resource_missing';
 }
 
 async function retrieveUsableStripeCustomer(stripe: Stripe, customerId: string): Promise<string | null> {
