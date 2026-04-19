@@ -1,13 +1,10 @@
 # Scheduled Registration Worker Runbook (v1)
 
-This worker is the **always-on** process that executes `scheduled_registrations` at (or as close as possible to) their `scheduled_time`, then:
+This worker is the **always-on** process that watches `scheduled_registrations` at (or as close as possible to) their `scheduled_time`.
 
-- executes the provider booking (v1: Bookeo via API),
-- charges the SignupAssist **$20 success fee** (Stripe),
-- writes a unified receipt row to `registrations`,
-- updates the `scheduled_registrations` row status + audit trail.
+For the current supervised MVP, the worker **does not submit provider bookings, charge Stripe, accept waivers, log in to providers, or final-submit registrations automatically**. It pauses the run for parent review until the sensitive-action confirmation and future verified delegation mandate gates are complete.
 
-This is required for **“schedule now, execute the second the signup window opens”**.
+The worker is still useful now because it keeps the timing path warm and records safe next-step status. Future delegated execution requires provider readiness, exact program match, price cap, audit logs, deterministic policy checks, and a valid signed mandate.
 
 Platform decision: keep this as an **always-on Railway worker** for V1. Do not
 move scheduled registration execution to cron-only infrastructure unless the
@@ -38,7 +35,7 @@ npm start
 npm run worker:scheduled
 ```
 
-Note: `worker:scheduled` runs `mcp:build` automatically via `preworker:scheduled`, so the worker can start from a fresh deploy without a pre-built `dist/`.
+Note: in local development, the root package may run a prebuild before `worker:scheduled`. In the production Docker image, `package.production.json` expects `dist/` to already exist from the Docker build and runs the compiled worker directly.
 
 ---
 
@@ -57,7 +54,7 @@ Optional:
 
 - `SCHEDULED_WORKER_MAX_ATTEMPT_MS` (default `120000`) – how long to keep retrying at “open time”
 
-**Stripe note:** The worker triggers success-fee charging via the Supabase Edge Function `stripe-charge-success-fee`. The worker itself does **not** need Stripe secrets as long as the edge function is configured correctly in Supabase.
+**Stripe note:** The worker does not charge success fees in the supervised MVP. Payment and success-fee automation remain paused until the sensitive-action gates and future delegation mandate path are verified.
 
 ### MCP server (web) (required)
 
@@ -72,9 +69,9 @@ The MCP server (`npm start`) uses the same Supabase + provider credentials plus 
 
 ## Operational expectations
 
-- **Precision**: the worker should attempt execution at second-level precision (best-effort given hosting scheduler jitter).
-- **Idempotency**: a job must not double-book if the worker restarts mid-flight. Status transitions should prevent concurrent execution.
-- **Retries**: transient provider/network errors should retry with backoff; permanent validation errors should mark `failed` with a human-readable message.
+- **Precision**: the worker should wake near scheduled time and move the run into a parent-review state.
+- **Idempotency**: a job must not double-book or double-charge if the worker restarts mid-flight. Current V1 behavior is fail-closed/pause-first.
+- **Retries**: transient database/network errors should retry with backoff; unsafe external actions should remain paused with a human-readable message.
 
 ---
 
@@ -124,13 +121,13 @@ RAILWAY_WORKER_URL=https://your-worker.up.railway.app \
 npm run infra:smoke:railway
 ```
 
-1) Schedule a signup via chat (creates a row in `scheduled_registrations`).
-2) Confirm it (status should be `pending`).
-3) Set the `scheduled_time` to ~2 minutes in the future (test org/program).
+1) Schedule a supervised signup run that creates a row in `scheduled_registrations`.
+2) Confirm the row is `pending`.
+3) Set the `scheduled_time` to ~2 minutes in the future in a test environment.
 4) Watch worker logs:
    - it should pick up the row near the scheduled time,
-   - transition status `pending` → `executing` → `completed`,
-   - create a `registrations` row with `REG-` receipt code surfaced in chat.
+   - avoid provider submit/payment/waiver/final-submit calls,
+   - mark the run as paused or failed with parent-review copy until the future sensitive-action/delegation gate is available.
 
 ---
 
@@ -145,10 +142,7 @@ npm run infra:smoke:railway
   - hosting jitter / sleep granularity
   - too many jobs per polling interval (increase throughput / reduce sleep)
 
-- **Bookings succeed but no receipts**
-  - DB insert to `registrations` failing (schema mismatch, missing columns)
-
-- **Success fee not charged**
-  - Stripe edge function env vars missing
-  - mandate missing/invalid
-
+- **Worker attempts provider booking or payment**
+  - treat as a release blocker
+  - verify the current fail-closed sensitive-action gate is deployed
+  - confirm no provider/Stripe execution path bypasses parent confirmation

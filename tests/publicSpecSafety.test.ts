@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 
 const openapi = JSON.parse(readFileSync('mcp/openapi.json', 'utf8'));
 const manifest = JSON.parse(readFileSync('mcp/manifest.json', 'utf8'));
+const serverSource = readFileSync('mcp_server/index.ts', 'utf8');
 
 describe('Public OpenAPI review safety', () => {
   it('excludes internal MCP transport and direct tool-call paths', () => {
@@ -36,5 +37,18 @@ describe('Manifest review safety language', () => {
     expect(model).toContain('children');
     expect(model).toContain('do not treat this app as adult content');
     expect(model).toContain('nothing is booked or charged until explicit user confirmation');
+  });
+});
+
+describe('Public HTTP tool inventory safety', () => {
+  it('keeps the legacy /tools helper limited to public MCP tools', () => {
+    expect(serverSource).toContain('function getPublicHttpToolSummary');
+    expect(serverSource).toContain('tools: getPublicHttpToolSummary(this.tools.values())');
+    expect(serverSource).not.toContain('tools: Array.from(this.tools.values()).map');
+  });
+
+  it('fails closed when telemetry debug endpoints are disabled', () => {
+    expect(serverSource).toContain('!telemetryDebugEnabled && isTelemetryDebugRoute');
+    expect(serverSource).toContain("error: 'not_found'");
   });
 });

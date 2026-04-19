@@ -6,7 +6,9 @@
     "build:backend": "tsc -p tsconfig.mcp.json",
     "build:frontend": "vite build",
     "build": "npm run build:backend && npm run build:frontend",
+    "start": "node dist/mcp_server/index.js",
     "mcp:start": "node dist/mcp_server/index.js",
+    "worker:scheduled": "node dist/mcp_server/worker/scheduledRegistrationWorker.js",
     "rebuild:clean": "rm -rf dist node_modules && npm ci && npx tsc -p tsconfig.mcp.json && echo '✅ Clean build complete — ready for Railway redeploy.'"
   },
   "dependencies": {

@@ -100,7 +100,7 @@ Run two Railway services from the same repo:
    - No public domain required
    - If Railway requires HTTP health checks, set `PORT=8080`; the worker exposes `GET /health`
 
-Do not replace the scheduled worker with cron-only infrastructure. The worker is the competitive registration path and should keep second-level timing as a business requirement.
+For the supervised MVP, the worker keeps scheduled timing/status warm but pauses before provider submit, payment, waivers, provider login, and final submit. Do not treat the worker as live delegated signup until the sensitive-action gate, provider readiness, signed mandate, price cap, exact program match, and audit requirements are verified.
 
 ## Smoke Commands
 

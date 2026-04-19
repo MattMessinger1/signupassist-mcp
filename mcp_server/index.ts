@@ -493,6 +493,29 @@ function v1VisibilityForTool(toolName: string, toolMeta: Record<string, any> = {
   return "private";
 }
 
+function getVisibleToolDescriptors(tools: Iterable<any>, includePrivate = false) {
+  const apiTools = Array.from(tools)
+    .filter((tool) => includePrivate || tool?._meta?.["openai/visibility"] !== "private")
+    .map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+      annotations: tool.annotations,
+      _meta: tool._meta,
+    }));
+
+  return includePrivate
+    ? apiTools
+    : apiTools.filter((tool) => tool._meta?.["openai/visibility"] === "public");
+}
+
+function getPublicHttpToolSummary(tools: Iterable<any>) {
+  return getVisibleToolDescriptors(tools, false).map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+  }));
+}
+
 // Wizard-style progress strings (no widget needed)
 // Keep these short, calm, and consistent to build trust + reduce overwhelm.
 function wizardInvocationForTool(toolName: string): { invoking: string; invoked: string } {
@@ -854,20 +877,8 @@ class SignupAssistMCPServer {
       // We still register private tools internally, but we do NOT list them to ChatGPT.
       const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
 
-      const apiTools = Array.from(this.tools.values())
-        .filter((tool) => tool?._meta?.["openai/visibility"] !== "private")
-        .map(tool => ({
-          name: tool.name,
-          description: tool.description,
-          inputSchema: tool.inputSchema,
-          annotations: tool.annotations,
-          _meta: tool._meta,
-        }));
-
       // Default: only return publicly-visible tools (reduces model confusion and enforces SSoT via register_for_activity).
-      const visibleTools = includePrivate
-        ? apiTools
-        : apiTools.filter(t => t._meta?.["openai/visibility"] === "public");
+      const visibleTools = getVisibleToolDescriptors(this.tools.values(), includePrivate);
 
       console.log(
         `[MCP] ListTools returning ${visibleTools.length} tools (${includePrivate ? "all" : "public-only"}):`,
@@ -2523,18 +2534,7 @@ class SignupAssistMCPServer {
 
               if (methodName === 'tools/list') {
                 const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
-                const apiTools = Array.from(this.tools.values())
-                  .filter((tool) => tool?._meta?.["openai/visibility"] !== "private")
-                  .map((tool) => ({
-                    name: tool.name,
-                    description: tool.description,
-                    inputSchema: tool.inputSchema,
-                    annotations: tool.annotations,
-                    _meta: tool._meta,
-                  }));
-                const visibleTools = includePrivate
-                  ? apiTools
-                  : apiTools.filter((t) => t._meta?.["openai/visibility"] === "public");
+                const visibleTools = getVisibleToolDescriptors(this.tools.values(), includePrivate);
 
                 console.log(
                   `[MCP] /sse discovery tools/list (HTTP 200) returning ${visibleTools.length} tools (${includePrivate ? "all" : "public-only"}):`,
@@ -2897,18 +2897,7 @@ class SignupAssistMCPServer {
           // even if the client never sends a follow-up POST /messages.
           try {
             const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
-            const apiTools = Array.from(this.tools.values())
-              .filter((tool) => tool?._meta?.["openai/visibility"] !== "private")
-              .map((tool) => ({
-                name: tool.name,
-                description: tool.description,
-                inputSchema: tool.inputSchema,
-                annotations: tool.annotations,
-                _meta: tool._meta,
-              }));
-            const visibleTools = includePrivate
-              ? apiTools
-              : apiTools.filter((t) => t._meta?.["openai/visibility"] === "public");
+            const visibleTools = getVisibleToolDescriptors(this.tools.values(), includePrivate);
 
             const msg = {
               jsonrpc: '2.0',
@@ -3016,19 +3005,7 @@ class SignupAssistMCPServer {
           if (isDiscoveryCall) {
             if (methodName === 'tools/list') {
               const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
-              const apiTools = Array.from(this.tools.values())
-                .filter((tool) => tool?._meta?.["openai/visibility"] !== "private")
-                .map((tool) => ({
-                  name: tool.name,
-                  description: tool.description,
-                  inputSchema: tool.inputSchema,
-                  annotations: tool.annotations,
-                  _meta: tool._meta,
-                }));
-
-              const visibleTools = includePrivate
-                ? apiTools
-                : apiTools.filter((t) => t._meta?.["openai/visibility"] === "public");
+              const visibleTools = getVisibleToolDescriptors(this.tools.values(), includePrivate);
 
               console.log(
                 `[MCP] /messages discovery tools/list (HTTP 200) returning ${visibleTools.length} tools (${includePrivate ? "all" : "public-only"}):`,
@@ -3193,18 +3170,7 @@ class SignupAssistMCPServer {
             // in the HTTP response so clients don't need a live SSE stream to refresh actions.
             if (methodName === 'tools/list') {
               const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
-              const apiTools = Array.from(this.tools.values())
-                .filter((tool) => tool?._meta?.["openai/visibility"] !== "private")
-                .map((tool) => ({
-                  name: tool.name,
-                  description: tool.description,
-                  inputSchema: tool.inputSchema,
-                  annotations: tool.annotations,
-                  _meta: tool._meta,
-                }));
-              const visibleTools = includePrivate
-                ? apiTools
-                : apiTools.filter((t) => t._meta?.["openai/visibility"] === "public");
+              const visibleTools = getVisibleToolDescriptors(this.tools.values(), includePrivate);
 
               console.log(
                 `[MCP] /messages fallback tools/list (no transport) returning ${visibleTools.length} tools (${includePrivate ? "all" : "public-only"}):`,
@@ -3365,6 +3331,12 @@ class SignupAssistMCPServer {
       if (telemetryDebugEnabled && isTelemetryDebugRoute && !isAuthorizedForTelemetryDebug(req)) {
         res.writeHead(403, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: 'forbidden' }));
+        return;
+      }
+
+      if (!telemetryDebugEnabled && isTelemetryDebugRoute) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'not_found' }));
         return;
       }
 
@@ -3802,18 +3774,7 @@ class SignupAssistMCPServer {
 
         if (methodName === 'tools/list') {
           const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
-          const apiTools = Array.from(this.tools.values())
-            .filter((tool) => tool?._meta?.["openai/visibility"] !== "private")
-            .map((tool) => ({
-              name: tool.name,
-              description: tool.description,
-              inputSchema: tool.inputSchema,
-              annotations: tool.annotations,
-              _meta: tool._meta,
-            }));
-          const visibleTools = includePrivate
-            ? apiTools
-            : apiTools.filter((t) => t._meta?.["openai/visibility"] === "public");
+          const visibleTools = getVisibleToolDescriptors(this.tools.values(), includePrivate);
 
           console.log(
             `[MCP] POST /mcp tools/list returning ${visibleTools.length} tools:`,
@@ -4292,13 +4253,13 @@ class SignupAssistMCPServer {
 
       // --- List tools
       if (req.method === 'GET' && url.pathname === '/tools') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+        });
         res.end(
           JSON.stringify({
-            tools: Array.from(this.tools.values()).map((t) => ({
-              name: t.name,
-              description: t.description,
-            })),
+            tools: getPublicHttpToolSummary(this.tools.values()),
           })
         );
         return;

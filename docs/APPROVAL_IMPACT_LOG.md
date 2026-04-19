@@ -1354,3 +1354,54 @@ Verification results for this phase:
 - `npm run test:mcp-descriptors`: Passed.
 - `git diff --check`: Passed.
 - `npm run test -- --reporter=verbose`: Policy-surface tests passed; local run then failed on `tests/telemetryDebugAccess.integration.test.ts` because local debug telemetry returned 200 while disabled. This is outside the policy-surface fix and was not the PR 103 CI failure.
+
+## 2026-04-19 - Web Ship P0 Approval And Production Surface Hardening
+
+Files changed in this phase:
+
+- `mcp_server/index.ts`
+- `package.production.json`
+- `scripts/chatgptAppGuardrails.ts`
+- `scripts/infraCheck.ts`
+- `tests/publicSpecSafety.test.ts`
+- `tests/infra-platform.test.ts`
+- `docs/SCHEDULED_REGISTRATION_WORKER_RUNBOOK.md`
+- `docs/INFRA_RUNBOOK.md`
+- `docs/approval-snapshots/chatgpt-app-approval.snapshot.json`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: Yes, `mcp_server/index.ts` and approval snapshots changed intentionally to remove a legacy public `/tools` leak and fail closed for disabled debug telemetry.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No. The legacy HTTP `GET /tools` helper now returns only public tool summaries.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Changes:
+
+- Reused a single visible-tool descriptor helper for MCP discovery paths and the legacy HTTP `GET /tools` route.
+- Filtered the legacy `GET /tools` route to public tool summaries only, preventing private/internal provider tools from being listed.
+- Made disabled `/debug/telemetry` routes return explicit JSON 404 instead of falling through to the SPA shell.
+- Added production `start` and `worker:scheduled` scripts to `package.production.json`.
+- Updated Railway/worker docs to state current supervised MVP behavior: scheduled work pauses before provider submit, payment, waivers, provider login, and final submit.
+- Extended infra and public-surface tests to catch production script drift, `/tools` leaks, and telemetry fallback regressions.
+
+Verification results for this phase:
+
+- `npm run mcp:build`: Passed.
+- `npx vitest run tests/publicSpecSafety.test.ts tests/infra-platform.test.ts tests/telemetryDebugAccess.integration.test.ts --reporter=verbose`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `npm run test:approval-snapshots`: Passed after intentional snapshot update for `mcp_server/index.ts`.
+- `npm run test:chatgpt-app`: Passed.
+- `npm run infra:check`: Passed with local env warnings only.
+- `npm run typecheck`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `git diff --check`: Passed.

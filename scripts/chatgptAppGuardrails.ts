@@ -518,7 +518,8 @@ function checkDescriptors(failures: string[]): void {
   assertCondition(sourceText.includes("MCP_LISTTOOLS_INCLUDE_PRIVATE"), "ListTools private diagnostic flag is missing", failures);
   assertCondition(
     sourceText.includes('apiTools.filter(t => t._meta?.["openai/visibility"] === "public")') ||
-      sourceText.includes('apiTools.filter((t) => t._meta?.["openai/visibility"] === "public")'),
+      sourceText.includes('apiTools.filter((t) => t._meta?.["openai/visibility"] === "public")') ||
+      sourceText.includes('apiTools.filter((tool) => tool._meta?.["openai/visibility"] === "public")'),
     "ListTools public-only filter is missing",
     failures
   );

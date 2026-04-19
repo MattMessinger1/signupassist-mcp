@@ -34,7 +34,9 @@ function countFiles(path: string) {
 }
 
 const packageJson = readJson("package.json");
+const productionPackageJson = existsSync("package.production.json") ? readJson("package.production.json") : {};
 const scripts = packageJson.scripts || {};
+const productionScripts = productionPackageJson.scripts || {};
 const dependencies = {
   ...(packageJson.dependencies || {}),
   ...(packageJson.devDependencies || {}),
@@ -76,6 +78,8 @@ add("Supabase JS dependency is present", Boolean(dependencies["@supabase/supabas
 add("Railway Dockerfile is present", existsSync("Dockerfile"));
 add("Railway Docker build copies PostCSS config for Tailwind", dockerfile.includes("COPY postcss.config.js"));
 add("Frontend build compiles Vite assets", String(scripts.build || "").includes("vite build"));
+add("Production package start script runs compiled MCP server", productionScripts.start === "node dist/mcp_server/index.js");
+add("Production package worker script runs compiled scheduled worker", productionScripts["worker:scheduled"] === "node dist/mcp_server/worker/scheduledRegistrationWorker.js");
 add("Supabase migrations directory has migrations", countFiles("supabase/migrations") > 0);
 add("Supabase Edge Functions directory has functions", countFiles("supabase/functions") > 0);
 
