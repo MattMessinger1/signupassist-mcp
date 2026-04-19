@@ -287,6 +287,7 @@ describe("MVP security regression suite", () => {
     const header = readFileSync("src/components/Header.tsx", "utf8");
     const mcpClient = readFileSync("src/lib/chatMcpClient.ts", "utf8");
     const discoveryRuns = readFileSync("src/pages/DiscoveryRuns.tsx", "utf8");
+    const dockerfile = readFileSync("Dockerfile", "utf8");
 
     expect(app).toContain("isTestRoutesEnabled");
     expect(app).toContain("testRoutesEnabled &&");
@@ -298,6 +299,7 @@ describe("MVP security regression suite", () => {
     expect(header).toContain("isAdminSurfaceEnabled");
 
     expect(mcpClient).not.toContain("VITE_MCP_ACCESS_TOKEN");
+    expect(dockerfile).not.toContain("VITE_MCP_ACCESS_TOKEN");
     expect(mcpClient).toContain("signupassist_mcp_test_token");
     expect(mcpClient).toContain("!import.meta.env.DEV && import.meta.env.VITE_ENABLE_TEST_ROUTES !== 'true'");
 
