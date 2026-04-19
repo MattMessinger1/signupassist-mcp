@@ -42,6 +42,76 @@ const BOOKEO_MCP_TOOLS = new Set([
   'bookeo.cancel_booking',
 ]);
 
+const SENSITIVE_WRITE_TOOLS = new Set([
+  'bookeo.create_hold',
+  'bookeo.confirm_booking',
+  'bookeo.cancel_booking',
+]);
+
+function redactForLog(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => redactForLog(item));
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  const redacted: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+    const normalized = key.toLowerCase();
+    if (
+      normalized.includes('password') ||
+      normalized.includes('token') ||
+      normalized.includes('secret') ||
+      normalized.includes('credential') ||
+      normalized.includes('card') ||
+      normalized.includes('payment') ||
+      normalized.includes('phone') ||
+      normalized.includes('email') ||
+      normalized.includes('dob') ||
+      normalized.includes('birth') ||
+      normalized.includes('participant') ||
+      normalized.includes('delegate')
+    ) {
+      redacted[key] = '[REDACTED]';
+    } else {
+      redacted[key] = redactForLog(nested);
+    }
+  }
+  return redacted;
+}
+
+function sensitiveActionPausedResponse(tool: string) {
+  return new Response(
+    JSON.stringify({
+      success: false,
+      status: 'paused_for_parent',
+      error: 'sensitive_action_confirmation_required',
+      tool,
+      message:
+        'This provider action can create, change, or cancel a booking. SignupAssist pauses here until a server-verified parent confirmation or future delegated mandate is available.',
+    }),
+    {
+      status: 409,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    },
+  );
+}
+
+async function getUserIdFromJwt(userJwt: string) {
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+    { global: { headers: { Authorization: `Bearer ${userJwt}` } } },
+  );
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) {
+    throw new Error('auth_required');
+  }
+  return data.user.id;
+}
+
 async function callMcpTool(toolName: string, args: Record<string, unknown>): Promise<unknown> {
   if (!BOOKEO_MCP_TOOLS.has(toolName)) {
     throw new Error(`Unsupported MCP tool: ${toolName}`);
@@ -53,7 +123,7 @@ async function callMcpTool(toolName: string, args: Record<string, unknown>): Pro
     throw new Error('MCP_SERVER_URL not configured');
   }
 
-  console.log(`[MCP] Calling ${toolName} with args:`, JSON.stringify(args));
+  console.log(`[MCP] Calling ${toolName} with redacted args:`, JSON.stringify(redactForLog(args)));
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   if (mcpAccessToken) {
@@ -92,15 +162,19 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    console.log("mcp-executor invoked with body:", body);
+    console.log("mcp-executor invoked with redacted body:", redactForLog(body));
 
     // Handle individual MCP tool calls
     if (body.tool) {
       const { tool, args } = body;
-      console.log("mcp-executor invoked with tool:", tool, "args:", args);
+      console.log("mcp-executor invoked with tool:", tool, "redacted args:", redactForLog(args));
 
       if (!BOOKEO_MCP_TOOLS.has(tool)) {
         throw new Error(`No handler found for MCP tool: ${tool}`);
+      }
+
+      if (SENSITIVE_WRITE_TOOLS.has(tool)) {
+        return sensitiveActionPausedResponse(tool);
       }
 
       const toolResult = await callMcpTool(tool, args ?? {});
@@ -122,6 +196,7 @@ Deno.serve(async (req) => {
     if (!credential_id || !user_jwt) {
       throw new Error('credential_id and user_jwt are required');
     }
+    const authenticatedUserId = await getUserIdFromJwt(String(user_jwt));
 
     console.log(`Starting MCP-powered plan execution for plan ${plan_id}`);
 
@@ -148,6 +223,10 @@ Deno.serve(async (req) => {
 
     if (planError || !plan) {
       throw new Error('Plan not found');
+    }
+
+    if (plan.user_id !== authenticatedUserId) {
+      throw new Error('Forbidden: plan does not belong to authenticated user');
     }
 
     if (plan.status !== 'running') {

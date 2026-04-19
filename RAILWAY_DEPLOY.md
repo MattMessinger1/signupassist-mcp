@@ -153,7 +153,7 @@ After deployment, you should see:
 ```
 
 **Test the Fix:**
-1. Go to `/chat-test` in your app
+1. In local/dev only, enable `VITE_ENABLE_TEST_ROUTES=true` and go to `/chat-test`
 2. Send a test message
 3. Check browser console - the CORS error should be gone
 4. Check Railway logs for: `[ROUTE] /orchestrator/chat hit`

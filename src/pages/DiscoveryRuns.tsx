@@ -10,6 +10,8 @@ import { formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { PROVIDER_REGISTRY, getProviderReadinessSummary } from "@/lib/providerLearning";
 import { redactDiscoveryRunDetail } from "@/lib/discoveryRunRedaction";
+import { useAuth } from "@/contexts/AuthContext";
+import { isAdminSurfaceEnabled } from "@/lib/featureFlags";
 
 interface DiscoveryRun {
   id: string;
@@ -27,16 +29,24 @@ export default function DiscoveryRuns() {
   const [loading, setLoading] = useState(true);
   const [selectedRun, setSelectedRun] = useState<DiscoveryRun | null>(null);
   const { toast } = useToast();
+  const { user, loading: authLoading } = useAuth();
+  const adminEnabled = isAdminSurfaceEnabled();
   const latestRunsByProvider = runs.reduce<Record<string, DiscoveryRun | undefined>>((acc, run) => {
     if (!acc[run.provider_slug]) acc[run.provider_slug] = run;
     return acc;
   }, {});
 
   const fetchRuns = useCallback(async () => {
+    if (!adminEnabled || !user) {
+      setRuns([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       const { data, error } = await supabase
         .from("discovery_runs")
-        .select("*")
+        .select("id, provider_slug, program_key, stage, run_confidence, errors, meta, created_at")
         .order("created_at", { ascending: false })
         .limit(50);
 
@@ -53,11 +63,12 @@ export default function DiscoveryRuns() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [adminEnabled, toast, user]);
 
   useEffect(() => {
+    if (authLoading) return;
     void fetchRuns();
-  }, [fetchRuns]);
+  }, [authLoading, fetchRuns]);
 
   const getFieldCount = (errors: unknown): number => {
     if (!errors || !Array.isArray(errors)) return 0;
@@ -80,12 +91,32 @@ export default function DiscoveryRuns() {
     return "outline";
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="container mx-auto p-8">
         <div className="flex items-center justify-center min-h-[400px]">
           <div className="text-muted-foreground">Loading discovery runs...</div>
         </div>
+      </div>
+    );
+  }
+
+  if (!adminEnabled || !user) {
+    return (
+      <div className="container mx-auto p-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Admin access required</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm text-muted-foreground">
+            <p>
+              Provider learning evidence is admin-only because raw discovery records can include operational metadata.
+            </p>
+            <p>
+              Parent-facing readiness is shown on Autopilot and Dashboard using redacted summaries.
+            </p>
+          </CardContent>
+        </Card>
       </div>
     );
   }

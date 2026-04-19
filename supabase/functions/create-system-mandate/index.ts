@@ -170,7 +170,28 @@ Deno.serve(async (req) => {
   try {
     console.log('[create-system-mandate] Received request');
 
+    if (Deno.env.get('ENABLE_SYSTEM_MANDATE_ISSUE') !== 'true') {
+      return new Response(
+        JSON.stringify({ error: 'system_mandate_issue_disabled' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     const { user_id, scopes, valid_duration_minutes } = await req.json();
+
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const authSupabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const { data: authData, error: authError } = await authSupabase.auth.getUser();
+    if (authError || !authData.user) {
+      return new Response(
+        JSON.stringify({ error: 'auth_required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
     
     // Validate inputs
     if (!user_id) {
@@ -181,9 +202,30 @@ Deno.serve(async (req) => {
       );
     }
 
+    if (user_id !== authData.user.id) {
+      return new Response(
+        JSON.stringify({ error: 'forbidden' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+
     // Default scopes for system mandate
-    const mandateScopes = scopes || ['bookeo:authenticate', 'bookeo:discover_fields'];
-    const validDuration = valid_duration_minutes || 10080; // 7 days default
+    const allowedScopes = new Set(
+      (Deno.env.get('SYSTEM_MANDATE_ALLOWED_SCOPES') || 'bookeo:authenticate,bookeo:discover_fields')
+        .split(',')
+        .map((scope) => scope.trim())
+        .filter(Boolean),
+    );
+    const requestedScopes = Array.isArray(scopes) ? scopes.map(String) : ['bookeo:authenticate', 'bookeo:discover_fields'];
+    const mandateScopes = requestedScopes.filter((scope) => allowedScopes.has(scope));
+    if (mandateScopes.length !== requestedScopes.length) {
+      return new Response(
+        JSON.stringify({ error: 'scope_not_allowed' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+    const durationRaw = Number(valid_duration_minutes || 60);
+    const validDuration = Number.isFinite(durationRaw) ? Math.max(5, Math.min(durationRaw, 60)) : 60;
 
     console.log('[create-system-mandate] Creating mandate for user:', user_id);
     console.log('[create-system-mandate] Scopes:', mandateScopes);
@@ -224,7 +266,6 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : 'Unknown error',
-        details: error instanceof Error ? error.stack : undefined
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

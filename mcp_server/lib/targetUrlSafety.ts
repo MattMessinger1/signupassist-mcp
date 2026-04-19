@@ -10,6 +10,13 @@ export interface TargetUrlValidationResult {
 
 export type TargetUrlResolver = (hostname: string) => Promise<string[]>;
 
+export interface TargetUrlValidationOptions {
+  environment?: string;
+  allowHttpInNonProduction?: boolean;
+  allowLocalhostInNonProduction?: boolean;
+  allowedProviderDomains?: string[];
+}
+
 const INTERNAL_HOSTNAME_SUFFIXES = [
   ".localhost",
   ".local",
@@ -85,7 +92,35 @@ function isInternalHostname(hostname: string) {
   return INTERNAL_HOSTNAME_SUFFIXES.some((suffix) => lower.endsWith(suffix));
 }
 
-export function validateTargetUrl(value: unknown): TargetUrlValidationResult {
+function isProductionEnvironment(options: TargetUrlValidationOptions = {}) {
+  return String(options.environment ?? process.env.NODE_ENV ?? "development").toLowerCase() === "production";
+}
+
+function isLocalhostTarget(hostname: string) {
+  const lower = stripIpv6Brackets(hostname).toLowerCase();
+  return lower === "localhost" || lower === "::1" || lower === "127.0.0.1";
+}
+
+function normalizeAllowedDomain(value: string) {
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) return "";
+  try {
+    return new URL(trimmed.includes("://") ? trimmed : `https://${trimmed}`).hostname.toLowerCase();
+  } catch {
+    return trimmed.replace(/^\.+/, "");
+  }
+}
+
+function hostMatchesAllowedDomain(hostname: string, allowedDomains: string[]) {
+  const normalizedAllowed = allowedDomains.map(normalizeAllowedDomain).filter(Boolean);
+  if (normalizedAllowed.length === 0) return true;
+  return normalizedAllowed.some((domain) => hostname === domain || hostname.endsWith(`.${domain}`));
+}
+
+export function validateTargetUrl(
+  value: unknown,
+  options: TargetUrlValidationOptions = {},
+): TargetUrlValidationResult {
   if (typeof value !== "string" || !value.trim()) {
     return fail("url_required");
   }
@@ -101,17 +136,36 @@ export function validateTargetUrl(value: unknown): TargetUrlValidationResult {
     return fail("url_protocol_not_allowed");
   }
 
+  const isProduction = isProductionEnvironment(options);
+  const httpAllowed =
+    parsed.protocol === "https:" ||
+    (!isProduction && options.allowHttpInNonProduction !== false);
+  if (!httpAllowed) {
+    return fail("url_https_required");
+  }
+
   if (parsed.username || parsed.password) {
     return fail("url_userinfo_not_allowed");
   }
 
   const hostname = stripIpv6Brackets(parsed.hostname).toLowerCase();
-  if (isIP(hostname) && isUnsafeIpAddress(hostname)) {
-    return fail("url_private_ip_not_allowed", hostname);
+  const localDevAllowed =
+    !isProduction &&
+    options.allowLocalhostInNonProduction === true &&
+    isLocalhostTarget(hostname);
+
+  if (!localDevAllowed) {
+    if (isIP(hostname) && isUnsafeIpAddress(hostname)) {
+      return fail("url_private_ip_not_allowed", hostname);
+    }
+
+    if (isInternalHostname(hostname)) {
+      return fail("url_internal_hostname_not_allowed", hostname);
+    }
   }
 
-  if (isInternalHostname(hostname)) {
-    return fail("url_internal_hostname_not_allowed", hostname);
+  if (!hostMatchesAllowedDomain(hostname, options.allowedProviderDomains ?? [])) {
+    return fail("url_provider_domain_not_allowed", hostname);
   }
 
   parsed.hash = "";
@@ -124,19 +178,22 @@ export function validateTargetUrl(value: unknown): TargetUrlValidationResult {
   };
 }
 
-export function validateTargetUrlRedirectChain(urls: unknown[]): TargetUrlValidationResult {
+export function validateTargetUrlRedirectChain(
+  urls: unknown[],
+  options: TargetUrlValidationOptions = {},
+): TargetUrlValidationResult {
   if (!Array.isArray(urls) || urls.length === 0) {
     return fail("redirect_chain_required");
   }
 
   for (const url of urls) {
-    const result = validateTargetUrl(url);
+    const result = validateTargetUrl(url, options);
     if (!result.ok) {
       return fail(`redirect_${result.reason ?? "url_invalid"}`, result.hostname);
     }
   }
 
-  return validateTargetUrl(urls[urls.length - 1]);
+  return validateTargetUrl(urls[urls.length - 1], options);
 }
 
 async function defaultResolver(hostname: string) {
@@ -147,8 +204,9 @@ async function defaultResolver(hostname: string) {
 export async function validateTargetUrlWithResolvedIps(
   value: unknown,
   resolver: TargetUrlResolver = defaultResolver,
+  options: TargetUrlValidationOptions = {},
 ): Promise<TargetUrlValidationResult> {
-  const result = validateTargetUrl(value);
+  const result = validateTargetUrl(value, options);
   if (!result.ok || !result.hostname) return result;
 
   if (isIP(result.hostname)) return result;

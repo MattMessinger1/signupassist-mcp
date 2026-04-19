@@ -104,6 +104,7 @@ npx tsc -p tsconfig.app.json --noEmit
 npm run mcp:build
 npm run build
 npm run test:security-mvp
+npm run test:golden-path
 npm run test:authz-audit
 npm run test:chatgpt-app
 npm run test:approval-snapshots
@@ -157,7 +158,9 @@ Frontend required variables include:
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
 
-Treat `VITE_MCP_ACCESS_TOKEN` carefully because Vite exposes it to the browser. Use only low-risk dev/test tokens if it is configured.
+Do not configure `VITE_MCP_ACCESS_TOKEN` in production. Vite exposes `VITE_*`
+values to the browser bundle. Test harness routes are hidden by default and use a
+browser-local temporary token only when explicitly enabled for dev/test.
 
 Supabase functions required variables include:
 
@@ -409,6 +412,7 @@ curl -fsS "https://signupassist.shipworx.ai/identity" | tee "evidence/$RELEASE_I
 npm run test:chatgpt-app 2>&1 | tee "evidence/$RELEASE_ID/test-chatgpt-app.log"
 npm run test:approval-snapshots 2>&1 | tee "evidence/$RELEASE_ID/test-approval-snapshots.log"
 npm run test:security-mvp 2>&1 | tee "evidence/$RELEASE_ID/test-security-mvp.log"
+npm run test:golden-path 2>&1 | tee "evidence/$RELEASE_ID/test-golden-path.log"
 ```
 
 Before sharing evidence, redact:
@@ -434,7 +438,7 @@ Known pre-existing or previously observed issues:
 - Production logs previously showed `user.list_children` falling back because `children.first_name_encrypted` was missing.
 - Production logs previously showed `registrations.create` retrying because `provider_amount_due_cents` was missing, but registration creation recovered.
 - Provider learning persistence to `discovery_runs` is not fully wired; current web path stores provider learning posture in `autopilot_runs.caps.provider_learning`.
-- A dedicated browser-level golden-path suite is not yet checked in.
+- Lightweight golden-path contract tests are checked in under `npm run test:golden-path`. Full screenshot/browser evidence remains a release evidence task because it depends on the deployed app and authenticated test account.
 
 Launch blockers:
 

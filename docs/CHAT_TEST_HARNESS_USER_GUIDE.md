@@ -9,15 +9,20 @@ Navigate to `/chat-test` in your browser:
 http://localhost:5173/chat-test
 ```
 
+The chat test harness is a development-only surface. Production builds hide these
+routes unless `VITE_ENABLE_TEST_ROUTES=true` is deliberately configured.
+
 ### Prerequisites
 
 1. **Set up environment variables** in `.env`:
    ```env
    VITE_MCP_BASE_URL=https://signupassist-mcp-production.up.railway.app
-   VITE_MCP_ACCESS_TOKEN=your-railway-mcp-token-here  # REQUIRED for tool calls
+   VITE_ENABLE_TEST_ROUTES=true
    ```
    
-   **Important**: The `VITE_MCP_ACCESS_TOKEN` is **required** for making tool calls to the MCP server. Without it, login and other operations will fail with "Failed to fetch" errors.
+   **Important**: Do not put MCP bearer tokens in `VITE_*` variables. Vite exposes
+   them to the browser bundle. For local harness work, put a temporary low-risk test
+   token in browser `localStorage` under `signupassist_mcp_test_token`.
    
    To get your Railway MCP access token:
    - Check your Railway dashboard under the MCP server environment variables
@@ -255,16 +260,17 @@ export async function executePayment(
 
 **Solution:**
 1. Verify `VITE_MCP_BASE_URL` points to your Railway deployment
-2. Check `VITE_MCP_ACCESS_TOKEN` is set in `.env` (required!)
-3. Check browser console for connection errors
-4. Ensure Railway MCP server is deployed and running
+2. Confirm test routes are enabled in the dev environment
+3. Confirm browser `localStorage.signupassist_mcp_test_token` contains a temporary test token
+4. Check browser console for connection errors
+5. Ensure Railway MCP server is deployed and running
 
 ### Issue: Login fails with "Failed to fetch" or network errors
 
 **Solution:**
-1. **Most common**: Missing `VITE_MCP_ACCESS_TOKEN` in `.env`
-2. Get the token from your Railway MCP server environment variables
-3. Restart your dev server after adding the token: `npm run dev`
+1. **Most common**: Missing temporary test token in browser `localStorage`
+2. Get a low-risk test token from your Railway MCP server environment variables
+3. Set `localStorage.signupassist_mcp_test_token` in the browser dev console
 4. Test again - the debug logs should show actual responses instead of fetch errors
 
 ### Issue: Login fails with "Invalid credentials"

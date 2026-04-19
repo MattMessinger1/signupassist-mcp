@@ -4,7 +4,19 @@
  */
 
 const MCP_BASE = import.meta.env.VITE_MCP_BASE_URL || 'http://localhost:8080';
-const MCP_TOKEN = import.meta.env.VITE_MCP_ACCESS_TOKEN;
+const TEST_TOKEN_STORAGE_KEY = 'signupassist_mcp_test_token';
+
+function getMcpTestToken(): string | null {
+  if (!import.meta.env.DEV && import.meta.env.VITE_ENABLE_TEST_ROUTES !== 'true') {
+    return null;
+  }
+
+  try {
+    return window.localStorage.getItem(TEST_TOKEN_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
 
 export interface MCPTool {
   name: string;
@@ -51,13 +63,14 @@ export async function callMCPTool(
   args: Record<string, any> = {}
 ): Promise<MCPCallResult> {
   const runId = crypto.randomUUID();
+  const mcpToken = getMcpTestToken();
 
   console.log(`[MCP] ===== TOOL CALL START =====`);
   console.log(`[MCP] Tool: ${toolName}`);
   console.log(`[MCP] Args:`, args);
   console.log(`[MCP] Run ID: ${runId}`);
   console.log(`[MCP] Base URL: ${MCP_BASE}`);
-  console.log(`[MCP] Auth Token: ${MCP_TOKEN ? MCP_TOKEN.slice(0, 4) + '****' : 'MISSING'}`);
+  console.log(`[MCP] Auth Token: ${mcpToken ? mcpToken.slice(0, 4) + '****' : 'MISSING'}`);
 
   try {
     const headers: Record<string, string> = {
@@ -65,9 +78,9 @@ export async function callMCPTool(
       'X-Run-Id': runId,
     };
 
-    if (MCP_TOKEN) {
-      headers['Authorization'] = `Bearer ${MCP_TOKEN}`;
-      console.log(`[MCP] Auth header added: Bearer ${MCP_TOKEN.slice(0, 4)}****`);
+    if (mcpToken) {
+      headers['Authorization'] = `Bearer ${mcpToken}`;
+      console.log(`[MCP] Auth header added: Bearer ${mcpToken.slice(0, 4)}****`);
     } else {
       console.warn('[MCP] WARNING: No auth token configured!');
     }
@@ -175,7 +188,7 @@ export interface MCPHealthCheckResult {
 export async function checkMCPHealth(): Promise<MCPHealthCheckResult> {
   console.log('[MCP Health] ===== STARTING HEALTH CHECK =====');
   console.log('[MCP Health] Base URL:', MCP_BASE);
-  console.log('[MCP Health] Token configured:', !!MCP_TOKEN);
+  console.log('[MCP Health] Token configured:', !!getMcpTestToken());
   
   try {
     // 1. Health endpoint (no auth required)
@@ -228,7 +241,7 @@ export async function checkMCPHealth(): Promise<MCPHealthCheckResult> {
 export async function initializeMCP(): Promise<boolean> {
   console.log('[MCP] Initializing client...');
   console.log('[MCP] Base URL:', MCP_BASE);
-  console.log('[MCP] Token configured:', !!MCP_TOKEN);
+  console.log('[MCP] Token configured:', !!getMcpTestToken());
 
   const tools = await listMCPTools();
   

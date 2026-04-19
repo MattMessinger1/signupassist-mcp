@@ -24,6 +24,8 @@ const result = {
   targetUrl: "https://pps.daysmartrecreation.com/dash/index.php?action=Auth/login&company=keva",
   providerKey: "daysmart",
   providerName: "DaySmart / Dash",
+  confidence: 0.84,
+  sourceFreshness: "Configured provider path",
   ctaLabel: "Set up signup help",
   explanation: "Found a guided signup path.",
 };
@@ -82,6 +84,8 @@ describe("signup intent frontend bridge", () => {
       providerKey: "daysmart",
       providerName: "DaySmart / Dash",
       finderStatus: "guided_autopilot",
+      confidence: 0.84,
+      sourceFreshness: "Configured provider path",
     });
     expect(payload?.parsed?.ageYears).toBe(9);
   });

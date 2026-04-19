@@ -41,13 +41,15 @@ export const ENV_DEFINITIONS: EnvDefinition[] = [
     targets: { local: "recommended", frontend: "required" },
   },
   {
-    name: "VITE_MCP_ACCESS_TOKEN",
+    name: "VITE_ENABLE_TEST_ROUTES",
     category: "Frontend MCP",
-    description: "MCP access token exposed to local/test frontend builds that call protected MCP endpoints.",
-    secret: true,
-    example: "dev-mcp-token",
-    targets: { local: "recommended", frontend: "recommended" },
-    notes: ["Only expose a low-risk dev/test token in browser builds."],
+    description: "Enables local/dev-only chat and MCP test harness routes. Keep unset in production.",
+    example: "false",
+    targets: { local: "optional", frontend: "optional" },
+    notes: [
+      "Do not expose MCP bearer tokens through VITE_* env vars.",
+      "When test routes are deliberately enabled, the chat harness reads a temporary token from browser localStorage.",
+    ],
   },
   {
     name: "MCP_SERVER_URL",

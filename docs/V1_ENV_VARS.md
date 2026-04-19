@@ -25,7 +25,11 @@ There are **two processes** in production:
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
 - `VITE_MCP_BASE_URL`
-- `VITE_MCP_ACCESS_TOKEN`
+
+Do not set bearer tokens with a `VITE_` prefix in production. Vite exposes `VITE_*`
+values to the browser bundle. The legacy chat/test harness now reads any MCP test
+token from browser `localStorage` and is hidden unless test routes are explicitly
+enabled.
 
 ---
 
@@ -50,7 +54,9 @@ Optional but recommended:
 
 ## Required for Stripe success fee (web + worker)
 
-You charge the **$20 success fee** via Stripe, only after booking success.
+The **$20 success fee** path remains paused unless the sensitive-action payment
+gates are explicitly enabled and verified. Stripe setup/payment metadata must stay
+server-side.
 
 The exact Stripe env vars depend on your edge function configuration, but typically:
 - `STRIPE_SECRET_KEY` (or equivalent used by your Supabase edge functions)

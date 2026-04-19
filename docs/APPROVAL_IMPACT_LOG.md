@@ -1002,6 +1002,52 @@ Verification results for this docs-only phase:
 - `npm run test:mcp-descriptors`: Passed.
 - `git diff --check`: Passed.
 
+## 2026-04-19 - Web Ship UX And Audit Redaction Polish
+
+Files changed in this phase:
+
+- `mcp_server/lib/activityFinder.ts`
+- `src/lib/activityFinder.ts`
+- `src/lib/signupIntent.ts`
+- `src/pages/Autopilot.tsx`
+- `src/pages/MandatesAudit.tsx`
+- `tests/autopilot-wizard-ui.test.ts`
+- `tests/signup-intent-frontend.test.ts`
+- `tests/mandates-audit-redaction.test.ts`
+- `mcp_server/lib/activityFinder.test.ts`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: No.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Changes:
+
+- Added confidence, freshness, age-fit, provider-readiness, and missing-detail metadata to Activity Finder results and preserved confidence/freshness into the server-side signup intent payload.
+- Prevented duplicate supervised-run creation after Autopilot has already created a run packet; both the review card and sticky footer now send parents to the dashboard after success.
+- Stopped Mandates Audit from fetching or rendering raw mandate JWS tokens.
+- Removed visible credential identifiers and raw metadata from Mandates Audit; visible metadata now runs through recursive redaction before display.
+- Hid Mandates Audit testing tools in production unless `VITE_ENABLE_AUDIT_TEST_TOOLS=true`.
+- Left direct provider-learning persistence unwired because the existing `upsert_discovery_run` RPC is `SECURITY DEFINER`; client-side wiring would widen write risk. Redacted observations remain stored inside the supervised run packet for server-mediated ingestion later.
+
+Verification results for this phase:
+
+- `npx vitest run tests/mandates-audit-redaction.test.ts tests/autopilot-wizard-ui.test.ts tests/signup-intent-frontend.test.ts mcp_server/lib/activityFinder.test.ts --reporter=verbose`: Passed.
+- `npm run typecheck`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npm run test:security-mvp`: Passed.
+- `npm run test:chatgpt-app`: Passed.
+
 ## 2026-04-18 - Production Readiness Evidence Sweep
 
 Files changed in this phase:
@@ -1354,3 +1400,277 @@ Verification results for this phase:
 - `npm run test:mcp-descriptors`: Passed.
 - `git diff --check`: Passed.
 - `npm run test -- --reporter=verbose`: Policy-surface tests passed; local run then failed on `tests/telemetryDebugAccess.integration.test.ts` because local debug telemetry returned 200 while disabled. This is outside the policy-surface fix and was not the PR 103 CI failure.
+
+## 2026-04-19 - Web Ship P0 Approval And Production Surface Hardening
+
+Files changed in this phase:
+
+- `mcp_server/index.ts`
+- `package.production.json`
+- `scripts/chatgptAppGuardrails.ts`
+- `scripts/infraCheck.ts`
+- `tests/publicSpecSafety.test.ts`
+- `tests/infra-platform.test.ts`
+- `docs/SCHEDULED_REGISTRATION_WORKER_RUNBOOK.md`
+- `docs/INFRA_RUNBOOK.md`
+- `docs/approval-snapshots/chatgpt-app-approval.snapshot.json`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: Yes, `mcp_server/index.ts` and approval snapshots changed intentionally to remove a legacy public `/tools` leak and fail closed for disabled debug telemetry.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No. The legacy HTTP `GET /tools` helper now returns only public tool summaries.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Changes:
+
+- Reused a single visible-tool descriptor helper for MCP discovery paths and the legacy HTTP `GET /tools` route.
+- Filtered the legacy `GET /tools` route to public tool summaries only, preventing private/internal provider tools from being listed.
+- Made disabled `/debug/telemetry` routes return explicit JSON 404 instead of falling through to the SPA shell.
+- Added production `start` and `worker:scheduled` scripts to `package.production.json`.
+- Updated Railway/worker docs to state current supervised MVP behavior: scheduled work pauses before provider submit, payment, waivers, provider login, and final submit.
+- Extended infra and public-surface tests to catch production script drift, `/tools` leaks, and telemetry fallback regressions.
+
+Verification results for this phase:
+
+- `npm run mcp:build`: Passed.
+- `npx vitest run tests/publicSpecSafety.test.ts tests/infra-platform.test.ts tests/telemetryDebugAccess.integration.test.ts --reporter=verbose`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `npm run test:approval-snapshots`: Passed after intentional snapshot update for `mcp_server/index.ts`.
+- `npm run test:chatgpt-app`: Passed.
+- `npm run infra:check`: Passed with local env warnings only.
+- `npm run typecheck`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `git diff --check`: Passed.
+
+## 2026-04-19 - Web Ship P0 Sensitive Action Gate Lockdown
+
+Files changed in this phase:
+
+- `supabase/migrations/20260419170000_lock_sensitive_action_gates.sql`
+- `supabase/functions/mcp-executor/index.ts`
+- `supabase/functions/mandate-issue-v2/index.ts`
+- `mcp_server/providers/stripe.ts`
+- `mcp_server/ai/APIOrchestrator.ts`
+- `tests/sensitive-action-contract.test.ts`
+- `docs/approval-snapshots/chatgpt-app-approval.snapshot.json`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: Yes, `mcp_server/ai/APIOrchestrator.ts`, `mcp_server/providers/stripe.ts`, and the approval snapshot changed intentionally.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Changes:
+
+- Added a follow-on Supabase migration that removes authenticated client create/update/delete policies for `parent_action_confirmations` and `agent_delegation_mandates`; trusted server/service-role code remains the write path.
+- Blocked direct `mcp-executor` calls to Bookeo write tools (`create_hold`, `confirm_booking`, and `cancel_booking`) with a `paused_for_parent` response unless a future server-gated executor path is added.
+- Redacted direct executor request/tool logs before logging sensitive fields such as credentials, payment data, phone/email, delegate, participant, and date-of-birth data.
+- Tightened `mandate-issue-v2` credential lookup to the exact credential/user/provider tuple, stopped logging raw credential query results, and ignored client-supplied mandate JWS values.
+- Paused MCP-server success-fee charging by default behind `ENABLE_MCP_SUCCESS_FEE_CHARGE=true` and updated final receipt copy/registration metadata so it does not claim SignupAssist charged a success fee when the charge was intentionally paused.
+- Expanded sensitive-action contract tests for RLS lock-down, direct executor bypass prevention, mandate credential trust boundaries, paused success-fee payment, and honest receipt copy.
+
+Verification results for this phase:
+
+- `npx vitest run tests/sensitive-action-contract.test.ts tests/sensitive-action-gates.test.ts --reporter=verbose`: Passed.
+- `npm run typecheck`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npm run test:chatgpt-app`: Passed after intentional approval snapshot update.
+- `npm run test:approval-snapshots`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `npm run test:security-mvp`: Passed.
+- `npm run test:authz-audit`: Passed.
+- `git diff --check`: Passed.
+
+## 2026-04-19 - Web Ship Security Tightening
+
+Files changed in this phase:
+
+- `mcp_server/lib/targetUrlSafety.ts`
+- `mcp_server/index.ts`
+- `tests/security-mvp.test.ts`
+- `tests/fixtures/security/provider-prompt-injection.html`
+- `docs/approval-snapshots/chatgpt-app-approval.snapshot.json`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: Yes, `mcp_server/index.ts` and the approval snapshot changed intentionally for Activity Finder CORS/rate-limit handling.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Changes:
+
+- Tightened shared target URL validation so production HTTP target URLs fail with `url_https_required`, while explicit non-production options can allow HTTP/local development targets.
+- Added optional provider-domain allowlist validation to the shared target URL validator.
+- Added Activity Finder search to the shared endpoint-specific rate-limit block.
+- Routed Activity Finder search responses and preflight through shared CORS/security header helpers.
+- Expanded provider prompt-injection coverage to include provider-login/credential instructions.
+
+Verification results for this phase:
+
+- `npm run test:security-mvp`: Passed.
+- `npm run typecheck`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npm run test:chatgpt-app`: Passed after intentional approval snapshot update.
+- `npm run test:approval-snapshots`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `git diff --check`: Passed.
+
+## 2026-04-19 - Web Ship Golden Path And Release Evidence
+
+Files changed in this phase:
+
+- `package.json`
+- `tests/web-authenticated-golden-path.test.ts`
+- `docs/SHIP_CHECKLIST.md`
+- `docs/SIGNUPASSIST_PRODUCTION_RUNBOOK.md`
+- `docs/RELEASE_NOTES_MVP.md`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: No.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Changes:
+
+- Added `npm run test:golden-path` for the web Activity Finder to Autopilot to Dashboard contract tests.
+- Added `npm run test:chatgpt-golden-path` as a named wrapper around the existing ChatGPT app guardrail matrix.
+- Extended the authenticated web golden-path contract to assert Activity Finder confidence and source-freshness metadata survives the secure signup-intent handoff.
+- Added release checklist evidence requirements for desktop/mobile browser proof, intent-only URLs, redacted audit/mandate views, and redacted DB evidence.
+- Added MVP release notes covering shipped surfaces, intentionally paused automation, required environment, migration steps, smoke tests, rollback, and known limitations.
+
+Verification results for this phase:
+
+- `npm run test:golden-path`: Passed.
+- `npm run test:chatgpt-golden-path`: Passed.
+- `npm run test:security-mvp`: Passed.
+
+## 2026-04-19 - Final Web Ship Hardening Blocker Fixes
+
+Files changed in this phase:
+
+- `.env.example`
+- `RAILWAY_DEPLOY.md`
+- `docs/CHAT_TEST_HARNESS_USER_GUIDE.md`
+- `docs/INFRA_RUNBOOK.md`
+- `docs/RELEASE_NOTES_MVP.md`
+- `docs/SHIP_CHECKLIST.md`
+- `docs/SIGNUPASSIST_PRODUCTION_RUNBOOK.md`
+- `docs/V1_ENV_VARS.md`
+- `docs/approval-snapshots/chatgpt-app-approval.snapshot.json`
+- `mcp/openapi.json`
+- `mcp_server/index.ts`
+- `mcp_server/lib/activityFinder.ts`
+- `package.json`
+- `scripts/envRegistry.ts`
+- `src/App.tsx`
+- `src/components/Header.tsx`
+- `src/lib/chatMcpClient.ts`
+- `src/lib/featureFlags.ts`
+- `src/lib/prompts.ts`
+- `src/pages/Autopilot.tsx`
+- `src/pages/ChatTestHarness.README.md`
+- `src/pages/DiscoveryRuns.tsx`
+- `src/pages/MandatesAudit.tsx`
+- `src/pages/PlanBuilder.tsx`
+- `src/pages/RegistrationDashboard.tsx`
+- `supabase/config.toml`
+- `supabase/functions/create-system-mandate/index.ts`
+- `supabase/functions/mcp-executor/index.ts`
+- `supabase/functions/run-plan/index.ts`
+- `supabase/functions/stripe-refund-success-fee/index.ts`
+- `supabase/migrations/20260417110000_add_signup_intents.sql`
+- `supabase/migrations/20260417140000_add_sensitive_action_gates.sql`
+- `supabase/migrations/20260419183000_lock_provider_learning_and_audit_events.sql`
+- `tests/mandates-audit-redaction.test.ts`
+- `tests/publicSpecSafety.test.ts`
+- `tests/security-mvp.test.ts`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: Yes, `mcp/openapi.json`, `mcp_server/index.ts`, and the approval snapshot changed intentionally.
+- Public MCP tool names changed: No.
+- Public MCP schemas changed: No.
+- Public MCP descriptors changed: Yes, public descriptors now include per-tool `securitySchemes` to make unauthenticated search vs OAuth-gated registration explicit.
+- Public MCP annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Changes:
+
+- Marked `/orchestrator/chat` / `register_for_activity` as consequential in the public OpenAPI contract, matching live booking/payment-review posture.
+- Added per-tool descriptor security schemes: `search_activities` is no-auth read-only; `register_for_activity` is OAuth-gated.
+- Prevented production `/orchestrator/chat` from accepting caller-supplied `user_id` fallback unless explicit local harness mode is enabled.
+- Hid legacy web test harness routes and chat navigation unless test routes are explicitly enabled.
+- Removed frontend `VITE_MCP_ACCESS_TOKEN` usage and documented that MCP bearer tokens must not live in production `VITE_*` variables.
+- Tightened Autopilot external provider URLs to public HTTPS in production and blocked private/local/credentialed hosts.
+- Locked raw provider-learning discovery tables/RPCs and signup-intent event inserts behind service/admin mediation.
+- Made `create-system-mandate` JWT-verified, disabled by default, user-bound, scope-limited, and short-lived.
+- Added user ownership checks to success-fee refunds, run-plan legacy paths, and MCP executor plan execution.
+- Added confirmation consumption verification so already-consumed/raced confirmations fail closed.
+- Softened web copy around supervised runs and future delegation.
+
+Verification results for this phase:
+
+- `npm run typecheck`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npm run build`: Passed with existing Vite chunk-size/dynamic-import warnings.
+- `npm run test:security-mvp`: Passed.
+- `npm run test:authz-audit`: Passed.
+- `npm run test:golden-path`: Passed.
+- `npm run test:chatgpt-golden-path`: Passed.
+- `npm run test:chatgpt-app`: Passed.
+- `npm run test:approval-snapshots`: Passed after intentional snapshot update.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `npm run env:check`: Passed in advisory mode with 0 required missing and 12 recommended local env warnings.
+- `npm run infra:check`: Passed with 31 ok, 3 local env warnings, and 0 failures.
+- `npm run predeploy:release`: Passed.
+- `npm run test -- --reporter=verbose`: Passed; 42 files passed, 4 skipped, 241 tests passed, 20 skipped.
+- Targeted lint over newly hardened web/security files: Passed.
+- `npm run lint`: Failed on broad pre-existing lint debt (`no-explicit-any`, parser error in `evals/index.ts`, hook warnings, and related repo-wide issues); not classified as a launch blocker for this phase because typecheck/build/tests/predeploy passed and the failures are outside the newly hardened subset.
+- `git diff --check`: Passed.

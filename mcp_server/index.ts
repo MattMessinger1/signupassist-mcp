@@ -475,6 +475,18 @@ const CHATGPT_APPS_V1_META = {
   "openai/toolInvocation/invoked": "Done."
 };
 
+const CHATGPT_NOAUTH_SECURITY_SCHEMES = [{ type: "noauth" }];
+const CHATGPT_OAUTH_SECURITY_SCHEMES = [{
+  type: "oauth2",
+  scopes: ["openid", "profile", "email"],
+}];
+
+function securitySchemesForTool(toolName: string) {
+  return toolName === "search_activities"
+    ? CHATGPT_NOAUTH_SECURITY_SCHEMES
+    : CHATGPT_OAUTH_SECURITY_SCHEMES;
+}
+
 // V1 App Store posture: keep public surface small + mostly read-only.
 // Allow Stripe "setup" flow to remain public (hosted Stripe checkout link), but keep write/execute tools private.
 function v1VisibilityForTool(toolName: string, toolMeta: Record<string, any> = {}): "public" | "private" {
@@ -491,6 +503,30 @@ function v1VisibilityForTool(toolName: string, toolMeta: Record<string, any> = {
   if (toolName === "register_for_activity") return "public";
   if (toolName === "search_activities") return "public";
   return "private";
+}
+
+function getVisibleToolDescriptors(tools: Iterable<any>, includePrivate = false) {
+  const apiTools = Array.from(tools)
+    .filter((tool) => includePrivate || tool?._meta?.["openai/visibility"] !== "private")
+    .map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema,
+      securitySchemes: tool.securitySchemes ?? securitySchemesForTool(tool.name),
+      annotations: tool.annotations,
+      _meta: tool._meta,
+    }));
+
+  return includePrivate
+    ? apiTools
+    : apiTools.filter((tool) => tool._meta?.["openai/visibility"] === "public");
+}
+
+function getPublicHttpToolSummary(tools: Iterable<any>) {
+  return getVisibleToolDescriptors(tools, false).map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+  }));
 }
 
 // Wizard-style progress strings (no widget needed)
@@ -686,6 +722,7 @@ import { isIP } from 'node:net';
 import crypto from 'crypto';
 import { consumeRateLimit, getStableRateLimitKey } from './lib/rateLimit.js';
 import { sanitizeForLogs } from './utils/sanitization.js';
+import { corsHeadersForRequest, writeJson } from './lib/httpSecurity.js';
 
 // ✅ Fix for ESM __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -854,20 +891,8 @@ class SignupAssistMCPServer {
       // We still register private tools internally, but we do NOT list them to ChatGPT.
       const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
 
-      const apiTools = Array.from(this.tools.values())
-        .filter((tool) => tool?._meta?.["openai/visibility"] !== "private")
-        .map(tool => ({
-          name: tool.name,
-          description: tool.description,
-          inputSchema: tool.inputSchema,
-          annotations: tool.annotations,
-          _meta: tool._meta,
-        }));
-
       // Default: only return publicly-visible tools (reduces model confusion and enforces SSoT via register_for_activity).
-      const visibleTools = includePrivate
-        ? apiTools
-        : apiTools.filter(t => t._meta?.["openai/visibility"] === "public");
+      const visibleTools = getVisibleToolDescriptors(this.tools.values(), includePrivate);
 
       console.log(
         `[MCP] ListTools returning ${visibleTools.length} tools (${includePrivate ? "all" : "public-only"}):`,
@@ -902,8 +927,10 @@ class SignupAssistMCPServer {
         inputSchema: tool.inputSchema,
         handler: tool.handler,
         annotations: (tool as any).annotations,
+        securitySchemes: securitySchemesForTool(tool.name),
         _meta: {
           ...CHATGPT_APPS_V1_META,
+          securitySchemes: securitySchemesForTool(tool.name),
           ...((tool as any)._meta || {}),
           ...applyV1Visibility(tool.name, ((tool as any)._meta || {})),
           ...applyWizardMeta(tool.name)
@@ -1224,8 +1251,10 @@ class SignupAssistMCPServer {
         openWorldHint: false,
         destructiveHint: false,
       },
+      securitySchemes: securitySchemesForTool("search_activities"),
       _meta: {
         ...CHATGPT_APPS_V1_META,
+        securitySchemes: securitySchemesForTool("search_activities"),
         "openai/safety": "read-only",
         ...applyV1Visibility("search_activities", { "openai/safety": "read-only" }),
         ...applyWizardMeta("search_activities")
@@ -1379,8 +1408,10 @@ class SignupAssistMCPServer {
         destructiveHint: true,
         openWorldHint: false,
       },
+      securitySchemes: securitySchemesForTool("register_for_activity"),
       _meta: {
         ...CHATGPT_APPS_V1_META,
+        securitySchemes: securitySchemesForTool("register_for_activity"),
         "openai/safety": "write",
         ...applyV1Visibility("register_for_activity", { "openai/safety": "write" }),
         ...applyWizardMeta("register_for_activity")
@@ -1669,6 +1700,11 @@ class SignupAssistMCPServer {
           // OAuth token exchanges may be bursty; keep a high default to avoid false positives.
           const max = Number(process.env.RATE_LIMIT_OAUTH_TOKEN_MAX || 2000);
           const { allowed, retryAfterSec } = consumeRateLimit(`${key}:oauth_token`, Number.isFinite(max) ? max : 2000, window);
+          if (!allowed) return respond429(retryAfterSec);
+        }
+        if (pathname === '/api/activity-finder/search' && method === 'POST') {
+          const max = Number(process.env.RATE_LIMIT_ACTIVITY_FINDER_MAX || 120);
+          const { allowed, retryAfterSec } = consumeRateLimit(`${key}:activity_finder_search`, Number.isFinite(max) ? max : 120, window);
           if (!allowed) return respond429(retryAfterSec);
         }
       }
@@ -2523,18 +2559,7 @@ class SignupAssistMCPServer {
 
               if (methodName === 'tools/list') {
                 const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
-                const apiTools = Array.from(this.tools.values())
-                  .filter((tool) => tool?._meta?.["openai/visibility"] !== "private")
-                  .map((tool) => ({
-                    name: tool.name,
-                    description: tool.description,
-                    inputSchema: tool.inputSchema,
-                    annotations: tool.annotations,
-                    _meta: tool._meta,
-                  }));
-                const visibleTools = includePrivate
-                  ? apiTools
-                  : apiTools.filter((t) => t._meta?.["openai/visibility"] === "public");
+                const visibleTools = getVisibleToolDescriptors(this.tools.values(), includePrivate);
 
                 console.log(
                   `[MCP] /sse discovery tools/list (HTTP 200) returning ${visibleTools.length} tools (${includePrivate ? "all" : "public-only"}):`,
@@ -2897,18 +2922,7 @@ class SignupAssistMCPServer {
           // even if the client never sends a follow-up POST /messages.
           try {
             const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
-            const apiTools = Array.from(this.tools.values())
-              .filter((tool) => tool?._meta?.["openai/visibility"] !== "private")
-              .map((tool) => ({
-                name: tool.name,
-                description: tool.description,
-                inputSchema: tool.inputSchema,
-                annotations: tool.annotations,
-                _meta: tool._meta,
-              }));
-            const visibleTools = includePrivate
-              ? apiTools
-              : apiTools.filter((t) => t._meta?.["openai/visibility"] === "public");
+            const visibleTools = getVisibleToolDescriptors(this.tools.values(), includePrivate);
 
             const msg = {
               jsonrpc: '2.0',
@@ -3016,19 +3030,7 @@ class SignupAssistMCPServer {
           if (isDiscoveryCall) {
             if (methodName === 'tools/list') {
               const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
-              const apiTools = Array.from(this.tools.values())
-                .filter((tool) => tool?._meta?.["openai/visibility"] !== "private")
-                .map((tool) => ({
-                  name: tool.name,
-                  description: tool.description,
-                  inputSchema: tool.inputSchema,
-                  annotations: tool.annotations,
-                  _meta: tool._meta,
-                }));
-
-              const visibleTools = includePrivate
-                ? apiTools
-                : apiTools.filter((t) => t._meta?.["openai/visibility"] === "public");
+              const visibleTools = getVisibleToolDescriptors(this.tools.values(), includePrivate);
 
               console.log(
                 `[MCP] /messages discovery tools/list (HTTP 200) returning ${visibleTools.length} tools (${includePrivate ? "all" : "public-only"}):`,
@@ -3193,18 +3195,7 @@ class SignupAssistMCPServer {
             // in the HTTP response so clients don't need a live SSE stream to refresh actions.
             if (methodName === 'tools/list') {
               const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
-              const apiTools = Array.from(this.tools.values())
-                .filter((tool) => tool?._meta?.["openai/visibility"] !== "private")
-                .map((tool) => ({
-                  name: tool.name,
-                  description: tool.description,
-                  inputSchema: tool.inputSchema,
-                  annotations: tool.annotations,
-                  _meta: tool._meta,
-                }));
-              const visibleTools = includePrivate
-                ? apiTools
-                : apiTools.filter((t) => t._meta?.["openai/visibility"] === "public");
+              const visibleTools = getVisibleToolDescriptors(this.tools.values(), includePrivate);
 
               console.log(
                 `[MCP] /messages fallback tools/list (no transport) returning ${visibleTools.length} tools (${includePrivate ? "all" : "public-only"}):`,
@@ -3365,6 +3356,12 @@ class SignupAssistMCPServer {
       if (telemetryDebugEnabled && isTelemetryDebugRoute && !isAuthorizedForTelemetryDebug(req)) {
         res.writeHead(403, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: false, error: 'forbidden' }));
+        return;
+      }
+
+      if (!telemetryDebugEnabled && isTelemetryDebugRoute) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'not_found' }));
         return;
       }
 
@@ -3802,18 +3799,7 @@ class SignupAssistMCPServer {
 
         if (methodName === 'tools/list') {
           const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
-          const apiTools = Array.from(this.tools.values())
-            .filter((tool) => tool?._meta?.["openai/visibility"] !== "private")
-            .map((tool) => ({
-              name: tool.name,
-              description: tool.description,
-              inputSchema: tool.inputSchema,
-              annotations: tool.annotations,
-              _meta: tool._meta,
-            }));
-          const visibleTools = includePrivate
-            ? apiTools
-            : apiTools.filter((t) => t._meta?.["openai/visibility"] === "public");
+          const visibleTools = getVisibleToolDescriptors(this.tools.values(), includePrivate);
 
           console.log(
             `[MCP] POST /mcp tools/list returning ${visibleTools.length} tools:`,
@@ -4292,13 +4278,13 @@ class SignupAssistMCPServer {
 
       // --- List tools
       if (req.method === 'GET' && url.pathname === '/tools') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.writeHead(200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+        });
         res.end(
           JSON.stringify({
-            tools: Array.from(this.tools.values()).map((t) => ({
-              name: t.name,
-              description: t.description,
-            })),
+            tools: getPublicHttpToolSummary(this.tools.values()),
           })
         );
         return;
@@ -4541,9 +4527,14 @@ class SignupAssistMCPServer {
 
       // --- Parent-facing Activity Finder
       if (url.pathname === '/api/activity-finder/search') {
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204, corsHeadersForRequest(req));
+          res.end();
+          return;
+        }
+
         if (req.method !== 'POST') {
-          res.writeHead(405, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Only POST supported' }));
+          writeJson(req, res, 405, { error: 'method_not_allowed', message: 'Only POST supported' });
           return;
         }
 
@@ -4555,8 +4546,7 @@ class SignupAssistMCPServer {
             const query = String(parsedBody.query || '').trim();
 
             if (!query) {
-              res.writeHead(400, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: 'query_required' }));
+              writeJson(req, res, 400, { error: 'query_required' });
               return;
             }
 
@@ -4587,15 +4577,10 @@ class SignupAssistMCPServer {
               { supabase },
             );
 
-            res.writeHead(200, {
-              'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*',
-            });
-            res.end(JSON.stringify(result));
+            writeJson(req, res, 200, result);
           } catch (err: any) {
             console.error('[ActivityFinder] Error:', err?.message || err);
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'activity_finder_failed' }));
+            writeJson(req, res, 500, { error: 'activity_finder_failed' });
           }
         });
         return;
@@ -4777,8 +4762,13 @@ class SignupAssistMCPServer {
               }
             }
             
-            // Test harness fallback: Accept user_id from body (only if no valid Auth0 token)
-            if (!authenticatedUserId && user_id) {
+            // Test harness fallback: Accept user_id from body only outside production
+            // or when an explicit local harness flag is enabled. Never let a
+            // caller-supplied user_id satisfy protected-action auth in production.
+            const allowBodyUserId =
+              process.env.NODE_ENV !== 'production' ||
+              process.env.ALLOW_ORCHESTRATOR_TEST_USER_ID === 'true';
+            if (!authenticatedUserId && user_id && allowBodyUserId) {
               authenticatedUserId = user_id;
               authSource = 'test_harness';
               console.log('[AUTH] Using test harness user_id:', authenticatedUserId);

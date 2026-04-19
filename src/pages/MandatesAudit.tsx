@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -23,6 +23,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { AuditTrailTimeline, type AuditEvent as TimelineEvent } from '@/components/AuditTrailTimeline';
 import { mapToolNameToUserTitle, mapScopeToFriendly } from '@/copy/signupassistCopy';
+import { isSensitiveRedactionKey } from '@/lib/redactionKeys';
+
+type JsonRecord = Record<string, unknown>;
+type SortBy = 'date' | 'action' | 'provider';
 
 interface Mandate {
   id: string;
@@ -34,7 +38,6 @@ interface Mandate {
   valid_until: string;
   status: string;
   created_at: string;
-  jws_compact: string;
 }
 
 interface AuditEvent {
@@ -45,7 +48,7 @@ interface AuditEvent {
   created_at: string;
   started_at: string;
   finished_at: string | null;
-  details: any;
+  details?: unknown;
   result: string | null;
   // New fields for enhanced audit trail
   args_hash: string | null;
@@ -60,13 +63,12 @@ interface MandateAuditLog {
   provider: string | null;
   org_ref: string | null;
   program_ref: string | null;
-  credential_id: string | null;
-  metadata: any;
+  metadata: unknown;
   created_at: string;
 }
 
 export default function MandatesAudit() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [mandates, setMandates] = useState<Mandate[]>([]);
   const [auditEvents, setAuditEvents] = useState<Record<string, AuditEvent[]>>({});
@@ -78,19 +80,14 @@ export default function MandatesAudit() {
   const [searchQuery, setSearchQuery] = useState('');
   const [actionFilter, setActionFilter] = useState<string>('all');
   const [providerFilter, setProviderFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<'date' | 'action' | 'provider'>('date');
+  const [sortBy, setSortBy] = useState<SortBy>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const testToolsEnabled =
+    import.meta.env.DEV || import.meta.env.VITE_ENABLE_AUDIT_TEST_TOOLS === 'true';
 
-  useEffect(() => {
-    if (!user) {
-      navigate('/auth');
-      return;
-    }
+  const fetchMandatesAndAudits = useCallback(async () => {
+    if (!user) return;
 
-    fetchMandatesAndAudits();
-  }, [user, navigate]);
-
-  const fetchMandatesAndAudits = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -98,7 +95,7 @@ export default function MandatesAudit() {
       // Fetch mandates
       const { data: mandatesData, error: mandatesError } = await supabase
         .from('mandates')
-        .select('*')
+        .select('id, provider, program_ref, scope, max_amount_cents, valid_from, valid_until, status, created_at')
         .eq('user_id', user!.id)
         .order('created_at', { ascending: false });
 
@@ -111,7 +108,7 @@ export default function MandatesAudit() {
       if (mandateIds.length > 0) {
         const { data: eventsData, error: eventsError } = await supabase
           .from('audit_events')
-          .select('*')
+          .select('id, event_type, tool, decision, created_at, started_at, finished_at, result, args_hash, result_hash, mandate_id')
           .in('mandate_id', mandateIds)
           .order('created_at', { ascending: false });
 
@@ -131,7 +128,7 @@ export default function MandatesAudit() {
       // PHASE 4: Fetch mandate_audit logs
       const { data: auditLogsData, error: auditLogsError } = await supabase
         .from('mandate_audit')
-        .select('*')
+        .select('id, user_id, action, provider, org_ref, program_ref, metadata, created_at')
         .eq('user_id', user!.id)
         .order('created_at', { ascending: false });
 
@@ -146,7 +143,17 @@ export default function MandatesAudit() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
+
+    void fetchMandatesAndAudits();
+  }, [authLoading, fetchMandatesAndAudits, navigate, user]);
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -194,8 +201,7 @@ export default function MandatesAudit() {
         log.action.toLowerCase().includes(query) ||
         log.provider?.toLowerCase().includes(query) ||
         log.org_ref?.toLowerCase().includes(query) ||
-        log.program_ref?.toLowerCase().includes(query) ||
-        log.credential_id?.toLowerCase().includes(query)
+        log.program_ref?.toLowerCase().includes(query)
       );
     }
 
@@ -243,7 +249,35 @@ export default function MandatesAudit() {
     setSortOrder('desc');
   };
 
-  if (loading) {
+  const redactAuditString = (value: string): string => {
+    if (value.length > 300) return '[redacted long value]';
+    if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(value)) return '[redacted]';
+    if (/\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/.test(value)) return '[redacted]';
+    if (/\b\d{13,19}\b/.test(value)) return '[redacted]';
+    if (/\b(?:\d{1,2}[/-]){2}\d{2,4}\b/.test(value)) return '[redacted]';
+    if (/\b\d{5}(?:-\d{4})?\b/.test(value) && /\b(?:street|st\.?|avenue|ave\.?|road|rd\.?|drive|dr\.?|lane|ln\.?|boulevard|blvd\.?)\b/i.test(value)) {
+      return '[redacted]';
+    }
+    if (/(password|token|secret|credential|card|cvv|cvc|medical|allerg|diagnos|waiver|signature)/i.test(value)) return '[redacted]';
+    return value;
+  };
+
+  const redactAuditMetadata = (value: unknown): unknown => {
+    if (Array.isArray(value)) return value.map((item) => redactAuditMetadata(item));
+    if (!value || typeof value !== 'object') {
+      if (typeof value === 'string') return redactAuditString(value);
+      return value;
+    }
+
+    return Object.fromEntries(
+      Object.entries(value as JsonRecord).map(([key, nested]) => [
+        key,
+        isSensitiveRedactionKey(key) ? '[redacted]' : redactAuditMetadata(nested),
+      ]),
+    );
+  };
+
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen flex flex-col">
         <Header />
@@ -268,10 +302,10 @@ export default function MandatesAudit() {
           </div>
 
           <Tabs defaultValue="mandates" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className={`grid w-full ${testToolsEnabled ? 'grid-cols-3' : 'grid-cols-2'}`}>
               <TabsTrigger value="mandates">Mandates</TabsTrigger>
               <TabsTrigger value="audit-trail">Audit Trail</TabsTrigger>
-              <TabsTrigger value="testing">Testing Tools</TabsTrigger>
+              {testToolsEnabled && <TabsTrigger value="testing">Testing Tools</TabsTrigger>}
             </TabsList>
 
             <TabsContent value="mandates" className="space-y-4 mt-6">
@@ -305,21 +339,9 @@ export default function MandatesAudit() {
                             <Shield className="h-5 w-5" />
                             {mandate.provider} Mandate
                           </CardTitle>
-                          {/* Tier badge - check metadata for mandate_tier */}
-                          {(mandate as any).metadata?.mandate_tier && (
-                            <Badge 
-                              variant={(mandate as any).metadata.mandate_tier === 'discovery' ? 'secondary' : 'default'}
-                            >
-                              {(mandate as any).metadata.mandate_tier === 'discovery' 
-                                ? '🔍 Discovery' 
-                                : '⚡ Execution'}
-                            </Badge>
-                          )}
                         </div>
                         <CardDescription>
-                          {(mandate as any).metadata?.mandate_tier === 'discovery' 
-                            ? 'Browse programs and check prerequisites'
-                            : mandate.program_ref 
+                          {mandate.program_ref
                             ? `Register for ${mandate.program_ref}`
                             : 'Execution mandate'}
                         </CardDescription>
@@ -365,20 +387,6 @@ export default function MandatesAudit() {
                     </div>
 
                     <Accordion type="single" collapsible className="w-full">
-                      <AccordionItem value="jws">
-                        <AccordionTrigger className="text-sm">
-                          <div className="flex items-center gap-2">
-                            <FileText className="h-4 w-4" />
-                            View JWS Token
-                          </div>
-                        </AccordionTrigger>
-                        <AccordionContent>
-                          <pre className="text-xs bg-muted p-3 rounded overflow-x-auto">
-                            {mandate.jws_compact}
-                          </pre>
-                        </AccordionContent>
-                      </AccordionItem>
-
                       {auditEvents[mandate.id]?.length > 0 && (
                         <AccordionItem value="audit">
                           <AccordionTrigger className="text-sm">
@@ -400,8 +408,6 @@ export default function MandatesAudit() {
                                 // Include integrity hashes
                                 argsHash: event.args_hash || undefined,
                                 resultHash: event.result_hash || undefined,
-                                // Include mandate JWS for viewer
-                                mandateJws: mandate.jws_compact,
                                 technical: {
                                   ...(event.tool && { tool: event.tool }),
                                   ...(event.decision && { decision: event.decision }),
@@ -489,7 +495,7 @@ export default function MandatesAudit() {
 
                           {/* Sort By */}
                           <div className="flex gap-2">
-                            <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
+                            <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortBy)}>
                               <SelectTrigger className="flex-1">
                                 <SelectValue placeholder="Sort by" />
                               </SelectTrigger>
@@ -566,18 +572,13 @@ export default function MandatesAudit() {
                               {log.program_ref}
                             </div>
                           )}
-                          {log.credential_id && (
-                            <div className="text-xs text-muted-foreground">
-                              Credential ID: {log.credential_id}
-                            </div>
-                          )}
                           {log.metadata && Object.keys(log.metadata).length > 0 && (
                             <details className="text-xs">
                               <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
-                                View metadata
+                                View redacted metadata
                               </summary>
                               <pre className="mt-2 bg-muted p-2 rounded overflow-x-auto">
-                                {JSON.stringify(log.metadata, null, 2)}
+                                {JSON.stringify(redactAuditMetadata(log.metadata), null, 2)}
                               </pre>
                             </details>
                           )}
@@ -591,16 +592,24 @@ export default function MandatesAudit() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="testing" className="space-y-4 mt-6">
-              <div className="grid grid-cols-1 gap-6">
-                <CreateTestMandate onMandateCreated={fetchMandatesAndAudits} />
-                <JWSInspector />
-                <MockAuditGenerator 
-                  mandates={mandates} 
-                  onEventCreated={fetchMandatesAndAudits}
-                />
-              </div>
-            </TabsContent>
+            {testToolsEnabled && (
+              <TabsContent value="testing" className="space-y-4 mt-6">
+                <Alert>
+                  <Shield className="h-4 w-4" />
+                  <AlertDescription>
+                    Testing tools are hidden in production unless explicitly enabled by environment configuration.
+                  </AlertDescription>
+                </Alert>
+                <div className="grid grid-cols-1 gap-6">
+                  <CreateTestMandate onMandateCreated={fetchMandatesAndAudits} />
+                  <JWSInspector />
+                  <MockAuditGenerator
+                    mandates={mandates}
+                    onEventCreated={fetchMandatesAndAudits}
+                  />
+                </div>
+              </TabsContent>
+            )}
           </Tabs>
         </div>
       </main>

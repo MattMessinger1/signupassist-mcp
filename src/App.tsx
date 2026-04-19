@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { lazy, Suspense } from "react";
 import { AuthProvider } from "./contexts/AuthContext";
 import Index from "./pages/Index";
 import PlanBuilderWithStripe from "./pages/PlanBuilder";
@@ -13,15 +14,22 @@ import Autopilot from "./pages/Autopilot";
 import ActivityFinder from "./pages/ActivityFinder";
 import DiscoveryRuns from "./pages/DiscoveryRuns";
 import MandatesAudit from "./pages/MandatesAudit";
-import FlowTester from "./pages/FlowTester";
 import NotFound from "./pages/NotFound";
-import { DisambiguationDemo } from "./components/DisambiguationDemo";
-import ChatTestHarness from "./pages/ChatTestHarness";
-import MCPChatTest from "./pages/MCPChatTest";
 import AdminConsole from "./pages/admin/AdminConsole";
-import SignupAssistMockups from "./pages/SignupAssistMockups";
+import { isTestRoutesEnabled } from "./lib/featureFlags";
+
+const FlowTester = lazy(() => import("./pages/FlowTester"));
+const ChatTestHarness = lazy(() => import("./pages/ChatTestHarness"));
+const MCPChatTest = lazy(() => import("./pages/MCPChatTest"));
+const SignupAssistMockups = lazy(() => import("./pages/SignupAssistMockups"));
+const DisambiguationDemo = lazy(() =>
+  import("./components/DisambiguationDemo").then((module) => ({
+    default: module.DisambiguationDemo,
+  })),
+);
 
 const queryClient = new QueryClient();
+const testRoutesEnabled = isTestRoutesEnabled();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -41,11 +49,15 @@ const App = () => (
             <Route path="/discovery-runs" element={<DiscoveryRuns />} />
             <Route path="/mandates" element={<MandatesAudit />} />
             <Route path="/admin" element={<AdminConsole />} />
-            <Route path="/flow-test" element={<FlowTester />} />
-            <Route path="/disambiguation-demo" element={<DisambiguationDemo />} />
-            <Route path="/chat-test" element={<ChatTestHarness />} />
-            <Route path="/mcp-chat-test" element={<MCPChatTest />} />
-            <Route path="/mockups/signupassist" element={<SignupAssistMockups />} />
+            {testRoutesEnabled && (
+              <>
+                <Route path="/flow-test" element={<Suspense fallback={null}><FlowTester /></Suspense>} />
+                <Route path="/disambiguation-demo" element={<Suspense fallback={null}><DisambiguationDemo /></Suspense>} />
+                <Route path="/chat-test" element={<Suspense fallback={null}><ChatTestHarness /></Suspense>} />
+                <Route path="/mcp-chat-test" element={<Suspense fallback={null}><MCPChatTest /></Suspense>} />
+                <Route path="/mockups/signupassist" element={<Suspense fallback={null}><SignupAssistMockups /></Suspense>} />
+              </>
+            )}
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

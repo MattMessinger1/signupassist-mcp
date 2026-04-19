@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { BrandLogo } from '@/components/BrandLogo';
+import { isAdminSurfaceEnabled, isTestRoutesEnabled } from '@/lib/featureFlags';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,7 +14,8 @@ import {
 export function Header() {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
-  const adminEnabled = String(import.meta.env.VITE_ADMIN_CONSOLE_ENABLED || '').toLowerCase() === 'true';
+  const adminEnabled = isAdminSurfaceEnabled();
+  const testRoutesEnabled = isTestRoutesEnabled();
 
   return (
     <header className="border-b bg-card">
@@ -39,9 +41,11 @@ export function Header() {
             <Button variant="ghost" size="sm" onClick={() => navigate('/autopilot')}>
               Autopilot
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => navigate('/mcp-chat-test')}>
-              Chat
-            </Button>
+            {testRoutesEnabled && (
+              <Button variant="ghost" size="sm" onClick={() => navigate('/mcp-chat-test')}>
+                Chat
+              </Button>
+            )}
             <Button variant="ghost" size="sm" onClick={() => navigate('/mandates')}>
               Receipts
             </Button>
@@ -88,9 +92,11 @@ export function Header() {
               <DropdownMenuItem onClick={() => navigate('/autopilot')}>
                 Autopilot
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate('/mcp-chat-test')}>
-                Chat
-              </DropdownMenuItem>
+              {testRoutesEnabled && (
+                <DropdownMenuItem onClick={() => navigate('/mcp-chat-test')}>
+                  Chat
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={() => navigate('/mandates')}>
                 Receipts
               </DropdownMenuItem>

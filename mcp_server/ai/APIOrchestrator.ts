@@ -6971,7 +6971,7 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             start_date: start_time || context.selectedProgram?.earliest_slot_time,
             booking_number,
             amount_cents: amountCents,
-            success_fee_cents: 2000,
+            success_fee_cents: charge_id ? 2000 : 0,
             delegate_name: delegateName,
             delegate_email: delegateEmail,
             participant_names: participantNames,
@@ -7021,13 +7021,16 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
         participant_names: participantNamesForReceipt,
         program_fee_cents: programFeeCentsForReceipt,
         program_fee: programFeeDisplayForReceipt,
-        success_fee_cents: 2000,
+        success_fee_cents: charge_id ? 2000 : 0,
       });
       const providerDisplayName = providerDisplayNameForReceipt;
       const successFeeDisplay = formatCurrencyFromCents(2000);
+      const successFeeNote = charge_id
+        ? `SignupAssist charged the ${successFeeDisplay} success fee separately; you may see two separate charges.`
+        : `SignupAssist did not charge the ${successFeeDisplay} success fee automatically.`;
       const providerPaymentNote = providerCheckoutUrlSafe
-        ? `\n\n💳 **Payment:** ${providerDisplayName} charges the program fee via Bookeo/Stripe at booking time. If you still need to complete provider payment, use: ${providerCheckoutUrlSafe}\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the ${successFeeDisplay} success fee._`
-        : `\n\n💳 **Payment:** ${providerDisplayName} charges the program fee via Bookeo/Stripe at booking time to the same card you set up via Stripe (as a separate charge). SignupAssist charges the ${successFeeDisplay} success fee separately — you’ll see two separate charges to that same card.\n_Program-fee refunds/disputes are handled by the provider. SignupAssist can refund the ${successFeeDisplay} success fee._`;
+        ? `\n\n💳 **Payment:** ${providerDisplayName} charges the program fee via Bookeo/Stripe at booking time. If you still need to complete provider payment, use: ${providerCheckoutUrlSafe}\n_${successFeeNote} Program-fee refunds/disputes are handled by the provider._`
+        : `\n\n💳 **Payment:** ${providerDisplayName} charges the program fee via Bookeo/Stripe at booking time to the same card you set up via Stripe (as a separate charge). ${successFeeNote}\n_Program-fee refunds/disputes are handled by the provider._`;
 
       const finalMessage = `${message}${providerPaymentNote}`;
 

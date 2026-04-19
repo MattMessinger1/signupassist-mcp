@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
 
 const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
+const productionPackageJson = JSON.parse(readFileSync("package.production.json", "utf8"));
 const railwayJson = JSON.parse(readFileSync("railway.json", "utf8"));
 const infraRunbook = readFileSync("docs/INFRA_RUNBOOK.md", "utf8").toLowerCase();
 const workerRunbook = readFileSync("docs/SCHEDULED_REGISTRATION_WORKER_RUNBOOK.md", "utf8").toLowerCase();
@@ -31,6 +32,21 @@ describe("Supabase + Railway infra posture", () => {
 
   it("keeps Railway health checks pointed at /health", () => {
     expect(railwayJson.deploy.healthcheckPath).toBe("/health");
+  });
+
+  it("keeps production Docker scripts aligned with Railway runbooks", () => {
+    expect(productionPackageJson.scripts.start).toBe("node dist/mcp_server/index.js");
+    expect(productionPackageJson.scripts["mcp:start"]).toBe("node dist/mcp_server/index.js");
+    expect(productionPackageJson.scripts["worker:scheduled"]).toBe(
+      "node dist/mcp_server/worker/scheduledRegistrationWorker.js",
+    );
+  });
+
+  it("documents that the scheduled worker pauses before unsafe external actions in the MVP", () => {
+    expect(workerRunbook).toContain("does not submit provider bookings");
+    expect(workerRunbook).toContain("does not charge success fees");
+    expect(workerRunbook).toContain("pauses the run for parent review");
+    expect(infraRunbook).toContain("pauses before provider submit");
   });
 
   it("does not introduce replacement auth or database dependencies", () => {

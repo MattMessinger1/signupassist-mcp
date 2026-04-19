@@ -74,7 +74,10 @@ Frontend:
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
 - `VITE_MCP_BASE_URL`
-- `VITE_MCP_ACCESS_TOKEN`
+
+Do not configure MCP bearer tokens as `VITE_*` production variables. Test harness
+routes are disabled by default and, when deliberately enabled for dev/test, read
+any temporary MCP test token from browser `localStorage`.
 
 Supabase Edge Functions:
 
@@ -100,7 +103,7 @@ Run two Railway services from the same repo:
    - No public domain required
    - If Railway requires HTTP health checks, set `PORT=8080`; the worker exposes `GET /health`
 
-Do not replace the scheduled worker with cron-only infrastructure. The worker is the competitive registration path and should keep second-level timing as a business requirement.
+For the supervised MVP, the worker keeps scheduled timing/status warm but pauses before provider submit, payment, waivers, provider login, and final submit. Do not treat the worker as live delegated signup until the sensitive-action gate, provider readiness, signed mandate, price cap, exact program match, and audit requirements are verified.
 
 ## Smoke Commands
 
@@ -152,6 +155,8 @@ MCP_SERVER_URL=... MCP_ACCESS_TOKEN=... E2E_USER_ID=... E2E_EXECUTE=1 npm run te
 - Keep realtime subscriptions in the plan execution UI working; do not replace them with polling unless there is a specific reliability reason.
 - Edge Functions should authenticate users with JWTs unless they are explicitly public health/test endpoints.
 - Service-role keys belong only in backend/worker/function environments.
+- MCP access tokens belong in backend smoke-test environments only, never in the
+  production frontend bundle.
 
 ## Billing Operating Rules
 

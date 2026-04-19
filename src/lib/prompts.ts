@@ -60,16 +60,16 @@ export const prompts = {
       passwordLabel: 'Password',
       passwordPh: '••••••••',
       helper1: (orgName: string) =>
-        `Use the same login you use for ${orgName} registrations. We\'ll only use it to sign you in and register.`,
+        `Use the same login you use for ${orgName} registrations. We'll only use it to sign you in and register.`,
       helper2:
         'Before registration opens, please make sure your membership is current and any required waivers are signed.',
       nudges: [
-        'I\'ve paid the current membership fee',
-        'I\'ve signed required waivers',
+        "I've paid the current membership fee",
+        "I've signed required waivers",
       ],
       helpers: {
         purpose: (orgName: string) =>
-          `Use the same login you use for ${orgName} registrations. We\'ll only use it to sign you in and register.`,
+          `Use the same login you use for ${orgName} registrations. We'll only use it to sign you in and register.`,
       },
       errors: {
         badLogin:
@@ -86,7 +86,7 @@ export const prompts = {
     searchLabel: 'Find a program',
     searchPh: 'Start typing the program name (e.g., "Saturday Beginners")',
     helper: (orgName: string) =>
-      `We\'ll pull the current program list from ${orgName} so you can choose the exact one.`,
+      `We'll pull the current program list from ${orgName} so you can choose the exact one.`,
     item: (title: string, local: string, utc: string) =>
       `${title}\nOpens: ${local} (${utc} UTC)`,
     empty: 'No results match that search. Try a shorter phrase.',
@@ -297,9 +297,9 @@ export const prompts = {
   // 11. SUCCESS & TOASTS
   // ------------------------------------------------------------
   success: {
-    title: 'Mandate created',
+    title: 'Supervised run prepared',
     body: (local: string, utc: string) =>
-      `You\'re all set. We\'ll run your signup at ${local} (${utc} UTC). You\'ll get a confirmation once it\'s done.`,
+      `You're all set. SignupAssist will prepare the supervised run at ${local} (${utc} UTC) and pause before any sensitive action.`,
   },
   toasts: {
     programsUpdated: 'Programs updated just now.',
@@ -438,7 +438,7 @@ export const prompts = {
   // ------------------------------------------------------------
   dashboard: {
     title: 'Registration Dashboard',
-    description: 'Monitor and manage automated registrations',
+    description: 'Monitor supervised signup preparation and safety pauses',
     createNew: 'Create New Plan',
     refresh: 'Refresh',
     stats: {
@@ -459,7 +459,7 @@ export const prompts = {
       cta: 'Create Plan',
     },
     plansTitle: 'Registration Plans',
-    plansDescription: 'Manage your automated registration plans and monitor their status',
+    plansDescription: 'Manage supervised registration plans and monitor their status',
     loading: 'Loading registration data...',
     actions: {
       start: 'Start',
@@ -529,7 +529,7 @@ export const prompts = {
   landing: {
     hero: {
       title: 'SignupAssist',
-      tagline: 'Automated registration for your children\'s programs',
+      tagline: 'Parent-controlled registration preparation for youth programs',
       createPlan: 'Create Signup Plan',
       viewDashboard: 'View Dashboard',
       manageCredentials: 'Manage Credentials',
@@ -537,7 +537,7 @@ export const prompts = {
     features: [
       {
         title: 'Never Miss Registration',
-        description: 'Set up automated registration that runs exactly when registration opens, even if you\'re sleeping or busy.',
+        description: 'Prepare a supervised registration packet and reminders before registration opens.',
       },
       {
         title: 'Secure & Trusted',

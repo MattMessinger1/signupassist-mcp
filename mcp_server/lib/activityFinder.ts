@@ -33,6 +33,11 @@ export interface ActivityFinderResult {
   targetUrl: string | null;
   providerKey: string | null;
   providerName: string | null;
+  confidence?: number | null;
+  sourceFreshness?: string | null;
+  ageGradeFit?: string | null;
+  providerReadiness?: string | null;
+  missingDetails?: string[];
   ctaLabel: string;
   explanation: string;
 }
@@ -62,6 +67,28 @@ interface PlaceCandidate {
   website: string | null;
 }
 
+interface ActivityFinderSearchLogger {
+  from(table: "activity_finder_searches"): {
+    insert(values: unknown): unknown;
+  };
+}
+
+interface IpApiResponse {
+  city?: string | null;
+  region?: string | null;
+  region_code?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  reason?: string | null;
+  error?: unknown;
+}
+
+interface GooglePlaceTextResult {
+  name?: string;
+  formatted_address?: string;
+  place_id?: string;
+}
+
 export interface ActivityFinderSearchInput {
   query: string;
   userId?: string | null;
@@ -76,7 +103,11 @@ interface ActivityFinderDeps {
   parseQuery?: (query: string) => Promise<Partial<ActivityFinderParsed>>;
   lookupIpLocation?: (clientIp?: string | null) => Promise<LocationHint | null>;
   searchPlaces?: (parsed: ActivityFinderParsed, locationHint: LocationHint | null) => Promise<PlaceCandidate[]>;
-  supabase?: any;
+  supabase?: ActivityFinderSearchLogger | null;
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 const DEFAULT_LOCATION: LocationHint = {
@@ -229,8 +260,8 @@ async function parseQueryWithOpenAI(query: string): Promise<Partial<ActivityFind
       grade: typeof parsed?.grade === "string" ? normalize(parsed.grade) || null : null,
       missingFields: Array.isArray(parsed?.missingFields) ? parsed.missingFields.map(String) : [],
     };
-  } catch (error: any) {
-    console.warn("[ActivityFinder] OpenAI parse failed, using fallback parser", error?.message);
+  } catch (error: unknown) {
+    console.warn("[ActivityFinder] OpenAI parse failed, using fallback parser", errorMessage(error));
     return parseQueryFallback(query);
   }
 }
@@ -306,7 +337,7 @@ async function lookupIpLocation(clientIp?: string | null): Promise<LocationHint 
   try {
     const response = await fetch(`https://ipapi.co/${normalizedIp}/json/?key=${apiKey}`);
     if (!response.ok) return null;
-    const data: any = await response.json();
+    const data = (await response.json()) as IpApiResponse;
     if (!data || data.error) return null;
 
     return {
@@ -318,8 +349,8 @@ async function lookupIpLocation(clientIp?: string | null): Promise<LocationHint 
       confidence: data.city ? "medium" : "low",
       reason: data.reason || undefined,
     };
-  } catch (error: any) {
-    console.warn("[ActivityFinder] IPAPI lookup failed", error?.message);
+  } catch (error: unknown) {
+    console.warn("[ActivityFinder] IPAPI lookup failed", errorMessage(error));
     return null;
   }
 }
@@ -383,7 +414,7 @@ async function searchGooglePlaces(
     const rawResults = Array.isArray(response.data?.results) ? response.data.results : [];
     const candidates = rawResults.slice(0, 3);
     const withWebsites = await Promise.all(
-      candidates.map(async (place: any) => {
+      candidates.map(async (place: GooglePlaceTextResult) => {
         const { city, state } = parseAddressParts(place.formatted_address);
         const placeId = place.place_id || null;
         return {
@@ -398,8 +429,8 @@ async function searchGooglePlaces(
     );
 
     return withWebsites;
-  } catch (error: any) {
-    console.warn("[ActivityFinder] Google Places search failed", sanitizeForLogs({ message: error?.message }));
+  } catch (error: unknown) {
+    console.warn("[ActivityFinder] Google Places search failed", sanitizeForLogs({ message: errorMessage(error) }));
     return [];
   }
 }
@@ -431,6 +462,7 @@ function getFastPathForCandidate(candidate: PlaceCandidate | null, parsed: Activ
 
 function resultFromCandidate(candidate: PlaceCandidate, parsed: ActivityFinderParsed): ActivityFinderResult {
   const fastPath = getFastPathForCandidate(candidate, parsed);
+  const ageGradeFit = parsed.ageYears !== null ? `Age ${parsed.ageYears}` : parsed.grade;
   if (fastPath) {
     return {
       status: "tested_fast_path",
@@ -440,6 +472,10 @@ function resultFromCandidate(candidate: PlaceCandidate, parsed: ActivityFinderPa
       targetUrl: fastPath.targetUrl,
       providerKey: fastPath.providerKey,
       providerName: fastPath.providerName,
+      confidence: 0.92,
+      sourceFreshness: "Configured provider path",
+      ageGradeFit,
+      providerReadiness: "navigation verified",
       ctaLabel: "Set up signup help",
       explanation:
         "Tested Fast Path: SignupAssist knows this registration system and can help you move quickly when signup opens.",
@@ -455,6 +491,10 @@ function resultFromCandidate(candidate: PlaceCandidate, parsed: ActivityFinderPa
       targetUrl: candidate.website,
       providerKey: "generic",
       providerName: "Guided Autopilot",
+      confidence: 0.72,
+      sourceFreshness: "Live venue lookup",
+      ageGradeFit,
+      providerReadiness: "generic",
       ctaLabel: "Use Guided Autopilot",
       explanation:
         "SignupAssist can still help fill safe fields here. We may ask you to paste the exact registration page and we’ll pause more often.",
@@ -469,6 +509,10 @@ function resultFromCandidate(candidate: PlaceCandidate, parsed: ActivityFinderPa
     targetUrl: null,
     providerKey: "generic",
     providerName: "Guided Autopilot",
+    confidence: 0.58,
+    sourceFreshness: "Live venue lookup",
+    ageGradeFit,
+    providerReadiness: "generic",
     ctaLabel: "Add signup link",
     explanation:
       "We found the venue. Paste the registration page and SignupAssist can help with guided fill.",
@@ -498,13 +542,16 @@ function needMoreDetailResult(parsed: ActivityFinderParsed): ActivityFinderResul
     targetUrl: null,
     providerKey: null,
     providerName: null,
+    confidence: 0.25,
+    sourceFreshness: "Needs parent detail",
+    missingDetails: parsed.missingFields,
     ctaLabel: "Add details",
     explanation: `Add ${missing} so we can find the right signup faster.`,
   };
 }
 
 async function logActivityFinderSearch(
-  supabase: any,
+  supabase: ActivityFinderSearchLogger | null | undefined,
   input: ActivityFinderSearchInput,
   parsed: ActivityFinderParsed,
   locationHint: LocationHint | null,
@@ -520,8 +567,8 @@ async function logActivityFinderSearch(
       location_hint: locationHint,
       best_match: response.bestMatch,
     });
-  } catch (error: any) {
-    console.warn("[ActivityFinder] Failed to log search", error?.message);
+  } catch (error: unknown) {
+    console.warn("[ActivityFinder] Failed to log search", errorMessage(error));
   }
 }
 

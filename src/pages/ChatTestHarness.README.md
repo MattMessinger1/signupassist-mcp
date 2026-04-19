@@ -22,9 +22,13 @@ Create a `.env` file with the following variables (see `.env.example`):
 # MCP Server URL (required)
 VITE_MCP_BASE_URL=http://localhost:8080
 
-# MCP Access Token (required for authenticated calls)
-VITE_MCP_ACCESS_TOKEN=your-token-here
+# Enable dev/test routes locally
+VITE_ENABLE_TEST_ROUTES=true
 ```
+
+Do not put MCP bearer tokens in `VITE_*` variables. If a harness call needs a
+temporary test token, set `localStorage.signupassist_mcp_test_token` in the
+browser dev console.
 
 ### 2. Start the MCP Server
 

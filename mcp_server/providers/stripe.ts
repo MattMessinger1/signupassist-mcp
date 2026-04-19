@@ -34,6 +34,10 @@ function getStripeClient(): Stripe {
   return stripeClient;
 }
 
+function isMcpSuccessFeeChargeEnabled(): boolean {
+  return process.env.ENABLE_MCP_SUCCESS_FEE_CHARGE === 'true';
+}
+
 export interface StripeTool {
   name: string;
   description: string;
@@ -64,7 +68,7 @@ async function chargeSuccessFee(args: {
 }): Promise<ProviderResponse<any>> {
   const { booking_number, mandate_id, amount_cents, user_id } = args;
   
-  console.log(`[Stripe] Charging success fee: ${formatCurrencyFromCents(amount_cents)} for booking ${booking_number}`);
+  console.log(`[Stripe] Preparing success fee: ${formatCurrencyFromCents(amount_cents)} for booking ${booking_number}`);
   
   if (!user_id) {
     console.error('[Stripe] Missing user_id - cannot charge success fee');
@@ -73,6 +77,20 @@ async function chargeSuccessFee(args: {
       recovery: 'Your booking was successful, but we need your account information to process the fee. Please contact support.',
       severity: 'medium',
       code: 'STRIPE_MISSING_USER_ID'
+    };
+    return {
+      success: false,
+      error: friendlyError
+    };
+  }
+
+  if (!isMcpSuccessFeeChargeEnabled()) {
+    const friendlyError: ParentFriendlyError = {
+      display: 'Success fee paused for review',
+      recovery:
+        'Your booking can still complete, but SignupAssist will not charge the success fee until automated payment gates are verified.',
+      severity: 'low',
+      code: 'SUCCESS_FEE_CHARGE_PAUSED'
     };
     return {
       success: false,

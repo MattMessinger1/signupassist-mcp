@@ -92,11 +92,15 @@ const createBody = {
     targetUrl: "https://pps.daysmartrecreation.com/dash/index.php?action=Auth/login&company=keva",
     providerKey: "daysmart",
     providerName: "DaySmart / Dash",
+    confidence: 0.92,
+    sourceFreshness: "Configured provider path",
   },
   targetUrl: "https://pps.daysmartrecreation.com/dash/index.php?action=Auth/login&company=keva",
   providerKey: "daysmart",
   providerName: "DaySmart / Dash",
   finderStatus: "tested_fast_path",
+  confidence: 0.92,
+  sourceFreshness: "Configured provider path",
 };
 
 describe("authenticated web golden path contract", () => {
@@ -116,6 +120,8 @@ describe("authenticated web golden path contract", () => {
     expect(autopilotPath).toBe(`/autopilot?intent=${createdIntent.id}`);
     expect(loadedIntent.providerKey).toBe("daysmart");
     expect(loadedIntent.parsed.ageYears).toBe(9);
+    expect(loadedIntent.confidence).toBe(0.92);
+    expect(loadedIntent.sourceFreshness).toBe("Configured provider path");
 
     const packet = buildAutopilotRunPacket({
       playbook,
