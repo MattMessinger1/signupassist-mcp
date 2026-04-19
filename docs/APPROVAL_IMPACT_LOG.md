@@ -1002,6 +1002,52 @@ Verification results for this docs-only phase:
 - `npm run test:mcp-descriptors`: Passed.
 - `git diff --check`: Passed.
 
+## 2026-04-19 - Web Ship UX And Audit Redaction Polish
+
+Files changed in this phase:
+
+- `mcp_server/lib/activityFinder.ts`
+- `src/lib/activityFinder.ts`
+- `src/lib/signupIntent.ts`
+- `src/pages/Autopilot.tsx`
+- `src/pages/MandatesAudit.tsx`
+- `tests/autopilot-wizard-ui.test.ts`
+- `tests/signup-intent-frontend.test.ts`
+- `tests/mandates-audit-redaction.test.ts`
+- `mcp_server/lib/activityFinder.test.ts`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: No.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Changes:
+
+- Added confidence, freshness, age-fit, provider-readiness, and missing-detail metadata to Activity Finder results and preserved confidence/freshness into the server-side signup intent payload.
+- Prevented duplicate supervised-run creation after Autopilot has already created a run packet; both the review card and sticky footer now send parents to the dashboard after success.
+- Stopped Mandates Audit from fetching or rendering raw mandate JWS tokens.
+- Removed visible credential identifiers and raw metadata from Mandates Audit; visible metadata now runs through recursive redaction before display.
+- Hid Mandates Audit testing tools in production unless `VITE_ENABLE_AUDIT_TEST_TOOLS=true`.
+- Left direct provider-learning persistence unwired because the existing `upsert_discovery_run` RPC is `SECURITY DEFINER`; client-side wiring would widen write risk. Redacted observations remain stored inside the supervised run packet for server-mediated ingestion later.
+
+Verification results for this phase:
+
+- `npx vitest run tests/mandates-audit-redaction.test.ts tests/autopilot-wizard-ui.test.ts tests/signup-intent-frontend.test.ts mcp_server/lib/activityFinder.test.ts --reporter=verbose`: Passed.
+- `npm run typecheck`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npm run test:security-mvp`: Passed.
+- `npm run test:chatgpt-app`: Passed.
+
 ## 2026-04-18 - Production Readiness Evidence Sweep
 
 Files changed in this phase:

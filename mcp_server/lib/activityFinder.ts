@@ -33,6 +33,11 @@ export interface ActivityFinderResult {
   targetUrl: string | null;
   providerKey: string | null;
   providerName: string | null;
+  confidence?: number | null;
+  sourceFreshness?: string | null;
+  ageGradeFit?: string | null;
+  providerReadiness?: string | null;
+  missingDetails?: string[];
   ctaLabel: string;
   explanation: string;
 }
@@ -431,6 +436,7 @@ function getFastPathForCandidate(candidate: PlaceCandidate | null, parsed: Activ
 
 function resultFromCandidate(candidate: PlaceCandidate, parsed: ActivityFinderParsed): ActivityFinderResult {
   const fastPath = getFastPathForCandidate(candidate, parsed);
+  const ageGradeFit = parsed.ageYears !== null ? `Age ${parsed.ageYears}` : parsed.grade;
   if (fastPath) {
     return {
       status: "tested_fast_path",
@@ -440,6 +446,10 @@ function resultFromCandidate(candidate: PlaceCandidate, parsed: ActivityFinderPa
       targetUrl: fastPath.targetUrl,
       providerKey: fastPath.providerKey,
       providerName: fastPath.providerName,
+      confidence: 0.92,
+      sourceFreshness: "Configured provider path",
+      ageGradeFit,
+      providerReadiness: "navigation verified",
       ctaLabel: "Set up signup help",
       explanation:
         "Tested Fast Path: SignupAssist knows this registration system and can help you move quickly when signup opens.",
@@ -455,6 +465,10 @@ function resultFromCandidate(candidate: PlaceCandidate, parsed: ActivityFinderPa
       targetUrl: candidate.website,
       providerKey: "generic",
       providerName: "Guided Autopilot",
+      confidence: 0.72,
+      sourceFreshness: "Live venue lookup",
+      ageGradeFit,
+      providerReadiness: "generic",
       ctaLabel: "Use Guided Autopilot",
       explanation:
         "SignupAssist can still help fill safe fields here. We may ask you to paste the exact registration page and we’ll pause more often.",
@@ -469,6 +483,10 @@ function resultFromCandidate(candidate: PlaceCandidate, parsed: ActivityFinderPa
     targetUrl: null,
     providerKey: "generic",
     providerName: "Guided Autopilot",
+    confidence: 0.58,
+    sourceFreshness: "Live venue lookup",
+    ageGradeFit,
+    providerReadiness: "generic",
     ctaLabel: "Add signup link",
     explanation:
       "We found the venue. Paste the registration page and SignupAssist can help with guided fill.",
@@ -498,6 +516,9 @@ function needMoreDetailResult(parsed: ActivityFinderParsed): ActivityFinderResul
     targetUrl: null,
     providerKey: null,
     providerName: null,
+    confidence: 0.25,
+    sourceFreshness: "Needs parent detail",
+    missingDetails: parsed.missingFields,
     ctaLabel: "Add details",
     explanation: `Add ${missing} so we can find the right signup faster.`,
   };

@@ -140,6 +140,16 @@ export function buildAutopilotIntentPath(id: string) {
   return `/autopilot?${params.toString()}`;
 }
 
+function optionalResultNumber(result: ActivityFinderResult, key: string) {
+  const value = (result as unknown as Record<string, unknown>)[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function optionalResultString(result: ActivityFinderResult, key: string) {
+  const value = (result as unknown as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
 export function buildSignupIntentFromFinderResult(params: {
   query: string;
   parsed: ActivityFinderParsed;
@@ -167,7 +177,7 @@ export function buildSignupIntentFromFinderResult(params: {
     providerKey: result.providerKey,
     providerName: result.providerName,
     finderStatus: result.status,
-    confidence: null,
-    sourceFreshness: null,
+    confidence: optionalResultNumber(result, "confidence"),
+    sourceFreshness: optionalResultString(result, "sourceFreshness"),
   };
 }

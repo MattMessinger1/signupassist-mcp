@@ -54,6 +54,8 @@ describe("Autopilot supervised wizard UI contract", () => {
     expect(autopilotPage).toContain('status: "scheduled"');
     expect(autopilotPage).toContain("autopilot_run_id: createdRun.id");
     expect(autopilotPage).toContain("View dashboard");
+    expect(autopilotPage).toContain("Run already created");
+    expect(autopilotPage).toContain("createdPacket ? (");
   });
 
   it("keeps child profile creation minimal and provider learning redacted", () => {

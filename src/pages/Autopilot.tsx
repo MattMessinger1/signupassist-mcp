@@ -587,6 +587,12 @@ export default function Autopilot() {
   const createRun = async () => {
     if (!user) return;
 
+    if (createdPacket || createdRunId) {
+      setActiveStep(WIZARD_STEPS.length - 1);
+      showSuccessToast("Run already created", "Open the dashboard to review or resume it.");
+      return;
+    }
+
     if (!subscriptionUsable) {
       showErrorToast(
         "Membership required",
@@ -1372,6 +1378,11 @@ export default function Autopilot() {
                   >
                     Continue
                     <ArrowRight className="h-4 w-4" />
+                  </Button>
+                ) : createdPacket ? (
+                  <Button type="button" onClick={() => navigate("/dashboard")}>
+                    <CheckCircle2 className="h-4 w-4" />
+                    View dashboard
                   </Button>
                 ) : (
                   <Button

@@ -76,6 +76,10 @@ describe("activity finder search", () => {
       providerKey: "daysmart",
       providerName: "DaySmart / Dash",
       ctaLabel: "Set up signup help",
+      confidence: 0.92,
+      sourceFreshness: "Configured provider path",
+      ageGradeFit: "Age 9",
+      providerReadiness: "navigation verified",
     });
     expect(result.bestMatch?.targetUrl).toContain("daysmartrecreation.com");
   });
@@ -131,6 +135,12 @@ describe("activity finder search", () => {
     );
 
     expect(result.bestMatch?.status).toBe("guided_autopilot");
+    expect(result.bestMatch).toMatchObject({
+      confidence: 0.72,
+      sourceFreshness: "Live venue lookup",
+      ageGradeFit: "Age 7",
+      providerReadiness: "generic",
+    });
     expect(result.bestMatch?.explanation.toLowerCase()).not.toContain("unsupported");
   });
 
@@ -172,6 +182,7 @@ describe("activity finder search", () => {
     );
 
     expect(result.bestMatch?.status).toBe("need_more_detail");
+    expect(result.bestMatch?.missingDetails).toEqual(expect.arrayContaining(["venue"]));
     expect(result.bestMatch?.explanation.toLowerCase()).not.toContain("unsupported");
     expect(result.otherMatches).toHaveLength(0);
   });

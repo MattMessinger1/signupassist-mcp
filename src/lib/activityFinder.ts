@@ -29,6 +29,11 @@ export interface ActivityFinderResult {
   targetUrl: string | null;
   providerKey: string | null;
   providerName: string | null;
+  confidence?: number | null;
+  sourceFreshness?: string | null;
+  ageGradeFit?: string | null;
+  providerReadiness?: string | null;
+  missingDetails?: string[];
   ctaLabel: string;
   explanation: string;
 }
