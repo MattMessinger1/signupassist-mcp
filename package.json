@@ -47,7 +47,9 @@
     "test:mcp-manifest": "tsx scripts/chatgptAppGuardrails.ts manifest",
     "test:mcp-descriptors": "tsx scripts/chatgptAppGuardrails.ts descriptors",
     "test:approval-snapshots": "tsx scripts/chatgptAppGuardrails.ts approval-snapshots",
-    "test:security-mvp": "vitest run tests/security-mvp.test.ts tests/sensitive-action-gates.test.ts tests/sensitive-action-contract.test.ts tests/signup-intent-service.test.ts tests/signup-intent-api.test.ts tests/signup-intent-frontend.test.ts tests/provider-learning.test.ts --reporter=verbose"
+    "test:security-mvp": "vitest run tests/security-mvp.test.ts tests/sensitive-action-gates.test.ts tests/sensitive-action-contract.test.ts tests/signup-intent-service.test.ts tests/signup-intent-api.test.ts tests/signup-intent-frontend.test.ts tests/provider-learning.test.ts tests/mandates-audit-redaction.test.ts --reporter=verbose",
+    "test:golden-path": "vitest run tests/web-golden-path-foundation.test.ts tests/web-authenticated-golden-path.test.ts tests/activity-finder-ui.test.ts tests/autopilot-wizard-ui.test.ts tests/dashboard-status.test.ts tests/dashboard-provider-readiness.test.ts tests/mandates-audit-redaction.test.ts tests/release-evidence.test.ts --reporter=verbose",
+    "test:chatgpt-golden-path": "tsx scripts/chatgptAppGuardrails.ts all"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.82.0",

@@ -161,11 +161,27 @@
 - [ ] `npm run mcp:build` passes before production release.
 - [ ] `npm test` passes or documented targeted substitute is approved.
 - [ ] `npm run test:security-mvp` passes before launch.
+- [ ] `npm run test:golden-path` passes before launch.
+- [ ] `npm run test:chatgpt-golden-path` passes before ChatGPT-impacting release.
 - [ ] `npm run test:sse` passes before ChatGPT-impacting release.
 - [ ] `npm run test:openai-smoke` passes before ChatGPT-impacting release.
 - [ ] Activity Finder smoke passes.
 - [ ] Autopilot supervised packet smoke passes.
 - [ ] Dashboard status smoke passes.
+
+## Golden Path Evidence
+
+- [ ] Activity Finder search proof captured for desktop and mobile.
+- [ ] Activity Finder result includes provider, status, readiness/trust copy, confidence, and freshness where available.
+- [ ] Network proof shows `POST /api/activity-finder/search` with only the search query and optional bearer token.
+- [ ] Network proof shows `POST /api/signup-intents`.
+- [ ] Browser URL proof shows `/autopilot?intent=<uuid>` with no query, child/profile, provider, target URL, activity, age, grade, address, or location details.
+- [ ] Autopilot proof shows the loaded intent, safety limits, provider readiness, reminder copy, redacted learning choice, and review/create step.
+- [ ] Created run proof shows the duplicate-create path replaced by dashboard handoff.
+- [ ] Dashboard proof shows the run in the appropriate status section with redacted last audit event.
+- [ ] `/mandates` proof shows no raw JWS, token, credential identifier, or unredacted metadata.
+- [ ] Redacted DB proof captured with `npm run evidence:release -- --signup-intent-id=<id> --pretty`.
+- [ ] No live third-party provider automation was used for proof unless an approved sandbox/API/written permission path is documented.
 
 ## Final Deploy Checks
 

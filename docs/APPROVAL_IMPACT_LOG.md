@@ -1544,3 +1544,42 @@ Verification results for this phase:
 - `npm run test:mcp-manifest`: Passed.
 - `npm run test:mcp-descriptors`: Passed.
 - `git diff --check`: Passed.
+
+## 2026-04-19 - Web Ship Golden Path And Release Evidence
+
+Files changed in this phase:
+
+- `package.json`
+- `tests/web-authenticated-golden-path.test.ts`
+- `docs/SHIP_CHECKLIST.md`
+- `docs/SIGNUPASSIST_PRODUCTION_RUNBOOK.md`
+- `docs/RELEASE_NOTES_MVP.md`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: No.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Changes:
+
+- Added `npm run test:golden-path` for the web Activity Finder to Autopilot to Dashboard contract tests.
+- Added `npm run test:chatgpt-golden-path` as a named wrapper around the existing ChatGPT app guardrail matrix.
+- Extended the authenticated web golden-path contract to assert Activity Finder confidence and source-freshness metadata survives the secure signup-intent handoff.
+- Added release checklist evidence requirements for desktop/mobile browser proof, intent-only URLs, redacted audit/mandate views, and redacted DB evidence.
+- Added MVP release notes covering shipped surfaces, intentionally paused automation, required environment, migration steps, smoke tests, rollback, and known limitations.
+
+Verification results for this phase:
+
+- `npm run test:golden-path`: Passed.
+- `npm run test:chatgpt-golden-path`: Passed.
+- `npm run test:security-mvp`: Passed.
