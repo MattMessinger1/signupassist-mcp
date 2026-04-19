@@ -1039,3 +1039,39 @@ Verification results for this phase:
 - `npm run test:mcp-manifest`: Passed.
 - `npm run test:mcp-descriptors`: Passed.
 - `git diff --check`: Passed.
+
+## 2026-04-18 - Authenticated Web Golden Path Contract
+
+Files changed in this phase:
+
+- `tests/web-authenticated-golden-path.test.ts`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: No.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Verification added:
+
+- Added a deterministic authenticated web golden-path contract without requiring live secrets.
+- The test links the Activity Finder signup intent, opaque `/autopilot?intent=<id>` path, Autopilot run packet, active subscription gate, provider readiness, redacted provider learning observation, signup intent update, and dashboard audit summary.
+- The test confirms cross-user reads and patches remain blocked.
+
+Verification results for this phase:
+
+- `npx vitest run tests/web-authenticated-golden-path.test.ts tests/autopilot-run-packet.test.ts tests/dashboard-status.test.ts tests/provider-learning.test.ts tests/signup-intent-service.test.ts --reporter=verbose`: Passed.
+- `npx eslint tests/web-authenticated-golden-path.test.ts --max-warnings=0`: Passed.
+- `npm run test:approval-snapshots`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `git diff --check`: Passed.
