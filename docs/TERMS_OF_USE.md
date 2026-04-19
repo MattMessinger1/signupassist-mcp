@@ -96,6 +96,8 @@ You represent that you have the rights and authority needed to provide User Cont
 
 ## 10. Acceptable Use
 
+This acceptable use policy keeps SignupAssist focused on adult parent/guardian-controlled, child-safe youth activity registration.
+
 You may not use the Services to:
 
 - Violate law or third-party rights.

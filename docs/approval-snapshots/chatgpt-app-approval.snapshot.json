@@ -176,7 +176,7 @@
     },
     {
       "path": "docs/PRIVACY_POLICY.md",
-      "sha256": "8d1f69a01523c3ed2f5d590f5f02c16f3d4444106acb68ffcfd8ad72f11fcc55"
+      "sha256": "593458c8f6a7796952322a08aa47dc391bea14cc1ef63bd7ecd0e76896fee2bf"
     },
     {
       "path": "docs/REVIEW_TEST_ACCOUNT.md",
@@ -184,7 +184,7 @@
     },
     {
       "path": "docs/SAFETY_POLICY.md",
-      "sha256": "0e475b880de1a4d16fcde40aec28e82d11eb086e070e782bec62a807bcf151f3"
+      "sha256": "9c14d26909417649f01d52b25399441f6d5e7d2734498c7857c80b36909ade8d"
     },
     {
       "path": "mcp/manifest.json",
