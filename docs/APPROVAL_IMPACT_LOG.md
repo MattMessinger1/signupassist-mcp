@@ -1674,3 +1674,28 @@ Verification results for this phase:
 - Targeted lint over newly hardened web/security files: Passed.
 - `npm run lint`: Failed on broad pre-existing lint debt (`no-explicit-any`, parser error in `evals/index.ts`, hook warnings, and related repo-wide issues); not classified as a launch blocker for this phase because typecheck/build/tests/predeploy passed and the failures are outside the newly hardened subset.
 - `git diff --check`: Passed.
+
+## 2026-04-19 - Fresh Supabase Production Foundation
+
+Scope:
+
+- Created fresh Supabase project `signupassist-prod-v2` (`jdwuxllyvbrjedqiipbi`) because the previous production project had no real data, drifted migration history, and missing April web-app tables.
+- Applied the complete 66-migration chain through `20260419183000_lock_provider_learning_and_audit_events.sql`.
+- Updated Railway web and worker Supabase env vars to the fresh project.
+- Deployed existing Supabase Edge Functions to the fresh project.
+- Updated `supabase/config.toml` to the new project ref and removed stale function config entries for missing local functions.
+
+Approval impact:
+
+- ChatGPT MCP public tool names changed: No.
+- MCP manifest/OpenAPI/.well-known/OAuth/CSP/protected-action behavior changed: No.
+- Public MCP schemas/descriptors changed: No.
+- Hidden/private/internal tools exposed: No.
+- Production data impact: No real user data was present per operator confirmation; this was a foundation cutover to a clean Supabase project.
+- Safety impact: Positive. Fresh schema now includes signup intents, signup intent events, parent confirmations, delegation mandates, RLS locks, and service-role-only provider-learning RPCs.
+
+Verification:
+
+- `supabase db push --linked --include-all --dry-run`: Passed for fresh project.
+- `supabase db push --linked --include-all`: Passed; latest migration `20260419183000`, migration count 66.
+- Direct verification confirmed expected April tables exist, RLS is enabled on sensitive/provider-learning tables, and provider-learning RPCs are not executable by `anon` or `authenticated`.

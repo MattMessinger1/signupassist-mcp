@@ -151,7 +151,7 @@ USE_REAL_MCP=false  # Uses mock tools
 
 ```bash
 # Required for all phases
-SUPABASE_URL=https://jpcrphdevmvzcfgokgym.supabase.co
+SUPABASE_URL=https://jdwuxllyvbrjedqiipbi.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<your-service-role-key>
 SUPABASE_ANON_KEY=<your-anon-key>
 
@@ -190,7 +190,7 @@ select cron.schedule(
   '0 2 * * *', -- 2 AM daily
   $$
   select net.http_post(
-    url:='https://jpcrphdevmvzcfgokgym.supabase.co/functions/v1/cleanup-sessions',
+    url:='https://jdwuxllyvbrjedqiipbi.supabase.co/functions/v1/cleanup-sessions',
     headers:='{"Content-Type": "application/json"}'::jsonb
   ) as request_id;
   $$

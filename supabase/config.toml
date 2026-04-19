@@ -1,4 +1,4 @@
-project_id = "jpcrphdevmvzcfgokgym"
+project_id = "jdwuxllyvbrjedqiipbi"
 
 [functions.get-user-location]
 verify_jwt = false
@@ -12,9 +12,6 @@ verify_jwt = false
 [functions.create-mandate]
 verify_jwt = true
 
-[functions.start-browserbase-login]
-verify_jwt = true
-
 [functions.testHarness]
 verify_jwt = false
 
@@ -23,9 +20,6 @@ verify_jwt = false
 
 [functions.create-system-mandate]
 verify_jwt = true
-
-[functions.cleanup-browserbase-sessions]
-verify_jwt = true  # SECURED: Require authentication to prevent unauthorized mass session deletion
 
 [functions.refresh-provider-feed]
 verify_jwt = true  # SECURED: Prevent unauthorized scheduled sync triggers

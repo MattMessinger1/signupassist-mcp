@@ -56,10 +56,19 @@ Critical production categories:
 - Mandate signing and PII encryption keys where mandate/audit flows are enabled.
 - MCP access tokens only in backend/server/worker/smoke-test environments, never as production `VITE_*` frontend variables.
 
+Current production database foundation:
+
+- Supabase project: `signupassist-prod-v2`
+- Project ref: `jdwuxllyvbrjedqiipbi`
+- Public URL: `https://jdwuxllyvbrjedqiipbi.supabase.co`
+- Railway web and worker environments should use this project for `SUPABASE_URL`, `VITE_SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `VITE_SUPABASE_PUBLISHABLE_KEY`.
+
 ## Migration Steps
 
 Apply Supabase migrations through the latest sensitive-action lockdown migration:
 
+- Full fresh-chain migration count: 66
+- Latest applied version: `20260419183000`
 - `20260417140000_add_sensitive_action_gates.sql`
 - `20260419170000_lock_sensitive_action_gates.sql`
 - `20260419183000_lock_provider_learning_and_audit_events.sql`
