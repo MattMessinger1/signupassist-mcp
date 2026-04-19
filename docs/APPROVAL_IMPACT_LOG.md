@@ -1113,3 +1113,41 @@ Verification results for this phase:
 - `npm run test:mcp-manifest`: Passed.
 - `npm run test:mcp-descriptors`: Passed.
 - `git diff --check`: Passed.
+
+## 2026-04-18 - Dashboard And Provider Readiness Verification
+
+Files changed in this phase:
+
+- `src/pages/DiscoveryRuns.tsx`
+- `src/lib/discoveryRunRedaction.ts`
+- `tests/dashboard-provider-readiness.test.ts`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: No.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Verification added:
+
+- Added dashboard/provider readiness verification for parent next-action sections, audit links, legal links, privacy/trust copy, provider readiness copy, and promotion guardrails.
+- Added defensive redaction before rendering provider discovery run detail JSON in `/discovery-runs`.
+- Verified supervised run observations adapt to existing `discovery_runs` RPC payloads without raw program names or target URL details.
+
+Verification results for this phase:
+
+- `npx vitest run tests/dashboard-provider-readiness.test.ts tests/dashboard-status.test.ts tests/provider-learning.test.ts --reporter=verbose`: Passed.
+- `npx eslint src/pages/DiscoveryRuns.tsx src/lib/discoveryRunRedaction.ts tests/dashboard-provider-readiness.test.ts --max-warnings=0`: Passed.
+- `npm run test:approval-snapshots`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `git diff --check`: Passed.

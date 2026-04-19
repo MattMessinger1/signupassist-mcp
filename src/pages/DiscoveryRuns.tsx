@@ -9,6 +9,7 @@ import { AlertCircle, Calendar, Database, FileJson, ShieldCheck, Sparkles, Trend
 import { formatDistanceToNow } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { PROVIDER_REGISTRY, getProviderReadinessSummary } from "@/lib/providerLearning";
+import { redactDiscoveryRunDetail } from "@/lib/discoveryRunRedaction";
 
 interface DiscoveryRun {
   id: string;
@@ -207,7 +208,7 @@ export default function DiscoveryRuns() {
                       onClick={() => setSelectedRun(run)}
                     >
                       <FileJson className="h-4 w-4 mr-2" />
-                      View Errors
+                      View redacted JSON
                     </Button>
                   </div>
                 </div>
@@ -251,19 +252,19 @@ export default function DiscoveryRuns() {
               </div>
 
               <div>
-                <h3 className="font-medium mb-2">Errors (JSON)</h3>
+                <h3 className="font-medium mb-2">Redacted errors (JSON)</h3>
                 <ScrollArea className="h-[300px] w-full rounded-md border p-4">
                   <pre className="text-xs">
-                    {JSON.stringify(selectedRun.errors, null, 2)}
+                    {JSON.stringify(redactDiscoveryRunDetail(selectedRun.errors), null, 2)}
                   </pre>
                 </ScrollArea>
               </div>
 
               <div>
-                <h3 className="font-medium mb-2">Metadata (JSON)</h3>
+                <h3 className="font-medium mb-2">Redacted metadata (JSON)</h3>
                 <ScrollArea className="h-[200px] w-full rounded-md border p-4">
                   <pre className="text-xs">
-                    {JSON.stringify(selectedRun.meta, null, 2)}
+                    {JSON.stringify(redactDiscoveryRunDetail(selectedRun.meta), null, 2)}
                   </pre>
                 </ScrollArea>
               </div>
