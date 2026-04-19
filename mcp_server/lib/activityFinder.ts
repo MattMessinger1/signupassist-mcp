@@ -67,6 +67,28 @@ interface PlaceCandidate {
   website: string | null;
 }
 
+interface ActivityFinderSearchLogger {
+  from(table: "activity_finder_searches"): {
+    insert(values: unknown): unknown;
+  };
+}
+
+interface IpApiResponse {
+  city?: string | null;
+  region?: string | null;
+  region_code?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  reason?: string | null;
+  error?: unknown;
+}
+
+interface GooglePlaceTextResult {
+  name?: string;
+  formatted_address?: string;
+  place_id?: string;
+}
+
 export interface ActivityFinderSearchInput {
   query: string;
   userId?: string | null;
@@ -81,7 +103,11 @@ interface ActivityFinderDeps {
   parseQuery?: (query: string) => Promise<Partial<ActivityFinderParsed>>;
   lookupIpLocation?: (clientIp?: string | null) => Promise<LocationHint | null>;
   searchPlaces?: (parsed: ActivityFinderParsed, locationHint: LocationHint | null) => Promise<PlaceCandidate[]>;
-  supabase?: any;
+  supabase?: ActivityFinderSearchLogger | null;
+}
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
 }
 
 const DEFAULT_LOCATION: LocationHint = {
@@ -234,8 +260,8 @@ async function parseQueryWithOpenAI(query: string): Promise<Partial<ActivityFind
       grade: typeof parsed?.grade === "string" ? normalize(parsed.grade) || null : null,
       missingFields: Array.isArray(parsed?.missingFields) ? parsed.missingFields.map(String) : [],
     };
-  } catch (error: any) {
-    console.warn("[ActivityFinder] OpenAI parse failed, using fallback parser", error?.message);
+  } catch (error: unknown) {
+    console.warn("[ActivityFinder] OpenAI parse failed, using fallback parser", errorMessage(error));
     return parseQueryFallback(query);
   }
 }
@@ -311,7 +337,7 @@ async function lookupIpLocation(clientIp?: string | null): Promise<LocationHint 
   try {
     const response = await fetch(`https://ipapi.co/${normalizedIp}/json/?key=${apiKey}`);
     if (!response.ok) return null;
-    const data: any = await response.json();
+    const data = (await response.json()) as IpApiResponse;
     if (!data || data.error) return null;
 
     return {
@@ -323,8 +349,8 @@ async function lookupIpLocation(clientIp?: string | null): Promise<LocationHint 
       confidence: data.city ? "medium" : "low",
       reason: data.reason || undefined,
     };
-  } catch (error: any) {
-    console.warn("[ActivityFinder] IPAPI lookup failed", error?.message);
+  } catch (error: unknown) {
+    console.warn("[ActivityFinder] IPAPI lookup failed", errorMessage(error));
     return null;
   }
 }
@@ -388,7 +414,7 @@ async function searchGooglePlaces(
     const rawResults = Array.isArray(response.data?.results) ? response.data.results : [];
     const candidates = rawResults.slice(0, 3);
     const withWebsites = await Promise.all(
-      candidates.map(async (place: any) => {
+      candidates.map(async (place: GooglePlaceTextResult) => {
         const { city, state } = parseAddressParts(place.formatted_address);
         const placeId = place.place_id || null;
         return {
@@ -403,8 +429,8 @@ async function searchGooglePlaces(
     );
 
     return withWebsites;
-  } catch (error: any) {
-    console.warn("[ActivityFinder] Google Places search failed", sanitizeForLogs({ message: error?.message }));
+  } catch (error: unknown) {
+    console.warn("[ActivityFinder] Google Places search failed", sanitizeForLogs({ message: errorMessage(error) }));
     return [];
   }
 }
@@ -525,7 +551,7 @@ function needMoreDetailResult(parsed: ActivityFinderParsed): ActivityFinderResul
 }
 
 async function logActivityFinderSearch(
-  supabase: any,
+  supabase: ActivityFinderSearchLogger | null | undefined,
   input: ActivityFinderSearchInput,
   parsed: ActivityFinderParsed,
   locationHint: LocationHint | null,
@@ -541,8 +567,8 @@ async function logActivityFinderSearch(
       location_hint: locationHint,
       best_match: response.bestMatch,
     });
-  } catch (error: any) {
-    console.warn("[ActivityFinder] Failed to log search", error?.message);
+  } catch (error: unknown) {
+    console.warn("[ActivityFinder] Failed to log search", errorMessage(error));
   }
 }
 

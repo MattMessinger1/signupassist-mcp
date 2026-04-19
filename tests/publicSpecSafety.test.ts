@@ -25,6 +25,16 @@ describe('Public OpenAPI review safety', () => {
     expect(description).toContain('does not provide adult');
     expect(description).toContain('no external action before');
   });
+
+  it('marks the guided registration endpoint as consequential', () => {
+    const registerOperation = openapi.paths?.['/orchestrator/chat']?.post;
+    const searchOperation = openapi.paths?.['/signupassist/start']?.get;
+
+    expect(registerOperation?.operationId).toBe('register_for_activity');
+    expect(registerOperation?.['x-openai-isConsequential']).toBe(true);
+    expect(searchOperation?.operationId).toBe('search_activities');
+    expect(searchOperation?.['x-openai-isConsequential']).toBe(false);
+  });
 });
 
 describe('Manifest review safety language', () => {
@@ -50,5 +60,14 @@ describe('Public HTTP tool inventory safety', () => {
   it('fails closed when telemetry debug endpoints are disabled', () => {
     expect(serverSource).toContain('!telemetryDebugEnabled && isTelemetryDebugRoute');
     expect(serverSource).toContain("error: 'not_found'");
+  });
+
+  it('declares per-tool security schemes in public descriptors', () => {
+    expect(serverSource).toContain('function securitySchemesForTool');
+    expect(serverSource).toContain('CHATGPT_NOAUTH_SECURITY_SCHEMES');
+    expect(serverSource).toContain('CHATGPT_OAUTH_SECURITY_SCHEMES');
+    expect(serverSource).toContain('securitySchemes: securitySchemesForTool("search_activities")');
+    expect(serverSource).toContain('securitySchemes: securitySchemesForTool("register_for_activity")');
+    expect(serverSource).toContain('securitySchemes: securitySchemesForTool(tool.name)');
   });
 });

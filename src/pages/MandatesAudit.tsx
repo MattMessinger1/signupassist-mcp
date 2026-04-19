@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -25,6 +25,9 @@ import { AuditTrailTimeline, type AuditEvent as TimelineEvent } from '@/componen
 import { mapToolNameToUserTitle, mapScopeToFriendly } from '@/copy/signupassistCopy';
 import { isSensitiveRedactionKey } from '@/lib/redactionKeys';
 
+type JsonRecord = Record<string, unknown>;
+type SortBy = 'date' | 'action' | 'provider';
+
 interface Mandate {
   id: string;
   provider: string;
@@ -45,7 +48,7 @@ interface AuditEvent {
   created_at: string;
   started_at: string;
   finished_at: string | null;
-  details?: any;
+  details?: unknown;
   result: string | null;
   // New fields for enhanced audit trail
   args_hash: string | null;
@@ -60,12 +63,12 @@ interface MandateAuditLog {
   provider: string | null;
   org_ref: string | null;
   program_ref: string | null;
-  metadata: any;
+  metadata: unknown;
   created_at: string;
 }
 
 export default function MandatesAudit() {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [mandates, setMandates] = useState<Mandate[]>([]);
   const [auditEvents, setAuditEvents] = useState<Record<string, AuditEvent[]>>({});
@@ -77,21 +80,14 @@ export default function MandatesAudit() {
   const [searchQuery, setSearchQuery] = useState('');
   const [actionFilter, setActionFilter] = useState<string>('all');
   const [providerFilter, setProviderFilter] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<'date' | 'action' | 'provider'>('date');
+  const [sortBy, setSortBy] = useState<SortBy>('date');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const testToolsEnabled =
     import.meta.env.DEV || import.meta.env.VITE_ENABLE_AUDIT_TEST_TOOLS === 'true';
 
-  useEffect(() => {
-    if (!user) {
-      navigate('/auth');
-      return;
-    }
+  const fetchMandatesAndAudits = useCallback(async () => {
+    if (!user) return;
 
-    fetchMandatesAndAudits();
-  }, [user, navigate]);
-
-  const fetchMandatesAndAudits = async () => {
     try {
       setLoading(true);
       setError(null);
@@ -147,7 +143,17 @@ export default function MandatesAudit() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) {
+      navigate('/auth');
+      return;
+    }
+
+    void fetchMandatesAndAudits();
+  }, [authLoading, fetchMandatesAndAudits, navigate, user]);
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -243,22 +249,35 @@ export default function MandatesAudit() {
     setSortOrder('desc');
   };
 
+  const redactAuditString = (value: string): string => {
+    if (value.length > 300) return '[redacted long value]';
+    if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(value)) return '[redacted]';
+    if (/\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/.test(value)) return '[redacted]';
+    if (/\b\d{13,19}\b/.test(value)) return '[redacted]';
+    if (/\b(?:\d{1,2}[/-]){2}\d{2,4}\b/.test(value)) return '[redacted]';
+    if (/\b\d{5}(?:-\d{4})?\b/.test(value) && /\b(?:street|st\.?|avenue|ave\.?|road|rd\.?|drive|dr\.?|lane|ln\.?|boulevard|blvd\.?)\b/i.test(value)) {
+      return '[redacted]';
+    }
+    if (/(password|token|secret|credential|card|cvv|cvc|medical|allerg|diagnos|waiver|signature)/i.test(value)) return '[redacted]';
+    return value;
+  };
+
   const redactAuditMetadata = (value: unknown): unknown => {
     if (Array.isArray(value)) return value.map((item) => redactAuditMetadata(item));
     if (!value || typeof value !== 'object') {
-      if (typeof value === 'string' && value.length > 300) return '[redacted long value]';
+      if (typeof value === 'string') return redactAuditString(value);
       return value;
     }
 
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, nested]) => [
+      Object.entries(value as JsonRecord).map(([key, nested]) => [
         key,
         isSensitiveRedactionKey(key) ? '[redacted]' : redactAuditMetadata(nested),
       ]),
     );
   };
 
-  if (loading) {
+  if (authLoading || loading) {
     return (
       <div className="min-h-screen flex flex-col">
         <Header />
@@ -476,7 +495,7 @@ export default function MandatesAudit() {
 
                           {/* Sort By */}
                           <div className="flex gap-2">
-                            <Select value={sortBy} onValueChange={(value: any) => setSortBy(value)}>
+                            <Select value={sortBy} onValueChange={(value) => setSortBy(value as SortBy)}>
                               <SelectTrigger className="flex-1">
                                 <SelectValue placeholder="Sort by" />
                               </SelectTrigger>

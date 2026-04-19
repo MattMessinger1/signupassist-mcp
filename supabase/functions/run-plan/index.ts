@@ -34,6 +34,11 @@ const readinessLevels = [
   'delegated_signup_verified',
 ];
 
+const liveAutomationAllowedPolicies = new Set([
+  'api_authorized',
+  'written_permission_received',
+]);
+
 function jsonResponse(body: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -54,6 +59,11 @@ function isFresh(expiresAt?: string | null) {
 
 function matchesConstraint(expected: unknown, actual: unknown) {
   return expected === null || expected === undefined || expected === actual;
+}
+
+function providerAutomationPolicyAllowsLiveAction(parameters: Record<string, unknown>) {
+  const status = parameters.provider_automation_policy_status;
+  return typeof status === 'string' && liveAutomationAllowedPolicies.has(status);
 }
 
 function safeParameters(value: unknown): Record<string, unknown> {
@@ -208,7 +218,31 @@ async function verifyDelegationMandate(
     return { ok: false, reason: 'delegated_payment_requires_verified_provider' };
   }
 
+  if (
+    ['pay', 'submit_final', 'delegate_signup'].includes(action) &&
+    !providerAutomationPolicyAllowsLiveAction(parameters)
+  ) {
+    return { ok: false, reason: 'provider_automation_permission_required' };
+  }
+
   return { ok: true, mandate };
+}
+
+async function consumeParentConfirmation(
+  serviceSupabase: ReturnType<typeof createClient>,
+  confirmation: { id?: string } | null | undefined,
+) {
+  if (!confirmation?.id) return { ok: false, reason: 'parent_confirmation_missing' };
+  const { data, error } = await serviceSupabase
+    .from('parent_action_confirmations')
+    .update({ consumed_at: new Date().toISOString() })
+    .eq('id', confirmation.id)
+    .is('consumed_at', null)
+    .select('id')
+    .maybeSingle();
+
+  if (error || !data) return { ok: false, reason: 'confirmation_consumed_failed' };
+  return { ok: true };
 }
 
 async function handleSensitiveAction(
@@ -264,6 +298,18 @@ async function handleSensitiveAction(
       status: reviewStateByAction[action] ?? 'paused_for_parent',
       error: reason,
     }, 403);
+  }
+
+  if (confirmationGate.ok) {
+    const consumeResult = await consumeParentConfirmation(serviceSupabase, confirmationGate.confirmation as { id?: string });
+    if (!consumeResult.ok) {
+      await logGateAudit(serviceSupabase, user.id, action, 'denied', parameters);
+      return jsonResponse({
+        success: false,
+        status: reviewStateByAction[action] ?? 'paused_for_parent',
+        error: consumeResult.reason,
+      }, 409);
+    }
   }
 
   if (action === 'pay') {
@@ -329,6 +375,8 @@ Deno.serve(async (req) => {
       return await handleSensitiveAction(req, serviceSupabase, body);
     }
 
+    const user = await getAuthenticatedUser(req);
+
     const planId = body.plan_id;
     if (typeof planId !== 'string') {
       throw new Error('plan_id is required');
@@ -352,6 +400,10 @@ Deno.serve(async (req) => {
 
     if (planError || !plan) {
       throw new Error('Plan not found');
+    }
+
+    if (plan.user_id !== user.id) {
+      return jsonResponse({ success: false, error: 'forbidden' }, 403);
     }
 
     if (plan.status !== 'running') {

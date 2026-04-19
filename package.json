@@ -33,7 +33,7 @@
     "infra:smoke:stripe": "tsx scripts/smokeStripe.ts",
     "evidence:release": "tsx scripts/releaseEvidence.ts",
     "predeploy:check": "npm run infra:check && npm run mcp:build && npm run build && npm run test",
-    "predeploy:release": "npm run infra:check && npm run typecheck && npx tsc -p tsconfig.app.json --noEmit && npm run build && npm run test:security-mvp && npm run test:authz-audit && npm run test:chatgpt-app && git diff --check",
+    "predeploy:release": "npm run infra:check && npm run typecheck && npx tsc -p tsconfig.app.json --noEmit && npm run build && npm run test:security-mvp && npm run test:authz-audit && npm run test:golden-path && npm run test:chatgpt-app && git diff --check",
     "test:authz-audit": "npm run mcp:build && node scripts/regressionAuthzAuditSecurity.js",
     "test:sibling-flow": "npm run mcp:build && node scripts/regressionSiblingAndHiddenPrograms.js",
     "mcp:build": "tsc -p tsconfig.mcp.json",

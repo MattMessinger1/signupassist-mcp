@@ -22,7 +22,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.create-system-mandate]
-verify_jwt = false
+verify_jwt = true
 
 [functions.cleanup-browserbase-sessions]
 verify_jwt = true  # SECURED: Require authentication to prevent unauthorized mass session deletion

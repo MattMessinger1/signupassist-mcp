@@ -281,4 +281,82 @@ describe("MVP security regression suite", () => {
     expect(headers["Access-Control-Allow-Origin"]).toBe("https://app.signupassist.com");
     expect(headers.Vary).toBe("Origin");
   });
+
+  it("keeps test harnesses, admin surfaces, and MCP bearer tokens out of the production web app", () => {
+    const app = readFileSync("src/App.tsx", "utf8");
+    const header = readFileSync("src/components/Header.tsx", "utf8");
+    const mcpClient = readFileSync("src/lib/chatMcpClient.ts", "utf8");
+    const discoveryRuns = readFileSync("src/pages/DiscoveryRuns.tsx", "utf8");
+
+    expect(app).toContain("isTestRoutesEnabled");
+    expect(app).toContain("testRoutesEnabled &&");
+    expect(app).not.toContain('import ChatTestHarness from "./pages/ChatTestHarness"');
+    expect(app).not.toContain('import MCPChatTest from "./pages/MCPChatTest"');
+
+    expect(header).toContain("isTestRoutesEnabled");
+    expect(header).toContain("testRoutesEnabled &&");
+    expect(header).toContain("isAdminSurfaceEnabled");
+
+    expect(mcpClient).not.toContain("VITE_MCP_ACCESS_TOKEN");
+    expect(mcpClient).toContain("signupassist_mcp_test_token");
+    expect(mcpClient).toContain("!import.meta.env.DEV && import.meta.env.VITE_ENABLE_TEST_ROUTES !== 'true'");
+
+    expect(discoveryRuns).toContain("isAdminSurfaceEnabled");
+    expect(discoveryRuns).toContain("Admin access required");
+    expect(discoveryRuns).not.toContain(".select('*')");
+  });
+
+  it("requires public HTTPS provider URLs in Autopilot production setup", () => {
+    const autopilot = readFileSync("src/pages/Autopilot.tsx", "utf8");
+
+    expect(autopilot).toContain('url.protocol !== "https:"');
+    expect(autopilot).toContain("import.meta.env.PROD");
+    expect(autopilot).toContain("url.username || url.password");
+    expect(autopilot).toContain('hostname.startsWith("10.")');
+    expect(autopilot).toContain('hostname.startsWith("192.168.")');
+    expect(autopilot).toContain("(?:fc|fd)");
+    expect(autopilot).toContain("fe80");
+    expect(autopilot).toContain("hostname.endsWith(\".internal\")");
+    expect(autopilot).toContain("public HTTPS signup page URL");
+  });
+
+  it("locks provider-learning raw tables and RPCs behind service/admin mediation", () => {
+    const migration = readFileSync("supabase/migrations/20260419183000_lock_provider_learning_and_audit_events.sql", "utf8");
+
+    expect(migration).toContain('DROP POLICY IF EXISTS "Authenticated users can read discovery_runs"');
+    expect(migration).toContain('DROP POLICY IF EXISTS "Authenticated users can read discovery_hints"');
+    expect(migration).toContain('DROP POLICY IF EXISTS "Authenticated users can read program_fingerprints"');
+    expect(migration).toContain('DROP POLICY IF EXISTS "Users can create their own signup intent events"');
+    expect(migration).toContain("REVOKE EXECUTE ON FUNCTION public.upsert_discovery_run");
+    expect(migration).toContain("REVOKE EXECUTE ON FUNCTION public.get_best_hints");
+    expect(migration).toContain("REVOKE EXECUTE ON FUNCTION public.refresh_best_hints");
+    expect(migration).toContain("GRANT EXECUTE ON FUNCTION public.upsert_discovery_run");
+  });
+
+  it("keeps sensitive edge functions auth-bound and fail-closed", () => {
+    const supabaseConfig = readFileSync("supabase/config.toml", "utf8");
+    const createSystemMandate = readFileSync("supabase/functions/create-system-mandate/index.ts", "utf8");
+    const stripeRefund = readFileSync("supabase/functions/stripe-refund-success-fee/index.ts", "utf8");
+    const runPlan = readFileSync("supabase/functions/run-plan/index.ts", "utf8");
+    const executor = readFileSync("supabase/functions/mcp-executor/index.ts", "utf8");
+
+    expect(supabaseConfig).toContain("[functions.create-system-mandate]");
+    expect(supabaseConfig).toContain("verify_jwt = true");
+    expect(createSystemMandate).toContain("ENABLE_SYSTEM_MANDATE_ISSUE");
+    expect(createSystemMandate).toContain("system_mandate_issue_disabled");
+    expect(createSystemMandate).toContain("Authorization");
+    expect(createSystemMandate).toContain("user_id !== authData.user.id");
+
+    expect(stripeRefund).toContain("auth.getUser()");
+    expect(stripeRefund).toContain("mandates!inner(user_id)");
+    expect(stripeRefund).toContain("chargeOwner !== authData.user.id");
+
+    expect(runPlan).toContain("consumeParentConfirmation");
+    expect(runPlan).toContain("providerAutomationPolicyAllowsLiveAction");
+    expect(runPlan).toContain("confirmation_consumed_failed");
+    expect(runPlan).toContain("plan.user_id !== user.id");
+
+    expect(executor).toContain("getUserIdFromJwt");
+    expect(executor).toContain("plan.user_id !== authenticatedUserId");
+  });
 });

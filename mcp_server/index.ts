@@ -475,6 +475,18 @@ const CHATGPT_APPS_V1_META = {
   "openai/toolInvocation/invoked": "Done."
 };
 
+const CHATGPT_NOAUTH_SECURITY_SCHEMES = [{ type: "noauth" }];
+const CHATGPT_OAUTH_SECURITY_SCHEMES = [{
+  type: "oauth2",
+  scopes: ["openid", "profile", "email"],
+}];
+
+function securitySchemesForTool(toolName: string) {
+  return toolName === "search_activities"
+    ? CHATGPT_NOAUTH_SECURITY_SCHEMES
+    : CHATGPT_OAUTH_SECURITY_SCHEMES;
+}
+
 // V1 App Store posture: keep public surface small + mostly read-only.
 // Allow Stripe "setup" flow to remain public (hosted Stripe checkout link), but keep write/execute tools private.
 function v1VisibilityForTool(toolName: string, toolMeta: Record<string, any> = {}): "public" | "private" {
@@ -500,6 +512,7 @@ function getVisibleToolDescriptors(tools: Iterable<any>, includePrivate = false)
       name: tool.name,
       description: tool.description,
       inputSchema: tool.inputSchema,
+      securitySchemes: tool.securitySchemes ?? securitySchemesForTool(tool.name),
       annotations: tool.annotations,
       _meta: tool._meta,
     }));
@@ -914,8 +927,10 @@ class SignupAssistMCPServer {
         inputSchema: tool.inputSchema,
         handler: tool.handler,
         annotations: (tool as any).annotations,
+        securitySchemes: securitySchemesForTool(tool.name),
         _meta: {
           ...CHATGPT_APPS_V1_META,
+          securitySchemes: securitySchemesForTool(tool.name),
           ...((tool as any)._meta || {}),
           ...applyV1Visibility(tool.name, ((tool as any)._meta || {})),
           ...applyWizardMeta(tool.name)
@@ -1236,8 +1251,10 @@ class SignupAssistMCPServer {
         openWorldHint: false,
         destructiveHint: false,
       },
+      securitySchemes: securitySchemesForTool("search_activities"),
       _meta: {
         ...CHATGPT_APPS_V1_META,
+        securitySchemes: securitySchemesForTool("search_activities"),
         "openai/safety": "read-only",
         ...applyV1Visibility("search_activities", { "openai/safety": "read-only" }),
         ...applyWizardMeta("search_activities")
@@ -1391,8 +1408,10 @@ class SignupAssistMCPServer {
         destructiveHint: true,
         openWorldHint: false,
       },
+      securitySchemes: securitySchemesForTool("register_for_activity"),
       _meta: {
         ...CHATGPT_APPS_V1_META,
+        securitySchemes: securitySchemesForTool("register_for_activity"),
         "openai/safety": "write",
         ...applyV1Visibility("register_for_activity", { "openai/safety": "write" }),
         ...applyWizardMeta("register_for_activity")
@@ -4743,8 +4762,13 @@ class SignupAssistMCPServer {
               }
             }
             
-            // Test harness fallback: Accept user_id from body (only if no valid Auth0 token)
-            if (!authenticatedUserId && user_id) {
+            // Test harness fallback: Accept user_id from body only outside production
+            // or when an explicit local harness flag is enabled. Never let a
+            // caller-supplied user_id satisfy protected-action auth in production.
+            const allowBodyUserId =
+              process.env.NODE_ENV !== 'production' ||
+              process.env.ALLOW_ORCHESTRATOR_TEST_USER_ID === 'true';
+            if (!authenticatedUserId && user_id && allowBodyUserId) {
               authenticatedUserId = user_id;
               authSource = 'test_harness';
               console.log('[AUTH] Using test harness user_id:', authenticatedUserId);

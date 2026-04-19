@@ -55,6 +55,8 @@
 - [ ] `/mandates` does not imply full delegation is active today.
 - [ ] `/discovery-runs` shows redacted provider learning status only.
 - [ ] `/admin` avoids exposing sensitive family data.
+- [ ] `/chat-test`, `/mcp-chat-test`, `/flow-test`, `/disambiguation-demo`, and mockup routes are hidden unless test routes are explicitly enabled.
+- [ ] No MCP bearer token is configured as a production `VITE_*` frontend variable.
 - [ ] Web copy does not overpromise set-and-forget.
 - [ ] Web changes are additive and do not alter ChatGPT MCP approval posture.
 

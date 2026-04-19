@@ -33,16 +33,16 @@
   },
   "openapi": {
     "path": "mcp/openapi.json",
-    "sha256": "8e8233f2fa0661ab0d8e5c99114f8131cd2f07c964e9006dc935daa8b97be17c",
+    "sha256": "57cdab72d3be1d5134fe695b6bbe69b74291a8064113af6f21a015d61d4e03a7",
     "serverUrls": [
-      "https://signupassist-mcp-production.up.railway.app"
+      "https://signupassist.shipworx.ai"
     ],
     "routes": [
       {
         "path": "/orchestrator/chat",
         "method": "post",
         "operationId": "register_for_activity",
-        "consequential": false,
+        "consequential": true,
         "requestBodyHash": "59898a0b79594977a20ddc9455b470a78d4a54fca1ee198bc96084934e335c2a",
         "parametersHash": null,
         "responsesHash": "0d7d085d1fe1f6428ba22568fd2ac713d76e5d6736235f51184a73aedc87237b",
@@ -192,7 +192,7 @@
     },
     {
       "path": "mcp/openapi.json",
-      "sha256": "8e8233f2fa0661ab0d8e5c99114f8131cd2f07c964e9006dc935daa8b97be17c"
+      "sha256": "57cdab72d3be1d5134fe695b6bbe69b74291a8064113af6f21a015d61d4e03a7"
     },
     {
       "path": "mcp_server/ai/APIOrchestrator.ts",
@@ -204,7 +204,7 @@
     },
     {
       "path": "mcp_server/index.ts",
-      "sha256": "b171522a4300b6102881ea96c048297404a3f5b4dfa28f58d78ad8c51920d1c8"
+      "sha256": "1dda2b1dd67cb4aaa907893f51c095882c5e7b55013128fbf66ad4ade8d3fd49"
     },
     {
       "path": "mcp_server/middleware/auth0.ts",

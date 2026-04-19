@@ -192,7 +192,7 @@ CREATE POLICY "Users can create their own delegation mandates"
         SELECT 1
         FROM public.children c
         WHERE c.id = child_id
-          AND c.user_id = auth.uid()
+          AND c.user_id = auth.uid()::text
       )
     )
   );

@@ -15,6 +15,7 @@ import { prompts } from '@/lib/prompts';
 import { BillingCard } from '@/components/BillingCard';
 import { buildAutopilotIntentPath } from '@/lib/signupIntent';
 import { getProviderReadinessSummary, type ProviderReadinessLevel } from '@/lib/providerLearning';
+import { isTestRoutesEnabled } from '@/lib/featureFlags';
 import {
   isCompleteStatus,
   isFailedOrFallbackStatus,
@@ -568,6 +569,14 @@ export default function RegistrationDashboard() {
   };
 
   const startSignupJob = async (planId: string) => {
+    if (!isTestRoutesEnabled()) {
+      showErrorToast(
+        'Legacy start disabled',
+        'Use Activity Finder and Autopilot to create a supervised run packet. Automated legacy starts are paused for safety.',
+      );
+      return;
+    }
+
     try {
       const { error } = await supabase.functions.invoke('start-signup-job', {
         body: { plan_id: planId }
@@ -697,10 +706,10 @@ export default function RegistrationDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-lg font-bold">
-                {autopilotRuns[0]?.target_program || 'Keva Sports Center'}
+                {autopilotRuns[0]?.target_program || 'No supervised run scheduled'}
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
-                Spots fill fast. Supervised autopilot can watch and help when it opens.
+                Spots fill fast. SignupAssist prepares the run packet and pauses at sensitive steps.
               </p>
             </CardContent>
           </Card>
@@ -726,8 +735,8 @@ export default function RegistrationDashboard() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-sm font-semibold">Helper is on</div>
-              <p className="mt-1 text-xs text-muted-foreground">Paste a run packet and keep the provider tab ready.</p>
+              <div className="text-sm font-semibold">Parent-assisted</div>
+              <p className="mt-1 text-xs text-muted-foreground">Open the provider from a run card and keep sensitive steps under parent control.</p>
             </CardContent>
           </Card>
 
@@ -974,7 +983,7 @@ export default function RegistrationDashboard() {
                           {getStatusText(plan)}
                         </Badge>
                         
-                        {plan.executions.length === 0 && (
+                        {plan.executions.length === 0 && isTestRoutesEnabled() && (
                           <Button
                             size="sm"
                             onClick={() => startSignupJob(plan.id)}

@@ -90,7 +90,7 @@ CREATE POLICY "Users can create their own signup intents"
         SELECT 1
         FROM public.children c
         WHERE c.id = selected_child_id
-          AND c.user_id = auth.uid()
+          AND c.user_id = auth.uid()::text
       )
     )
     AND (
@@ -120,7 +120,7 @@ CREATE POLICY "Users can update their own signup intents"
         SELECT 1
         FROM public.children c
         WHERE c.id = selected_child_id
-          AND c.user_id = auth.uid()
+          AND c.user_id = auth.uid()::text
       )
     )
     AND (

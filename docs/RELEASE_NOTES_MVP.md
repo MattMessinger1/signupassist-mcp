@@ -9,6 +9,7 @@
 - Provider learning foundation using existing playbooks, fixture posture, redacted observations, and readiness policy.
 - Sensitive-action gate foundation for registration, payment, provider login, waivers, final submit, and future delegated signup.
 - Security regression suite for URL safety, IDOR/BOLA, prompt injection, PII redaction, route-query hygiene, and ChatGPT approval surface pinning.
+- Production web hardening that hides legacy test harness routes by default and keeps MCP bearer tokens out of the frontend bundle.
 - ChatGPT app approval package hardened with parent/guardian, child-safe, OAuth, Stripe-hosted setup, final confirmation, and Bookeo/API-connected flow positioning.
 
 ## Intentionally Paused
@@ -18,6 +19,7 @@
 - Automated payment, waiver acceptance, provider login, and final submit unless deterministic confirmation/mandate gates cover the exact action.
 - Client-side direct creation or consumption of sensitive action confirmations and trusted delegated mandates.
 - Provider-learning persistence from the browser into `discovery_runs`; redacted observations are available on supervised run packets for future server-mediated ingestion.
+- Legacy chat/test harness routes unless `VITE_ENABLE_TEST_ROUTES=true` is explicitly enabled for dev/test.
 
 ## Web App Only
 
@@ -52,6 +54,7 @@ Critical production categories:
 - Stripe secret/webhook/price configuration where billing or hosted setup is enabled.
 - MCP/public site URLs and production CORS allowlist.
 - Mandate signing and PII encryption keys where mandate/audit flows are enabled.
+- MCP access tokens only in backend/server/worker/smoke-test environments, never as production `VITE_*` frontend variables.
 
 ## Migration Steps
 
@@ -59,6 +62,7 @@ Apply Supabase migrations through the latest sensitive-action lockdown migration
 
 - `20260417140000_add_sensitive_action_gates.sql`
 - `20260419170000_lock_sensitive_action_gates.sql`
+- `20260419183000_lock_provider_learning_and_audit_events.sql`
 
 Verify RLS and service-role write paths before enabling production web flows.
 

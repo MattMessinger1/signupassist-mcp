@@ -16,8 +16,14 @@ describe("Mandates audit redaction contract", () => {
 
   it("redacts visible metadata and hides credential identifiers", () => {
     expect(page).toContain("redactAuditMetadata");
+    expect(page).toContain("redactAuditString");
     expect(page).toContain("isSensitiveRedactionKey");
     expect(page).toContain("View redacted metadata");
+    expect(page).toContain("[A-Z0-9._%+-]+@[A-Z0-9.-]+");
+    expect(page).toContain("\\(?\\d{3}\\)?[-.\\s]?\\d{3}[-.\\s]?\\d{4}");
+    expect(page).toContain("\\b\\d{13,19}\\b");
+    expect(page).toContain("(?:\\d{1,2}[/-]){2}\\d{2,4}");
+    expect(page).toContain("medical|allerg|diagnos");
     expect(page).not.toContain("Credential ID:");
     expect(page).not.toContain("credential_id");
     expect(page).not.toContain(".select('*')");

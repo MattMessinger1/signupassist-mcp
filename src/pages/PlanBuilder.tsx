@@ -1009,8 +1009,8 @@ const PlanBuilder = () => {
       if (error) throw error;
 
       toast({
-        title: 'Signup Job Started',
-        description: 'The automated signup process has begun. You can monitor progress in the execution logs.',
+        title: 'Supervised run prepared',
+        description: 'SignupAssist prepared the run and will pause before login, payment, waivers, provider submit, or final submit.',
       });
 
       console.log('Signup job started:', data);
@@ -1291,7 +1291,7 @@ const PlanBuilder = () => {
       
       toast({
         title: 'Plan Created Successfully',
-        description: 'Your automated signup plan is ready. You can now start the registration process.',
+        description: 'Your supervised signup plan is ready. Review it before any provider action.',
       });
 
       // Log successful plan creation for debugging
@@ -1331,7 +1331,7 @@ const PlanBuilder = () => {
     if (!hasPaymentMethod) {
       toast({
         title: 'Payment Method Required',
-        description: 'Please add a payment method for the future Set and Forget success fee before creating this fully automated plan.',
+        description: 'Please add a payment method before creating this supervised plan. Success fees are future-only and not charged for supervised Autopilot.',
         variant: 'destructive',
       });
       return;
@@ -1633,7 +1633,7 @@ const PlanBuilder = () => {
           <Alert className="mt-6">
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription>
-              <strong>Next Steps:</strong> Click "Start Signup Job" to begin the automated registration process, 
+              <strong>Next Steps:</strong> Review the supervised run packet and keep the provider flow under parent control,
               or return to the dashboard to manage your plans.
             </AlertDescription>
           </Alert>
@@ -1651,7 +1651,7 @@ const PlanBuilder = () => {
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">Create Signup Plan</h1>
           <p className="text-muted-foreground">
-            Follow the steps below to set up automated registration
+            Follow the steps below to set up supervised registration preparation
           </p>
         </div>
 
@@ -1722,7 +1722,7 @@ const PlanBuilder = () => {
                     {form.watch('credentialId') && <CheckCircle className="h-5 w-5 text-green-600" />}
                   </div>
                   <CardDescription>
-                    Select credentials for automated login
+                    Select credentials only when a parent-supervised login step is required
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -1959,7 +1959,7 @@ const PlanBuilder = () => {
                   <LockedStepPreview
                     stepNumber={4}
                     title="Registration Timing"
-                    description="When should automated registration begin?"
+                    description="When should SignupAssist prepare and remind you?"
                     prerequisite="completing account prerequisites"
                   />
                 ) : (
@@ -1981,7 +1981,7 @@ const PlanBuilder = () => {
                           {opensAt && <CheckCircle className="h-5 w-5 text-green-600" />}
                         </div>
                         <CardDescription>
-                          When should automated registration begin?
+                          When should SignupAssist prepare and remind you?
                         </CardDescription>
                       </CardHeader>
                       <CardContent>

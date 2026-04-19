@@ -99,6 +99,19 @@ function sensitiveActionPausedResponse(tool: string) {
   );
 }
 
+async function getUserIdFromJwt(userJwt: string) {
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+    { global: { headers: { Authorization: `Bearer ${userJwt}` } } },
+  );
+  const { data, error } = await supabase.auth.getUser();
+  if (error || !data.user) {
+    throw new Error('auth_required');
+  }
+  return data.user.id;
+}
+
 async function callMcpTool(toolName: string, args: Record<string, unknown>): Promise<unknown> {
   if (!BOOKEO_MCP_TOOLS.has(toolName)) {
     throw new Error(`Unsupported MCP tool: ${toolName}`);
@@ -183,6 +196,7 @@ Deno.serve(async (req) => {
     if (!credential_id || !user_jwt) {
       throw new Error('credential_id and user_jwt are required');
     }
+    const authenticatedUserId = await getUserIdFromJwt(String(user_jwt));
 
     console.log(`Starting MCP-powered plan execution for plan ${plan_id}`);
 
@@ -209,6 +223,10 @@ Deno.serve(async (req) => {
 
     if (planError || !plan) {
       throw new Error('Plan not found');
+    }
+
+    if (plan.user_id !== authenticatedUserId) {
+      throw new Error('Forbidden: plan does not belong to authenticated user');
     }
 
     if (plan.status !== 'running') {

@@ -59,6 +59,18 @@ serve(async (req) => {
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
     );
+    const authSupabase = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_ANON_KEY") ?? "",
+      { global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } } },
+    );
+    const { data: authData, error: authError } = await authSupabase.auth.getUser();
+    if (authError || !authData.user) {
+      return new Response(JSON.stringify({ success: false, error: "auth_required" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 401,
+      });
+    }
 
     // Parse request -- amount_cents is optional (omit for full refund)
     const { charge_id, amount_cents, reason, stripe_reason } = await req.json();
@@ -71,12 +83,21 @@ serve(async (req) => {
     // Get charge record to find the Stripe payment intent
     const { data: charge, error: chargeError } = await supabaseClient
       .from('charges')
-      .select('id, stripe_payment_intent, status, refunded_at, amount_cents, mandate_id')
+      .select('id, stripe_payment_intent, status, refunded_at, amount_cents, mandate_id, mandates!inner(user_id)')
       .eq('id', charge_id)
       .single();
 
     if (chargeError || !charge) {
       throw new Error(`Charge not found: ${charge_id}`);
+    }
+    const chargeOwner = Array.isArray(charge.mandates)
+      ? charge.mandates[0]?.user_id
+      : charge.mandates?.user_id;
+    if (chargeOwner !== authData.user.id) {
+      return new Response(JSON.stringify({ success: false, error: "forbidden" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 403,
+      });
     }
 
     if (charge.refunded_at) {

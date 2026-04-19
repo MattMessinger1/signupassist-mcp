@@ -158,7 +158,9 @@ Frontend required variables include:
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_PUBLISHABLE_KEY`
 
-Treat `VITE_MCP_ACCESS_TOKEN` carefully because Vite exposes it to the browser. Use only low-risk dev/test tokens if it is configured.
+Do not configure `VITE_MCP_ACCESS_TOKEN` in production. Vite exposes `VITE_*`
+values to the browser bundle. Test harness routes are hidden by default and use a
+browser-local temporary token only when explicitly enabled for dev/test.
 
 Supabase functions required variables include:
 

@@ -175,7 +175,27 @@ function providerReadinessClass(readiness: ProviderReadinessLevel) {
 function safeExternalUrl(value: string) {
   try {
     const url = new URL(value);
-    return ["http:", "https:"].includes(url.protocol) ? url.toString() : null;
+    if (url.protocol !== "https:" && (import.meta.env.PROD || url.protocol !== "http:")) return null;
+    if (url.username || url.password) return null;
+
+    const hostname = url.hostname.toLowerCase();
+    const isLocalhost =
+      hostname === "localhost" ||
+      hostname.endsWith(".localhost") ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname.startsWith("127.") ||
+      hostname.startsWith("10.") ||
+      hostname.startsWith("192.168.") ||
+      hostname.startsWith("169.254.") ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname) ||
+      /^\[?(?:fc|fd)[0-9a-f]{2}:/i.test(hostname) ||
+      /^\[?fe80:/i.test(hostname) ||
+      hostname.endsWith(".local") ||
+      hostname.endsWith(".internal");
+
+    if (isLocalhost) return null;
+    return url.toString();
   } catch {
     return null;
   }
@@ -602,7 +622,7 @@ export default function Autopilot() {
     }
 
     if (!safeTargetUrl) {
-      showErrorToast("Valid provider URL required", "Add an http or https signup page URL before starting.");
+      showErrorToast("Valid provider URL required", "Add a public HTTPS signup page URL before starting.");
       setActiveStep(1);
       return;
     }
@@ -885,7 +905,7 @@ export default function Autopilot() {
                 <Alert variant="destructive">
                   <AlertTriangle className="h-4 w-4" />
                   <AlertDescription>
-                    Use a valid http or https signup URL before opening or saving the supervised packet.
+                    Use a valid public HTTPS signup URL before opening or saving the supervised packet.
                   </AlertDescription>
                 </Alert>
               )}
