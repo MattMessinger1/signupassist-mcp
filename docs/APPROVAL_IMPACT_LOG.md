@@ -1680,10 +1680,11 @@ Verification results for this phase:
 Scope:
 
 - Created fresh Supabase project `signupassist-prod-v2` (`jdwuxllyvbrjedqiipbi`) because the previous production project had no real data, drifted migration history, and missing April web-app tables.
-- Applied the complete 66-migration chain through `20260419183000_lock_provider_learning_and_audit_events.sql`.
+- Applied the complete 66-migration chain through `20260419183000_lock_provider_learning_and_audit_events.sql`, then added/applied `20260419200000_unschedule_legacy_old_project_cron_jobs.sql`.
 - Updated Railway web and worker Supabase env vars to the fresh project.
 - Deployed existing Supabase Edge Functions to the fresh project.
 - Updated `supabase/config.toml` to the new project ref and removed stale function config entries for missing local functions.
+- Removed stale `pg_cron` jobs in the fresh project that were recreated from legacy migrations with hardcoded old Supabase project URLs.
 
 Approval impact:
 
@@ -1698,4 +1699,7 @@ Verification:
 
 - `supabase db push --linked --include-all --dry-run`: Passed for fresh project.
 - `supabase db push --linked --include-all`: Passed; latest migration `20260419183000`, migration count 66.
+- `supabase db push --linked`: Passed for `20260419200000_unschedule_legacy_old_project_cron_jobs.sql`.
+- Final migration verification: latest migration `20260419200000`, migration count 67.
 - Direct verification confirmed expected April tables exist, RLS is enabled on sensitive/provider-learning tables, and provider-learning RPCs are not executable by `anon` or `authenticated`.
+- `cron.job` verification confirmed no remaining jobs reference the old Supabase project ref.

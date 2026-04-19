@@ -67,11 +67,12 @@ Current production database foundation:
 
 Apply Supabase migrations through the latest sensitive-action lockdown migration:
 
-- Full fresh-chain migration count: 66
-- Latest applied version: `20260419183000`
+- Full fresh-chain migration count: 67
+- Latest applied version: `20260419200000`
 - `20260417140000_add_sensitive_action_gates.sql`
 - `20260419170000_lock_sensitive_action_gates.sql`
 - `20260419183000_lock_provider_learning_and_audit_events.sql`
+- `20260419200000_unschedule_legacy_old_project_cron_jobs.sql`
 
 Verify RLS and service-role write paths before enabling production web flows.
 
