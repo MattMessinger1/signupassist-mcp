@@ -1075,3 +1075,41 @@ Verification results for this phase:
 - `npm run test:mcp-manifest`: Passed.
 - `npm run test:mcp-descriptors`: Passed.
 - `git diff --check`: Passed.
+
+## 2026-04-18 - Redacted Release Evidence Helper
+
+Files changed in this phase:
+
+- `scripts/releaseEvidence.ts`
+- `tests/release-evidence.test.ts`
+- `package.json`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: No.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Verification added:
+
+- Added `npm run evidence:release` for server-side, service-role-only release evidence capture by `signup_intent_id` and/or `autopilot_run_id`.
+- Evidence output omits user ids and child ids, reduces target URLs to hostnames, summarizes signup intent/run/audit/provider readiness, and redacts child PII, credentials, tokens, payment data, and medical/allergy details.
+- Added unit coverage for recursive redaction, target URL host-only output, provider promotion safety, and independent signup intent/run summaries.
+
+Verification results for this phase:
+
+- `npx vitest run tests/release-evidence.test.ts --reporter=verbose`: Passed.
+- `npx eslint scripts/releaseEvidence.ts tests/release-evidence.test.ts --max-warnings=0`: Passed.
+- `npm run test:approval-snapshots`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `git diff --check`: Passed.

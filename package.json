@@ -31,6 +31,7 @@
     "infra:smoke:railway": "tsx scripts/smokeRailway.ts",
     "infra:smoke:supabase": "tsx scripts/smokeSupabase.ts",
     "infra:smoke:stripe": "tsx scripts/smokeStripe.ts",
+    "evidence:release": "tsx scripts/releaseEvidence.ts",
     "predeploy:check": "npm run infra:check && npm run mcp:build && npm run build && npm run test",
     "test:authz-audit": "npm run mcp:build && node scripts/regressionAuthzAuditSecurity.js",
     "test:sibling-flow": "npm run mcp:build && node scripts/regressionSiblingAndHiddenPrograms.js",
