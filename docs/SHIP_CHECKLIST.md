@@ -120,6 +120,9 @@
 - [ ] Chrome helper fixtures are used first.
 - [ ] Learning artifacts are redacted.
 - [ ] Provider readiness levels are represented consistently.
+- [ ] Provider automation policy is displayed separately from readiness.
+- [ ] CampMinder live browser automation is blocked unless written provider/camp permission or approved API access is recorded.
+- [ ] Playwright/browser automation is limited to SignupAssist-owned web proof, fixtures, explicit sandbox/test accounts, or parent-supervised assist.
 - [ ] Beta-to-verified promotion requires fixture evidence.
 - [ ] Promotion requires human/operator review.
 - [ ] Provider readiness cannot be promoted by model output alone.

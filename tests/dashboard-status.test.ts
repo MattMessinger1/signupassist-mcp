@@ -45,10 +45,11 @@ describe("dashboard status and audit polish", () => {
     expect(dashboard).toContain("Reminder prepared");
     expect(dashboard).toContain("Manual reminder recommended");
     expect(dashboard).toContain("SMS disabled until configured");
-    expect(dashboard).toContain("Verified means fixture-tested and observed across safe flows.");
+    expect(dashboard).toContain("Verified navigation means fixture-tested safe flow coverage, not unattended live provider submit.");
     expect(dashboard).toContain("Beta means conservative fill-only or high-pause mode.");
     expect(dashboard).toContain("Generic means SignupAssist pauses more often and makes no speed guarantees.");
     expect(dashboard).toContain("Delegated signup is future-only unless readiness and mandate checks pass.");
+    expect(dashboard).toContain("Live automation policy:");
   });
 
   it("normalizes all requested status labels", () => {

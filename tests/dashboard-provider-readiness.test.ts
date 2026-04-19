@@ -36,7 +36,8 @@ describe("dashboard and provider readiness verification", () => {
       "View provider readiness, mapped fixtures, and the last 50 redacted field discovery runs.",
       "Provider readiness",
       "Latest redacted observation",
-      "Promotion requires fixtures, provider-specific tests, and admin review. Model output cannot promote readiness.",
+      "Promotion requires fixtures, provider-specific tests, admin review, and provider automation permission. Model output cannot promote readiness.",
+      "Live automation",
       "View redacted JSON",
       "Redacted errors (JSON)",
       "Redacted metadata (JSON)",
@@ -49,6 +50,7 @@ describe("dashboard and provider readiness verification", () => {
       expect(provider.promotionPolicy.modelOutputCanPromote).toBe(false);
       expect(provider.promotionPolicy.providerPageContentCanPromote).toBe(false);
       expect(provider.promotionPolicy.requiresAdminReview).toBe(true);
+      expect(provider.automationPolicy.liveBrowserAutomationAllowed).toBe(false);
     });
   });
 

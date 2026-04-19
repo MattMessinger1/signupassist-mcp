@@ -254,6 +254,7 @@ describe("sensitive action gates", () => {
       actionType: "delegate_signup",
       providerKey: "daysmart",
       providerReadinessLevel: "delegated_signup_candidate",
+      providerAutomationPolicyStatus: "written_permission_received",
       exactProgram: "U8 soccer",
       now,
     }, { mandates: [mandate()] });
@@ -266,6 +267,15 @@ describe("sensitive action gates", () => {
       exactProgram: "U8 soccer",
       now,
     }, { mandates: [mandate()] });
+
+    const providerPolicyBlocked = validateSensitiveActionGate({
+      userId: userA,
+      actionType: "delegate_signup",
+      providerKey: "campminder",
+      providerReadinessLevel: "delegated_signup_candidate",
+      exactProgram: "U8 soccer",
+      now,
+    }, { mandates: [mandate({ provider_key: "campminder" })] });
 
     const wrongProgram = validateSensitiveActionGate({
       userId: userA,
@@ -281,6 +291,7 @@ describe("sensitive action gates", () => {
       actionType: "pay",
       providerKey: "daysmart",
       providerReadinessLevel: "delegated_signup_verified",
+      providerAutomationPolicyStatus: "written_permission_received",
       exactProgram: "U8 soccer",
       amountCents: 26000,
       now,
@@ -289,6 +300,8 @@ describe("sensitive action gates", () => {
     expect(validDelegation.allowed).toBe(true);
     expect(validDelegation.status).toBe("delegated_signup_ready");
     expect(unverifiedProvider.allowed).toBe(false);
+    expect(providerPolicyBlocked.allowed).toBe(false);
+    expect(providerPolicyBlocked.reason).toBe("provider_live_automation_not_authorized");
     expect(wrongProgram.allowed).toBe(false);
     expect(overCap.allowed).toBe(false);
     expect(overCap.status).toBe("payment_review_required");

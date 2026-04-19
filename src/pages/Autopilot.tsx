@@ -643,6 +643,7 @@ export default function Autopilot() {
         supported_actions: providerLearningSummary.supportedActions,
         stop_conditions: providerLearningSummary.stopConditions,
         promotion: providerLearningSummary.promotionPolicy,
+        automation_policy: providerLearningSummary.automationPolicy,
         opt_in_redacted_learning: learningOptIn,
         no_child_pii_in_learning: true,
         signup_intent_id: signupIntent?.id || null,
@@ -810,7 +811,7 @@ export default function Autopilot() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-3">
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="target-url">Signup URL</Label>
                   <div className="flex flex-col gap-2 sm:flex-row">
@@ -1075,6 +1076,13 @@ export default function Autopilot() {
                     {readiness}
                   </span>
                 </div>
+                <div className="rounded-lg border bg-background p-3">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">Live automation policy</p>
+                  <p className="mt-2 text-sm font-medium">{providerLearningSummary.automationPolicy.label}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Unattended provider execution stays blocked unless API or written permission is recorded.
+                  </p>
+                </div>
               </div>
 
               <div className="rounded-lg border p-4">
@@ -1144,7 +1152,7 @@ export default function Autopilot() {
                 <Sparkles className="h-4 w-4" />
                 <AlertTitle>Provider status: {readiness}</AlertTitle>
                 <AlertDescription>
-                  SignupAssist can learn redacted provider signals such as pause reasons, matched fields, and fixture gaps. It does not learn child PII, credentials, tokens, payment data, or medical/allergy details by default.
+                  {providerLearningSummary.automationPolicy.copy} SignupAssist can learn redacted provider signals such as pause reasons, matched fields, and fixture gaps. It does not learn child PII, credentials, tokens, payment data, or medical/allergy details by default.
                 </AlertDescription>
               </Alert>
 

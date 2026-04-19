@@ -20,6 +20,20 @@ export const PROVIDER_READINESS_LEVELS = [
 
 export type ProviderReadinessLevel = (typeof PROVIDER_READINESS_LEVELS)[number];
 
+export const PROVIDER_AUTOMATION_POLICY_STATUSES = [
+  "unknown",
+  "fixtures_only",
+  "supervised_browser_only",
+  "api_authorized",
+  "written_permission_required",
+  "written_permission_received",
+  "prohibited",
+  "legal_review_required",
+] as const;
+
+export type ProviderAutomationPolicyStatus =
+  (typeof PROVIDER_AUTOMATION_POLICY_STATUSES)[number];
+
 export const SET_AND_FORGET_LADDER = [
   "Today: supervised run packet",
   "Next: verified provider fill/navigation",
@@ -42,6 +56,17 @@ export interface ProviderPromotionPolicy {
   providerPageContentCanPromote: false;
 }
 
+export interface ProviderAutomationPolicy {
+  status: ProviderAutomationPolicyStatus;
+  label: string;
+  liveBrowserAutomationAllowed: boolean;
+  fixtureAutomationAllowed: boolean;
+  supervisedBrowserAssistAllowed: boolean;
+  requiresOfficialApiOrWrittenPermission: boolean;
+  copy: string;
+  sourceUrls: string[];
+}
+
 export interface ProviderReadinessSummary {
   key: string;
   name: string;
@@ -55,6 +80,7 @@ export interface ProviderReadinessSummary {
   fixtureCoverage: ProviderFixtureCoverage;
   promotionStatus: "not_requested" | "needs_fixture_review" | "review_required";
   promotionPolicy: ProviderPromotionPolicy;
+  automationPolicy: ProviderAutomationPolicy;
 }
 
 export interface ProviderRegistryEntry extends ProviderReadinessSummary {
@@ -103,6 +129,10 @@ export interface RedactedProviderObservation {
     automatic: false;
     requires_fixtures_tests_and_admin_review: true;
   };
+  automation_policy: Pick<
+    ProviderAutomationPolicy,
+    "status" | "liveBrowserAutomationAllowed" | "requiresOfficialApiOrWrittenPermission"
+  >;
   created_at: string | null;
 }
 
@@ -125,6 +155,7 @@ export interface DiscoveryRunPayloadFromObservation {
       promotion_requires_admin_review: true;
     };
     redaction: RedactedProviderObservation["redaction"];
+    automation_policy: RedactedProviderObservation["automation_policy"];
   };
   p_run_conf: number;
   p_run_id: string | null;
@@ -153,6 +184,67 @@ const READINESS_CONFIDENCE: Record<ProviderReadinessLevel, number> = {
 const SENSITIVE_VALUE_PATTERN =
   /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})|(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})|(\d{13,19})/i;
 
+const CAMP_MINDER_TERMS_URL =
+  "https://campminder.pactsafe.io/versions/62ba16aa5f5a4316a760997e.pdf";
+const CAMP_MINDER_API_URL =
+  "https://help.campminder.com/en/articles/6988427-get-to-know-campminder-api";
+const ACTIVE_API_TERMS_URL = "https://developer.active.com/API_Terms_of_Use";
+
+const DEFAULT_PROVIDER_AUTOMATION_POLICY: ProviderAutomationPolicy = {
+  status: "legal_review_required",
+  label: "Legal review required",
+  liveBrowserAutomationAllowed: false,
+  fixtureAutomationAllowed: true,
+  supervisedBrowserAssistAllowed: true,
+  requiresOfficialApiOrWrittenPermission: true,
+  copy:
+    "Fixture checks and parent-supervised browser assist are allowed; live unattended provider automation requires provider terms review, permission, or an approved API path.",
+  sourceUrls: [],
+};
+
+const PROVIDER_AUTOMATION_POLICIES: Record<string, ProviderAutomationPolicy> = {
+  active: {
+    ...DEFAULT_PROVIDER_AUTOMATION_POLICY,
+    sourceUrls: [ACTIVE_API_TERMS_URL],
+  },
+  daysmart: {
+    ...DEFAULT_PROVIDER_AUTOMATION_POLICY,
+  },
+  amilia: {
+    ...DEFAULT_PROVIDER_AUTOMATION_POLICY,
+  },
+  "civicrec-recdesk": {
+    ...DEFAULT_PROVIDER_AUTOMATION_POLICY,
+  },
+  campminder: {
+    status: "written_permission_required",
+    label: "Written permission required",
+    liveBrowserAutomationAllowed: false,
+    fixtureAutomationAllowed: true,
+    supervisedBrowserAssistAllowed: true,
+    requiresOfficialApiOrWrittenPermission: true,
+    copy:
+      "CampMinder can be recognized, fixture-tested, and used in supervised parent assist mode, but unattended live browser automation is blocked until written provider/camp permission or an approved API path exists.",
+    sourceUrls: [CAMP_MINDER_TERMS_URL, CAMP_MINDER_API_URL],
+  },
+  generic: {
+    status: "fixtures_only",
+    label: "Fixtures only",
+    liveBrowserAutomationAllowed: false,
+    fixtureAutomationAllowed: true,
+    supervisedBrowserAssistAllowed: false,
+    requiresOfficialApiOrWrittenPermission: true,
+    copy:
+      "Generic providers are limited to fixtures, readiness display, and parent-directed preparation until a provider-specific policy is reviewed.",
+    sourceUrls: [],
+  },
+};
+
+const LIVE_AUTOMATION_ALLOWED_STATUSES = new Set<ProviderAutomationPolicyStatus>([
+  "api_authorized",
+  "written_permission_received",
+]);
+
 function fixturePathsForPlaybook(playbook: ProviderPlaybook) {
   const paths = new Set<string>();
   if (playbook.fixturePath) paths.add(playbook.fixturePath);
@@ -176,6 +268,44 @@ function readinessLevelForPlaybook(playbook: ProviderPlaybook, isKnown: boolean)
   if (playbook.confidence === "beta") return "fill_safe";
   if (getProviderFixtureCoverage(playbook).hasCoverage) return "navigation_verified";
   return "fill_safe";
+}
+
+export function getProviderAutomationPolicy(
+  providerKey?: string | null,
+  statusOverride?: ProviderAutomationPolicyStatus | null,
+): ProviderAutomationPolicy {
+  if (!providerKey) {
+    return {
+      ...DEFAULT_PROVIDER_AUTOMATION_POLICY,
+      status: "unknown",
+      label: "Unknown provider policy",
+      supervisedBrowserAssistAllowed: false,
+      copy:
+        "Provider automation policy is unknown. SignupAssist must use fixtures or parent-directed preparation and pause before live provider actions.",
+    };
+  }
+
+  const basePolicy = PROVIDER_AUTOMATION_POLICIES[providerKey] || DEFAULT_PROVIDER_AUTOMATION_POLICY;
+  if (!statusOverride) return basePolicy;
+
+  const liveAllowed = LIVE_AUTOMATION_ALLOWED_STATUSES.has(statusOverride);
+  return {
+    ...basePolicy,
+    status: statusOverride,
+    label: statusOverride.replace(/_/g, " "),
+    liveBrowserAutomationAllowed: liveAllowed,
+    requiresOfficialApiOrWrittenPermission: !liveAllowed,
+    copy: liveAllowed
+      ? "Live delegated provider automation may be considered only with provider-specific tests, signed mandate, exact match, price cap, and audit gates."
+      : basePolicy.copy,
+  };
+}
+
+export function isLiveDelegatedProviderAutomationAllowed(
+  providerKey?: string | null,
+  statusOverride?: ProviderAutomationPolicyStatus | null,
+) {
+  return getProviderAutomationPolicy(providerKey, statusOverride).liveBrowserAutomationAllowed;
 }
 
 function activePlaybookVersion(playbook: ProviderPlaybook) {
@@ -207,6 +337,9 @@ export function getProviderReadinessSummary(providerKey?: string | null): Provid
   const playbook = isKnown ? findPlaybookByKey(providerKey!) : findPlaybookByKey("generic");
   const readinessLevel = readinessLevelForPlaybook(playbook, isKnown);
   const fixtureCoverage = getProviderFixtureCoverage(playbook);
+  const automationPolicy = isKnown
+    ? getProviderAutomationPolicy(playbook.key)
+    : getProviderAutomationPolicy(null);
 
   return {
     key: isKnown ? playbook.key : "unknown",
@@ -221,6 +354,7 @@ export function getProviderReadinessSummary(providerKey?: string | null): Provid
     fixtureCoverage,
     promotionStatus: fixtureCoverage.hasCoverage ? "review_required" : "needs_fixture_review",
     promotionPolicy: PROMOTION_POLICY,
+    automationPolicy,
   };
 }
 
@@ -372,6 +506,12 @@ export function buildRedactedProviderObservation(
       automatic: false,
       requires_fixtures_tests_and_admin_review: true,
     },
+    automation_policy: {
+      status: summary.automationPolicy.status,
+      liveBrowserAutomationAllowed: summary.automationPolicy.liveBrowserAutomationAllowed,
+      requiresOfficialApiOrWrittenPermission:
+        summary.automationPolicy.requiresOfficialApiOrWrittenPermission,
+    },
     created_at: run.created_at || null,
   };
 }
@@ -407,6 +547,7 @@ export function buildDiscoveryRunPayloadFromObservation(
         promotion_requires_admin_review: true,
       },
       redaction: observation.redaction,
+      automation_policy: observation.automation_policy,
     },
     p_run_conf: observation.confidence,
     p_run_id: null,

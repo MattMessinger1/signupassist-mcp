@@ -48,6 +48,39 @@ Implemented pieces:
 
 No new provider registry, playbook version, flow observation, fixture run, or promotion review tables were added in this pass. Add those only if existing discovery/autopilot/cached-program infrastructure cannot safely represent the required lifecycle later.
 
+## Provider Automation Policy
+
+Provider readiness is not the same thing as permission to automate a live third-party provider. A provider can have fixture-tested navigation while still being blocked for unattended live browser automation.
+
+Automation policy statuses:
+
+- `unknown`
+- `fixtures_only`
+- `supervised_browser_only`
+- `api_authorized`
+- `written_permission_required`
+- `written_permission_received`
+- `prohibited`
+- `legal_review_required`
+
+Current implementation:
+
+- `src/lib/providerLearning.ts` exposes automation policy on provider readiness summaries and redacted observations.
+- CampMinder is `written_permission_required`: fixture testing, provider recognition, readiness display, redacted learning, supervised run packets, and parent-supervised assist are allowed. Unattended live browser login, application submit, payment, waiver acceptance, final submit, or timing-based registration are blocked until written provider/camp permission or an approved API path exists.
+- Other large providers default to `legal_review_required` until provider-specific terms, API access, or written permission are reviewed.
+- Generic providers remain `fixtures_only`.
+- Future delegated signup gates must consider both provider readiness and provider automation policy.
+
+Playwright scope:
+
+- Allowed: SignupAssist-owned web golden-path tests, redacted/local provider fixtures, explicit sandbox or test provider accounts, and parent-supervised assist where unsafe steps pause.
+- Blocked: unattended live third-party signup, login, payment, waiver acceptance, final submit, or time-based registration unless provider authorization/API access is recorded and tested.
+
+CampMinder review sources:
+
+- `https://campminder.pactsafe.io/versions/62ba16aa5f5a4316a760997e.pdf`
+- `https://help.campminder.com/en/articles/6988427-get-to-know-campminder-api`
+
 ## Initial Providers
 
 - Active / ActiveNet
@@ -199,6 +232,7 @@ A provider or playbook can move from beta/generic to verified only when:
 - Provider-specific tests pass.
 - Exact activity/program matching uses deterministic fingerprints or provider IDs.
 - Sensitive fields are classified and unsafe actions pause.
+- Provider automation policy allows the proposed mode.
 - Promotion evidence is reviewed by a human/operator.
 - Model output is treated as advisory only.
 - Audit and rollback behavior are documented.
@@ -209,6 +243,7 @@ Provider readiness cannot be promoted by model output alone.
 
 - Learning must not expose child data, credentials, tokens, payment data, or medical/allergy details.
 - Learning must not authorize registration, payment, waiver acceptance, provider login, final submit, or readiness promotion.
+- Learning must not turn fixture readiness into live browser automation permission.
 - Learning must not alter the public ChatGPT app approval flow.
 - Learning must not expose hidden/private/internal MCP tools.
 - Learning must not weaken auth, RLS, protected actions, or parent confirmation requirements.

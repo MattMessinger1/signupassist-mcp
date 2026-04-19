@@ -1250,3 +1250,65 @@ Verification results for this phase:
 - `npm run infra:smoke:supabase`: Passed table/queryability checks and invoked `get-user-location`.
 - `npm run predeploy:release`: Passed. `infra:check` still reported non-blocking local-shell env warnings for Railway web, scheduled worker, and Supabase Edge Function groups.
 - `git diff --check`: Passed.
+
+## 2026-04-19 - CampMinder Automation Safety Policy
+
+Files changed in this phase:
+
+- `src/lib/autopilot/playbooks.ts`
+- `src/lib/providerLearning.ts`
+- `src/lib/sensitiveActionGates.ts`
+- `src/pages/Autopilot.tsx`
+- `src/pages/DiscoveryRuns.tsx`
+- `src/pages/RegistrationDashboard.tsx`
+- `tests/provider-learning.test.ts`
+- `tests/sensitive-action-gates.test.ts`
+- `tests/dashboard-provider-readiness.test.ts`
+- `tests/dashboard-status.test.ts`
+- `docs/SIGNUPASSIST_PRODUCTION_RUNBOOK.md`
+- `docs/PROVIDER_LEARNING_PRD.md`
+- `docs/SHIP_CHECKLIST.md`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: No.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Changes:
+
+- Added provider automation policy statuses separate from provider readiness.
+- CampMinder is now explicitly `written_permission_required`: fixture testing, provider recognition, readiness display, redacted learning, supervised run packets, and parent-supervised assist are allowed, while unattended live browser automation remains blocked until written provider/camp permission or approved API access exists.
+- Other large providers default to legal review before live delegated browser automation.
+- Generic providers remain fixture-only.
+- Added a stop condition for unclear provider terms, automation permission, or official API authorization.
+- Threaded automation policy through Autopilot run metadata, redacted provider observations, Discovery Runs, Dashboard, and docs.
+- Sensitive-action mandate checks now block delegated signup, final submit, and payment when live provider automation is not authorized by provider policy.
+
+Verification added:
+
+- Provider learning tests now prove CampMinder fixture readiness does not imply live delegated automation permission.
+- Sensitive-action tests now prove future delegated signup requires both readiness and provider automation authorization.
+- Dashboard/provider readiness tests now require provider automation policy copy to remain visible.
+
+Verification results for this phase:
+
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npx vitest run tests/provider-learning.test.ts tests/sensitive-action-gates.test.ts tests/dashboard-provider-readiness.test.ts tests/dashboard-status.test.ts tests/autopilot-wizard-ui.test.ts --reporter=verbose`: Passed.
+- `npm run typecheck`: Passed.
+- `npm run test:security-mvp`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `npm run test:chatgpt-app`: Passed.
+- `npm run test:approval-snapshots`: Passed.
+- `npx eslint src/lib/autopilot/playbooks.ts src/lib/providerLearning.ts src/lib/sensitiveActionGates.ts src/pages/Autopilot.tsx src/pages/DiscoveryRuns.tsx src/pages/RegistrationDashboard.tsx tests/provider-learning.test.ts tests/sensitive-action-gates.test.ts tests/dashboard-provider-readiness.test.ts tests/dashboard-status.test.ts --max-warnings=0`: Passed.
+- `git diff --check`: Passed.
