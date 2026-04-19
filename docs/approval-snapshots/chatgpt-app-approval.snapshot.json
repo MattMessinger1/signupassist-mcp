@@ -196,7 +196,7 @@
     },
     {
       "path": "mcp_server/ai/APIOrchestrator.ts",
-      "sha256": "d5e014515e19ad24456fd1093693a3f7ce69c70134017862965685229f487d60"
+      "sha256": "3d34ca8f05f30e952b791e6cec7bcb4b3bfcea77c3be24b916f38e40162eed24"
     },
     {
       "path": "mcp_server/config/protectedActions.ts",
@@ -256,7 +256,7 @@
     },
     {
       "path": "mcp_server/providers/stripe.ts",
-      "sha256": "9a76845ef38d88ab6dde0d5dd3f60666d37f7b26ad7d525790b8e2be4f908ba4"
+      "sha256": "17c6d877b1d4f5e42998c46ef22f392705fea975609d5e66d001a24b49b4d997"
     },
     {
       "path": "mcp_server/providers/user.ts",

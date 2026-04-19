@@ -1405,3 +1405,52 @@ Verification results for this phase:
 - `npm run typecheck`: Passed.
 - `npx tsc -p tsconfig.app.json --noEmit`: Passed.
 - `git diff --check`: Passed.
+
+## 2026-04-19 - Web Ship P0 Sensitive Action Gate Lockdown
+
+Files changed in this phase:
+
+- `supabase/migrations/20260419170000_lock_sensitive_action_gates.sql`
+- `supabase/functions/mcp-executor/index.ts`
+- `supabase/functions/mandate-issue-v2/index.ts`
+- `mcp_server/providers/stripe.ts`
+- `mcp_server/ai/APIOrchestrator.ts`
+- `tests/sensitive-action-contract.test.ts`
+- `docs/approval-snapshots/chatgpt-app-approval.snapshot.json`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: Yes, `mcp_server/ai/APIOrchestrator.ts`, `mcp_server/providers/stripe.ts`, and the approval snapshot changed intentionally.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Changes:
+
+- Added a follow-on Supabase migration that removes authenticated client create/update/delete policies for `parent_action_confirmations` and `agent_delegation_mandates`; trusted server/service-role code remains the write path.
+- Blocked direct `mcp-executor` calls to Bookeo write tools (`create_hold`, `confirm_booking`, and `cancel_booking`) with a `paused_for_parent` response unless a future server-gated executor path is added.
+- Redacted direct executor request/tool logs before logging sensitive fields such as credentials, payment data, phone/email, delegate, participant, and date-of-birth data.
+- Tightened `mandate-issue-v2` credential lookup to the exact credential/user/provider tuple, stopped logging raw credential query results, and ignored client-supplied mandate JWS values.
+- Paused MCP-server success-fee charging by default behind `ENABLE_MCP_SUCCESS_FEE_CHARGE=true` and updated final receipt copy/registration metadata so it does not claim SignupAssist charged a success fee when the charge was intentionally paused.
+- Expanded sensitive-action contract tests for RLS lock-down, direct executor bypass prevention, mandate credential trust boundaries, paused success-fee payment, and honest receipt copy.
+
+Verification results for this phase:
+
+- `npx vitest run tests/sensitive-action-contract.test.ts tests/sensitive-action-gates.test.ts --reporter=verbose`: Passed.
+- `npm run typecheck`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npm run test:chatgpt-app`: Passed after intentional approval snapshot update.
+- `npm run test:approval-snapshots`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `npm run test:security-mvp`: Passed.
+- `npm run test:authz-audit`: Passed.
+- `git diff --check`: Passed.
