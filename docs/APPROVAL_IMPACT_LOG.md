@@ -1001,6 +1001,51 @@ Verification results for this docs-only phase:
 - `npm run test:mcp-manifest`: Passed.
 - `npm run test:mcp-descriptors`: Passed.
 - `git diff --check`: Passed.
+
+## 2026-04-18 - Production Readiness Evidence Sweep
+
+Files changed in this phase:
+
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: No.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Verification results for this phase:
+
+- `npm run typecheck`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npm run test:security-mvp`: Passed.
+- `npm run test:authz-audit`: Passed.
+- `npm run test:chatgpt-app`: Passed.
+- `npm run test:approval-snapshots`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `npx vitest run tests/web-golden-path-foundation.test.ts tests/web-authenticated-golden-path.test.ts tests/release-evidence.test.ts tests/dashboard-provider-readiness.test.ts tests/activity-finder-ui.test.ts tests/autopilot-wizard-ui.test.ts tests/autopilot-run-packet.test.ts tests/dashboard-status.test.ts tests/provider-learning.test.ts tests/signup-intent-frontend.test.ts --reporter=verbose`: Passed.
+- `npm run infra:check`: Passed with warnings for missing local shell env values in Railway web, scheduled worker, and Supabase Edge Function groups.
+- `npm run env:check`: Passed in advisory mode with local warnings for recommended env values. Local `.env` currently reports `VITE_MCP_BASE_URL` as the old Railway hostname; do not treat that as proof of production app submission metadata.
+- `RAILWAY_MCP_URL=https://signupassist.shipworx.ai npm run infra:smoke:railway`: Passed for `/health` and OAuth metadata. Worker health was skipped because no worker health URL was provided.
+- Public GET checks returned 200 for `https://signupassist.shipworx.ai/`, `/health`, `/status`, `/identity`, `/privacy`, `/terms`, `/safety`, `/activity-finder`, `/autopilot`, `/dashboard`, `/discovery-runs`, and `/mandates`.
+- Public HEAD checks returned 200 for `/`, `/privacy`, `/terms`, and `/safety`.
+- `MCP_SERVER_URL=https://signupassist.shipworx.ai npm run test:sse`: Passed. OAuth metadata responded, unauthenticated `/sse` requires auth, unauthenticated `register_for_activity` remains OAuth-gated, and unauthenticated `search_activities` returned 200 as expected for browse-friendly read-only discovery.
+- `git diff --check`: Passed.
+
+Residual risks/blockers:
+
+- Full browser human proof with OAuth sign-in, Stripe-hosted setup, final review, and explicit `book now` still requires an interactive ChatGPT reviewer session.
+- Supabase and Stripe production smokes were not run in this sweep because they require live service credentials and should be run deliberately against the intended production project/account.
+- Local `.env` warnings should be reconciled before using local env output as deployment evidence.
 - No broad tests were run because this phase only created and redirected documentation.
 
 ## 2026-04-18 - Browser Golden Path Foundation
