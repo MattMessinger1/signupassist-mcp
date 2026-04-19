@@ -1002,3 +1002,40 @@ Verification results for this docs-only phase:
 - `npm run test:mcp-descriptors`: Passed.
 - `git diff --check`: Passed.
 - No broad tests were run because this phase only created and redirected documentation.
+
+## 2026-04-18 - Browser Golden Path Foundation
+
+Files changed in this phase:
+
+- `tests/web-golden-path-foundation.test.ts`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: No.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Verification added:
+
+- Added a lightweight Vitest browser-foundation test instead of adding Playwright in this pass.
+- The test verifies Activity Finder POSTs only the natural-language query with optional bearer auth and never sends client `userId`.
+- The test verifies backend errors surface as errors, all Activity Finder result states are recognized, `need_more_detail` cannot create an intent, confirmed signup links can create a server-side intent payload, and `/autopilot` navigation contains only `intent=<id>`.
+- The test verifies the Activity Finder component still redirects signed-out users to auth and uses `createSignupIntent` plus `buildAutopilotIntentPath`.
+
+Verification results for this phase:
+
+- `npx vitest run tests/web-golden-path-foundation.test.ts tests/activity-finder-ui.test.ts tests/signup-intent-frontend.test.ts --reporter=verbose`: Passed.
+- `npx eslint tests/web-golden-path-foundation.test.ts --max-warnings=0`: Passed.
+- `npm run test:approval-snapshots`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `git diff --check`: Passed.
