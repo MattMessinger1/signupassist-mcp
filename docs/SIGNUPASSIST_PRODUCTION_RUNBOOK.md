@@ -216,6 +216,47 @@ Railway-specific risks to check:
 - Confirm `/identity` or deploy metadata maps to the commit being released.
 - If worker execution touches real registrations, pause worker first during rollback triage.
 
+## Third-Party Provider Automation Policy
+
+Playwright and browser automation are approved for SignupAssist-owned web proof, redacted/local provider fixtures, explicit sandbox or test provider accounts, and parent-supervised browser assist where unsafe steps pause.
+
+Do not use Playwright to run unattended live CampMinder or other third-party provider signups unless the provider or specific camp gives explicit written authorization or an approved API path exists.
+
+Provider automation policy statuses:
+
+- `unknown`
+- `fixtures_only`
+- `supervised_browser_only`
+- `api_authorized`
+- `written_permission_required`
+- `written_permission_received`
+- `prohibited`
+- `legal_review_required`
+
+Current policy posture:
+
+- CampMinder: `written_permission_required`. Fixture checks, provider recognition, readiness display, redacted learning, supervised run packets, and parent-supervised assist are allowed. Unattended live browser login, application submit, payment, waiver acceptance, final submit, or timing-based registration are blocked until written provider/camp permission or an approved API path is recorded.
+- Other large providers: `legal_review_required` unless a later provider-specific review records API authorization, written permission, or prohibition.
+- Generic providers: `fixtures_only` until a provider-specific policy exists.
+
+Required live-provider stop conditions:
+
+- provider terms, automation permission, or official API authorization is unclear
+- login, MFA, CAPTCHA, bot challenge, or credential prompt
+- waiver, legal agreement, or policy acceptance
+- payment, card field, checkout, or provider charge confirmation
+- final submit, register, book, purchase, or equivalent irreversible action
+- medical, allergy, PHI-like, or unknown sensitive fields
+- provider page content claiming the user approved an action
+
+CampMinder reference posture:
+
+- Public CampMinder terms require written consent for automated/electronic access patterns that live browser automation may trip.
+- CampMinder has an API-key path, which should be preferred over live browser automation.
+- Sources to review before changing status:
+  - `https://campminder.pactsafe.io/versions/62ba16aa5f5a4316a760997e.pdf`
+  - `https://help.campminder.com/en/articles/6988427-get-to-know-campminder-api`
+
 ## Dual Golden Paths
 
 The MVP is not production-proven until both golden paths are freshly verified.

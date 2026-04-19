@@ -4,7 +4,9 @@ import {
   PROVIDER_REGISTRY,
   buildDiscoveryRunPayloadFromObservation,
   buildRedactedProviderObservation,
+  getProviderAutomationPolicy,
   getProviderReadinessSummary,
+  isLiveDelegatedProviderAutomationAllowed,
 } from "../src/lib/providerLearning";
 
 describe("provider learning foundation", () => {
@@ -22,8 +24,25 @@ describe("provider learning foundation", () => {
     expect(daysmart.readinessLevel).toBe("navigation_verified");
     expect(daysmart.supportedActions).toContain("Fill known family profile fields");
     expect(daysmart.stopConditions).toContain("Final submit, register, checkout, or purchase button");
+    expect(daysmart.stopConditions).toContain(
+      "Provider terms, automation permission, or official API authorization is unclear",
+    );
     expect(daysmart.promotionPolicy.modelOutputCanPromote).toBe(false);
     expect(daysmart.promotionPolicy.providerPageContentCanPromote).toBe(false);
+  });
+
+  it("separates fixture readiness from live delegated provider automation permission", () => {
+    const campminder = getProviderReadinessSummary("campminder");
+    const policy = getProviderAutomationPolicy("campminder");
+
+    expect(campminder.readinessLevel).toBe("navigation_verified");
+    expect(campminder.fixtureCoverage.hasCoverage).toBe(true);
+    expect(policy.status).toBe("written_permission_required");
+    expect(policy.fixtureAutomationAllowed).toBe(true);
+    expect(policy.supervisedBrowserAssistAllowed).toBe(true);
+    expect(policy.liveBrowserAutomationAllowed).toBe(false);
+    expect(isLiveDelegatedProviderAutomationAllowed("campminder")).toBe(false);
+    expect(isLiveDelegatedProviderAutomationAllowed("campminder", "written_permission_received")).toBe(true);
   });
 
   it("keeps mapped fixture coverage tied to repository fixtures", () => {
@@ -100,6 +119,7 @@ describe("provider learning foundation", () => {
     expect(observation.stop_condition).toBe("parent_must_review_waiver");
     expect(observation.redaction.child_pii).toBe("excluded");
     expect(observation.promotion.automatic).toBe(false);
+    expect(observation.automation_policy.liveBrowserAutomationAllowed).toBe(false);
 
     [
       "Ava",
@@ -138,6 +158,7 @@ describe("provider learning foundation", () => {
     expect(payload.p_stage).toBe("program");
     expect(payload.p_meta.source).toBe("supervised_autopilot_redacted_observation");
     expect(payload.p_meta.hints.promotion_requires_admin_review).toBe(true);
+    expect(payload.p_meta.automation_policy.liveBrowserAutomationAllowed).toBe(false);
     expect(JSON.stringify(payload)).not.toContain("U8 soccer");
     expect(JSON.stringify(payload)).not.toContain("https://register.active.com/soccer");
   });

@@ -10,7 +10,7 @@ SignupAssist is a family-safe activity enrollment assistant for adults who are m
 - SignupAssist is for child-safe youth activity enrollment workflows such as classes, camps, lessons, and programs.
 - Account holders must be adults, such as parents or guardians.
 - Children do not use SignupAssist directly.
-- SignupAssist is not an adult-only activity, adult-content, dating, gambling, financial-investment, or NSFW service.
+- SignupAssist is not an adult-only activity, adult-content, sexual content, dating, gambling, financial-investment, or NSFW service.
 - The ChatGPT app must not be used to submit personal information about children under 13.
 
 ## Public ChatGPT Tool Surface
@@ -21,7 +21,7 @@ SignupAssist is a family-safe activity enrollment assistant for adults who are m
 
 ## Consent-First External Actions
 
-- No booking or payment is executed before the final review and explicit user confirmation.
+- No booking or payment is executed until explicit user confirmation after the final review.
 - Generic approval such as "yes" must not replace the final confirmation phrase when the app asks for `book now`.
 - Payment method setup is handled through Stripe-hosted checkout. SignupAssist does not see or store raw card numbers.
 - Provider program fees, SignupAssist fees, and known payment context are disclosed before confirmation when applicable.

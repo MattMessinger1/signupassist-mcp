@@ -115,7 +115,7 @@ function providerReadinessForRun(run: AutopilotDashboardRun): ProviderReadinessL
 
 function providerReadinessCopy(readiness: ProviderReadinessLevel) {
   if (readiness === 'navigation_verified') {
-    return 'Verified means fixture-tested and observed across safe flows.';
+    return 'Verified navigation means fixture-tested safe flow coverage, not unattended live provider submit.';
   }
   if (readiness === 'fill_safe') {
     return 'Beta means conservative fill-only or high-pause mode.';
@@ -287,7 +287,7 @@ function RunCard({
           <Alert>
             <Sparkles className="h-4 w-4" />
             <AlertDescription>
-              {providerReadinessCopy(readiness)} Fixture coverage: {readinessSummary.fixtureCoverage.coverageLabel}.
+              {providerReadinessCopy(readiness)} Fixture coverage: {readinessSummary.fixtureCoverage.coverageLabel}. Live automation policy: {readinessSummary.automationPolicy.label}.
             </AlertDescription>
           </Alert>
         </div>

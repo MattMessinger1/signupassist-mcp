@@ -138,6 +138,10 @@ export default function DiscoveryRuns() {
                     <span className="text-muted-foreground">Fixtures</span>
                     <span className="font-medium">{summary.fixtureCoverage.coverageLabel}</span>
                   </div>
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-muted-foreground">Live automation</span>
+                    <span className="font-medium">{summary.automationPolicy.label}</span>
+                  </div>
                   <div className="rounded-md border bg-muted/30 p-3">
                     <div className="mb-1 flex items-center gap-2 text-xs font-medium uppercase text-muted-foreground">
                       <Sparkles className="h-3.5 w-3.5" />
@@ -154,7 +158,7 @@ export default function DiscoveryRuns() {
                     )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Promotion requires fixtures, provider-specific tests, and admin review. Model output cannot promote readiness.
+                    Promotion requires fixtures, provider-specific tests, admin review, and provider automation permission. Model output cannot promote readiness.
                   </p>
                 </CardContent>
               </Card>

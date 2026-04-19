@@ -1,5 +1,7 @@
 import {
   PROVIDER_READINESS_LEVELS,
+  isLiveDelegatedProviderAutomationAllowed,
+  type ProviderAutomationPolicyStatus,
   type ProviderReadinessLevel,
 } from "./providerLearning";
 import { isSensitiveRedactionKey } from "./redactionKeys";
@@ -101,6 +103,7 @@ export interface SensitiveActionGateRequest {
   mandateId?: string | null;
   providerKey?: string | null;
   providerReadinessLevel?: ProviderReadinessLevel | string | null;
+  providerAutomationPolicyStatus?: ProviderAutomationPolicyStatus | null;
   targetUrl?: string | null;
   exactProgram?: string | null;
   amountCents?: number | null;
@@ -263,6 +266,18 @@ function mandateMatches(
     return "provider_readiness_too_low";
   }
 
+  if (
+    (request.actionType === "delegate_signup" ||
+      request.actionType === "submit_final" ||
+      request.actionType === "pay") &&
+    !isLiveDelegatedProviderAutomationAllowed(
+      request.providerKey,
+      request.providerAutomationPolicyStatus,
+    )
+  ) {
+    return "provider_live_automation_not_authorized";
+  }
+
   if (request.amountCents !== null && request.amountCents !== undefined) {
     if (request.amountCents > mandate.max_total_cents) return "payment_over_price_cap";
     if (request.maxTotalCents !== null && request.maxTotalCents !== undefined && request.amountCents > request.maxTotalCents) {
@@ -388,6 +403,20 @@ export function validateSensitiveActionGate(
       request.actionType === "delegate_signup" ? "delegated_signup_ready" : ACTION_APPROVED_STATE[request.actionType],
       "delegation_mandate_valid",
       { mandateId: activeMandate.id },
+    );
+  }
+
+  const mandateMismatch = context.mandates
+    ?.map((mandate) => mandateMatches(mandate, request, now))
+    .find((mismatch) => mismatch === "provider_live_automation_not_authorized");
+
+  if (mandateMismatch) {
+    return result(
+      request,
+      false,
+      reviewStatusForAction(request.actionType),
+      ACTION_REVIEW_STATE[request.actionType],
+      mandateMismatch,
     );
   }
 

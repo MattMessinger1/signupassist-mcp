@@ -24,6 +24,7 @@ export const DEFAULT_ALLOWED_ACTIONS = [
 ];
 
 export const DEFAULT_STOP_CONDITIONS = [
+  "Provider terms, automation permission, or official API authorization is unclear",
   "Login, 2FA, CAPTCHA, or password manager prompt",
   "Waiver, legal release, consent, or policy acceptance",
   "Provider checkout, payment screen, card field, or payment confirmation",
