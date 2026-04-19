@@ -709,6 +709,7 @@ import { isIP } from 'node:net';
 import crypto from 'crypto';
 import { consumeRateLimit, getStableRateLimitKey } from './lib/rateLimit.js';
 import { sanitizeForLogs } from './utils/sanitization.js';
+import { corsHeadersForRequest, writeJson } from './lib/httpSecurity.js';
 
 // ✅ Fix for ESM __dirname
 const __filename = fileURLToPath(import.meta.url);
@@ -1680,6 +1681,11 @@ class SignupAssistMCPServer {
           // OAuth token exchanges may be bursty; keep a high default to avoid false positives.
           const max = Number(process.env.RATE_LIMIT_OAUTH_TOKEN_MAX || 2000);
           const { allowed, retryAfterSec } = consumeRateLimit(`${key}:oauth_token`, Number.isFinite(max) ? max : 2000, window);
+          if (!allowed) return respond429(retryAfterSec);
+        }
+        if (pathname === '/api/activity-finder/search' && method === 'POST') {
+          const max = Number(process.env.RATE_LIMIT_ACTIVITY_FINDER_MAX || 120);
+          const { allowed, retryAfterSec } = consumeRateLimit(`${key}:activity_finder_search`, Number.isFinite(max) ? max : 120, window);
           if (!allowed) return respond429(retryAfterSec);
         }
       }
@@ -4502,9 +4508,14 @@ class SignupAssistMCPServer {
 
       // --- Parent-facing Activity Finder
       if (url.pathname === '/api/activity-finder/search') {
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204, corsHeadersForRequest(req));
+          res.end();
+          return;
+        }
+
         if (req.method !== 'POST') {
-          res.writeHead(405, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Only POST supported' }));
+          writeJson(req, res, 405, { error: 'method_not_allowed', message: 'Only POST supported' });
           return;
         }
 
@@ -4516,8 +4527,7 @@ class SignupAssistMCPServer {
             const query = String(parsedBody.query || '').trim();
 
             if (!query) {
-              res.writeHead(400, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: 'query_required' }));
+              writeJson(req, res, 400, { error: 'query_required' });
               return;
             }
 
@@ -4548,15 +4558,10 @@ class SignupAssistMCPServer {
               { supabase },
             );
 
-            res.writeHead(200, {
-              'Content-Type': 'application/json',
-              'Access-Control-Allow-Origin': '*',
-            });
-            res.end(JSON.stringify(result));
+            writeJson(req, res, 200, result);
           } catch (err: any) {
             console.error('[ActivityFinder] Error:', err?.message || err);
-            res.writeHead(500, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'activity_finder_failed' }));
+            writeJson(req, res, 500, { error: 'activity_finder_failed' });
           }
         });
         return;

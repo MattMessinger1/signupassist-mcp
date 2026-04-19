@@ -1454,3 +1454,47 @@ Verification results for this phase:
 - `npm run test:security-mvp`: Passed.
 - `npm run test:authz-audit`: Passed.
 - `git diff --check`: Passed.
+
+## 2026-04-19 - Web Ship Security Tightening
+
+Files changed in this phase:
+
+- `mcp_server/lib/targetUrlSafety.ts`
+- `mcp_server/index.ts`
+- `tests/security-mvp.test.ts`
+- `tests/fixtures/security/provider-prompt-injection.html`
+- `docs/approval-snapshots/chatgpt-app-approval.snapshot.json`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: Yes, `mcp_server/index.ts` and the approval snapshot changed intentionally for Activity Finder CORS/rate-limit handling.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Changes:
+
+- Tightened shared target URL validation so production HTTP target URLs fail with `url_https_required`, while explicit non-production options can allow HTTP/local development targets.
+- Added optional provider-domain allowlist validation to the shared target URL validator.
+- Added Activity Finder search to the shared endpoint-specific rate-limit block.
+- Routed Activity Finder search responses and preflight through shared CORS/security header helpers.
+- Expanded provider prompt-injection coverage to include provider-login/credential instructions.
+
+Verification results for this phase:
+
+- `npm run test:security-mvp`: Passed.
+- `npm run typecheck`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npm run test:chatgpt-app`: Passed after intentional approval snapshot update.
+- `npm run test:approval-snapshots`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `git diff --check`: Passed.

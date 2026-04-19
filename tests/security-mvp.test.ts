@@ -86,6 +86,23 @@ describe("MVP security regression suite", () => {
 
     expect(validateTargetUrl("https://register.active.com/soccer").ok).toBe(true);
     expect(validateTargetUrl("http://example.com/signup").ok).toBe(true);
+    expect(validateTargetUrl("http://example.com/signup", { environment: "production" })).toMatchObject({
+      ok: false,
+      reason: "url_https_required",
+    });
+    expect(validateTargetUrl("http://localhost:5173/signup", {
+      environment: "development",
+      allowLocalhostInNonProduction: true,
+    }).ok).toBe(true);
+    expect(validateTargetUrl("https://register.active.com/soccer", {
+      allowedProviderDomains: ["active.com"],
+    }).ok).toBe(true);
+    expect(validateTargetUrl("https://evil.example/soccer", {
+      allowedProviderDomains: ["active.com"],
+    })).toMatchObject({
+      ok: false,
+      reason: "url_provider_domain_not_allowed",
+    });
     expect(safeTargetUrlHost("https://pps.daysmartrecreation.com/dash?token=secret")).toBe("pps.daysmartrecreation.com");
 
     expect(validateTargetUrlRedirectChain([
@@ -157,10 +174,10 @@ describe("MVP security regression suite", () => {
   it("treats provider prompt-injection content as untrusted data", () => {
     const fixture = readFileSync("tests/fixtures/security/provider-prompt-injection.html", "utf8");
 
-    ["register", "pay", "accept_waiver", "submit_final"].forEach((actionType) => {
+    ["register", "pay", "provider_login", "accept_waiver", "submit_final"].forEach((actionType) => {
       const result = validateSensitiveActionGate({
         userId: userA,
-        actionType: actionType as "register" | "pay" | "accept_waiver" | "submit_final",
+        actionType: actionType as "register" | "pay" | "provider_login" | "accept_waiver" | "submit_final",
         amountCents: actionType === "pay" ? 2000 : null,
         maxTotalCents: 25000,
         authorizationSource: "provider_page",
@@ -242,6 +259,8 @@ describe("MVP security regression suite", () => {
     expect(server).toContain("X-Content-Type-Options");
     expect(server).toContain("Permissions-Policy");
     expect(server).toContain("consumeRateLimit");
+    expect(server).toContain(":activity_finder_search");
+    expect(server).toContain("corsHeadersForRequest(req)");
     expect(signupIntentApi).toContain(":signup_intents");
   });
 
