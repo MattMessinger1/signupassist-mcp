@@ -18,13 +18,18 @@ async function main() {
   const stripeKey = requiredEnv("STRIPE_SECRET_KEY");
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   const autopilotPriceId = process.env.STRIPE_AUTOPILOT_PRICE_ID;
+  const requireWebhookSecret = ["1", "true", "yes"].includes(
+    String(process.env.STRIPE_SMOKE_REQUIRE_WEBHOOK || "").toLowerCase(),
+  );
 
   const stripe = new Stripe(stripeKey, { apiVersion: "2024-04-10" });
   const balance = await stripe.balance.retrieve();
   console.log(`[ok] Stripe credentials valid; available balance currencies: ${balance.available.map((b) => b.currency).join(", ") || "none"}`);
 
-  if (!webhookSecret) {
-    console.log("[warn] STRIPE_WEBHOOK_SECRET is not set; webhook verification will fail in production");
+  if (!webhookSecret && requireWebhookSecret) {
+    throw new Error("STRIPE_WEBHOOK_SECRET is required when STRIPE_SMOKE_REQUIRE_WEBHOOK=1");
+  } else if (!webhookSecret) {
+    console.log("[warn] STRIPE_WEBHOOK_SECRET is not set; this is a credential smoke only, not webhook proof");
   } else {
     console.log("[ok] STRIPE_WEBHOOK_SECRET is configured");
   }

@@ -53,6 +53,15 @@ describe("provider learning foundation", () => {
           dob: "2017-04-01",
           allergies: "peanuts",
         },
+        requester: {
+          name: "Ava Messinger",
+          label: "Ava registration",
+          title: "Ava class signup",
+          parent_name: "Matt Messinger",
+          guardian_name: "Matt Messinger",
+          contact_name: "Matt Messinger",
+          emergency_contact_name: "Matt Messinger",
+        },
         finder: {
           query: "soccer for Ava near home",
           address: "123 Family Lane",
@@ -98,6 +107,7 @@ describe("provider learning foundation", () => {
       "2017-04-01",
       "peanuts",
       "parent@example.com",
+      "Matt Messinger",
       "secret-token",
       "4242424242424242",
       "123 Family Lane",

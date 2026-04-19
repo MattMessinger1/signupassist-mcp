@@ -129,17 +129,33 @@ describe("release evidence redaction", () => {
     expect(
       redactEvidenceValue({
         safe: "program_ready",
-        nested: {
-          provider: "DaySmart",
-          child_first_name: "Percy",
-          payment_card: "4242424242424242",
-          target_url: "https://dash.example.com/path?token=secret",
+      nested: {
+        provider: "DaySmart",
+        provider_name: "DaySmart / Dash",
+        name: "Percy Messinger",
+        label: "Percy account holder",
+        title: "Percy registration",
+        parent_name: "Matt Messinger",
+        guardian_name: "Matt Messinger",
+        contact_name: "Matt Messinger",
+        emergency_contact_name: "Matt Messinger",
+        child_first_name: "Percy",
+        payment_card: "4242424242424242",
+        target_url: "https://dash.example.com/path?token=secret",
         },
       }),
     ).toEqual({
       safe: "program_ready",
       nested: {
         provider: "DaySmart",
+        provider_name: "DaySmart / Dash",
+        name: "[redacted]",
+        label: "[redacted]",
+        title: "[redacted]",
+        parent_name: "[redacted]",
+        guardian_name: "[redacted]",
+        contact_name: "[redacted]",
+        emergency_contact_name: "[redacted]",
         child_first_name: "[redacted]",
         payment_card: "[redacted]",
         target_url_host: "dash.example.com",

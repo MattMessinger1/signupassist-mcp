@@ -2,6 +2,7 @@ import {
   PROVIDER_READINESS_LEVELS,
   type ProviderReadinessLevel,
 } from "./providerLearning";
+import { isSensitiveRedactionKey } from "./redactionKeys";
 
 export const SENSITIVE_ACTION_STATES = [
   "packet_prepared",
@@ -146,9 +147,6 @@ const ACTION_APPROVED_STATE: Record<SensitiveActionType, SensitiveActionState> =
   submit_final: "final_submit_approved",
   delegate_signup: "delegated_signup_ready",
 };
-
-const SENSITIVE_KEY_PATTERN =
-  /(child|participant|first.?name|last.?name|full.?name|dob|birth|age|grade|email|phone|address|credential|password|token|secret|session|cookie|auth|payment|card|cvv|cvc|medical|allerg|insurance|doctor|waiver|signature|ssn|social)/i;
 
 const SENSITIVE_VALUE_PATTERN =
   /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})|(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})|(\d{13,19})/i;
@@ -418,7 +416,7 @@ export function redactSensitiveAuditPayload(value: unknown): unknown {
 
   return Object.fromEntries(
     Object.entries(value).map(([key, child]) => {
-      if (SENSITIVE_KEY_PATTERN.test(key)) return [key, "[redacted]"];
+      if (isSensitiveRedactionKey(key)) return [key, "[redacted]"];
       return [key, redactSensitiveAuditPayload(child)];
     }),
   );

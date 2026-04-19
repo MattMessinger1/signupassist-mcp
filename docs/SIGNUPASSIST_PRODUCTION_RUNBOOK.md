@@ -112,6 +112,14 @@ npm run test:mcp-descriptors
 git diff --check
 ```
 
+The one-command release gate equivalent is:
+
+```bash
+npm run predeploy:release
+```
+
+`npm run predeploy:check` is a broader legacy preflight that includes broad `npm run test`; do not treat it as the complete release gate unless it is paired with the ChatGPT guardrails and `git diff --check`.
+
 Broad `npm run lint` and broad `npm run test` may still expose pre-existing failures. Do not hide them. Classify failures as introduced, pre-existing, or unknown.
 
 ## Environment Targets
@@ -130,6 +138,11 @@ Railway web required variables include:
 - `AUTH0_CLIENT_ID`
 - `AUTH0_CLIENT_SECRET`
 - `AUTH0_AUDIENCE`
+
+Railway web production-significant recommended variables include:
+
+- `MANDATE_SIGNING_KEY`
+- `PII_ENCRYPTION_KEY`
 
 Railway worker required variables include:
 
@@ -168,7 +181,10 @@ curl -fsS "$RAILWAY_MCP_URL/status"
 curl -fsS "$RAILWAY_MCP_URL/identity"
 
 RAILWAY_MCP_URL="$RAILWAY_MCP_URL" npm run infra:smoke:railway
-MCP_SERVER_URL="$RAILWAY_MCP_URL" npm run test:sse
+MCP_SERVER_URL="$RAILWAY_MCP_URL" \
+MCP_ACCESS_TOKEN="$MCP_ACCESS_TOKEN" \
+MCP_ALLOW_UNAUTH_READONLY_TOOLS=true \
+npm run test:sse
 ```
 
 If secrets are available locally or in CI, also run:
@@ -182,6 +198,7 @@ npm run infra:smoke:supabase
 STRIPE_SECRET_KEY="$STRIPE_SECRET_KEY" \
 STRIPE_WEBHOOK_SECRET="$STRIPE_WEBHOOK_SECRET" \
 STRIPE_AUTOPILOT_PRICE_ID="$STRIPE_AUTOPILOT_PRICE_ID" \
+STRIPE_SMOKE_REQUIRE_WEBHOOK=1 \
 npm run infra:smoke:stripe
 
 MCP_SERVER_URL="$RAILWAY_MCP_URL" \
@@ -193,6 +210,7 @@ npm run test:e2e
 Railway-specific risks to check:
 
 - Confirm Railway uses the intended Dockerfile/build path. `railway.json` has an echo build command, so do not assume it is the real build.
+- Confirm Railway is Dockerfile-driven for this app; the Docker build copies `package.production.json` over `package.json`, so production runtime behavior follows the production manifest in the container.
 - Confirm the web service start command actually launches the MCP server.
 - Confirm the worker service start command launches the scheduled worker if the worker is in scope for this release.
 - Confirm `/identity` or deploy metadata maps to the commit being released.

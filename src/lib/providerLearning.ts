@@ -5,6 +5,7 @@ import {
   findPlaybookByKey,
   type ProviderPlaybook,
 } from "./autopilot/playbooks";
+import { isSensitiveRedactionKey } from "./redactionKeys";
 
 export const PROVIDER_READINESS_LEVELS = [
   "unknown",
@@ -149,9 +150,6 @@ const READINESS_CONFIDENCE: Record<ProviderReadinessLevel, number> = {
   delegated_signup_verified: 0.95,
 };
 
-const SENSITIVE_KEY_PATTERN =
-  /(child|participant|first.?name|last.?name|full.?name|dob|birth|age|grade|email|phone|address|credential|password|token|secret|session|cookie|auth|payment|card|cvv|cvc|medical|allerg|insurance|doctor|waiver|signature|ssn|social)/i;
-
 const SENSITIVE_VALUE_PATTERN =
   /([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})|(\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4})|(\d{13,19})/i;
 
@@ -288,7 +286,7 @@ function collectFieldSignatures(value: unknown, prefix = "", output = new Set<st
 
   Object.entries(value).forEach(([key, child]) => {
     if (output.size >= 40) return;
-    if (SENSITIVE_KEY_PATTERN.test(key)) return;
+    if (isSensitiveRedactionKey(key)) return;
 
     const nextPrefix = prefix ? `${prefix}.${key}` : key;
 

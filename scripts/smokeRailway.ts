@@ -38,12 +38,38 @@ async function checkHealth(name: string, baseUrl: string) {
   console.log(`[ok] ${name} /health responded ${status}`);
 }
 
+async function checkJsonEndpoint(name: string, baseUrl: string, path: "/status" | "/identity") {
+  const url = `${normalizeBaseUrl(baseUrl)}${path}`;
+  const { status, text } = await fetchText(url);
+  if (status < 200 || status >= 300) {
+    throw new Error(`${name} ${path} expected 2xx, got ${status}: ${text.slice(0, 240)}`);
+  }
+
+  let json: Record<string, unknown>;
+  try {
+    json = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    throw new Error(`${name} ${path} expected JSON response`);
+  }
+
+  if (path === "/status" && json.ok !== true) {
+    throw new Error(`${name} /status expected ok=true`);
+  }
+  if (path === "/identity" && typeof json.git_commit !== "string") {
+    throw new Error(`${name} /identity expected git_commit`);
+  }
+
+  console.log(`[ok] ${name} ${path} responded ${status}`);
+}
+
 async function main() {
   const mcpUrl = normalizeBaseUrl(process.env.RAILWAY_MCP_URL || process.env.MCP_SERVER_URL || "");
   if (!mcpUrl) requiredEnv("RAILWAY_MCP_URL");
 
   console.log(`[railway-smoke] MCP target: ${mcpUrl}`);
   await checkHealth("MCP web service", mcpUrl);
+  await checkJsonEndpoint("MCP web service", mcpUrl, "/status");
+  await checkJsonEndpoint("MCP web service", mcpUrl, "/identity");
 
   const oauth = await fetchText(`${mcpUrl}/.well-known/oauth-authorization-server`);
   if (oauth.status !== 200) {

@@ -1196,3 +1196,57 @@ Verification results for this phase:
 - `npm run test:mcp-manifest`: Passed.
 - `npm run test:mcp-descriptors`: Passed.
 - `git diff --check`: Passed.
+
+## 2026-04-18 - Web Ship Readiness Hardening
+
+Files changed in this phase:
+
+- `src/lib/redactionKeys.ts`
+- `src/lib/discoveryRunRedaction.ts`
+- `src/lib/providerLearning.ts`
+- `src/lib/sensitiveActionGates.ts`
+- `src/pages/Autopilot.tsx`
+- `src/pages/RegistrationDashboard.tsx`
+- `scripts/releaseEvidence.ts`
+- `scripts/smokeRailway.ts`
+- `scripts/smokeStripe.ts`
+- `package.json`
+- `docs/SIGNUPASSIST_PRODUCTION_RUNBOOK.md`
+- `docs/APPROVAL_IMPACT_LOG.md`
+- targeted tests for redaction, dashboard/provider readiness, release evidence, sensitive action gates, and Autopilot wizard copy
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: No.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Changes:
+
+- Added shared redaction-key handling so generic `name`, `label`, `title`, `parent_name`, `guardian_name`, `contact_name`, and `emergency_contact_name` fields are treated as sensitive unless they are known public provider/activity/venue/program labels.
+- Tightened discovery-run UI redaction, provider-learning field signatures, sensitive-action audit redaction, and release evidence redaction against generic name/contact leakage.
+- Reduced dashboard action ambiguity by making the always-available action `Review setup` and only showing `Resume` for states where resume/review work is actually plausible.
+- Changed Autopilot post-create primary action to `View dashboard` so parents get a clear next step and cannot accidentally create duplicate run packets by pressing the same primary button again.
+- Expanded Railway smoke to verify `/status` and `/identity` in addition to `/health` and OAuth metadata.
+- Added `STRIPE_SMOKE_REQUIRE_WEBHOOK=1` support so Stripe smoke can fail closed when webhook proof is required.
+- Added `npm run predeploy:release` as the explicit release gate and clarified the production runbook commands.
+
+Verification results for this phase:
+
+- `npx vitest run tests/dashboard-provider-readiness.test.ts tests/release-evidence.test.ts tests/provider-learning.test.ts tests/sensitive-action-gates.test.ts tests/security-mvp.test.ts tests/autopilot-wizard-ui.test.ts tests/dashboard-status.test.ts --reporter=verbose`: Passed.
+- `npx eslint src/lib/redactionKeys.ts src/lib/discoveryRunRedaction.ts src/lib/providerLearning.ts src/lib/sensitiveActionGates.ts src/pages/Autopilot.tsx src/pages/RegistrationDashboard.tsx scripts/releaseEvidence.ts scripts/smokeRailway.ts scripts/smokeStripe.ts tests/dashboard-provider-readiness.test.ts tests/release-evidence.test.ts tests/provider-learning.test.ts tests/sensitive-action-gates.test.ts tests/autopilot-wizard-ui.test.ts --max-warnings=0`: Passed.
+- `npm run test:chatgpt-app`: Passed.
+- `RAILWAY_MCP_URL=https://signupassist.shipworx.ai npm run infra:smoke:railway`: Passed for `/health`, `/status`, `/identity`, and OAuth metadata. Worker health was skipped because no worker health URL was provided.
+- `MCP_SERVER_URL=https://signupassist.shipworx.ai MCP_ALLOW_UNAUTH_READONLY_TOOLS=true npm run test:sse`: Passed unauthenticated OAuth posture, unauthenticated `search_activities`, and unauthenticated `register_for_activity` auth-gating. Authenticated MCP tool calls were skipped because `MCP_ACCESS_TOKEN` was not provided in this command.
+- `npm run infra:smoke:stripe`: Passed credential, webhook-secret-present, and `$9/month` Autopilot price checks.
+- `npm run infra:smoke:supabase`: Passed table/queryability checks and invoked `get-user-location`.
+- `npm run predeploy:release`: Passed. `infra:check` still reported non-blocking local-shell env warnings for Railway web, scheduled worker, and Supabase Edge Function groups.
+- `git diff --check`: Passed.

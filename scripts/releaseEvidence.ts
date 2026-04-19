@@ -9,14 +9,12 @@ import {
   getProviderReadinessSummary,
 } from "../src/lib/providerLearning";
 import type { Database } from "../src/integrations/supabase/types";
+import { isSensitiveRedactionKey } from "../src/lib/redactionKeys";
 
 type SignupIntentRow = Database["public"]["Tables"]["signup_intents"]["Row"];
 type SignupIntentEventRow = Database["public"]["Tables"]["signup_intent_events"]["Row"];
 type AutopilotRunRow = Database["public"]["Tables"]["autopilot_runs"]["Row"];
 type EvidenceSupabase = SupabaseClient<Database>;
-
-const SENSITIVE_KEY_PATTERN =
-  /(user.?id|child|participant|first.?name|last.?name|full.?name|dob|birth|age|grade|email|phone|address|credential|password|token|secret|session|cookie|auth|payment|card|cvv|cvc|medical|allerg|insurance|doctor|waiver|signature|ssn|social)/i;
 
 function requiredEnv(name: string) {
   const value = process.env[name];
@@ -55,7 +53,7 @@ function safeNumber(value: unknown) {
 }
 
 export function redactEvidenceValue(value: unknown, key = "value", depth = 0): unknown {
-  if (SENSITIVE_KEY_PATTERN.test(key)) return "[redacted]";
+  if (key === "user_id" || key === "userId" || isSensitiveRedactionKey(key)) return "[redacted]";
   if (depth > 5) return "[truncated]";
   if (value === null || value === undefined) return value;
   if (typeof value === "string") return redactAuditText(value);

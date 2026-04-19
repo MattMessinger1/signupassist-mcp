@@ -1213,17 +1213,24 @@ export default function Autopilot() {
               </Alert>
 
               <div className="flex flex-col gap-2 sm:flex-row">
-                <Button
-                  onClick={createRun}
-                  disabled={creatingRun || !subscriptionUsable || !detailsReady}
-                >
-                  {creatingRun ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <ClipboardCheck className="h-4 w-4" />
-                  )}
-                  Create supervised run
-                </Button>
+                {createdPacket ? (
+                  <Button type="button" onClick={() => navigate("/dashboard")}>
+                    <CheckCircle2 className="h-4 w-4" />
+                    View dashboard
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={createRun}
+                    disabled={creatingRun || !subscriptionUsable || !detailsReady}
+                  >
+                    {creatingRun ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ClipboardCheck className="h-4 w-4" />
+                    )}
+                    Create supervised run
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="outline"
@@ -1233,9 +1240,11 @@ export default function Autopilot() {
                   <Clipboard className="h-4 w-4" />
                   Copy packet
                 </Button>
-                <Button type="button" variant="outline" onClick={() => navigate("/dashboard")}>
-                  Dashboard
-                </Button>
+                {!createdPacket && (
+                  <Button type="button" variant="outline" onClick={() => navigate("/dashboard")}>
+                    Dashboard
+                  </Button>
+                )}
               </div>
 
               {createdPacket && (

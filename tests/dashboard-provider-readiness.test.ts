@@ -59,6 +59,12 @@ describe("dashboard and provider readiness verification", () => {
       meta: {
         child_first_name: "Percy",
         child_dob: "2014-11-26",
+        name: "Percy Messinger",
+        label: "Percy account holder",
+        parent_name: "Matt Messinger",
+        guardian_name: "Matt Messinger",
+        contact_name: "Matt Messinger",
+        emergency_contact_name: "Matt Messinger",
         parent_email: "openai-reviewer@shipworx.ai",
         phone: "608-338-6377",
         address: "8312 Forsythia Lane",
@@ -72,6 +78,7 @@ describe("dashboard and provider readiness verification", () => {
     expect(serialized).toContain("dash.example.com");
     expect(serialized).toContain("registration_paused");
     expect(serialized).not.toContain("Percy");
+    expect(serialized).not.toContain("Matt Messinger");
     expect(serialized).not.toContain("2014-11-26");
     expect(serialized).not.toContain("openai-reviewer@shipworx.ai");
     expect(serialized).not.toContain("608-338-6377");

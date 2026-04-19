@@ -297,6 +297,14 @@ describe("sensitive action gates", () => {
   it("redacts PII and secrets before audit payloads are stored or displayed", () => {
     const payload = redactSensitiveAuditPayload({
       child: { firstName: "Ava", dob: "2017-04-01" },
+      name: "Ava Messinger",
+      label: "Ava registration",
+      title: "Ava class signup",
+      parent_name: "Matt Messinger",
+      guardian_name: "Matt Messinger",
+      contact_name: "Matt Messinger",
+      emergency_contact_name: "Matt Messinger",
+      provider_name: "DaySmart / Dash",
       parentEmail: "parent@example.com",
       token: "secret-token",
       payment: { card_number: "4242424242424242", cvv: "123" },
@@ -305,10 +313,12 @@ describe("sensitive action gates", () => {
     const serialized = JSON.stringify(payload);
 
     expect(serialized).not.toContain("Ava");
+    expect(serialized).not.toContain("Matt Messinger");
     expect(serialized).not.toContain("2017-04-01");
     expect(serialized).not.toContain("parent@example.com");
     expect(serialized).not.toContain("secret-token");
     expect(serialized).not.toContain("4242424242424242");
     expect(serialized).toContain("daysmart");
+    expect(serialized).toContain("DaySmart / Dash");
   });
 });

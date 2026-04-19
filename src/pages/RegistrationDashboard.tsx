@@ -228,6 +228,18 @@ function RunCard({
   const opensAt = registrationOpensAt(run);
   const auditSummaries = summarizeAuditEvents(run.audit_events, 4);
   const url = providerUrl(run);
+  const normalizedStatus = normalizeRunStatus(run.status);
+  const canResume = [
+    'scheduled',
+    'waiting_for_registration_open',
+    'running',
+    'paused_for_parent',
+    'registration_review_required',
+    'payment_review_required',
+    'payment_paused',
+    'waiver_review_required',
+    'final_submit_review_required',
+  ].includes(normalizedStatus);
 
   return (
     <Card className="overflow-hidden">
@@ -301,12 +313,14 @@ function RunCard({
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" onClick={onReview}>
             <Eye className="h-4 w-4" />
-            Review
+            Review setup
           </Button>
-          <Button variant="outline" size="sm" onClick={onResume}>
-            <Play className="h-4 w-4" />
-            Resume
-          </Button>
+          {canResume && (
+            <Button variant="outline" size="sm" onClick={onResume}>
+              <Play className="h-4 w-4" />
+              Resume
+            </Button>
+          )}
           <Button variant="outline" size="sm" onClick={onToggleAudit}>
             <FileText className="h-4 w-4" />
             {auditOpen ? 'Hide audit' : 'View audit'}
