@@ -965,3 +965,40 @@ Submission metadata impact:
 - Copy now consistently says SignupAssist is not child-directed, not for adult-only services, and not for adult-only activity registration.
 - COPPA posture is explicit: general age/grade can be used for search, but personal information about children under 13 must not be submitted in ChatGPT.
 - Scheduled-registration copy now says supervised registration attempt instead of implying unattended set-and-forget autonomy.
+
+## 2026-04-18 - Production Web App Runbook
+
+Files changed in this phase:
+
+- `docs/SIGNUPASSIST_PRODUCTION_RUNBOOK.md`
+- `docs/MVP_TRYABLE_RUNBOOK.md`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive ChatGPT public surface files changed: No runtime approval-sensitive files changed; docs only.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors/annotations changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+- Public MCP tool surface remains `search_activities` and `register_for_activity`.
+
+Runbook impact:
+
+- Added `docs/SIGNUPASSIST_PRODUCTION_RUNBOOK.md` as the canonical production readiness and web golden-path runbook.
+- Marked `docs/MVP_TRYABLE_RUNBOOK.md` as superseded because it referenced the old Railway URL and predated the Activity Finder -> Signup Intent -> Autopilot -> Dashboard flow.
+- Captured the remaining work as prompt-sized implementation chunks: browser golden-path foundation, authenticated web golden path, redacted evidence helper, dashboard/provider-readiness verification, production readiness evidence, and final stabilization.
+- Added production gates for env checks, Railway health, Supabase/Stripe smokes, ChatGPT compatibility checks, legal page verification, evidence capture, rollback, and launch blockers.
+
+Verification results for this docs-only phase:
+
+- `npm run test:approval-snapshots`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `git diff --check`: Passed.
+- No broad tests were run because this phase only created and redirected documentation.
