@@ -274,6 +274,17 @@ function parseQueryFallback(query: string): ActivityFinderParsed {
   };
 }
 
+function activityIsSupportedByQuery(query: string, activity: string | null, fallbackActivity: string | null) {
+  if (!activity) return false;
+  if (fallbackActivity) return true;
+
+  const normalizedQuery = normalizeLower(query);
+  const normalizedActivity = normalizeLower(activity);
+  if (!normalizedActivity) return false;
+
+  return normalizedQuery.includes(normalizedActivity);
+}
+
 async function parseQueryWithOpenAI(query: string): Promise<Partial<ActivityFinderParsed>> {
   if (!process.env.OPENAI_API_KEY) {
     return parseQueryFallback(query);
@@ -337,7 +348,9 @@ function mergeParsed(
       : fallback.ageYears;
 
   const parsed: ActivityFinderParsed = {
-    activity: normalize(aiParsed.activity) || fallback.activity,
+    activity: activityIsSupportedByQuery(query, normalize(aiParsed.activity), fallback.activity)
+      ? normalize(aiParsed.activity) || fallback.activity
+      : fallback.activity,
     venue: normalize(aiParsed.venue) || fallback.venue,
     city,
     state,

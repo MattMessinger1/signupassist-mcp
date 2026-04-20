@@ -111,6 +111,28 @@ describe("activity finder search", () => {
     expect(result.bestMatch?.targetUrl).toContain("daysmartrecreation.com");
   });
 
+  it("does not infer a tested fast path activity from venue-only wording", async () => {
+    const searchPlaces = vi.fn(async () => []);
+    const result = await searchActivityFinder(
+      { query: "Keva in Madison for my 9 year old" },
+      {
+        lookupIpLocation: async () => null,
+        parseQuery: async () => ({
+          activity: "soccer",
+          venue: "Keva",
+          city: "Madison",
+          state: "WI",
+          ageYears: 9,
+        }),
+        searchPlaces,
+      },
+    );
+
+    expect(result.bestMatch?.status).toBe("need_more_detail");
+    expect(result.bestMatch?.missingDetails).toContain("activity");
+    expect(searchPlaces).not.toHaveBeenCalled();
+  });
+
   it("keeps registration-like untested venues useful through Guided Autopilot", async () => {
     const result = await searchActivityFinder(
       { query: "swim lessons at Lakeside YMCA in Madison for age 7" },

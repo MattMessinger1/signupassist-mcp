@@ -1861,3 +1861,29 @@ Verification:
 - `npx vitest run tests/web-golden-path-foundation.test.ts tests/activity-finder-ui.test.ts tests/signup-intent-frontend.test.ts`: Passed.
 - `npx tsc -p tsconfig.app.json --noEmit`: Passed.
 - `npx eslint src/pages/auth.tsx src/pages/ActivityFinder.tsx tests/web-golden-path-foundation.test.ts --max-warnings=0`: Passed.
+
+## 2026-04-20 - Activity Finder Venue-Only Fast-Path Guardrail
+
+Scope:
+
+- Production browser testing found that a venue-only query such as "Keva in Madison for my 9 year old" could be upgraded into a soccer tested fast path because the AI parser inferred an activity from the venue.
+- Tightened Activity Finder parsing so AI-provided activity labels are accepted only when the parent query itself supports the activity; venue-only searches now remain missing-detail until the parent names the activity.
+- Added regression coverage for venue-only tested fast path prevention.
+
+Approval impact:
+
+- ChatGPT MCP public tool names changed: No.
+- MCP manifest/OpenAPI/.well-known/OAuth/CSP/protected-action behavior changed: No.
+- Public MCP schemas/descriptors changed: No.
+- Hidden/private/internal tools exposed: No.
+- Safety impact: Positive. Web Activity Finder no longer prepares a signup path for a guessed activity when the parent only named a venue.
+
+Verification:
+
+- `npx vitest run mcp_server/lib/activityFinder.test.ts tests/activity-finder-ui.test.ts tests/signup-intent-frontend.test.ts`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npx eslint mcp_server/lib/activityFinder.ts mcp_server/lib/activityFinder.test.ts --max-warnings=0`: Passed.
+- `npm run typecheck`: Passed.
+- `npm run test:chatgpt-app`: Passed.
+- `npm run test:approval-snapshots`: Passed.
+- `git diff --check`: Passed.
