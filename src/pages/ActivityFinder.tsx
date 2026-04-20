@@ -1,10 +1,9 @@
-import { FormEvent, ReactNode, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertCircle,
   ArrowRight,
   CalendarDays,
-  CheckCircle2,
   CircleDollarSign,
   ClipboardCheck,
   Clock3,
@@ -76,6 +75,9 @@ const registrationStatusOptions = [
   "Waitlist ok",
 ];
 
+const PENDING_ACTIVITY_FINDER_INTENT_KEY = "signupassist:pendingActivityFinderIntent";
+const PENDING_ACTIVITY_FINDER_INTENT_TTL_MS = 15 * 60 * 1000;
+
 function composeStructuredQuery(fields: SearchFields) {
   const pieces = [
     fields.activity,
@@ -109,6 +111,10 @@ function isHttpsUrl(value: string) {
   }
 }
 
+function resultTargetIsSafe(result: ActivityFinderResult) {
+  return Boolean(result.targetUrl && isHttpsUrl(result.targetUrl));
+}
+
 function optionalString(result: ActivityFinderResult, key: string) {
   const value = (result as unknown as Record<string, unknown>)[key];
   return typeof value === "string" && value.trim() ? value : null;
@@ -126,16 +132,49 @@ function optionalStringArray(result: ActivityFinderResult, key: string) {
     : [];
 }
 
-function ctaLabelForStatus(status: ActivityFinderStatus, linkReady: boolean) {
-  switch (status) {
+function getResultHandoffEligibility(result: ActivityFinderResult, signupLink: string) {
+  if (result.status === "need_more_detail") {
+    return {
+      canContinue: false,
+      label: "Add missing details",
+      hint: "Search again after adding the missing details.",
+    };
+  }
+
+  if (result.status === "needs_signup_link") {
+    const candidateLink = signupLink || result.targetUrl || "";
+    const linkReady = isHttpsUrl(candidateLink);
+    return {
+      canContinue: linkReady,
+      label: linkReady ? "Prepare with this link" : "Paste signup link",
+      hint: linkReady
+        ? "This will create a secure signup intent."
+        : "Paste the public HTTPS registration page before preparing a signup.",
+    };
+  }
+
+  const safeTarget = resultTargetIsSafe(result);
+  if (!safeTarget) {
+    return {
+      canContinue: false,
+      label: "Confirm signup link",
+      hint: "We need a public HTTPS registration page before preparing a signup.",
+    };
+  }
+
+  switch (result.status) {
     case "tested_fast_path":
-      return "Prepare signup";
+      return {
+        canContinue: true,
+        label: "Prepare signup",
+        hint: "This known path opens a supervised setup.",
+      };
     case "guided_autopilot":
-      return "Prepare guided signup";
-    case "needs_signup_link":
-      return linkReady ? "Prepare with this link" : "Paste signup link";
-    case "need_more_detail":
-      return "Add missing details";
+      return {
+        canContinue: true,
+        label: "Prepare guided signup",
+        hint: "This starts supervised guided setup. Sensitive steps still pause.",
+      };
   }
 }
 
@@ -274,8 +313,8 @@ function ResultCard({
     ...optionalStringArray(result, "missingDetails"),
     ...(result.status === "need_more_detail" ? parsed.missingFields : []),
   ].filter((item, index, items) => item && items.indexOf(item) === index);
-  const linkReady = result.status === "needs_signup_link" ? isHttpsUrl(signupLink) : true;
-  const canContinue = !disabled && result.status !== "need_more_detail" && linkReady;
+  const handoff = getResultHandoffEligibility(result, signupLink);
+  const canContinue = !disabled && handoff.canContinue;
   const title = result.activityLabel || result.venueName || "Activity signup match";
   const venue = result.venueName || result.providerName || parsed.venue;
   const location = result.address || parsedLocation;
@@ -357,7 +396,7 @@ function ResultCard({
               inputMode="url"
             />
             <p className="text-xs text-muted-foreground">
-              Paste the provider signup page. SignupAssist still creates a server-side intent and keeps it out of the browser URL.
+              Paste the public HTTPS provider signup page. SignupAssist still creates a server-side intent and keeps it out of the browser URL.
             </p>
           </div>
         )}
@@ -373,12 +412,10 @@ function ResultCard({
             ) : (
               <ClipboardCheck className="h-4 w-4" />
             )}
-            {ctaLabelForStatus(result.status, linkReady)}
+            {handoff.label}
             {canContinue && <ArrowRight className="h-4 w-4" />}
           </Button>
-          {result.status === "need_more_detail" && (
-            <p className="text-sm text-muted-foreground">Search again after adding the missing details.</p>
-          )}
+          <p className="text-sm text-muted-foreground">{handoff.hint}</p>
         </div>
       </CardContent>
     </Card>
@@ -447,6 +484,39 @@ function TrustPanel({ authenticated }: { authenticated: boolean }) {
   );
 }
 
+interface PendingActivityFinderIntent {
+  expiresAt: number;
+  query: string;
+  parsed: ActivityFinderParsed;
+  result: ActivityFinderResult;
+}
+
+function readPendingActivityFinderIntent(): PendingActivityFinderIntent | null {
+  try {
+    const raw = sessionStorage.getItem(PENDING_ACTIVITY_FINDER_INTENT_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PendingActivityFinderIntent;
+    if (!parsed || typeof parsed.expiresAt !== "number" || parsed.expiresAt < Date.now()) {
+      sessionStorage.removeItem(PENDING_ACTIVITY_FINDER_INTENT_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    sessionStorage.removeItem(PENDING_ACTIVITY_FINDER_INTENT_KEY);
+    return null;
+  }
+}
+
+function storePendingActivityFinderIntent(pending: Omit<PendingActivityFinderIntent, "expiresAt">) {
+  sessionStorage.setItem(
+    PENDING_ACTIVITY_FINDER_INTENT_KEY,
+    JSON.stringify({
+      ...pending,
+      expiresAt: Date.now() + PENDING_ACTIVITY_FINDER_INTENT_TTL_MS,
+    }),
+  );
+}
+
 export default function ActivityFinder() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -457,6 +527,7 @@ export default function ActivityFinder() {
   const [response, setResponse] = useState<ActivityFinderResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [signupLinks, setSignupLinks] = useState<Record<string, string>>({});
+  const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
 
   const parsedLocation = locationLabel(response?.parsed);
   const parsedAge = ageLabel(response?.parsed);
@@ -468,9 +539,11 @@ export default function ActivityFinder() {
     ],
     [response],
   );
-  const hasNoResults = Boolean(response && results.length === 0);
+  const isOutOfScope = Boolean(response?.outOfScope);
+  const hasNoResults = Boolean(response && results.length === 0 && !isOutOfScope);
   const hasMissingDetail = Boolean(
-    response?.parsed.missingFields.length || results.some((result) => result.status === "need_more_detail"),
+    !isOutOfScope &&
+      (response?.parsed.missingFields.length || results.some((result) => result.status === "need_more_detail")),
   );
 
   const updateField = (key: SearchFieldKey, value: string) => {
@@ -479,6 +552,49 @@ export default function ActivityFinder() {
     const nextQuery = composeStructuredQuery(nextFields);
     if (nextQuery) setQuery(nextQuery);
   };
+
+  const createIntentFromSelection = useCallback(async (
+    intentQuery: string,
+    parsed: ActivityFinderParsed,
+    result: ActivityFinderResult,
+  ) => {
+    const payload = buildSignupIntentFromFinderResult({
+      query: intentQuery,
+      parsed,
+      result,
+    });
+
+    if (!payload) return null;
+
+    const intent = await createSignupIntent(payload);
+    navigate(buildAutopilotIntentPath(intent.id));
+    return intent;
+  }, [navigate]);
+
+  useEffect(() => {
+    if (!user || creatingIntent) return;
+    const pending = readPendingActivityFinderIntent();
+    if (!pending) return;
+
+    const handoff = getResultHandoffEligibility(pending.result, "");
+    if (!handoff.canContinue) {
+      sessionStorage.removeItem(PENDING_ACTIVITY_FINDER_INTENT_KEY);
+      return;
+    }
+
+    setCreatingIntent(true);
+    createIntentFromSelection(pending.query, pending.parsed, pending.result)
+      .then(() => {
+        sessionStorage.removeItem(PENDING_ACTIVITY_FINDER_INTENT_KEY);
+      })
+      .catch((error) => {
+        showErrorToast(
+          "Could not start signup setup",
+          error instanceof Error ? error.message : "Please try again.",
+        );
+      })
+      .finally(() => setCreatingIntent(false));
+  }, [user, creatingIntent, createIntentFromSelection]);
 
   const applyExample = (example: string) => {
     setQuery(example);
@@ -513,31 +629,28 @@ export default function ActivityFinder() {
   };
 
   const continueToSetup = async (result: ActivityFinderResult, confirmedUrl?: string) => {
-    if (result.status === "need_more_detail" || !response) return;
+    const resultForIntent =
+      result.status === "needs_signup_link" && confirmedUrl
+        ? { ...result, targetUrl: confirmedUrl }
+        : result;
+    const handoff = getResultHandoffEligibility(resultForIntent, confirmedUrl || "");
+
+    if (!response || !handoff.canContinue) return;
 
     if (!user) {
+      storePendingActivityFinderIntent({
+        query,
+        parsed: response.parsed,
+        result: resultForIntent,
+      });
       sessionStorage.setItem("signupassist:returnTo", "/activity-finder");
       navigate("/auth?returnTo=%2Factivity-finder");
       return;
     }
 
-    const resultForIntent =
-      result.status === "needs_signup_link" && confirmedUrl
-        ? { ...result, targetUrl: confirmedUrl }
-        : result;
-
-    const payload = buildSignupIntentFromFinderResult({
-      query,
-      parsed: response.parsed,
-      result: resultForIntent,
-    });
-
-    if (!payload) return;
-
     try {
       setCreatingIntent(true);
-      const intent = await createSignupIntent(payload);
-      navigate(buildAutopilotIntentPath(intent.id));
+      await createIntentFromSelection(query, response.parsed, resultForIntent);
     } catch (error) {
       showErrorToast(
         "Could not start signup setup",
@@ -573,10 +686,10 @@ export default function ActivityFinder() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-xl">
                   <Search className="h-5 w-5 text-primary" />
-                  Search by phrase or details
+                  Search by phrase
                 </CardTitle>
                 <CardDescription>
-                  Type naturally, or fill the fields below and we will build the search phrase.
+                  Type the activity, provider or venue, location, and child age when you know them.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
@@ -606,89 +719,97 @@ export default function ActivityFinder() {
                   ))}
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  <StructuredField
-                    id="activity-field"
-                    label="Activity"
-                    value={fields.activity}
-                    placeholder="Soccer, swim, camp"
-                    icon={<Target className="h-3.5 w-3.5" />}
-                    onChange={(value) => updateField("activity", value)}
-                  />
-                  <StructuredField
-                    id="provider-field"
-                    label="Provider or venue"
-                    value={fields.provider}
-                    placeholder="Keva, YMCA, parks"
-                    icon={<Sparkles className="h-3.5 w-3.5" />}
-                    onChange={(value) => updateField("provider", value)}
-                  />
-                  <StructuredField
-                    id="location-field"
-                    label="City or location"
-                    value={fields.location}
-                    placeholder="Madison, Middleton"
-                    icon={<MapPin className="h-3.5 w-3.5" />}
-                    onChange={(value) => updateField("location", value)}
-                  />
-                  <StructuredField
-                    id="age-grade-field"
-                    label="Age or grade"
-                    value={fields.ageGrade}
-                    placeholder="age 9, grade 3"
-                    icon={<UserRound className="h-3.5 w-3.5" />}
-                    onChange={(value) => updateField("ageGrade", value)}
-                  />
-                  <StructuredField
-                    id="season-field"
-                    label="Season or date"
-                    value={fields.season}
-                    placeholder="summer, July, weekends"
-                    icon={<CalendarDays className="h-3.5 w-3.5" />}
-                    onChange={(value) => updateField("season", value)}
-                  />
-                  <StructuredField
-                    id="price-cap-field"
-                    label="Price cap"
-                    value={fields.priceCap}
-                    placeholder="$250"
-                    icon={<CircleDollarSign className="h-3.5 w-3.5" />}
-                    onChange={(value) => updateField("priceCap", value)}
-                  />
+                <div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setShowAdvancedDetails((current) => !current)}
+                    aria-expanded={showAdvancedDetails}
+                    aria-controls="activity-finder-advanced-details"
+                  >
+                    <Target className="h-4 w-4" />
+                    {showAdvancedDetails ? "Hide details" : "Add details"}
+                  </Button>
                 </div>
 
-                <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    Registration status
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {registrationStatusOptions.map((option) => (
-                      <SearchPill
-                        key={option}
-                        active={fields.registrationStatus === option}
-                        onClick={() =>
-                          updateField(
-                            "registrationStatus",
-                            fields.registrationStatus === option ? "" : option,
-                          )
-                        }
-                      >
-                        {option}
-                      </SearchPill>
-                    ))}
+                {showAdvancedDetails && (
+                  <div id="activity-finder-advanced-details" className="space-y-4 rounded-lg border bg-[hsl(var(--secondary))] p-4">
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      <StructuredField
+                        id="activity-field"
+                        label="Activity"
+                        value={fields.activity}
+                        placeholder="Soccer, swim, camp"
+                        icon={<Target className="h-3.5 w-3.5" />}
+                        onChange={(value) => updateField("activity", value)}
+                      />
+                      <StructuredField
+                        id="provider-field"
+                        label="Provider or venue"
+                        value={fields.provider}
+                        placeholder="Keva, YMCA, parks"
+                        icon={<Sparkles className="h-3.5 w-3.5" />}
+                        onChange={(value) => updateField("provider", value)}
+                      />
+                      <StructuredField
+                        id="location-field"
+                        label="City or location"
+                        value={fields.location}
+                        placeholder="Madison, Middleton"
+                        icon={<MapPin className="h-3.5 w-3.5" />}
+                        onChange={(value) => updateField("location", value)}
+                      />
+                      <StructuredField
+                        id="age-grade-field"
+                        label="Age or grade"
+                        value={fields.ageGrade}
+                        placeholder="age 9, grade 3"
+                        icon={<UserRound className="h-3.5 w-3.5" />}
+                        onChange={(value) => updateField("ageGrade", value)}
+                      />
+                      <StructuredField
+                        id="season-field"
+                        label="Season or date"
+                        value={fields.season}
+                        placeholder="summer, July, weekends"
+                        icon={<CalendarDays className="h-3.5 w-3.5" />}
+                        onChange={(value) => updateField("season", value)}
+                      />
+                      <StructuredField
+                        id="price-cap-field"
+                        label="Price cap"
+                        value={fields.priceCap}
+                        placeholder="$250"
+                        icon={<CircleDollarSign className="h-3.5 w-3.5" />}
+                        onChange={(value) => updateField("priceCap", value)}
+                      />
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                        Registration status
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {registrationStatusOptions.map((option) => (
+                          <SearchPill
+                            key={option}
+                            active={fields.registrationStatus === option}
+                            onClick={() =>
+                              updateField(
+                                "registrationStatus",
+                                fields.registrationStatus === option ? "" : option,
+                              )
+                            }
+                          >
+                            {option}
+                          </SearchPill>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
               </CardContent>
             </Card>
-
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5" aria-label="SignupAssist trust commitments">
-              {["Parent controlled", "Sensitive steps pause", "No card numbers stored", "All actions logged", "Provider learning improves future automation"].map((item) => (
-                <div key={item} className="rounded-lg border bg-card p-3 text-sm font-medium">
-                  <CheckCircle2 className="mb-2 h-4 w-4 text-[#2f855a]" />
-                  {item}
-                </div>
-              ))}
-            </div>
 
             <section aria-labelledby="activity-results-heading" className="space-y-4">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
@@ -715,6 +836,17 @@ export default function ActivityFinder() {
                   <AlertCircle className="h-4 w-4" />
                   <AlertTitle>Backend error</AlertTitle>
                   <AlertDescription>{errorMessage}</AlertDescription>
+                </Alert>
+              )}
+
+              {response?.outOfScope && !loading && (
+                <Alert className="border-[#f3d8b6] bg-[#fff3e2]">
+                  <ShieldCheck className="h-4 w-4" />
+                  <AlertTitle>Outside current launch scope</AlertTitle>
+                  <AlertDescription>
+                    {response.outOfScope.message ||
+                      "SignupAssist is currently focused on parent-controlled youth activity signups. Adult activity registration is not supported yet."}
+                  </AlertDescription>
                 </Alert>
               )}
 

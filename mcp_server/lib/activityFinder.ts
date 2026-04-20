@@ -46,6 +46,10 @@ export interface ActivityFinderResponse {
   parsed: ActivityFinderParsed;
   bestMatch: ActivityFinderResult | null;
   otherMatches: ActivityFinderResult[];
+  outOfScope?: {
+    reason: "adult_signup_request";
+    message: string;
+  } | null;
 }
 
 interface LocationHint {
@@ -147,7 +151,39 @@ function dedupeMissing(fields: Array<string | null | undefined>) {
   return [...new Set(fields.filter(Boolean).map(String))];
 }
 
-function extractAge(query: string) {
+function containsAny(text: string, patterns: RegExp[]) {
+  return patterns.some((pattern) => pattern.test(text));
+}
+
+const CHILD_OR_YOUTH_CUES = [
+  /\bchild(?:ren)?\b/i,
+  /\bkids?\b/i,
+  /\byouth\b/i,
+  /\bteen(?:s|agers?)?\b/i,
+  /\bdaughter\b/i,
+  /\bson\b/i,
+  /\bgrade\b/i,
+  /\bu-?\d{1,2}\b/i,
+  /\bunder\s*(?:1[0-7]|\d)\b/i,
+  /\b(?:age|aged)\s*(?:1[0-7]|\d)\b/i,
+  /\b(?:1[0-7]|\d)\s*(?:years?\s*old|year\s*old|y\.?o\.?|yo)\b/i,
+];
+
+const ADULT_PARTICIPANT_CUES = [
+  /\badults?\b/i,
+  /\badult[-\s]?only\b/i,
+  /\bfor\s+adults?\s+only\b/i,
+  /\b(?:18|21)\s*\+\b/i,
+  /\b(?:18|21)\s+and\s+(?:up|over|older)\b/i,
+  /\b(?:over|older than)\s+(?:18|21)\b/i,
+  /\bregister\s+me\b/i,
+  /\bsign\s*me\s+up\b/i,
+  /\benroll\s+me\b/i,
+  /\bfor\s+myself\b/i,
+  /\bfor\s+me\b/i,
+];
+
+function extractAnyAge(query: string) {
   const text = normalizeLower(query);
   const patterns = [
     /\b(?:age|aged)\s*(\d{1,2})\b/,
@@ -159,10 +195,15 @@ function extractAge(query: string) {
     const match = text.match(pattern);
     if (!match) continue;
     const age = Number(match[1]);
-    if (Number.isInteger(age) && age >= 0 && age <= 19) return age;
+    if (Number.isInteger(age) && age >= 0 && age <= 99) return age;
   }
 
   return null;
+}
+
+function extractAge(query: string) {
+  const age = extractAnyAge(query);
+  return age !== null && age > 0 && age < 18 ? age : null;
 }
 
 function extractGrade(query: string) {
@@ -289,9 +330,10 @@ function mergeParsed(
         ? "ip_inferred"
         : "unknown";
 
+  const aiAge = Number(aiParsed.ageYears);
   const ageYears =
-    Number.isFinite(Number(aiParsed.ageYears)) && Number(aiParsed.ageYears) >= 0
-      ? Number(aiParsed.ageYears)
+    Number.isFinite(aiAge) && aiAge > 0 && aiAge < 18
+      ? aiAge
       : fallback.ageYears;
 
   const parsed: ActivityFinderParsed = {
@@ -314,6 +356,37 @@ function mergeParsed(
   ]);
 
   return parsed;
+}
+
+function activityFinderOutOfScope(query: string, aiParsed: Partial<ActivityFinderParsed>) {
+  const normalized = normalize(query);
+  const hasChildCue = containsAny(normalized, CHILD_OR_YOUTH_CUES);
+  const adultCue = containsAny(normalized, ADULT_PARTICIPANT_CUES);
+  const explicitAge = Number.isFinite(Number(aiParsed.ageYears))
+    ? Number(aiParsed.ageYears)
+    : extractAnyAge(normalized);
+
+  if (explicitAge !== null && explicitAge >= 18) {
+    return true;
+  }
+
+  return adultCue && !hasChildCue;
+}
+
+function outOfScopeResponse(parsed: ActivityFinderParsed): ActivityFinderResponse {
+  return {
+    parsed: {
+      ...parsed,
+      missingFields: [],
+    },
+    bestMatch: null,
+    otherMatches: [],
+    outOfScope: {
+      reason: "adult_signup_request",
+      message:
+        "SignupAssist is currently focused on parent-controlled youth activity signups. Adult activity registration is not supported yet.",
+    },
+  };
 }
 
 function clientIpIsLocal(clientIp?: string | null) {
@@ -428,11 +501,26 @@ async function searchGooglePlaces(
       }),
     );
 
-    return withWebsites;
+    return withWebsites.filter((candidate) => candidateMatchesExplicitLocation(candidate, parsed));
   } catch (error: unknown) {
     console.warn("[ActivityFinder] Google Places search failed", sanitizeForLogs({ message: errorMessage(error) }));
     return [];
   }
+}
+
+function candidateMatchesExplicitLocation(candidate: PlaceCandidate, parsed: ActivityFinderParsed) {
+  if (parsed.locationSource !== "user_entered") return true;
+
+  const candidateState = normalizeLower(candidate.state);
+  const parsedState = normalizeLower(parsed.state);
+  if (parsedState && candidateState && candidateState !== parsedState) return false;
+
+  const candidateCity = normalizeLower(candidate.city);
+  const parsedCity = normalizeLower(parsed.city);
+  if (!parsedCity || parsed.venue) return true;
+
+  const address = normalizeLower(candidate.address);
+  return candidateCity === parsedCity || address.includes(parsedCity);
 }
 
 function getFastPathForCandidate(candidate: PlaceCandidate | null, parsed: ActivityFinderParsed) {
@@ -482,7 +570,7 @@ function resultFromCandidate(candidate: PlaceCandidate, parsed: ActivityFinderPa
     };
   }
 
-  if (candidate.website) {
+  if (candidate.website && isRegistrationLikeUrl(candidate.website)) {
     return {
       status: "guided_autopilot",
       venueName: candidate.name,
@@ -519,6 +607,17 @@ function resultFromCandidate(candidate: PlaceCandidate, parsed: ActivityFinderPa
   };
 }
 
+function isRegistrationLikeUrl(value: string | null) {
+  if (!value) return false;
+  try {
+    const parsed = new URL(value);
+    const haystack = normalizeLower(`${parsed.hostname} ${parsed.pathname} ${parsed.search}`);
+    return /register|registration|signup|sign-up|enroll|booking|bookeo|programs?|classes?|lessons?|camps?|activecommunities|daysmartrecreation|amilia|civicrec/.test(haystack);
+  } catch {
+    return false;
+  }
+}
+
 function fastPathCandidateFromParsed(parsed: ActivityFinderParsed): PlaceCandidate | null {
   const candidate: PlaceCandidate = {
     name: parsed.venue || parsed.activity || "Venue",
@@ -550,6 +649,89 @@ function needMoreDetailResult(parsed: ActivityFinderParsed): ActivityFinderResul
   };
 }
 
+function detailGatedResponse(parsed: ActivityFinderParsed): ActivityFinderResponse | null {
+  const missing = dedupeMissing([
+    parsed.activity ? null : "activity",
+    parsed.ageYears !== null || parsed.grade ? null : "age",
+    parsed.city && parsed.locationSource === "user_entered" ? null : "location",
+    parsed.venue ? null : "provider or venue",
+  ]);
+  const fastPathCandidate = fastPathCandidateFromParsed(parsed);
+  const hardMissing = missing.includes("activity") || missing.includes("age");
+
+  if (missing.length === 0 || (fastPathCandidate && !hardMissing)) return null;
+
+  const gatedParsed = {
+    ...parsed,
+    missingFields: missing,
+  };
+
+  return {
+    parsed: gatedParsed,
+    bestMatch: needMoreDetailResult(gatedParsed),
+    otherMatches: [],
+    outOfScope: null,
+  };
+}
+
+function redactQuerySummary(query: string) {
+  return normalize(query)
+    .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[email]")
+    .replace(/\+?\b(?:\d[\s().-]?){10,}\b/g, "[phone]")
+    .replace(/\b(?:\d{1,2}[/-]){2}\d{2,4}\b/g, "[date]")
+    .replace(/\b\d{12,19}\b/g, "[number]")
+    .replace(/https?:\/\/\S+/gi, "[url]")
+    .replace(/\b(?:password|token|secret|credential|card|cvv|cvc|medical|allerg(?:y|ies)?)\b[^\s,;]*/gi, "[sensitive]")
+    .slice(0, 180);
+}
+
+function redactParsedForStorage(parsed: ActivityFinderParsed) {
+  return {
+    activity: parsed.activity,
+    venue: parsed.venue,
+    city: parsed.city,
+    state: parsed.state,
+    ageYears: parsed.ageYears,
+    grade: parsed.grade,
+    missingFields: parsed.missingFields,
+    locationSource: parsed.locationSource,
+  };
+}
+
+function redactLocationHintForStorage(locationHint: LocationHint | null) {
+  if (!locationHint) return null;
+  return {
+    city: locationHint.city,
+    state: locationHint.state,
+    source: locationHint.source,
+    confidence: locationHint.confidence,
+    reason: locationHint.reason,
+  };
+}
+
+function redactMatchForStorage(match: ActivityFinderResult | null) {
+  if (!match) return null;
+  return {
+    status: match.status,
+    venueName: match.venueName,
+    activityLabel: match.activityLabel,
+    providerKey: match.providerKey,
+    providerName: match.providerName,
+    targetUrlHost: match.targetUrl ? (() => {
+      try {
+        return new URL(match.targetUrl).hostname;
+      } catch {
+        return null;
+      }
+    })() : null,
+    confidence: match.confidence ?? null,
+    sourceFreshness: match.sourceFreshness ?? null,
+    ageGradeFit: match.ageGradeFit ?? null,
+    providerReadiness: match.providerReadiness ?? null,
+    missingDetails: match.missingDetails ?? [],
+  };
+}
+
 async function logActivityFinderSearch(
   supabase: ActivityFinderSearchLogger | null | undefined,
   input: ActivityFinderSearchInput,
@@ -562,10 +744,10 @@ async function logActivityFinderSearch(
   try {
     await supabase.from("activity_finder_searches").insert({
       user_id: input.userId || null,
-      raw_query: input.query,
-      parsed_query: parsed,
-      location_hint: locationHint,
-      best_match: response.bestMatch,
+      raw_query: redactQuerySummary(input.query),
+      parsed_query: redactParsedForStorage(parsed),
+      location_hint: redactLocationHintForStorage(locationHint),
+      best_match: redactMatchForStorage(response.bestMatch),
     });
   } catch (error: unknown) {
     console.warn("[ActivityFinder] Failed to log search", errorMessage(error));
@@ -590,6 +772,19 @@ export async function searchActivityFinder(
   const ipLocation = await (deps.lookupIpLocation || lookupIpLocation)(input.clientIp);
   const aiParsed = await (deps.parseQuery || parseQueryWithOpenAI)(query);
   const parsed = mergeParsed(query, aiParsed, input.editedLocation, ipLocation);
+
+  if (activityFinderOutOfScope(query, aiParsed)) {
+    const response = outOfScopeResponse(parsed);
+    await logActivityFinderSearch(deps.supabase, input, response.parsed, ipLocation, response);
+    return response;
+  }
+
+  const detailGate = detailGatedResponse(parsed);
+  if (detailGate) {
+    await logActivityFinderSearch(deps.supabase, input, detailGate.parsed, ipLocation, detailGate);
+    return detailGate;
+  }
+
   const places = await (deps.searchPlaces || searchGooglePlaces)(parsed, ipLocation);
   const parsedFastPath = places.length ? null : fastPathCandidateFromParsed(parsed);
 
@@ -611,12 +806,14 @@ export async function searchActivityFinder(
       parsed,
       bestMatch: sortedResults[0],
       otherMatches: sortedResults.slice(1, 3),
+      outOfScope: null,
     };
   } else {
     response = {
       parsed,
       bestMatch: needMoreDetailResult(parsed),
       otherMatches: [],
+      outOfScope: null,
     };
   }
 
@@ -629,4 +826,8 @@ export const __activityFinderInternals = {
   mergeParsed,
   resultFromCandidate,
   needMoreDetailResult,
+  activityFinderOutOfScope,
+  detailGatedResponse,
+  isRegistrationLikeUrl,
+  candidateMatchesExplicitLocation,
 };

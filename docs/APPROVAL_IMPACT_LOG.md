@@ -1804,3 +1804,38 @@ Verification:
 - Production helper/test routes render the 404 page when test routes are disabled.
 - Production legal pages include parent/guardian, child-safe, no-card-number, redaction, and no-unattended-delegation language.
 - Production evidence screenshots are stored locally under `evidence/overnight-web-launch-20260419/`.
+
+## 2026-04-20 - Activity Finder Youth-Scope and CTA Hardening
+
+Scope:
+
+- Added web-only Activity Finder guardrails that block explicit adult-participant searches before provider lookup, including adult-only activities, adult sports leagues, `18+` / `21+`, and "register me" style prompts when no child/youth cue is present.
+- Treated age `0` as missing and adult participant ages as out of scope for launch.
+- Tightened result eligibility so missing-detail results and generic/incomplete provider matches do not expose enabled "prepare" CTAs.
+- Downgraded generic venue homepages to `needs_signup_link` unless the URL looks like a registration/program/signup path or a known tested fast path.
+- Required clearer location/provider context before surfacing intent-ready live venue matches and filtered remote live venue candidates when explicit city/state is provided.
+- Simplified Activity Finder UI by making natural-language search primary, collapsing structured fields behind "Add details", removing duplicate trust cards, and adding an out-of-scope state.
+- Preserved signed-out Activity Finder handoffs by storing a short-lived selected-result payload in `sessionStorage`, then creating the server-side signup intent after sign-in.
+- Minimized Activity Finder search logs by storing redacted/truncated query summaries, redacted parsed fields, coarse location hints without lat/lng, and target URL hostnames instead of raw provider URLs.
+
+Approval impact:
+
+- ChatGPT MCP public tool names changed: No.
+- MCP manifest/OpenAPI/.well-known/OAuth/CSP/protected-action behavior changed: No.
+- Public MCP schemas/descriptors changed: No.
+- Hidden/private/internal tools exposed: No.
+- Safety impact: Positive. Activity Finder now matches the parent-controlled youth-activity launch scope more tightly and avoids misleading adult/out-of-scope or incomplete provider handoffs.
+
+Verification:
+
+- `npx vitest run mcp_server/lib/activityFinder.test.ts tests/activity-finder-ui.test.ts tests/signup-intent-frontend.test.ts tests/web-golden-path-foundation.test.ts`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npm run typecheck`: Passed.
+- `npm run test:security-mvp`: Passed.
+- `npm run test:golden-path`: Passed.
+- `npm run test:chatgpt-app`: Passed.
+- `npm run test:approval-snapshots`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `npm run test:authz-audit`: Passed.
+- `npx eslint mcp_server/lib/activityFinder.ts mcp_server/lib/activityFinder.test.ts src/lib/activityFinder.ts src/lib/signupIntent.ts src/pages/ActivityFinder.tsx tests/activity-finder-ui.test.ts tests/signup-intent-frontend.test.ts --max-warnings=0`: Passed.

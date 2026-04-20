@@ -150,6 +150,15 @@ function optionalResultString(result: ActivityFinderResult, key: string) {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
+function isSafeHttpsTarget(value: string | null) {
+  if (!value) return false;
+  try {
+    return new URL(value).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export function buildSignupIntentFromFinderResult(params: {
   query: string;
   parsed: ActivityFinderParsed;
@@ -157,7 +166,7 @@ export function buildSignupIntentFromFinderResult(params: {
 }): CreateSignupIntentInput | null {
   const { query, parsed, result } = params;
 
-  if (result.status === "need_more_detail") {
+  if (result.status === "need_more_detail" || !isSafeHttpsTarget(result.targetUrl)) {
     return null;
   }
 

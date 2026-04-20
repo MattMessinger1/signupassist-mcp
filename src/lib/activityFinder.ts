@@ -42,6 +42,10 @@ export interface ActivityFinderResponse {
   parsed: ActivityFinderParsed;
   bestMatch: ActivityFinderResult | null;
   otherMatches: ActivityFinderResult[];
+  outOfScope?: {
+    reason: "adult_signup_request";
+    message: string;
+  } | null;
 }
 
 const ACTIVITY_FINDER_BASE =

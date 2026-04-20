@@ -27,11 +27,14 @@ describe("Activity Finder UI contract", () => {
     expect(page).toContain("Season or date");
     expect(page).toContain("Price cap");
     expect(page).toContain("Registration status");
+    expect(page).toContain("Add details");
+    expect(page).toContain("aria-expanded={showAdvancedDetails}");
     expect(page).toContain("Parent controlled");
     expect(page).toContain("Sensitive steps pause");
     expect(page).toContain("No card numbers stored");
     expect(page).toContain("All actions logged");
-    expect(page).toContain("Provider learning improves future automation");
+    expect(page).toContain("Provider learning");
+    expect(page).not.toContain("Provider learning improves future automation");
   });
 
   it("documents the modern page states", () => {
@@ -41,5 +44,14 @@ describe("Activity Finder UI contract", () => {
     expect(page).toContain("Missing detail");
     expect(page).toContain("Sign in to prepare a signup");
     expect(page).toContain("Backend error");
+    expect(page).toContain("Outside current launch scope");
+    expect(page).toContain("Adult activity registration is not supported yet");
+  });
+
+  it("preserves signed-out signup context through auth before creating an intent", () => {
+    expect(page).toContain("signupassist:pendingActivityFinderIntent");
+    expect(page).toContain("storePendingActivityFinderIntent");
+    expect(page).toContain("readPendingActivityFinderIntent");
+    expect(page).toContain("expiresAt: Date.now() + PENDING_ACTIVITY_FINDER_INTENT_TTL_MS");
   });
 });

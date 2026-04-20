@@ -44,6 +44,27 @@ describe("signup intent frontend bridge", () => {
     ).toBeNull();
   });
 
+  it("does not create signup intents without a safe HTTPS target URL", () => {
+    [
+      null,
+      "",
+      "http://provider.example/signup",
+      "javascript:alert(1)",
+      "notaurl",
+    ].forEach((targetUrl) => {
+      expect(
+        buildSignupIntentFromFinderResult({
+          query: "soccer at Keva",
+          parsed,
+          result: {
+            ...result,
+            targetUrl,
+          },
+        }),
+      ).toBeNull();
+    });
+  });
+
   it("builds an Autopilot URL with only the server-side intent id", () => {
     const path = buildAutopilotIntentPath("aaaaaaaa-aaaa-4aaa-8aaa-000000000001");
     const url = new URL(path, "https://app.signupassist.test");
@@ -99,6 +120,8 @@ describe("signup intent frontend bridge", () => {
       .join("\n");
 
     expect(page).toContain("createSignupIntent");
+    expect(page).toContain("getResultHandoffEligibility");
+    expect(page).toContain("PENDING_ACTIVITY_FINDER_INTENT_KEY");
     expect(page).toContain("buildAutopilotIntentPath(intent.id)");
     expect(navigateCalls).toContain("navigate(buildAutopilotIntentPath(intent.id))");
     [
