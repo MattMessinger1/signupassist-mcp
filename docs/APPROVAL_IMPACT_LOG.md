@@ -1726,3 +1726,26 @@ Verification:
 
 - Stripe webhook endpoint list now shows zero endpoints referencing old Supabase project `jpcrphdevmvzcfgokgym` and one enabled endpoint referencing `jdwuxllyvbrjedqiipbi`.
 - `STRIPE_SMOKE_REQUIRE_WEBHOOK=1 npm run infra:smoke:stripe`: Passed.
+
+## 2026-04-19 - Launch Env Completion
+
+Scope:
+
+- Added `PUBLIC_SITE_URL` and `SITE_URL` as `https://signupassist.shipworx.ai` in Railway web/worker env and Supabase Edge Function secrets.
+- Generated and configured `PII_ENCRYPTION_KEY` and `PII_ENCRYPTION_KEY_ID` in Railway web/worker env and Supabase Edge Function secrets.
+- Updated local ignored `.env` values for smoke/development parity.
+
+Approval impact:
+
+- ChatGPT MCP public tool names changed: No.
+- MCP manifest/OpenAPI/.well-known/OAuth/CSP/protected-action behavior changed: No.
+- Public MCP schemas/descriptors changed: No.
+- Hidden/private/internal tools exposed: No.
+- Safety impact: Positive. Stripe redirects now have an explicit production site URL, and encrypted PII envelope support has a configured production key.
+
+Verification:
+
+- Railway web env confirms `PUBLIC_SITE_URL`, `SITE_URL`, `PII_ENCRYPTION_KEY`, `PII_ENCRYPTION_KEY_ID`, and `STRIPE_WEBHOOK_SECRET` are present.
+- Supabase secrets confirm `PUBLIC_SITE_URL`, `SITE_URL`, `PII_ENCRYPTION_KEY`, `PII_ENCRYPTION_KEY_ID`, and `STRIPE_WEBHOOK_SECRET` are present.
+- `npm run env:check`: Passed in advisory mode with 0 required missing.
+- `npm run infra:smoke:stripe`: Passed.
