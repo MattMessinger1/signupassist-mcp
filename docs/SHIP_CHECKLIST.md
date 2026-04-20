@@ -137,6 +137,8 @@
 - [ ] Checkout/payment handoff pauses for parent review today.
 - [ ] Payment data is never stored in learning artifacts.
 - [ ] Success fee/refund behavior remains behind existing protected actions.
+- [ ] Stripe webhook endpoints point to the current Supabase project/function URLs for the active launch mode.
+- [ ] Stripe webhook signing secret is configured in the target runtime and Supabase Edge Function secrets.
 
 ## Privacy/Legal Checks
 

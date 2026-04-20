@@ -1703,3 +1703,26 @@ Verification:
 - Final migration verification: latest migration `20260419200000`, migration count 67.
 - Direct verification confirmed expected April tables exist, RLS is enabled on sensitive/provider-learning tables, and provider-learning RPCs are not executable by `anon` or `authenticated`.
 - `cron.job` verification confirmed no remaining jobs reference the old Supabase project ref.
+
+## 2026-04-19 - Stripe Test Webhook Supabase URL Cutover
+
+Scope:
+
+- Checked Stripe account `Shipworx, LLC` test-mode webhook endpoints through the configured Stripe secret key.
+- Found one enabled test webhook endpoint (`we_1TMrN7EsXkVhy9qgEFuVACAm`) pointing at the old Supabase project URL.
+- Updated that endpoint to `https://jdwuxllyvbrjedqiipbi.supabase.co/functions/v1/stripe-subscription-webhook`.
+- Added `STRIPE_WEBHOOK_SECRET` to Railway web/worker env and the fresh Supabase project secrets.
+- Added ship checklist coverage for Stripe webhook URL/signing-secret readiness.
+
+Approval impact:
+
+- ChatGPT MCP public tool names changed: No.
+- MCP manifest/OpenAPI/.well-known/OAuth/CSP/protected-action behavior changed: No.
+- Public MCP schemas/descriptors changed: No.
+- Hidden/private/internal tools exposed: No.
+- Payment posture changed: No autonomous payment enabled; webhook change only keeps subscription status sync pointed at the current Supabase project.
+
+Verification:
+
+- Stripe webhook endpoint list now shows zero endpoints referencing old Supabase project `jpcrphdevmvzcfgokgym` and one enabled endpoint referencing `jdwuxllyvbrjedqiipbi`.
+- `STRIPE_SMOKE_REQUIRE_WEBHOOK=1 npm run infra:smoke:stripe`: Passed.
