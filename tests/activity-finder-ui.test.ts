@@ -14,9 +14,11 @@ describe("Activity Finder UI contract", () => {
   it("keeps search result language focused on one clear next step", () => {
     expect(page).toContain("Best match");
     expect(page).toContain("Other possible matches");
+    expect(page).toContain("More possible venues");
     expect(page).toContain("Find signup");
     expect(page).toContain("Prepare signup");
     expect(page).toContain("Prepare guided signup");
+    expect(page).toContain("Add missing details");
     expect(page).not.toMatch(/\bunsupported\b/i);
   });
 
@@ -46,6 +48,8 @@ describe("Activity Finder UI contract", () => {
     expect(page).toContain("Backend error");
     expect(page).toContain("Outside current launch scope");
     expect(page).toContain("Adult activity registration is not supported yet");
+    expect(page).toContain("scrollResultsIntoViewOnMobile");
+    expect(page).toContain("focusMissingDetail");
   });
 
   it("preserves signed-out signup context through auth before creating an intent", () => {

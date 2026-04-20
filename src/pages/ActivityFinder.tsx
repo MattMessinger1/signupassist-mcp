@@ -1,4 +1,4 @@
-import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertCircle,
@@ -288,6 +288,7 @@ function ResultCard({
   parsed,
   primary = false,
   onContinue,
+  onAddMissingDetails,
   disabled = false,
   signupLink,
   onSignupLinkChange,
@@ -297,6 +298,7 @@ function ResultCard({
   parsed: ActivityFinderParsed;
   primary?: boolean;
   onContinue: (result: ActivityFinderResult, confirmedUrl?: string) => void | Promise<void>;
+  onAddMissingDetails: (missingDetails: string[]) => void;
   disabled?: boolean;
   signupLink: string;
   onSignupLinkChange: (value: string) => void;
@@ -314,7 +316,8 @@ function ResultCard({
     ...(result.status === "need_more_detail" ? parsed.missingFields : []),
   ].filter((item, index, items) => item && items.indexOf(item) === index);
   const handoff = getResultHandoffEligibility(result, signupLink);
-  const canContinue = !disabled && handoff.canContinue;
+  const isMissingDetail = result.status === "need_more_detail";
+  const canActivate = !disabled && (isMissingDetail || handoff.canContinue);
   const title = result.activityLabel || result.venueName || "Activity signup match";
   const venue = result.venueName || result.providerName || parsed.venue;
   const location = result.address || parsedLocation;
@@ -404,16 +407,24 @@ function ResultCard({
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <Button
             className="w-full sm:w-auto"
-            onClick={() => onContinue(result, result.status === "needs_signup_link" ? signupLink : undefined)}
-            disabled={!canContinue}
+            onClick={() => {
+              if (isMissingDetail) {
+                onAddMissingDetails(missingDetails.length ? missingDetails : parsed.missingFields);
+                return;
+              }
+              void onContinue(result, result.status === "needs_signup_link" ? signupLink : undefined);
+            }}
+            disabled={!canActivate}
           >
             {disabled ? (
               <Loader2 className="h-4 w-4 animate-spin" />
+            ) : isMissingDetail ? (
+              <Target className="h-4 w-4" />
             ) : (
               <ClipboardCheck className="h-4 w-4" />
             )}
             {handoff.label}
-            {canContinue && <ArrowRight className="h-4 w-4" />}
+            {canActivate && !isMissingDetail && <ArrowRight className="h-4 w-4" />}
           </Button>
           <p className="text-sm text-muted-foreground">{handoff.hint}</p>
         </div>
@@ -528,6 +539,7 @@ export default function ActivityFinder() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [signupLinks, setSignupLinks] = useState<Record<string, string>>({});
   const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
+  const resultsSectionRef = useRef<HTMLElement | null>(null);
 
   const parsedLocation = locationLabel(response?.parsed);
   const parsedAge = ageLabel(response?.parsed);
@@ -545,6 +557,42 @@ export default function ActivityFinder() {
     !isOutOfScope &&
       (response?.parsed.missingFields.length || results.some((result) => result.status === "need_more_detail")),
   );
+  const visibleOtherMatches = useMemo(
+    () => response?.otherMatches.filter((result) => result.status !== "needs_signup_link") || [],
+    [response],
+  );
+  const genericAlternatives = useMemo(
+    () => response?.otherMatches.filter((result) => result.status === "needs_signup_link") || [],
+    [response],
+  );
+
+  const scrollResultsIntoViewOnMobile = useCallback(() => {
+    if (!window.matchMedia("(max-width: 767px)").matches) return;
+    window.setTimeout(() => {
+      resultsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
+  }, []);
+
+  const focusMissingDetail = useCallback((missingDetails: string[] = []) => {
+    const normalized = missingDetails.map((detail) => detail.toLowerCase());
+    const targetId =
+      normalized.some((detail) => detail.includes("activity"))
+        ? "activity-field"
+        : normalized.some((detail) => detail.includes("provider") || detail.includes("venue"))
+          ? "provider-field"
+          : normalized.some((detail) => detail.includes("city") || detail.includes("location"))
+            ? "location-field"
+            : normalized.some((detail) => detail.includes("age") || detail.includes("grade"))
+              ? "age-grade-field"
+              : "activity-field";
+
+    setShowAdvancedDetails(true);
+    window.setTimeout(() => {
+      const target = document.getElementById(targetId) as HTMLInputElement | null;
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      target?.focus();
+    }, 0);
+  }, []);
 
   const updateField = (key: SearchFieldKey, value: string) => {
     const nextFields = { ...fields, [key]: value };
@@ -614,6 +662,7 @@ export default function ActivityFinder() {
       } = await supabase.auth.getSession();
       const result = await searchActivityFinder(trimmed, session?.access_token);
       setResponse(result);
+      scrollResultsIntoViewOnMobile();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Please try again.";
       setErrorMessage(message);
@@ -811,7 +860,7 @@ export default function ActivityFinder() {
               </CardContent>
             </Card>
 
-            <section aria-labelledby="activity-results-heading" className="space-y-4">
+            <section ref={resultsSectionRef} aria-labelledby="activity-results-heading" className="space-y-4">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                 <div>
                   <h2 id="activity-results-heading" className="text-2xl font-semibold tracking-normal">
@@ -886,6 +935,17 @@ export default function ActivityFinder() {
                   <AlertDescription>
                     Add the missing activity, provider, location, or age detail above, then search again before preparing a signup.
                   </AlertDescription>
+                  <div className="mt-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => focusMissingDetail(response?.parsed.missingFields || [])}
+                    >
+                      <Target className="h-4 w-4" />
+                      Add missing details
+                    </Button>
+                  </div>
                 </Alert>
               )}
 
@@ -896,16 +956,17 @@ export default function ActivityFinder() {
                   parsed={response.parsed}
                   primary
                   onContinue={continueToSetup}
+                  onAddMissingDetails={focusMissingDetail}
                   disabled={creatingIntent}
                   signupLink={signupLinks.bestMatch || ""}
                   onSignupLinkChange={(value) => setSignupLinks((current) => ({ ...current, bestMatch: value }))}
                 />
               )}
 
-              {response && response.otherMatches.length > 0 && !loading && (
+              {response && visibleOtherMatches.length > 0 && !loading && (
                 <div className="space-y-3">
                   <p className="text-sm font-medium text-muted-foreground">Other possible matches</p>
-                  {response.otherMatches.map((result, index) => {
+                  {visibleOtherMatches.map((result, index) => {
                     const key = `${result.venueName || result.activityLabel || "match"}-${index}`;
                     return (
                       <ResultCard
@@ -914,6 +975,7 @@ export default function ActivityFinder() {
                         resultId={`other-match-${index}`}
                         parsed={response.parsed}
                         onContinue={continueToSetup}
+                        onAddMissingDetails={focusMissingDetail}
                         disabled={creatingIntent}
                         signupLink={signupLinks[key] || ""}
                         onSignupLinkChange={(value) =>
@@ -923,6 +985,34 @@ export default function ActivityFinder() {
                     );
                   })}
                 </div>
+              )}
+
+              {genericAlternatives.length > 0 && !loading && (
+                <Card className="shadow-sm">
+                  <CardContent className="space-y-3 p-5">
+                    <div>
+                      <p className="text-sm font-semibold">More possible venues</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        These need exact registration links before SignupAssist can prepare them. Refine the provider field if one of these is the right place.
+                      </p>
+                    </div>
+                    <div className="divide-y rounded-lg border bg-background">
+                      {genericAlternatives.map((result, index) => (
+                        <div
+                          key={`${result.venueName || result.activityLabel || "generic"}-${index}`}
+                          className="flex flex-col gap-1 p-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+                        >
+                          <span className="font-medium">
+                            {result.venueName || result.activityLabel || `Possible venue ${index + 1}`}
+                          </span>
+                          <span className="text-muted-foreground">
+                            {result.address || result.providerName || "Needs signup link"}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
               )}
             </section>
           </div>

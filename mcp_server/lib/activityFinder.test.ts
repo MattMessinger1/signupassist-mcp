@@ -244,6 +244,30 @@ describe("activity finder search", () => {
     expect(searchPlaces).not.toHaveBeenCalled();
   });
 
+  it("does not display the searched city as the venue", async () => {
+    const searchPlaces = vi.fn(async () => []);
+    const result = await searchActivityFinder(
+      { query: "basketball camps in Madison for age 10" },
+      {
+        lookupIpLocation: async () => null,
+        parseQuery: async () => ({
+          activity: "basketball camps",
+          venue: "Madison",
+          city: "Madison",
+          state: "WI",
+          ageYears: 10,
+        }),
+        searchPlaces,
+      },
+    );
+
+    expect(result.parsed.venue).toBeNull();
+    expect(result.bestMatch?.status).toBe("need_more_detail");
+    expect(result.bestMatch?.venueName).toBeNull();
+    expect(result.bestMatch?.missingDetails).toContain("provider or venue");
+    expect(searchPlaces).not.toHaveBeenCalled();
+  });
+
   it("blocks explicit adult-only searches before provider lookup", async () => {
     const searchPlaces = vi.fn(async () => []);
     const result = await searchActivityFinder(

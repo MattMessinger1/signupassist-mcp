@@ -285,6 +285,22 @@ function activityIsSupportedByQuery(query: string, activity: string | null, fall
   return normalizedQuery.includes(normalizedActivity);
 }
 
+function venueIsActuallyLocation(venue: string | null, city: string | null, state: string | null) {
+  const normalizedVenue = normalizeLower(venue);
+  if (!normalizedVenue) return false;
+
+  const normalizedCity = normalizeLower(city);
+  const normalizedState = normalizeLower(state);
+  const locationLabels = [
+    normalizedCity,
+    normalizedState,
+    [normalizedCity, normalizedState].filter(Boolean).join(" "),
+    [normalizedCity, normalizedState].filter(Boolean).join(", "),
+  ].filter(Boolean);
+
+  return locationLabels.includes(normalizedVenue);
+}
+
 async function parseQueryWithOpenAI(query: string): Promise<Partial<ActivityFinderParsed>> {
   if (!process.env.OPENAI_API_KEY) {
     return parseQueryFallback(query);
@@ -347,11 +363,13 @@ function mergeParsed(
       ? aiAge
       : fallback.ageYears;
 
+  const aiVenue = normalize(aiParsed.venue) || fallback.venue;
+
   const parsed: ActivityFinderParsed = {
     activity: activityIsSupportedByQuery(query, normalize(aiParsed.activity), fallback.activity)
       ? normalize(aiParsed.activity) || fallback.activity
       : fallback.activity,
-    venue: normalize(aiParsed.venue) || fallback.venue,
+    venue: venueIsActuallyLocation(aiVenue, city, state) ? null : aiVenue,
     city,
     state,
     ageYears,

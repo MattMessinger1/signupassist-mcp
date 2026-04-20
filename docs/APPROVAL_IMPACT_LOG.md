@@ -1887,3 +1887,34 @@ Verification:
 - `npm run test:chatgpt-app`: Passed.
 - `npm run test:approval-snapshots`: Passed.
 - `git diff --check`: Passed.
+
+## 2026-04-20 - Activity Finder Missing-Detail And Generic CTA Polish
+
+Scope:
+
+- Prevented city/state-only parser output from being displayed as the provider or venue, fixing the "basketball camps in Madison" case that showed "Venue: Madison".
+- Collapsed duplicate generic "Paste signup link" CTAs in secondary matches into a compact "More possible venues" list.
+- Added mobile auto-scroll toward results after a search completes.
+- Made "Add missing details" expand the structured details panel and focus the relevant field instead of acting like a disabled handoff CTA.
+
+Approval impact:
+
+- ChatGPT MCP public tool names changed: No.
+- MCP manifest/OpenAPI/.well-known/OAuth/CSP/protected-action behavior changed: No.
+- Public MCP schemas/descriptors changed: No.
+- Hidden/private/internal tools exposed: No.
+- Safety impact: Positive. Web Activity Finder now avoids misleading venue labels, reduces duplicated handoff controls, and keeps incomplete results in an explicit missing-detail correction flow.
+
+Verification:
+
+- `npx vitest run mcp_server/lib/activityFinder.test.ts tests/activity-finder-ui.test.ts tests/signup-intent-frontend.test.ts`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npx eslint mcp_server/lib/activityFinder.ts mcp_server/lib/activityFinder.test.ts src/pages/ActivityFinder.tsx tests/activity-finder-ui.test.ts --max-warnings=0`: Passed.
+- `npm run typecheck`: Passed.
+- `npm run test:security-mvp`: Passed.
+- `npm run test:golden-path`: Passed.
+- `npm run test:chatgpt-app`: Passed.
+- `npm run test:approval-snapshots`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `git diff --check`: Passed.
