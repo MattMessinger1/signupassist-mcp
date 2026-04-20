@@ -1839,3 +1839,25 @@ Verification:
 - `npm run test:mcp-descriptors`: Passed.
 - `npm run test:authz-audit`: Passed.
 - `npx eslint mcp_server/lib/activityFinder.ts mcp_server/lib/activityFinder.test.ts src/lib/activityFinder.ts src/lib/signupIntent.ts src/pages/ActivityFinder.tsx tests/activity-finder-ui.test.ts tests/signup-intent-frontend.test.ts --max-warnings=0`: Passed.
+
+## 2026-04-20 - Activity Finder Signed-Out Return Fix
+
+Scope:
+
+- Browser proof found that signed-out Activity Finder handoff stored the pending signup selection but the web auth page redirected to `/` after sign-in instead of returning to `/activity-finder`.
+- Updated the web auth page to honor a local-only `returnTo` path, falling back to the existing `signupassist:returnTo` session value and then `/`.
+- Added a contract check that Activity Finder's pending signup-intent handoff remains wired through auth return before intent creation.
+
+Approval impact:
+
+- ChatGPT MCP public tool names changed: No.
+- MCP manifest/OpenAPI/.well-known/OAuth/CSP/protected-action behavior changed: No.
+- Public MCP schemas/descriptors changed: No.
+- Hidden/private/internal tools exposed: No.
+- Safety impact: Positive. Signed-out parents can resume the selected Activity Finder result after web sign-in without rerunning the search or placing search details in route query params.
+
+Verification:
+
+- `npx vitest run tests/web-golden-path-foundation.test.ts tests/activity-finder-ui.test.ts tests/signup-intent-frontend.test.ts`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npx eslint src/pages/auth.tsx src/pages/ActivityFinder.tsx tests/web-golden-path-foundation.test.ts --max-warnings=0`: Passed.

@@ -156,6 +156,7 @@ describe("web golden path foundation", () => {
 
   it("keeps the Activity Finder component wired to auth redirect and intent-only navigation", () => {
     const page = readFileSync("src/pages/ActivityFinder.tsx", "utf8");
+    const authPage = readFileSync("src/pages/auth.tsx", "utf8");
     const navigateCalls = page
       .split("\n")
       .filter((line) => line.includes("navigate("))
@@ -164,6 +165,10 @@ describe("web golden path foundation", () => {
     expect(page).toContain('result.status === "need_more_detail"');
     expect(page).toContain('sessionStorage.setItem("signupassist:returnTo", "/activity-finder")');
     expect(page).toContain('navigate("/auth?returnTo=%2Factivity-finder")');
+    expect(authPage).toContain("useSearchParams");
+    expect(authPage).toContain("safeReturnTo");
+    expect(authPage).toContain("sessionStorage.getItem('signupassist:returnTo')");
+    expect(authPage).toContain("navigate(returnTo)");
     expect(page).toContain("createSignupIntent(payload)");
     expect(page).toContain("navigate(buildAutopilotIntentPath(intent.id))");
     forbiddenRouteParams.forEach((key) => expect(navigateCalls).not.toContain(`${key}=`));
