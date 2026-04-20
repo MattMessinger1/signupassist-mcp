@@ -51,7 +51,8 @@ import { PlanExecutionStatus } from '@/components/PlanExecutionStatus';
 import { LockedStepPreview } from '@/components/LockedStepPreview';
 import { ProgressIndicator } from '@/components/ProgressIndicator';
 
-const stripePromise = loadStripe('pk_test_51RujoPAaGNDlVi1koVlBSBBXy2yfwz7vuMBciJxkawKBKaqwR4xw07wEFUAMa73ADIUqzwB5GwbPM3YnPYu5vo4X00rAdiwPkx');
+const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : Promise.resolve(null);
 
 // Schema for form validation
 const planBuilderSchema = z.object({

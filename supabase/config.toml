@@ -4,19 +4,22 @@ project_id = "jdwuxllyvbrjedqiipbi"
 verify_jwt = false
 
 [functions.test-provider-search]
-verify_jwt = false
+verify_jwt = true
 
 [functions.orchestrator-test]
-verify_jwt = false
+verify_jwt = true
 
 [functions.create-mandate]
 verify_jwt = true
 
 [functions.testHarness]
-verify_jwt = false
+verify_jwt = true
 
 [functions.setup-system-user]
-verify_jwt = false
+verify_jwt = true
+
+[functions.debug-env]
+verify_jwt = true
 
 [functions.create-system-mandate]
 verify_jwt = true

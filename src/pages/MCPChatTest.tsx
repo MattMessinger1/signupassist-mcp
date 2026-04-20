@@ -14,8 +14,9 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 
-// Initialize Stripe
-const stripePromise = loadStripe("pk_test_51RujoPAaGNDlVi1koVlBSBBXy2yfwz7vuMBciJxkawKBKaqwR4xw07wEFUAMa73ADIUqzwB5GwbPM3YnPYu5vo4X00rAdiwPkx");
+// Initialize Stripe only when test routes are explicitly enabled and configured.
+const stripePublishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY;
+const stripePromise = stripePublishableKey ? loadStripe(stripePublishableKey) : Promise.resolve(null);
 
 const MCP_BASE_URL = import.meta.env.VITE_MCP_BASE_URL || "https://signupassist-mcp-production.up.railway.app";
 

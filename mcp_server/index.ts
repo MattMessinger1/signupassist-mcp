@@ -3410,6 +3410,15 @@ class SignupAssistMCPServer {
 
       // --- Bookeo Debug Endpoint - Tests Bookeo API credentials from Railway
       if (req.method === 'GET' && url.pathname === '/bookeo-debug') {
+        const bookeoDebugEnabled =
+          process.env.NODE_ENV !== 'production' &&
+          String(process.env.ENABLE_BOOKEO_DEBUG_ENDPOINT || '').toLowerCase() === 'true';
+
+        if (!bookeoDebugEnabled) {
+          writeJson(req, res, 404, { error: 'not_found' });
+          return;
+        }
+
         console.log('[DEBUG] Bookeo credentials test request received');
         
         try {

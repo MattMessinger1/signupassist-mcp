@@ -261,6 +261,8 @@ describe("MVP security regression suite", () => {
     expect(server).toContain("consumeRateLimit");
     expect(server).toContain(":activity_finder_search");
     expect(server).toContain("corsHeadersForRequest(req)");
+    expect(server).toContain("ENABLE_BOOKEO_DEBUG_ENDPOINT");
+    expect(server).toContain("process.env.NODE_ENV !== 'production'");
     expect(signupIntentApi).toContain(":signup_intents");
   });
 
@@ -287,6 +289,9 @@ describe("MVP security regression suite", () => {
     const header = readFileSync("src/components/Header.tsx", "utf8");
     const mcpClient = readFileSync("src/lib/chatMcpClient.ts", "utf8");
     const discoveryRuns = readFileSync("src/pages/DiscoveryRuns.tsx", "utf8");
+    const planBuilder = readFileSync("src/pages/PlanBuilder.tsx", "utf8");
+    const mcpChatTest = readFileSync("src/pages/MCPChatTest.tsx", "utf8");
+    const stripeContext = readFileSync("src/contexts/StripeContext.tsx", "utf8");
     const dockerfile = readFileSync("Dockerfile", "utf8");
 
     expect(app).toContain("isTestRoutesEnabled");
@@ -306,6 +311,12 @@ describe("MVP security regression suite", () => {
     expect(discoveryRuns).toContain("isAdminSurfaceEnabled");
     expect(discoveryRuns).toContain("Admin access required");
     expect(discoveryRuns).not.toContain(".select('*')");
+
+    expect(planBuilder).not.toContain("pk_test_");
+    expect(mcpChatTest).not.toContain("pk_test_");
+    expect(stripeContext).not.toContain("pk_test_");
+    expect(planBuilder).toContain("VITE_STRIPE_PUBLISHABLE_KEY");
+    expect(stripeContext).toContain("VITE_STRIPE_PUBLISHABLE_KEY");
   });
 
   it("requires public HTTPS provider URLs in Autopilot production setup", () => {
@@ -344,6 +355,11 @@ describe("MVP security regression suite", () => {
 
     expect(supabaseConfig).toContain("[functions.create-system-mandate]");
     expect(supabaseConfig).toContain("verify_jwt = true");
+    expect(supabaseConfig).toMatch(/\[functions\.test-provider-search\]\s+verify_jwt = true/);
+    expect(supabaseConfig).toMatch(/\[functions\.orchestrator-test\]\s+verify_jwt = true/);
+    expect(supabaseConfig).toMatch(/\[functions\.testHarness\]\s+verify_jwt = true/);
+    expect(supabaseConfig).toMatch(/\[functions\.setup-system-user\]\s+verify_jwt = true/);
+    expect(supabaseConfig).toMatch(/\[functions\.debug-env\]\s+verify_jwt = true/);
     expect(createSystemMandate).toContain("ENABLE_SYSTEM_MANDATE_ISSUE");
     expect(createSystemMandate).toContain("system_mandate_issue_disabled");
     expect(createSystemMandate).toContain("Authorization");

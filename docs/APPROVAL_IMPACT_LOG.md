@@ -1749,3 +1749,30 @@ Verification:
 - Supabase secrets confirm `PUBLIC_SITE_URL`, `SITE_URL`, `PII_ENCRYPTION_KEY`, `PII_ENCRYPTION_KEY_ID`, and `STRIPE_WEBHOOK_SECRET` are present.
 - `npm run env:check`: Passed in advisory mode with 0 required missing.
 - `npm run infra:smoke:stripe`: Passed.
+
+## 2026-04-19 - Overnight Web Launch Surface Hardening
+
+Scope:
+
+- Disabled production admin UI/API flags in Railway and configured a production CORS allowlist for web-only APIs.
+- Removed `VITE_MCP_ACCESS_TOKEN` exposure remained confirmed absent and test routes remained disabled.
+- Deleted public Supabase helper/test Edge Functions from the fresh production project: `setup-system-user`, `testHarness`, `debug-env`, `orchestrator-test`, and `test-provider-search`.
+- Hardened `/bookeo-debug` so it returns 404 in production unless an explicit non-production debug flag is set.
+- Replaced hardcoded browser Stripe publishable keys with `VITE_STRIPE_PUBLISHABLE_KEY` configuration.
+- Updated Supabase function config so test/debug helper functions require JWT if redeployed later.
+
+Approval impact:
+
+- ChatGPT MCP public tool names changed: No.
+- MCP manifest/OpenAPI/.well-known/OAuth/CSP/protected-action behavior changed: No.
+- Public MCP schemas/descriptors changed: No.
+- Hidden/private/internal tools exposed: No.
+- Safety impact: Positive. Public debug/test surfaces were closed and provider credential diagnostics no longer expose Bookeo account metadata in production.
+
+Verification:
+
+- `npm run test:security-mvp`: Passed.
+- `npm run test:approval-snapshots`: Passed after intentional approval snapshot update for the reviewed `mcp_server/index.ts` production debug-route hardening.
+- `npm run test:chatgpt-app`: Passed.
+- Railway env confirms `ADMIN_API_ENABLED=false`, `VITE_ADMIN_CONSOLE_ENABLED=false`, `VITE_MCP_ACCESS_TOKEN` missing, `VITE_ENABLE_TEST_ROUTES` missing, and `CORS_ALLOW_ORIGINS` configured.
+- Supabase function list no longer includes the deleted public helper/test functions.

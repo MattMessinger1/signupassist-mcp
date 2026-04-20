@@ -145,6 +145,13 @@ export const ENV_DEFINITIONS: EnvDefinition[] = [
     targets: { local: "recommended", "supabase-functions": "required", smoke: "required" },
   },
   {
+    name: "VITE_STRIPE_PUBLISHABLE_KEY",
+    category: "Billing",
+    description: "Stripe publishable key for browser-only Stripe Elements surfaces.",
+    example: "pk_test_your_key_here",
+    targets: { frontend: "optional" },
+  },
+  {
     name: "STRIPE_WEBHOOK_SECRET",
     category: "Billing",
     description: "Stripe webhook signing secret for subscription status updates.",
