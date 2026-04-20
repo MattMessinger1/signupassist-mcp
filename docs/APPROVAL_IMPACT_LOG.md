@@ -1776,3 +1776,31 @@ Verification:
 - `npm run test:chatgpt-app`: Passed.
 - Railway env confirms `ADMIN_API_ENABLED=false`, `VITE_ADMIN_CONSOLE_ENABLED=false`, `VITE_MCP_ACCESS_TOKEN` missing, `VITE_ENABLE_TEST_ROUTES` missing, and `CORS_ALLOW_ORIGINS` configured.
 - Supabase function list no longer includes the deleted public helper/test functions.
+
+## 2026-04-19 - Production Web Golden Path and Subscription Function Auth
+
+Scope:
+
+- Verified the production web golden path in Stripe test mode using a synthetic test user: `/activity-finder` to `/autopilot?intent=<uuid>` to supervised run creation to `/dashboard`.
+- Confirmed the Activity Finder handoff URL contained only the server-side `intent` id.
+- Confirmed the run appeared on the dashboard with provider readiness, price cap, reminder state, and redacted audit summaries.
+- Confirmed Stripe test webhook delivery updates `user_subscriptions` in the fresh Supabase production project.
+- Redeployed Stripe subscription checkout/success/cancel Edge Functions with gateway JWT verification disabled and in-function `auth.getUser(token)` verification retained. This is required for the fresh ES256 Supabase project because the Edge Function gateway rejects ES256 JWTs before function code runs.
+- Added regression checks that subscription functions keep in-function user-token verification when gateway JWT verification is disabled.
+
+Approval impact:
+
+- ChatGPT MCP public tool names changed: No.
+- MCP manifest/OpenAPI/.well-known/OAuth/CSP/protected-action behavior changed: No.
+- Public MCP schemas/descriptors changed: No.
+- Hidden/private/internal tools exposed: No.
+- Payment posture changed: No live Stripe switch; proof remains Stripe test mode. Subscription setup is still parent-initiated and authenticated in-function.
+- Safety impact: Positive. The production web path is verified without exposing child data, raw card data, provider credentials, or unattended provider automation.
+
+Verification:
+
+- Production `/tools` returns only `search_activities` and `register_for_activity`.
+- Production `/bookeo-debug` returns 404.
+- Production helper/test routes render the 404 page when test routes are disabled.
+- Production legal pages include parent/guardian, child-safe, no-card-number, redaction, and no-unattended-delegation language.
+- Production evidence screenshots are stored locally under `evidence/overnight-web-launch-20260419/`.

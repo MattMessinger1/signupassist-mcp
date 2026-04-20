@@ -34,13 +34,13 @@ verify_jwt = false  # Allow cron job to call without JWT (uses MCP_ACCESS_TOKEN 
 verify_jwt = true  # SECURED: Require authentication to prevent unauthorized sync operations
 
 [functions.stripe-subscription-checkout]
-verify_jwt = true  # SECURED: Require a signed-in parent to start subscription checkout
+verify_jwt = false  # ES256 projects need in-function auth.getUser(token) verification
 
 [functions.stripe-subscription-success]
-verify_jwt = true  # SECURED: Require a signed-in parent to confirm subscription checkout
+verify_jwt = false  # ES256 projects need in-function auth.getUser(token) verification
 
 [functions.stripe-subscription-cancel]
-verify_jwt = true  # SECURED: Require a signed-in parent to cancel renewal
+verify_jwt = false  # ES256 projects need in-function auth.getUser(token) verification
 
 [functions.stripe-subscription-webhook]
 verify_jwt = false  # Stripe webhooks cannot include Supabase JWTs; Stripe signature is verified in-function

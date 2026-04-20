@@ -350,6 +350,9 @@ describe("MVP security regression suite", () => {
     const supabaseConfig = readFileSync("supabase/config.toml", "utf8");
     const createSystemMandate = readFileSync("supabase/functions/create-system-mandate/index.ts", "utf8");
     const stripeRefund = readFileSync("supabase/functions/stripe-refund-success-fee/index.ts", "utf8");
+    const stripeSubscriptionCheckout = readFileSync("supabase/functions/stripe-subscription-checkout/index.ts", "utf8");
+    const stripeSubscriptionSuccess = readFileSync("supabase/functions/stripe-subscription-success/index.ts", "utf8");
+    const stripeSubscriptionCancel = readFileSync("supabase/functions/stripe-subscription-cancel/index.ts", "utf8");
     const runPlan = readFileSync("supabase/functions/run-plan/index.ts", "utf8");
     const executor = readFileSync("supabase/functions/mcp-executor/index.ts", "utf8");
 
@@ -360,6 +363,12 @@ describe("MVP security regression suite", () => {
     expect(supabaseConfig).toMatch(/\[functions\.testHarness\]\s+verify_jwt = true/);
     expect(supabaseConfig).toMatch(/\[functions\.setup-system-user\]\s+verify_jwt = true/);
     expect(supabaseConfig).toMatch(/\[functions\.debug-env\]\s+verify_jwt = true/);
+    expect(supabaseConfig).toMatch(/\[functions\.stripe-subscription-checkout\]\s+verify_jwt = false/);
+    expect(supabaseConfig).toMatch(/\[functions\.stripe-subscription-success\]\s+verify_jwt = false/);
+    expect(supabaseConfig).toMatch(/\[functions\.stripe-subscription-cancel\]\s+verify_jwt = false/);
+    expect(stripeSubscriptionCheckout).toContain("auth.getUser(token)");
+    expect(stripeSubscriptionSuccess).toContain("auth.getUser(token)");
+    expect(stripeSubscriptionCancel).toContain("auth.getUser(token)");
     expect(createSystemMandate).toContain("ENABLE_SYSTEM_MANDATE_ISSUE");
     expect(createSystemMandate).toContain("system_mandate_issue_disabled");
     expect(createSystemMandate).toContain("Authorization");
