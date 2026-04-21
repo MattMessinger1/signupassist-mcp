@@ -247,7 +247,6 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
-  vi.useRealTimers();
 });
 
 describe("helper run API", () => {
@@ -388,30 +387,27 @@ describe("helper run API", () => {
     });
     expect(tamperedPacketRes.statusCode).toBe(401);
 
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-04-20T10:00:00.000Z"));
+    const expiredCode = await new SignJWT({
+      scope: "helper_run_packet",
+      autopilot_run_id: runA,
+      user_id: userA,
+      provider_key: "daysmart",
+      provider_name: "DaySmart / Dash",
+      target_program: "U8 soccer",
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt(Math.floor(Date.now() / 1000) - 120)
+      .setIssuer("signupassist-helper")
+      .setAudience("signupassist-chrome-helper")
+      .setExpirationTime(Math.floor(Date.now() / 1000) - 60)
+      .sign(helperTokenSecretKey());
 
-    const expiringLinkRes = makeResponse();
-    await handleHelperRunApi({
-      req: makeRequest({
-        method: "POST",
-        path: "/api/helper/run-links",
-        token: "token-a",
-        body: { autopilotRunId: runA },
-      }),
-      res: expiringLinkRes,
-      url: new URL("https://signupassist.example/api/helper/run-links"),
-      supabase,
-    });
-    const expiringLink = await parseJson<{ helperCode: string }>(expiringLinkRes);
-
-    vi.setSystemTime(new Date("2026-04-20T10:02:30.000Z"));
     const expiredPacketRes = makeResponse();
     await handleHelperRunApi({
       req: makeRequest({
         method: "POST",
         path: "/api/helper/run-packet",
-        body: { helperCode: expiringLink.helperCode },
+        body: { helperCode: expiredCode },
       }),
       res: expiredPacketRes,
       url: new URL("https://signupassist.example/api/helper/run-packet"),
