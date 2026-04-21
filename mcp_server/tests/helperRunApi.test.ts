@@ -372,7 +372,7 @@ describe("helper run API", () => {
     });
     const linkPayload = await parseJson<{ helperCode: string }>(linkRes);
     const [headerPart, payloadPart, signaturePart] = linkPayload.helperCode.split(".");
-    const tamperedSignature = `${signaturePart.slice(0, -1)}${signaturePart.slice(-1) === "a" ? "b" : "a"}`;
+    const tamperedSignature = `${signaturePart[0] === "A" ? "B" : "A"}${signaturePart.slice(1)}`;
 
     const tamperedPacketRes = makeResponse();
     await handleHelperRunApi({
