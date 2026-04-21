@@ -42,6 +42,7 @@ Implemented pieces:
 - Supported actions and stop conditions come from existing playbooks.
 - Active playbook versions are deterministic strings derived from provider key and fixture mapping.
 - Fixture coverage is mapped from existing `chrome-helper/fixtures/*` paths.
+- The DaySmart / Keva alpha helper slice now has explicit fixture coverage for login pause, participant fill, safe navigation, waiver/payment/final pause, sold-out, and price-cap states. That coverage is still fixture-tested only and does not imply live delegated DaySmart support.
 - Redacted supervised-run observations can be built from `autopilot_runs`-shaped data.
 - Redacted observations can be adapted into the existing `upsert_discovery_run` RPC shape for `discovery_runs`, `discovery_hints`, and `program_fingerprints`.
 - The existing `/discovery-runs` admin surface now displays provider readiness, domains, active playbook version, fixture coverage, and latest redacted discovery observation status.

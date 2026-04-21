@@ -20,6 +20,17 @@ import { bookeoTools } from "../providers/bookeo.js";
 import { stripeTools } from "../providers/stripe.js";
 import { registrationTools } from "../providers/registrations.js";
 import { createServer } from "node:http";
+import {
+  buildReminderCapsPatch,
+  buildSmsReminderMessage,
+  createReminderNotifier,
+  isSupervisedReminderDue,
+  SUPERVISED_REMINDER_ELIGIBLE_STATUSES,
+  readReminderChannels,
+  readReminderPhoneNumber,
+  readReminderStatus,
+  type SupervisedReminderRun,
+} from "../lib/reminders.js";
 
 type ScheduledRow = {
   id: string;
@@ -35,6 +46,11 @@ type ScheduledRow = {
   status: string | null;
 };
 
+type ReminderRow = SupervisedReminderRun & {
+  user_id: string;
+  updated_at: string;
+};
+
 const supabaseUrl = process.env.SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
@@ -44,6 +60,7 @@ if (!supabaseUrl || !supabaseServiceKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const reminderNotifier = createReminderNotifier();
 
 /**
  * Railway (and other platforms) may apply an HTTP healthcheck by default.
@@ -102,6 +119,96 @@ function getToolHandler(tools: Array<{ name: string; handler: (args: any) => Pro
 const bookeoConfirmBooking = getToolHandler(bookeoTools as any, "bookeo.confirm_booking");
 const stripeChargeSuccessFee = getToolHandler(stripeTools as any, "stripe.charge_success_fee");
 const registrationsCreate = getToolHandler(registrationTools as any, "registrations.create");
+
+async function fetchAutopilotReminderCandidates(): Promise<ReminderRow[]> {
+  const { data, error } = await supabase
+    .from("autopilot_runs")
+    .select("id,user_id,provider_name,target_program,target_url,status,caps,updated_at")
+    .in("status", [...SUPERVISED_REMINDER_ELIGIBLE_STATUSES])
+    .order("updated_at", { ascending: true })
+    .limit(100);
+
+  if (error) {
+    console.error("[worker] fetchAutopilotReminderCandidates error:", error);
+    return [];
+  }
+
+  return ((data as ReminderRow[] | null) || []).filter((run) => isSupervisedReminderDue(run));
+}
+
+async function markReminderState(
+  run: ReminderRow,
+  patch: Record<string, unknown>,
+): Promise<boolean> {
+  const { error } = await supabase
+    .from("autopilot_runs")
+    .update({
+      caps: buildReminderCapsPatch(run, patch),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", run.id);
+
+  if (error) {
+    console.error("[worker] markReminderState error:", error);
+    return false;
+  }
+
+  return true;
+}
+
+async function processAutopilotReminders() {
+  const reminderRuns = await fetchAutopilotReminderCandidates();
+  if (!reminderRuns.length) return;
+
+  for (const run of reminderRuns) {
+    const channels = readReminderChannels(run);
+    if (!channels.includes("sms")) continue;
+
+    const reminderStatus = readReminderStatus(run);
+    if (reminderStatus === "sent" || reminderStatus === "disabled" || reminderStatus === "failed") {
+      continue;
+    }
+
+    const phoneNumber = readReminderPhoneNumber(run);
+    if (!phoneNumber) {
+      await markReminderState(run, {
+        sms_reminder_status: "disabled",
+        sms_reminder_disabled_reason: "missing_phone_number",
+      });
+      continue;
+    }
+
+    const body = buildSmsReminderMessage(run);
+    const result = await reminderNotifier.sendSmsReminder({
+      run,
+      to: phoneNumber,
+      body,
+    });
+
+    if (result.status === "sent") {
+      await markReminderState(run, {
+        sms_reminder_sent_at: new Date().toISOString(),
+        sms_reminder_status: "sent",
+      });
+      console.log(`[worker] sms reminder sent for autopilot_run=${run.id}`);
+      continue;
+    }
+
+    if (result.status === "disabled") {
+      await markReminderState(run, {
+        sms_reminder_status: "disabled",
+        sms_reminder_disabled_reason: result.disabledReason || "twilio_unavailable",
+      });
+      continue;
+    }
+
+    await markReminderState(run, {
+      sms_reminder_status: "failed",
+      sms_reminder_error: result.error || "twilio_message_failed",
+    });
+    console.warn(`[worker] sms reminder failed for autopilot_run=${run.id}: ${result.error || "unknown_error"}`);
+  }
+}
 
 async function fetchNextPending(): Promise<ScheduledRow | null> {
   const { data, error } = await supabase
@@ -288,6 +395,8 @@ async function executeJob(row: ScheduledRow) {
 }
 
 async function tick() {
+  await processAutopilotReminders();
+
   const next = await fetchNextPending();
   if (!next) {
     await sleep(1000);

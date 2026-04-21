@@ -204,7 +204,7 @@
     },
     {
       "path": "mcp_server/index.ts",
-      "sha256": "16f510d7ac8be9aa9d9c4ddcf08eba224a381021621ee46fc53ef2fb29411460"
+      "sha256": "876f0d8eeb8e6c98fd699d9fdbdcc1c7870f31493719ff65994a14b0b4068e30"
     },
     {
       "path": "mcp_server/middleware/auth0.ts",

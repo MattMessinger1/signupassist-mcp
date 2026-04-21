@@ -65,6 +65,45 @@ const AUTH_PAUSE_WORDS = [
   "create account",
 ];
 
+const MFA_PAUSE_WORDS = [
+  "2fa",
+  "mfa",
+  "multi-factor",
+  "two factor",
+  "two-factor",
+  "verification code",
+  "security code",
+  "one-time password",
+  "otp",
+  "authenticator",
+];
+
+const PAYMENT_PAUSE_WORDS = [
+  "payment",
+  "checkout",
+  "card number",
+  "credit card",
+  "billing",
+  "amount due",
+  "pay now",
+  "confirm payment",
+  "payment confirmation",
+];
+
+const MEDICAL_PAUSE_WORDS = [
+  "medical",
+  "medical notes",
+  "allergy",
+  "allergies",
+  "health",
+  "diagnosis",
+  "insurance",
+  "special needs",
+  "disability",
+  "iep",
+  "504",
+];
+
 const LEGAL_PAUSE_WORDS = [
   "waiver",
   "release",
@@ -82,6 +121,19 @@ const CAPTCHA_PAUSE_WORDS = [
   "verify you are human",
 ];
 
+const PROMPT_INJECTION_WORDS = [
+  "ignore previous instructions",
+  "ignore all previous instructions",
+  "follow these instructions",
+  "prompt injection",
+  "system prompt",
+  "developer message",
+  "bypass safety",
+  "disable safety",
+  "override instructions",
+  "disable signupassist",
+];
+
 const SOLD_OUT_WORDS = [
   "sold out",
   "waitlist",
@@ -94,7 +146,7 @@ const SOLD_OUT_WORDS = [
 
 const PROVIDER_DOMAINS = {
   active: ["active.com", "activecommunities.com", "activenetwork.com"],
-  daysmart: ["daysmartrecreation.com", "dashplatform.com", "dashregistration.com"],
+  daysmart: ["daysmartrecreation.com", "dashplatform.com", "dashregistration.com", "kevasports.com"],
   amilia: ["amilia.com"],
   "civicrec-recdesk": ["civicrec.com", "recdesk.com"],
   campminder: ["campminder.com"],
@@ -114,8 +166,20 @@ const FIELD_MATCHERS = [
   { field: "zip", words: ["zip", "postal"] },
 ];
 
+const STORAGE_KEYS = {
+  runPacket: "signupassistRunPacket",
+  assistMode: "signupassistAssistMode",
+};
+
 function normalize(value) {
   return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => {
+    const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" };
+    return map[char];
+  });
 }
 
 function overlay(message, items = []) {
@@ -133,18 +197,20 @@ function overlay(message, items = []) {
   node.querySelector("main").innerHTML = `<p>${escapeHtml(message)}</p>${list}`;
 }
 
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, (char) => {
-    const map = { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#039;" };
-    return map[char];
-  });
+async function getStoredValue(key, fallback = null) {
+  const result = await chrome.storage.local.get(key);
+  return Object.prototype.hasOwnProperty.call(result, key) ? result[key] : fallback;
 }
 
 async function getRunPacket() {
-  const { signupassistRunPacket = null } = await chrome.storage.local.get("signupassistRunPacket");
+  const signupassistRunPacket = await getStoredValue(STORAGE_KEYS.runPacket, null);
   if (!signupassistRunPacket || typeof signupassistRunPacket !== "object") return null;
   if (signupassistRunPacket.mode !== "supervised_autopilot") return null;
   return signupassistRunPacket;
+}
+
+async function getAssistModeEnabled() {
+  return Boolean(await getStoredValue(STORAGE_KEYS.assistMode, false));
 }
 
 function summarizePacket(packet) {
@@ -168,19 +234,45 @@ function hostMatchesPacket(packet) {
   return domains.some((domain) => host === domain || host.endsWith(`.${domain}`));
 }
 
-function detectSoldOutText() {
-  const text = normalize(document.body?.innerText || "");
-  return SOLD_OUT_WORDS.some((word) => text.includes(word));
-}
-
 function detectTextPause(words) {
   const text = normalize(document.body?.innerText || "");
   return words.some((word) => text.includes(word));
 }
 
+function detectSoldOutText() {
+  return detectTextPause(SOLD_OUT_WORDS);
+}
+
+function detectPromptInjection() {
+  const text = normalize(document.body?.innerText || "");
+  return PROMPT_INJECTION_WORDS.some((word) => text.includes(word));
+}
+
 function detectAuthPause() {
   if (document.querySelector('input[type="password"]')) return true;
   return detectTextPause(AUTH_PAUSE_WORDS);
+}
+
+function detectMfaPause() {
+  if (
+    document.querySelector(
+      'input[autocomplete="one-time-code"], input[name*="otp" i], input[id*="otp" i], input[name*="mfa" i], input[id*="mfa" i]',
+    )
+  ) {
+    return true;
+  }
+  return detectTextPause(MFA_PAUSE_WORDS);
+}
+
+function detectPaymentPause() {
+  if (
+    document.querySelector(
+      'input[autocomplete*="cc" i], input[name*="card" i], input[id*="card" i], input[name*="cvv" i], input[id*="cvv" i]',
+    )
+  ) {
+    return true;
+  }
+  return detectTextPause(PAYMENT_PAUSE_WORDS);
 }
 
 function detectCaptchaPause() {
@@ -192,6 +284,10 @@ function detectCaptchaPause() {
 
 function detectLegalPause() {
   return detectTextPause(LEGAL_PAUSE_WORDS);
+}
+
+function detectMedicalPause() {
+  return detectTextPause(MEDICAL_PAUSE_WORDS);
 }
 
 function detectMaxVisiblePriceCents() {
@@ -222,12 +318,28 @@ function collectPacketPauses(packet) {
     pauses.push("Login or account step detected: parent signs in before the helper continues");
   }
 
+  if (detectMfaPause()) {
+    pauses.push("MFA or verification-code step detected: parent action required");
+  }
+
+  if (detectPaymentPause()) {
+    pauses.push("Payment screen or card field detected: parent review required");
+  }
+
   if (detectCaptchaPause()) {
     pauses.push("CAPTCHA or human verification detected: parent action required");
   }
 
   if (detectLegalPause()) {
     pauses.push("Waiver, release, or legal acceptance detected: parent review required");
+  }
+
+  if (detectMedicalPause()) {
+    pauses.push("Medical or allergy information detected: parent review required");
+  }
+
+  if (detectPromptInjection()) {
+    pauses.push("Prompt injection or instruction override detected");
   }
 
   const visiblePriceCents = detectMaxVisiblePriceCents();
@@ -310,7 +422,7 @@ function classifyButton(button) {
 }
 
 async function scanPage() {
-  const packet = await getRunPacket();
+  const [packet, assistModeEnabled] = await Promise.all([getRunPacket(), getAssistModeEnabled()]);
   const fields = Array.from(document.querySelectorAll("input, textarea, select"));
   const buttons = Array.from(document.querySelectorAll("button, input[type='button'], input[type='submit'], a[role='button']"));
   const pauses = collectPacketPauses(packet);
@@ -345,7 +457,7 @@ async function scanPage() {
   });
 
   overlay(
-    "Page scanned. SignupAssist can fill known fields, but parent approval stays required for risky moments.",
+    `Page scanned. Assist Mode is ${assistModeEnabled ? "on" : "off"}. Parent approval stays required for risky moments.`,
     [
       ...summarizePacket(packet),
       `${fields.length} fields`,
@@ -361,14 +473,16 @@ async function scanPage() {
     pauses,
     safeButtons,
     forbiddenButtons,
+    assistModeEnabled,
     runPacketLoaded: Boolean(packet),
   };
 }
 
 async function fillKnownFields() {
-  const [{ signupassistProfile = {} }, packet] = await Promise.all([
+  const [{ signupassistProfile = {} }, packet, assistModeEnabled] = await Promise.all([
     chrome.storage.local.get("signupassistProfile"),
     getRunPacket(),
+    getAssistModeEnabled(),
   ]);
   const fields = Array.from(document.querySelectorAll("input, textarea"));
   const filled = [];
@@ -401,7 +515,7 @@ async function fillKnownFields() {
   });
 
   overlay(
-    "Prepared fields filled. Parent approval is still required for final submit, waivers, payments, unknown fields, and price changes.",
+    `Prepared fields filled. Assist Mode is ${assistModeEnabled ? "on" : "off"}. Parent approval is still required for final submit, waivers, payments, unknown fields, and price changes.`,
     [
       ...summarizePacket(packet),
       `${filled.length} fields filled`,
@@ -409,7 +523,100 @@ async function fillKnownFields() {
     ],
   );
 
-  return { filled, pauses, runPacketLoaded: Boolean(packet) };
+  return { filled, pauses, assistModeEnabled, runPacketLoaded: Boolean(packet) };
+}
+
+function clickFirstSafeButton() {
+  const buttons = Array.from(
+    document.querySelectorAll("button, input[type='button'], input[type='submit'], a[role='button']"),
+  );
+  const safeButton = buttons.find((button) => classifyButton(button).kind === "safe_navigation" && !button.disabled);
+
+  if (!safeButton) {
+    return null;
+  }
+
+  safeButton.click();
+  safeButton.classList.add("signupassist-safe-button");
+  return safeButton;
+}
+
+async function safeContinue() {
+  const [packet, assistModeEnabled] = await Promise.all([getRunPacket(), getAssistModeEnabled()]);
+  const pauses = collectPacketPauses(packet);
+
+  if (!assistModeEnabled) {
+    overlay(
+      "Assist Mode is off. Turn it on to allow safe navigation clicks.",
+      [...summarizePacket(packet), `${pauses.length} pause conditions`],
+    );
+    return {
+      blocked: true,
+      continued: false,
+      reason: "Assist Mode is off",
+      pauses,
+      runPacketLoaded: Boolean(packet),
+      assistModeEnabled,
+    };
+  }
+
+  if (pauses.length) {
+    overlay(
+      "Safe continue paused for the parent.",
+      [...summarizePacket(packet), ...pauses],
+    );
+    return {
+      blocked: true,
+      continued: false,
+      reason: "Pause conditions detected",
+      pauses,
+      runPacketLoaded: Boolean(packet),
+      assistModeEnabled,
+    };
+  }
+
+  const clickedButton = clickFirstSafeButton();
+  if (!clickedButton) {
+    overlay(
+      "No safe navigation button was found.",
+      [...summarizePacket(packet), "Safe continue did not find a button to click"],
+    );
+    return {
+      blocked: true,
+      continued: false,
+      reason: "No safe navigation button found",
+      pauses,
+      runPacketLoaded: Boolean(packet),
+      assistModeEnabled,
+    };
+  }
+
+  overlay(
+    "Safe continue clicked a non-final navigation button.",
+    [...summarizePacket(packet), normalize(clickedButton.textContent || clickedButton.getAttribute("aria-label"))],
+  );
+  return {
+    blocked: false,
+    continued: true,
+    clicked: normalize(clickedButton.textContent || clickedButton.getAttribute("aria-label")),
+    pauses,
+    runPacketLoaded: Boolean(packet),
+    assistModeEnabled,
+  };
+}
+
+function clearHelperState() {
+  document.getElementById("signupassist-overlay")?.remove();
+  document
+    .querySelectorAll(".signupassist-filled, .signupassist-paused, .signupassist-safe-button, .signupassist-forbidden-button")
+    .forEach((node) => {
+      node.classList.remove(
+        "signupassist-filled",
+        "signupassist-paused",
+        "signupassist-safe-button",
+        "signupassist-forbidden-button",
+      );
+    });
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -423,12 +630,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === "SIGNUPASSIST_SAFE_CONTINUE") {
+    safeContinue().then(sendResponse);
+    return true;
+  }
+
   if (message?.type === "SIGNUPASSIST_STOP") {
-    document.getElementById("signupassist-overlay")?.remove();
-    document.querySelectorAll(".signupassist-filled, .signupassist-paused, .signupassist-safe-button, .signupassist-forbidden-button")
-      .forEach((node) => {
-        node.classList.remove("signupassist-filled", "signupassist-paused", "signupassist-safe-button", "signupassist-forbidden-button");
-      });
+    clearHelperState();
     sendResponse({ stopped: true });
     return true;
   }

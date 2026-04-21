@@ -53,8 +53,12 @@ The scheduled worker (`npm run worker:scheduled`) requires:
 Optional:
 
 - `SCHEDULED_WORKER_MAX_ATTEMPT_MS` (default `120000`) – how long to keep retrying at “open time”
+- `ENABLE_SMS_REMINDERS` – opt in to supervised SMS reminders
+- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` – required when SMS reminders are enabled
 
 **Stripe note:** The worker does not charge success fees in the supervised MVP. Payment and success-fee automation remain paused until the sensitive-action gates and future delegation mandate path are verified.
+
+If Twilio is not configured, the worker leaves the run in a manual-reminder posture and the dashboard copy should say SMS is disabled until configured.
 
 ### MCP server (web) (required)
 

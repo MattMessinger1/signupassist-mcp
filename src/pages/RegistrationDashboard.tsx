@@ -162,6 +162,20 @@ function reminderSummary(run: AutopilotDashboardRun) {
     : ['email'];
   const hasSms = channels.includes('sms');
   const channelLabel = channels.length ? channels.join(', ') : 'email';
+  const smsSentAt = typeof reminder.sms_reminder_sent_at === 'string' ? reminder.sms_reminder_sent_at : null;
+  const smsStatus = typeof reminder.sms_reminder_status === 'string' ? reminder.sms_reminder_status : null;
+
+  if (hasSms && smsStatus === 'sent' && smsSentAt) {
+    return `SMS reminder sent ${minutes} minutes before by ${channelLabel}.`;
+  }
+
+  if (smsStatus === 'disabled') {
+    return `Reminder prepared ${minutes} minutes before by ${channelLabel}. Manual reminder recommended. SMS disabled until configured.`;
+  }
+
+  if (smsStatus === 'failed') {
+    return `Reminder prepared ${minutes} minutes before by ${channelLabel}. Manual reminder recommended. SMS attempt failed.`;
+  }
 
   return hasSms
     ? `Reminder prepared ${minutes} minutes before by ${channelLabel}.`

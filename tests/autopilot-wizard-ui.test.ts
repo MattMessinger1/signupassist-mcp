@@ -45,6 +45,7 @@ describe("Autopilot supervised wizard UI contract", () => {
       "Later: signed-mandate delegated signup for verified providers only",
     );
     expect(autopilotPage).toContain("not live today");
+    expect(autopilotPage).toContain("POST /api/helper/run-links");
   });
 
   it("creates a supervised run packet and links it back to the signup intent", () => {
@@ -56,6 +57,9 @@ describe("Autopilot supervised wizard UI contract", () => {
     expect(autopilotPage).toContain("View dashboard");
     expect(autopilotPage).toContain("Run already created");
     expect(autopilotPage).toContain("createdPacket ? (");
+    expect(autopilotPage).toContain("Connect Chrome Helper");
+    expect(autopilotPage).toContain("Copy helper code");
+    expect(autopilotPage).toContain("Copy packet");
   });
 
   it("keeps child profile creation minimal and provider learning redacted", () => {
@@ -74,5 +78,7 @@ describe("Autopilot supervised wizard UI contract", () => {
     expect(autopilotPage).toContain("returnPath={autopilotReturnPath}");
     expect(autopilotPage).toContain("safeExternalUrl");
     expect(autopilotPage).toContain("Valid provider URL required");
+    expect(autopilotPage).toContain("SMS reminder is selected by default");
+    expect(autopilotPage).toContain("Enter the same phone number twice to enable SMS");
   });
 });

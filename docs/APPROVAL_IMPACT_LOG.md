@@ -6,6 +6,42 @@ Date: 2026-04-17
 
 Summary: No production code changed yet
 
+## 2026-04-20 - DaySmart / Keva Helper Alpha Fixture Pass
+
+Files changed in this phase:
+
+- `chrome-helper/fixtures/daysmart.html`
+- `chrome-helper/README.md`
+- `docs/PROVIDER_LEARNING_PRD.md`
+- `tests/daysmart-provider-slice.test.ts`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive runtime files changed: No.
+- Production code changed: No.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+
+Implementation summary:
+
+- Expanded the DaySmart/Keva alpha fixture page with safe navigation and visible price-cap coverage.
+- Kept the helper documentation firmly fixture-only for DaySmart and other providers.
+- Added test assertions for login pause, participant fill, safe navigation, payment/waiver/final pause, sold-out, and price-cap coverage.
+
+Verification status:
+
+- `npx vitest run tests/daysmart-provider-slice.test.ts tests/provider-learning.test.ts tests/autopilot-classifier.test.ts --reporter=verbose`: Passed.
+- `git diff --check`: Passed.
+- No approval-surface changes were made.
+
 ## Known Approval-Sensitive Files
 
 - `mcp/manifest.json`
@@ -1662,6 +1698,12 @@ Verification results for this phase:
 - `npm run test:security-mvp`: Passed.
 - `npm run test:authz-audit`: Passed.
 - `npm run test:golden-path`: Passed.
+- `npm run test:chatgpt-app`: Passed.
+- `npm run test:approval-snapshots`: Passed after intentional snapshot update for `mcp_server/index.ts`.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- Targeted lint on changed helper/UI/test files: Passed. Broad `mcp_server/index.ts` and scheduled worker lint debt remains pre-existing and was not cleaned in this feature pass.
+- `git diff --check`: Passed.
 - `npm run test:chatgpt-golden-path`: Passed.
 - `npm run test:chatgpt-app`: Passed.
 - `npm run test:approval-snapshots`: Passed after intentional snapshot update.
@@ -1918,3 +1960,35 @@ Verification:
 - `npm run test:mcp-manifest`: Passed.
 - `npm run test:mcp-descriptors`: Passed.
 - `git diff --check`: Passed.
+
+## 2026-04-20 - Supervised Chrome Helper Alpha And SMS Reminder Foundation
+
+Scope:
+
+- Added web-only helper endpoints for short-lived Chrome helper codes and sanitized supervised run packets.
+- Added the Autopilot "Connect Chrome Helper" post-run step while keeping manual packet copy as fallback.
+- Added parent-confirmed SMS reminder setup and Twilio-backed scheduled worker support.
+- Narrowed Chrome helper permissions for the alpha provider set and added Assist Mode pause/fill/safe-navigation controls.
+- Expanded DaySmart/Keva fixtures and tests for supervised fill, safe navigation, login/payment/waiver/final-submit pauses, sold-out, and price-cap states.
+
+Approval impact:
+
+- ChatGPT MCP public tool names changed: No.
+- MCP manifest/OpenAPI/.well-known/OAuth/CSP/protected-action behavior changed: No.
+- Public MCP schemas/descriptors changed: No.
+- Hidden/private/internal tools exposed: No.
+- Existing approval-sensitive file changed: Yes, `mcp_server/index.ts` was updated only to mount web-only `/api/helper/run-links` and `/api/helper/run-packet`.
+- Additional safety hardening: `MCP_LISTTOOLS_INCLUDE_PRIVATE` is now ignored in production so private/internal tools cannot be exposed by accidentally setting that diagnostic flag on the public server.
+- Approval snapshot updated: Yes, after confirming the only approval-sensitive hash change was `mcp_server/index.ts`.
+- Safety impact: Positive. Supervised helper packets are signed, short-lived, ownership-checked, and sanitized; SMS reminders exclude sensitive child/payment data; the helper pauses before login, MFA, CAPTCHA, waivers, payment, price mismatch, and final submit.
+
+Verification:
+
+- `npm run mcp:build`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npx vitest run mcp_server/tests/helperRunApi.test.ts mcp_server/tests/reminders.test.ts tests/chrome-helper-alpha.test.ts tests/daysmart-provider-slice.test.ts tests/autopilot-wizard-ui.test.ts tests/autopilot-run-packet.test.ts tests/dashboard-status.test.ts --reporter=verbose`: Passed.
+- `npm run typecheck`: Passed.
+- `npm run build`: Passed.
+- `npm run test:security-mvp`: Passed.
+- `npm run test:authz-audit`: Passed.
+- `npm run test:golden-path`: Passed.

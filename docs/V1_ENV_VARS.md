@@ -101,6 +101,15 @@ These return **413** when exceeded (prevents unbounded buffering).
 
 - `SCHEDULED_WORKER_MAX_ATTEMPT_MS` (default: 120000) — how long to rapid-retry “book at the second”
 
+## Worker SMS reminders (optional)
+
+Set these only if you want the supervised reminder worker to send SMS through Twilio. If they are missing or `ENABLE_SMS_REMINDERS` is false, the dashboard should treat SMS as disabled and manual reminder follow-up remains the safe fallback.
+
+- `ENABLE_SMS_REMINDERS` (default: false)
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_FROM_NUMBER`
+
 ## Smoke-test helpers (optional)
 
 - `RAILWAY_MCP_URL` or `MCP_SERVER_URL` for `npm run infra:smoke:railway`
