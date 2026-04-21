@@ -1992,3 +1992,33 @@ Verification:
 - `npm run test:security-mvp`: Passed.
 - `npm run test:authz-audit`: Passed.
 - `npm run test:golden-path`: Passed.
+
+## 2026-04-21 - Chrome Helper Alpha Evaluation Framework
+
+Scope:
+
+- Added a redacted Chrome helper alpha eval scorecard and report runbook.
+- Added `npm run eval:chrome-helper` to score untracked agent-wave JSON reports for speed, accuracy, safety, parent effort, and flow clarity.
+- Added regression tests for scoring thresholds, automatic blockers, and eval-record redaction.
+
+Approval impact:
+
+- ChatGPT MCP public tool names changed: No.
+- MCP manifest/OpenAPI/.well-known/OAuth/CSP/protected-action behavior changed: No.
+- Public MCP schemas/descriptors changed: No.
+- Hidden/private/internal tools exposed: No.
+- Safety impact: Positive. Eval reports are explicitly redacted and block alpha readiness when unsafe clicks, wrong fields, sensitive actions, unknown required field fills, or sensitive content appear.
+
+Verification:
+
+- `npm run test:chrome-helper-evals`: Passed.
+- `npx tsx scripts/chromeHelperEval.ts --help`: Passed.
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npm run typecheck`: Passed.
+- `npm run test --if-present`: Passed.
+- `npx eslint scripts/chromeHelperEval.ts tests/chrome-helper-eval.test.ts --max-warnings=0`: Passed.
+- `npm run test:chatgpt-app`: Passed.
+- `npm run test:approval-snapshots`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `git diff --check`: Passed.
