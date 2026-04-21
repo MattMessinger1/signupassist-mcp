@@ -32,6 +32,7 @@
     "infra:smoke:supabase": "tsx scripts/smokeSupabase.ts",
     "infra:smoke:stripe": "tsx scripts/smokeStripe.ts",
     "evidence:release": "tsx scripts/releaseEvidence.ts",
+    "eval:chrome-helper": "tsx scripts/chromeHelperEval.ts",
     "predeploy:check": "npm run infra:check && npm run mcp:build && npm run build && npm run test",
     "predeploy:release": "npm run infra:check && npm run typecheck && npx tsc -p tsconfig.app.json --noEmit && npm run build && npm run test:security-mvp && npm run test:authz-audit && npm run test:golden-path && npm run test:chatgpt-app && git diff --check",
     "test:authz-audit": "npm run mcp:build && node scripts/regressionAuthzAuditSecurity.js",
@@ -49,6 +50,7 @@
     "test:approval-snapshots": "tsx scripts/chatgptAppGuardrails.ts approval-snapshots",
     "test:security-mvp": "vitest run tests/security-mvp.test.ts tests/sensitive-action-gates.test.ts tests/sensitive-action-contract.test.ts tests/signup-intent-service.test.ts tests/signup-intent-api.test.ts tests/signup-intent-frontend.test.ts tests/provider-learning.test.ts tests/mandates-audit-redaction.test.ts --reporter=verbose",
     "test:golden-path": "vitest run tests/web-golden-path-foundation.test.ts tests/web-authenticated-golden-path.test.ts tests/activity-finder-ui.test.ts tests/autopilot-wizard-ui.test.ts tests/dashboard-status.test.ts tests/dashboard-provider-readiness.test.ts tests/mandates-audit-redaction.test.ts tests/release-evidence.test.ts --reporter=verbose",
+    "test:chrome-helper-evals": "vitest run tests/chrome-helper-eval.test.ts --reporter=verbose",
     "test:chatgpt-golden-path": "tsx scripts/chatgptAppGuardrails.ts all"
   },
   "dependencies": {
