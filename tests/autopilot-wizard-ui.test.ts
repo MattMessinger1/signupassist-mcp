@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const autopilotPage = readFileSync("src/pages/Autopilot.tsx", "utf8");
 const providerLearningHelper = readFileSync("src/lib/providerLearning.ts", "utf8");
+const runPacketHelper = readFileSync("src/lib/autopilot/runPacket.ts", "utf8");
 
 describe("Autopilot supervised wizard UI contract", () => {
   it("loads only the server-side signup intent id from route query params", () => {
@@ -20,7 +21,7 @@ describe("Autopilot supervised wizard UI contract", () => {
     expect(autopilotPage).not.toContain('searchParams.get("child")');
   });
 
-  it("renders the required supervised setup steps", () => {
+  it("renders the first-run setup checklist and supervised setup steps", () => {
     [
       "Activity",
       "Provider",
@@ -32,6 +33,27 @@ describe("Autopilot supervised wizard UI contract", () => {
     ].forEach((label) => {
       expect(autopilotPage).toContain(label);
     });
+    [
+      "Provider login works",
+      "Child profile is ready",
+      "Provider payment is prepared",
+      "Chrome helper is installed",
+      "Signup URL is confirmed",
+    ].forEach((label) => {
+      expect(runPacketHelper).toContain(label);
+    });
+    expect(autopilotPage).toContain("Readiness preflight");
+    expect(autopilotPage).toContain(
+      "These checks build today's supervised packet and keep future automation gated until the provider is ready.",
+    );
+  });
+
+  it("keeps repeat same-provider runs on the compact dashboard path", () => {
+    expect(autopilotPage).toContain("createdPacket ? (");
+    expect(autopilotPage).toContain("Run already created");
+    expect(autopilotPage).toContain("Open the dashboard to review or resume it.");
+    expect(autopilotPage).toContain("View dashboard");
+    expect(autopilotPage).toContain("Scheduled runs");
   });
 
   it("keeps parent approval and set-and-forget future-gating visible", () => {
@@ -44,8 +66,22 @@ describe("Autopilot supervised wizard UI contract", () => {
     expect(providerLearningHelper).toContain(
       "Later: signed-mandate delegated signup for verified providers only",
     );
-    expect(autopilotPage).toContain("not live today");
-    expect(autopilotPage).toContain("POST /api/helper/run-links");
+    expect(autopilotPage).toContain("future-gated");
+    expect(autopilotPage).not.toContain("POST /api/helper/run-links");
+    expect(autopilotPage).toContain("Get helper code");
+  });
+
+  it("warns on repeat different-provider runs and keeps provider switching visible", () => {
+    expect(autopilotPage).toContain("Provider mismatch");
+    expect(autopilotPage).toContain(
+      "The URL appears to be {detectedPlaybook?.name}, but the selected playbook is {selectedPlaybook.name}.",
+    );
+    expect(autopilotPage).toContain(
+      "Detected {detectedPlaybook.name}. Speed claims apply only when the selected provider is verified.",
+    );
+    expect(autopilotPage).toContain("Use Keva DaySmart starter");
+    expect(autopilotPage).toContain("Detect provider");
+    expect(autopilotPage).toContain("selectedPlaybook.key === \"generic\"");
   });
 
   it("creates a supervised run packet and links it back to the signup intent", () => {
@@ -57,7 +93,7 @@ describe("Autopilot supervised wizard UI contract", () => {
     expect(autopilotPage).toContain("View dashboard");
     expect(autopilotPage).toContain("Run already created");
     expect(autopilotPage).toContain("createdPacket ? (");
-    expect(autopilotPage).toContain("Connect Chrome Helper");
+    expect(autopilotPage).toContain("Get helper code");
     expect(autopilotPage).toContain("Copy helper code");
     expect(autopilotPage).toContain("Copy packet");
   });
@@ -71,7 +107,7 @@ describe("Autopilot supervised wizard UI contract", () => {
     expect(autopilotPage).not.toContain("new-child-allergy");
     expect(autopilotPage).not.toContain("new-child-insurance");
     expect(autopilotPage).toContain("no_child_pii_in_learning: true");
-    expect(autopilotPage).toContain("Opt in to redacted learning signals");
+    expect(autopilotPage).toContain("Let this provider help future runs");
   });
 
   it("preserves billing return state and validates external signup links", () => {

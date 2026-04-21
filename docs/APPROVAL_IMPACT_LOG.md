@@ -1038,6 +1038,27 @@ Verification results for this docs-only phase:
 - `npm run test:mcp-descriptors`: Passed.
 - `git diff --check`: Passed.
 
+## 2026-04-21 - Supervised Autopilot Setup Simplification
+
+Scope:
+
+- Simplified the web Autopilot setup into first-run, repeat same-provider, and repeat different-provider modes.
+- Updated the Chrome helper popup to support local multi-child profiles, provider-switch awareness, and helper-code URL normalization.
+- Tightened helper content-script readiness so fill/safe-continue require a supported matching provider host.
+- Extended Chrome helper evals to separate first-run and repeat-run measurements.
+
+Approval impact:
+
+- ChatGPT MCP public tool names changed: No.
+- MCP manifest/OpenAPI/.well-known/OAuth/CSP/protected-action behavior changed: No.
+- Public MCP schemas/descriptors changed: No.
+- Hidden/private/internal tools exposed: No.
+- Safety impact: Positive. Helper codes are not persisted after successful packet redemption, and provider mismatch blocks fill/continue before Assist Mode can act.
+
+Verification:
+
+- Targeted tests, typecheck, app TypeScript, and security MVP checks run during this pass. Final full matrix recorded in the PR summary.
+
 ## 2026-04-19 - Web Ship UX And Audit Redaction Polish
 
 Files changed in this phase:

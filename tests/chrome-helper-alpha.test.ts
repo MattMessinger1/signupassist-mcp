@@ -47,6 +47,8 @@ class FakeElement {
   private closestLabel: FakeElement | null = null;
   private children = new Map<string, FakeElement>();
   innerHTML = "";
+  dataset: Record<string, string> = {};
+  options: FakeElement[] = [];
 
   constructor(tagName: string, init: Record<string, unknown> = {}) {
     this.tagName = tagName.toUpperCase();
@@ -108,6 +110,11 @@ class FakeElement {
       return this.children.get("main") || null;
     }
     return null;
+  }
+
+  appendChild(node: FakeElement) {
+    this.options.push(node);
+    return node;
   }
 
   attachLabel(label: FakeElement) {
@@ -332,10 +339,12 @@ async function evaluatePopup(initialState: Record<string, unknown> = {}, fetchSt
     "packetSummary",
     "helperCodeSummary",
     "assistModeSummary",
+    "setupState",
     "assistMode",
     "helperCode",
     "helperBaseUrl",
     "runPacket",
+    "profileSelect",
     "childFirstName",
     "childLastName",
     "childDob",
@@ -354,7 +363,14 @@ async function evaluatePopup(initialState: Record<string, unknown> = {}, fetchSt
   ];
 
   ids.forEach((id) => {
-    const tag = id === "helperCode" || id === "runPacket" ? (id === "runPacket" ? "textarea" : "input") : "div";
+    const tag =
+      id === "runPacket"
+        ? "textarea"
+        : id === "helperCode" || id === "helperBaseUrl" || id === "assistMode"
+          ? "input"
+          : id === "profileSelect"
+            ? "select"
+            : "div";
     const element = tag === "textarea" ? new FakeTextAreaElement() : new FakeElement(tag);
     if (id === "assistMode") {
       element.checked = false;
@@ -430,6 +446,82 @@ afterEach(() => {
 });
 
 describe("chrome helper alpha controls", () => {
+  it("starts empty, saves a profile, and then loads a fetched packet", async () => {
+    const fetchCalls: Array<[string, RequestInit | undefined]> = [];
+    const { document, state } = await evaluatePopup(
+      {},
+      async (url: string, init?: RequestInit) => {
+        fetchCalls.push([url, init]);
+        return {
+          ok: true,
+          json: async () => ({
+            helperCode: "alpha-empty-to-packet",
+            assistMode: true,
+            runPacket: {
+              version: 1,
+              mode: "supervised_autopilot",
+              target: {
+                providerName: "DaySmart / Dash",
+                child: { name: "Ada Lovelace" },
+                program: "Summer Soccer",
+                maxTotalCents: 18500,
+              },
+              readiness: { score: 80 },
+            },
+          }),
+        };
+      },
+    );
+
+    expect(document.getElementById("packetSummary")?.textContent).toBe("No run packet loaded.");
+    expect(document.getElementById("helperCodeSummary")?.textContent).toBe("No helper code loaded.");
+    expect(document.getElementById("assistModeSummary")?.textContent).toBe("Assist Mode off");
+
+    (document.getElementById("childFirstName") as FakeElement).value = "Ada";
+    (document.getElementById("childLastName") as FakeElement).value = "Lovelace";
+    (document.getElementById("childDob") as FakeElement).value = "2015-12-10";
+    (document.getElementById("parentEmail") as FakeElement).value = "parent@example.com";
+    (document.getElementById("parentPhone") as FakeElement).value = "555-222-3333";
+    document.getElementById("save")?.click();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(state.signupassistProfile).toEqual({
+      childFirstName: "Ada",
+      childLastName: "Lovelace",
+      childDob: "2015-12-10",
+      parentEmail: "parent@example.com",
+      parentPhone: "555-222-3333",
+    });
+
+    const helperCode = document.getElementById("helperCode") as FakeElement;
+    helperCode.value = "alpha-empty-to-packet";
+    document.getElementById("fetchHelperCode")?.click();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(fetchCalls).toHaveLength(1);
+    expect(fetchCalls[0][0]).toBe("https://signupassist.shipworx.ai/api/helper/run-packet");
+    expect(JSON.parse(String(fetchCalls[0][1]?.body))).toEqual({ helperCode: "alpha-empty-to-packet" });
+    expect(state.signupassistProfile).toEqual({
+      childFirstName: "Ada",
+      childLastName: "Lovelace",
+      childDob: "2015-12-10",
+      parentEmail: "parent@example.com",
+      parentPhone: "555-222-3333",
+    });
+    expect(state.signupassistRunPacket).toMatchObject({
+      target: {
+        providerName: "DaySmart / Dash",
+        child: { name: "Ada Lovelace" },
+      },
+      readiness: { score: 80 },
+    });
+    expect(document.getElementById("packetSummary")?.textContent).toContain("DaySmart / Dash");
+    expect(document.getElementById("helperCodeSummary")?.textContent).toContain("DaySmart / Dash");
+    expect(document.getElementById("helperCodeSummary")?.textContent).not.toContain("alpha-empty-to-packet");
+    expect(document.getElementById("assistModeSummary")?.textContent).toBe("Assist Mode on");
+    expect(document.getElementById("safeContinue")?.disabled).toBe(false);
+  });
+
   it("loads the popup run summary, Assist Mode toggle, and helper-code fetch flow", async () => {
     const fetchCalls: Array<[string, RequestInit | undefined]> = [];
     const { document, state } = await evaluatePopup(
@@ -473,16 +565,111 @@ describe("chrome helper alpha controls", () => {
     expect(fetchCalls[0][0]).not.toContain("alpha-42");
     expect(fetchCalls[0][1]?.method).toBe("POST");
     expect(JSON.parse(String(fetchCalls[0][1]?.body))).toEqual({ helperCode: "alpha-42" });
-    expect(state.signupassistHelperCode).toBe("alpha-42");
+    expect(state.signupassistHelperCode).toBeUndefined();
     expect(state.signupassistAssistMode).toBe(true);
     expect(state.signupassistRunPacket).toMatchObject({
       mode: "supervised_autopilot",
       target: { providerName: "DaySmart / Dash" },
     });
     expect(document.getElementById("packetSummary")?.textContent).toContain("DaySmart / Dash");
-    expect(document.getElementById("helperCodeSummary")?.textContent).toContain("alpha-42");
+    expect(document.getElementById("helperCodeSummary")?.textContent).toContain("Helper code redeemed");
+    expect(document.getElementById("helperCodeSummary")?.textContent).not.toContain("alpha-42");
     expect(document.getElementById("assistModeSummary")?.textContent).toBe("Assist Mode on");
     expect(document.getElementById("safeContinue")?.disabled).toBe(false);
+  });
+
+  it("replaces an older DaySmart packet while preserving the saved profile", async () => {
+    const oldProfile = {
+      childFirstName: "Ada",
+      childLastName: "Lovelace",
+      childDob: "2015-12-10",
+      parentEmail: "parent@example.com",
+      parentPhone: "555-222-3333",
+    };
+    const oldPacket = {
+      version: 1,
+      mode: "supervised_autopilot",
+      target: {
+        providerName: "DaySmart / Dash",
+        child: { name: "Ada Lovelace" },
+        program: "Winter Soccer",
+        maxTotalCents: 15000,
+      },
+      readiness: { score: 60 },
+    };
+    const { document, state } = await evaluatePopup(
+      {
+        signupassistProfile: oldProfile,
+        signupassistHelperCode: "alpha-old",
+        signupassistRunPacket: oldPacket,
+        signupassistAssistMode: false,
+      },
+      async () => ({
+        ok: true,
+        json: async () => ({
+          helperCode: "alpha-new",
+          runPacket: {
+            version: 1,
+            mode: "supervised_autopilot",
+            target: {
+              providerName: "DaySmart / Dash",
+              child: { name: "Bea Lovelace" },
+              program: "Spring Soccer",
+              maxTotalCents: 21000,
+            },
+            readiness: { score: 100 },
+          },
+        }),
+      }),
+    );
+
+    (document.getElementById("helperCode") as FakeElement).value = "alpha-new";
+    document.getElementById("fetchHelperCode")?.click();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(state.signupassistProfile).toEqual(oldProfile);
+    expect(state.signupassistRunPacket).toMatchObject({
+      target: {
+        providerName: "DaySmart / Dash",
+        child: { name: "Bea Lovelace" },
+        program: "Spring Soccer",
+        maxTotalCents: 21000,
+      },
+      readiness: { score: 100 },
+    });
+    expect(document.getElementById("packetSummary")?.textContent).toContain("Bea Lovelace");
+    expect(document.getElementById("packetSummary")?.textContent).not.toContain("Winter Soccer");
+    expect(document.getElementById("helperCodeSummary")?.textContent).toContain("Helper code redeemed");
+    expect(document.getElementById("helperCodeSummary")?.textContent).not.toContain("alpha-new");
+    expect(document.getElementById("providerDetected")?.textContent).toBe("DaySmart / Dash");
+    expect(document.getElementById("childSelected")?.textContent).toBe("Bea Lovelace");
+  });
+
+  it("normalizes helper-code URLs that include a code query parameter", async () => {
+    const fetchCalls: Array<[string, RequestInit | undefined]> = [];
+    const { document } = await evaluatePopup({}, async (url: string, init?: RequestInit) => {
+      fetchCalls.push([url, init]);
+      return {
+        ok: true,
+        json: async () => ({
+          helperCode: "helper-code-raw-value",
+        }),
+      };
+    });
+
+    const helperCodeField = document.getElementById("helperCode") as FakeElement;
+    helperCodeField.value = "https://signupassist.shipworx.ai/helper/run-links?code=alpha-123&source=popup";
+    (document.getElementById("helperBaseUrl") as FakeElement).value = "https://signupassist.shipworx.ai/help";
+    document.getElementById("fetchHelperCode")?.click();
+    await new Promise((resolve) => setImmediate(resolve));
+
+    expect(fetchCalls).toHaveLength(1);
+    expect(fetchCalls[0][0]).toBe("https://signupassist.shipworx.ai/api/helper/run-packet");
+    expect(JSON.parse(String(fetchCalls[0][1]?.body))).toEqual({
+      helperCode: "alpha-123",
+    });
+    expect(document.getElementById("helperCodeSummary")?.textContent).toContain("helper-cod");
+    expect(document.getElementById("helperCodeSummary")?.textContent).not.toContain("helper-code-raw-value");
   });
 
   it("pauses on login, MFA, payment, waiver, prompt injection, sold out, and provider mismatch", async () => {
@@ -517,7 +704,7 @@ describe("chrome helper alpha controls", () => {
 
     const continuePaused = await send({ type: "SIGNUPASSIST_SAFE_CONTINUE" });
     expect(continuePaused.blocked).toBe(true);
-    expect(continuePaused.reason).toBe("Assist Mode is off");
+    expect(continuePaused.reason).toContain("Provider mismatch");
   });
 
   it("clicks safe non-final navigation when Assist Mode is on and no pause conditions exist", async () => {

@@ -6,12 +6,27 @@ const profileFields = [
   "parentPhone",
 ];
 
+const NEW_PROFILE_VALUE = "__new__";
+
 const STORAGE_KEYS = {
   runPacket: "signupassistRunPacket",
   assistMode: "signupassistAssistMode",
   helperCode: "signupassistHelperCode",
   profile: "signupassistProfile",
+  childProfiles: "signupassistChildProfiles",
+  selectedProfileId: "signupassistSelectedProfileId",
+  setupMetadata: "signupassistSetupMetadata",
 };
+
+let childProfiles = [];
+let selectedProfileId = "";
+let currentPacket = null;
+let currentPacketProviderName = "";
+let packetProviderState = "needs_helper_code";
+
+function trimValue(value) {
+  return String(value ?? "").trim();
+}
 
 function setStatus(message) {
   document.getElementById("status").textContent = message;
@@ -33,6 +48,12 @@ function setAssistModeSummary(enabled) {
   document.getElementById("safeContinue").disabled = !enabled;
 }
 
+function setSetupState(state) {
+  const node = document.getElementById("setupState");
+  node.dataset.state = state;
+  node.textContent = state;
+}
+
 function summarizePacket(packet) {
   if (!packet?.target) return "No run packet loaded.";
   const parts = [
@@ -47,15 +68,124 @@ function summarizePacket(packet) {
   return parts.length ? parts.join(" / ") : "Run packet loaded.";
 }
 
-function helperCodeSummary(helperCode, packet) {
-  if (!helperCode) return "No helper code loaded.";
-  if (!packet?.target?.providerName) return `Helper code saved: ${helperCode}`;
-  return `Helper code ${helperCode} -> ${packet.target.providerName}`;
+function truncateMiddle(value, left = 10, right = 8) {
+  if (!value) return "";
+  if (value.length <= left + right + 1) return value;
+  return `${value.slice(0, left)}…${value.slice(-right)}`;
 }
 
-function setPacketDetails(packet) {
+function helperCodeSummary(helperCode, packet) {
+  if (!helperCode && packet?.target?.providerName) {
+    return `Helper code redeemed -> ${packet.target.providerName}`;
+  }
+  if (!helperCode) return "No helper code loaded.";
+  const codeLabel = truncateMiddle(helperCode);
+  if (!packet?.target?.providerName) return `Helper code saved: ${codeLabel}`;
+  return `Helper code ${codeLabel} -> ${packet.target.providerName}`;
+}
+
+function profileValue(profile, field) {
+  return trimValue(profile?.[field] || "");
+}
+
+function profileDisplayName(profile, index = 0) {
+  const parts = [profileValue(profile, "childFirstName"), profileValue(profile, "childLastName")].filter(Boolean);
+  return parts.length ? parts.join(" ") : `Profile ${index + 1}`;
+}
+
+function profileFirstName(profile) {
+  return firstNameFromName(profileValue(profile, "childFirstName") || profileValue(profile, "name") || profileValue(profile, "childName"));
+}
+
+function firstNameFromName(value) {
+  const cleaned = trimValue(value).replace(/[(),.]/g, " ").replace(/\s+/g, " ");
+  return cleaned ? cleaned.split(" ")[0] : "";
+}
+
+function hasProfileData(profile) {
+  return profileFields.some((field) => Boolean(profileValue(profile, field)));
+}
+
+function collectProfileFromFields() {
+  const profile = {};
+  profileFields.forEach((field) => {
+    profile[field] = trimValue(document.getElementById(field).value);
+  });
+  return profile;
+}
+
+function applyProfileToFields(profile) {
+  profileFields.forEach((field) => {
+    document.getElementById(field).value = profileValue(profile, field);
+  });
+}
+
+function normalizeProfileRecord(profile, fallbackId) {
+  const normalized = { id: trimValue(profile?.id) || fallbackId || `profile-${Date.now()}` };
+  profileFields.forEach((field) => {
+    normalized[field] = profileValue(profile, field);
+  });
+  return normalized;
+}
+
+function toLegacyProfile(profile) {
+  const legacy = {};
+  profileFields.forEach((field) => {
+    legacy[field] = profileValue(profile, field);
+  });
+  return legacy;
+}
+
+function resolveSelectedProfile() {
+  return childProfiles.find((profile) => profile.id === selectedProfileId) || null;
+}
+
+function currentProfileLabel() {
+  const fieldsProfile = collectProfileFromFields();
+  if (hasProfileData(fieldsProfile)) return profileDisplayName(fieldsProfile, 0);
+  const selected = resolveSelectedProfile();
+  if (selected) return profileDisplayName(selected, childProfiles.indexOf(selected));
+  return "Choose in SignupAssist";
+}
+
+function renderProfileSelect() {
+  const select = document.getElementById("profileSelect");
+  const existingValue = selectedProfileId && resolveSelectedProfile() ? selectedProfileId : NEW_PROFILE_VALUE;
+  select.innerHTML = "";
+
+  const newOption = document.createElement("option");
+  newOption.value = NEW_PROFILE_VALUE;
+  newOption.textContent = "+ New profile";
+  select.appendChild(newOption);
+
+  childProfiles.forEach((profile, index) => {
+    const option = document.createElement("option");
+    option.value = profile.id;
+    option.textContent = profileDisplayName(profile, index);
+    select.appendChild(option);
+  });
+
+  select.value = existingValue;
+}
+
+async function persistProfilesState() {
+  const selectedProfile = resolveSelectedProfile();
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.childProfiles]: childProfiles,
+    [STORAGE_KEYS.selectedProfileId]: selectedProfile?.id || "",
+    [STORAGE_KEYS.profile]: selectedProfile ? toLegacyProfile(selectedProfile) : {},
+  });
+}
+
+function determineSetupState() {
+  if (!hasProfileData(collectProfileFromFields())) return "needs_profile";
+  if (!currentPacket) return "needs_helper_code";
+  return packetProviderState;
+}
+
+function refreshPacketDetails(packet) {
   const provider = packet?.target?.providerName || "No packet loaded";
-  const child = packet?.target?.child?.name || "Choose in SignupAssist";
+  const child = packet?.target?.child?.name || currentProfileLabel();
   const cap = typeof packet?.target?.maxTotalCents === "number"
     ? `$${(packet.target.maxTotalCents / 100).toFixed(2)}`
     : "Not set";
@@ -65,26 +195,102 @@ function setPacketDetails(packet) {
   document.getElementById("priceCap").textContent = cap;
 }
 
-async function getActiveTab() {
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  return tabs[0];
+function renderDerivedState() {
+  const helperCodeInput = trimValue(document.getElementById("helperCode").value);
+  const helperCode = normalizeHelperCodeInput(helperCodeInput) || helperCodeInput;
+  const state = determineSetupState();
+  setSetupState(state);
+  setSummary(summarizePacket(currentPacket));
+  setHelperCodeSummary(helperCodeSummary(helperCode, currentPacket));
+  refreshPacketDetails(currentPacket);
 }
 
-async function sendToActiveTab(type) {
-  const tab = await getActiveTab();
-  if (!tab?.id) throw new Error("No active tab");
-  return chrome.tabs.sendMessage(tab.id, { type });
+async function selectProfile(profileId, { persist = true } = {}) {
+  if (!profileId || profileId === NEW_PROFILE_VALUE) {
+    selectedProfileId = "";
+    applyProfileToFields({});
+  } else {
+    const profile = childProfiles.find((item) => item.id === profileId) || null;
+    selectedProfileId = profile?.id || "";
+    applyProfileToFields(profile || {});
+  }
+
+  renderProfileSelect();
+  if (persist) await persistProfilesState();
+  renderDerivedState();
+}
+
+async function autoSelectProfileFromPacket(packet) {
+  const packetFirstName = firstNameFromName(packet?.target?.child?.name);
+  if (!packetFirstName) return false;
+
+  const match = childProfiles.find((profile) => {
+    const firstName = profileFirstName(profile);
+    return firstName && firstName.toLowerCase() === packetFirstName.toLowerCase();
+  });
+
+  if (!match) return false;
+  if (selectedProfileId === match.id) {
+    renderProfileSelect();
+    return false;
+  }
+
+  selectedProfileId = match.id;
+  applyProfileToFields(match);
+  renderProfileSelect();
+  await persistProfilesState();
+  return true;
+}
+
+function syncPacketState(nextPacket) {
+  const previousProvider = currentPacketProviderName;
+  currentPacket = nextPacket || null;
+  currentPacketProviderName = nextPacket?.target?.providerName || "";
+  packetProviderState =
+    previousProvider &&
+    currentPacketProviderName &&
+    previousProvider !== currentPacketProviderName
+      ? "ready_different_provider"
+      : "ready_same_provider";
+}
+
+function buildSetupMetadata(packet) {
+  if (!packet?.target) return null;
+  return {
+    state: packetProviderState,
+    providerKey: packet.target.providerKey || "",
+    providerName: packet.target.providerName || "",
+    targetUrl: packet.target.url || "",
+  };
+}
+
+async function persistPacketAndSetup(packet) {
+  if (!packet) {
+    await chrome.storage.local.remove(STORAGE_KEYS.runPacket);
+    await chrome.storage.local.remove(STORAGE_KEYS.setupMetadata);
+    return;
+  }
+
+  await chrome.storage.local.set({
+    [STORAGE_KEYS.runPacket]: packet,
+    [STORAGE_KEYS.setupMetadata]: buildSetupMetadata(packet),
+  });
 }
 
 async function readStoredState() {
   const state = await chrome.storage.local.get([
     STORAGE_KEYS.profile,
+    STORAGE_KEYS.childProfiles,
+    STORAGE_KEYS.selectedProfileId,
     STORAGE_KEYS.runPacket,
     STORAGE_KEYS.assistMode,
     STORAGE_KEYS.helperCode,
   ]);
+
   return {
-    signupassistProfile: state[STORAGE_KEYS.profile] || {},
+    legacyProfile: state[STORAGE_KEYS.profile] || {},
+    childProfiles: Array.isArray(state[STORAGE_KEYS.childProfiles]) ? state[STORAGE_KEYS.childProfiles] : [],
+    selectedProfileId: state[STORAGE_KEYS.selectedProfileId] || "",
     signupassistRunPacket: state[STORAGE_KEYS.runPacket] || null,
     signupassistAssistMode: Boolean(state[STORAGE_KEYS.assistMode]),
     signupassistHelperCode: state[STORAGE_KEYS.helperCode] || "",
@@ -93,71 +299,124 @@ async function readStoredState() {
 
 async function loadProfile() {
   const {
-    signupassistProfile,
+    legacyProfile,
+    childProfiles: storedChildProfiles,
+    selectedProfileId: storedSelectedProfileId,
     signupassistRunPacket,
     signupassistAssistMode,
     signupassistHelperCode,
   } = await readStoredState();
 
-  profileFields.forEach((field) => {
-    document.getElementById(field).value = signupassistProfile[field] || "";
-  });
+  childProfiles = storedChildProfiles.map((profile, index) => normalizeProfileRecord(profile, profile?.id || `profile-${index + 1}`));
+  const legacyHasData = hasProfileData(legacyProfile);
 
-  if (signupassistRunPacket) {
-    document.getElementById("runPacket").value = JSON.stringify(signupassistRunPacket, null, 2);
+  if (!childProfiles.length && legacyHasData) {
+    childProfiles = [normalizeProfileRecord(legacyProfile, "legacy-profile")];
   }
 
+  selectedProfileId = childProfiles.some((profile) => profile.id === storedSelectedProfileId)
+    ? storedSelectedProfileId
+    : childProfiles[0]?.id || "";
+
+  renderProfileSelect();
+
+  const selectedProfile = resolveSelectedProfile();
+  applyProfileToFields(selectedProfile || {});
   document.getElementById("helperCode").value = signupassistHelperCode;
-  setSummary(summarizePacket(signupassistRunPacket));
-  setHelperCodeSummary(helperCodeSummary(signupassistHelperCode, signupassistRunPacket));
-  setPacketDetails(signupassistRunPacket);
+
+  if (signupassistRunPacket && signupassistRunPacket.mode === "supervised_autopilot") {
+    syncPacketState(signupassistRunPacket);
+    document.getElementById("runPacket").value = JSON.stringify(signupassistRunPacket, null, 2);
+    await autoSelectProfileFromPacket(signupassistRunPacket);
+    renderPacketSummary(signupassistRunPacket);
+  } else {
+    syncPacketState(null);
+    document.getElementById("runPacket").value = "";
+    renderPacketSummary(null);
+  }
+
+  if (!storedChildProfiles.length && legacyHasData) {
+    await persistProfilesState();
+  }
+
   setAssistModeSummary(signupassistAssistMode);
+  renderDerivedState();
+}
+
+function renderPacketSummary(packet) {
+  setSummary(summarizePacket(packet));
+  setHelperCodeSummary(helperCodeSummary(trimValue(document.getElementById("helperCode").value), packet));
+  refreshPacketDetails(packet);
+  setSetupState(determineSetupState());
+}
+
+function updatePacketView(packet) {
+  syncPacketState(packet);
+  document.getElementById("runPacket").value = packet ? JSON.stringify(packet, null, 2) : "";
+  renderPacketSummary(packet);
 }
 
 async function saveProfile() {
-  const signupassistProfile = {};
-  profileFields.forEach((field) => {
-    signupassistProfile[field] = document.getElementById(field).value.trim();
-  });
-  await chrome.storage.local.set({ [STORAGE_KEYS.profile]: signupassistProfile });
+  const profile = collectProfileFromFields();
+  if (!hasProfileData(profile)) {
+    setStatus("Enter a profile first.");
+    renderDerivedState();
+    return;
+  }
+
+  const selected = resolveSelectedProfile();
+  let nextProfiles = childProfiles.slice();
+  let nextSelectedId = selected?.id || "";
+
+  if (!selected || document.getElementById("profileSelect").value === NEW_PROFILE_VALUE) {
+    nextSelectedId = `profile-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    nextProfiles = [...nextProfiles, { id: nextSelectedId, ...profile }];
+  } else {
+    nextProfiles = nextProfiles.map((item) => (item.id === selected.id ? { ...item, ...profile } : item));
+  }
+
+  childProfiles = nextProfiles.map((item, index) => normalizeProfileRecord(item, item.id || `profile-${index + 1}`));
+  selectedProfileId = nextSelectedId;
+  renderProfileSelect();
+  await persistProfilesState();
+  renderDerivedState();
   setStatus("Profile saved.");
 }
 
-async function saveRunPacket() {
-  const rawPacket = document.getElementById("runPacket").value.trim();
-  if (!rawPacket) {
-    await chrome.storage.local.remove(STORAGE_KEYS.runPacket);
-    setSummary("No run packet loaded.");
-    setHelperCodeSummary(helperCodeSummary(document.getElementById("helperCode").value.trim(), null));
-    setPacketDetails(null);
-    setStatus("Run packet cleared.");
-    return;
-  }
+function normalizeHelperCodeInput(rawValue) {
+  const value = trimValue(rawValue);
+  if (!value) return "";
 
-  let packet;
   try {
-    packet = JSON.parse(rawPacket);
+    const url = new URL(value);
+    const code =
+      url.searchParams.get("helperCode") ||
+      url.searchParams.get("helper_code") ||
+      url.searchParams.get("code") ||
+      "";
+    return trimValue(code);
   } catch {
-    setStatus("Run packet must be valid JSON.");
-    return;
+    if (value.split(".").length >= 3 && !/\s/.test(value)) {
+      return value;
+    }
+    const match = value.match(/(?:helperCode|helper_code|code)=([^&\s]+)/i);
+    if (match) return decodeURIComponent(match[1]);
+    return value;
   }
-
-  if (packet?.mode !== "supervised_autopilot" || packet?.version !== 1) {
-    setStatus("This does not look like a SignupAssist supervised run packet.");
-    return;
-  }
-
-  await chrome.storage.local.set({ [STORAGE_KEYS.runPacket]: packet });
-  setSummary(summarizePacket(packet));
-  setHelperCodeSummary(helperCodeSummary(document.getElementById("helperCode").value.trim(), packet));
-  setPacketDetails(packet);
-  setStatus("Run packet saved.");
 }
 
-async function saveAssistMode(enabled) {
-  await chrome.storage.local.set({ [STORAGE_KEYS.assistMode]: Boolean(enabled) });
-  setAssistModeSummary(Boolean(enabled));
-  setStatus(enabled ? "Assist Mode enabled." : "Assist Mode paused.");
+function safeSignupAssistBase(value) {
+  try {
+    const url = new URL(value || "https://signupassist.shipworx.ai");
+    if (!["https:", "http:"].includes(url.protocol)) return "https://signupassist.shipworx.ai";
+    if (url.username || url.password) return "https://signupassist.shipworx.ai";
+    if (url.protocol === "http:" && !isLocalhostHostname(url.hostname.toLowerCase())) {
+      return "https://signupassist.shipworx.ai";
+    }
+    return url.origin;
+  } catch {
+    return "https://signupassist.shipworx.ai";
+  }
 }
 
 function isLocalhostHostname(hostname) {
@@ -178,33 +437,21 @@ function isLocalhostHostname(hostname) {
   );
 }
 
-function safeSignupAssistBase(value) {
-  try {
-    const url = new URL(value || "https://signupassist.shipworx.ai");
-    if (!["https:", "http:"].includes(url.protocol)) return "https://signupassist.shipworx.ai";
-    if (url.username || url.password) return "https://signupassist.shipworx.ai";
-    if (url.protocol === "http:" && !isLocalhostHostname(url.hostname.toLowerCase())) {
-      return "https://signupassist.shipworx.ai";
-    }
-    return url.origin;
-  } catch {
-    return "https://signupassist.shipworx.ai";
-  }
-}
-
 function buildHelperCodeUrl(helperBaseUrl) {
   const url = new URL("/api/helper/run-packet", safeSignupAssistBase(helperBaseUrl));
   return url.toString();
 }
 
 async function fetchHelperCode() {
-  const helperCode = document.getElementById("helperCode").value.trim();
+  const helperCodeField = document.getElementById("helperCode");
+  const helperCode = normalizeHelperCodeInput(helperCodeField.value);
   if (!helperCode) {
     setStatus("Paste a helper code first.");
     return;
   }
 
   const endpoint = buildHelperCodeUrl(document.getElementById("helperBaseUrl")?.value);
+  helperCodeField.value = helperCode;
   setStatus("Fetching helper code...");
 
   let response;
@@ -231,7 +478,7 @@ async function fetchHelperCode() {
     payload = null;
   }
 
-  const fetchedHelperCode = payload?.helperCode || payload?.code || helperCode;
+  const fetchedHelperCode = normalizeHelperCodeInput(payload?.helperCode || payload?.code || helperCode);
   const fetchedAssistMode = typeof payload?.assistMode === "boolean" ? payload.assistMode : undefined;
   const packet =
     payload?.signupassistRunPacket ||
@@ -239,22 +486,85 @@ async function fetchHelperCode() {
     payload?.packet ||
     (payload?.mode === "supervised_autopilot" ? payload : null);
 
-  await chrome.storage.local.set({ [STORAGE_KEYS.helperCode]: fetchedHelperCode });
-  document.getElementById("helperCode").value = fetchedHelperCode;
-
+  const previousProviderName = currentPacketProviderName;
   if (packet?.mode === "supervised_autopilot") {
-    await chrome.storage.local.set({ [STORAGE_KEYS.runPacket]: packet });
-    document.getElementById("runPacket").value = JSON.stringify(packet, null, 2);
-    setSummary(summarizePacket(packet));
-    setPacketDetails(packet);
+    updatePacketView(packet);
+    await autoSelectProfileFromPacket(packet);
+    await persistPacketAndSetup(packet);
+    await chrome.storage.local.remove(STORAGE_KEYS.helperCode);
+    helperCodeField.value = "";
+  } else {
+    await chrome.storage.local.set({ [STORAGE_KEYS.helperCode]: fetchedHelperCode });
+    helperCodeField.value = fetchedHelperCode;
   }
 
   if (typeof fetchedAssistMode === "boolean") {
     await saveAssistMode(fetchedAssistMode);
   }
 
-  setHelperCodeSummary(helperCodeSummary(fetchedHelperCode, packet || null));
-  setStatus(packet ? "Helper code loaded." : "Helper code saved.");
+  renderDerivedState();
+  setStatus(
+    packet && packetProviderState === "ready_different_provider" && previousProviderName && packet?.target?.providerName
+      ? `Helper code loaded; provider switched from ${previousProviderName} to ${packet.target.providerName}.`
+      : packet
+        ? "Helper code loaded."
+        : "Helper code saved.",
+  );
+}
+
+async function saveRunPacket() {
+  const rawPacket = document.getElementById("runPacket").value.trim();
+  if (!rawPacket) {
+    await persistPacketAndSetup(null);
+    updatePacketView(null);
+    renderDerivedState();
+    setStatus("Run packet cleared.");
+    return;
+  }
+
+  let packet;
+  try {
+    packet = JSON.parse(rawPacket);
+  } catch {
+    setStatus("Run packet must be valid JSON.");
+    return;
+  }
+
+  if (packet?.mode !== "supervised_autopilot" || packet?.version !== 1) {
+    setStatus("This does not look like a SignupAssist supervised run packet.");
+    return;
+  }
+
+  const previousProviderName = currentPacketProviderName;
+  updatePacketView(packet);
+  await autoSelectProfileFromPacket(packet);
+  await persistPacketAndSetup(packet);
+
+  renderDerivedState();
+  setStatus(
+    packetProviderState === "ready_different_provider" &&
+    previousProviderName &&
+    packet?.target?.providerName
+      ? `Provider switched from ${previousProviderName} to ${packet.target.providerName}.`
+      : "Run packet saved.",
+  );
+}
+
+async function saveAssistMode(enabled) {
+  await chrome.storage.local.set({ [STORAGE_KEYS.assistMode]: Boolean(enabled) });
+  setAssistModeSummary(Boolean(enabled));
+  setStatus(enabled ? "Assist Mode enabled." : "Assist Mode paused.");
+}
+
+async function getActiveTab() {
+  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+  return tabs[0];
+}
+
+async function sendToActiveTab(type) {
+  const tab = await getActiveTab();
+  if (!tab?.id) throw new Error("No active tab");
+  return chrome.tabs.sendMessage(tab.id, { type });
 }
 
 document.getElementById("save").addEventListener("click", saveProfile);
@@ -263,6 +573,20 @@ document.getElementById("fetchHelperCode").addEventListener("click", fetchHelper
 
 document.getElementById("assistMode").addEventListener("change", async (event) => {
   await saveAssistMode(event.target.checked);
+});
+
+document.getElementById("profileSelect").addEventListener("change", async (event) => {
+  await selectProfile(event.target.value);
+});
+
+profileFields.forEach((field) => {
+  document.getElementById(field).addEventListener("input", () => {
+    renderDerivedState();
+  });
+});
+
+document.getElementById("helperCode").addEventListener("input", () => {
+  renderDerivedState();
 });
 
 document.getElementById("scan").addEventListener("click", async () => {

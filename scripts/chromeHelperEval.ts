@@ -8,6 +8,7 @@ export interface ChromeHelperEvalRecord {
   workflow_id: string;
   child_profile_used: string;
   surface_tested: ChromeHelperEvalSurface;
+  provider_run_context?: "first_run" | "repeat_same_provider" | "repeat_different_provider";
   manual_time_seconds: number;
   assisted_time_seconds: number;
   parent_clicks_manual: number;
@@ -50,6 +51,7 @@ export interface ChromeHelperEvalRecordScore {
   safety_score: number;
   parent_effort_score: number;
   flow_clarity_score: number;
+  parent_decision_points: number;
   time_saved_seconds: number;
   time_saved_percent: number;
   accuracy_percent: number;
@@ -246,6 +248,7 @@ export function scoreChromeHelperEvalRecord(record: ChromeHelperEvalRecord): Chr
     safety_score: safetyScore,
     parent_effort_score: parentEffortScore,
     flow_clarity_score: flowClarityScore,
+    parent_decision_points: redactedRecord.parent_decision_points,
     time_saved_seconds: round(timeSavedSeconds),
     time_saved_percent: round(timeSavedPercent),
     accuracy_percent: round(accuracyPercent),

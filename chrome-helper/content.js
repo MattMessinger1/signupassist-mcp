@@ -171,6 +171,12 @@ const STORAGE_KEYS = {
   assistMode: "signupassistAssistMode",
 };
 
+const SETUP_METADATA_KEYS = [
+  "signupassistSetupMetadata",
+  "signupassistSetup",
+  "signupassistHelperSetup",
+];
+
 function normalize(value) {
   return String(value || "").replace(/\s+/g, " ").trim().toLowerCase();
 }
@@ -213,6 +219,17 @@ async function getAssistModeEnabled() {
   return Boolean(await getStoredValue(STORAGE_KEYS.assistMode, false));
 }
 
+async function getSetupMetadata() {
+  const result = await chrome.storage.local.get(SETUP_METADATA_KEYS);
+  for (const key of SETUP_METADATA_KEYS) {
+    const value = result[key];
+    if (value && typeof value === "object") {
+      return value;
+    }
+  }
+  return null;
+}
+
 function summarizePacket(packet) {
   if (!packet) return [];
 
@@ -227,11 +244,161 @@ function summarizePacket(packet) {
   return summary;
 }
 
-function hostMatchesPacket(packet) {
-  if (!packet?.target?.providerKey || packet.target.providerKey === "generic") return true;
-  const domains = PROVIDER_DOMAINS[packet.target.providerKey] || [];
-  const host = window.location.hostname.toLowerCase();
-  return domains.some((domain) => host === domain || host.endsWith(`.${domain}`));
+function normalizeHost(value) {
+  if (!value) return "";
+
+  const raw = String(value).trim().toLowerCase();
+  if (!raw) return "";
+
+  try {
+    return new URL(raw).hostname.toLowerCase();
+  } catch {
+    return raw.replace(/^\.+/, "").replace(/\.+$/, "");
+  }
+}
+
+function toStringList(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.flatMap((item) => toStringList(item));
+  if (typeof value === "string") return [value];
+  return [];
+}
+
+function hostMatchesCandidate(host, candidate) {
+  const normalizedHost = normalizeHost(host);
+  const normalizedCandidate = normalizeHost(candidate);
+  if (!normalizedHost || !normalizedCandidate) return false;
+  return normalizedHost === normalizedCandidate || normalizedHost.endsWith(`.${normalizedCandidate}`);
+}
+
+function getPacketProviderKey(packet) {
+  const providerKey = normalize(packet?.target?.providerKey);
+  return providerKey && providerKey !== "generic" ? providerKey : "";
+}
+
+function getPacketProviderName(packet) {
+  return normalize(packet?.target?.providerName);
+}
+
+function getSetupProviderKey(setupMetadata) {
+  return normalize(setupMetadata?.providerKey || setupMetadata?.provider_key);
+}
+
+function getSetupProviderName(setupMetadata) {
+  return normalize(setupMetadata?.providerName || setupMetadata?.provider_name);
+}
+
+function getSetupState(setupMetadata) {
+  return normalize(setupMetadata?.state || setupMetadata?.mode || setupMetadata?.providerState || setupMetadata?.provider_state);
+}
+
+function getPacketTargetHost(packet) {
+  const targetUrl = packet?.target?.url;
+  if (!targetUrl) return "";
+  try {
+    return new URL(targetUrl).hostname.toLowerCase();
+  } catch {
+    return normalizeHost(targetUrl);
+  }
+}
+
+function getSupportedHosts(packet, setupMetadata) {
+  const hosts = new Set();
+
+  const packetTargetHost = getPacketTargetHost(packet);
+  if (packetTargetHost) hosts.add(packetTargetHost);
+
+  const packetProviderKey = getPacketProviderKey(packet);
+  if (packetProviderKey) {
+    (PROVIDER_DOMAINS[packetProviderKey] || []).forEach((domain) => hosts.add(normalizeHost(domain)));
+  }
+
+  [
+    setupMetadata?.supportedHosts,
+    setupMetadata?.supported_hosts,
+    setupMetadata?.allowedHosts,
+    setupMetadata?.allowed_hosts,
+    setupMetadata?.hosts,
+    setupMetadata?.domains,
+    setupMetadata?.origins,
+    setupMetadata?.origin,
+    setupMetadata?.host,
+    setupMetadata?.hostname,
+    setupMetadata?.url,
+    setupMetadata?.targetUrl,
+  ]
+    .flatMap((value) => toStringList(value))
+    .forEach((value) => {
+      const host = normalizeHost(value);
+      if (host) hosts.add(host);
+    });
+
+  return [...hosts].filter(Boolean);
+}
+
+function getHostSupportStatus(packet, setupMetadata) {
+  const currentHost = normalizeHost(window.location.hostname);
+  const supportedHosts = getSupportedHosts(packet, setupMetadata);
+  return {
+    currentHost,
+    supportedHosts,
+    hostSupported: supportedHosts.some((host) => hostMatchesCandidate(currentHost, host)),
+  };
+}
+
+function getHelperReadiness(packet, setupMetadata) {
+  const packetProviderKey = getPacketProviderKey(packet);
+  const packetProviderName = getPacketProviderName(packet);
+  const setupProviderKey = getSetupProviderKey(setupMetadata);
+  const setupProviderName = getSetupProviderName(setupMetadata);
+  const setupState = getSetupState(setupMetadata);
+  const { currentHost, supportedHosts, hostSupported } = getHostSupportStatus(packet, setupMetadata);
+  const reasons = [];
+
+  const resolvedProviderKey = packetProviderKey || setupProviderKey;
+  const resolvedProviderName = packetProviderName || setupProviderName;
+
+  if (!resolvedProviderKey && !resolvedProviderName) {
+    reasons.push("Helper readiness is waiting for a provider setup or run packet");
+  }
+
+  if (packetProviderKey && setupProviderKey && packetProviderKey !== setupProviderKey) {
+    reasons.push("Provider mismatch: run packet and setup metadata do not describe the same provider");
+  }
+
+  if (packetProviderName && setupProviderName && packetProviderName !== setupProviderName) {
+    reasons.push("Provider mismatch: run packet and setup metadata do not describe the same provider");
+  }
+
+  if (!supportedHosts.length) {
+    reasons.push("Host support is missing: no supported provider host was found");
+  } else if (!hostSupported) {
+    reasons.push("Provider mismatch: current page does not match the supported host list");
+  }
+
+  return {
+    ready: reasons.length === 0,
+    reasons,
+    currentHost,
+    resolvedProviderKey,
+    resolvedProviderName,
+    setupState,
+    supportedHosts,
+    packetProviderKey,
+    packetProviderName,
+    setupProviderKey,
+    setupProviderName,
+    setupMetadataLoaded: Boolean(setupMetadata),
+  };
+}
+
+function hostMatchesPacket(packet, setupMetadata = null) {
+  return getHostSupportStatus(packet, setupMetadata).hostSupported;
+}
+
+function collectReadinessPauses(packet, setupMetadata) {
+  const readiness = getHelperReadiness(packet, setupMetadata);
+  return readiness.ready ? [] : readiness.reasons;
 }
 
 function detectTextPause(words) {
@@ -303,10 +470,10 @@ function detectMaxVisiblePriceCents() {
   }, 0);
 }
 
-function collectPacketPauses(packet) {
+function collectPacketPauses(packet, setupMetadata = null) {
   const pauses = [];
 
-  if (packet && !hostMatchesPacket(packet)) {
+  if (packet && !hostMatchesPacket(packet, setupMetadata)) {
     pauses.push("Provider mismatch: current page does not match the run packet provider");
   }
 
@@ -422,10 +589,14 @@ function classifyButton(button) {
 }
 
 async function scanPage() {
-  const [packet, assistModeEnabled] = await Promise.all([getRunPacket(), getAssistModeEnabled()]);
+  const [packet, assistModeEnabled, setupMetadata] = await Promise.all([
+    getRunPacket(),
+    getAssistModeEnabled(),
+    getSetupMetadata(),
+  ]);
   const fields = Array.from(document.querySelectorAll("input, textarea, select"));
   const buttons = Array.from(document.querySelectorAll("button, input[type='button'], input[type='submit'], a[role='button']"));
-  const pauses = collectPacketPauses(packet);
+  const pauses = collectPacketPauses(packet, setupMetadata);
   const safeButtons = [];
   const forbiddenButtons = [];
 
@@ -460,6 +631,7 @@ async function scanPage() {
     `Page scanned. Assist Mode is ${assistModeEnabled ? "on" : "off"}. Parent approval stays required for risky moments.`,
     [
       ...summarizePacket(packet),
+      ...collectReadinessPauses(packet, setupMetadata),
       `${fields.length} fields`,
       `${safeButtons.length} safe navigation buttons`,
       `${forbiddenButtons.length} final-action buttons`,
@@ -479,14 +651,17 @@ async function scanPage() {
 }
 
 async function fillKnownFields() {
-  const [{ signupassistProfile = {} }, packet, assistModeEnabled] = await Promise.all([
+  const [{ signupassistProfile = {} }, packet, assistModeEnabled, setupMetadata] = await Promise.all([
     chrome.storage.local.get("signupassistProfile"),
     getRunPacket(),
     getAssistModeEnabled(),
+    getSetupMetadata(),
   ]);
   const fields = Array.from(document.querySelectorAll("input, textarea"));
   const filled = [];
-  const pauses = collectPacketPauses(packet);
+  const pauses = collectPacketPauses(packet, setupMetadata);
+  const readiness = getHelperReadiness(packet, setupMetadata);
+  const canAct = readiness.ready;
 
   fields.forEach((field) => {
     if (field.disabled || field.readOnly || field.value) return;
@@ -507,6 +682,8 @@ async function fillKnownFields() {
       return;
     }
 
+    if (!canAct) return;
+
     const value = signupassistProfile[match.field];
     if (!value) return;
 
@@ -514,16 +691,38 @@ async function fillKnownFields() {
     filled.push(label || match.field);
   });
 
+  if (!canAct) {
+    overlay(
+      "Prepared fields were not filled because the helper is not ready for this provider or host.",
+      [
+        ...summarizePacket(packet),
+        ...(readiness.setupState ? [`Setup state: ${readiness.setupState}`] : []),
+        ...readiness.reasons,
+        `${pauses.length} pause conditions`,
+      ],
+    );
+    return {
+      blocked: true,
+      continued: false,
+      reason: readiness.reasons[0] || "Helper readiness is not satisfied",
+      pauses,
+      assistModeEnabled,
+      runPacketLoaded: Boolean(packet),
+      setupMetadataLoaded: readiness.setupMetadataLoaded,
+    };
+  }
+
   overlay(
     `Prepared fields filled. Assist Mode is ${assistModeEnabled ? "on" : "off"}. Parent approval is still required for final submit, waivers, payments, unknown fields, and price changes.`,
     [
       ...summarizePacket(packet),
+      ...(readiness.setupState ? [`Setup state: ${readiness.setupState}`] : []),
       `${filled.length} fields filled`,
       `${pauses.length} pause conditions`,
     ],
   );
 
-  return { filled, pauses, assistModeEnabled, runPacketLoaded: Boolean(packet) };
+  return { filled, pauses, assistModeEnabled, runPacketLoaded: Boolean(packet), setupMetadataLoaded: readiness.setupMetadataLoaded };
 }
 
 function clickFirstSafeButton() {
@@ -542,13 +741,39 @@ function clickFirstSafeButton() {
 }
 
 async function safeContinue() {
-  const [packet, assistModeEnabled] = await Promise.all([getRunPacket(), getAssistModeEnabled()]);
-  const pauses = collectPacketPauses(packet);
+  const [packet, assistModeEnabled, setupMetadata] = await Promise.all([
+    getRunPacket(),
+    getAssistModeEnabled(),
+    getSetupMetadata(),
+  ]);
+  const pauses = collectPacketPauses(packet, setupMetadata);
+  const readiness = getHelperReadiness(packet, setupMetadata);
+
+  if (!readiness.ready) {
+    overlay(
+      "Safe continue paused because the helper is not ready for this provider or host.",
+      [
+        ...summarizePacket(packet),
+        ...(readiness.setupState ? [`Setup state: ${readiness.setupState}`] : []),
+        ...readiness.reasons,
+        ...pauses,
+      ],
+    );
+    return {
+      blocked: true,
+      continued: false,
+      reason: readiness.reasons[0] || "Helper readiness is not satisfied",
+      pauses,
+      runPacketLoaded: Boolean(packet),
+      assistModeEnabled,
+      setupMetadataLoaded: readiness.setupMetadataLoaded,
+    };
+  }
 
   if (!assistModeEnabled) {
     overlay(
       "Assist Mode is off. Turn it on to allow safe navigation clicks.",
-      [...summarizePacket(packet), `${pauses.length} pause conditions`],
+      [...summarizePacket(packet), ...(readiness.setupState ? [`Setup state: ${readiness.setupState}`] : []), `${pauses.length} pause conditions`],
     );
     return {
       blocked: true,
@@ -563,7 +788,7 @@ async function safeContinue() {
   if (pauses.length) {
     overlay(
       "Safe continue paused for the parent.",
-      [...summarizePacket(packet), ...pauses],
+      [...summarizePacket(packet), ...(readiness.setupState ? [`Setup state: ${readiness.setupState}`] : []), ...pauses],
     );
     return {
       blocked: true,
@@ -593,7 +818,11 @@ async function safeContinue() {
 
   overlay(
     "Safe continue clicked a non-final navigation button.",
-    [...summarizePacket(packet), normalize(clickedButton.textContent || clickedButton.getAttribute("aria-label"))],
+    [
+      ...summarizePacket(packet),
+      ...(readiness.setupState ? [`Setup state: ${readiness.setupState}`] : []),
+      normalize(clickedButton.textContent || clickedButton.getAttribute("aria-label")),
+    ],
   );
   return {
     blocked: false,
@@ -602,6 +831,7 @@ async function safeContinue() {
     pauses,
     runPacketLoaded: Boolean(packet),
     assistModeEnabled,
+    setupMetadataLoaded: readiness.setupMetadataLoaded,
   };
 }
 

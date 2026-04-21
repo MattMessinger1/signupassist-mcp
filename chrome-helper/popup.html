@@ -47,6 +47,7 @@
       }
 
       input,
+      select,
       textarea {
         box-sizing: border-box;
         width: 100%;
@@ -63,6 +64,10 @@
         resize: vertical;
       }
 
+      select {
+        background: #ffffff;
+      }
+
       .packet-summary {
         margin: 10px 0;
         border: 1px solid #d9e8ef;
@@ -70,6 +75,40 @@
         background: #e8f2f7;
         padding: 8px;
         color: #0b2d45;
+      }
+
+      .setup-state {
+        margin: 10px 0;
+        border: 1px solid #d9e8ef;
+        border-radius: 6px;
+        padding: 8px 10px;
+        font: 700 12px/1.3 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        text-transform: lowercase;
+        letter-spacing: 0;
+      }
+
+      .setup-state[data-state="needs_profile"] {
+        border-color: #f3d8b6;
+        background: #fff3e2;
+        color: #8a4b12;
+      }
+
+      .setup-state[data-state="needs_helper_code"] {
+        border-color: #d9e8ef;
+        background: #eef6fb;
+        color: #0b2d45;
+      }
+
+      .setup-state[data-state="ready_same_provider"] {
+        border-color: #cce6d5;
+        background: #eefaf1;
+        color: #166534;
+      }
+
+      .setup-state[data-state="ready_different_provider"] {
+        border-color: #f3d8b6;
+        background: #fff8eb;
+        color: #8a4b12;
       }
 
       .meta-grid,
@@ -100,6 +139,17 @@
         color: #64748b;
         font-size: 12px;
         font-weight: 700;
+      }
+
+      .profile-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .profile-row select {
+        flex: 1 1 auto;
+        min-width: 0;
       }
 
       .meta-card {
@@ -216,8 +266,10 @@
       <input id="assistMode" type="checkbox" aria-label="Assist Mode">
     </div>
 
+    <div class="setup-state" id="setupState" data-state="needs_profile">needs_profile</div>
+
     <label for="helperCode">Helper code</label>
-    <input id="helperCode" autocomplete="off" placeholder="Paste a helper code or fetch URL">
+    <input id="helperCode" autocomplete="off" placeholder="Paste a helper code">
     <label for="helperBaseUrl">SignupAssist URL</label>
     <input id="helperBaseUrl" autocomplete="off" value="https://signupassist.shipworx.ai">
     <button id="fetchHelperCode" class="secondary">Fetch helper code</button>
@@ -227,6 +279,10 @@
     <button id="savePacket" class="secondary">Save run packet</button>
     <div id="packetSummary" class="packet-summary">No run packet loaded.</div>
     <div id="helperCodeSummary" class="packet-summary">No helper code loaded.</div>
+    <label for="profileSelect">Child profiles</label>
+    <div class="profile-row">
+      <select id="profileSelect" aria-label="Child profiles"></select>
+    </div>
     <div class="meta-grid">
       <div class="meta-card">
         <span>Provider detected</span>

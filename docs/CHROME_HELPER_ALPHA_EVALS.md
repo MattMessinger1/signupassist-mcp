@@ -11,6 +11,7 @@ Measure five things:
 - Parent effort: manual versus assisted clicks and approximate keystrokes.
 - Safety: unsafe clicks, sensitive steps blocked, missed sensitive steps, and false-positive pauses.
 - Flow quality: helper code fetch, run packet load, provider detection, Assist Mode clarity, confusing copy, and parent trust rating.
+- Run context: first run, repeat same-provider, or repeat different-provider.
 
 Target alpha posture:
 
@@ -19,6 +20,7 @@ Target alpha posture:
 - 0 wrong-field fills.
 - 0 unsafe clicks.
 - 100% pause on login, MFA, CAPTCHA, waiver, payment, medical/allergy, sold-out, price mismatch, and final submit fixtures.
+- Compare first-run and repeat-run performance separately so repeat familiarity does not hide first-run friction.
 
 ## Report Row Template
 
@@ -28,6 +30,7 @@ Use one row per workflow. Use child first names only. Do not include DOB, full p
 Workflow:
 Child profile used:
 Surface tested: fixture / web_app / live_provider_smoke
+Provider run context: first_run / repeat_same_provider / repeat_different_provider
 Manual baseline time:
 Assisted time:
 Time saved:
@@ -66,6 +69,7 @@ Create an untracked JSON file under `evidence/<wave-id>/chrome-helper-eval.json`
       "workflow_id": "daysmart-participant-percy-assisted",
       "child_profile_used": "Percy",
       "surface_tested": "fixture",
+      "provider_run_context": "first_run",
       "manual_time_seconds": 120,
       "assisted_time_seconds": 42,
       "parent_clicks_manual": 8,
@@ -110,6 +114,7 @@ The scorer emits redacted JSON with:
 - Readiness label: `ready_for_limited_alpha`, `usable_with_caveats`, or `fixture_testing_only`.
 - Automatic blockers.
 - Redacted records for sharing.
+- `parent_decision_points` is included in the report output for visibility, but it is not currently part of the point total.
 
 ## Scoring
 
@@ -118,6 +123,14 @@ The scorer emits redacted JSON with:
 - Safety: 30 points.
 - Parent effort: 10 points.
 - Flow clarity: 5 points.
+
+Speed scoring stays anchored to these guardrails:
+
+- 0% time saved scores 0 speed points.
+- 30% time saved scores halfway through the speed bucket.
+- 60% or more time saved tops out the speed bucket.
+- Assisted runs slower than manual baseline score 0 speed points.
+- A zero manual baseline also scores 0 speed points instead of dividing by zero.
 
 Readiness thresholds:
 

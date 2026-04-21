@@ -38,6 +38,24 @@ const cleanRecord: ChromeHelperEvalRecord = {
 };
 
 describe("Chrome helper alpha eval scoring", () => {
+  it.each([
+    "first_run",
+    "repeat_same_provider",
+    "repeat_different_provider",
+  ] as const)("preserves provider run context %s and parent decision points in the report", (providerRunContext) => {
+    const record: ChromeHelperEvalRecord = {
+      ...cleanRecord,
+      provider_run_context: providerRunContext,
+      parent_decision_points: 4,
+    };
+
+    const score = scoreChromeHelperEvalRecord(record);
+
+    expect(score.parent_decision_points).toBe(4);
+    expect(score.redacted_record.provider_run_context).toBe(providerRunContext);
+    expect(score.redacted_record.parent_decision_points).toBe(4);
+  });
+
   it("scores a clean assisted fixture pass as limited-alpha ready", () => {
     const summary = scoreChromeHelperEvalWave({
       wave_id: "alpha-wave-fixtures",
@@ -83,21 +101,91 @@ describe("Chrome helper alpha eval scoring", () => {
     expect(serialized).not.toContain("sk_test_secret");
   });
 
-  it("keeps caveat scores distinct from fixture-only blockers", () => {
-    const caveatRecord: ChromeHelperEvalRecord = {
-      ...cleanRecord,
-      manual_time_seconds: 100,
-      assisted_time_seconds: 80,
-      parent_keystrokes_manual: 80,
-      parent_keystrokes_assisted: 30,
-      pause_false_positive: 1,
-      would_parent_trust_this: 3,
-      result: "needs_polish",
-    };
+  it.each([
+    {
+      label: "0% time saved",
+      record: {
+        ...cleanRecord,
+        manual_time_seconds: 100,
+        assisted_time_seconds: 100,
+      },
+      expectedSpeedScore: 0,
+      expectedTimeSavedPercent: 0,
+    },
+    {
+      label: "30% time saved",
+      record: {
+        ...cleanRecord,
+        manual_time_seconds: 100,
+        assisted_time_seconds: 70,
+      },
+      expectedSpeedScore: 12.5,
+      expectedTimeSavedPercent: 0.3,
+    },
+    {
+      label: "60%+ time saved",
+      record: {
+        ...cleanRecord,
+        manual_time_seconds: 100,
+        assisted_time_seconds: 20,
+      },
+      expectedSpeedScore: 25,
+      expectedTimeSavedPercent: 0.8,
+    },
+    {
+      label: "assisted slower than manual",
+      record: {
+        ...cleanRecord,
+        manual_time_seconds: 100,
+        assisted_time_seconds: 130,
+      },
+      expectedSpeedScore: 0,
+      expectedTimeSavedPercent: 0,
+    },
+    {
+      label: "zero manual baseline",
+      record: {
+        ...cleanRecord,
+        manual_time_seconds: 0,
+        assisted_time_seconds: 0,
+      },
+      expectedSpeedScore: 0,
+      expectedTimeSavedPercent: 0,
+    },
+  ] as const)("scores the speed boundary for $label", ({ record, expectedSpeedScore, expectedTimeSavedPercent }) => {
+    const score = scoreChromeHelperEvalRecord(record);
 
+    expect(score.speed_score).toBe(expectedSpeedScore);
+    expect(score.time_saved_percent).toBe(expectedTimeSavedPercent);
+  });
+
+  it("reports zero parent effort when assisted effort does not improve on manual effort", () => {
+    const score = scoreChromeHelperEvalRecord({
+      ...cleanRecord,
+      parent_clicks_manual: 6,
+      parent_clicks_assisted: 6,
+      parent_keystrokes_manual: 24,
+      parent_keystrokes_assisted: 24,
+    });
+
+    expect(score.parent_effort_score).toBe(0);
+  });
+
+  it("keeps caveat scores distinct from fixture-only blockers", () => {
     const summary = scoreChromeHelperEvalWave({
       wave_id: "alpha-wave-caveats",
-      records: [caveatRecord],
+      records: [
+        {
+          ...cleanRecord,
+          manual_time_seconds: 100,
+          assisted_time_seconds: 80,
+          parent_keystrokes_manual: 80,
+          parent_keystrokes_assisted: 30,
+          pause_false_positive: 1,
+          would_parent_trust_this: 3,
+          result: "needs_polish",
+        },
+      ],
     });
 
     expect(summary.automatic_blockers).toEqual([]);

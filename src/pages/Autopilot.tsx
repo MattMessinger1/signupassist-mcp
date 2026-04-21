@@ -11,6 +11,7 @@ import {
   ClipboardCheck,
   Clock3,
   Copy,
+  ChevronDown,
   Loader2,
   Link2,
   PauseCircle,
@@ -102,6 +103,8 @@ type WizardStepId =
   | "learning"
   | "review";
 
+type SetupMode = "first_run_setup" | "repeat_same_provider" | "repeat_new_provider";
+
 const WIZARD_STEPS: Array<{
   id: WizardStepId;
   title: string;
@@ -144,6 +147,73 @@ const WIZARD_STEPS: Array<{
   },
 ];
 
+const SETUP_MODE_META: Record<
+  SetupMode,
+  {
+    badge: string;
+    title: string;
+    description: string;
+    checklistTitle: string;
+    checklistDescription: string;
+    defaultStep: number;
+  }
+> = {
+  first_run_setup: {
+    badge: "First run checklist",
+    title: "One-time setup",
+    description: "Walk through the full setup once, then reuse the saved pieces on later runs.",
+    checklistTitle: "Setup steps",
+    checklistDescription: "Complete each step once to create the first supervised packet.",
+    defaultStep: 0,
+  },
+  repeat_same_provider: {
+    badge: "Repeat same provider",
+    title: "Quick review",
+    description: "Most details can stay put. Recheck the provider, child, timing, and safety items.",
+    checklistTitle: "Review steps",
+    checklistDescription: "Scan the saved details and update only what changed.",
+    defaultStep: 5,
+  },
+  repeat_new_provider: {
+    badge: "Repeat with new provider",
+    title: "Provider swap review",
+    description: "You have prior setup history, but this provider deserves a closer pass.",
+    checklistTitle: "Review steps",
+    checklistDescription: "Check the new provider carefully, then confirm the rest of the packet.",
+    defaultStep: 1,
+  },
+};
+
+const WIZARD_STEP_COPY: Record<SetupMode, Record<WizardStepId, string>> = {
+  first_run_setup: {
+    activity: "Set the activity or session you want to register for.",
+    provider: "Confirm the signup page and provider playbook.",
+    child: "Pick an existing child or add one for future runs.",
+    timing: "Set the signup window and reminder details.",
+    safety: "Review caps, pauses, and readiness checks.",
+    learning: "Choose whether to send redacted provider signals.",
+    review: "Check everything once before creating the run.",
+  },
+  repeat_same_provider: {
+    activity: "Confirm the activity is still right.",
+    provider: "Recheck the URL and provider playbook.",
+    child: "Reuse the right child profile.",
+    timing: "Update timing or reminders only if they changed.",
+    safety: "Review caps and pause rules.",
+    learning: "Optional: keep redacted provider learning on.",
+    review: "Quick scan, then create the run.",
+  },
+  repeat_new_provider: {
+    activity: "Confirm the activity for this provider.",
+    provider: "New provider? Verify the URL and playbook carefully.",
+    child: "Choose or add the child profile.",
+    timing: "Set reminder timing for this provider.",
+    safety: "Check pause rules and price cap.",
+    learning: "Provider learning can help future runs without PII.",
+    review: "Review details before saving the new provider packet.",
+  },
+};
+
 const centsFromDollarInput = (value: string) => {
   const numericValue = Number(value);
   if (!Number.isFinite(numericValue) || numericValue <= 0) return null;
@@ -175,6 +245,37 @@ function ageFromIntent(intent: SignupIntent) {
 function childLabel(child?: ChildRow | null) {
   if (!child) return "Choose during run";
   return `${child.first_name} ${child.last_name}`.trim();
+}
+
+function deriveSetupMode({
+  childrenCount,
+  runs,
+  signupIntent,
+  providerKey,
+}: {
+  childrenCount: number;
+  runs: AutopilotRun[];
+  signupIntent: SignupIntent | null;
+  providerKey: string;
+}): SetupMode {
+  const hasPriorRuns = runs.length > 0;
+  const hasPriorSetup = hasPriorRuns || Boolean(signupIntent?.autopilotRunId);
+
+  if (!hasPriorSetup && childrenCount === 0) {
+    return "first_run_setup";
+  }
+
+  if (hasPriorRuns) {
+    const selectedProviderMatched = runs.some((run) => run.provider_key === providerKey);
+    const intentProviderMatched =
+      Boolean(signupIntent?.providerKey) && signupIntent.providerKey === providerKey;
+
+    if (selectedProviderMatched || intentProviderMatched) {
+      return "repeat_same_provider";
+    }
+  }
+
+  return hasPriorSetup ? "repeat_new_provider" : "first_run_setup";
 }
 
 function providerReadinessClass(readiness: ProviderReadinessLevel) {
@@ -232,17 +333,20 @@ function firstStringValue(value: unknown, keys: string[]) {
 function WizardRail({
   activeStep,
   completed,
+  mode,
   onStepChange,
 }: {
   activeStep: number;
   completed: boolean;
+  mode: SetupMode;
   onStepChange: (index: number) => void;
 }) {
+  const modeMeta = SETUP_MODE_META[mode];
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Setup steps</CardTitle>
-        <CardDescription>Move through the pieces parents naturally check.</CardDescription>
+        <CardTitle className="text-base">{modeMeta.checklistTitle}</CardTitle>
+        <CardDescription>{modeMeta.checklistDescription}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
         {WIZARD_STEPS.map((step, index) => {
@@ -274,7 +378,9 @@ function WizardRail({
               </span>
               <span>
                 <span className="block text-sm font-semibold">{step.title}</span>
-                <span className="mt-1 block text-xs text-muted-foreground">{step.description}</span>
+                <span className="mt-1 block text-xs text-muted-foreground">
+                  {WIZARD_STEP_COPY[mode][step.id]}
+                </span>
               </span>
             </button>
           );
@@ -314,6 +420,26 @@ function SafetyList({ title, items }: { title: string; items: string[] }) {
         ))}
       </ul>
     </div>
+  );
+}
+
+function DisclosurePanel({
+  summary,
+  children,
+  defaultOpen = false,
+}: {
+  summary: string;
+  children: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  return (
+    <details className="group rounded-lg border bg-background p-4" open={defaultOpen}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-medium">
+        <span>{summary}</span>
+        <ChevronDown className="h-4 w-4 shrink-0 transition-transform duration-200 group-open:rotate-180" />
+      </summary>
+      <div className="mt-3 text-sm text-muted-foreground">{children}</div>
+    </details>
   );
 }
 
@@ -422,6 +548,18 @@ export default function Autopilot() {
     () => getProviderReadinessSummary(selectedPlaybook.key),
     [selectedPlaybook.key],
   );
+  const setupMode = useMemo(
+    () =>
+      deriveSetupMode({
+        childrenCount: children.length,
+        runs,
+        signupIntent,
+        providerKey: selectedPlaybook.key,
+      }),
+    [children.length, runs, selectedPlaybook.key, signupIntent],
+  );
+  const setupModeMeta = SETUP_MODE_META[setupMode];
+  const setupStepCopy = WIZARD_STEP_COPY[setupMode];
   const readiness = providerLearningSummary.readinessLevel;
   const safeTargetUrl = safeExternalUrl(targetUrl.trim());
   const detailsReady = Boolean(safeTargetUrl && targetProgram.trim());
@@ -478,6 +616,11 @@ export default function Autopilot() {
       safeTargetUrl,
     ],
   );
+
+  useEffect(() => {
+    if (createdPacket) return;
+    setActiveStep((current) => (current === 0 ? setupModeMeta.defaultStep : current));
+  }, [createdPacket, setupModeMeta.defaultStep]);
 
   const loadAutopilotData = useCallback(async () => {
     if (!user) return;
@@ -910,7 +1053,7 @@ export default function Autopilot() {
                 Activity
               </CardTitle>
               <CardDescription>
-                Confirm the activity or session before SignupAssist creates the supervised packet.
+                {setupStepCopy.activity}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -962,7 +1105,7 @@ export default function Autopilot() {
                 Provider
               </CardTitle>
               <CardDescription>
-                Confirm the signup URL and selected provider playbook. Provider uncertainty pauses the run.
+                {setupStepCopy.provider}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -1062,7 +1205,7 @@ export default function Autopilot() {
                   <AlertTriangle className="h-4 w-4" />
                   <AlertTitle>Generic provider safety mode</AlertTitle>
                   <AlertDescription>
-                    Generic mode is conservative. SignupAssist fills only high-confidence fields and pauses for provider uncertainty.
+                    Generic mode stays conservative and pauses when the provider is unclear.
                   </AlertDescription>
                 </Alert>
               )}
@@ -1084,7 +1227,7 @@ export default function Autopilot() {
                 Child/Profile
               </CardTitle>
               <CardDescription>
-                Choose a profile for reusable safe fields, or choose during run. Medical and allergy fields are not collected here.
+                {setupStepCopy.child}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -1161,7 +1304,7 @@ export default function Autopilot() {
                 Timing and reminder
               </CardTitle>
               <CardDescription>
-                Tell SignupAssist when the signup window matters. SMS is selected by default, and it falls back to email until a phone number is entered and confirmed.
+                {setupStepCopy.timing}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -1244,7 +1387,7 @@ export default function Autopilot() {
                 Safety limits
               </CardTitle>
               <CardDescription>
-                SignupAssist pauses for login, payment, waivers, medical questions, provider uncertainty, price changes, and final submit.
+                {setupStepCopy.safety}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -1274,19 +1417,20 @@ export default function Autopilot() {
                 </div>
               </div>
 
-              <div className="rounded-lg border p-4">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-medium">Readiness preflight</p>
-                    <p className="text-sm text-muted-foreground">
-                      These checks create today's supervised packet and prepare future set-and-forget safely.
-                    </p>
-                  </div>
+              <DisclosurePanel
+                summary="Why these checks matter"
+                defaultOpen={setupMode === "first_run_setup"}
+              >
+                <p>
+                  These checks build today's supervised packet and keep future automation gated until the provider is ready.
+                </p>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <p className="font-medium text-foreground">Readiness preflight</p>
                   <Badge variant={readinessScore >= 80 ? "default" : "secondary"}>
                     {readinessScore}% ready
                   </Badge>
                 </div>
-                <Progress value={readinessScore} className="mb-4" />
+                <Progress value={readinessScore} className="my-4" />
                 <div className="grid gap-3 md:grid-cols-2">
                   {PREFLIGHT_CHECKS.map((check) => (
                     <div
@@ -1307,7 +1451,7 @@ export default function Autopilot() {
                     </div>
                   ))}
                 </div>
-              </div>
+              </DisclosurePanel>
 
               <div className="grid gap-4 lg:grid-cols-2">
                 <SafetyList title="Allowed actions" items={selectedPlaybook.allowedActions || DEFAULT_ALLOWED_ACTIONS} />
@@ -1325,7 +1469,7 @@ export default function Autopilot() {
                 Provider learning
               </CardTitle>
               <CardDescription>
-                This run can improve future provider playbooks without sending child PII into learning by default.
+                {setupStepCopy.learning}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -1337,13 +1481,14 @@ export default function Autopilot() {
                 ))}
               </div>
 
-              <Alert className="border-primary/20 bg-[hsl(var(--secondary))]">
-                <Sparkles className="h-4 w-4" />
-                <AlertTitle>Provider status: {readiness}</AlertTitle>
-                <AlertDescription>
-                  {providerLearningSummary.automationPolicy.copy} SignupAssist can learn redacted provider signals such as pause reasons, matched fields, and fixture gaps. It does not learn child PII, credentials, tokens, payment data, or medical/allergy details by default.
-                </AlertDescription>
-              </Alert>
+              <DisclosurePanel summary={`Provider learning and safety (${readiness})`} defaultOpen={setupMode === "first_run_setup"}>
+                <p>
+                  {providerLearningSummary.automationPolicy.copy}
+                </p>
+                <p className="mt-2">
+                  SignupAssist can learn redacted provider signals such as pause reasons, matched fields, and fixture gaps. It does not learn child PII, credentials, tokens, payment data, or medical or allergy details by default.
+                </p>
+              </DisclosurePanel>
 
               <SafetyList
                 title="What this run can help learn"
@@ -1360,9 +1505,9 @@ export default function Autopilot() {
                   onCheckedChange={(checked) => setLearningOptIn(checked === true)}
                 />
                 <span>
-                  <span className="block font-medium">Opt in to redacted learning signals for this provider</span>
+                  <span className="block font-medium">Let this provider help future runs</span>
                   <span className="mt-1 block text-muted-foreground">
-                    Useful for provider readiness scoring. Full set-and-forget remains future-gated by verified providers and signed mandates.
+                    Redacted signals can improve readiness scoring. Full set-and-forget stays future-gated by verified providers and signed mandates.
                   </span>
                 </span>
               </label>
@@ -1378,7 +1523,7 @@ export default function Autopilot() {
                 Review and create
               </CardTitle>
               <CardDescription>
-                Create today's supervised run packet. Copy packet remains secondary after the run is saved.
+                {setupStepCopy.review}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -1459,10 +1604,10 @@ export default function Autopilot() {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2 text-base">
                       <Link2 className="h-5 w-5 text-primary" />
-                      Connect Chrome Helper
+                      Get helper code
                     </CardTitle>
                     <CardDescription>
-                      Request a helper code from POST /api/helper/run-links, then copy it into the Chrome helper or keep using the packet copy fallback.
+                      Get a helper code after saving the run, then paste it into the Chrome helper or keep using the packet copy fallback.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
@@ -1473,9 +1618,9 @@ export default function Autopilot() {
                     </Alert>
 
                     <div className="rounded-lg border bg-background p-3">
-                      <p className="text-xs font-medium uppercase text-muted-foreground">Helper code</p>
+                      <p className="text-xs font-medium uppercase text-muted-foreground">Parent helper code</p>
                       <p className="mt-2 text-sm text-muted-foreground">
-                        {helperRunLinkCode ? "The helper code is ready. Copy it into the Chrome helper or share it with the parent browser." : "Request a code from the planned helper-link endpoint after saving the run."}
+                        {helperRunLinkCode ? "The helper code is ready. Copy it into the Chrome helper or share it with the parent browser." : "Get a code after saving the run, then use it in the Chrome helper or share it with the parent browser."}
                       </p>
                       {helperRunLinkCode ? (
                         <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -1487,11 +1632,11 @@ export default function Autopilot() {
                             Copy helper code
                           </Button>
                         </div>
-                      ) : (
+                        ) : (
                         <div className="mt-3 flex flex-wrap gap-2">
                           <Button type="button" onClick={requestHelperRunLink} disabled={helperRequesting}>
                             {helperRequesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
-                            Request helper code
+                            Get helper code
                           </Button>
                           <Button type="button" variant="outline" onClick={() => copyRunPacket(createdPacket)}>
                             <Clipboard className="h-4 w-4" />
@@ -1559,14 +1704,15 @@ export default function Autopilot() {
       <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
         <div className="mb-6 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <Badge variant="secondary" className="mb-3">
-              V1 supervised autopilot
-            </Badge>
+            <div className="mb-3 flex flex-wrap gap-2">
+              <Badge variant="secondary">V1 supervised autopilot</Badge>
+              <Badge variant="outline">{setupModeMeta.badge}</Badge>
+            </div>
             <h1 className="text-3xl font-bold tracking-normal text-primary sm:text-4xl">
               Supervised Autopilot setup
             </h1>
             <p className="mt-2 max-w-3xl text-muted-foreground">
-              Create a parent-controlled run packet from your signup intent. Full set-and-forget is a future verified-provider and signed-mandate mode, not live today.
+              {setupModeMeta.description}
             </p>
           </div>
           <Button variant="outline" onClick={() => navigate("/dashboard")}>
@@ -1580,6 +1726,7 @@ export default function Autopilot() {
             <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${providerReadinessClass(readiness)}`}>
               Provider status: {readiness}
             </span>
+            <Badge variant="secondary">{setupModeMeta.title}</Badge>
             {intentId && <Badge variant="secondary">Loaded from signup intent</Badge>}
           </div>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1594,6 +1741,7 @@ export default function Autopilot() {
           <WizardRail
             activeStep={activeStep}
             completed={Boolean(createdPacket)}
+            mode={setupMode}
             onStepChange={setActiveStep}
           />
 
@@ -1652,15 +1800,21 @@ export default function Autopilot() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm text-muted-foreground">
-                <p>SignupAssist pauses for login, payment, waivers, medical questions, provider uncertainty, price changes, and final submit.</p>
-                <p>{SUPERVISED_AUTOPILOT_BILLING_COPY.noSuccessFee} {SUPERVISED_AUTOPILOT_BILLING_COPY.providerFee}</p>
+                <DisclosurePanel summary="When the helper pauses" defaultOpen={setupMode === "first_run_setup"}>
+                  <p>
+                    SignupAssist pauses for login, payment, waivers, medical questions, provider uncertainty, price changes, and final submit.
+                  </p>
+                  <p className="mt-2">
+                    {SUPERVISED_AUTOPILOT_BILLING_COPY.noSuccessFee} {SUPERVISED_AUTOPILOT_BILLING_COPY.providerFee}
+                  </p>
+                </DisclosurePanel>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Set-and-forget ladder</CardTitle>
-                <CardDescription>Future automation is gated by provider readiness and signed mandates.</CardDescription>
+                <CardDescription>Future automation stays gated by provider readiness and signed mandates.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 text-sm text-muted-foreground">
                 {SET_AND_FORGET_LADDER.map((item) => (
