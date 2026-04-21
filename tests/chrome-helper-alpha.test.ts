@@ -370,18 +370,26 @@ async function evaluatePopup(initialState: Record<string, unknown> = {}, fetchSt
   return { document, state: chrome.state };
 }
 
-async function evaluateContent(pageText: string, initialState: Record<string, unknown> = {}) {
+async function evaluateContent(
+  pageText: string,
+  initialState: Record<string, unknown> = {},
+  options: {
+    fields?: Array<{ id: string; label: string; type?: string; name: string; autocomplete?: string }>;
+    host?: string;
+    includeFinalButton?: boolean;
+  } = {},
+) {
   const document = new FakeDocument(pageText);
   const chrome = createChromeStub(initialState);
 
-  const fields = [
+  const fields = options.fields ?? [
     { id: "email", label: "Email", type: "text", name: "email" },
     { id: "password", label: "Password", type: "password", name: "password" },
     { id: "otp_code", label: "Verification code", type: "text", name: "otp_code", autocomplete: "one-time-code" },
     { id: "card_number", label: "Card number", type: "text", name: "card_number" },
   ];
 
-  fields.forEach(({ id, label, type, name, autocomplete }) => {
+  fields.forEach(({ id, label, type = "text", name, autocomplete }) => {
     const field = new FakeInputElement("input", { id, required: true });
     field.setAttribute("type", type);
     field.setAttribute("name", name);
@@ -395,12 +403,14 @@ async function evaluateContent(pageText: string, initialState: Record<string, un
   document.addButton(continueButton);
 
   const finalButton = new FakeElement("button");
-  finalButton.textContent = "Confirm Registration";
-  finalButton.setAttribute("type", "submit");
-  document.addButton(finalButton);
+  if (options.includeFinalButton !== false) {
+    finalButton.textContent = "Confirm Registration";
+    finalButton.setAttribute("type", "submit");
+    document.addButton(finalButton);
+  }
 
   const windowStub = buildWindow(document, chrome.chromeStub);
-  windowStub.location.hostname = "example.com";
+  windowStub.location.hostname = options.host ?? "example.com";
   runScript(contentSource, windowStub, document, chrome.chromeStub);
 
   async function send(message: { type: string }) {
@@ -508,5 +518,44 @@ describe("chrome helper alpha controls", () => {
     const continuePaused = await send({ type: "SIGNUPASSIST_SAFE_CONTINUE" });
     expect(continuePaused.blocked).toBe(true);
     expect(continuePaused.reason).toBe("Assist Mode is off");
+  });
+
+  it("clicks safe non-final navigation when Assist Mode is on and no pause conditions exist", async () => {
+    const { send, buttons } = await evaluateContent(
+      "Participant details Summer Soccer Camp $185.00",
+      {
+        signupassistRunPacket: {
+          version: 1,
+          mode: "supervised_autopilot",
+          target: {
+            providerKey: "daysmart",
+            providerName: "DaySmart / Dash",
+            maxTotalCents: 25000,
+          },
+        },
+        signupassistAssistMode: true,
+      },
+      {
+        fields: [
+          { id: "participant_first", label: "Participant first name", name: "participant_first" },
+          { id: "participant_last", label: "Participant last name", name: "participant_last" },
+          { id: "participant_dob", label: "Date of birth", name: "participant_dob" },
+          { id: "guardian_email", label: "Guardian email", name: "guardian_email" },
+          { id: "phone", label: "Phone number", name: "phone" },
+        ],
+        host: "apps.daysmartrecreation.com",
+        includeFinalButton: false,
+      },
+    );
+
+    const scanResult = await send({ type: "SIGNUPASSIST_SCAN" });
+    expect(scanResult.pauses).toEqual([]);
+    expect(scanResult.safeButtons).toContain("continue");
+
+    const continueResult = await send({ type: "SIGNUPASSIST_SAFE_CONTINUE" });
+    expect(continueResult.blocked).toBe(false);
+    expect(continueResult.continued).toBe(true);
+    expect(continueResult.clicked).toBe("continue");
+    expect(buttons.continueButton.clickedTimes).toBe(1);
   });
 });

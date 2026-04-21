@@ -18,6 +18,7 @@ The first provider slice is grounded in Keva Sports Center and stays fixture-tes
 
 - Login pause: `chrome-helper/fixtures/daysmart-login.html`
 - Participant fill: `chrome-helper/fixtures/daysmart-participant.html`
+- Safe navigation happy path: `chrome-helper/fixtures/daysmart-safe-navigation.html`
 - Safe navigation and price-cap coverage: `chrome-helper/fixtures/daysmart.html`
 - Waiver, payment, and final-submit pause: `chrome-helper/fixtures/daysmart-waiver-payment.html`
 - Sold-out and waitlist pause: `chrome-helper/fixtures/daysmart-soldout.html`
