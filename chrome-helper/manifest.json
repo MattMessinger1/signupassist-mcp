@@ -4,7 +4,21 @@
   "description": "Supervised signup autopilot for parent registration pages.",
   "version": "0.1.0",
   "permissions": ["activeTab", "storage", "scripting"],
-  "host_permissions": ["<all_urls>"],
+  "host_permissions": [
+    "https://signupassist.shipworx.ai/*",
+    "https://*.daysmartrecreation.com/*",
+    "https://daysmartrecreation.com/*",
+    "https://*.dashplatform.com/*",
+    "https://dashplatform.com/*",
+    "https://*.dashregistration.com/*",
+    "https://dashregistration.com/*",
+    "https://*.kevasports.com/*",
+    "https://kevasports.com/*",
+    "http://localhost/*",
+    "https://localhost/*",
+    "http://127.0.0.1/*",
+    "https://127.0.0.1/*"
+  ],
   "action": {
     "default_title": "SignupAssist",
     "default_popup": "popup.html"
@@ -14,7 +28,20 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": [
+        "https://*.daysmartrecreation.com/*",
+        "https://daysmartrecreation.com/*",
+        "https://*.dashplatform.com/*",
+        "https://dashplatform.com/*",
+        "https://*.dashregistration.com/*",
+        "https://dashregistration.com/*",
+        "https://*.kevasports.com/*",
+        "https://kevasports.com/*",
+        "http://localhost/*",
+        "https://localhost/*",
+        "http://127.0.0.1/*",
+        "https://127.0.0.1/*"
+      ],
       "js": ["content.js"],
       "css": ["content.css"],
       "run_at": "document_idle"

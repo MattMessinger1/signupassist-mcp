@@ -43,6 +43,7 @@ describe("dashboard status and audit polish", () => {
 
   it("keeps reminder and provider-readiness copy honest", () => {
     expect(dashboard).toContain("Reminder prepared");
+    expect(dashboard).toContain("SMS reminder sent");
     expect(dashboard).toContain("Manual reminder recommended");
     expect(dashboard).toContain("SMS disabled until configured");
     expect(dashboard).toContain("Verified navigation means fixture-tested safe flow coverage, not unattended live provider submit.");

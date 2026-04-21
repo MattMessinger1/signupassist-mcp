@@ -10,8 +10,11 @@ import {
   Clipboard,
   ClipboardCheck,
   Clock3,
+  Copy,
   Loader2,
+  Link2,
   PauseCircle,
+  Phone,
   Search,
   ShieldCheck,
   Sparkles,
@@ -74,6 +77,14 @@ import {
   type ProviderReadinessLevel,
 } from "@/lib/providerLearning";
 import { showErrorToast, showSuccessToast } from "@/lib/toastHelpers";
+
+const WEB_API_BASE =
+  import.meta.env.VITE_MCP_BASE_URL || import.meta.env.VITE_MCP_SERVER_URL || "";
+
+function webApiUrl(path: string) {
+  const base = WEB_API_BASE || window.location.origin;
+  return `${base.replace(/\/$/, "")}${path}`;
+}
 
 type ChildRow = Pick<
   Database["public"]["Tables"]["children"]["Row"],
@@ -201,6 +212,23 @@ function safeExternalUrl(value: string) {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizePhoneDigits(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+function firstStringValue(value: unknown, keys: string[]) {
+  if (!isRecord(value)) return null;
+  for (const key of keys) {
+    const candidate = value[key];
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+  return null;
+}
+
 function WizardRail({
   activeStep,
   completed,
@@ -312,7 +340,9 @@ export default function Autopilot() {
   const [priceCap, setPriceCap] = useState("250");
   const [reminderMinutes, setReminderMinutes] = useState("10");
   const [reminderEmail, setReminderEmail] = useState(true);
-  const [phoneNumber] = useState("");
+  const [smsReminderEnabled, setSmsReminderEnabled] = useState(true);
+  const [smsPhoneNumber, setSmsPhoneNumber] = useState("");
+  const [smsPhoneConfirmation, setSmsPhoneConfirmation] = useState("");
   const [learningOptIn, setLearningOptIn] = useState(false);
   const [newChildFirstName, setNewChildFirstName] = useState("");
   const [newChildLastName, setNewChildLastName] = useState("");
@@ -325,6 +355,9 @@ export default function Autopilot() {
   );
   const [createdPacket, setCreatedPacket] = useState<AutopilotRunPacket | null>(null);
   const [createdRunId, setCreatedRunId] = useState<string | null>(null);
+  const [helperRunLinkCode, setHelperRunLinkCode] = useState<string | null>(null);
+  const [helperRunLinkUrl, setHelperRunLinkUrl] = useState<string | null>(null);
+  const [helperRequesting, setHelperRequesting] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [creatingRun, setCreatingRun] = useState(false);
 
@@ -338,13 +371,36 @@ export default function Autopilot() {
     targetUrl && selectedPlaybook ? detectProviderMismatch(targetUrl, selectedPlaybook) : false;
   const selectedChild = children.find((child) => child.id === childId);
   const readinessScore = calculateReadinessScore(preflight);
-  const reminderChannels = useMemo(
-    () => (reminderEmail ? ["email"] : []),
-    [reminderEmail],
+  const smsPhoneDigits = useMemo(() => normalizePhoneDigits(smsPhoneNumber), [smsPhoneNumber]);
+  const smsPhoneConfirmationDigits = useMemo(
+    () => normalizePhoneDigits(smsPhoneConfirmation),
+    [smsPhoneConfirmation],
   );
+  const smsPhoneConfirmed =
+    smsReminderEnabled &&
+    smsPhoneDigits.length >= 10 &&
+    smsPhoneDigits === smsPhoneConfirmationDigits;
+  const reminderChannels = useMemo(
+    () => {
+      const channels: string[] = [];
+      if (reminderEmail) channels.push("email");
+      if (smsPhoneConfirmed) channels.push("sms");
+      return channels.length ? channels : ["email"];
+    },
+    [reminderEmail, smsPhoneConfirmed],
+  );
+  const reminderPhoneNumber = smsPhoneConfirmed ? smsPhoneNumber.trim() : null;
   const reminderMinutesValue = Number.isFinite(Number(reminderMinutes))
     ? Math.max(1, Math.round(Number(reminderMinutes)))
     : 10;
+  const reminderChannelSummary = reminderChannels.includes("sms") ? "email + SMS" : "email";
+  const smsFallbackCopy = smsReminderEnabled
+    ? smsPhoneNumber.trim()
+      ? smsPhoneConfirmed
+        ? "SMS reminder is ready and will be sent to the confirmed phone number."
+        : "Enter the same phone number twice to enable SMS. Until then, the reminder falls back to email and Copy packet stays available."
+      : "SMS reminder is selected by default, but it falls back to email until a phone number is entered and confirmed."
+    : "SMS reminder is turned off, so the reminder falls back to email and Copy packet stays available.";
   const participantAgeYears = ageYearsFromInput(participantAge);
   const intentLocation = signupIntent?.parsed.city
     ? [signupIntent.parsed.city, signupIntent.parsed.state].filter(Boolean).join(", ")
@@ -395,8 +451,8 @@ export default function Autopilot() {
         finder: finderMetadata,
         reminder: {
           minutesBefore: reminderMinutesValue,
-          channels: reminderChannels.length ? reminderChannels : ["email"],
-          phoneNumber: null,
+          channels: reminderChannels,
+          phoneNumber: reminderPhoneNumber,
         },
         child: selectedChild
           ? {
@@ -414,6 +470,7 @@ export default function Autopilot() {
       registrationOpensAt,
       reminderChannels,
       reminderMinutesValue,
+      reminderPhoneNumber,
       selectedChild,
       selectedPlaybook,
       targetProgram,
@@ -604,6 +661,78 @@ export default function Autopilot() {
     showSuccessToast("Helper setup copied", "Paste it into the Chrome helper before registration opens.");
   };
 
+  const requestHelperRunLink = async () => {
+    if (!createdRunId || !createdPacket) {
+      showErrorToast("Create the run first", "Save the supervised run before requesting a Chrome helper code.");
+      return;
+    }
+
+    try {
+      setHelperRequesting(true);
+      setHelperRunLinkCode(null);
+      setHelperRunLinkUrl(null);
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error("Sign in required");
+      }
+
+      const response = await fetch(webApiUrl("/api/helper/run-links"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          autopilotRunId: createdRunId,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Helper code request failed (${response.status})`);
+      }
+
+      const data = await response.json().catch(() => null);
+      const helperCode = firstStringValue(data, [
+        "helper_code",
+        "helperCode",
+        "code",
+        "run_link_code",
+        "runLinkCode",
+      ]);
+      const helperUrl = firstStringValue(data, [
+        "helper_url",
+        "helperUrl",
+        "url",
+        "share_url",
+        "shareUrl",
+      ]);
+
+      if (!helperCode) {
+        throw new Error("No helper code returned yet.");
+      }
+
+      setHelperRunLinkCode(helperCode);
+      setHelperRunLinkUrl(helperUrl);
+      showSuccessToast("Chrome helper code ready", "Copy it into the helper or share it with the parent browser.");
+    } catch (error) {
+      showErrorToast(
+        "Could not request helper code",
+        error instanceof Error ? error.message : "Copy packet instead while the helper link endpoint is being added.",
+      );
+    } finally {
+      setHelperRequesting(false);
+    }
+  };
+
+  const copyHelperRunLinkCode = async () => {
+    if (!helperRunLinkCode) return;
+    await navigator.clipboard.writeText(helperRunLinkCode);
+    showSuccessToast("Helper code copied", "Paste it into the Chrome helper or share it with the parent browser.");
+  };
+
   const createRun = async () => {
     if (!user) return;
 
@@ -650,8 +779,8 @@ export default function Autopilot() {
         finder: finderMetadata,
         reminder: {
           minutesBefore: reminderMinutesValue,
-          channels: reminderChannels.length ? reminderChannels : ["email"],
-          phoneNumber: null,
+          channels: reminderChannels,
+          phoneNumber: reminderPhoneNumber,
         },
         child: selectedChild
           ? {
@@ -1032,7 +1161,7 @@ export default function Autopilot() {
                 Timing and reminder
               </CardTitle>
               <CardDescription>
-                Tell SignupAssist when the signup window matters. Email is available now; SMS remains disabled until configured.
+                Tell SignupAssist when the signup window matters. SMS is selected by default, and it falls back to email until a phone number is entered and confirmed.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-5">
@@ -1064,11 +1193,45 @@ export default function Autopilot() {
                   />
                   Email reminder
                 </label>
-                <label className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm text-muted-foreground">
-                  <Checkbox checked={false} disabled />
-                  SMS disabled until supported
+                <label className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-sm">
+                  <Checkbox
+                    checked={smsReminderEnabled}
+                    onCheckedChange={(checked) => setSmsReminderEnabled(checked === true)}
+                  />
+                  SMS reminder
                 </label>
               </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="sms-phone-number">Phone number</Label>
+                  <Input
+                    id="sms-phone-number"
+                    type="tel"
+                    inputMode="tel"
+                    value={smsPhoneNumber}
+                    onChange={(event) => setSmsPhoneNumber(event.target.value)}
+                    placeholder="(555) 123-4567"
+                    disabled={!smsReminderEnabled}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="sms-phone-confirmation">Confirm phone number</Label>
+                  <Input
+                    id="sms-phone-confirmation"
+                    type="tel"
+                    inputMode="tel"
+                    value={smsPhoneConfirmation}
+                    onChange={(event) => setSmsPhoneConfirmation(event.target.value)}
+                    placeholder="Re-enter the phone number"
+                    disabled={!smsReminderEnabled}
+                  />
+                </div>
+              </div>
+              <Alert className={smsPhoneConfirmed ? "border-[#b9e5c7] bg-[#eaf7ef]" : "border-[#f3d8b6] bg-[#fff3e2]"}>
+                {smsPhoneConfirmed ? <CheckCircle2 className="h-4 w-4" /> : <Phone className="h-4 w-4" />}
+                <AlertTitle>{smsPhoneConfirmed ? "SMS reminder confirmed" : "SMS reminder fallback"}</AlertTitle>
+                <AlertDescription>{smsFallbackCopy}</AlertDescription>
+              </Alert>
             </CardContent>
           </Card>
         );
@@ -1233,7 +1396,7 @@ export default function Autopilot() {
                 <SummaryTile icon={<Target className="h-3.5 w-3.5" />} label="Activity" value={targetProgram} />
                 <SummaryTile icon={<Sparkles className="h-3.5 w-3.5" />} label="Provider" value={selectedPlaybook.name} />
                 <SummaryTile icon={<UserRound className="h-3.5 w-3.5" />} label="Child" value={childLabel(selectedChild)} />
-                <SummaryTile icon={<Clock3 className="h-3.5 w-3.5" />} label="Reminder" value={`${reminderMinutesValue} minutes before`} />
+                <SummaryTile icon={<Clock3 className="h-3.5 w-3.5" />} label="Reminder" value={`${reminderMinutesValue} minutes before via ${reminderChannelSummary}`} />
                 <SummaryTile icon={<CircleDollarSign className="h-3.5 w-3.5" />} label="Price cap" value={maxTotalCents ? `$${maxTotalCents / 100}` : "No cap"} />
                 <SummaryTile icon={<ShieldCheck className="h-3.5 w-3.5" />} label="Readiness" value={`${readinessScore}% ready`} />
               </div>
@@ -1289,6 +1452,61 @@ export default function Autopilot() {
                     Run {createdRunId ? createdRunId : "saved"} is ready for your dashboard/history where supported.
                   </AlertDescription>
                 </Alert>
+              )}
+
+              {createdPacket && createdRunId && (
+                <Card className="border-primary/20 bg-[hsl(var(--secondary))]">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Link2 className="h-5 w-5 text-primary" />
+                      Connect Chrome Helper
+                    </CardTitle>
+                    <CardDescription>
+                      Request a helper code from POST /api/helper/run-links, then copy it into the Chrome helper or keep using the packet copy fallback.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <Alert className={smsPhoneConfirmed ? "border-[#b9e5c7] bg-[#eaf7ef]" : "border-[#f3d8b6] bg-[#fff3e2]"}>
+                      <Phone className="h-4 w-4" />
+                      <AlertTitle>{smsPhoneConfirmed ? "SMS reminder is ready" : "SMS reminder fallback is active"}</AlertTitle>
+                      <AlertDescription>{smsFallbackCopy}</AlertDescription>
+                    </Alert>
+
+                    <div className="rounded-lg border bg-background p-3">
+                      <p className="text-xs font-medium uppercase text-muted-foreground">Helper code</p>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        {helperRunLinkCode ? "The helper code is ready. Copy it into the Chrome helper or share it with the parent browser." : "Request a code from the planned helper-link endpoint after saving the run."}
+                      </p>
+                      {helperRunLinkCode ? (
+                        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+                          <div className="min-w-0 flex-1 rounded-md border bg-muted px-3 py-2 font-mono text-sm break-all">
+                            {helperRunLinkCode}
+                          </div>
+                          <Button type="button" variant="outline" onClick={copyHelperRunLinkCode}>
+                            <Copy className="h-4 w-4" />
+                            Copy helper code
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Button type="button" onClick={requestHelperRunLink} disabled={helperRequesting}>
+                            {helperRequesting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Link2 className="h-4 w-4" />}
+                            Request helper code
+                          </Button>
+                          <Button type="button" variant="outline" onClick={() => copyRunPacket(createdPacket)}>
+                            <Clipboard className="h-4 w-4" />
+                            Copy packet
+                          </Button>
+                        </div>
+                      )}
+                      {helperRunLinkUrl && (
+                        <p className="mt-3 text-xs text-muted-foreground">
+                          Helper link: {helperRunLinkUrl}
+                        </p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
               )}
             </CardContent>
           </Card>

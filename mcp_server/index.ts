@@ -522,6 +522,18 @@ function getVisibleToolDescriptors(tools: Iterable<any>, includePrivate = false)
     : apiTools.filter((tool) => tool._meta?.["openai/visibility"] === "public");
 }
 
+function shouldIncludePrivateListTools() {
+  const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
+  if (!includePrivate) return false;
+
+  if (process.env.NODE_ENV === 'production') {
+    console.warn('[MCP] MCP_LISTTOOLS_INCLUDE_PRIVATE ignored in production; returning public tools only');
+    return false;
+  }
+
+  return true;
+}
+
 function getPublicHttpToolSummary(tools: Iterable<any>) {
   return getVisibleToolDescriptors(tools, false).map((tool) => ({
     name: tool.name,
@@ -769,6 +781,7 @@ import { userTools } from './providers/user.js';
 // import { daysmartTools } from '../providers/daysmart/index';
 // import { campminderTools } from '../providers/campminder/index';
 import { truncateToolResponse } from './lib/truncateToolResponse.js';
+import { handleHelperRunApi, type HelperRunSupabaseClient } from './lib/helperRunApi.js';
 import { handleSignupIntentApi, type SignupIntentSupabaseClient } from './lib/signupIntentApi.js';
 import { finalizeHostedPaymentSetupSession, getHostedPaymentSetupCheckoutUrl } from './lib/stripeCheckout.js';
 import { createClient } from '@supabase/supabase-js';
@@ -889,7 +902,7 @@ class SignupAssistMCPServer {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
       // ChatGPT App Store (text-only V1): keep public surface minimal.
       // We still register private tools internally, but we do NOT list them to ChatGPT.
-      const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
+      const includePrivate = shouldIncludePrivateListTools();
 
       // Default: only return publicly-visible tools (reduces model confusion and enforces SSoT via register_for_activity).
       const visibleTools = getVisibleToolDescriptors(this.tools.values(), includePrivate);
@@ -2558,7 +2571,7 @@ class SignupAssistMCPServer {
               }
 
               if (methodName === 'tools/list') {
-                const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
+                const includePrivate = shouldIncludePrivateListTools();
                 const visibleTools = getVisibleToolDescriptors(this.tools.values(), includePrivate);
 
                 console.log(
@@ -2921,7 +2934,7 @@ class SignupAssistMCPServer {
           // Eager discovery: emit a tools/list result on connect so refresh flows can succeed
           // even if the client never sends a follow-up POST /messages.
           try {
-            const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
+            const includePrivate = shouldIncludePrivateListTools();
             const visibleTools = getVisibleToolDescriptors(this.tools.values(), includePrivate);
 
             const msg = {
@@ -3029,7 +3042,7 @@ class SignupAssistMCPServer {
           // This avoids relying on a live SSE stream during ChatGPT refresh_actions.
           if (isDiscoveryCall) {
             if (methodName === 'tools/list') {
-              const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
+              const includePrivate = shouldIncludePrivateListTools();
               const visibleTools = getVisibleToolDescriptors(this.tools.values(), includePrivate);
 
               console.log(
@@ -3194,7 +3207,7 @@ class SignupAssistMCPServer {
             // has already closed. For non-consequential calls (tools/list), return the result directly
             // in the HTTP response so clients don't need a live SSE stream to refresh actions.
             if (methodName === 'tools/list') {
-              const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
+              const includePrivate = shouldIncludePrivateListTools();
               const visibleTools = getVisibleToolDescriptors(this.tools.values(), includePrivate);
 
               console.log(
@@ -3807,7 +3820,7 @@ class SignupAssistMCPServer {
         }
 
         if (methodName === 'tools/list') {
-          const includePrivate = process.env.MCP_LISTTOOLS_INCLUDE_PRIVATE === 'true';
+          const includePrivate = shouldIncludePrivateListTools();
           const visibleTools = getVisibleToolDescriptors(this.tools.values(), includePrivate);
 
           console.log(
@@ -4601,6 +4614,16 @@ class SignupAssistMCPServer {
           res,
           url,
           supabase: supabase as unknown as SignupIntentSupabaseClient,
+        });
+        return;
+      }
+
+      if (url.pathname === '/api/helper/run-links' || url.pathname === '/api/helper/run-packet') {
+        await handleHelperRunApi({
+          req,
+          res,
+          url,
+          supabase: supabase as unknown as HelperRunSupabaseClient,
         });
         return;
       }

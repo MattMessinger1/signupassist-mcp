@@ -41,6 +41,12 @@ The web app creates a supervised run packet for the Chrome helper. The packet in
 
 The run packet is intentionally useful for V1 and future Set and Forget. V1 uses it for supervised filling and pause decisions. Future automation can use the same structure for scheduled launch, audit trails, price caps, and parent escalation.
 
+## Chrome Helper Connection
+
+After a supervised run is created, the UI can request a helper code from `POST /api/helper/run-links` and show a copy flow for the Chrome helper. The packet copy fallback stays available so parents can still paste the saved run packet if the helper-link endpoint is not ready yet.
+
+Reminder setup defaults to SMS when a phone number is entered and confirmed in the web app. If SMS is not configured, the reminder falls back to email and the copy-packet fallback remains visible.
+
 ## Trust-First Cancellation
 
 Cancellation is part of the product promise:
