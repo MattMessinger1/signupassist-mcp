@@ -2043,3 +2043,39 @@ Verification:
 - `npm run test:mcp-manifest`: Passed.
 - `npm run test:mcp-descriptors`: Passed.
 - `git diff --check`: Passed.
+
+## 2026-04-21 - Simplest Good Alpha Parent Flow
+
+Scope:
+
+- Reframed the web alpha around `Find Activity -> choose child -> save plan -> launch helper`.
+- Added shared compact `PreparePlanSheet` for Activity Finder and `/autopilot?intent=<id>`.
+- Added `/run-center` as the parent operational home with Ready, Opening soon, Needs you, and Done tabs.
+- Added `/chrome-helper/setup` with a five-step unpacked helper install flow and a downloadable alpha helper zip.
+- Added the SignupAssist-domain Chrome extension bridge for helper detection and sanitized packet storage.
+
+Approval impact:
+
+- ChatGPT MCP public tool names changed: No.
+- MCP manifest/OpenAPI/.well-known/OAuth/CSP/protected-action behavior changed: No.
+- Public MCP schemas/descriptors changed: No.
+- Hidden/private/internal tools exposed: No.
+- Safety impact: Positive. The parent path is shorter while retaining public HTTPS URL validation, opaque signup intents, helper packet sanitization, helper setup fallback, and pauses before login, payment, waivers, and final submit.
+
+Verification:
+
+- `npx tsc -p tsconfig.app.json --noEmit`: Passed.
+- `npm run typecheck`: Passed.
+- `npm run build`: Passed with existing non-blocking Vite chunk warnings.
+- `npx vitest run tests/activity-finder-ui.test.ts tests/autopilot-wizard-ui.test.ts tests/run-center-alpha.test.ts tests/chrome-helper-alpha.test.ts --reporter=verbose`: Passed.
+- `npm run test:golden-path`: Passed.
+- `npm run test:chrome-helper-evals`: Passed.
+- `npm run test:security-mvp`: Passed.
+- `npm run test:authz-audit`: Passed.
+- `npm run test:chatgpt-app`: Passed.
+- `npm run test:approval-snapshots`: Passed.
+- `npm run test:mcp-manifest`: Passed.
+- `npm run test:mcp-descriptors`: Passed.
+- `npm run test --if-present`: Passed.
+- Targeted ESLint on changed files: Passed.
+- `git diff --check`: Passed.

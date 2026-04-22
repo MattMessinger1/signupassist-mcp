@@ -12,6 +12,8 @@ import Credentials from "./pages/Credentials";
 import RegistrationDashboard from "./pages/RegistrationDashboard";
 import Autopilot from "./pages/Autopilot";
 import ActivityFinder from "./pages/ActivityFinder";
+import RunCenter from "./pages/RunCenter";
+import ChromeHelperSetup from "./pages/ChromeHelperSetup";
 import DiscoveryRuns from "./pages/DiscoveryRuns";
 import MandatesAudit from "./pages/MandatesAudit";
 import NotFound from "./pages/NotFound";
@@ -43,6 +45,8 @@ const App = () => (
             <Route path="/auth" element={<Auth />} />
             <Route path="/dashboard" element={<RegistrationDashboard />} />
             <Route path="/activity-finder" element={<ActivityFinder />} />
+            <Route path="/run-center" element={<RunCenter />} />
+            <Route path="/chrome-helper/setup" element={<ChromeHelperSetup />} />
             <Route path="/autopilot" element={<Autopilot />} />
             <Route path="/plan-builder" element={<PlanBuilderWithStripe />} />
             <Route path="/credentials" element={<Credentials />} />

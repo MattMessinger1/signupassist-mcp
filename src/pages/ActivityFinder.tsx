@@ -6,7 +6,6 @@ import {
   CalendarDays,
   CircleDollarSign,
   ClipboardCheck,
-  Clock3,
   Link as LinkIcon,
   Loader2,
   MapPin,
@@ -22,6 +21,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Header } from "@/components/Header";
+import { PreparePlanSheet } from "@/components/PreparePlanSheet";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/contexts/AuthContext";
@@ -36,7 +36,6 @@ import {
   type ActivityFinderStatus,
 } from "@/lib/activityFinder";
 import {
-  buildAutopilotIntentPath,
   buildSignupIntentFromFinderResult,
   createSignupIntent,
 } from "@/lib/signupIntent";
@@ -144,13 +143,13 @@ function getResultHandoffEligibility(result: ActivityFinderResult, signupLink: s
   if (result.status === "needs_signup_link") {
     const candidateLink = signupLink || result.targetUrl || "";
     const linkReady = isHttpsUrl(candidateLink);
-    return {
-      canContinue: linkReady,
-      label: linkReady ? "Prepare with this link" : "Paste signup link",
-      hint: linkReady
-        ? "This will create a secure signup intent."
-        : "Paste the public HTTPS registration page before preparing a signup.",
-    };
+      return {
+        canContinue: linkReady,
+        label: linkReady ? "Use this link" : "Paste signup link",
+        hint: linkReady
+          ? "This will open a compact plan sheet."
+          : "Paste the public HTTPS registration page before preparing a signup.",
+      };
   }
 
   const safeTarget = resultTargetIsSafe(result);
@@ -166,14 +165,14 @@ function getResultHandoffEligibility(result: ActivityFinderResult, signupLink: s
     case "tested_fast_path":
       return {
         canContinue: true,
-        label: "Prepare signup",
-        hint: "This known path opens a supervised setup.",
+        label: "Use this",
+        hint: "Create a secure plan without adding details to the URL.",
       };
     case "guided_autopilot":
       return {
         canContinue: true,
-        label: "Prepare guided signup",
-        hint: "This starts supervised guided setup. Sensitive steps still pause.",
+        label: "Use this",
+        hint: "Create a secure plan without adding details to the URL.",
       };
   }
 }
@@ -307,10 +306,14 @@ function ResultCard({
   const statusTone = activityFinderStatusTone(result.status);
   const parsedLocation = locationLabel(parsed);
   const parsedAge = ageLabel(parsed);
-  const confidence = optionalNumber(result, "confidence");
   const sourceFreshness = optionalString(result, "sourceFreshness");
   const providerReadiness = optionalString(result, "providerReadiness");
   const ageGradeFit = optionalString(result, "ageGradeFit") || parsedAge;
+  const nextWindow =
+    optionalString(result, "nextWindowLabel") ||
+    optionalString(result, "registrationWindowLabel") ||
+    sourceFreshness ||
+    "Window not confirmed";
   const missingDetails = [
     ...optionalStringArray(result, "missingDetails"),
     ...(result.status === "need_more_detail" ? parsed.missingFields : []),
@@ -357,23 +360,21 @@ function ResultCard({
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-2 sm:grid-cols-3">
-          <div className="rounded-lg border bg-[hsl(var(--secondary))] p-3">
+          <div className="rounded-lg border bg-background p-3">
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Age fit</p>
             <p className="mt-1 text-sm font-semibold">{ageGradeFit || "Confirm fit"}</p>
           </div>
-          <div className="rounded-lg border bg-[hsl(var(--secondary))] p-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Confidence</p>
-            <p className="mt-1 text-sm font-semibold">
-              {confidence !== null ? `${Math.round(confidence * 100)}%` : primary ? "Best available" : "Review"}
-            </p>
+          <div className="rounded-lg border bg-background p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Next window</p>
+            <p className="mt-1 text-sm font-semibold">{nextWindow}</p>
           </div>
-          <div className="rounded-lg border bg-[hsl(var(--secondary))] p-3">
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Freshness</p>
-            <p className="mt-1 text-sm font-semibold">{sourceFreshness || "Live check"}</p>
+          <div className="rounded-lg border bg-background p-3">
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Readiness</p>
+            <p className="mt-1 text-sm font-semibold">{providerReadiness || statusLabel}</p>
           </div>
         </div>
 
-        <div className="rounded-lg border bg-background p-4">
+        <div className="rounded-lg border bg-[hsl(var(--secondary))] p-4">
           <p className="text-sm font-semibold">Why this match</p>
           <p className="mt-1 text-sm text-muted-foreground">{result.explanation}</p>
         </div>
@@ -433,68 +434,6 @@ function ResultCard({
   );
 }
 
-function TrustPanel({ authenticated }: { authenticated: boolean }) {
-  const trustItems = [
-    { icon: <ShieldCheck className="h-4 w-4" />, title: "Parent controlled", copy: "You approve sensitive steps." },
-    { icon: <Clock3 className="h-4 w-4" />, title: "Sensitive steps pause", copy: "Login, waivers, payment, and final submit stop for review." },
-    { icon: <CircleDollarSign className="h-4 w-4" />, title: "No card numbers stored", copy: "Provider checkout stays with the provider." },
-    { icon: <ClipboardCheck className="h-4 w-4" />, title: "All actions logged", copy: "Prepared runs keep an audit trail." },
-    { icon: <Sparkles className="h-4 w-4" />, title: "Provider learning", copy: "Future set-and-forget depends on verified provider playbooks." },
-  ];
-
-  return (
-    <aside className="space-y-4 lg:sticky lg:top-20 lg:self-start">
-      {!authenticated && (
-        <Alert className="border-[#f3d8b6] bg-[#fff3e2]">
-          <UserRound className="h-4 w-4" />
-          <AlertTitle>Sign in to prepare a signup</AlertTitle>
-          <AlertDescription>
-            Searching works now. Creating the secure signup intent requires your account.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      <Card className="border-primary/20">
-        <CardHeader>
-          <CardTitle className="text-base">Signup readiness</CardTitle>
-          <CardDescription>SignupAssist prepares the path. You stay in control.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {trustItems.map((item) => (
-            <div key={item.title} className="flex gap-3 rounded-lg border bg-background p-3">
-              <div className="mt-0.5 text-primary">{item.icon}</div>
-              <div>
-                <p className="text-sm font-semibold">{item.title}</p>
-                <p className="mt-1 text-sm text-muted-foreground">{item.copy}</p>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card className="border-primary/20 bg-[hsl(var(--secondary))]">
-        <CardContent className="space-y-3 p-5">
-          <p className="text-sm font-semibold">What happens next</p>
-          <ol className="space-y-3 text-sm text-muted-foreground">
-            <li className="flex gap-2">
-              <span className="font-semibold text-foreground">1.</span>
-              Search for the signup path.
-            </li>
-            <li className="flex gap-2">
-              <span className="font-semibold text-foreground">2.</span>
-              Prepare a secure signup intent.
-            </li>
-            <li className="flex gap-2">
-              <span className="font-semibold text-foreground">3.</span>
-              Confirm details in supervised Autopilot.
-            </li>
-          </ol>
-        </CardContent>
-      </Card>
-    </aside>
-  );
-}
-
 interface PendingActivityFinderIntent {
   expiresAt: number;
   query: string;
@@ -539,6 +478,8 @@ export default function ActivityFinder() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [signupLinks, setSignupLinks] = useState<Record<string, string>>({});
   const [showAdvancedDetails, setShowAdvancedDetails] = useState(false);
+  const [prepareIntentId, setPrepareIntentId] = useState<string | null>(null);
+  const [prepareOpen, setPrepareOpen] = useState(false);
   const resultsSectionRef = useRef<HTMLElement | null>(null);
 
   const parsedLocation = locationLabel(response?.parsed);
@@ -615,9 +556,10 @@ export default function ActivityFinder() {
     if (!payload) return null;
 
     const intent = await createSignupIntent(payload);
-    navigate(buildAutopilotIntentPath(intent.id));
+    setPrepareIntentId(intent.id);
+    setPrepareOpen(true);
     return intent;
-  }, [navigate]);
+  }, []);
 
   useEffect(() => {
     if (!user || creatingIntent) return;
@@ -713,29 +655,26 @@ export default function ActivityFinder() {
   return (
     <div className="min-h-screen bg-background">
       <Header />
-      <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8">
+      <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
         <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <Badge variant="secondary" className="mb-3">Activity Finder</Badge>
+            <Badge variant="secondary" className="mb-3">Find Activity</Badge>
             <h1 className="text-3xl font-bold tracking-normal text-primary sm:text-4xl">
-              Find the signup. Get ready fast.
+              Find the right activity
             </h1>
             <p className="mt-2 max-w-2xl text-muted-foreground">
-              SignupAssist prepares the path. You stay in control.
+              Search, choose a result, and prepare your signup once.
             </p>
-          </div>
-          <div className="rounded-lg border bg-card px-4 py-3 text-sm text-muted-foreground">
-            Future set-and-forget depends on verified provider playbooks.
           </div>
         </div>
 
-        <section className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="space-y-6">
           <div className="space-y-6">
             <Card className="border-primary/20 shadow-sm">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-xl">
                   <Search className="h-5 w-5 text-primary" />
-                  Search by phrase
+                  Describe what you need
                 </CardTitle>
                 <CardDescription>
                   Type the activity, provider or venue, location, and child age when you know them.
@@ -756,7 +695,7 @@ export default function ActivityFinder() {
                   </div>
                   <Button type="submit" size="lg" className="h-14" disabled={loading || !query.trim()}>
                     {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-                    Find signup
+                    Search
                   </Button>
                 </form>
 
@@ -867,7 +806,7 @@ export default function ActivityFinder() {
                     Results
                   </h2>
                   <p className="text-sm text-muted-foreground">
-                    Matches become secure signup intents before Autopilot opens.
+                    Use a result to prepare a secure plan.
                   </p>
                 </div>
                 {response && (
@@ -1016,9 +955,16 @@ export default function ActivityFinder() {
               )}
             </section>
           </div>
-
-          <TrustPanel authenticated={Boolean(user)} />
         </section>
+        {prepareIntentId && (
+          <PreparePlanSheet
+            intentId={prepareIntentId}
+            open={prepareOpen}
+            onOpenChange={setPrepareOpen}
+            returnPath="/activity-finder"
+            onPlanSaved={() => navigate("/run-center")}
+          />
+        )}
       </main>
     </div>
   );

@@ -15,14 +15,14 @@ describe("Activity Finder UI contract", () => {
     expect(page).toContain("Best match");
     expect(page).toContain("Other possible matches");
     expect(page).toContain("More possible venues");
-    expect(page).toContain("Find signup");
-    expect(page).toContain("Prepare signup");
-    expect(page).toContain("Prepare guided signup");
+    expect(page).toContain("Search");
+    expect(page).toContain("Use this");
+    expect(page).not.toContain("Prepare guided signup");
     expect(page).toContain("Add missing details");
     expect(page).not.toMatch(/\bunsupported\b/i);
   });
 
-  it("surfaces structured search fields and readiness trust copy", () => {
+  it("surfaces structured search fields without duplicating the old trust stack", () => {
     expect(page).toContain("Provider or venue");
     expect(page).toContain("City or location");
     expect(page).toContain("Age or grade");
@@ -31,11 +31,9 @@ describe("Activity Finder UI contract", () => {
     expect(page).toContain("Registration status");
     expect(page).toContain("Add details");
     expect(page).toContain("aria-expanded={showAdvancedDetails}");
-    expect(page).toContain("Parent controlled");
-    expect(page).toContain("Sensitive steps pause");
-    expect(page).toContain("No card numbers stored");
-    expect(page).toContain("All actions logged");
-    expect(page).toContain("Provider learning");
+    expect(page).not.toContain("Parent controlled");
+    expect(page).not.toContain("No card numbers stored");
+    expect(page).not.toContain("All actions logged");
     expect(page).not.toContain("Provider learning improves future automation");
   });
 
@@ -44,7 +42,6 @@ describe("Activity Finder UI contract", () => {
     expect(page).toContain("Loading activity results");
     expect(page).toContain("No results yet");
     expect(page).toContain("Missing detail");
-    expect(page).toContain("Sign in to prepare a signup");
     expect(page).toContain("Backend error");
     expect(page).toContain("Outside current launch scope");
     expect(page).toContain("Adult activity registration is not supported yet");
@@ -57,5 +54,12 @@ describe("Activity Finder UI contract", () => {
     expect(page).toContain("storePendingActivityFinderIntent");
     expect(page).toContain("readPendingActivityFinderIntent");
     expect(page).toContain("expiresAt: Date.now() + PENDING_ACTIVITY_FINDER_INTENT_TTL_MS");
+  });
+
+  it("opens the shared compact prepare plan sheet instead of navigating sensitive context", () => {
+    expect(page).toContain("PreparePlanSheet");
+    expect(page).toContain("setPrepareIntentId(intent.id)");
+    expect(page).toContain('returnPath="/activity-finder"');
+    expect(page).not.toContain("buildAutopilotIntentPath");
   });
 });

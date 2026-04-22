@@ -4,6 +4,10 @@ import { afterEach, describe, expect, it } from "vitest";
 const contentSource = readFileSync("chrome-helper/content.js", "utf8");
 const popupSource = readFileSync("chrome-helper/popup.js", "utf8");
 const popupHtml = readFileSync("chrome-helper/popup.html", "utf8");
+const webBridgeSource = readFileSync("chrome-helper/web-bridge.js", "utf8");
+const helperManifest = readFileSync("chrome-helper/manifest.json", "utf8");
+const setupPage = readFileSync("src/pages/ChromeHelperSetup.tsx", "utf8");
+const bridgeLib = readFileSync("src/lib/chromeHelperBridge.ts", "utf8");
 
 class FakeClassList {
   private items = new Set<string>();
@@ -446,6 +450,40 @@ afterEach(() => {
 });
 
 describe("chrome helper alpha controls", () => {
+  it("adds a SignupAssist-domain bridge with strict message names and packet validation", () => {
+    [
+      "SIGNUPASSIST_HELPER_PING",
+      "SIGNUPASSIST_HELPER_DETECTED",
+      "SIGNUPASSIST_HELPER_STORE_PACKET",
+      "SIGNUPASSIST_HELPER_STORE_RESULT",
+    ].forEach((message) => {
+      expect(webBridgeSource).toContain(message);
+      expect(bridgeLib).toContain(message);
+    });
+
+    expect(helperManifest).toContain('"web-bridge.js"');
+    expect(helperManifest).toContain("https://signupassist.shipworx.ai/*");
+    expect(webBridgeSource).toContain("packet.version !== 1");
+    expect(webBridgeSource).toContain('packet.mode !== "supervised_autopilot"');
+    expect(webBridgeSource).toContain("DENIED_KEY_PATTERN");
+    expect(webBridgeSource).toContain("chrome.storage.local.set");
+  });
+
+  it("keeps Chrome helper setup to exactly five parent-facing steps", () => {
+    [
+      "Download helper",
+      "Open Extensions",
+      "Turn on Developer mode",
+      "Load unpacked",
+      "Verify helper",
+    ].forEach((step) => {
+      expect(setupPage).toContain(step);
+    });
+    expect(setupPage).toContain("setupSteps.map");
+    expect(setupPage).toContain("/downloads/signupassist-helper-alpha.zip");
+    expect(setupPage).toContain("detectChromeHelper");
+  });
+
   it("starts empty, saves a profile, and then loads a fetched packet", async () => {
     const fetchCalls: Array<[string, RequestInit | undefined]> = [];
     const { document, state } = await evaluatePopup(

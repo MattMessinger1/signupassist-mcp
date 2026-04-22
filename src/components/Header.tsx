@@ -1,4 +1,4 @@
-import { LogOut, Menu } from 'lucide-react';
+import { CreditCard, LogOut, Menu, Settings, ShieldCheck, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -36,10 +36,10 @@ export function Header() {
               Dashboard
             </Button>
             <Button variant="ghost" size="sm" onClick={() => navigate('/activity-finder')}>
-              Activity Finder
+              Find Activity
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => navigate('/autopilot')}>
-              Autopilot
+            <Button variant="ghost" size="sm" onClick={() => navigate('/run-center')}>
+              Run Center
             </Button>
             {testRoutesEnabled && (
               <Button variant="ghost" size="sm" onClick={() => navigate('/mcp-chat-test')}>
@@ -59,6 +59,26 @@ export function Header() {
 
         {/* Right Side */}
         <div className="flex items-center gap-3">
+          {user && (
+            <nav className="hidden xl:flex items-center gap-1" aria-label="Utility navigation">
+              <Button variant="ghost" size="sm" onClick={() => navigate('/chrome-helper/setup')}>
+                <ShieldCheck className="h-4 w-4" />
+                Chrome Helper
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => navigate('/credentials')}>
+                <Users className="h-4 w-4" />
+                Children
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => navigate('/dashboard')}>
+                <CreditCard className="h-4 w-4" />
+                Billing
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => navigate('/credentials')}>
+                <Settings className="h-4 w-4" />
+                Settings
+              </Button>
+            </nav>
+          )}
           {user ? (
             <>
               <span className="text-sm text-muted-foreground hidden sm:inline">
@@ -87,10 +107,22 @@ export function Header() {
                 Dashboard
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => navigate('/activity-finder')}>
-                Activity Finder
+                Find Activity
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate('/autopilot')}>
-                Autopilot
+              <DropdownMenuItem onClick={() => navigate('/run-center')}>
+                Run Center
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate('/chrome-helper/setup')}>
+                Chrome Helper
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate('/credentials')}>
+                Children
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate('/dashboard')}>
+                Billing
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => navigate('/credentials')}>
+                Settings
               </DropdownMenuItem>
               {testRoutesEnabled && (
                 <DropdownMenuItem onClick={() => navigate('/mcp-chat-test')}>

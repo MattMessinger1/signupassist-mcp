@@ -154,7 +154,7 @@ describe("web golden path foundation", () => {
     forbiddenRouteParams.forEach((key) => expect(url.searchParams.has(key)).toBe(false));
   });
 
-  it("keeps the Activity Finder component wired to auth redirect and intent-only navigation", () => {
+  it("keeps the Activity Finder component wired to auth redirect and intent-only plan opening", () => {
     const page = readFileSync("src/pages/ActivityFinder.tsx", "utf8");
     const authPage = readFileSync("src/pages/auth.tsx", "utf8");
     const navigateCalls = page
@@ -170,7 +170,9 @@ describe("web golden path foundation", () => {
     expect(authPage).toContain("sessionStorage.getItem('signupassist:returnTo')");
     expect(authPage).toContain("navigate(returnTo)");
     expect(page).toContain("createSignupIntent(payload)");
-    expect(page).toContain("navigate(buildAutopilotIntentPath(intent.id))");
+    expect(page).toContain("setPrepareIntentId(intent.id)");
+    expect(page).toContain("PreparePlanSheet");
+    expect(page).not.toContain("buildAutopilotIntentPath");
     forbiddenRouteParams.forEach((key) => expect(navigateCalls).not.toContain(`${key}=`));
   });
 });

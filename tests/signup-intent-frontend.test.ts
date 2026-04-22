@@ -122,8 +122,9 @@ describe("signup intent frontend bridge", () => {
     expect(page).toContain("createSignupIntent");
     expect(page).toContain("getResultHandoffEligibility");
     expect(page).toContain("PENDING_ACTIVITY_FINDER_INTENT_KEY");
-    expect(page).toContain("buildAutopilotIntentPath(intent.id)");
-    expect(navigateCalls).toContain("navigate(buildAutopilotIntentPath(intent.id))");
+    expect(page).toContain("setPrepareIntentId(intent.id)");
+    expect(page).toContain("PreparePlanSheet");
+    expect(navigateCalls).not.toContain("buildAutopilotIntentPath");
     [
       "finderQuery",
       "activity=",

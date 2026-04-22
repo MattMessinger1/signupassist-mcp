@@ -320,7 +320,7 @@ describe("MVP security regression suite", () => {
   });
 
   it("requires public HTTPS provider URLs in Autopilot production setup", () => {
-    const autopilot = readFileSync("src/pages/Autopilot.tsx", "utf8");
+    const autopilot = readFileSync("src/components/PreparePlanSheet.tsx", "utf8");
 
     expect(autopilot).toContain('url.protocol !== "https:"');
     expect(autopilot).toContain("import.meta.env.PROD");
