@@ -58,7 +58,7 @@ These test scenarios demonstrate SignupAssist's current ChatGPT app behavior for
 
 **Expected behavior:**
 
-- If the reviewer is not authenticated, starts the OAuth sign-in flow.
+- If the reviewer is not authenticated, SignupAssist prompts them to sign in before proceeding. ChatGPT will display a "Connect SignupAssist" button or similar OAuth prompt.
 - After sign-in, returns **Step 1/5** with available AIM Design programs.
 - Lists numbered program options.
 - Waits for the reviewer to select a program before collecting registration details.
@@ -78,7 +78,7 @@ These test scenarios demonstrate SignupAssist's current ChatGPT app behavior for
 4. Provide synthetic participant details. Prefer a participant age 13 or older for review, such as a synthetic teen matching the selected program's age requirements.
 5. Complete Stripe-hosted payment method setup if prompted.
 6. Review the summary.
-7. Type: "book now".
+7. Type: "book now" or "yes" to confirm.
 
 **Tool expected:** `register_for_activity`
 
@@ -89,7 +89,7 @@ These test scenarios demonstrate SignupAssist's current ChatGPT app behavior for
 - Payment method setup, when required, happens through Stripe-hosted checkout; SignupAssist does not see raw card numbers.
 - Before booking or charging, SignupAssist shows a final review summary with program, participant, schedule, program fee, SignupAssist fee, and payment method context.
 - No booking or charge occurs before the explicit final confirmation.
-- After the reviewer types `book now` at the final review step, SignupAssist creates the supported Bookeo booking and returns confirmation details such as a booking number or receipt summary.
+- At the final review step, the reviewer may type `book now` or `yes` to confirm. SignupAssist then creates the supported Bookeo booking and returns confirmation details such as a booking number or receipt summary.
 
 ---
 
