@@ -2079,3 +2079,41 @@ Verification:
 - `npm run test --if-present`: Passed.
 - Targeted ESLint on changed files: Passed.
 - `git diff --check`: Passed.
+
+## 2026-04-30 - OpenAI Rejection P1/P2/P3 Fixes
+
+Files changed in this phase:
+
+- `mcp_server/ai/APIOrchestrator.ts`
+- `mcp_server/index.ts`
+- `docs/OPENAI_REVIEWER_TEST_CASES.md`
+- `docs/APPROVAL_IMPACT_LOG.md`
+
+Approval impact:
+
+- Existing approval-sensitive runtime files changed: Yes - `mcp_server/index.ts`, `mcp_server/ai/APIOrchestrator.ts`.
+- Production code changed: Yes - booking confirmation parsing and MCP child-scope guardrail coverage.
+- Public MCP tool names changed: No.
+- Public MCP schemas/descriptors changed: No.
+- Hidden/private/internal tools exposed: No.
+- MCP manifest changed: No.
+- `mcp/openapi.json` changed: No.
+- `public/.well-known/*` changed: No.
+- OAuth/Auth0/auth behavior changed: No.
+- CSP/resource metadata changed: No.
+- Protected actions changed: No.
+
+Implementation summary:
+
+- P1 - Expanded `isBookingConfirmation()` so the final review step accepts natural affirmative replies such as `yes`, `confirm`, `looks good`, `go ahead`, and `proceed`, while retaining the existing explicit `book now`/`register` phrases.
+- P1 - Updated the final review CTA to tell reviewers they can type `book now` or simply `yes`.
+- P2 - Updated the MCP `register_for_activity` guardrail call to pass `message`, `action`, and `payload`, matching the HTTP `/orchestrator/chat` guardrail coverage. The MCP block now also records the same blocked-request telemetry shape and adult-signup counter.
+- P3 - Updated OpenAI reviewer test-case documentation to reflect the OAuth prompt wording and final confirmation options.
+
+Verification:
+
+- `curl https://signupassist.shipworx.ai/health`: Passed - returned live JSON with `ok: true`.
+- `curl https://signupassist.shipworx.ai/mcp/manifest.json`: Passed - returned valid JSON with `name_for_model: "signupassist"`.
+- `curl "https://signupassist.shipworx.ai/signupassist/start?org_ref=aim-design"`: Reached production successfully, but production currently returned `total_programs: 0` for AIM Design.
+- `npx vitest run tests/orchestratorChat.outOfScope.integration.test.ts --reporter=verbose`: Passed.
+- `npm run mcp:build`: Passed.

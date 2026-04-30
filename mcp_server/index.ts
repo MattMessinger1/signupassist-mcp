@@ -1366,10 +1366,27 @@ class SignupAssistMCPServer {
         const userId = args?.userId ? String(args.userId) : undefined;
 
         // Child-scope guardrail: block adult-only signup requests on the MCP/SSE path
-        const scopeDecision = evaluateChildRegistrationScope({ message: input });
+        // Pass action + payload through to match the HTTP /orchestrator/chat guardrail coverage.
+        const scopeDecision = evaluateChildRegistrationScope({
+          message: input,
+          action: args?.action,
+          payload: args?.payload,
+        });
         if (scopeDecision.blocked) {
           const oosResp = buildChildScopeOutOfScopeResponse();
-          telemetry.incrementCounter('guardrail.child_scope.blocked_total', 1, { path: 'mcp_tool', reason: scopeDecision.reason ?? 'adult_signup_request' });
+          telemetry.record('guardrail_blocked_request', {
+            guardrail: 'child_scope',
+            reason: scopeDecision.reason,
+            path: 'mcp_tool',
+            hasMessage: Boolean(String(input || '').trim()),
+          });
+          telemetry.incrementCounter('guardrail.child_scope.blocked_total', 1, {
+            path: 'mcp_tool',
+            reason: scopeDecision.reason ?? 'adult_signup_request',
+          });
+          if (scopeDecision.reason === 'adult_signup_request') {
+            telemetry.incrementCounter('guardrail.child_scope.blocked_adult_signup_total', 1, { path: 'mcp_tool' });
+          }
           return { content: [{ type: "text", text: oosResp.message }] };
         }
 

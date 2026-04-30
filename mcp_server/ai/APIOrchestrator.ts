@@ -554,20 +554,54 @@ export default class APIOrchestrator implements IOrchestrator {
   }
 
   /**
-   * Booking confirmation MUST be explicit.
+   * Detect final booking consent after the review summary has been shown.
    *
-   * Why: In ChatGPT, the model may reuse a short "yes" across multiple tool calls
-   * (e.g., confirming a saved card in Step 3 and then immediately confirming booking in Step 4),
-   * which can cause the user to miss the final review/consent step.
-   *
-   * We therefore require an explicit verb like "book" or "register" for the final consent.
+   * This helper is intentionally broader than earlier-step confirmations: at REVIEW,
+   * users can consent naturally with "yes", "confirm", "looks good", etc. It is also
+   * used for recent post-booking retries, where a match only replays the completion.
    */
   private isBookingConfirmation(input: string): boolean {
     const raw = String(input || "").trim().toLowerCase();
     if (!raw) return false;
-    const s = raw.replace(/[.!?]+$/g, "").trim();
+    const s = raw.replace(/[.!?]+$/g, "").trim().replace(/\s+/g, " ");
 
     return (
+      s === "yes" ||
+      s === "yeah" ||
+      s === "yep" ||
+      s === "yup" ||
+      s === "sure" ||
+      s === "ok" ||
+      s === "okay" ||
+      s === "confirm" ||
+      s === "confirmed" ||
+      s === "go ahead" ||
+      s === "go for it" ||
+      s === "proceed" ||
+      s === "continue" ||
+      s === "looks good" ||
+      s === "looks good go ahead" ||
+      s === "that looks right" ||
+      s === "that looks correct" ||
+      s === "everything looks good" ||
+      s === "everything looks correct" ||
+      s === "sounds good" ||
+      s === "all good" ||
+      s === "authorize" ||
+      s === "absolutely" ||
+      s === "definitely" ||
+      s === "do it" ||
+      s === "let's do it" ||
+      s === "lets do it" ||
+      s === "let's go" ||
+      s === "yes please" ||
+      s === "that's right" ||
+      s === "that's correct" ||
+      s === "thats correct" ||
+      s === "correct" ||
+      s === "approve" ||
+      s === "approved" ||
+      s === "i confirm" ||
       s === "book" ||
       s === "book now" ||
       s === "book it" ||
@@ -575,6 +609,7 @@ export default class APIOrchestrator implements IOrchestrator {
       s === "register now" ||
       s === "confirm booking" ||
       /^yes[, ]+(book|book now|register|register now|confirm booking)$/.test(s) ||
+      /^yes[, ]+(?:please|go ahead|proceed|confirm|do it|looks good|all good|that'?s? (?:right|correct|good))$/.test(s) ||
       s === "i confirm booking"
     );
   }
@@ -1312,7 +1347,7 @@ export default class APIOrchestrator implements IOrchestrator {
     if (tzNote) msg += `\n${tzNote}\n`;
 
     msg +=
-      "\nIf everything is correct, type **book now** to continue" +
+      "\nIf everything is correct, type **book now** (or simply **yes**) to continue" +
       (opensAtDisplay ? " (I’ll schedule the supervised registration attempt)" : "") +
       " or **cancel** to abort.";
     return msg;
@@ -4450,13 +4485,13 @@ If truly ambiguous, use type "ambiguous" with lower confidence.`,
             }
           }
         }
-        // If the user types a generic "yes" here, do NOT book — but ALWAYS re-show the full summary
-        // so the user can see the details (class/date/fees) even if a previous summary message was
-        // dropped/duplicated by ChatGPT transport retries.
+        // If the user types a confirmation-like phrase we do not accept as consent, ALWAYS re-show
+        // the full summary so the user can see the details (class/date/fees) even if a previous
+        // summary message was dropped/duplicated by ChatGPT transport retries.
         if (this.isUserConfirmation(input)) {
           const summary = this.buildReviewSummaryFromContext(context);
           return this.formatResponse(
-            `${summary}\n\n(For final consent, please type **book now** — we don’t accept a generic “yes” here.)`
+            `${summary}\n\n(If everything looks correct, reply **yes** or **book now** to continue.)`
           );
         }
         if (/cancel/i.test(input.trim())) {
