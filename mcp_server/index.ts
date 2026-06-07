@@ -727,6 +727,7 @@ import { formatCurrencyFromCents } from './utils/money.js';
 import { searchActivityFinder } from './lib/activityFinder.js';
 
 import { createServer } from 'http';
+import { parseRequestUrl } from './http/requestUrl.js';
 import { URL, fileURLToPath } from 'url';
 import { readFileSync, existsSync } from 'fs';
 import path, { dirname } from 'path';
@@ -1621,13 +1622,24 @@ class SignupAssistMCPServer {
       // Keep minimal; deny powerful features by default.
       res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
 
+      const url = parseRequestUrl(req.url, port);
+      if (!url) {
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('Connection', 'close');
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          status: 'error',
+          code: 400,
+          message: 'Invalid request target',
+        }));
+        return;
+      }
+
       if (req.method === 'OPTIONS') {
         res.writeHead(200);
         res.end();
         return;
       }
-
-      const url = new URL(req.url || '/', `http://localhost:${port}`);
 
       // Avoid caching for sensitive endpoints (tokens, tool execution, long-lived SSE).
       // Some endpoints (e.g., /.well-known/*) may override this with their own Cache-Control later.
