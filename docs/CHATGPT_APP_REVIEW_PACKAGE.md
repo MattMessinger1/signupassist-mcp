@@ -7,12 +7,17 @@ This package is the copy/paste source of truth for the OpenAI Platform app submi
 | Field | Value |
 |---|---|
 | App name | `SignupAssist` |
+| Developer name / publisher | `Matt Messinger` |
+| Publisher verification type | `Verified individual` |
+| Business-name caution | Do not enter `ShipWorx AI`, `Shipworx, LLC`, `WiscAI`, or `AIM Design` unless OpenAI business verification is complete for that exact name. |
 | Website URL | `https://signupassist.shipworx.ai/` |
 | Privacy Policy URL | `https://signupassist.shipworx.ai/privacy` |
 | Terms URL | `https://signupassist.shipworx.ai/terms` |
 | Support contact email | `support@shipworx.ai` |
 | MCP server URL | `https://signupassist.shipworx.ai/sse` |
 | Safety/security URL, if requested | `https://signupassist.shipworx.ai/safety` |
+
+The OpenAI dashboard developer name must exactly match the verified individual or business name shown in OpenAI Platform Settings. Use `Matt Messinger` only if that exact value appears as the verified individual name. If Platform Settings shows a different verified legal spelling, copy that value exactly and update this review package before submitting.
 
 Reviewer credentials must be entered directly in the OpenAI Platform submission form. Do not commit reviewer passwords, payment details, or live credentials to this repository.
 
