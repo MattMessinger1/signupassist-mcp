@@ -168,7 +168,7 @@
   "approvalSensitiveFiles": [
     {
       "path": "docs/CHATGPT_SUBMISSION_CHECKLIST.md",
-      "sha256": "ad6fc65221ea1e5a282b3d313d80f5c1a3be376361fc29a15a838bddd72f61ba"
+      "sha256": "97daab857e03508be5dddbce3497cfaf603bbebcb4df40ded348c433c5675db2"
     },
     {
       "path": "docs/OPENAI_REVIEWER_TEST_CASES.md",
