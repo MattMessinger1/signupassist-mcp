@@ -5,9 +5,9 @@
 | Field | Value |
 |---|---|
 | App Name | SignupAssist |
-| Developer Name / Publisher | Matt Messinger |
+| Developer Name / Publisher | Exact verified individual name from OpenAI Platform Settings |
 | Publisher Verification Type | Verified individual |
-| Business Publishing Note | Do not enter ShipWorx AI, Shipworx, LLC, WiscAI, or AIM Design as the developer name unless that exact business name has completed OpenAI business verification. |
+| Business Publishing Note | Do not enter ShipWorx AI, Shipworx, LLC, WiscAI, AIM Design, a nickname, or any other business/brand name unless that exact name has completed OpenAI verification. |
 | Short Description | Parent-controlled child-safe youth activity signup assistant |
 | Category | Productivity / Family |
 | Website URL | https://signupassist.shipworx.ai/ |
@@ -19,9 +19,11 @@
 
 ## Developer Name Verification
 
-OpenAI requires the submitted developer name to match the verified individual or business name on the OpenAI Platform account. For the current resubmission, use the verified individual name `Matt Messinger` if that exact value is shown in Platform Settings. If Platform Settings shows a different verified legal spelling, copy that value exactly and update this checklist before submitting.
+OpenAI requires the submitted developer name to match the verified individual or business name on the OpenAI Platform account. For the current resubmission, copy the verified individual name exactly from OpenAI Platform Settings into the developer name field.
 
-Do not submit the developer name as `ShipWorx AI`, `Shipworx, LLC`, `WiscAI`, or `AIM Design` unless business verification has been completed in OpenAI Platform Settings for that exact business name.
+Do not type a nickname, shortened name, brand name, LLC name, or business name unless that exact value appears as verified in OpenAI Platform Settings. Do not submit the developer name as `ShipWorx AI`, `Shipworx, LLC`, `WiscAI`, or `AIM Design` unless business verification has been completed in OpenAI Platform Settings for that exact business name.
+
+If OpenAI Platform Settings displays a different verified legal spelling from any working notes, the dashboard value controls. Update this checklist before submitting so the review package and dashboard field match.
 
 ## Required Assets
 
@@ -68,8 +70,8 @@ Hidden/private/internal provider, payment, registration, and admin tools remain 
 2. Edit the existing SignupAssist app.
 3. Confirm OpenAI Platform Settings shows the account's verified individual or business name.
 4. Fill in metadata from the App Metadata table above.
-5. In the developer name field, enter the exact verified name from Platform Settings. For the current individual-verification path, use `Matt Messinger` only if it matches the verified account name exactly.
-6. Do not enter `ShipWorx AI`, `Shipworx, LLC`, `WiscAI`, or `AIM Design` as the developer name unless OpenAI business verification is complete for that exact business name.
+5. In the developer name field, copy the exact verified name from Platform Settings. Use the same spelling, punctuation, capitalization, and spacing shown there.
+6. Do not enter `ShipWorx AI`, `Shipworx, LLC`, `WiscAI`, `AIM Design`, a nickname, or any shortened name unless that exact value is verified in OpenAI Platform Settings.
 7. Upload `public/logo-512.png` if the current logo is missing or stale.
 8. Enter MCP server URL: `https://signupassist.shipworx.ai/sse`.
 9. Enter reviewer credentials directly in the submission form.
@@ -79,7 +81,7 @@ Hidden/private/internal provider, payment, registration, and admin tools remain 
 
 ## Reviewer Notes To Include
 
-- SignupAssist is submitted under the verified individual developer name shown in OpenAI Platform Settings. The ShipWorx domain, support email, and legal pages are product/support infrastructure, not the developer name unless business verification is completed.
+- SignupAssist is submitted under the exact verified individual developer name shown in OpenAI Platform Settings. The ShipWorx domain, support email, and legal pages are product/support infrastructure, not the developer name unless business verification is completed.
 - SignupAssist can complete the connected AIM Design / Bookeo youth activity signup flow for an adult parent/guardian after OAuth, registration details, Stripe-hosted payment method setup when required, final review, and explicit `book now` confirmation.
 - SignupAssist does not book or charge before explicit final confirmation.
 - Raw card numbers are handled by Stripe-hosted checkout and are not seen by SignupAssist.
